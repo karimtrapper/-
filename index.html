@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор обмена - Doverka & Broker</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">🧮</span>
+                <h1>Калькулятор обмена</h1>
+            </div>
+            <div class="subtitle">RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ</div>
+        </header>
+
+        <!-- Переключатель метода -->
+        <div class="method-switcher">
+            <button class="method-btn active" data-method="doverka" onclick="switchMethod('doverka')">
+                🏦 Doverka (SBP)
+            </button>
+            <button class="method-btn" data-method="broker" onclick="switchMethod('broker')">
+                💼 Брокер
+            </button>
+        </div>
+
+        <!-- Актуальные курсы -->
+        <div class="rates-card" id="ratesCard">
+            <div class="rates-header">
+                <span class="rates-title">📊 Актуальные курсы</span>
+                <button class="refresh-btn" id="refreshBtn" onclick="refreshRates()">
+                    <span class="refresh-icon">↻</span> Обновить
+                </button>
+            </div>
+            <div class="rates-grid">
+                <div class="rate-item">
+                    <div class="rate-label">USDT-THB (Binance)</div>
+                    <div class="rate-value" id="usdtThbRate">31.16 ฿</div>
+                </div>
+                <div class="rate-item">
+                    <div class="rate-label" id="rubUsdtLabel">RUB-USDT (Doverka)</div>
+                    <div class="rate-value" id="rubUsdtRate">84.23 ₽</div>
+                </div>
+                <div class="rate-item highlight">
+                    <div class="rate-label">Примерный курс</div>
+                    <div class="rate-value" id="estimatedRate">~2.79 ₽/฿</div>
+                </div>
+            </div>
+            <div class="rates-updated" id="ratesUpdated">
+                Обновлено: <span id="updateTime">загрузка...</span>
+            </div>
+        </div>
+
+        <!-- Кастомный курс для брокера -->
+        <div class="custom-rate-section" id="customRateSection" style="display: none;">
+            <label for="customRubUsdt" class="input-label">
+                💼 Кастомный курс RUB-USDT (задает менеджер)
+            </label>
+            <div class="input-wrapper">
+                <input 
+                    type="text" 
+                    id="customRubUsdt" 
+                    class="amount-input" 
+                    placeholder="80.90"
+                    value="80.90"
+                    oninput="formatInput(this); updateCustomRate(); calculate()"
+                >
+                <span class="input-currency">₽</span>
+            </div>
+            <div class="rate-hint">
+                💡 Курс USDT-THB берется от Binance API в реальном времени
+            </div>
+        </div>
+
+        <!-- Уровень комиссий для брокера -->
+        <div class="commission-level-section" id="commissionLevelSection" style="display: none;">
+            <label class="input-label">⚙️ Уровень комиссий</label>
+            <div class="commission-buttons">
+                <button class="commission-btn" data-level="high" onclick="setCommissionLevel('high')">
+                    Высокий (5%)
+                </button>
+                <button class="commission-btn active" data-level="medium" onclick="setCommissionLevel('medium')">
+                    Средний (4%)
+                </button>
+                <button class="commission-btn" data-level="low" onclick="setCommissionLevel('low')">
+                    Низкий (3%)
+                </button>
+            </div>
+        </div>
+
+        <!-- Переключатель сценария -->
+        <div class="scenario-switcher" id="scenarioSwitcher">
+            <!-- Doverka сценарии -->
+            <button class="scenario-btn active" data-scenario="rub-to-thb" data-method="doverka" onclick="switchScenario('rub-to-thb')">
+                <span class="scenario-icon">💰</span>
+                <div>
+                    <div class="scenario-title">RUB → THB</div>
+                    <div class="scenario-desc">Клиент вносит рубли</div>
+                </div>
+            </button>
+            <button class="scenario-btn" data-scenario="thb-to-rub" data-method="doverka" onclick="switchScenario('thb-to-rub')">
+                <span class="scenario-icon">💸</span>
+                <div>
+                    <div class="scenario-title">THB ← RUB</div>
+                    <div class="scenario-desc">Клиент хочет баты</div>
+                </div>
+            </button>
+            
+            <!-- Broker сценарии (скрыты по умолчанию) -->
+            <button class="scenario-btn" data-scenario="rub-to-thb" data-method="broker" style="display: none;" onclick="switchScenario('rub-to-thb')">
+                <span class="scenario-icon">💰</span>
+                <div>
+                    <div class="scenario-title">RUB → THB</div>
+                    <div class="scenario-desc">Через брокера</div>
+                </div>
+            </button>
+            <button class="scenario-btn" data-scenario="thb-to-usdt" data-method="broker" style="display: none;" onclick="switchScenario('thb-to-usdt')">
+                <span class="scenario-icon">💎</span>
+                <div>
+                    <div class="scenario-title">THB → USDT</div>
+                    <div class="scenario-desc">Баты в крипту</div>
+                </div>
+            </button>
+            <button class="scenario-btn" data-scenario="usdt-to-thb" data-method="broker" style="display: none;" onclick="switchScenario('usdt-to-thb')">
+                <span class="scenario-icon">🔄</span>
+                <div>
+                    <div class="scenario-title">USDT → THB</div>
+                    <div class="scenario-desc">Крипта в баты</div>
+                </div>
+            </button>
+        </div>
+
+        <!-- Переключатель direction (только для broker) -->
+        <div class="direction-switcher" id="directionSwitcher" style="display: none;">
+            <label class="input-label">🎯 Тип операции</label>
+            <div class="direction-buttons">
+                <button class="direction-btn active" data-direction="amount" onclick="setDirection('amount')">
+                    💰 Вношу сумму
+                </button>
+                <button class="direction-btn" data-direction="target" onclick="setDirection('target')">
+                    🎯 Хочу получить
+                </button>
+            </div>
+        </div>
+
+        <!-- Выбор уровня комиссий (только для broker) -->
+        <div class="commission-level-selector" id="commissionLevelSelector" style="display: none;">
+            <label class="input-label">📊 Уровень комиссии</label>
+            <div class="commission-buttons">
+                <button class="commission-btn" data-level="low" onclick="setCommissionLevel('low')">
+                    3%
+                </button>
+                <button class="commission-btn active" data-level="medium" onclick="setCommissionLevel('medium')">
+                    4%
+                </button>
+                <button class="commission-btn" data-level="high" onclick="setCommissionLevel('high')">
+                    5%
+                </button>
+            </div>
+        </div>
+
+        <!-- Настройки партнера -->
+        <div class="partner-settings">
+            <div class="partner-toggle">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="hasPartner" onchange="togglePartner()">
+                    <span class="checkbox-text">👥 Есть партнер?</span>
+                </label>
+            </div>
+            <div class="partner-percent-wrapper" id="partnerPercentWrapper" style="display: none;">
+                <label for="partnerPercent" class="input-label">
+                    % партнера
+                </label>
+                <div class="input-wrapper small">
+                    <input 
+                        type="number" 
+                        id="partnerPercent" 
+                        class="amount-input" 
+                        value="50"
+                        min="0"
+                        max="100"
+                        step="1"
+                        placeholder="50"
+                        oninput="calculate()"
+                    >
+                    <span class="input-currency">%</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Форма расчета -->
+        <div class="calculator-card">
+            <div class="input-section">
+                <label for="amount" class="input-label" id="inputLabel">
+                    Введите сумму в рублях (₽)
+                </label>
+                <div class="input-wrapper">
+                    <input 
+                        type="text" 
+                        id="amount" 
+                        class="amount-input" 
+                        placeholder="Например: 100000"
+                        oninput="formatInput(this); calculate()"
+                    >
+                    <span class="input-currency" id="inputCurrency">₽</span>
+                </div>
+                <div class="quick-amounts" id="quickAmounts">
+                    <button class="quick-btn" onclick="setAmount(10000)">10k</button>
+                    <button class="quick-btn" onclick="setAmount(100000)">100k</button>
+                    <button class="quick-btn" onclick="setAmount(500000)">500k</button>
+                    <button class="quick-btn" onclick="setAmount(1000000)">1M</button>
+                </div>
+            </div>
+
+            <!-- Результаты -->
+            <div class="results-section" id="resultsSection" style="display: none;">
+                <div class="result-main">
+                    <div class="result-label" id="resultLabel">Клиент получит:</div>
+                    <div class="result-value" id="resultValue">0 ฿</div>
+                    <div class="result-rate">
+                        Курс: <span id="finalRate">0</span> <span id="rateCurrency">₽/฿</span>
+                    </div>
+                </div>
+
+                <div class="details-section">
+                    <div class="details-header" onclick="toggleDetails()">
+                        <span>📋 Детали расчета</span>
+                        <span class="toggle-icon" id="toggleIcon">▼</span>
+                    </div>
+                    <div class="details-content" id="detailsContent">
+                        <!-- Детали будут добавлены динамически через JavaScript -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Информация -->
+        <div class="info-card">
+            <div class="info-header" onclick="toggleInfo()">
+                <span>ℹ️ Информация</span>
+                <span class="toggle-icon" id="infoToggleIcon">▼</span>
+            </div>
+            <div class="info-content" id="infoContent">
+                <div class="info-note">
+                    <strong>Режим Doverka (SBP):</strong> Реальные курсы от API в реальном времени
+                </div>
+                <div class="info-note">
+                    <strong>Режим Broker:</strong> Кастомный курс RUB-USDT + выбор уровня комиссий
+                </div>
+            </div>
+        </div>
+
+        <footer class="footer">
+            <p>Расчеты основаны на актуальных рыночных курсах</p>
+            <p class="footer-small">Все расчеты являются ориентировочными</p>
+        </footer>
+    </div>
+
+    <script src="calculator.js?v=14"></script>
+    <script>
+        // Диагностика загрузки
+        console.log('🔍 Проверка функций:');
+        console.log('switchMethod:', typeof switchMethod);
+        console.log('switchScenario:', typeof switchScenario);
+        console.log('setCommissionLevel:', typeof setCommissionLevel);
+        console.log('updateCustomRate:', typeof updateCustomRate);
+        
+        // Тест кнопок при загрузке
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('✅ DOM загружен');
+            console.log('Кнопки метода:', document.querySelectorAll('.method-btn').length);
+            console.log('Кнопки сценариев:', document.querySelectorAll('.scenario-btn').length);
+            console.log('Кнопки комиссий:', document.querySelectorAll('.commission-btn').length);
+        });
+    </script>
+</body>
+</html>
+
