@@ -1,7 +1,7 @@
 // Конфигурация
-// Автоматически определяем API URL: локально - localhost, на продакшене - относительный путь
+// Автоматически определяем API URL: локально - используем текущий hostname, на продакшене - относительный путь
 const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:5001/api'
+    ? `http://${window.location.hostname}:5001/api`
     : '/api';
 
 const CONFIG = {
@@ -47,17 +47,23 @@ let state = {
     method: 'doverka',  // 'doverka' или 'broker'
     scenario: 'rub-to-thb',  // текущий сценарий
     direction: 'amount',  // 'amount' (вношу) или 'target' (хочу получить)
-    commissionLevel: 'medium',  // для broker: 'high', 'medium', 'low'
+    profitMargin: 4.0,    // чистая прибыль брокера в %
     rates: CONFIG.FALLBACK_RATES,
     customRubUsdt: 80.90,  // кастомный курс для broker
     detailsOpen: false,
-    infoOpen: false
+    infoOpen: false,
+    applyDiscount: false
 };
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     refreshRates();
 });
+
+// Очистка результатов при изменении ввода
+function hideResults() {
+    document.getElementById('resultsSection').style.display = 'none';
+}
 
 // Переключение метода
 function switchMethod(method) {
@@ -68,10 +74,12 @@ function switchMethod(method) {
         btn.classList.toggle('active', btn.dataset.method === method);
     });
     
+    // Секция комиссий теперь доступна для обоих методов
+    document.getElementById('commissionLevelSection').style.display = 'block';
+    
     // Показываем/скрываем элементы UI
     if (method === 'broker') {
         document.getElementById('customRateSection').style.display = 'block';
-        document.getElementById('commissionLevelSelector').style.display = 'block';
         document.getElementById('directionSwitcher').style.display = 'block';
         document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Кастомный)';
         
@@ -90,7 +98,6 @@ function switchMethod(method) {
         
     } else {
         document.getElementById('customRateSection').style.display = 'none';
-        document.getElementById('commissionLevelSelector').style.display = 'none';
         document.getElementById('directionSwitcher').style.display = 'none';
         document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Doverka)';
         
@@ -108,14 +115,14 @@ function switchMethod(method) {
         updateScenarioUI();
     }
     
-    calculate();
+    hideResults();
 }
 
 // Переключение сценария
 function switchScenario(scenario) {
     state.scenario = scenario;
     updateScenarioUI();
-    calculate();
+    hideResults();
 }
 
 // Обновление UI сценария
@@ -202,6 +209,30 @@ function updateScenarioUI() {
                 quickAmounts: [1000, 5000, 13000, 30000]
             };
         }
+    } else if (state.scenario === 'rub-to-usdt') {
+        if (state.direction === 'target') {
+            // Хочу получить конкретную сумму USDT
+            config = {
+                input: 'Введите желаемую сумму в USDT',
+                currency: 'USDT',
+                placeholder: '10000',
+                result: 'Клиент должен внести:',
+                resultCurrency: '₽',
+                rateCurrency: '₽/USDT',
+                quickAmounts: [1000, 5000, 10000, 20000]
+            };
+        } else {
+            // Вношу конкретную сумму RUB
+            config = {
+                input: 'Введите сумму в рублях (₽)',
+                currency: '₽',
+                placeholder: '1000000',
+                result: 'Клиент получит:',
+                resultCurrency: 'USDT',
+                rateCurrency: '₽/USDT',
+                quickAmounts: [100000, 500000, 1000000, 5000000]
+            };
+        }
     } else if (state.scenario === 'thb-to-rub') {
         // Doverka: THB ← RUB (клиент хочет получить конкретную сумму THB)
         config = {
@@ -232,27 +263,74 @@ function updateScenarioUI() {
     document.getElementById('resultLabel').textContent = config.result;
     document.getElementById('rateCurrency').textContent = config.rateCurrency;
     
-    // Обновляем быстрые кнопки
-    const quickAmountsDiv = document.getElementById('quickAmounts');
-    quickAmountsDiv.innerHTML = config.quickAmounts.map(amount => {
-        const label = amount >= 1000000 ? `${amount/1000000}M` : `${amount/1000}k`;
-        return `<button class="quick-btn" onclick="setAmount(${amount})">${label}</button>`;
-    }).join('');
-    
     // Очищаем поле ввода
     document.getElementById('amount').value = '';
     document.getElementById('resultsSection').style.display = 'none';
 }
 
-// Установка уровня комиссий
-function setCommissionLevel(level) {
-    state.commissionLevel = level;
+// Переключение скидки
+function toggleDiscount() {
+    state.applyDiscount = document.getElementById('applyDiscount').checked;
+    const wrapper = document.getElementById('profitMarginWrapper');
     
+    if (state.applyDiscount) {
+        wrapper.style.display = 'block';
+        
+        // Автоматически выбираем дефолтный процент в зависимости от суммы
+        const amount = getAmount();
+        if (amount > 0) {
+            let defaultProfit = 4.0;
+            // Определяем базу для расчета (рубли)
+            let baseAmount = amount;
+            if (state.scenario === 'thb-to-rub' || state.scenario === 'usdt-to-thb' && state.direction === 'target') {
+                baseAmount = amount * 2.8; // Примерный эквивалент для оценки порога
+            }
+            
+            if (baseAmount < 500000) defaultProfit = 5.0;
+            else if (baseAmount < 1000000) defaultProfit = 4.0;
+            else defaultProfit = 3.0;
+            
+            // Устанавливаем маржу (это также обновит кнопки)
+            setProfitMargin(defaultProfit);
+        }
+    } else {
+        wrapper.style.display = 'none';
+    }
+    
+    // СРАЗУ вызываем расчет если сумма введена
+    const amount = getAmount();
+    if (amount > 0) {
+        calculate();
+    } else {
+        hideResults();
+    }
+}
+
+// Установка маржи (прибыли)
+function setProfitMargin(profit) {
+    state.profitMargin = parseFloat(profit);
+    
+    // Обновляем визуальное состояние кнопок
     document.querySelectorAll('.commission-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.level === level);
+        const btnProfit = parseFloat(btn.dataset.profit);
+        btn.classList.toggle('active', btnProfit === state.profitMargin);
     });
     
-    calculate();
+    console.log(`🎯 Выбрана маржа: ${state.profitMargin}%`);
+    
+    // СРАЗУ вызываем расчет если сумма введена
+    const amount = getAmount();
+    if (amount > 0) {
+        calculate();
+    } else {
+        hideResults();
+    }
+}
+
+// Установка уровня комиссий (старая функция для совместимости, если где-то осталась)
+function setCommissionLevel(level) {
+    const marginMap = { 'high': 5.0, 'medium': 4.0, 'low': 3.0 };
+    setProfitMargin(marginMap[level] || 4.0);
 }
 
 // Установка direction (целевая/вносимая)
@@ -265,7 +343,7 @@ function setDirection(direction) {
     
     // Обновляем метки в зависимости от direction
     updateScenarioUI();
-    calculate();
+    hideResults();
 }
 
 // Получение курсов
@@ -291,7 +369,7 @@ async function refreshRates() {
         }
         
         updateRatesDisplay();
-        calculate();
+        hideResults();
         
     } catch (error) {
         console.error('Error fetching rates:', error);
@@ -304,23 +382,50 @@ async function refreshRates() {
 
 // Обновление отображения курсов
 function updateRatesDisplay() {
-    // Показываем USDT-THB с 2 знаками (достаточно точно)
-    document.getElementById('usdtThbRate').textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
-    
-    if (state.method === 'broker') {
-        // Показываем кастомный курс с 4 знаками
-        const customRate = parseFloat(document.getElementById('customRubUsdt').value.replace(/\s/g, '')) || 80.90;
-        document.getElementById('rubUsdtRate').textContent = `${customRate.toFixed(4)} ₽`;
-        state.customRubUsdt = customRate;
+    // В режиме брокера скрываем блок примерных расчетов до нажатия "Рассчитать", 
+    // чтобы не путать менеджера старыми или оценочными данными
+    const estimatedEl = document.getElementById('estimatedRate');
+    const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+
+    // Показываем USDT-THB
+    const usdtThbEl = document.getElementById('usdtThbRate');
+    if (state.rates.usdt_thb) {
+        usdtThbEl.textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
+        usdtThbEl.classList.remove('rate-error');
     } else {
-        // Показываем курс от Doverka API с 4 знаками для точности!
-        document.getElementById('rubUsdtRate').textContent = `${state.rates.rub_usdt.toFixed(4)} ₽`;
+        usdtThbEl.textContent = '—';
+        usdtThbEl.classList.add('rate-error');
     }
     
-    // Примерный курс
-    const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
-    const estimatedRate = (rubUsdt / state.rates.usdt_thb).toFixed(2);
-    document.getElementById('estimatedRate').textContent = `~${estimatedRate} ₽/฿`;
+    // Показываем RUB-USDT
+    const rubUsdtEl = document.getElementById('rubUsdtRate');
+    if (state.method === 'broker') {
+        const customRate = parseFloat(document.getElementById('customRubUsdt').value.replace(/\s/g, '')) || 80.90;
+        rubUsdtEl.textContent = `${customRate.toFixed(4)} ₽`;
+        state.customRubUsdt = customRate;
+        rubUsdtEl.classList.remove('rate-error');
+        
+        // В брокере заменяем примерный курс на прочерк, пока нет суммы
+        estimatedEl.textContent = '—';
+        estimatedEl.classList.add('rate-info-pending');
+    } else {
+        if (state.rates.rub_usdt) {
+            rubUsdtEl.textContent = `${state.rates.rub_usdt.toFixed(4)} ₽`;
+            rubUsdtEl.classList.remove('rate-error');
+        } else {
+            rubUsdtEl.textContent = '—';
+            rubUsdtEl.classList.add('rate-error');
+        }
+
+        if (rubUsdt && state.rates.usdt_thb) {
+            const estimatedRate = (rubUsdt / state.rates.usdt_thb).toFixed(2);
+            estimatedEl.textContent = `~${estimatedRate} ₽/฿`;
+            estimatedEl.classList.remove('rate-error', 'rate-info-pending');
+        } else {
+            estimatedEl.textContent = '—';
+            estimatedEl.classList.add('rate-error');
+        }
+    }
     
     // Время обновления
     const now = new Date();
@@ -368,7 +473,7 @@ function formatInput(input) {
 function setAmount(amount) {
     const input = document.getElementById('amount');
     input.value = amount.toLocaleString('ru-RU');
-    calculate();
+    hideResults();
 }
 
 // Получение числового значения
@@ -382,7 +487,15 @@ function getAmount() {
 async function calculate() {
     const amount = getAmount();
     const resultsSection = document.getElementById('resultsSection');
+    const calculateBtn = document.getElementById('calculateBtn');
     
+    // Проверка наличия курсов перед расчетом
+    const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+    if (!rubUsdt || !state.rates.usdt_thb) {
+        alert('⚠️ Ошибка: Курсы валют не получены. Расчет невозможен.');
+        return;
+    }
+
     if (amount <= 0) {
         resultsSection.style.display = 'none';
         return;
@@ -394,10 +507,10 @@ async function calculate() {
             const requestData = {
                 method: 'broker',
                 scenario: state.scenario,
-                direction: state.direction,  // используем direction из state
+                direction: state.direction,
                 amount: amount,
-                custom_rub_usdt: state.customRubUsdt,  // Только RUB-USDT кастомный
-                commission_level: state.commissionLevel
+                custom_rub_usdt: state.customRubUsdt,
+                profit_margin: state.profitMargin
             };
             
             const response = await fetch(`${CONFIG.API_URL}/calculate`, {
@@ -414,13 +527,25 @@ async function calculate() {
             }
             
         } else if (CONFIG.USE_API && state.method === 'doverka') {
-            // Используем API для Doverka
+            // Для Doverka сценарии rub-to-thb и thb-to-rub - это direction amount/target для одного сценария
+            let effectiveScenario = state.scenario;
+            let effectiveDirection = state.direction;
+
+            if (state.scenario === 'thb-to-rub') {
+                effectiveScenario = 'rub-to-thb';
+                effectiveDirection = 'target';
+            }
+
             const requestData = {
                 method: 'doverka',
-                scenario: state.scenario,
-                direction: 'amount',
-                amount: amount
+                scenario: effectiveScenario,
+                direction: effectiveDirection,
+                amount: amount,
+                // Передаем маржу только если включена "скидка" (ручной режим)
+                profit_margin: state.applyDiscount ? state.profitMargin : null
             };
+            
+            console.log('📤 Sending Doverka request:', requestData);
             
             const response = await fetch(`${CONFIG.API_URL}/calculate`, {
                 method: 'POST',
@@ -523,62 +648,65 @@ function displayResult(result) {
     let rateValue = '';
     let rateCurrency = '';
     
-    // Определяем что показывать по scenario и direction
-    // ВАЖНО: проверяем результат (output), а не вход (input)!
+    // ВАЖНО: сначала проверяем direction, чтобы понять, показываем мы "получит" или "должен внести"
+    const isTarget = result.direction === 'target';
     
     if (result.scenario === 'USDT → THB') {
-        if (result.thb_received !== undefined) {
-            // amount: вношу USDT → получаю THB
-            resultValue = `${formatNumber(result.thb_received)} ฿`;
+        if (isTarget) {
+            // Хочу получить конкретную сумму THB → плачу USDT
+            resultValue = `${formatNumber(result.usdt_to_pay || result.usdt_amount)} USDT`;
             rateValue = result.usdt_thb_rate_sell ? result.usdt_thb_rate_sell.toFixed(2) : result.final_rate.toFixed(2);
             rateCurrency = '฿/USDT';
-        } else if (result.usdt_amount !== undefined) {
-            // target: хочу получить THB → плачу USDT
-            resultValue = `${formatNumber(result.usdt_amount)} USDT`;
+        } else {
+            // Вношу USDT → получаю THB
+            resultValue = `${formatNumber(result.thb_received)} ฿`;
             rateValue = result.usdt_thb_rate_sell ? result.usdt_thb_rate_sell.toFixed(2) : result.final_rate.toFixed(2);
             rateCurrency = '฿/USDT';
         }
     } else if (result.scenario === 'THB → USDT') {
-        if (result.usdt_received !== undefined) {
-            // amount: вношу THB → получаю USDT
+        if (isTarget) {
+            // Хочу получить USDT → плачу THB
+            resultValue = `${formatNumber(result.thb_to_pay || result.thb_amount)} ฿`;
+            rateValue = result.final_rate.toFixed(4);
+            rateCurrency = '฿/USDT';
+        } else {
+            // Вношу THB → получаю USDT
             resultValue = `${formatNumber(result.usdt_received)} USDT`;
             rateValue = result.final_rate.toFixed(4);
             rateCurrency = '฿/USDT';
-        } else if (result.thb_amount !== undefined) {
-            // target: хочу получить USDT → плачу THB
-            resultValue = `${formatNumber(result.thb_amount)} ฿`;
-            rateValue = result.final_rate.toFixed(4);
-            rateCurrency = '฿/USDT';
         }
-    } else if (result.scenario === 'RUB → THB') {
-        if (result.thb_received !== undefined) {
-            // amount: вношу RUB → получаю THB
+    } else if (result.scenario === 'RUB → THB' || result.scenario === 'THB ← RUB') {
+        if (isTarget) {
+            // Хочу получить THB → плачу RUB
+            resultValue = `${formatNumber(result.rub_to_pay || result.rub_amount)} ₽`;
+            rateValue = result.final_rate.toFixed(4);
+            rateCurrency = '₽/฿';
+        } else {
+            // Вношу RUB → получаю THB
             resultValue = `${formatNumber(result.thb_received)} ฿`;
             rateValue = result.final_rate.toFixed(4);
             rateCurrency = '₽/฿';
-        } else if (result.rub_amount !== undefined) {
-            // target: хочу получить THB → плачу RUB
-            resultValue = `${formatNumber(result.rub_amount)} ₽`;
-            rateValue = result.final_rate.toFixed(4);
-            rateCurrency = '₽/฿';
         }
-    } else if (result.scenario === 'THB ← RUB') {
-        // Doverka: хочу получить THB → плачу RUB
-        resultValue = `${formatNumber(result.rub_to_pay)} ₽`;
-        rateValue = result.final_rate.toFixed(4);
-        rateCurrency = '₽/฿';
-    } else if (result.thb_received !== undefined) {
-        resultValue = `${formatNumber(result.thb_received)} ฿`;
-        rateValue = result.final_rate.toFixed(4);
-        rateCurrency = '₽/฿';
-    } else if (result.rub_to_pay !== undefined) {
-        resultValue = `${formatNumber(result.rub_to_pay)} ₽`;
-        rateValue = result.final_rate.toFixed(4);
-        rateCurrency = '₽/฿';
+    } else if (result.scenario === 'RUB → USDT') {
+        if (isTarget) {
+            // Хочу получить USDT → плачу RUB
+            resultValue = `${formatNumber(result.rub_to_pay || result.rub_amount)} ₽`;
+            rateValue = result.final_rate.toFixed(4);
+            rateCurrency = '₽/USDT';
+        } else {
+            // Вношу RUB → получаю USDT
+            resultValue = `${formatNumber(result.usdt_received || result.usdt_amount)} USDT`;
+            rateValue = result.final_rate.toFixed(4);
+            rateCurrency = '₽/USDT';
+        }
     } else {
-        // Fallback
-        resultValue = 'N/A';
-        rateValue = '0';
+        // Запасной вариант если сценарий не распознан
+        if (result.rub_to_pay) resultValue = `${formatNumber(result.rub_to_pay)} ₽`;
+        else if (result.thb_received) resultValue = `${formatNumber(result.thb_received)} ฿`;
+        else if (result.usdt_received) resultValue = `${formatNumber(result.usdt_received)} USDT`;
+        else resultValue = 'N/A';
+        
+        rateValue = result.final_rate ? result.final_rate.toFixed(4) : '0';
         rateCurrency = '';
     }
     
@@ -624,75 +752,68 @@ function displayDetailedSteps(result) {
     html += `<div class="detail-section full-table">`;
     html += `<h4>📊 Полные данные расчета</h4>`;
     
-    // Сумма THB к выдаче
-    if (result.thb_target !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма THB к выдаче:</span><span class="detail-value">${formatNumber(result.thb_target)} ฿</span></div>`;
+    // Сумма RUB
+    if (result.rub_paid !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Сумма RUB, вносимая клиентом:</span><span class="detail-value highlight">${formatNumber(result.rub_paid)} ₽</span></div>`;
+    } else if (result.rub_to_pay !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Сумма RUB, вносимая клиентом:</span><span class="detail-value highlight">${formatNumber(result.rub_to_pay)} ₽</span></div>`;
     }
-    
-    // Комиссии за выдачу
-    if (result.withdrawal_fixed !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Комиссия брокера за выдачу (фикс 20 THB):</span><span class="detail-value">${result.withdrawal_fixed} ฿</span></div>`;
-    }
-    if (result.withdrawal_percent !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Комиссия брокера за выдачу (0,25%):</span><span class="detail-value">${formatNumber(result.withdrawal_percent)} ฿</span></div>`;
-    }
-    
-    // Сумма THB к обмену
-    if (result.thb_to_exchange !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма THB к обмену за USDT:</span><span class="detail-value highlight">${formatNumber(result.thb_to_exchange)} ฿</span></div>`;
-    }
-    
-    // Курс брокера USDT-THB
-    if (result.usdt_thb_rate !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Курс брокера USDT-THB:</span><span class="detail-value">${result.usdt_thb_rate.toFixed(2)} ฿</span></div>`;
-    }
-    
-    // Комиссия на этапе USDT-THB
-    if (result.usdt_thb_commission !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Комиссия на этапе USDT-THB:</span><span class="detail-value">${result.usdt_thb_commission.toFixed(2)}%</span></div>`;
-    }
-    
-    // Курс продажи USDT-THB
-    if (result.usdt_thb_rate_sell !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Курс продажи USDT-THB:</span><span class="detail-value highlight">${result.usdt_thb_rate_sell.toFixed(2)} ฿</span></div>`;
-    }
-    
-    // Сумма USDT
-    if (result.usdt_amount !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма USDT:</span><span class="detail-value highlight">${formatNumber(result.usdt_amount)} USDT</span></div>`;
-    }
-    
-    // Курс брокера RUB-USDT
+
+    // Курс RUB-USDT
     if (result.rub_usdt_rate !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Курс брокера RUB-USDT:</span><span class="detail-value">${result.rub_usdt_rate.toFixed(4)} ₽</span></div>`;
     }
     
-    // Комиссия на этапе RUB-USDT
+    // Комиссия RUB-USDT
     if (result.rub_usdt_commission !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Комиссия на этапе RUB-USDT:</span><span class="detail-value">${result.rub_usdt_commission.toFixed(2)}%</span></div>`;
     }
-    
+
     // Курс продажи RUB-USDT
     if (result.rub_usdt_rate_sell !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Курс продажи RUB-USDT:</span><span class="detail-value highlight">${result.rub_usdt_rate_sell.toFixed(4)} ₽</span></div>`;
     }
-    
-    // Сумма RUB (для broker)
-    if (result.rub_amount !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма RUB, вносимая клиентом:</span><span class="detail-value highlight-final">${formatNumber(result.rub_amount)} ₽</span></div>`;
+
+    // Сумма USDT
+    if (result.usdt_amount !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Сумма USDT:</span><span class="detail-value highlight">${formatNumber(result.usdt_amount)} USDT</span></div>`;
     }
-    // Сумма RUB (для doverka thb-to-rub)
-    if (result.rub_to_pay !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма RUB, вносимая клиентом:</span><span class="detail-value highlight-final">${formatNumber(result.rub_to_pay)} ₽</span></div>`;
-    }
-    // Сумма RUB (для doverka rub-to-thb)
-    if (result.rub_paid !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Сумма RUB (внесено):</span><span class="detail-value highlight">${formatNumber(result.rub_paid)} ₽</span></div>`;
+
+    // Курс брокера USDT-THB (Binance)
+    if (result.usdt_thb_rate !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Курс брокера USDT-THB (Binance):</span><span class="detail-value">${result.usdt_thb_rate.toFixed(2)} ฿</span></div>`;
     }
     
-    // Сумма THB к выдаче (для rub-to-thb)
+    // Комиссия USDT-THB
+    if (result.usdt_thb_commission !== undefined) {
+        const commVal = result.usdt_thb_commission;
+        const commClass = commVal < 0 ? 'profit-value' : ''; // Зеленый если отрицательная (скидка)
+        html += `<div class="detail-row"><span class="detail-label">Комиссия на этапе USDT-THB:</span><span class="detail-value ${commClass}">${commVal.toFixed(2)}%</span></div>`;
+    }
+    
+    // Курс продажи USDT-THB
+    if (result.usdt_thb_rate_sell !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Курс продажи USDT-THB:</span><span class="detail-value highlight">${result.usdt_thb_rate_sell.toFixed(4)} ฿</span></div>`;
+    }
+
+    // Сумма THB к обмену
+    if (result.thb_to_exchange !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Сумма THB к обмену за USDT:</span><span class="detail-value">${formatNumber(result.thb_to_exchange)} ฿</span></div>`;
+    }
+
+    // Комиссии за выдачу
+    if (result.withdrawal_percent !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (0,25%):</span><span class="detail-value">${formatNumber(result.withdrawal_percent)} ฿</span></div>`;
+    }
+    if (result.withdrawal_fixed !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (фикс 20 THB):</span><span class="detail-value">${result.withdrawal_fixed} ฿</span></div>`;
+    }
+    
+    // Итоговая сумма THB
     if (result.thb_received !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Сумма THB к выдаче:</span><span class="detail-value highlight-final">${formatNumber(result.thb_received)} ฿</span></div>`;
+    } else if (result.thb_target !== undefined) {
+        html += `<div class="detail-row"><span class="detail-label">Сумма THB к выдаче:</span><span class="detail-value highlight-final">${formatNumber(result.thb_target)} ฿</span></div>`;
     }
     
     // Курс продажи RUB-THB
@@ -701,13 +822,13 @@ function displayDetailedSteps(result) {
     html += `</div>`;
     
     // Прибыльность (если есть данные)
-    if (result.incoming_usdt !== undefined || result.profit_usdt !== undefined) {
+    if (result.profit_usdt !== undefined) {
         html += `<div class="detail-section profitability-section">`;
         html += `<h4>💰 Прибыльность</h4>`;
         
-        // Бонус 2.4% (ТОЛЬКО для Doverka, НЕ для Broker!)
-        if (result.bonus_usdt !== undefined && result.bonus_percent !== undefined && state.method === 'doverka') {
-            html += `<div class="detail-row"><span class="detail-label">${result.bonus_percent}% - от курса:</span><span class="detail-value">${formatNumber(result.bonus_usdt)} USDT</span></div>`;
+        // Бонус 2.4% (для Доверки)
+        if (result.bonus_usdt !== undefined && state.method === 'doverka') {
+            html += `<div class="detail-row"><span class="detail-label">2,4% - бонусное начисление:</span><span class="detail-value">${formatNumber(result.bonus_usdt)} USDT</span></div>`;
         }
         if (result.incoming_usdt !== undefined) {
             html += `<div class="detail-row"><span class="detail-label">Поступление:</span><span class="detail-value highlight">${formatNumber(result.incoming_usdt)} USDT</span></div>`;
@@ -718,8 +839,9 @@ function displayDetailedSteps(result) {
         if (result.profit_usdt !== undefined) {
             html += `<div class="detail-row"><span class="detail-label">Прибыль:</span><span class="detail-value profit-value">${formatNumber(result.profit_usdt)} USDT</span></div>`;
         }
-        if (result.profit_percent_actual !== undefined) {
-            html += `<div class="detail-row"><span class="detail-label">% прибыли:</span><span class="detail-value">${result.profit_percent_actual.toFixed(2)}%</span></div>`;
+        if (result.profit_percent_actual !== undefined || result.profit_percent !== undefined) {
+            const p = result.profit_percent_actual || result.profit_percent;
+            html += `<div class="detail-row"><span class="detail-label">% прибыли:</span><span class="detail-value">${p.toFixed(2)}%</span></div>`;
         }
         
         // Расчет партнера (на клиенте)
@@ -787,6 +909,6 @@ function togglePartner() {
         wrapper.style.display = 'none';
     }
     
-    calculate();
+    hideResults();
 }
 

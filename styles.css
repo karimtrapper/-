@@ -157,10 +157,22 @@ body {
     color: rgba(255, 255, 255, 0.9);
 }
 
-.rate-value {
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-primary);
+.rate-value.rate-error {
+    color: #ef4444;
+    font-weight: 800;
+}
+
+.rate-info-pending {
+    color: #94a3b8;
+    font-style: italic;
+    font-weight: 400;
+}
+
+.calculate-btn:disabled {
+    background: #94a3b8;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
 }
 
 .rate-item.highlight .rate-value {
@@ -173,25 +185,29 @@ body {
     color: var(--text-secondary);
 }
 
-/* Scenario Switcher */
-.scenario-switcher {
+/* Scenario Grid */
+.scenarios-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 20px;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-bottom: 15px;
 }
 
 .scenario-btn {
     background: var(--card-bg);
     border: 2px solid var(--border-color);
-    padding: 20px;
-    border-radius: var(--radius-lg);
+    padding: 12px 8px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     display: flex;
+    flex-direction: row; /* Изменил на ряд для компактности */
     align-items: center;
-    gap: 16px;
-    transition: all 0.2s;
+    justify-content: flex-start;
+    text-align: left;
+    gap: 10px;
+    transition: all 0.2s ease;
     box-shadow: var(--shadow-sm);
+    min-height: 60px; /* Сильно уменьшил высоту */
 }
 
 .scenario-btn:hover {
@@ -204,22 +220,43 @@ body {
     background: var(--primary-color);
     border-color: var(--primary-color);
     color: white;
-    box-shadow: var(--shadow-md);
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.2);
 }
 
 .scenario-icon {
-    font-size: 32px;
+    font-size: 20px; /* Уменьшил иконку */
+    margin-bottom: 0;
+}
+
+.scenario-content {
+    display: flex;
+    flex-direction: column;
 }
 
 .scenario-title {
-    font-size: 16px;
-    font-weight: 600;
-    margin-bottom: 4px;
+    font-size: 14px; /* Уменьшил шрифт */
+    font-weight: 700;
+    margin-bottom: 0;
 }
 
 .scenario-desc {
-    font-size: 13px;
+    font-size: 11px; /* Уменьшил описание */
     opacity: 0.8;
+    line-height: 1;
+}
+
+/* Более компактные карточки */
+.rates-card,
+.calculator-card,
+.info-card {
+    padding: 16px; /* Уменьшил отступы с 24px */
+    margin-bottom: 12px;
+}
+
+.calculator-settings {
+    padding: 10px;
+    margin-top: 15px;
+    margin-bottom: 15px;
 }
 
 /* Calculator Form */
@@ -271,6 +308,39 @@ body {
 .quick-amounts {
     display: flex;
     gap: 8px;
+}
+
+.calculate-action {
+    margin: 20px 0;
+    text-align: center;
+}
+
+.calculate-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 4px 6px rgba(16, 185, 129, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.calculate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 12px rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, #059669 0%, #047857 100%);
+}
+
+.calculate-btn:active {
+    transform: translateY(0);
 }
 
 .quick-btn {
@@ -502,7 +572,7 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .scenario-switcher {
+    .scenarios-grid {
         grid-template-columns: 1fr;
     }
 
@@ -520,10 +590,34 @@ body {
     }
 }
 
-/* Loading Animation */
-.loading {
-    opacity: 0.6;
-    pointer-events: none;
+/* Custom Rate Top (Broker) */
+.custom-rate-top {
+    margin-bottom: 20px;
+    animation: slideDown 0.3s ease;
+}
+
+.custom-rate-card {
+    background: #fff;
+    border: 3px solid #4F46E5;
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-lg);
+}
+
+.custom-rate-card .input-label {
+    color: #4F46E5;
+    font-size: 16px;
+    font-weight: 800;
+    text-align: center;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.custom-rate-card .amount-input {
+    border-color: #4F46E5;
+    color: #4F46E5;
+    text-align: center;
 }
 
 @keyframes spin {
@@ -601,27 +695,75 @@ body {
     margin-top: 12px;
 }
 
+/* Настройки внутри карты */
+.calculator-settings {
+    background: #f8faff;
+    border-radius: 12px;
+    padding: 15px;
+    margin-bottom: 20px;
+    border: 1px solid #eef2ff;
+}
+
+.profit-steps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+}
+
 .commission-btn {
-    padding: 12px 16px;
-    background: var(--bg-color);
-    border: 2px solid var(--border-color);
-    border-radius: var(--radius-sm);
+    padding: 10px 5px;
+    border: 1px solid #e2e8f0;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
     font-size: 14px;
     font-weight: 500;
-    color: var(--text-secondary);
-    cursor: pointer;
-    transition: all 0.2s ease;
+    transition: all 0.2s;
+    color: #64748b;
+    text-align: center;
 }
 
 .commission-btn:hover {
-    border-color: var(--primary-color);
-    background: rgba(79, 70, 229, 0.05);
+    border-color: #6366f1;
+    color: #6366f1;
 }
 
 .commission-btn.active {
-    background: var(--primary-color);
+    background: #6366f1 !important;
+    border-color: #6366f1 !important;
+    color: white !important;
+    box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.2);
+}
+
+.calculate-btn {
+    width: 100%;
+    padding: 18px;
+    background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
     color: white;
-    border-color: var(--primary-color);
+    border: none;
+    border-radius: 12px;
+    font-size: 20px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: all 0.3s;
+    box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+}
+
+.calculate-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 20px rgba(79, 70, 229, 0.4);
+    background: linear-gradient(135deg, #4f46e5 0%, #4338ca 100%);
+}
+
+.calculate-btn:active {
+    transform: translateY(0);
 }
 
 /* Direction Switcher (целевая/вносимая) */

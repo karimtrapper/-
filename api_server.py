@@ -32,20 +32,34 @@ def get_rates():
         JSON: {"usdt_thb": float, "rub_usdt": float}
     """
     try:
+        # Проверяем наличие API ключей
+        import os
+        binance_key = os.getenv('BINANCE_API_KEY', '')
+        doverka_key = os.getenv('DOVERKA_API_KEY', '')
+        
+        print(f"🔑 API Keys check: Binance={'✅' if binance_key else '❌'}, Doverka={'✅' if doverka_key else '❌'}")
+        
         # Запускаем асинхронную функцию
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        
+        print(f"📊 Получены курсы: USDT-THB={rates['usdt_thb']}, RUB-USDT={rates['rub_usdt']}")
         
         return jsonify({
             'usdt_thb': rates['usdt_thb'],
             'rub_usdt': rates['rub_usdt'],
-            'timestamp': asyncio.run(get_timestamp())
+            'timestamp': asyncio.run(get_timestamp()),
+            'success': True
         }), 200
         
     except Exception as e:
+        print(f"❌ Ошибка получения курсов: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': str(e),
             'usdt_thb': 31.16,  # Фоллбэк
-            'rub_usdt': 84.2271
+            'rub_usdt': 84.2271,
+            'success': False
         }), 500
 
 
@@ -69,6 +83,7 @@ def calculate():
     """
     try:
         data = request.get_json()
+        print(f"📥 Received calculation request: {data}")
         method = data.get('method', 'doverka')
         scenario = data.get('scenario', 'rub-to-thb')
         direction = data.get('direction', 'amount')
@@ -85,12 +100,13 @@ def calculate():
             from broker_detailed import BrokerCalculatorDetailed
             
             custom_rub_usdt = float(data.get('custom_rub_usdt', 80.9))
-            commission_level = data.get('commission_level', 'medium')
+            # Принимаем profit_margin как число (1.5, 3.0, 5.0)
+            profit_margin = float(data.get('profit_margin', 4.0))
             
             broker_calc = BrokerCalculatorDetailed(
                 rates['usdt_thb'],  # USDT-THB от Binance API (реальный)
                 custom_rub_usdt,    # RUB-USDT кастомный от менеджера
-                commission_level
+                profit_margin       # Передаем динамическую маржу
             )
             
             # Выбираем операцию
@@ -109,17 +125,43 @@ def calculate():
                     result = broker_calc.usdt_to_thb_target(amount)
                 else:
                     result = broker_calc.usdt_to_thb_amount(amount)
+            elif scenario == 'rub-to-usdt':
+                if direction == 'target':
+                    result = broker_calc.rub_to_usdt_target(amount)
+                else:
+                    result = broker_calc.rub_to_usdt_amount(amount)
             else:
                 return jsonify({'error': 'Invalid scenario for broker'}), 400
                 
         else:
-            # Режим Doverka (старая логика)
+            # Режим Doverka (SBP)
             calculator = ExchangeCalculator(rates['usdt_thb'], rates['rub_usdt'])
+            # Принимаем profit_margin для Doverka тоже
+            profit_margin_raw = data.get('profit_margin')
+            profit_margin = float(profit_margin_raw) if profit_margin_raw is not None else None
             
             if scenario == 'rub-to-thb':
-                result = calculator.rub_to_thb(amount)
+                if direction == 'target':
+                    result = calculator.rub_to_thb_target(amount, custom_profit_margin=profit_margin)
+                else:
+                    result = calculator.rub_to_thb(amount, custom_profit_margin=profit_margin)
+            elif scenario == 'thb-to-usdt':
+                if direction == 'target':
+                    result = calculator.thb_to_usdt_target(amount, custom_profit_margin=profit_margin)
+                else:
+                    result = calculator.thb_to_usdt(amount, custom_profit_margin=profit_margin)
+            elif scenario == 'usdt-to-thb':
+                if direction == 'target':
+                    result = calculator.usdt_to_thb_target(amount, custom_profit_margin=profit_margin)
+                else:
+                    result = calculator.usdt_to_thb(amount, custom_profit_margin=profit_margin)
+            elif scenario == 'rub-to-usdt':
+                if direction == 'target':
+                    result = calculator.rub_to_usdt_target(amount, custom_profit_margin=profit_margin)
+                else:
+                    result = calculator.rub_to_usdt_amount(amount, custom_profit_margin=profit_margin)
             else:
-                result = calculator.thb_to_rub(amount)
+                return jsonify({'error': f'Invalid scenario {scenario} for doverka'}), 400
         
         return jsonify(result), 200
         
@@ -134,6 +176,57 @@ def health_check():
         'status': 'ok',
         'message': 'Exchange Calculator API is running'
     }), 200
+
+
+@app.route('/api/test-doverka', methods=['GET'])
+def test_doverka():
+    """Тестовый endpoint для проверки Doverka API"""
+    import os
+    import asyncio
+    
+    doverka_key = os.getenv('DOVERKA_API_KEY', '')
+    
+    result = {
+        'api_key_configured': bool(doverka_key),
+        'api_key_length': len(doverka_key) if doverka_key else 0,
+        'api_key_prefix': doverka_key[:10] + '...' if len(doverka_key) > 10 else 'not set',
+    }
+    
+    if not doverka_key:
+        result['error'] = 'DOVERKA_API_KEY не настроен в переменных окружения'
+        return jsonify(result), 200
+    
+    try:
+        # Пробуем получить курс
+        rate = asyncio.run(ExchangeRateProvider.get_doverka_rate())
+        result['rate_received'] = rate
+        result['status'] = 'success'
+        
+        # Пробуем получить сырой ответ от API
+        import aiohttp
+        async def get_raw_response():
+            async with aiohttp.ClientSession() as session:
+                url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
+                headers = {
+                    'Authorization': f'Bearer {doverka_key}',
+                    'accept': 'application/json'
+                }
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        return {'error': f'Status {response.status}', 'text': await response.text()}
+        
+        raw_data = asyncio.run(get_raw_response())
+        result['api_response'] = raw_data
+        
+    except Exception as e:
+        result['error'] = str(e)
+        result['status'] = 'error'
+        import traceback
+        result['traceback'] = traceback.format_exc()
+    
+    return jsonify(result), 200
 
 
 async def get_timestamp():
@@ -151,7 +244,8 @@ def api_info():
         'endpoints': {
             '/api/rates': 'GET - Получить актуальные курсы',
             '/api/calculate': 'POST - Рассчитать обмен',
-            '/api/health': 'GET - Проверка здоровья'
+            '/api/health': 'GET - Проверка здоровья',
+            '/api/test-doverka': 'GET - Тест Doverka API'
         }
     })
 

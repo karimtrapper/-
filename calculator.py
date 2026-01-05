@@ -10,7 +10,26 @@ from dotenv import load_dotenv
 from decimal import Decimal, ROUND_HALF_UP
 
 # Загружаем переменные окружения
-load_dotenv()
+def load_env():
+    # Пробуем найти .env, поднимаясь наверх от текущего файла
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # Проверяем текущую папку и 4 уровня выше
+    for _ in range(5):
+        env_path = os.path.join(current_path, '.env')
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            print(f"✅ Загружен .env из: {env_path}")
+            return True
+        parent = os.path.dirname(current_path)
+        if parent == current_path: # Дошли до корня диска
+            break
+        current_path = parent
+        
+    print("⚠️ Файл .env не найден")
+    return False
+
+load_env()
 
 # Функция округления как в Excel
 def excel_round(value, decimals=2):
@@ -49,7 +68,7 @@ class ExchangeRateProvider:
     DOVERKA_MARGIN = 1.0  # Без маржи - чистый курс от API
     
     # Альтернативные источники для RUB-USDT, если Doverka API не работает
-    FALLBACK_RUB_USDT = 84.2271  # Фоллбэк курс
+    FALLBACK_RUB_USDT = 86.0094  # Фоллбэк курс (обновлен до текущего рыночного)
     
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
@@ -60,48 +79,32 @@ class ExchangeRateProvider:
             symbol: Торговая пара (по умолчанию USDT-THB)
             
         Returns:
-            float: Текущий курс
+            float: Текущий курс или None в случае ошибки
         """
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
                 params = {"symbol": symbol}
                 
-                # Заголовки с API ключом (если есть)
                 headers = {}
                 if ExchangeRateProvider.BINANCE_API_KEY:
                     headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
                 
-                async with session.get(url, params=params, headers=headers) as response:
+                async with session.get(url, params=params, headers=headers, timeout=5) as response:
                     if response.status == 200:
                         data = await response.json()
-                        
-                        # Формат 1: {"code": 0, "data": {"symbol": "USDTTHB", "price": "31.16"}}
                         if isinstance(data, dict) and data.get("code") == 0 and "data" in data:
                             price = data["data"].get("price")
-                            if price:
-                                print(f"✅ Binance API: {symbol} = {price}")
-                                return float(price)
-                        
-                        # Формат 2: {"symbol": "USDTTHB", "price": "31.16"}
+                            if price: return float(price)
                         elif isinstance(data, dict) and "price" in data:
-                            price = data["price"]
-                            print(f"✅ Binance API: {symbol} = {price}")
-                            return float(price)
-                        
-                        # Формат 3: Прямое значение цены
-                        elif isinstance(data, (int, float, str)):
-                            print(f"✅ Binance API: {symbol} = {data}")
-                            return float(data)
+                            return float(data["price"])
                     
                     print(f"⚠️ Binance API error: {response.status}")
-                    response_text = await response.text()
-                    print(f"⚠️ Response: {response_text[:200]}")
-                    return 31.16  # Фоллбэк
+                    return None # Вместо фоллбэка
                     
         except Exception as e:
             print(f"❌ Ошибка получения курса Binance: {e}")
-            return 31.16  # Фоллбэк
+            return None
     
     @staticmethod
     async def get_doverka_rate() -> float:
@@ -109,78 +112,35 @@ class ExchangeRateProvider:
         Получить курс RUB-USDT от Doverka API
         
         Returns:
-            float: Текущий курс RUB за 1 USDT
+            float: Текущий курс или None в случае ошибки
         """
         if not ExchangeRateProvider.DOVERKA_API_KEY:
-            print("⚠️ Doverka API key не найден, используем фоллбэк")
-            return ExchangeRateProvider.FALLBACK_RUB_USDT
+            print("⚠️ Doverka API key не найден")
+            return None
         
         try:
             async with aiohttp.ClientSession() as session:
-                # Правильный эндпоинт для получения валют
                 url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
-                
                 headers = {
                     'Authorization': f'Bearer {ExchangeRateProvider.DOVERKA_API_KEY}',
                     'accept': 'application/json'
                 }
                 
-                async with session.get(url, headers=headers, timeout=10) as response:
+                async with session.get(url, headers=headers, timeout=5) as response:
                     if response.status == 200:
                         data = await response.json()
-                        
-                        # Ответ может быть списком или одним объектом
                         currencies = data if isinstance(data, list) else [data]
-                        
-                        # Ищем USD/USDT
                         for currency in currencies:
                             if isinstance(currency, dict):
                                 symbol = currency.get('symbol', '').upper()
-                                currency_name = currency.get('currency_name', '').upper()
-                                
-                                # USD или USDT
-                                if symbol in ['USD', 'USDT'] or currency_name in ['USD', 'USDT']:
-                                    rate_to_rub = currency.get('rate_to_rub')
-                                    if rate_to_rub:
-                                        rate_base = float(rate_to_rub)
-                                        # Применяем маржу для курса продажи
-                                        rate = rate_base * ExchangeRateProvider.DOVERKA_MARGIN
-                                        print(f"✅ Doverka API: RUB-{symbol} = {rate_base:.4f} (базовый)")
-                                        print(f"   С маржой {ExchangeRateProvider.DOVERKA_MARGIN}: {rate:.4f} ₽")
-                                        return rate
-                        
-                        # Если не нашли USD/USDT, берем первую валюту с курсом
-                        for currency in currencies:
-                            if isinstance(currency, dict):
                                 rate_to_rub = currency.get('rate_to_rub')
-                                if rate_to_rub:
-                                    rate_base = float(rate_to_rub)
-                                    # Применяем маржу
-                                    rate = rate_base * ExchangeRateProvider.DOVERKA_MARGIN
-                                    symbol = currency.get('symbol', 'USD')
-                                    print(f"✅ Doverka API: RUB-{symbol} = {rate_base:.4f} (используем как USD)")
-                                    print(f"   С маржой: {rate:.4f} ₽")
-                                    return rate
-                        
-                        print(f"⚠️ Doverka API: курс не найден в ответе")
-                        print(f"   Response: {data}")
-                        return ExchangeRateProvider.FALLBACK_RUB_USDT
-                        
-                    elif response.status == 401:
-                        print(f"⚠️ Doverka API: Неверный API ключ (401)")
-                        return ExchangeRateProvider.FALLBACK_RUB_USDT
-                    else:
-                        print(f"⚠️ Doverka API: {response.status}")
-                        response_text = await response.text()
-                        print(f"   Response: {response_text[:200]}")
-                        return ExchangeRateProvider.FALLBACK_RUB_USDT
-                    
-        except asyncio.TimeoutError:
-            print(f"⚠️ Doverka API: timeout")
-            return ExchangeRateProvider.FALLBACK_RUB_USDT
+                                if symbol in ['USD', 'USDT'] and rate_to_rub:
+                                    return float(rate_to_rub)
+                        return None
+                    return None
         except Exception as e:
             print(f"⚠️ Ошибка Doverka API: {e}")
-            return ExchangeRateProvider.FALLBACK_RUB_USDT
+            return None
     
     @staticmethod
     async def get_all_rates() -> Dict[str, float]:
@@ -255,7 +215,7 @@ class CommissionCalculator:
 
 
 class ExchangeCalculator:
-    """Калькулятор обмена валют"""
+    """Калькулятор обмена валют для режима Doverka (SBP)"""
     
     def __init__(self, usdt_thb_rate: float, rub_usdt_rate: float):
         """
@@ -266,125 +226,372 @@ class ExchangeCalculator:
         self.usdt_thb_rate = usdt_thb_rate
         self.rub_usdt_rate = rub_usdt_rate
     
-    def rub_to_thb(self, rub_amount: float) -> dict:
-        """
-        Сценарий: Клиент вносит конкретную сумму RUB → получает THB
-        Использует Excel-округление для точного совпадения с таблицами
+    def _get_commissions(self, target_profit: float, rub_amount: float = 0):
+        """Расчет комиссий для Doverka с фиксированными значениями"""
+        _, default_comm = CommissionCalculator.get_level(rub_amount)
+        bonus = default_comm['bonus_percent'] # 0.024
         
-        Args:
-            rub_amount: Сумма в рублях
+        if target_profit is not None:
+            # Точный маппинг от пользователя: Прибыль -> Комиссия USDT-THB
+            mapping = {
+                5.0: 0.0272,
+                4.5: 0.0225,
+                4.0: 0.0170,
+                3.5: 0.0120,
+                3.0: 0.0067,
+                2.4: 0.0,
+                2.0: -0.003,
+                1.5: -0.007
+            }
             
-        Returns:
-            dict: Детальный расчет
-        """
-        # Определяем уровень комиссий
-        level_name, comm = CommissionCalculator.get_level(rub_amount)
+            if target_profit in mapping:
+                usdt_comm = mapping[target_profit]
+            else:
+                # Линейная интерполяция для промежуточных значений
+                pts = sorted(mapping.items())
+                for i in range(len(pts) - 1):
+                    x1, y1 = pts[i]
+                    x2, y2 = pts[i+1]
+                    if x1 <= target_profit <= x2:
+                        usdt_comm = y1 + (y2 - y1) * (target_profit - x1) / (x2 - x1)
+                        break
+                else:
+                    usdt_comm = 0.0272 if target_profit > 5 else -0.007
+                    
+            return 0.0, usdt_comm, bonus, f"Индивидуальный ({target_profit}%)"
+        else:
+            return 0.0, default_comm['usdt_thb_commission'], bonus, "Стандартный"
+
+    def rub_to_thb(self, rub_amount: float, custom_profit_margin: float = None) -> dict:
+        """Операция 2: RUB → THB (amount)"""
+        rub_comm, usdt_comm, bonus, level_name = self._get_commissions(custom_profit_margin, rub_amount)
         
-        # 1. Конвертация RUB → USDT (НЕ округляем для точности)
-        usdt_amount = rub_amount / self.rub_usdt_rate
-        usdt_amount_display = excel_round(usdt_amount, 2)
+        # 1. RUB-USDT
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
+        usdt_amount = rub_amount / rub_usdt_rate_sell
         
-        # 2. Курс продажи USDT-THB (с комиссией брокера) - НЕ округляем
-        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - comm['usdt_thb_commission'])
-        
-        # 3. Сумма THB к обмену - округляем
+        # 2. USDT-THB
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         thb_to_exchange = usdt_amount * usdt_thb_rate_sell
-        thb_to_exchange_display = excel_round(thb_to_exchange, 2)
         
-        # 4. Комиссии за выдачу - округляем
-        withdrawal_percent_fee = excel_round(thb_to_exchange * comm['withdrawal_percent'], 2)
-        withdrawal_fixed = comm['withdrawal_fixed']
-        
-        # 5. Итоговая сумма THB к выдаче - округляем финальное значение
+        # 3. Выдача
+        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
+        withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
-        # 6. Итоговый курс для клиента
         final_rate = excel_round(rub_amount / thb_to_receive, 4)
         
-        # 7. Расчет прибыли
-        bonus_usdt = usdt_amount * comm['bonus_percent']
-        incoming = usdt_amount + bonus_usdt
-        outgoing = thb_to_exchange / self.usdt_thb_rate
-        profit_usdt = excel_round(incoming - outgoing, 2)
+        # Прибыль
+        bonus_usdt = excel_round(usdt_amount * bonus, 2)
+        incoming_usdt = excel_round(usdt_amount + bonus_usdt, 2)
+        outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        profit_percent = excel_round((profit_usdt / outgoing_usdt) * 100, 2) if outgoing_usdt > 0 else 0
         
         return {
             'scenario': 'RUB → THB',
-            'level': level_name,
+            'direction': 'amount',
+            'rub_amount': rub_amount,
             'rub_paid': rub_amount,
+            'rub_usdt_rate': self.rub_usdt_rate,
+            'rub_usdt_commission': excel_round(rub_comm * 100, 2),
+            'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
+            'usdt_amount': excel_round(usdt_amount, 2),
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 4),
+            'thb_to_exchange': excel_round(thb_to_exchange, 2),
+            'withdrawal_percent': withdrawal_percent_fee,
+            'withdrawal_fixed': withdrawal_fixed,
             'thb_received': thb_to_receive,
             'final_rate': final_rate,
-            'usdt_amount': usdt_amount_display,
-            'commission_percent': comm['usdt_thb_commission'] * 100,
-            'withdrawal_fees': withdrawal_percent_fee + withdrawal_fixed,
+            'bonus_usdt': bonus_usdt,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
-            'details': {
-                'usdt_thb_rate': self.usdt_thb_rate,
-                'rub_usdt_rate': self.rub_usdt_rate,
-                'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 4),
-                'thb_before_fees': thb_to_exchange_display
-            }
+            'profit_percent_actual': profit_percent,
+            'commission_level': level_name
         }
-    
-    def thb_to_rub(self, thb_target: float) -> dict:
-        """
-        Сценарий: Клиент хочет получить конкретную сумму THB → вносит RUB
-        Использует Excel-округление для точного совпадения с таблицами
+
+    def rub_to_thb_target(self, thb_target: float, custom_profit_margin: float = None) -> dict:
+        """Операция 1: RUB → THB (target)"""
+        # Прикидываем сумму для уровня
+        estimated_rub = thb_target * (self.rub_usdt_rate / self.usdt_thb_rate) * 1.05
+        rub_comm, usdt_comm, bonus, level_name = self._get_commissions(custom_profit_margin, estimated_rub)
         
-        Args:
-            thb_target: Целевая сумма в батах
-            
-        Returns:
-            dict: Детальный расчет
-        """
-        # Для определения уровня нужно сначала прикинуть сумму RUB
-        # Делаем предварительный расчет
-        estimated_rub = thb_target * 2.8  # Примерный курс
-        level_name, comm = CommissionCalculator.get_level(estimated_rub)
+        # 1. Выдача
+        thb_to_exchange = (thb_target + 20) / (1 - 0.0025)
+        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - 20, 2)
         
-        # 1. Комиссии за выдачу - округляем
-        withdrawal_fixed = comm['withdrawal_fixed']
-        withdrawal_percent_fee = excel_round(thb_target * comm['withdrawal_percent'], 2)
-        
-        # 2. Сумма THB к обмену (с учетом комиссий)
-        thb_to_exchange = thb_target + withdrawal_fixed + withdrawal_percent_fee
-        thb_to_exchange_display = excel_round(thb_to_exchange, 2)
-        
-        # 3. Курс продажи USDT-THB (с комиссией брокера) - НЕ округляем
-        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - comm['usdt_thb_commission'])
-        
-        # 4. Сумма USDT - НЕ округляем для точности
+        # 2. USDT-THB
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         usdt_amount = thb_to_exchange / usdt_thb_rate_sell
-        usdt_amount_display = excel_round(usdt_amount, 2)
         
-        # 5. Сумма RUB, вносимая клиентом - округляем финальное значение
-        rub_amount = excel_round(usdt_amount * self.rub_usdt_rate, 2)
+        # 3. RUB-USDT
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
+        rub_amount = excel_round(usdt_amount * rub_usdt_rate_sell, 2)
         
-        # 6. Итоговый курс для клиента
         final_rate = excel_round(rub_amount / thb_target, 4)
         
-        # 7. Расчет прибыли
-        bonus_usdt = usdt_amount * comm['bonus_percent']
-        incoming = usdt_amount + bonus_usdt
-        outgoing = thb_to_exchange / self.usdt_thb_rate
-        profit_usdt = excel_round(incoming - outgoing, 2)
+        # Прибыль
+        bonus_usdt = excel_round(usdt_amount * bonus, 2)
+        incoming_usdt = excel_round(usdt_amount + bonus_usdt, 2)
+        outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        profit_percent = excel_round((profit_usdt / outgoing_usdt) * 100, 2)
         
         return {
-            'scenario': 'THB ← RUB',
-            'level': level_name,
+            'scenario': 'RUB → THB',
+            'direction': 'target',
             'thb_target': thb_target,
+            'thb_received': thb_target,
+            'withdrawal_fixed': 20,
+            'withdrawal_percent': withdrawal_percent_fee,
+            'thb_to_exchange': excel_round(thb_to_exchange, 2),
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 4),
+            'usdt_amount': excel_round(usdt_amount, 2),
+            'rub_usdt_rate': self.rub_usdt_rate,
+            'rub_usdt_commission': excel_round(rub_comm * 100, 2),
+            'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
+            'rub_amount': rub_amount,
             'rub_to_pay': rub_amount,
             'final_rate': final_rate,
-            'usdt_amount': usdt_amount_display,
-            'commission_percent': comm['usdt_thb_commission'] * 100,
-            'withdrawal_fees': withdrawal_percent_fee + withdrawal_fixed,
+            'bonus_usdt': bonus_usdt,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
-            'details': {
-                'usdt_thb_rate': self.usdt_thb_rate,
-                'rub_usdt_rate': self.rub_usdt_rate,
-                'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 4),
-                'thb_with_fees': thb_to_exchange_display
-            }
+            'profit_percent_actual': profit_percent,
+            'commission_level': level_name
         }
+
+    def thb_to_usdt(self, thb_amount: float, custom_profit_margin: float = None) -> dict:
+        """Операция 4: THB → USDT (amount)"""
+        # Для THB-USDT нет бонуса 2.4% (он только для RUB)
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
+        usdt_comm = target_profit / 100.0
+        
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 + usdt_comm)
+        usdt_before_commission = thb_amount / usdt_thb_rate_sell
+        usdt_received = excel_round(usdt_before_commission - 1, 2)
+        
+        final_rate = excel_round(thb_amount / usdt_received, 4)
+        
+        incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
+        outgoing_usdt = usdt_received
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'THB → USDT',
+            'direction': 'amount',
+            'thb_amount': thb_amount,
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
+            'usdt_amount': excel_round(usdt_before_commission, 2),
+            'withdrawal_fixed': 1,
+            'thb_received': usdt_received, # Для совместимости с UI
+            'usdt_received': usdt_received,
+            'final_rate': final_rate,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    def thb_to_usdt_target(self, usdt_target: float, custom_profit_margin: float = None) -> dict:
+        """Операция 3: THB → USDT (target)"""
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
+        usdt_comm = target_profit / 100.0
+        
+        usdt_before_commission = usdt_target + 1
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 + usdt_comm)
+        thb_amount = excel_round(usdt_before_commission * usdt_thb_rate_sell, 2)
+        
+        final_rate = excel_round(thb_amount / usdt_target, 4)
+        
+        incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
+        outgoing_usdt = usdt_target
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'THB → USDT',
+            'direction': 'target',
+            'usdt_target': usdt_target,
+            'withdrawal_fixed': 1,
+            'usdt_amount': usdt_before_commission,
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
+            'thb_amount': thb_amount,
+            'thb_to_pay': thb_amount,
+            'final_rate': final_rate,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    def usdt_to_thb(self, usdt_amount: float, custom_profit_margin: float = None) -> dict:
+        """Операция 6: USDT → THB (amount)"""
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 4.0
+        usdt_comm = target_profit / 100.0
+        
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
+        thb_to_exchange = usdt_amount * usdt_thb_rate_sell
+        
+        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
+        withdrawal_fixed = 20
+        thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
+        
+        final_rate = excel_round(usdt_amount / thb_to_receive, 6)
+        
+        incoming_usdt = usdt_amount
+        outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'USDT → THB',
+            'direction': 'amount',
+            'usdt_amount': usdt_amount,
+            'usdt_paid': usdt_amount,
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
+            'thb_to_exchange': excel_round(thb_to_exchange, 2),
+            'withdrawal_percent': withdrawal_percent_fee,
+            'withdrawal_fixed': withdrawal_fixed,
+            'thb_received': thb_to_receive,
+            'final_rate': final_rate,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    def usdt_to_thb_target(self, thb_target: float, custom_profit_margin: float = None) -> dict:
+        """Операция 5: USDT → THB (target)"""
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 4.0
+        usdt_comm = target_profit / 100.0
+        
+        thb_to_exchange = (thb_target + 20) / (1 - 0.0025)
+        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - 20, 2)
+        
+        usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
+        usdt_amount = excel_round(thb_to_exchange / usdt_thb_rate_sell, 2)
+        
+        final_rate = excel_round(usdt_amount / thb_target, 6)
+        
+        incoming_usdt = usdt_amount
+        outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'USDT → THB',
+            'direction': 'target',
+            'thb_target': thb_target,
+            'thb_received': thb_target,
+            'withdrawal_fixed': 20,
+            'withdrawal_percent': withdrawal_percent_fee,
+            'thb_to_exchange': excel_round(thb_to_exchange, 2),
+            'usdt_thb_rate': self.usdt_thb_rate,
+            'usdt_thb_commission': excel_round(usdt_comm * 100, 2),
+            'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
+            'usdt_amount': usdt_amount,
+            'usdt_to_pay': usdt_amount,
+            'final_rate': final_rate,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    def rub_to_usdt_target(self, usdt_target: float, custom_profit_margin: float = None) -> dict:
+        """Операция 7: RUB → USDT (target)"""
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
+        rub_comm = target_profit / 100.0
+        bonus = 0.024
+        
+        withdrawal_commission = 1
+        usdt_before_commission = usdt_target + withdrawal_commission
+        
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
+        rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
+        
+        final_rate = excel_round(rub_amount / usdt_target, 4)
+        
+        bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
+        incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
+        outgoing_usdt = usdt_before_commission
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'RUB → USDT',
+            'direction': 'target',
+            'usdt_target': usdt_target,
+            'withdrawal_fixed': withdrawal_commission,
+            'usdt_amount': usdt_before_commission,
+            'rub_usdt_rate': self.rub_usdt_rate,
+            'rub_usdt_commission': excel_round(rub_comm * 100, 2),
+            'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
+            'rub_amount': rub_amount,
+            'rub_to_pay': rub_amount,
+            'final_rate': final_rate,
+            'bonus_usdt': bonus_usdt,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    def rub_to_usdt_amount(self, rub_amount: float, custom_profit_margin: float = None) -> dict:
+        """Операция 8: RUB → USDT (amount)"""
+        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
+        rub_comm = target_profit / 100.0
+        bonus = 0.024
+        
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
+        usdt_before_commission = rub_amount / rub_usdt_rate_sell
+        
+        withdrawal_commission = 1
+        usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
+        
+        final_rate = excel_round(rub_amount / usdt_received, 4)
+        
+        bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
+        incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
+        outgoing_usdt = usdt_before_commission
+        profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
+        
+        return {
+            'scenario': 'RUB → USDT',
+            'direction': 'amount',
+            'rub_amount': rub_amount,
+            'rub_paid': rub_amount,
+            'rub_usdt_rate': self.rub_usdt_rate,
+            'rub_usdt_commission': excel_round(rub_comm * 100, 2),
+            'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
+            'usdt_amount': excel_round(usdt_before_commission, 2),
+            'withdrawal_fixed': withdrawal_commission,
+            'usdt_received': usdt_received,
+            'final_rate': final_rate,
+            'bonus_usdt': bonus_usdt,
+            'incoming_usdt': incoming_usdt,
+            'outgoing_usdt': outgoing_usdt,
+            'profit_usdt': profit_usdt,
+            'profit_percent_actual': target_profit,
+            'commission_level': f"Doverka ({target_profit}%)"
+        }
+
+    # Псевдонимы для обратной совместимости
+    def thb_to_rub(self, thb_target: float, custom_profit_margin: float = None) -> dict:
+        return self.rub_to_thb_target(thb_target, custom_profit_margin)
 
 
 class BrokerCalculator:
