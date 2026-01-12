@@ -194,7 +194,7 @@ function updateScenarioUI() {
                 placeholder: '400000',
                 result: 'Клиент должен внести:',
                 resultCurrency: 'USDT',
-                rateCurrency: 'USDT/฿',
+                rateCurrency: '฿/USDT',
                 quickAmounts: [100000, 400000, 1000000, 2000000]
             };
         } else {
@@ -205,7 +205,7 @@ function updateScenarioUI() {
                 placeholder: '13050',
                 result: 'Клиент получит:',
                 resultCurrency: '฿',
-                rateCurrency: 'USDT/฿',
+                rateCurrency: '฿/USDT',
                 quickAmounts: [1000, 5000, 13000, 30000]
             };
         }
@@ -597,7 +597,7 @@ function calculateLocal(amount) {
             scenario: 'RUB → THB',
             rub_paid: amount,
             thb_received: thbNet,
-            final_rate: amount / thbNet,
+            final_rate: thbNet / usdt,
             usdt_amount: usdt,
             withdrawal_fees: withdrawal_percent_fee + withdrawal_fixed,
             commission_level: 'Doverka (до 500к)'
@@ -624,7 +624,7 @@ function calculateLocal(amount) {
             scenario: 'THB ← RUB',
             thb_target: amount,
             rub_to_pay: rub_to_pay,
-            final_rate: rub_to_pay / amount,
+            final_rate: amount / usdt,
             usdt_amount: usdt,
             withdrawal_fees: withdrawal_fixed + withdrawal_percent_fee,
             commission_level: 'Doverka (до 500к)'
@@ -655,48 +655,48 @@ function displayResult(result) {
         if (isTarget) {
             // Хочу получить конкретную сумму THB → плачу USDT
             resultValue = `${formatNumber(result.usdt_to_pay || result.usdt_amount)} USDT`;
-            rateValue = result.usdt_thb_rate_sell ? result.usdt_thb_rate_sell.toFixed(2) : result.final_rate.toFixed(2);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '฿/USDT';
         } else {
             // Вношу USDT → получаю THB
             resultValue = `${formatNumber(result.thb_received)} ฿`;
-            rateValue = result.usdt_thb_rate_sell ? result.usdt_thb_rate_sell.toFixed(2) : result.final_rate.toFixed(2);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '฿/USDT';
         }
     } else if (result.scenario === 'THB → USDT') {
         if (isTarget) {
             // Хочу получить USDT → плачу THB
             resultValue = `${formatNumber(result.thb_to_pay || result.thb_amount)} ฿`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '฿/USDT';
         } else {
             // Вношу THB → получаю USDT
             resultValue = `${formatNumber(result.usdt_received)} USDT`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '฿/USDT';
         }
     } else if (result.scenario === 'RUB → THB' || result.scenario === 'THB ← RUB') {
         if (isTarget) {
             // Хочу получить THB → плачу RUB
             resultValue = `${formatNumber(result.rub_to_pay || result.rub_amount)} ₽`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '₽/฿';
         } else {
             // Вношу RUB → получаю THB
             resultValue = `${formatNumber(result.thb_received)} ฿`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '₽/฿';
         }
     } else if (result.scenario === 'RUB → USDT') {
         if (isTarget) {
             // Хочу получить USDT → плачу RUB
             resultValue = `${formatNumber(result.rub_to_pay || result.rub_amount)} ₽`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '₽/USDT';
         } else {
             // Вношу RUB → получаю USDT
             resultValue = `${formatNumber(result.usdt_received || result.usdt_amount)} USDT`;
-            rateValue = result.final_rate.toFixed(4);
+            rateValue = result.final_rate.toFixed(6);
             rateCurrency = '₽/USDT';
         }
     } else {
@@ -817,7 +817,12 @@ function displayDetailedSteps(result) {
     }
     
     // Курс продажи RUB-THB
-    html += `<div class="detail-row"><span class="detail-label">Курс продажи RUB-THB:</span><span class="detail-value highlight-final">${result.final_rate.toFixed(4)}</span></div>`;
+    let finalRateLabel = 'Курс продажи RUB-THB:';
+    if (result.scenario === 'USDT → THB') finalRateLabel = 'Курс продажи USDT-THB:';
+    else if (result.scenario === 'THB → USDT') finalRateLabel = 'Курс продажи THB-USDT:';
+    else if (result.scenario === 'RUB → USDT') finalRateLabel = 'Курс продажи RUB-USDT:';
+    
+    html += `<div class="detail-row"><span class="detail-label">${finalRateLabel}</span><span class="detail-value highlight-final">${result.final_rate.toFixed(4)}</span></div>`;
     
     html += `</div>`;
     

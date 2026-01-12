@@ -279,7 +279,7 @@ class ExchangeCalculator:
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
-        final_rate = excel_round(rub_amount / thb_to_receive, 4)
+        final_rate = excel_round(rub_amount / thb_to_receive, 6)
         
         # Прибыль
         bonus_usdt = excel_round(usdt_amount * bonus, 2)
@@ -331,7 +331,7 @@ class ExchangeCalculator:
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         rub_amount = excel_round(usdt_amount * rub_usdt_rate_sell, 2)
         
-        final_rate = excel_round(rub_amount / thb_target, 4)
+        final_rate = excel_round(rub_amount / thb_target, 6)
         
         # Прибыль
         bonus_usdt = excel_round(usdt_amount * bonus, 2)
@@ -376,7 +376,7 @@ class ExchangeCalculator:
         usdt_before_commission = thb_amount / usdt_thb_rate_sell
         usdt_received = excel_round(usdt_before_commission - 1, 2)
         
-        final_rate = excel_round(thb_amount / usdt_received, 4)
+        final_rate = excel_round(thb_amount / usdt_received, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_received
@@ -410,7 +410,7 @@ class ExchangeCalculator:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 + usdt_comm)
         thb_amount = excel_round(usdt_before_commission * usdt_thb_rate_sell, 2)
         
-        final_rate = excel_round(thb_amount / usdt_target, 4)
+        final_rate = excel_round(thb_amount / usdt_target, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_target
@@ -447,7 +447,7 @@ class ExchangeCalculator:
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
-        final_rate = excel_round(usdt_amount / thb_to_receive, 6)
+        final_rate = excel_round(thb_to_receive / usdt_amount, 4)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -484,7 +484,7 @@ class ExchangeCalculator:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         usdt_amount = excel_round(thb_to_exchange / usdt_thb_rate_sell, 2)
         
-        final_rate = excel_round(usdt_amount / thb_target, 6)
+        final_rate = excel_round(thb_target / usdt_amount, 4)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -523,7 +523,7 @@ class ExchangeCalculator:
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
         
-        final_rate = excel_round(rub_amount / usdt_target, 4)
+        final_rate = excel_round(rub_amount / usdt_target, 6)
         
         bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
         incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
@@ -562,7 +562,7 @@ class ExchangeCalculator:
         withdrawal_commission = 1
         usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
         
-        final_rate = excel_round(rub_amount / usdt_received, 4)
+        final_rate = excel_round(rub_amount / usdt_received, 6)
         
         bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
         incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
