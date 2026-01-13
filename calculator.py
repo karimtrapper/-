@@ -62,6 +62,7 @@ class ExchangeRateProvider:
     
     # API ключи из переменных окружения
     BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', '')
+    BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET', '')
     DOVERKA_API_KEY = os.getenv('DOVERKA_API_KEY', '')
     
     # Используем курс от Doverka API без маржи
