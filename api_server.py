@@ -18,6 +18,13 @@ from calculator import ExchangeRateProvider, ExchangeCalculator, CommissionCalcu
 app = Flask(__name__, static_folder='.')
 CORS(app)  # Разрешаем CORS для локальной разработки
 
+@app.before_request
+def log_request_info():
+    """Логировать вообще каждый запрос к серверу для отладки"""
+    if request.method == 'POST':
+        print(f"📡 DEBUG: Received POST to {request.path}")
+        print(f"📡 Body: {request.get_data(as_text=True)}")
+
 # Маршрут для главной страницы
 @app.route('/')
 def index():
@@ -167,11 +174,12 @@ def create_payment():
     """
     try:
         data = request.get_json()
-        print(f"💳 Request to create payment: {data}")
+        print(f"💳 REQUEST TO CREATE PAYMENT: {data}")
         
         doverka_key = os.environ.get('DOVERKA_API_KEY', '')
         if not doverka_key:
-            return jsonify({'error': 'DOVERKA_API_KEY not configured'}), 500
+            print("❌ ERROR: DOVERKA_API_KEY is missing in env variables")
+            return jsonify({'error': 'DOVERKA_API_KEY not configured on server'}), 500
             
         # Формируем запрос к Doverka
         url = f"{ExchangeRateProvider.DOVERKA_API}/v1/payments"
@@ -186,19 +194,28 @@ def create_payment():
         payload = data.copy()
         payload['callback_url'] = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka"
         
+        print(f"📤 Forwarding request to Doverka: {url}")
         response = requests.post(url, json=payload, headers=headers, timeout=15)
+        
+        print(f"📥 Doverka response status: {response.status_code}")
         
         if response.status_code in [200, 201]:
             result = response.json()
             print(f"✅ Payment created successfully: {result.get('id')}")
             return jsonify(result), 200
         else:
-            print(f"❌ Doverka Error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Doverka API error: {response.status_code}'}), response.status_code
+            error_text = response.text
+            print(f"❌ Doverka Error: {response.status_code} - {error_text}")
+            return jsonify({
+                'error': f'Doverka API error: {response.status_code}',
+                'details': error_text
+            }), response.status_code
             
     except Exception as e:
-        print(f"❌ Exception during payment creation: {e}")
-        return jsonify({'error': str(e)}), 500
+        import traceback
+        error_msg = traceback.format_exc()
+        print(f"❌ CRITICAL EXCEPTION during payment creation:\n{error_msg}")
+        return jsonify({'error': str(e), 'traceback': error_msg}), 500
 
 
 def send_telegram_notification(text):

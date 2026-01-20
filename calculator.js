@@ -1063,6 +1063,8 @@ async function createPayment() {
                 "currency": "RUB",
                 "order_id": orderId,
                 "callback_url": railwayCallbackUrl,
+                "webhook_url": railwayCallbackUrl,
+                "notification_url": railwayCallbackUrl,
                 "merchant_id": "grusha",
                 "description": description,
                 "success_url": "",
@@ -1073,7 +1075,9 @@ async function createPayment() {
                     "thb_amount": thbAmount,
                     "order_id": orderId,
                     "profit_usdt": profitUsdt,
-                    "comment": comment
+                    "comment": comment,
+                    "callback_url": railwayCallbackUrl,
+                    "webhook_url": railwayCallbackUrl
                 },
                 "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
                 "merchant_description": "grusha exchange"
