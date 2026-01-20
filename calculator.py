@@ -86,15 +86,22 @@ class ExchangeRateProvider:
                     headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
                 
                 async with session.get(url, params=params, headers=headers, timeout=5) as response:
-                    print(f"DEBUG: Binance TH status: {response.status}")
+                    print(f"DEBUG: Binance TH status: {response.status}", flush=True)
                     if response.status == 200:
                         data = await response.json()
-                        print(f"DEBUG: Binance TH raw data: {data}")
-                        if isinstance(data, dict) and data.get("code") == 0 and "data" in data:
-                            price = data["data"].get("price")
-                            if price: return float(price)
-                        elif isinstance(data, dict) and "price" in data:
-                            return float(data["price"])
+                        print(f"DEBUG: Binance TH raw data: {data}", flush=True)
+                        # Проверяем структуру (Binance TH возвращает {'code':0, 'msg':'success', 'data':{...}} или прямой список)
+                        if isinstance(data, dict):
+                            if data.get("code") == 0 and "data" in data:
+                                price_data = data["data"]
+                                if isinstance(price_data, list):
+                                    for item in price_data:
+                                        if item.get("symbol") == symbol:
+                                            return float(item.get("price"))
+                                elif isinstance(price_data, dict):
+                                    return float(price_data.get("price"))
+                            elif "price" in data:
+                                return float(data["price"])
         except Exception as e:
             print(f"⚠️ Binance TH error: {e}")
 
@@ -134,13 +141,21 @@ class ExchangeRateProvider:
                     if response.status == 200:
                         data = await response.json()
                         currencies = data if isinstance(data, list) else [data]
-                        print(f"DEBUG: Doverka currencies count: {len(currencies)}")
+                        print(f"DEBUG: Doverka currencies raw: {currencies}", flush=True)
                         for currency in currencies:
                             symbol = currency.get('symbol', '').upper()
+                            # Пытаемся найти наиболее подходящий курс для продажи USDT за RUB
+                            # Часто это rate_from_rub или просто поле с самым большим значением
                             rate_to_rub = currency.get('rate_to_rub')
-                            print(f"DEBUG: Doverka currency: {symbol}, rate_to_rub: {rate_to_rub}")
-                            if symbol in ['USD', 'USDT'] and rate_to_rub:
-                                return float(rate_to_rub)
+                            rate_from_rub = currency.get('rate_from_rub')
+                            
+                            if symbol in ['USD', 'USDT']:
+                                print(f"DEBUG: Found {symbol}. to_rub: {rate_to_rub}, from_rub: {rate_from_rub}", flush=True)
+                                # Если есть rate_from_rub и он больше 85, скорее всего это то, что нам нужно
+                                if rate_from_rub and float(rate_from_rub) > 80:
+                                    return float(rate_from_rub)
+                                if rate_to_rub:
+                                    return float(rate_to_rub)
                         return None
                     else:
                         print(f"⚠️ Doverka API error status: {response.status}")
