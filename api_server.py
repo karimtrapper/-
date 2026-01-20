@@ -243,9 +243,6 @@ def health_check():
 @app.route('/api/test-doverka', methods=['GET'])
 def test_doverka():
     """Тестовый endpoint для проверки Doverka API"""
-    import os
-    import asyncio
-    
     doverka_key = os.getenv('DOVERKA_API_KEY', '')
     
     result = {
@@ -265,7 +262,6 @@ def test_doverka():
         result['status'] = 'success'
         
         # Пробуем получить сырой ответ от API
-        import aiohttp
         async def get_raw_response():
             async with aiohttp.ClientSession() as session:
                 url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
