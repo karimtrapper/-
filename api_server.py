@@ -231,6 +231,13 @@ def test_webhook_send():
     return jsonify({"success": success})
 
 
+@app.route('/test-tg', methods=['GET'])
+def test_tg_direct():
+    """Тестовая отправка сообщения напрямую"""
+    success = send_telegram_notification("🚀 Прямой тест уведомления")
+    return f"Telegram notification sent: {success}"
+
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Проверка здоровья API"""
@@ -335,10 +342,8 @@ if __name__ == '__main__':
     print("🚀 Starting Exchange Calculator API server...")
     print(f"📍 Server running on http://0.0.0.0:{port}")
     print("📊 API endpoints:")
-    print("   - GET  / - Главная страница")
-    print("   - GET  /api/rates - Актуальные курсы")
-    print("   - POST /api/calculate - Расчет обмена")
-    print("   - GET  /api/health - Проверка здоровья")
+    for rule in app.url_map.iter_rules():
+        print(f"   - {rule.methods} {rule.rule}")
     
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
