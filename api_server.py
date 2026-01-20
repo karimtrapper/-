@@ -40,14 +40,14 @@ def get_rates():
     try:
         # Запускаем асинхронную функцию
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
-        print(f"📊 RAW RATES FETCHED: {rates}")
+        print(f"📊 RAW RATES FETCHED: {rates}", flush=True)
         
         # Если API выдало ошибку (None), используем актуальные фоллбэки (на 20.01.2026)
         usdt_thb = rates.get('usdt_thb') or 34.50
         rub_usdt = rates.get('rub_usdt') or 92.80
         
         if not rates.get('usdt_thb') or not rates.get('rub_usdt'):
-            print(f"⚠️ Using fallback rates! Binance: {rates.get('usdt_thb')}, Doverka: {rates.get('rub_usdt')}")
+            print(f"⚠️ Using fallback rates! Binance: {rates.get('usdt_thb')}, Doverka: {rates.get('rub_usdt')}", flush=True)
         
         return jsonify({
             'usdt_thb': usdt_thb,

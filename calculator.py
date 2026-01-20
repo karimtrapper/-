@@ -69,7 +69,7 @@ class ExchangeRateProvider:
     DOVERKA_MARGIN = 1.0  # Без маржи - чистый курс от API
     
     # Альтернативные источники для RUB-USDT, если Doverka API не работает
-    FALLBACK_RUB_USDT = 86.0094  # Фоллбэк курс (обновлен до текущего рыночного)
+    FALLBACK_RUB_USDT = 92.50  # Фоллбэк курс (обновлен 20.01.2026)
     
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
@@ -86,8 +86,10 @@ class ExchangeRateProvider:
                     headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
                 
                 async with session.get(url, params=params, headers=headers, timeout=5) as response:
+                    print(f"DEBUG: Binance TH status: {response.status}")
                     if response.status == 200:
                         data = await response.json()
+                        print(f"DEBUG: Binance TH raw data: {data}")
                         if isinstance(data, dict) and data.get("code") == 0 and "data" in data:
                             price = data["data"].get("price")
                             if price: return float(price)
@@ -96,7 +98,7 @@ class ExchangeRateProvider:
         except Exception as e:
             print(f"⚠️ Binance TH error: {e}")
 
-        # 2. Фоллбэк на Binance Global (на всякий случай)
+        # 2. Фоллбэк на Binance Global
         try:
             async with aiohttp.ClientSession() as session:
                 url = "https://api.binance.com/api/v3/ticker/price"
@@ -104,6 +106,7 @@ class ExchangeRateProvider:
                 async with session.get(url, params=params, timeout=5) as response:
                     if response.status == 200:
                         data = await response.json()
+                        print(f"DEBUG: Binance Global rate: {data.get('price')}")
                         return float(data['price'])
         except Exception as e:
             print(f"❌ Binance Global error: {e}")
@@ -114,9 +117,6 @@ class ExchangeRateProvider:
     async def get_doverka_rate() -> float:
         """
         Получить курс RUB-USDT от Doverka API
-        
-        Returns:
-            float: Текущий курс или None в случае ошибки
         """
         if not ExchangeRateProvider.DOVERKA_API_KEY:
             print("⚠️ Doverka API key не найден")
@@ -134,14 +134,17 @@ class ExchangeRateProvider:
                     if response.status == 200:
                         data = await response.json()
                         currencies = data if isinstance(data, list) else [data]
+                        print(f"DEBUG: Doverka currencies count: {len(currencies)}")
                         for currency in currencies:
-                            if isinstance(currency, dict):
-                                symbol = currency.get('symbol', '').upper()
-                                rate_to_rub = currency.get('rate_to_rub')
-                                if symbol in ['USD', 'USDT'] and rate_to_rub:
-                                    return float(rate_to_rub)
+                            symbol = currency.get('symbol', '').upper()
+                            rate_to_rub = currency.get('rate_to_rub')
+                            print(f"DEBUG: Doverka currency: {symbol}, rate_to_rub: {rate_to_rub}")
+                            if symbol in ['USD', 'USDT'] and rate_to_rub:
+                                return float(rate_to_rub)
                         return None
-                    return None
+                    else:
+                        print(f"⚠️ Doverka API error status: {response.status}")
+                        return None
         except Exception as e:
             print(f"⚠️ Ошибка Doverka API: {e}")
             return None
