@@ -8,6 +8,7 @@ from flask_cors import CORS
 import sys
 import os
 import requests
+import asyncio
 
 # Импортируем calculator из текущей папки (для деплоя все файлы в одной папке)
 from calculator import ExchangeRateProvider, ExchangeCalculator, CommissionCalculator
@@ -243,7 +244,6 @@ def health_check():
 def test_doverka():
     """Тестовый endpoint для проверки Doverka API"""
     import os
-    import asyncio
     
     doverka_key = os.getenv('DOVERKA_API_KEY', '')
     
