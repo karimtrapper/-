@@ -3,12 +3,13 @@ Flask API сервер для калькулятора
 Предоставляет реальные курсы валют для веб-интерфейса
 """
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
 import asyncio
 import sys
 import os
 import requests
+import aiohttp
+from flask import Flask, jsonify, request
+from flask_cors import CORS
 
 # Импортируем calculator из текущей папки (для деплоя все файлы в одной папке)
 from calculator import ExchangeRateProvider, ExchangeCalculator, CommissionCalculator
@@ -156,6 +157,47 @@ def calculate():
         return jsonify(result), 200
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/payments', methods=['POST'])
+def create_payment():
+    """
+    Создать платеж в DoverkaPay через наш бэкенд
+    """
+    try:
+        data = request.get_json()
+        print(f"💳 Request to create payment: {data}")
+        
+        doverka_key = os.environ.get('DOVERKA_API_KEY', '')
+        if not doverka_key:
+            return jsonify({'error': 'DOVERKA_API_KEY not configured'}), 500
+            
+        # Формируем запрос к Doverka
+        url = f"{ExchangeRateProvider.DOVERKA_API}/v1/payments"
+        headers = {
+            'Authorization': f'Bearer {doverka_key}',
+            'Content-Type': 'application/json',
+            'accept': 'application/json'
+        }
+        
+        # Пробрасываем все данные, пришедшие с фронта, 
+        # и принудительно устанавливаем наш callback_url
+        payload = data.copy()
+        payload['callback_url'] = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka"
+        
+        response = requests.post(url, json=payload, headers=headers, timeout=15)
+        
+        if response.status_code in [200, 201]:
+            result = response.json()
+            print(f"✅ Payment created successfully: {result.get('id')}")
+            return jsonify(result), 200
+        else:
+            print(f"❌ Doverka Error: {response.status_code} - {response.text}")
+            return jsonify({'error': f'Doverka API error: {response.status_code}'}), response.status_code
+            
+    except Exception as e:
+        print(f"❌ Exception during payment creation: {e}")
         return jsonify({'error': str(e)}), 500
 
 
