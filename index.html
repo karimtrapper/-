@@ -188,6 +188,32 @@
                     </div>
                 </div>
 
+                <!-- Поле для комментария -->
+                <div class="comment-section" style="margin-bottom: 20px;">
+                    <label class="input-label">💬 Комментарий к платежу (необязательно)</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="paymentComment" class="amount-input" placeholder="Имя клиента, номер заказа и т.д." style="font-size: 16px; height: 45px;">
+                    </div>
+                </div>
+
+                <!-- Кнопка создания платежа (только для Doverka) -->
+                <div id="paymentActionSection" style="display: none; margin-bottom: 20px;">
+                    <button class="calculate-btn" id="createPaymentBtn" onclick="createPayment()" style="background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%);">
+                        💳 СОЗДАТЬ ПЛАТЕЖ
+                    </button>
+                    <div id="paymentResult" style="margin-top: 15px; display: none;">
+                        <div class="info-note" style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; display: flex; align-items: flex-start; gap: 12px;">
+                            <div style="flex: 1;">
+                                <strong>✅ Ссылка на оплату создана:</strong><br>
+                                <a id="paymentLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
+                            </div>
+                            <button onclick="copyPaymentLink()" class="refresh-btn" style="background: #10B981; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
+                                📋 Копировать
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="details-section">
                     <div class="details-header" onclick="toggleDetails()">
                         <span>📋 Детали расчета</span>

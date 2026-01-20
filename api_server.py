@@ -5,9 +5,9 @@ Flask API сервер для калькулятора
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-import asyncio
 import sys
 import os
+import requests
 
 # Импортируем calculator из текущей папки (для деплоя все файлы в одной папке)
 from calculator import ExchangeRateProvider, ExchangeCalculator, CommissionCalculator
@@ -156,6 +156,78 @@ def calculate():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+def send_telegram_notification(text):
+    """Отправить уведомление в Telegram (синхронно для Flask)"""
+    token = os.environ.get('TELEGRAM_BOT_TOKEN', '8157701216:AAFxDQcrKm8zwcs6CzzascxTf0jFcndKX5U')
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1003678845665')
+    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML"
+    }
+    
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if response.status_code != 200:
+            print(f"❌ Telegram Error: {response.status_code} - {response.text}")
+        return response.status_code == 200
+    except Exception as e:
+        print(f"❌ Telegram Exception: {e}")
+        return False
+
+
+@app.route('/api/webhook/doverka', methods=['POST'])
+def doverka_webhook():
+    """
+    Webhook для получения уведомлений об оплате от Doverka
+    """
+    try:
+        data = request.get_json()
+        print(f"🔔 Received Doverka Webhook: {data}")
+        
+        status = data.get('status')
+        order_id = data.get('order_transaction_id') or data.get('order_id')
+        amount_from = data.get('amount_from')
+        currency = data.get('currency_symbol', 'RUB')
+        payer = data.get('payer_name', 'Неизвестно')
+        
+        if status == 'PAID':
+            # Пробуем достать данные из метаданных, если они там есть
+            metadata = data.get('metadata', {})
+            thb_amount = metadata.get('thb_amount', '—')
+            profit_usdt = metadata.get('profit_usdt', 0)
+            comment = metadata.get('comment', '—')
+            
+            msg = (
+                f"✅ <b>Оплата получена!</b>\n\n"
+                f"💰 Сумма: <b>{amount_from} {currency}</b>\n"
+                f"🇹🇭 Выдать клиенту: <b>{thb_amount} THB</b>\n"
+                f"📈 Доход: <b>{profit_usdt:.2f} USDT</b>\n"
+                f"📅 Дата: {data.get('date', '—')}\n"
+                f"🆔 Заказ: <code>{order_id}</code>\n"
+                f"💬 Комментарий: {comment}"
+            )
+            
+            # Отправляем уведомление синхронно
+            send_telegram_notification(msg)
+            print(f"✅ Уведомление об оплате {order_id} отправлено в Telegram")
+            
+        return jsonify({'status': 'ok'}), 200
+        
+    except Exception as e:
+        print(f"❌ Ошибка в Webhook: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/webhook/test', methods=['GET'])
+def test_webhook_send():
+    """Тестовая отправка сообщения"""
+    success = send_telegram_notification("🔔 Тестовое уведомление от калькулятора")
+    return jsonify({"success": success})
 
 
 @app.route('/api/health', methods=['GET'])

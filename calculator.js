@@ -1,16 +1,14 @@
 // Конфигурация
-// Автоматически определяем API URL: локально - используем текущий hostname, на продакшене - относительный путь
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? `http://${window.location.hostname}:5001/api`
-    : '/api';
+// Используем ваш основной API сервер
+const API_URL = 'https://proud-renewal-production-e9b8.up.railway.app/api';
 
 const CONFIG = {
     API_URL: API_URL,
     USE_API: true,
     
     FALLBACK_RATES: {
-        usdt_thb: 31.16,
-        rub_usdt: 84.23
+        usdt_thb: 31.08,
+        rub_usdt: 82.6035
     },
     
     // Комиссии для Doverka
@@ -52,12 +50,16 @@ let state = {
     customRubUsdt: 80.90,  // кастомный курс для broker
     detailsOpen: false,
     infoOpen: false,
-    applyDiscount: false
+    applyDiscount: false,
+    lastResult: null, // Храним последний результат для создания платежа
+    lastUpdateTimestamp: 0 // Время последнего обновления курсов
 };
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', () => {
     refreshRates();
+    // Фоновое обновление курсов каждые 5 минут
+    setInterval(refreshRates, 5 * 60 * 1000);
 });
 
 // Очистка результатов при изменении ввода
@@ -357,6 +359,7 @@ async function refreshRates() {
             if (response.ok) {
                 const data = await response.json();
                 state.rates = data;
+                state.lastUpdateTimestamp = Date.now();
             } else {
                 throw new Error('API error');
             }
@@ -489,19 +492,32 @@ async function calculate() {
     const resultsSection = document.getElementById('resultsSection');
     const calculateBtn = document.getElementById('calculateBtn');
     
-    // Проверка наличия курсов перед расчетом
-    const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
-    if (!rubUsdt || !state.rates.usdt_thb) {
-        alert('⚠️ Ошибка: Курсы валют не получены. Расчет невозможен.');
-        return;
-    }
-
     if (amount <= 0) {
         resultsSection.style.display = 'none';
         return;
     }
-    
+
+    const originalText = calculateBtn.innerHTML;
+    calculateBtn.disabled = true;
+
     try {
+        // Если курсы устарели (более 1 минуты), обновляем их принудительно перед расчетом
+        const timeSinceUpdate = Date.now() - state.lastUpdateTimestamp;
+        if (timeSinceUpdate > 60000) {
+            console.log('🔄 Курсы устарели, обновляю перед расчетом...');
+            calculateBtn.innerHTML = '⏳ ОБНОВЛЕНИЕ КУРСОВ...';
+            await refreshRates();
+        }
+        
+        // Проверка наличия курсов перед расчетом
+        const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+        if (!rubUsdt || !state.rates.usdt_thb) {
+            alert('⚠️ Ошибка: Курсы валют не получены. Расчет невозможен.');
+            return;
+        }
+
+        calculateBtn.innerHTML = '⏳ РАСЧЕТ...';
+        
         if (CONFIG.USE_API && state.method === 'broker') {
             // Используем API для расчета через брокера
             const requestData = {
@@ -574,33 +590,79 @@ async function calculate() {
         const result = calculateLocal(amount);
         displayResult(result);
         resultsSection.style.display = 'block';
+    } finally {
+        calculateBtn.disabled = false;
+        calculateBtn.innerHTML = originalText;
     }
 }
 
 // Локальный расчет (фоллбэк)
 function calculateLocal(amount) {
+    // В локальном режиме (file://) берем профит из стейта, если включена скидка,
+    // иначе определяем его по порогам Doverka (имитируем поведение сервера)
+    let targetProfit = 4.0;
+    if (state.applyDiscount) {
+        targetProfit = state.profitMargin;
+    } else {
+        // Определяем базу для расчета (рубли)
+        let baseAmount = amount;
+        if (state.scenario === 'thb-to-rub') {
+            baseAmount = amount * 2.8; 
+        }
+        
+        if (baseAmount < 500000) targetProfit = 5.0;
+        else if (baseAmount < 1000000) targetProfit = 4.0;
+        else targetProfit = 3.0;
+    }
+
+    // Комиссия в USDT-THB (Doverka использует прогрессивную шкалу, но мы привязываем её к профиту)
+    // 5% прибыли -> 2.72% комиссия, 4% -> 1.7%, 3% -> 0.67%
+    const commMap = { 5.0: 0.0272, 4.0: 0.017, 3.0: 0.0067 };
+    const usdt_thb_comm = commMap[targetProfit] || (targetProfit / 100 * 0.6); // Примерная пропорция
+
+    const rub_usdt_rate = state.rates.rub_usdt;
+    const usdt_thb_rate = state.rates.usdt_thb;
+    const bonus_pct = 0.024; // 2.4% бонус
+
     // ПРАВИЛЬНЫЙ расчет для Doverka
     if (state.method === 'doverka' && state.scenario === 'rub-to-thb') {
         // 1. RUB → USDT (без комиссии на этом этапе)
-        const usdt = amount / state.rates.rub_usdt;
+        const usdt_initial = amount / rub_usdt_rate;
         
-        // 2. USDT → THB с комиссией 2.72%
-        const usdt_thb_rate_sell = state.rates.usdt_thb * (1 - 0.0272);
-        const thb_before_fees = usdt * usdt_thb_rate_sell;
+        // 2. USDT → THB с комиссией
+        const usdt_thb_rate_sell = usdt_thb_rate * (1 - usdt_thb_comm);
+        const thb_before_fees = usdt_initial * usdt_thb_rate_sell;
         
         // 3. Комиссии за выдачу
         const withdrawal_percent_fee = thb_before_fees * 0.0025;
         const withdrawal_fixed = 20;
         const thbNet = thb_before_fees - withdrawal_percent_fee - withdrawal_fixed;
         
+        // 4. Прибыльность
+        const bonus_usdt = usdt_initial * bonus_pct;
+        const incoming_usdt = usdt_initial + bonus_usdt;
+        const outgoing_usdt = (thbNet + withdrawal_fixed + withdrawal_percent_fee) / usdt_thb_rate;
+        const profit_usdt = incoming_usdt - outgoing_usdt;
+
         return {
             scenario: 'RUB → THB',
+            direction: 'amount',
             rub_paid: amount,
             thb_received: thbNet,
-            final_rate: thbNet / usdt,
-            usdt_amount: usdt,
-            withdrawal_fees: withdrawal_percent_fee + withdrawal_fixed,
-            commission_level: 'Doverka (до 500к)'
+            final_rate: amount / Math.max(1, thbNet),
+            usdt_amount: usdt_initial,
+            usdt_thb_rate: usdt_thb_rate,
+            usdt_thb_commission: usdt_thb_comm * 100,
+            usdt_thb_rate_sell: usdt_thb_rate_sell,
+            rub_usdt_rate: rub_usdt_rate,
+            withdrawal_percent: withdrawal_percent_fee,
+            withdrawal_fixed: withdrawal_fixed,
+            bonus_usdt: bonus_usdt,
+            incoming_usdt: incoming_usdt,
+            outgoing_usdt: outgoing_usdt,
+            profit_usdt: profit_usdt,
+            profit_percent_actual: targetProfit,
+            commission_level: `Doverka (${targetProfit}%)`
         };
     }
     
@@ -614,35 +676,83 @@ function calculateLocal(amount) {
         const thb_to_exchange = amount + withdrawal_fixed + withdrawal_percent_fee;
         
         // 3. USDT
-        const usdt_thb_rate_sell = state.rates.usdt_thb * (1 - 0.0272);
-        const usdt = thb_to_exchange / usdt_thb_rate_sell;
+        const usdt_thb_rate_sell = usdt_thb_rate * (1 - usdt_thb_comm);
+        const usdt_required = thb_to_exchange / usdt_thb_rate_sell;
         
         // 4. RUB
-        const rub_to_pay = usdt * state.rates.rub_usdt;
+        const rub_to_pay = usdt_required * rub_usdt_rate;
         
+        // 5. Прибыльность
+        const bonus_usdt = usdt_required * bonus_pct;
+        const incoming_usdt = usdt_required + bonus_usdt;
+        const outgoing_usdt = thb_to_exchange / usdt_thb_rate;
+        const profit_usdt = incoming_usdt - outgoing_usdt;
+
         return {
             scenario: 'THB ← RUB',
+            direction: 'target',
             thb_target: amount,
             rub_to_pay: rub_to_pay,
-            final_rate: amount / usdt,
-            usdt_amount: usdt,
-            withdrawal_fees: withdrawal_fixed + withdrawal_percent_fee,
-            commission_level: 'Doverka (до 500к)'
+            final_rate: rub_to_pay / Math.max(1, amount),
+            usdt_amount: usdt_required,
+            usdt_thb_rate: usdt_thb_rate,
+            usdt_thb_commission: usdt_thb_comm * 100,
+            usdt_thb_rate_sell: usdt_thb_rate_sell,
+            rub_usdt_rate: rub_usdt_rate,
+            withdrawal_percent: withdrawal_percent_fee,
+            withdrawal_fixed: withdrawal_fixed,
+            bonus_usdt: bonus_usdt,
+            incoming_usdt: incoming_usdt,
+            outgoing_usdt: outgoing_usdt,
+            profit_usdt: profit_usdt,
+            profit_percent_actual: targetProfit,
+            commission_level: `Doverka (${targetProfit}%)`
         };
     }
     
-    // Для остальных случаев возвращаем заглушку
+    // Fallback для Broker (если API не отвечает)
+    if (state.method === 'broker') {
+        const rub_usdt = state.customRubUsdt;
+        const usdt_thb = state.rates.usdt_thb;
+        const profit = state.profitMargin / 100;
+        
+        if (state.scenario === 'rub-to-thb') {
+            const isTarget = state.direction === 'target';
+            if (isTarget) {
+                const rub = (amount * rub_usdt) / (usdt_thb * (1 - profit));
+                return { scenario: 'RUB → THB', direction: 'target', rub_to_pay: rub, final_rate: rub / amount, usdt_amount: rub / rub_usdt, profit_percent: state.profitMargin };
+            } else {
+                const thb = (amount / rub_usdt) * usdt_thb * (1 - profit);
+                return { scenario: 'RUB → THB', direction: 'amount', thb_received: thb, final_rate: amount / thb, usdt_amount: amount / rub_usdt, profit_percent: state.profitMargin };
+            }
+        }
+    }
+
     return {
         scenario: state.scenario,
+        direction: state.direction,
         thb_received: amount * 0.35,
         final_rate: 2.8,
         usdt_amount: amount / 85,
-        commission_level: state.commissionLevel
+        profit_percent: 4.0
     };
 }
 
 // Отображение результата
 function displayResult(result) {
+    // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
+    state.lastResult = result;
+    
+    // Показываем/скрываем секцию создания платежа (только для Doverka)
+    const paymentSection = document.getElementById('paymentActionSection');
+    if (state.method === 'doverka') {
+        paymentSection.style.display = 'block';
+        // Сбрасываем старый результат платежа при новом расчете
+        document.getElementById('paymentResult').style.display = 'none';
+    } else {
+        paymentSection.style.display = 'none';
+    }
+
     // Определяем что показывать (ПОРЯДОК ВАЖЕН!)
     let resultValue = '';
     let rateValue = '';
@@ -915,5 +1025,114 @@ function togglePartner() {
     }
     
     hideResults();
+}
+
+// Функция создания платежа через API Doverka
+async function createPayment() {
+    if (!state.lastResult || !state.lastResult.usdt_amount) {
+        alert('⚠️ Сначала выполните расчет суммы');
+        return;
+    }
+
+    const createBtn = document.getElementById('createPaymentBtn');
+    const originalText = createBtn.innerText;
+    createBtn.disabled = true;
+    createBtn.innerText = '⏳ СОЗДАНИЕ...';
+
+    try {
+        // Берем сумму из "Поступление" (incoming_usdt), если она есть, иначе usdt_amount
+        const amount = state.lastResult.incoming_usdt || state.lastResult.usdt_amount;
+        const rubAmount = state.lastResult.rub_paid || state.lastResult.rub_to_pay || 0;
+        const thbAmount = state.lastResult.thb_received || state.lastResult.thb_target || 0;
+        const profitUsdt = state.lastResult.profit_usdt || 0;
+        const comment = document.getElementById('paymentComment').value.trim();
+        
+        const orderId = `GR-${Date.now()}`;
+        const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
+
+        const response = await fetch('https://grushab-2-b.ru/api/payments', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Provider-Name': 'doverkapay'
+            },
+            body: JSON.stringify({
+                "amount": parseFloat(rubAmount.toFixed(2)),
+                "currency": "RUB",
+                "order_id": orderId,
+                "callback_url": "https://grushab-2-b.ru/api/webhook/doverka",
+                "merchant_id": "grusha",
+                "description": description,
+                "success_url": "",
+                "cancel_url": "",
+                "failure_url": "",
+                "metadata": {
+                    "rub_amount": rubAmount,
+                    "thb_amount": thbAmount,
+                    "order_id": orderId,
+                    "profit_usdt": profitUsdt,
+                    "comment": comment
+                },
+                "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
+                "merchant_description": "grusha exchange"
+            })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || 'Ошибка API при создании платежа');
+        }
+
+        const data = await response.json();
+        
+        if (data.public_link) {
+            const resultDiv = document.getElementById('paymentResult');
+            const linkA = document.getElementById('paymentLink');
+            
+            linkA.href = data.public_link;
+            linkA.innerText = data.public_link;
+            resultDiv.style.display = 'block';
+            
+            // Скроллим к результату
+            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else {
+            throw new Error('API не вернул ссылку на оплату');
+        }
+
+    } catch (error) {
+        console.error('Payment creation error:', error);
+        alert('❌ Ошибка при создании платежа: ' + error.message);
+    } finally {
+        createBtn.disabled = false;
+        createBtn.innerText = originalText;
+    }
+}
+
+// Функция для копирования ссылки в буфер обмена
+function copyPaymentLink() {
+    const link = document.getElementById('paymentLink').innerText;
+    if (!link) return;
+
+    navigator.clipboard.writeText(link).then(() => {
+        const copyBtn = event.currentTarget;
+        const originalText = copyBtn.innerHTML;
+        copyBtn.innerHTML = '✅ Скопировано!';
+        copyBtn.style.background = '#059669';
+        
+        setTimeout(() => {
+            copyBtn.innerHTML = originalText;
+            copyBtn.style.background = '#10B981';
+        }, 2000);
+    }).catch(err => {
+        console.error('Failed to copy:', err);
+        // Fallback для старых браузеров
+        const input = document.createElement('input');
+        input.value = link;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        alert('Ссылка скопирована!');
+    });
 }
 

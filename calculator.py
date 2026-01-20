@@ -74,19 +74,13 @@ class ExchangeRateProvider:
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
         """
-        Получить курс от Binance Thailand API
-        
-        Args:
-            symbol: Торговая пара (по умолчанию USDT-THB)
-            
-        Returns:
-            float: Текущий курс или None в случае ошибки
+        Получить курс от Binance (сначала TH, потом Global как фоллбэк)
         """
+        # 1. Пробуем Binance Thailand
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
                 params = {"symbol": symbol}
-                
                 headers = {}
                 if ExchangeRateProvider.BINANCE_API_KEY:
                     headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
@@ -99,13 +93,22 @@ class ExchangeRateProvider:
                             if price: return float(price)
                         elif isinstance(data, dict) and "price" in data:
                             return float(data["price"])
-                    
-                    print(f"⚠️ Binance API error: {response.status}")
-                    return None # Вместо фоллбэка
-                    
         except Exception as e:
-            print(f"❌ Ошибка получения курса Binance: {e}")
-            return None
+            print(f"⚠️ Binance TH error: {e}")
+
+        # 2. Фоллбэк на Binance Global (на всякий случай)
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "https://api.binance.com/api/v3/ticker/price"
+                params = {"symbol": "USDTTHB"}
+                async with session.get(url, params=params, timeout=5) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return float(data['price'])
+        except Exception as e:
+            print(f"❌ Binance Global error: {e}")
+            
+        return None
     
     @staticmethod
     async def get_doverka_rate() -> float:
