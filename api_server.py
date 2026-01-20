@@ -5,10 +5,10 @@ Flask API сервер для калькулятора
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+import asyncio
 import sys
 import os
 import requests
-import asyncio
 
 # Импортируем calculator из текущей папки (для деплоя все файлы в одной папке)
 from calculator import ExchangeRateProvider, ExchangeCalculator, CommissionCalculator
@@ -244,6 +244,7 @@ def health_check():
 def test_doverka():
     """Тестовый endpoint для проверки Doverka API"""
     import os
+    import asyncio
     
     doverka_key = os.getenv('DOVERKA_API_KEY', '')
     
@@ -345,5 +346,3 @@ if __name__ == '__main__':
     
     app.run(debug=debug_mode, host='0.0.0.0', port=port)
 
-
-# Trigger rebuild for Railway registry fix
