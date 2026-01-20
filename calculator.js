@@ -1049,6 +1049,7 @@ async function createPayment() {
         
         const orderId = `GR-${Date.now()}`;
         const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
+        const railwayCallbackUrl = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka";
 
         const response = await fetch('https://grushab-2-b.ru/api/payments', {
             method: 'POST',
@@ -1060,7 +1061,7 @@ async function createPayment() {
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
-                "callback_url": "https://grushab-2-b.ru/api/webhook/doverka",
+                "callback_url": railwayCallbackUrl,
                 "merchant_id": "grusha",
                 "description": description,
                 "success_url": "",

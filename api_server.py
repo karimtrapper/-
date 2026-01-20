@@ -188,15 +188,21 @@ def doverka_webhook():
     """
     try:
         data = request.get_json()
-        print(f"🔔 Received Doverka Webhook: {data}")
+        print(f"🔔 WEBHOOK RECEIVED! Full data: {data}")
         
-        status = data.get('status')
+        if not data:
+            print("⚠️ Webhook received empty data")
+            return jsonify({'status': 'empty data'}), 400
+            
+        status = str(data.get('status', '')).upper()
         order_id = data.get('order_transaction_id') or data.get('order_id')
-        amount_from = data.get('amount_from')
+        amount_from = data.get('amount_from') or data.get('amount_to')
         currency = data.get('currency_symbol', 'RUB')
         payer = data.get('payer_name', 'Неизвестно')
         
-        if status == 'PAID':
+        print(f"🧐 Processing order: {order_id}, status: {status}")
+        
+        if status in ['PAID', 'COMPLETED', 'SUCCESS']:
             # Пробуем достать данные из метаданных, если они там есть
             metadata = data.get('metadata', {})
             thb_amount = metadata.get('thb_amount', '—')
@@ -215,7 +221,9 @@ def doverka_webhook():
             
             # Отправляем уведомление синхронно
             send_telegram_notification(msg)
-            print(f"✅ Уведомление об оплате {order_id} отправлено в Telegram")
+            print(f"🚀 SUCCESS: Notification sent for {order_id}")
+        else:
+            print(f"ℹ️ Skipping status {status} for order {order_id}")
             
         return jsonify({'status': 'ok'}), 200
         
