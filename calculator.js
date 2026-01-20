@@ -1049,17 +1049,20 @@ async function createPayment() {
         
         const orderId = `GR-${Date.now()}`;
         const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
+        const railwayCallbackUrl = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka";
         
-        // Теперь используем наш собственный бэкенд на Railway для создания платежа
-        const response = await fetch('https://proud-renewal-production-e9b8.up.railway.app/api/payments', {
+        // Возвращаемся к использованию коннектора grushab-2-b.ru
+        const response = await fetch('https://grushab-2-b.ru/api/payments', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-Provider-Name': 'doverkapay'
             },
             body: JSON.stringify({
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
+                "callback_url": railwayCallbackUrl,
                 "merchant_id": "grusha",
                 "description": description,
                 "success_url": "",
