@@ -1065,7 +1065,7 @@ async function createPayment() {
                 "cancel_url": "",
                 "failure_url": "",
                 "metadata": {},
-                "merchant_image_url": "https://drive.google.com/uc?export=view&id=1GFhyK8KZ87PxOQw24aPYcF87C0VWdJja",
+                "merchant_image_url": "https://lh3.googleusercontent.com/d/1GFhyK8KZ87PxOQw24aPYcF87C0VWdJja",
                 "merchant_description": "grusha exchange"
             })
         });
