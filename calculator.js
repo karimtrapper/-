@@ -1040,8 +1040,6 @@ async function createPayment() {
     createBtn.innerText = '⏳ СОЗДАНИЕ...';
 
     try {
-        // Берем сумму из "Поступление" (incoming_usdt), если она есть, иначе usdt_amount
-        const amount = state.lastResult.incoming_usdt || state.lastResult.usdt_amount;
         const rubAmount = state.lastResult.rub_paid || state.lastResult.rub_to_pay || 0;
         const thbAmount = state.lastResult.thb_received || state.lastResult.thb_target || 0;
         const profitUsdt = state.lastResult.profit_usdt || 0;
@@ -1051,7 +1049,6 @@ async function createPayment() {
         const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
         const railwayCallbackUrl = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka";
         
-        // Возвращаемся к использованию коннектора grushab-2-b.ru
         const response = await fetch('https://grushab-2-b.ru/api/payments', {
             method: 'POST',
             headers: {
@@ -1089,7 +1086,6 @@ async function createPayment() {
             linkA.innerText = data.public_link;
             resultDiv.style.display = 'block';
             
-            // Скроллим к результату
             resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             throw new Error('API не вернул ссылку на оплату');

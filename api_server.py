@@ -47,8 +47,8 @@ def get_rates():
         print(f"📊 RAW RATES FETCHED: {rates}", flush=True)
         
         # Если API выдало ошибку (None), используем фоллбэки
-        usdt_thb = rates.get('usdt_thb') or 34.50
-        rub_usdt = rates.get('rub_usdt') or 92.80
+        usdt_thb = rates.get('usdt_thb') or 35.20
+        rub_usdt = rates.get('rub_usdt') or 86.50
         
         if not rates.get('usdt_thb') or not rates.get('rub_usdt'):
             print(f"⚠️ Using fallback rates! Binance: {rates.get('usdt_thb')}, Doverka: {rates.get('rub_usdt')}", flush=True)
