@@ -21,9 +21,13 @@ CORS(app)  # Разрешаем CORS для локальной разработ�
 @app.before_request
 def log_request_info():
     """Логировать вообще каждый запрос к серверу для отладки"""
+    print(f"📡 DEBUG: Incoming {request.method} to {request.path}", flush=True)
+    print(f"📡 Headers: {dict(request.headers)}", flush=True)
     if request.method == 'POST':
-        print(f"📡 DEBUG: Received POST to {request.path}")
-        print(f"📡 Body: {request.get_data(as_text=True)}")
+        try:
+            print(f"📡 Body: {request.get_data(as_text=True)}", flush=True)
+        except:
+            print("📡 Body: could not read", flush=True)
 
 # Маршрут для главной страницы
 @app.route('/')
@@ -43,8 +47,8 @@ def get_rates():
         print(f"📊 RAW RATES FETCHED: {rates}", flush=True)
         
         # Если API выдало ошибку (None), используем актуальные фоллбэки (на 20.01.2026)
-        usdt_thb = rates.get('usdt_thb') or 34.50
-        rub_usdt = rates.get('rub_usdt') or 92.80
+        usdt_thb = rates.get('usdt_thb') or 34.85
+        rub_usdt = rates.get('rub_usdt') or 93.50
         
         if not rates.get('usdt_thb') or not rates.get('rub_usdt'):
             print(f"⚠️ Using fallback rates! Binance: {rates.get('usdt_thb')}, Doverka: {rates.get('rub_usdt')}", flush=True)
