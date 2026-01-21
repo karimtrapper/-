@@ -1059,13 +1059,7 @@ async function createPayment() {
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
-                "callback_url": railwayCallbackUrl,
                 "description": description,
-                "metadata": {
-                    "thb_amount": thbAmount,
-                    "profit_usdt": profitUsdt,
-                    "comment": comment
-                },
                 "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
                 "merchant_description": "grusha exchange"
             })
