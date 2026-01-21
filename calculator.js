@@ -1062,17 +1062,12 @@ async function createPayment() {
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
-                // Прописываем все возможные варианты названий для ссылок уведомлений
                 "callback_url": railwayCallbackUrl,
-                "webhook_url": railwayCallbackUrl,
-                "notification_url": railwayCallbackUrl,
-                "result_url": railwayCallbackUrl,
                 "description": description,
                 "metadata": {
                     "thb_amount": thbAmount,
                     "profit_usdt": profitUsdt,
-                    "comment": comment,
-                    "callback_url": railwayCallbackUrl // Дублируем в метаданные
+                    "comment": comment
                 },
                 "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
                 "merchant_description": "grusha exchange"
