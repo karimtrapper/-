@@ -74,9 +74,38 @@ class ExchangeRateProvider:
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
         """
-        Получить курс от Binance (сначала Global, потом TH как фоллбэк)
+        Получить курс от Binance (сначала TH, потом Global как фоллбэк)
         """
-        # 1. Пробуем Binance Global (обычно точнее для USDTTHB)
+        # 1. Пробуем Binance Thailand
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
+                params = {"symbol": symbol}
+                headers = {}
+                if ExchangeRateProvider.BINANCE_API_KEY:
+                    headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
+                
+                async with session.get(url, params=params, headers=headers, timeout=5) as response:
+                    print(f"DEBUG: Binance TH status: {response.status}", flush=True)
+                    if response.status == 200:
+                        data = await response.json()
+                        print(f"DEBUG: Binance TH raw data: {data}", flush=True)
+                        # Проверяем структуру (Binance TH возвращает {'code':0, 'msg':'success', 'data':{...}} или прямой список)
+                        if isinstance(data, dict):
+                            if data.get("code") == 0 and "data" in data:
+                                price_data = data["data"]
+                                if isinstance(price_data, list):
+                                    for item in price_data:
+                                        if item.get("symbol") == symbol:
+                                            return float(item.get("price"))
+                                elif isinstance(price_data, dict):
+                                    return float(price_data.get("price"))
+                            elif "price" in data:
+                                return float(data["price"])
+        except Exception as e:
+            print(f"⚠️ Binance TH error: {e}")
+
+        # 2. Фоллбэк на Binance Global
         try:
             async with aiohttp.ClientSession() as session:
                 url = "https://api.binance.com/api/v3/ticker/price"
@@ -84,24 +113,10 @@ class ExchangeRateProvider:
                 async with session.get(url, params=params, timeout=5) as response:
                     if response.status == 200:
                         data = await response.json()
-                        rate = float(data['price'])
-                        print(f"DEBUG: Binance Global rate: {rate}", flush=True)
-                        return rate
+                        print(f"DEBUG: Binance Global rate: {data.get('price')}")
+                        return float(data['price'])
         except Exception as e:
-            print(f"❌ Binance Global error: {e}", flush=True)
-
-        # 2. Фоллбэк на Binance Thailand
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
-                params = {"symbol": symbol}
-                async with session.get(url, params=params, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        if isinstance(data, dict) and "price" in data:
-                            return float(data["price"])
-        except Exception as e:
-            print(f"⚠️ Binance TH error: {e}", flush=True)
+            print(f"❌ Binance Global error: {e}")
             
         return None
     
