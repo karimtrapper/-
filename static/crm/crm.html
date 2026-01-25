@@ -2505,7 +2505,14 @@
                 status: 'pending'
             };
             
+            // #region agent log
+            console.log('[DEBUG] Form client_name input value:', this.client_name?.value);
+            // #endregion
+            
             formData.forEach((value, key) => {
+                // #region agent log
+                if (key === 'client_name') console.log('[DEBUG] FormData client_name:', value);
+                // #endregion
                 if (value) {
                     if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt', 
                          'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt', 
@@ -2521,6 +2528,10 @@
                     }
                 }
             });
+            
+            // #region agent log
+            console.log('[DEBUG] Final data.client_name:', data.client_name);
+            // #endregion
             
             try {
                 // Проверяем режим редактирования
