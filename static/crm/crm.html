@@ -1455,7 +1455,7 @@
                 
                 if (data.success) {
                     document.getElementById('dealsTable').innerHTML = data.deals.map(deal => {
-                        const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed;
+                        const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                         return `
                         <tr>
                             <td>#${deal.id}</td>
@@ -1501,7 +1501,7 @@
                 
                 if (data.success) {
                     const deal = data.deal;
-                    const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed;
+                    const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                     const isDoverka = deal.payin_method === 'spp_doverka';
                     const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed';
                     
