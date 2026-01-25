@@ -394,7 +394,11 @@ def calculator_index():
 @app.route('/crm')
 def crm_index():
     """CRM страница"""
-    return send_from_directory('static/crm', 'crm.html')
+    response = send_from_directory('static/crm', 'crm.html')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # ==================== CALCULATOR API ====================
 
