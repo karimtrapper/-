@@ -489,7 +489,24 @@ def create_deal():
     session = get_session()
     try:
         data = request.get_json()
+        
+        # Парсим дату если передана
+        created_at = None
+        if data.get('created_at'):
+            try:
+                # Поддерживаем разные форматы даты
+                date_str = data['created_at']
+                if 'T' in date_str:
+                    created_at = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                else:
+                    created_at = datetime.strptime(date_str, '%Y-%m-%d')
+            except:
+                created_at = datetime.now()
+        else:
+            created_at = datetime.now()
+        
         deal = Deal(
+            created_at=created_at,
             manager_name=data.get('manager_name'),
             deal_type=DealType(data.get('deal_type', 'pay_in')),
             status=DealStatus(data.get('status', 'pending')),
@@ -538,6 +555,17 @@ def update_deal(deal_id):
         
         data = request.get_json()
         old_status = deal.status
+        
+        # Обновляем дату если передана
+        if data.get('created_at'):
+            try:
+                date_str = data['created_at']
+                if 'T' in date_str:
+                    deal.created_at = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                else:
+                    deal.created_at = datetime.strptime(date_str, '%Y-%m-%d')
+            except:
+                pass
         
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
