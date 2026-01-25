@@ -751,7 +751,29 @@ def add_wallet():
         )
         session.add(wallet)
         session.commit()
-        return jsonify({'success': True, 'wallet': wallet.to_dict()})
+        
+        # Frontend ожидает usdt_balance и trx_balance
+        wallet_data = wallet.to_dict()
+        wallet_data['usdt_balance'] = 0
+        wallet_data['trx_balance'] = 0
+        
+        # Попробуем получить реальный баланс
+        try:
+            balance_url = f'https://apilist.tronscanapi.com/api/account?address={address}'
+            balance_resp = requests.get(balance_url, timeout=5)
+            if balance_resp.status_code == 200:
+                balance_data = balance_resp.json()
+                # TRX баланс
+                wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
+                # USDT баланс (ищем в trc20token_balances)
+                for token in balance_data.get('trc20token_balances', []):
+                    if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
+                        wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
+                        break
+        except:
+            pass
+        
+        return jsonify({'success': True, 'wallet': wallet_data})
     except Exception as e:
         session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
@@ -774,7 +796,162 @@ def delete_wallet(wallet_id):
     finally:
         session.close()
 
-# ==================== TRONSCAN API ====================
+# ==================== TRANSACTIONS API (Frontend compatible) ====================
+
+@app.route('/api/transactions/incoming', methods=['GET'])
+def get_incoming_transactions():
+    """Получить входящие USDT транзакции по всем кошелькам"""
+    session = get_session()
+    try:
+        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        
+        if not wallets:
+            return jsonify({
+                'success': True,
+                'available': [],
+                'used': [],
+                'wallets_checked': []
+            })
+        
+        all_incoming = []
+        wallets_checked = []
+        
+        for wallet in wallets:
+            wallets_checked.append(wallet.address)
+            try:
+                # TronScan API
+                usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                params = {
+                    'relatedAddress': wallet.address,
+                    'contract_address': usdt_contract,
+                    'limit': 50,
+                    'start': 0
+                }
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    for tx in data.get('token_transfers', []):
+                        # Только входящие (to_address == наш кошелёк)
+                        if tx.get('to_address') == wallet.address:
+                            amount = float(tx.get('quant', 0)) / 1_000_000
+                            all_incoming.append({
+                                'tx_hash': tx.get('transaction_id'),
+                                'from_address': tx.get('from_address'),
+                                'to_address': tx.get('to_address'),
+                                'amount_usdt': amount,
+                                'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
+                                'confirmed': tx.get('confirmed', False)
+                            })
+            except Exception as e:
+                print(f"[DEBUG] TronScan error for {wallet.address}: {e}")
+        
+        # Получаем использованные транзакции из БД
+        used_txs = session.query(Transaction).filter(Transaction.deal_id != None).all()
+        used_hashes = {tx.tx_hash for tx in used_txs}
+        
+        # Фильтруем: available = не использованные
+        available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes]
+        used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
+        
+        return jsonify({
+            'success': True,
+            'available': available,
+            'used': used,
+            'wallets_checked': wallets_checked
+        })
+    except Exception as e:
+        print(f"[DEBUG] get_incoming_transactions error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/transactions/outgoing', methods=['GET'])
+def get_outgoing_transactions():
+    """Получить исходящие USDT транзакции по всем кошелькам"""
+    session = get_session()
+    try:
+        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        
+        if not wallets:
+            return jsonify({'success': True, 'available': []})
+        
+        all_outgoing = []
+        
+        for wallet in wallets:
+            try:
+                usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                params = {
+                    'relatedAddress': wallet.address,
+                    'contract_address': usdt_contract,
+                    'limit': 50,
+                    'start': 0
+                }
+                
+                response = requests.get(url, params=params, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
+                    for tx in data.get('token_transfers', []):
+                        # Только исходящие (from_address == наш кошелёк)
+                        if tx.get('from_address') == wallet.address:
+                            amount = float(tx.get('quant', 0)) / 1_000_000
+                            all_outgoing.append({
+                                'tx_hash': tx.get('transaction_id'),
+                                'from_address': tx.get('from_address'),
+                                'to_address': tx.get('to_address'),
+                                'amount_usdt': amount,
+                                'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
+                                'confirmed': tx.get('confirmed', False)
+                            })
+            except Exception as e:
+                print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
+        
+        return jsonify({'success': True, 'available': all_outgoing})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/transactions/verify', methods=['POST'])
+def verify_transaction_post():
+    """Проверить транзакцию по хэшу (POST версия)"""
+    try:
+        data = request.get_json()
+        tx_hash = data.get('tx_hash', '').strip()
+        
+        if not tx_hash:
+            return jsonify({'success': False, 'error': 'Не указан хэш транзакции'}), 400
+        
+        url = f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}'
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            return jsonify({'success': False, 'error': 'Транзакция не найдена'}), 404
+        
+        tx_data = response.json()
+        
+        # Парсим TRC20 transfer
+        trc20_info = tx_data.get('trc20TransferInfo', [])
+        if trc20_info:
+            transfer = trc20_info[0]
+            amount = float(transfer.get('amount_str', 0)) / 1_000_000
+            return jsonify({
+                'success': True,
+                'tx_hash': tx_hash,
+                'from_address': transfer.get('from_address'),
+                'to_address': transfer.get('to_address'),
+                'amount_usdt': amount,
+                'confirmed': tx_data.get('confirmed', False),
+                'timestamp': datetime.fromtimestamp(tx_data.get('timestamp', 0) / 1000).isoformat()
+            })
+        
+        return jsonify({'success': False, 'error': 'Не USDT транзакция'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+# ==================== TRONSCAN API (legacy) ====================
 
 @app.route('/api/tronscan/transactions/<address>', methods=['GET'])
 def get_tronscan_transactions(address):
