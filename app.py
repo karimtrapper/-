@@ -490,19 +490,35 @@ def create_deal():
     try:
         data = request.get_json()
         
+        # #region agent log
+        import json as _json; open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"A,B,E","location":"app.py:create_deal","message":"Incoming data keys and created_at","data":{"all_keys":list(data.keys()) if data else [],"created_at_value":data.get('created_at'),"created_at_type":type(data.get('created_at')).__name__ if data else None},"timestamp":__import__('time').time(),"sessionId":"debug-session"})+'\n')
+        # #endregion
+        
         # Парсим дату если передана
         created_at = None
         if data.get('created_at'):
             try:
                 # Поддерживаем разные форматы даты
                 date_str = data['created_at']
+                # #region agent log
+                open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"B,C","location":"app.py:create_deal:parse","message":"Parsing date","data":{"date_str":date_str,"has_T":'T' in str(date_str)},"timestamp":__import__('time').time(),"sessionId":"debug-session"})+'\n')
+                # #endregion
                 if 'T' in date_str:
                     created_at = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 else:
                     created_at = datetime.strptime(date_str, '%Y-%m-%d')
-            except:
+                # #region agent log
+                open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"C","location":"app.py:create_deal:parsed","message":"Date parsed successfully","data":{"created_at":str(created_at)},"timestamp":__import__('time').time(),"sessionId":"debug-session"})+'\n')
+                # #endregion
+            except Exception as parse_err:
+                # #region agent log
+                open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"C","location":"app.py:create_deal:parse_error","message":"Date parse FAILED","data":{"error":str(parse_err)},"timestamp":__import__('time').time(),"sessionId":"debug-session"})+'\n')
+                # #endregion
                 created_at = datetime.now()
         else:
+            # #region agent log
+            open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log','a').write(_json.dumps({"hypothesisId":"A","location":"app.py:create_deal:no_date","message":"No created_at in request, using now()","data":{},"timestamp":__import__('time').time(),"sessionId":"debug-session"})+'\n')
+            # #endregion
             created_at = datetime.now()
         
         deal = Deal(
