@@ -1040,6 +1040,8 @@ async function createPayment() {
     createBtn.innerText = '⏳ СОЗДАНИЕ...';
 
     try {
+        // Берем сумму из "Поступление" (incoming_usdt), если она есть, иначе usdt_amount
+        const amount = state.lastResult.incoming_usdt || state.lastResult.usdt_amount;
         const rubAmount = state.lastResult.rub_paid || state.lastResult.rub_to_pay || 0;
         const thbAmount = state.lastResult.thb_received || state.lastResult.thb_target || 0;
         const profitUsdt = state.lastResult.profit_usdt || 0;
@@ -1047,8 +1049,7 @@ async function createPayment() {
         
         const orderId = `GR-${Date.now()}`;
         const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
-        const railwayCallbackUrl = "https://proud-renewal-production-e9b8.up.railway.app/api/webhook/doverka";
-        
+
         const response = await fetch('https://grushab-2-b.ru/api/payments', {
             method: 'POST',
             headers: {
@@ -1059,13 +1060,20 @@ async function createPayment() {
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
+                "callback_url": "https://grushab-2-b.ru/api/webhook/doverka",
                 "merchant_id": "grusha",
                 "description": description,
                 "success_url": "",
                 "cancel_url": "",
                 "failure_url": "",
-                "metadata": {},
-                "merchant_image_url": "https://lh3.googleusercontent.com/d/1GFhyK8KZ87PxOQw24aPYcF87C0VWdJja",
+                "metadata": {
+                    "rub_amount": rubAmount,
+                    "thb_amount": thbAmount,
+                    "order_id": orderId,
+                    "profit_usdt": profitUsdt,
+                    "comment": comment
+                },
+                "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
                 "merchant_description": "grusha exchange"
             })
         });
@@ -1085,6 +1093,7 @@ async function createPayment() {
             linkA.innerText = data.public_link;
             resultDiv.style.display = 'block';
             
+            // Скроллим к результату
             resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } else {
             throw new Error('API не вернул ссылку на оплату');

@@ -6,8 +6,45 @@
     <title>Калькулятор обмена - Doverka & Broker</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css?v=10">
+    <style>
+        .top-nav {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 0.75rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        }
+        .top-nav a {
+            color: white;
+            text-decoration: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 1rem;
+            transition: all 0.2s;
+            background: rgba(255,255,255,0.15);
+        }
+        .top-nav a:hover {
+            background: rgba(255,255,255,0.3);
+        }
+        .top-nav a.active {
+            background: white;
+            color: #667eea;
+        }
+    </style>
 </head>
 <body>
+    <!-- Global Navigation -->
+    <nav class="top-nav">
+        <a href="/" class="active">🧮 Калькулятор</a>
+        <a href="/crm">📊 CRM</a>
+    </nav>
+
     <div class="container">
         <header class="header">
             <div class="logo">

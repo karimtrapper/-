@@ -1,2 +1,1 @@
-web: python3 api_server.py
-
+web: gunicorn app:app --bind 0.0.0.0:$PORT
