@@ -1487,17 +1487,8 @@
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
                 
-                // Загружаем входящие транзакции для выбора
-                let incomingTxOptions = '';
-                try {
-                    const txResponse = await fetch(`${API_URL}/api/transactions/incoming`);
-                    const txData = await txResponse.json();
-                    if (txData.success && txData.available) {
-                        incomingTxOptions = txData.available.slice(0, 20).map(tx => 
-                            `<option value="${tx.tx_hash}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
-                        ).join('');
-                    }
-                } catch (e) {}
+                // Транзакции загружаются только при редактировании (в openDealEditor)
+                const incomingTxOptions = '';
                 
                 if (data.success) {
                     const deal = data.deal;
