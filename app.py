@@ -730,7 +730,30 @@ def get_wallets():
     session = get_session()
     try:
         wallets = session.query(Wallet).filter(Wallet.active == True).order_by(Wallet.created_at.desc()).all()
-        return jsonify({'success': True, 'wallets': [w.to_dict() for w in wallets]})
+        wallets_with_balance = []
+        
+        for wallet in wallets:
+            wallet_data = wallet.to_dict()
+            wallet_data['usdt_balance'] = 0
+            wallet_data['trx_balance'] = 0
+            
+            # Получаем баланс с TronScan
+            try:
+                balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
+                balance_resp = requests.get(balance_url, timeout=5)
+                if balance_resp.status_code == 200:
+                    balance_data = balance_resp.json()
+                    wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
+                    for token in balance_data.get('trc20token_balances', []):
+                        if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
+                            wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
+                            break
+            except:
+                pass
+            
+            wallets_with_balance.append(wallet_data)
+        
+        return jsonify({'success': True, 'wallets': wallets_with_balance})
     finally:
         session.close()
 
