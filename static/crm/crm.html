@@ -1524,7 +1524,7 @@
                             <p><strong>Сумма USDT:</strong> $${deal.payin_amount_usdt || '-'}</p>
                         `}
                         ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${deal.payin_partner_name}</p>` : ''}
-                        ${deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <code style="cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;" onclick="copyHash('${deal.payin_tx_hash}')" title="Нажмите чтобы скопировать">${deal.payin_tx_hash.substring(0, 20)}...</code> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : ''}
+                        ${deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : ''}
                         
                         ${isDoverka ? `
                             <div style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
@@ -1534,7 +1534,7 @@
                                         ${deal.doverka_status === 'confirmed' ? '✅ Подтверждено' : deal.doverka_status === 'paid' ? '💰 Выплачено' : '⏳ Ожидает выплаты'}
                                     </span>
                                 </p>
-                                ${deal.doverka_payout_hash ? `<p><strong>Хэш от Доверки:</strong> <code style="cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;" onclick="copyHash('${deal.doverka_payout_hash}')" title="Скопировать">${deal.doverka_payout_hash.substring(0, 20)}...</code></p>` : ''}
+                                ${deal.doverka_payout_hash ? `<p><strong>Хэш от Доверки:</strong> <a href="https://tronscan.org/#/transaction/${deal.doverka_payout_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.doverka_payout_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.doverka_payout_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
                                 
                                 ${dovekraNotConfirmed ? `
                                     <hr style="margin: 0.75rem 0; border-color: #fbbf24;">
@@ -1564,7 +1564,7 @@
                             <p><strong>Сумма THB:</strong> ${formatNumber(deal.payout_amount_thb)} ฿</p>
                             <p><strong>Стоимость USDT:</strong> ${deal.payout_amount_usdt != null ? '$' + deal.payout_amount_usdt.toFixed(2) : '<span style="color: #f59e0b;">Ожидает возмещения</span>'}</p>
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
-                            ${deal.payout_tx_hash ? `<p><strong>Хэш Pay-Out:</strong> <code style="cursor: pointer; background: #fee2e2; padding: 2px 6px; border-radius: 4px;" onclick="copyHash('${deal.payout_tx_hash}')" title="Нажмите чтобы скопировать">${deal.payout_tx_hash.substring(0, 20)}...</code></p>` : ''}
+                            ${deal.payout_tx_hash ? `<p><strong>Хэш Pay-Out:</strong> <a href="https://tronscan.org/#/transaction/${deal.payout_tx_hash}" target="_blank" style="background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #b91c1c;">${deal.payout_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payout_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
                             ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${deal.payout_founder_name}</p>` : ''}
                             ${deal.is_reimbursed ? `<p><strong>Возмещение:</strong> #${deal.reimbursement_id} ✅</p>` : ''}
                         `}
