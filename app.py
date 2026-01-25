@@ -1230,6 +1230,29 @@ def create_reimbursement():
     finally:
         session.close()
 
+@app.route('/api/reimbursements/<int:reimbursement_id>', methods=['DELETE'])
+def delete_reimbursement(reimbursement_id):
+    """Delete a reimbursement"""
+    session = get_session()
+    try:
+        reimbursement = session.query(Reimbursement).filter(Reimbursement.id == reimbursement_id).first()
+        if not reimbursement:
+            return jsonify({'success': False, 'error': 'Возмещение не найдено'}), 404
+        
+        # Unlink deals from this reimbursement
+        deals = session.query(Deal).filter(Deal.reimbursement_id == reimbursement_id).all()
+        for deal in deals:
+            deal.reimbursement_id = None
+        
+        session.delete(reimbursement)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
 # ==================== WEBHOOK CONFIG ====================
 
 @app.route('/api/webhook/config', methods=['GET'])

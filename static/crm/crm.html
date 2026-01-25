@@ -3199,7 +3199,7 @@
                 
                 if (historyData.success && historyData.reimbursements.length > 0) {
                     document.getElementById('reimbursementsList').innerHTML = historyData.reimbursements.map(r => `
-                        <div class="batch-card">
+                        <div class="batch-card" style="position: relative;">
                             <div class="batch-info">
                                 <h4>Возмещение #${r.id} - ${r.founder_name}</h4>
                                 <p>
@@ -3210,6 +3210,7 @@
                             <div class="batch-amount">
                                 <div class="thb" style="color: #667eea;">$${r.amount_usdt.toFixed(2)}</div>
                                 <div class="rate">${r.tx_verified ? '✅ Verified' : '⏳'}</div>
+                                <button class="btn btn-sm btn-danger" style="margin-top: 0.5rem;" onclick="deleteReimbursement(${r.id})">Удалить</button>
                             </div>
                         </div>
                     `).join('');
@@ -3220,6 +3221,21 @@
                 
             } catch (error) {
                 console.error('Error loading reimbursements:', error);
+            }
+        }
+        
+        async function deleteReimbursement(id) {
+            if (!confirm('Удалить это возмещение?')) return;
+            try {
+                const response = await fetch(`${API_URL}/api/reimbursements/${id}`, { method: 'DELETE' });
+                const result = await response.json();
+                if (result.success) {
+                    loadReimbursements();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting reimbursement:', error);
             }
         }
         
