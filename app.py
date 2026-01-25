@@ -525,6 +525,15 @@ def create_deal():
             # #endregion
             created_at = datetime.now()
         
+        # Автоматически создаём клиента если указано имя и такого клиента ещё нет
+        client_name = data.get('client_name')
+        if client_name:
+            existing_client = session.query(Client).filter(Client.name == client_name).first()
+            if not existing_client:
+                new_client = Client(name=client_name)
+                session.add(new_client)
+                session.flush()
+        
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
@@ -623,7 +632,21 @@ def delete_deal(deal_id):
         deal = session.query(Deal).filter(Deal.id == deal_id).first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+        
+        # Запоминаем reimbursement_id до удаления
+        reimbursement_id = deal.reimbursement_id
+        
         session.delete(deal)
+        session.flush()
+        
+        # Удаляем пустые возмещения (без сделок)
+        if reimbursement_id:
+            remaining_deals = session.query(Deal).filter(Deal.reimbursement_id == reimbursement_id).count()
+            if remaining_deals == 0:
+                reimbursement = session.query(Reimbursement).filter(Reimbursement.id == reimbursement_id).first()
+                if reimbursement:
+                    session.delete(reimbursement)
+        
         session.commit()
         return jsonify({'success': True})
     except Exception as e:
