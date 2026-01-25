@@ -1107,6 +1107,101 @@ def get_dashboard():
     finally:
         session.close()
 
+# ==================== REIMBURSEMENTS API ====================
+
+@app.route('/api/reimbursements/pending', methods=['GET'])
+def get_pending_reimbursements():
+    """Get deals awaiting reimbursement, grouped by founder"""
+    session = get_session()
+    try:
+        # Find deals with founder_personal source that haven't been reimbursed
+        deals = session.query(Deal).filter(
+            Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
+            Deal.reimbursement_id == None,
+            Deal.payout_founder_name != None
+        ).order_by(Deal.payout_founder_name, Deal.created_at.desc()).all()
+        
+        # Group by founder
+        by_founder = {}
+        for deal in deals:
+            founder = deal.payout_founder_name
+            if founder not in by_founder:
+                by_founder[founder] = []
+            by_founder[founder].append(deal.to_dict())
+        
+        result = [{'founder_name': k, 'deals': v} for k, v in by_founder.items()]
+        return jsonify({'success': True, 'by_founder': result})
+    finally:
+        session.close()
+
+@app.route('/api/reimbursements', methods=['GET'])
+def get_reimbursements():
+    """Get reimbursement history"""
+    session = get_session()
+    try:
+        reimbursements = session.query(Reimbursement).order_by(Reimbursement.created_at.desc()).all()
+        result = []
+        for r in reimbursements:
+            data = r.to_dict()
+            data['deals_count'] = len(r.deals)
+            result.append(data)
+        return jsonify({'success': True, 'reimbursements': result})
+    finally:
+        session.close()
+
+@app.route('/api/reimbursements', methods=['POST'])
+def create_reimbursement():
+    """Create a reimbursement for founder"""
+    session = get_session()
+    try:
+        data = request.get_json()
+        founder_name = data.get('founder_name')
+        deal_ids = data.get('deal_ids', [])
+        amount_usdt = data.get('amount_usdt')
+        tx_hash = data.get('tx_hash')
+        
+        if not founder_name or not deal_ids or not amount_usdt:
+            return jsonify({'success': False, 'error': 'Missing required fields'}), 400
+        
+        # Create reimbursement
+        reimbursement = Reimbursement(
+            founder_name=founder_name,
+            amount_usdt=amount_usdt,
+            tx_hash=tx_hash
+        )
+        session.add(reimbursement)
+        session.flush()  # Get the ID
+        
+        # Update deals
+        deals = session.query(Deal).filter(Deal.id.in_(deal_ids)).all()
+        total_thb = 0
+        for deal in deals:
+            deal.reimbursement_id = reimbursement.id
+            deal.payout_amount_usdt = amount_usdt * (deal.payout_amount_thb / sum(d.payout_amount_thb for d in deals)) if deal.payout_amount_thb else 0
+            total_thb += deal.payout_amount_thb or 0
+            
+            # Recalculate profit now that we know payout USDT
+            if deal.payin_amount_usdt and deal.payout_amount_usdt:
+                deal.profit_usdt = deal.payin_amount_usdt - deal.payout_amount_usdt
+                deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
+                
+                # Recalculate net profit
+                referrer_payout = deal.referrer_payout_usdt or 0
+                deal.net_profit_usdt = deal.profit_usdt - referrer_payout
+        
+        session.commit()
+        return jsonify({
+            'success': True, 
+            'reimbursement': reimbursement.to_dict(),
+            'deals_updated': len(deals),
+            'total_thb': total_thb
+        })
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
 # ==================== WEBHOOK CONFIG ====================
 
 @app.route('/api/webhook/config', methods=['GET'])
