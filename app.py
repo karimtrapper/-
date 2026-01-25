@@ -239,6 +239,22 @@ class Transaction(Base):
     deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)
     deal = relationship("Deal", back_populates="transactions")
 
+class Wallet(Base):
+    __tablename__ = 'wallets'
+    id = Column(Integer, primary_key=True)
+    address = Column(String(100), unique=True, nullable=False)
+    blockchain = Column(String(20), default='TRON')
+    label = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    active = Column(Boolean, default=True)
+    
+    def to_dict(self):
+        return {
+            'id': self.id, 'address': self.address, 'blockchain': self.blockchain,
+            'label': self.label, 'created_at': self.created_at.isoformat() if self.created_at else None,
+            'active': self.active
+        }
+
 class Deal(Base):
     __tablename__ = 'deals'
     id = Column(Integer, primary_key=True)
@@ -658,6 +674,140 @@ def create_manager():
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
+
+# ==================== CRM API - WALLETS ====================
+
+@app.route('/api/wallets', methods=['GET'])
+def get_wallets():
+    session = get_session()
+    try:
+        wallets = session.query(Wallet).filter(Wallet.active == True).order_by(Wallet.created_at.desc()).all()
+        return jsonify({'success': True, 'wallets': [w.to_dict() for w in wallets]})
+    finally:
+        session.close()
+
+@app.route('/api/wallets', methods=['POST'])
+def add_wallet():
+    session = get_session()
+    try:
+        data = request.get_json()
+        address = data.get('address', '').strip()
+        if not address:
+            return jsonify({'success': False, 'error': 'Адрес обязателен'}), 400
+        
+        # Проверяем что кошелёк не дублируется
+        existing = session.query(Wallet).filter(Wallet.address == address).first()
+        if existing:
+            return jsonify({'success': False, 'error': 'Кошелёк уже добавлен'}), 400
+        
+        wallet = Wallet(
+            address=address,
+            blockchain=data.get('blockchain', 'TRON'),
+            label=data.get('label', '')
+        )
+        session.add(wallet)
+        session.commit()
+        return jsonify({'success': True, 'wallet': wallet.to_dict()})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/wallets/<int:wallet_id>', methods=['DELETE'])
+def delete_wallet(wallet_id):
+    session = get_session()
+    try:
+        wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
+        if not wallet:
+            return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+        session.delete(wallet)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+# ==================== TRONSCAN API ====================
+
+@app.route('/api/tronscan/transactions/<address>', methods=['GET'])
+def get_tronscan_transactions(address):
+    """Получить USDT транзакции с TronScan API"""
+    try:
+        # TronScan API для TRC20 транзакций (USDT)
+        usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+        url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+        params = {
+            'relatedAddress': address,
+            'contract_address': usdt_contract,
+            'limit': 50,
+            'start': 0
+        }
+        
+        response = requests.get(url, params=params, timeout=10)
+        if response.status_code != 200:
+            return jsonify({'success': False, 'error': f'TronScan API error: {response.status_code}'}), 500
+        
+        data = response.json()
+        transactions = []
+        
+        for tx in data.get('token_transfers', []):
+            # Конвертируем количество (USDT имеет 6 decimals)
+            amount = float(tx.get('quant', 0)) / 1_000_000
+            
+            transactions.append({
+                'tx_hash': tx.get('transaction_id'),
+                'from_address': tx.get('from_address'),
+                'to_address': tx.get('to_address'),
+                'amount_usdt': amount,
+                'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
+                'confirmed': tx.get('confirmed', False),
+                'direction': 'in' if tx.get('to_address') == address else 'out'
+            })
+        
+        return jsonify({
+            'success': True,
+            'address': address,
+            'transactions': transactions,
+            'total': len(transactions)
+        })
+    except requests.exceptions.Timeout:
+        return jsonify({'success': False, 'error': 'TronScan API timeout'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/tronscan/verify/<tx_hash>', methods=['GET'])
+def verify_transaction(tx_hash):
+    """Проверить транзакцию по хэшу"""
+    try:
+        url = f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}'
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            return jsonify({'success': False, 'error': 'Транзакция не найдена'}), 404
+        
+        data = response.json()
+        
+        # Парсим TRC20 transfer
+        trc20_info = data.get('trc20TransferInfo', [])
+        if trc20_info:
+            transfer = trc20_info[0]
+            amount = float(transfer.get('amount_str', 0)) / 1_000_000
+            return jsonify({
+                'success': True,
+                'tx_hash': tx_hash,
+                'from_address': transfer.get('from_address'),
+                'to_address': transfer.get('to_address'),
+                'amount_usdt': amount,
+                'confirmed': data.get('confirmed', False),
+                'timestamp': datetime.fromtimestamp(data.get('timestamp', 0) / 1000).isoformat()
+            })
+        
+        return jsonify({'success': False, 'error': 'Не USDT транзакция'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 # ==================== CRM API - CLIENTS ====================
 
