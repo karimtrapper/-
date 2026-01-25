@@ -559,6 +559,11 @@ def create_deal():
         )
         session.add(deal)
         session.commit()
+        
+        # Webhook если сделка создана сразу со статусом completed
+        if deal.status == DealStatus.COMPLETED:
+            send_deal_completed_webhook(deal)
+        
         return jsonify({'success': True, 'deal': deal.to_dict()}), 201
     except Exception as e:
         session.rollback()
