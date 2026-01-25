@@ -541,6 +541,7 @@ def create_deal():
             payout_source=PayOutSource(data['payout_source']) if data.get('payout_source') else None,
             payout_amount_thb=data.get('payout_amount_thb'),
             payout_amount_usdt=data.get('payout_amount_usdt'),
+            payout_tx_hash=data.get('payout_tx_hash'),
             payout_founder_name=data.get('payout_founder_name'),
             referrer_name=data.get('referrer_name'),
             referrer_percent=data.get('referrer_percent'),
@@ -589,7 +590,7 @@ def update_deal(deal_id):
         
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
-                      'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
+                      'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
                       'referrer_percent', 'referrer_payout_usdt', 'notes']:
             if field in data:
                 setattr(deal, field, data[field])
