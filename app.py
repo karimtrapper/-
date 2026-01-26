@@ -1009,8 +1009,8 @@ def get_incoming_transactions():
         
         return jsonify({
             'success': True,
-            'available': available[:200],
-            'used': used[:50],
+            'available': available[:500],
+            'used': used[:100],
             'wallets_checked': wallets_checked
         })
     except Exception as e:
