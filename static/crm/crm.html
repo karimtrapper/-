@@ -3739,10 +3739,11 @@
                     closeAddCardModal();
                     loadBankCards();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    alert('Ошибка при создании карты: ' + (result.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
                 console.error('Error adding card:', error);
+                alert('Ошибка сети или сервера при создании карты');
             }
         });
 
@@ -3799,10 +3800,11 @@
                     // Обновляем select партий
                     loadCashBatchesForSelect();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    alert('Ошибка пополнения: ' + (result.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
                 console.error('Error topping up card:', error);
+                alert('Ошибка сети или сервера при пополнении карты');
             }
         });
 
@@ -3914,21 +3916,6 @@
             }
         }
 
-        async function deleteReimbursement(id) {
-            if (!confirm('Удалить это возмещение?')) return;
-            try {
-                const response = await fetch(`${API_URL}/api/reimbursements/${id}`, { method: 'DELETE' });
-                const result = await response.json();
-                if (result.success) {
-                    loadReimbursements();
-                } else {
-                    alert('Ошибка: ' + result.error);
-                }
-            } catch (error) {
-                console.error('Error deleting reimbursement:', error);
-            }
-        }
-
         async function deleteReimbursement(reimbursementId) {
             if (!confirm(`Удалить возмещение #${reimbursementId}?\n\nСвязанные сделки вернутся в статус "ожидает возмещения".`)) {
                 return;
@@ -3952,6 +3939,7 @@
                 alert('Ошибка сети');
             }
         }
+
 
         function updateReimbursementTotal(founderName) {
             updateReimbursementRate(founderName);

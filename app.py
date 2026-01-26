@@ -1438,7 +1438,146 @@ def get_wallets_summary():
     finally:
         session.close()
 
-# ==================== CRM API - DASHBOARD ====================
+# ==================== BANK CARDS API ====================
+
+@app.route('/api/cards', methods=['GET'])
+def get_cards():
+    session = get_session()
+    try:
+        cards = session.query(BankCard).all()
+        total_remaining = sum(c.balance_thb for c in cards if c.status == CashBatchStatus.ACTIVE)
+        return jsonify({
+            'success': True,
+            'cards': [c.to_dict() for c in cards],
+            'total_remaining_thb': total_remaining
+        })
+    finally:
+        session.close()
+
+@app.route('/api/cards', methods=['POST'])
+def create_card():
+    session = get_session()
+    try:
+        data = request.get_json()
+        card = BankCard(
+            bank_name=data['bank_name'],
+            card_name=data.get('card_name'),
+            holder_name=data.get('holder_name'),
+            balance_thb=0
+        )
+        session.add(card)
+        session.commit()
+        return jsonify({'success': True, 'card': card.to_dict()})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/cards/<int:card_id>', methods=['DELETE'])
+def delete_card(card_id):
+    session = get_session()
+    try:
+        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        if not card:
+            return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
+        
+        # Только если нет пополнений
+        if card.topups:
+            return jsonify({'success': False, 'error': 'Нельзя удалить карту с историей пополнений'}), 400
+            
+        session.delete(card)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/cards/<int:card_id>/topup', methods=['POST'])
+def topup_card(card_id):
+    session = get_session()
+    try:
+        data = request.get_json()
+        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        if not card:
+            return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
+
+        amount_thb = float(data['amount_thb'])
+        source_type = data['source_type'] # 'cash_batch' or 'separate'
+        
+        cost_usdt = 0
+        purchase_rate = 0
+        source_batch_id = None
+        
+        if source_type == 'cash_batch':
+            batch_id = int(data['source_batch_id'])
+            batch = session.query(CashBatch).filter(CashBatch.id == batch_id).first()
+            if not batch or batch.remaining_thb < amount_thb:
+                return jsonify({'success': False, 'error': 'Недостаточно средств в партии'}), 400
+            
+            source_batch_id = batch.id
+            purchase_rate = batch.purchase_rate
+            cost_usdt = amount_thb / purchase_rate
+            
+            # Списываем из партии
+            batch.remaining_thb -= amount_thb
+            if batch.remaining_thb < 0.1:
+                batch.status = CashBatchStatus.COMPLETED
+        else:
+            # Отдельная закупка
+            cost_usdt = float(data['cost_usdt'])
+            purchase_rate = amount_thb / cost_usdt
+            
+        topup = CardTopup(
+            card_id=card.id,
+            amount_thb=amount_thb,
+            cost_usdt=cost_usdt,
+            purchase_rate=purchase_rate,
+            source_type=source_type,
+            source_batch_id=source_batch_id
+        )
+        
+        card.balance_thb += amount_thb
+        session.add(topup)
+        session.commit()
+        
+        return jsonify({'success': True, 'topup': topup.to_dict()})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['DELETE'])
+def delete_card_topup(card_id, topup_id):
+    session = get_session()
+    try:
+        topup = session.query(CardTopup).filter(CardTopup.id == topup_id, CardTopup.card_id == card_id).first()
+        if not topup:
+            return jsonify({'success': False, 'error': 'Пополнение не найдено'}), 404
+            
+        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        
+        returned_to_batch = None
+        if topup.source_type == 'cash_batch' and topup.source_batch_id:
+            batch = session.query(CashBatch).filter(CashBatch.id == topup.source_batch_id).first()
+            if batch:
+                batch.remaining_thb += topup.amount_thb
+                batch.status = CashBatchStatus.ACTIVE
+                returned_to_batch = batch.id
+        
+        card.balance_thb -= topup.amount_thb
+        session.delete(topup)
+        session.commit()
+        
+        return jsonify({'success': True, 'returned_to_batch': returned_to_batch, 'amount_returned': topup.amount_thb})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
 
 @app.route('/api/analytics/dashboard', methods=['GET'])
 def get_dashboard():
