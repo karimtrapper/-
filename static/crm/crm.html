@@ -1575,7 +1575,12 @@
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
                             ${deal.payout_tx_hash ? `<p><strong>Хэш Pay-Out:</strong> <a href="https://tronscan.org/#/transaction/${deal.payout_tx_hash}" target="_blank" style="background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #b91c1c;">${deal.payout_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payout_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
                             ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${deal.payout_founder_name}</p>` : ''}
-                            ${deal.is_reimbursed ? `<p><strong>Возмещение:</strong> #${deal.reimbursement_id} ✅</p>` : ''}
+                            ${deal.reimbursement_id ? `
+                                <div style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
+                                    <strong>Возмещение:</strong> #${deal.reimbursement_id} ✅
+                                    ${deal.reimbursement?.tx_hash ? `<br><strong>Хэш возмещения:</strong> <a href="https://tronscan.org/#/transaction/${deal.reimbursement.tx_hash}" target="_blank" style="font-family: monospace; font-size: 0.8rem; text-decoration: none; color: #065f46;">${deal.reimbursement.tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.reimbursement.tx_hash}')" style="cursor: pointer;">📋</span>` : ''}
+                                </div>
+                            ` : ''}
                         `}
                         
                         <hr style="margin: 1rem 0;">

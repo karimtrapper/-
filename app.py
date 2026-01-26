@@ -481,7 +481,8 @@ def get_deals():
 def get_deal(deal_id):
     session = get_session()
     try:
-        deal = session.query(Deal).filter(Deal.id == deal_id).first()
+        from sqlalchemy.orm import joinedload
+        deal = session.query(Deal).options(joinedload(Deal.reimbursement)).filter(Deal.id == deal_id).first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         return jsonify({'success': True, 'deal': deal.to_dict()})
@@ -761,6 +762,10 @@ def get_wallets():
         wallets = session.query(Wallet).filter(Wallet.active == True).order_by(Wallet.created_at.desc()).all()
         wallets_with_balance = []
         
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
         for wallet in wallets:
             wallet_data = wallet.to_dict()
             wallet_data['usdt_balance'] = 0
@@ -769,7 +774,7 @@ def get_wallets():
             # Получаем баланс с TronScan
             try:
                 balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
-                balance_resp = requests.get(balance_url, timeout=5)
+                balance_resp = requests.get(balance_url, headers=headers, timeout=5)
                 if balance_resp.status_code == 200:
                     balance_data = balance_resp.json()
                     wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
@@ -777,6 +782,16 @@ def get_wallets():
                         if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                             wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                             break
+                else:
+                    # Если ошибка, попробуем альтернативный эндпоинт баланса
+                    alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
+                    alt_resp = requests.get(alt_url, headers=headers, timeout=5)
+                    if alt_resp.status_code == 200:
+                        alt_data = alt_resp.json()
+                        for token in alt_data.get('data', []):
+                            if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
+                                wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
+                                break
             except:
                 pass
             
@@ -859,7 +874,13 @@ def get_incoming_transactions():
     """Получить входящие USDT транзакции по всем кошелькам"""
     session = get_session()
     try:
-        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        # Получаем фильтр по кошельку
+        wallet_filter = request.args.get('wallet')
+        
+        if wallet_filter:
+            wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
+        else:
+            wallets = session.query(Wallet).filter(Wallet.active == True).all()
         
         if not wallets:
             return jsonify({
@@ -875,9 +896,9 @@ def get_incoming_transactions():
         for wallet in wallets:
             wallets_checked.append(wallet.address)
             try:
-                # TronScan API
+                # TronScan API (используем более стабильный эндпоинт)
                 usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                 params = {
                     'relatedAddress': wallet.address,
                     'contract_address': usdt_contract,
@@ -885,11 +906,15 @@ def get_incoming_transactions():
                     'start': 0
                 }
                 
-                response = requests.get(url, params=params, timeout=10)
+                # Добавляем заголовки для уменьшения вероятности блокировки
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                
+                response = requests.get(url, params=params, headers=headers, timeout=10)
                 if response.status_code == 200:
                     data = response.json()
                     for tx in data.get('token_transfers', []):
-                        # Только входящие (to_address == наш кошелёк)
                         if tx.get('to_address') == wallet.address:
                             amount = float(tx.get('quant', 0)) / 1_000_000
                             all_incoming.append({
@@ -900,12 +925,32 @@ def get_incoming_transactions():
                                 'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
                                 'confirmed': tx.get('confirmed', False)
                             })
+                else:
+                    print(f"[DEBUG] TronScan API error {response.status_code} for {wallet.address}")
             except Exception as e:
-                print(f"[DEBUG] TronScan error for {wallet.address}: {e}")
+                print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
         
-        # Получаем использованные транзакции из БД
-        used_txs = session.query(Transaction).filter(Transaction.deal_id != None).all()
-        used_hashes = {tx.tx_hash for tx in used_txs}
+        # Сортируем все транзакции по времени
+        all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
+        
+        # Получаем использованные транзакции из БД (включая доверку и возмещения)
+        used_hashes = set()
+        
+        # 1. Из таблицы Transaction
+        db_txs = session.query(Transaction).filter(Transaction.deal_id != None).all()
+        for tx in db_txs: used_hashes.add(tx.tx_hash)
+        
+        # 2. Из полей payin_tx_hash
+        deals_payin = session.query(Deal.payin_tx_hash).filter(Deal.payin_tx_hash != None).all()
+        for d in deals_payin: used_hashes.add(d[0])
+        
+        # 3. Из полей doverka_payout_hash
+        deals_doverka = session.query(Deal.doverka_payout_hash).filter(Deal.doverka_payout_hash != None).all()
+        for d in deals_doverka: used_hashes.add(d[0])
+        
+        # 4. Из полей tx_hash в Reimbursement
+        reimb_txs = session.query(Reimbursement.tx_hash).filter(Reimbursement.tx_hash != None).all()
+        for r in reimb_txs: used_hashes.add(r[0])
         
         # Фильтруем: available = не использованные
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes]
@@ -913,8 +958,8 @@ def get_incoming_transactions():
         
         return jsonify({
             'success': True,
-            'available': available,
-            'used': used,
+            'available': available[:50],
+            'used': used[:20],
             'wallets_checked': wallets_checked
         })
     except Exception as e:
