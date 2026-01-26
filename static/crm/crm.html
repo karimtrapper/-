@@ -1493,6 +1493,86 @@
         </div>
     </div>
 
+    <!-- Add Card Modal -->
+    <div id="addCardModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddCardModal()">&times;</span>
+            <div class="card-title">Создать новую карту</div>
+            <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Карта создается пустой. После создания
+                пополните ее.</p>
+            <form id="addCardForm">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Банк</label>
+                    <select class="form-control" name="bank_name" required>
+                        <option value="Kasikorn">Kasikorn (KBank)</option>
+                        <option value="Bangkok Bank">Bangkok Bank</option>
+                        <option value="SCB">SCB</option>
+                        <option value="Krungsri">Krungsri</option>
+                        <option value="Другой">Другой</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Название карты</label>
+                    <input type="text" class="form-control" name="card_name" placeholder="Карта 1, Основная и т.д.">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Владелец</label>
+                    <select class="form-control" name="holder_name">
+                        <option value="Андрей">Андрей</option>
+                        <option value="Теодор">Теодор</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Создать карту</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Topup Card Modal -->
+    <div id="topupCardModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTopupCardModal()">&times;</span>
+            <div class="card-title">Пополнение карты</div>
+            <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Пополните из кассы (курс авто) или отдельной
+                закупкой.</p>
+            <form id="topupCardForm">
+                <input type="hidden" name="card_id" id="topupCardFormId">
+                <div class="form-row" style="margin-bottom: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Источник</label>
+                        <select class="form-control" name="source_type" id="topupSourceType">
+                            <option value="cash_batch">Из партии кассы</option>
+                            <option value="separate">Отдельная закупка</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="topupBatchGroup">
+                        <label class="form-label">Партия кассы</label>
+                        <select class="form-control" name="source_batch_id" id="cardSourceBatch">
+                            <option value="">Выберите партию</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row" style="margin-bottom: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Сумма THB</label>
+                        <input type="number" class="form-control" name="amount_thb" id="topupAmountThb" required
+                            placeholder="500000">
+                    </div>
+                    <div class="form-group" id="topupCostGroup" style="display:none;">
+                        <label class="form-label">Стоимость USDT</label>
+                        <input type="number" class="form-control" name="cost_usdt" id="topupCostUsdt"
+                            placeholder="14000" step="0.01">
+                    </div>
+                    <div class="form-group" id="topupAutoInfo">
+                        <label class="form-label">Курс / Стоимость (авто)</label>
+                        <input type="text" class="form-control" id="topupAutoCalc" readonly
+                            placeholder="Выберите партию">
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Пополнить карту</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API_URL = '';  // Same origin
 
@@ -2878,6 +2958,24 @@
             document.getElementById('addWalletModal').classList.remove('active');
         }
 
+        function openAddCardModal() {
+            document.getElementById('addCardModal').classList.add('active');
+        }
+
+        function closeAddCardModal() {
+            document.getElementById('addCardModal').classList.remove('active');
+        }
+
+        function openTopupCardModal(cardId) {
+            document.getElementById('topupCardFormId').value = cardId;
+            document.getElementById('topupCardModal').classList.add('active');
+            loadCashBatchesForSelect();
+        }
+
+        function closeTopupCardModal() {
+            document.getElementById('topupCardModal').classList.remove('active');
+        }
+
         document.getElementById('addWalletFormBalance').onsubmit = async function (e) {
             e.preventDefault();
             const label = document.getElementById('newWalletLabel').value;
@@ -3466,12 +3564,12 @@
 
                     const activeCards = data.cards.filter(c => c.status === 'active');
 
-                    document.getElementById('bankCardsList').innerHTML = activeCards.length > 0
+                    document.getElementById('bankCardsGrid').innerHTML = activeCards.length > 0
                         ? activeCards.map(card => `
-                            <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem;">
+                            <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                                     <div>
-                                        <h4 style="margin-bottom: 0.5rem;">${card.bank_name} - ${card.card_name || 'Без названия'}</h4>
+                                        <h4 style="margin-bottom: 0.5rem; color: #1a1a2e; font-weight: 600;">${card.bank_name} - ${card.card_name || 'Без названия'}</h4>
                                         <p style="color: #666; font-size: 0.9rem;">${card.holder_name || 'Неизвестно'} | ${formatDate(card.created_at)}</p>
                                     </div>
                                     <div style="text-align: right;">
@@ -3482,31 +3580,31 @@
                                 
                                 ${card.topups && card.topups.length > 0 ? `
                                     <div style="margin-top: 1rem; border-top: 1px solid #e5e7eb; padding-top: 0.75rem;">
-                                        <p style="font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem;">Пополнения:</p>
-                                        ${card.topups.map(t => `
-                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem;">
-                                                <div>
-                                                    <span style="font-weight: 500;">${formatNumber(t.amount_thb)} THB</span>
-                                                    <span style="color: #666; font-size: 0.85rem;">
+                                        <p style="font-size: 0.85rem; font-weight: 500; margin-bottom: 0.5rem; color: #4a5568;">Последние пополнения:</p>
+                                        ${card.topups.slice(0, 3).map(t => `
+                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
+                                                <div style="font-size: 0.85rem;">
+                                                    <span style="font-weight: 600; color: #2d3748;">${formatNumber(t.amount_thb)} ฿</span>
+                                                    <span style="color: #718096; margin-left: 0.25rem;">
                                                         ($${t.cost_usdt.toFixed(2)} @ ${t.purchase_rate})
-                                                        ${t.source_type === 'cash_batch' ? `<span style="color: #667eea;">[из кассы #${t.source_batch_id}]</span>` : '<span style="color: #f59e0b;">[отдельно]</span>'}
                                                     </span>
                                                 </div>
-                                                <button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${card.id}, ${t.id})">×</button>
+                                                <button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id})">×</button>
                                             </div>
                                         `).join('')}
                                     </div>
-                                ` : '<p style="font-size: 0.85rem; color: #f59e0b; margin-top: 0.5rem;">Нет пополнений</p>'}
+                                ` : '<p style="font-size: 0.85rem; color: #f59e0b; margin-top: 0.5rem; font-style: italic;">Нет пополнений</p>'}
                                 
-                                <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem;">
+                                <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
                                     <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
                                     ${!card.topups || card.topups.length === 0 ? `
-                                        <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить карту</button>
+                                        <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
                                     ` : ''}
                                 </div>
                             </div>
                         `).join('')
-                        : '<p style="color: #666;">Нет активных карт</p>';
+                        : '<p style="color: #666; padding: 1rem; text-align: center; grid-column: 1/-1;">Нет активных карт. Добавьте первую карту!</p>';
 
                     // Load cards for topup select
                     const topupSelect = document.getElementById('topupCardSelect');
@@ -3638,6 +3736,7 @@
                 if (result.success) {
                     alert('Карта создана! Теперь пополните её.');
                     this.reset();
+                    closeAddCardModal();
                     loadBankCards();
                 } else {
                     alert('Ошибка: ' + result.error);
@@ -3695,6 +3794,7 @@
                 if (result.success) {
                     alert('Карта пополнена!');
                     this.reset();
+                    closeTopupCardModal();
                     loadBankCards();
                     // Обновляем select партий
                     loadCashBatchesForSelect();
