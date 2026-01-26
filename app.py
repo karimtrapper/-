@@ -1063,7 +1063,8 @@ def get_incoming_transactions():
                         'contract_address': usdt_contract,
                         'limit': 50,
                         'start': page * 50,
-                        't': int(time.time()) # Добавляем timestamp для обхода кэша
+                        't': int(time.time()),
+                        'confirm': 'true' # Добавляем параметр подтверждения
                     }
                     
                     # #region agent log
@@ -1145,6 +1146,12 @@ def get_incoming_transactions():
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
         
+        # #region agent log
+        print(f"[DEBUG] get_incoming_transactions: total={len(all_incoming)}, available={len(available)}, used={len(used)}")
+        if wallets:
+            print(f"[DEBUG] First wallet checked: {wallets[0].address}")
+        # #endregion
+
         return jsonify({
             'success': True,
             'available': available[:1000],
@@ -1203,7 +1210,8 @@ def get_outgoing_transactions():
                         'contract_address': usdt_contract,
                         'limit': 50,
                         'start': page * 50,
-                        't': int(time.time())
+                        't': int(time.time()),
+                        'confirm': 'true'
                     }
                     
                     response = requests.get(url, params=params, headers=headers, timeout=10)
