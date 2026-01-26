@@ -745,6 +745,22 @@ def update_deal(deal_id):
 def delete_deal(deal_id):
     session = get_session()
     try:
+        # #region agent log
+        import json, time
+        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:delete_deal',
+                    'message': 'Server received delete request',
+                    'data': {'deal_id': deal_id},
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H2'
+                }) + '\n')
+        except: pass
+        # #endregion
+
         deal = session.query(Deal).filter(Deal.id == deal_id).first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
@@ -752,6 +768,9 @@ def delete_deal(deal_id):
         # Запоминаем reimbursement_id до удаления
         reimbursement_id = deal.reimbursement_id
         
+        # Удаляем связанные операции по кошелькам (Binance списания)
+        session.query(WalletOperation).filter(WalletOperation.deal_id == deal_id).delete()
+
         session.delete(deal)
         session.flush()
         
@@ -764,9 +783,37 @@ def delete_deal(deal_id):
                     session.delete(reimbursement)
         
         session.commit()
+
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:delete_deal',
+                    'message': 'Deal deleted successfully',
+                    'data': {'deal_id': deal_id},
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H2'
+                }) + '\n')
+        except: pass
+        # #endregion
+
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:delete_deal',
+                    'message': 'Server delete failed',
+                    'data': {'error': str(e)},
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H2'
+                }) + '\n')
+        except: pass
+        # #endregion
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         session.close()

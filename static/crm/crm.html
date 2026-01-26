@@ -1970,16 +1970,31 @@
         async function deleteDeal(dealId) {
             if (!confirm('Удалить сделку? Средства вернутся в кассу.')) return;
             
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Attempting to delete deal',data:{dealId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+            // #endregion
+
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, { method: 'DELETE' });
                 const data = await response.json();
+
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Delete response received',data:{dealId,data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+                // #endregion
+
                 if (data.success) {
                     closeModal();
                     loadDeals();
                     loadDashboard();
+                } else {
+                    alert('Ошибка при удалении: ' + (data.error || 'Неизвестная ошибка'));
                 }
             } catch (error) {
                 console.error('Error deleting deal:', error);
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Delete fetch error',data:{dealId,error:error.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+                // #endregion
+                alert('Сетевая ошибка при удалении сделки');
             }
         }
         
