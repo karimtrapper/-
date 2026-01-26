@@ -3006,12 +3006,23 @@
             if (!confirm('Удалить этот кошелек и всю историю его операций?')) return;
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
-                if ((await response.json()).success) {
+                const resData = await response.json();
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteWalletFromBalance',message:'Wallet delete response',data:{walletId, success:resData.success, error:resData.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+                // #endregion
+
+                if (resData.success) {
                     currentActiveWalletId = null;
                     document.getElementById('walletHistorySection').style.display = 'none';
                     loadWalletsSummary();
+                } else {
+                    alert('Ошибка при удалении: ' + (resData.error || 'Неизвестная ошибка'));
                 }
-            } catch (e) { console.error(e); }
+            } catch (e) { 
+                console.error(e);
+                alert('Ошибка сети при удалении');
+            }
         }
 
         async function loadWalletsSummary() {

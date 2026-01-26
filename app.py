@@ -981,11 +981,44 @@ def delete_wallet(wallet_id):
         wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
         if not wallet:
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+        
+        # #region agent log
+        import json, time
+        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:delete_wallet',
+                    'message': 'Attempting to delete wallet',
+                    'data': {'wallet_id': wallet_id, 'address': wallet.address},
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H3'
+                }) + '\n')
+        except: pass
+        # #endregion
+
+        # Отвязываем кошелек от всех сделок перед удалением
+        session.query(Deal).filter(Deal.payout_wallet_id == wallet_id).update({Deal.payout_wallet_id: None})
+        
         session.delete(wallet)
         session.commit()
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
+        # #region agent log
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:delete_wallet',
+                    'message': 'Delete failed',
+                    'data': {'error': str(e)},
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H3'
+                }) + '\n')
+        except: pass
+        # #endregion
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -1069,6 +1102,30 @@ def get_incoming_transactions():
                                 continue
                                 
                             amount = float(tx.get('quant', 0)) / 1_000_000
+                            
+                            # #region agent log
+                            # Логируем сравнение адресов для отладки H1
+                            log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
+                            if amount > 1000: # Логируем только крупные для экономии места
+                                try:
+                                    with open(log_path, 'a') as f:
+                                        f.write(json.dumps({
+                                            'location': 'app.py:get_incoming_transactions',
+                                            'message': 'Comparing addresses',
+                                            'data': {
+                                                'tx_to': tx.get('to_address'),
+                                                'wallet_addr': wallet.address,
+                                                'match': tx.get('to_address') == wallet.address,
+                                                'match_lower': tx.get('to_address', '').lower() == wallet.address.lower(),
+                                                'amount': amount
+                                            },
+                                            'timestamp': int(time.time() * 1000),
+                                            'sessionId': 'debug-session',
+                                            'hypothesisId': 'H1'
+                                        }) + '\n')
+                                except: pass
+                            # #endregion
+
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
@@ -1076,7 +1133,7 @@ def get_incoming_transactions():
                                 'amount_usdt': amount,
                                 'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
                                 'confirmed': tx.get('confirmed', False),
-                                'is_incoming': tx.get('to_address') == wallet.address
+                                'is_incoming': tx.get('to_address', '').lower() == wallet.address.lower()
                             })
                         
                         if reached_start_ts:
@@ -1112,6 +1169,24 @@ def get_incoming_transactions():
         wallet_ops = session.query(WalletOperation.tx_hash).filter(WalletOperation.tx_hash != None).all()
         for op in wallet_ops: used_hashes.add(op[0])
         
+        # #region agent log
+        # Проверяем наличие конкретных хэшей в использованных
+        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
+        target_txs = ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e', '6649b741a63c621360667e4130f60742f5587130089882253896594375c2']
+        try:
+            with open(log_path, 'a') as f:
+                for tx_h in target_txs:
+                    f.write(json.dumps({
+                        'location': 'app.py:get_incoming_transactions:used_hashes',
+                        'message': 'Checking if TX is used',
+                        'data': {'tx_hash': tx_h, 'is_used': tx_h in used_hashes},
+                        'timestamp': int(time.time() * 1000),
+                        'sessionId': 'debug-session',
+                        'hypothesisId': 'H2'
+                    }) + '\n')
+        except: pass
+        # #endregion
+
         # Фильтруем: available = входящие и не использованные
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
