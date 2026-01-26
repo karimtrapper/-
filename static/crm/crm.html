@@ -1228,6 +1228,14 @@
                         </select>
                     </div>
                     <div class="form-group">
+                        <label class="form-label">С даты</label>
+                        <input type="date" id="txStartDate" class="form-control" onchange="loadTransactions()">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">По дату</label>
+                        <input type="date" id="txEndDate" class="form-control" onchange="loadTransactions()">
+                    </div>
+                    <div class="form-group">
                         <button class="btn btn-secondary" onclick="loadTransactions()">Обновить</button>
                     </div>
                 </div>
@@ -3564,9 +3572,13 @@
                 
                 // Загружаем транзакции с фильтром
                 const selectedWallet = walletFilter?.value || '';
-                const txUrl = selectedWallet 
-                    ? `${API_URL}/api/transactions/incoming?wallet=${encodeURIComponent(selectedWallet)}`
-                    : `${API_URL}/api/transactions/incoming`;
+                const startDate = document.getElementById('txStartDate')?.value || '';
+                const endDate = document.getElementById('txEndDate')?.value || '';
+                
+                let txUrl = `${API_URL}/api/transactions/incoming?`;
+                if (selectedWallet) txUrl += `wallet=${encodeURIComponent(selectedWallet)}&`;
+                if (startDate) txUrl += `start_date=${startDate}&`;
+                if (endDate) txUrl += `end_date=${endDate}&`;
 
                 const response = await fetch(txUrl);
                 const data = await response.json();
@@ -3859,7 +3871,15 @@
         }
         
         // Загружаем конфиг webhook при загрузке страницы
-        document.addEventListener('DOMContentLoaded', loadWebhookConfig);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadWebhookConfig();
+            
+            // Устанавливаем дефолтную дату начала для транзакций (1 декабря 2025)
+            const startDateInput = document.getElementById('txStartDate');
+            if (startDateInput) {
+                startDateInput.value = '2025-12-01';
+            }
+        });
         
         // ==================== Helpers ====================
         function formatNumber(num) {

@@ -893,8 +893,22 @@ def get_incoming_transactions():
     """Получить входящие USDT транзакции по всем кошелькам"""
     session = get_session()
     try:
-        # Получаем фильтр по кошельку
+        # Получаем фильтры
         wallet_filter = request.args.get('wallet')
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        start_ts = None
+        if start_date_str:
+            try:
+                start_ts = int(datetime.strptime(start_date_str, '%Y-%m-%d').timestamp() * 1000)
+            except: pass
+            
+        end_ts = None
+        if end_date_str:
+            try:
+                end_ts = int((datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1)).timestamp() * 1000)
+            except: pass
         
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
@@ -912,40 +926,58 @@ def get_incoming_transactions():
         all_incoming = []
         wallets_checked = []
         
+        usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
         for wallet in wallets:
             wallets_checked.append(wallet.address)
             try:
-                # TronScan API (используем более стабильный эндпоинт)
-                usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
-                url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                params = {
-                    'relatedAddress': wallet.address,
-                    'contract_address': usdt_contract,
-                    'limit': 50,
-                    'start': 0
-                }
-                
-                # Добавляем заголовки для уменьшения вероятности блокировки
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-                
-                response = requests.get(url, params=params, headers=headers, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    for tx in data.get('token_transfers', []):
-                        if tx.get('to_address') == wallet.address:
-                            amount = float(tx.get('quant', 0)) / 1_000_000
-                            all_incoming.append({
-                                'tx_hash': tx.get('transaction_id'),
-                                'from_address': tx.get('from_address'),
-                                'to_address': tx.get('to_address'),
-                                'amount_usdt': amount,
-                                'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
-                                'confirmed': tx.get('confirmed', False)
-                            })
-                else:
-                    print(f"[DEBUG] TronScan API error {response.status_code} for {wallet.address}")
+                # Пагинация для загрузки большего количества транзакций
+                for page in range(5):  # До 5 страниц (250 транзакций на кошелек)
+                    url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                    params = {
+                        'relatedAddress': wallet.address,
+                        'contract_address': usdt_contract,
+                        'limit': 50,
+                        'start': page * 50
+                    }
+                    
+                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        transfers = data.get('token_transfers', [])
+                        if not transfers:
+                            break
+                            
+                        reached_start_ts = False
+                        for tx in transfers:
+                            tx_ts = tx.get('block_ts', 0)
+                            
+                            # Фильтр по дате (если задан)
+                            if start_ts and tx_ts < start_ts:
+                                reached_start_ts = True
+                                continue
+                            if end_ts and tx_ts > end_ts:
+                                continue
+                                
+                            if tx.get('to_address') == wallet.address:
+                                amount = float(tx.get('quant', 0)) / 1_000_000
+                                all_incoming.append({
+                                    'tx_hash': tx.get('transaction_id'),
+                                    'from_address': tx.get('from_address'),
+                                    'to_address': tx.get('to_address'),
+                                    'amount_usdt': amount,
+                                    'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
+                                    'confirmed': tx.get('confirmed', False)
+                                })
+                        
+                        if reached_start_ts or not transfers:
+                            break
+                    else:
+                        print(f"[DEBUG] TronScan API error {response.status_code} for {wallet.address}")
+                        break
             except Exception as e:
                 print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
         
@@ -977,8 +1009,8 @@ def get_incoming_transactions():
         
         return jsonify({
             'success': True,
-            'available': available[:50],
-            'used': used[:20],
+            'available': available[:200],
+            'used': used[:50],
             'wallets_checked': wallets_checked
         })
     except Exception as e:
