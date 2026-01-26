@@ -2637,6 +2637,9 @@
                     if (binanceTxHash) data.payout_tx_hash = binanceTxHash;
                 }
                 
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:2640',message:'Sending deal update',data:{url, method, payout_source: data.payout_source},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'3'})}).catch(()=>{});
+                // #endregion
                 const response = await fetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },

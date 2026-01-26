@@ -599,6 +599,13 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        
+        # #region agent log
+        import json
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({'location': 'app.py:update_deal', 'message': 'Received update request', 'data': {'deal_id': deal_id, 'received_payout_source': data.get('payout_source'), 'current_payout_source': deal.payout_source.value if deal.payout_source else None}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+        # #endregion
+
         old_status = deal.status
         
         # Обновляем дату если передана
@@ -617,6 +624,11 @@ def update_deal(deal_id):
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
                       'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id']:
             if field in data:
+                # #region agent log
+                if field == 'payout_source':
+                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({'location': 'app.py:update_deal:loop', 'message': 'Setting field', 'data': {'field': field, 'value': data[field]}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+                # #endregion
                 setattr(deal, field, data[field])
         
         # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
@@ -629,6 +641,11 @@ def update_deal(deal_id):
         if 'client_id' in data:
             deal.client_id = data['client_id']
         
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({'location': 'app.py:update_deal:post-loop', 'message': 'After update loop', 'data': {'payout_source_after': deal.payout_source.value if deal.payout_source else None}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+        # #endregion
+
         if 'status' in data:
             deal.status = DealStatus(data['status'])
         
