@@ -2968,6 +2968,10 @@
             const address = document.getElementById('newWalletAddress').value;
             const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
 
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:addWalletFormBalance.onsubmit',message:'Adding wallet from balance tab',data:{label,address,initialBalance},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
+
             try {
                 // 1. Создаем кошелек (только для баланса)
                 const response = await fetch(`${API_URL}/api/wallets`, {

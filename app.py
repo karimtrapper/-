@@ -1117,6 +1117,21 @@ def get_incoming_transactions():
         
         for wallet in wallets:
             wallets_checked.append(wallet.address)
+            
+            # #region agent log
+            try:
+                with open(log_path, 'a') as f:
+                    f.write(json.dumps({
+                        'location': 'app.py:get_incoming_transactions',
+                        'message': 'Checking wallet for transactions',
+                        'data': {'address': wallet.address, 'is_monitored': wallet.is_monitored},
+                        'timestamp': int(time.time() * 1000),
+                        'sessionId': 'debug-session',
+                        'hypothesisId': 'H1'
+                    }) + '\n')
+            except: pass
+            # #endregion
+
             try:
                 # Пагинация для загрузки большего количества транзакций
                 for page in range(10):  # 500 транзакций
@@ -1615,6 +1630,28 @@ def get_dashboard():
             Deal.reimbursement_id == None
         ).all()
         
+        # #region agent log
+        import json, time
+        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
+        try:
+            with open(log_path, 'a') as f:
+                f.write(json.dumps({
+                    'location': 'app.py:get_dashboard',
+                    'message': 'Calculating dashboard profit',
+                    'data': {
+                        'today_deals_count': len(today_deals),
+                        'deals_profits': [
+                            {'id': d.id, 'net': d.net_profit_usdt, 'gross': d.profit_usdt} 
+                            for d in today_deals
+                        ]
+                    },
+                    'timestamp': int(time.time() * 1000),
+                    'sessionId': 'debug-session',
+                    'hypothesisId': 'H3'
+                }) + '\n')
+        except: pass
+        # #endregion
+
         return jsonify({
             'success': True,
             'dashboard': {
