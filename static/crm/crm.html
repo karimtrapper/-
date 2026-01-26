@@ -2981,6 +2981,7 @@
         }
 
         let currentActiveWalletId = null;
+        let currentActiveWalletAddress = null;
 
         function switchBalanceSubTab(tabName) {
             document.querySelectorAll('.balance-subtab-content').forEach(t => t.style.display = 'none');
@@ -3040,6 +3041,7 @@
 
         async function showWalletHistory(walletId, address, label) {
             currentActiveWalletId = walletId;
+            currentActiveWalletAddress = address;
             document.getElementById('walletHistorySection').style.display = 'block';
             document.getElementById('currentWalletName').textContent = `История: ${label || address.substring(0,10)}`;
             loadWalletsSummary(); // Чтобы обновить рамку выбора
@@ -3085,7 +3087,11 @@
                 const select = document.getElementById('topupTxSelect');
                 select.innerHTML = '<option value="">Загрузка...</option>';
                 try {
-                    const response = await fetch(`${API_URL}/api/transactions/incoming`);
+                    let url = `${API_URL}/api/transactions/incoming`;
+                    if (currentActiveWalletAddress) {
+                        url += `?wallet=${encodeURIComponent(currentActiveWalletAddress)}`;
+                    }
+                    const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {
                         select.innerHTML = '<option value="">-- Выберите транзакцию --</option>' + 
