@@ -1396,6 +1396,51 @@ def doverka_webhook():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/doverka/confirm/<int:deal_id>', methods=['POST'])
+def confirm_doverka(deal_id):
+    """Подтвердить получение выплаты от Доверки вручную"""
+    import json
+    from datetime import datetime
+    session = get_session()
+    try:
+        data = request.get_json()
+        payout_hash = data.get('payout_hash')
+        
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Confirming doverka', 'data': {'deal_id': deal_id, 'payout_hash': payout_hash}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+        # #endregion
+
+        deal = session.query(Deal).filter(Deal.id == deal_id).first()
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+            
+        deal.doverka_status = DoverkaStatus.CONFIRMED
+        deal.doverka_payout_hash = payout_hash
+        deal.doverka_confirmed_at = datetime.utcnow()
+        
+        # Если сделка была в ожидании, переводим в завершенные
+        if deal.status == DealStatus.PENDING:
+            deal.status = DealStatus.COMPLETED
+            
+        session.commit()
+        
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Doverka confirmed successfully', 'data': {'deal_id': deal_id}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+        # #endregion
+
+        return jsonify({'success': True, 'deal': deal.to_dict()})
+    except Exception as e:
+        session.rollback()
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Error confirming doverka', 'data': {'error': str(e)}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
+        # #endregion
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
 # ==================== HEALTH CHECK ====================
 
 @app.route('/api/health', methods=['GET'])

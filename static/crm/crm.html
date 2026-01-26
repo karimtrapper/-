@@ -1509,19 +1509,40 @@
         }
         
         async function showDealDetails(dealId) {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:1512',message:'Entering showDealDetails',data:{dealId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'1'})}).catch(()=>{});
+            // #endregion
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
                 
-                // Транзакции загружаются только при редактировании (в openDealEditor)
-                const incomingTxOptions = '';
+                let incomingTxOptions = '';
+                if (data.success && data.deal.payin_method === 'spp_doverka') {
+                    try {
+                        const txResponse = await fetch(`${API_URL}/api/transactions/incoming`);
+                        const txData = await txResponse.json();
+                        if (txData.success && txData.available) {
+                            incomingTxOptions = txData.available.slice(0, 50).map(tx => 
+                                `<option value="${tx.tx_hash}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
+                            ).join('');
+                        }
+                    } catch (e) {
+                        console.error('Error loading tx for modal:', e);
+                    }
+                }
                 
                 if (data.success) {
                     const deal = data.deal;
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:1522',message:'Deal data loaded',data:{dealId, isDoverka: deal.payin_method === 'spp_doverka', doverka_status: deal.doverka_status},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'3'})}).catch(()=>{});
+                    // #endregion
                     const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                     const isDoverka = deal.payin_method === 'spp_doverka';
                     const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed';
                     
+                    // #region agent log
+                    fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:1529',message:'Rendering deal details',data:{incomingTxOptionsEmpty: incomingTxOptions === '', isDoverka, dovekraNotConfirmed},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'1'})}).catch(()=>{});
+                    // #endregion
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
                             <div><strong>ID:</strong> #${deal.id}</div>
@@ -1638,12 +1659,19 @@
             const hashInput = document.getElementById('doverkaModalTxHash');
             const payoutHash = hashInput ? hashInput.value : '';
             
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:1642',message:'Confirming doverka from modal',data:{dealId, payoutHash},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'1'})}).catch(()=>{});
+            // #endregion
             try {
                 const response = await fetch(`${API_URL}/api/doverka/confirm/${dealId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ payout_hash: payoutHash })
                 });
+                
+                // #region agent log
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:1652',message:'Doverka confirm response received',data:{dealId, status: response.status, ok: response.ok},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'1'})}).catch(()=>{});
+                // #endregion
                 const data = await response.json();
                 
                 if (data.success) {
