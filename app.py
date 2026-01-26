@@ -395,6 +395,22 @@ class Deal(Base):
 
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
+
+# Миграция: добавляем payout_wallet_id если его нет
+try:
+    with engine.connect() as conn:
+        from sqlalchemy import text
+        # Для PostgreSQL
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_wallet_id INTEGER REFERENCES wallets(id)"))
+        # Для SQLite
+        else:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
+        conn.commit()
+    print("✅ Database migration successful")
+except Exception as e:
+    print(f"ℹ️ Migration info: {e}")
+
 print("✅ Database initialized")
 
 # ==================== WEBHOOK CONFIG ====================
