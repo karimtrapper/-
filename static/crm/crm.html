@@ -983,166 +983,6 @@
             </div>
         </section>
         
-        <!-- Cash Section -->
-        <section id="cash" class="section">
-            <div class="stats-grid">
-                <div class="stat-card success">
-                    <div class="stat-value" id="totalCashThb">0</div>
-                    <div class="stat-label">Баланс THB</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="totalCashUsdt">0</div>
-                    <div class="stat-label">Эквивалент USDT</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value" id="avgCashRate">0</div>
-                    <div class="stat-label">Средний курс</div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">Добавить партию наличных</div>
-                <form id="addCashBatchForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Сумма THB</label>
-                            <input type="number" class="form-control" name="amount_thb" required placeholder="1000000">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Стоимость USDT</label>
-                            <input type="number" class="form-control" name="cost_usdt" required placeholder="28500" step="0.01">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Курс (авто)</label>
-                            <input type="text" class="form-control" id="newBatchRate" readonly placeholder="THB/USDT">
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Способ закупки</label>
-                            <select class="form-control" name="purchase_method">
-                                <option value="Binance P2P">Binance P2P</option>
-                                <option value="OTC партнер">OTC партнер</option>
-                                <option value="Другое">Другое</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Фаундер</label>
-                            <select class="form-control" name="founder_name">
-                                <option value="Андрей">Андрей</option>
-                                <option value="Теодор">Теодор</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Хэш транзакции</label>
-                            <input type="text" class="form-control" name="tx_hash" placeholder="TxHash...">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-success">Добавить партию</button>
-                </form>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">Партии кассы (FIFO - сначала старые)</div>
-                <div id="cashBatchesList">
-                    <!-- Batches will be loaded here -->
-                </div>
-            </div>
-        </section>
-        
-        <!-- Cards Section -->
-        <section id="cards" class="section">
-            <div class="stats-grid">
-                <div class="stat-card success">
-                    <div class="stat-value" id="totalCardsThb">0</div>
-                    <div class="stat-label">Баланс карт THB</div>
-                </div>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">Создать новую карту</div>
-                <p style="color: #666; margin-bottom: 1rem;">Карта создается пустой. После создания пополните ее через форму ниже.</p>
-                
-                <form id="addCardForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Банк</label>
-                            <select class="form-control" name="bank_name" required>
-                                <option value="Kasikorn">Kasikorn (KBank)</option>
-                                <option value="Bangkok Bank">Bangkok Bank</option>
-                                <option value="SCB">SCB</option>
-                                <option value="Krungsri">Krungsri</option>
-                                <option value="Другой">Другой</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Название карты</label>
-                            <input type="text" class="form-control" name="card_name" placeholder="Карта 1, Основная и т.д.">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Владелец</label>
-                            <select class="form-control" name="holder_name">
-                                <option value="Андрей">Андрей</option>
-                                <option value="Теодор">Теодор</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-success">Создать карту</button>
-                </form>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">Пополнить карту</div>
-                <p style="color: #666; margin-bottom: 1rem;">Можно пополнить из партии кассы (курс авто) или отдельной закупкой.</p>
-                
-                <form id="topupCardForm">
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Карта</label>
-                            <select class="form-control" name="card_id" id="topupCardSelect" required>
-                                <option value="">Выберите карту</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Источник</label>
-                            <select class="form-control" name="source_type" id="topupSourceType">
-                                <option value="cash_batch">Из партии кассы</option>
-                                <option value="separate">Отдельная закупка</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="topupBatchGroup">
-                            <label class="form-label">Партия кассы</label>
-                            <select class="form-control" name="source_batch_id" id="cardSourceBatch">
-                                <option value="">Выберите партию</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Сумма THB</label>
-                            <input type="number" class="form-control" name="amount_thb" id="topupAmountThb" required placeholder="500000">
-                        </div>
-                        <div class="form-group" id="topupCostGroup" style="display:none;">
-                            <label class="form-label">Стоимость USDT</label>
-                            <input type="number" class="form-control" name="cost_usdt" id="topupCostUsdt" placeholder="14000" step="0.01">
-                        </div>
-                        <div class="form-group" id="topupAutoInfo">
-                            <label class="form-label">Курс / Стоимость (авто)</label>
-                            <input type="text" class="form-control" id="topupAutoCalc" readonly placeholder="Выберите партию">
-                        </div>
-                    </div>
-                    <button type="submit" class="btn btn-primary">Пополнить карту</button>
-                </form>
-            </div>
-            
-            <div class="card">
-                <div class="card-title">Карты банков</div>
-                <div id="bankCardsList">
-                    <!-- Cards will be loaded here -->
-                </div>
-            </div>
-        </section>
-        
         <!-- Doverka Section -->
         <section id="doverka" class="section">
             <div class="card">
@@ -1263,6 +1103,7 @@
                                     <select class="form-control" name="founder_name">
                                         <option value="Андрей">Андрей</option>
                                         <option value="Тимур">Тимур</option>
+                                        <option value="Теодор">Теодор</option>
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -2890,7 +2731,7 @@
                 // #region agent log
                 if (key === 'client_name') console.log('[DEBUG] FormData client_name:', value);
                 // #endregion
-                if (value) {
+                if (value !== "") {
                     if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt', 
                          'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt', 
                          'profit_percent', 'exchange_rate', 'referrer_payout_usdt', 
@@ -2904,12 +2745,11 @@
                     } else {
                         data[key] = value;
                     }
-                } else if (key === 'referrer_name') {
-                    // Если имя партнера пустое - явно зануляем
-                    data[key] = null;
-                    data['referrer_percent'] = null;
-                    data['referrer_fixed_usdt'] = null;
-                    data['referrer_payout_usdt'] = null;
+                } else {
+                    // Если поле пустое, явно передаем null для опциональных полей
+                    if (['referrer_name', 'referrer_percent', 'referrer_fixed_usdt', 'notes', 'client_name', 'payin_tx_hash', 'payout_tx_hash'].includes(key)) {
+                        data[key] = null;
+                    }
                 }
             });
             
@@ -4653,8 +4493,45 @@
             });
         }
         
+        // ==================== URL Parameters Population ====================
+        function populateFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            const batchForm = document.getElementById('addCashBatchForm');
+            
+            if (batchForm) {
+                let hasBatchParams = false;
+                const fields = ['amount_thb', 'cost_usdt', 'purchase_method', 'founder_name', 'tx_hash'];
+                
+                fields.forEach(field => {
+                    const val = params.get(field);
+                    if (val !== null) {
+                        const input = batchForm.querySelector(`[name="${field}"]`);
+                        if (input) {
+                            input.value = val;
+                            hasBatchParams = true;
+                        }
+                    }
+                });
+                
+                if (hasBatchParams) {
+                    // Switch to Balance tab
+                    const balanceTab = document.querySelector('.nav-tab[data-section="balance"]');
+                    if (balanceTab) balanceTab.click();
+                    
+                    // Switch to Cash sub-tab
+                    switchBalanceSubTab('cash');
+                    
+                    // Recalculate rate
+                    calcNewBatchRate();
+                }
+            }
+        }
+        
         // Initial load
-        loadDashboard();
+        window.addEventListener('DOMContentLoaded', () => {
+            loadDashboard(); // Default view
+            populateFromUrl();
+        });
     </script>
 </body>
 </html>

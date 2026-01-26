@@ -11,6 +11,7 @@ import requests
 import threading
 import asyncio
 import time
+import json
 
 # ==================== FLASK APP ====================
 app = Flask(__name__, static_folder='static')
@@ -745,21 +746,6 @@ def update_deal(deal_id):
 def delete_deal(deal_id):
     session = get_session()
     try:
-        # #region agent log
-        import json, time
-        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:delete_deal',
-                    'message': 'Server received delete request',
-                    'data': {'deal_id': deal_id},
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H2'
-                }) + '\n')
-        except: pass
-        # #endregion
 
         deal = session.query(Deal).filter(Deal.id == deal_id).first()
         if not deal:
@@ -784,36 +770,11 @@ def delete_deal(deal_id):
         
         session.commit()
 
-        # #region agent log
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:delete_deal',
-                    'message': 'Deal deleted successfully',
-                    'data': {'deal_id': deal_id},
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H2'
-                }) + '\n')
-        except: pass
-        # #endregion
 
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        # #region agent log
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:delete_deal',
-                    'message': 'Server delete failed',
-                    'data': {'error': str(e)},
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H2'
-                }) + '\n')
-        except: pass
-        # #endregion
+        # Error logged internally
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         session.close()
@@ -1029,21 +990,6 @@ def delete_wallet(wallet_id):
         if not wallet:
             return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
         
-        # #region agent log
-        import json, time
-        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:delete_wallet',
-                    'message': 'Attempting to delete wallet',
-                    'data': {'wallet_id': wallet_id, 'address': wallet.address},
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H3'
-                }) + '\n')
-        except: pass
-        # #endregion
 
         # Отвязываем кошелек от всех сделок перед удалением
         session.query(Deal).filter(Deal.payout_wallet_id == wallet_id).update({Deal.payout_wallet_id: None})
@@ -1053,19 +999,6 @@ def delete_wallet(wallet_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        # #region agent log
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:delete_wallet',
-                    'message': 'Delete failed',
-                    'data': {'error': str(e)},
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H3'
-                }) + '\n')
-        except: pass
-        # #endregion
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
@@ -1118,19 +1051,6 @@ def get_incoming_transactions():
         for wallet in wallets:
             wallets_checked.append(wallet.address)
             
-            # #region agent log
-            try:
-                with open(log_path, 'a') as f:
-                    f.write(json.dumps({
-                        'location': 'app.py:get_incoming_transactions',
-                        'message': 'Checking wallet for transactions',
-                        'data': {'address': wallet.address, 'is_monitored': wallet.is_monitored},
-                        'timestamp': int(time.time() * 1000),
-                        'sessionId': 'debug-session',
-                        'hypothesisId': 'H1'
-                    }) + '\n')
-            except: pass
-            # #endregion
 
             try:
                 # Пагинация для загрузки большего количества транзакций
@@ -1165,28 +1085,6 @@ def get_incoming_transactions():
                                 
                             amount = float(tx.get('quant', 0)) / 1_000_000
                             
-                            # #region agent log
-                            # Логируем сравнение адресов для отладки H1
-                            log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
-                            if amount > 1000: # Логируем только крупные для экономии места
-                                try:
-                                    with open(log_path, 'a') as f:
-                                        f.write(json.dumps({
-                                            'location': 'app.py:get_incoming_transactions',
-                                            'message': 'Comparing addresses',
-                                            'data': {
-                                                'tx_to': tx.get('to_address'),
-                                                'wallet_addr': wallet.address,
-                                                'match': tx.get('to_address') == wallet.address,
-                                                'match_lower': tx.get('to_address', '').lower() == wallet.address.lower(),
-                                                'amount': amount
-                                            },
-                                            'timestamp': int(time.time() * 1000),
-                                            'sessionId': 'debug-session',
-                                            'hypothesisId': 'H1'
-                                        }) + '\n')
-                                except: pass
-                            # #endregion
 
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
@@ -1231,23 +1129,6 @@ def get_incoming_transactions():
         wallet_ops = session.query(WalletOperation.tx_hash).filter(WalletOperation.tx_hash != None).all()
         for op in wallet_ops: used_hashes.add(op[0])
         
-        # #region agent log
-        # Проверяем наличие конкретных хэшей в использованных
-        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
-        target_txs = ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e', '6649b741a63c621360667e4130f60742f5587130089882253896594375c2']
-        try:
-            with open(log_path, 'a') as f:
-                for tx_h in target_txs:
-                    f.write(json.dumps({
-                        'location': 'app.py:get_incoming_transactions:used_hashes',
-                        'message': 'Checking if TX is used',
-                        'data': {'tx_hash': tx_h, 'is_used': tx_h in used_hashes},
-                        'timestamp': int(time.time() * 1000),
-                        'sessionId': 'debug-session',
-                        'hypothesisId': 'H2'
-                    }) + '\n')
-        except: pass
-        # #endregion
 
         # Фильтруем: available = входящие и не использованные
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
@@ -1505,20 +1386,6 @@ def create_wallet_operation(wallet_id):
     try:
         data = request.get_json()
         
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            import json
-            log_data = {
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H1",
-                "location": "app.py:create_wallet_operation",
-                "message": "Creating wallet operation",
-                "data": {"wallet_id": wallet_id, "payload": data},
-                "timestamp": int(time.time() * 1000)
-            }
-            f.write(json.dumps(log_data) + '\n')
-        # #endregion
 
         op = WalletOperation(
             wallet_id=wallet_id,
@@ -1530,20 +1397,6 @@ def create_wallet_operation(wallet_id):
         session.add(op)
         session.commit()
 
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            import json
-            log_data = {
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H1",
-                "location": "app.py:create_wallet_operation",
-                "message": "Operation created successfully",
-                "data": {"op_id": op.id, "amount": op.amount, "type": op.type},
-                "timestamp": int(time.time() * 1000)
-            }
-            f.write(json.dumps(log_data) + '\n')
-        # #endregion
 
         return jsonify({'success': True, 'operation': op.to_dict()})
     except Exception as e:
@@ -1575,33 +1428,6 @@ def get_wallets_summary():
         # Возвращаем только те, что для баланса
         wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_balance == True).all()
         
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            import json
-            log_data = {
-                "sessionId": "debug-session",
-                "runId": "run1",
-                "hypothesisId": "H2",
-                "location": "app.py:get_wallets_summary",
-                "message": "Fetching wallets summary",
-                "data": {"count": len(wallets), "wallet_ids": [w.id for w in wallets]},
-                "timestamp": int(time.time() * 1000)
-            }
-            f.write(json.dumps(log_data) + '\n')
-            
-            for w in wallets:
-                w_dict = w.to_dict(session)
-                log_data_w = {
-                    "sessionId": "debug-session",
-                    "runId": "run1",
-                    "hypothesisId": "H2",
-                    "location": "app.py:get_wallets_summary",
-                    "message": f"Wallet {w.id} summary",
-                    "data": {"id": w.id, "system_balance": w_dict['system_balance']},
-                    "timestamp": int(time.time() * 1000)
-                }
-                f.write(json.dumps(log_data_w) + '\n')
-        # #endregion
 
         return jsonify({
             'success': True, 
@@ -1630,27 +1456,6 @@ def get_dashboard():
             Deal.reimbursement_id == None
         ).all()
         
-        # #region agent log
-        import json, time
-        log_path = '/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log'
-        try:
-            with open(log_path, 'a') as f:
-                f.write(json.dumps({
-                    'location': 'app.py:get_dashboard',
-                    'message': 'Calculating dashboard profit',
-                    'data': {
-                        'today_deals_count': len(today_deals),
-                        'deals_profits': [
-                            {'id': d.id, 'net': d.net_profit_usdt, 'gross': d.profit_usdt} 
-                            for d in today_deals
-                        ]
-                    },
-                    'timestamp': int(time.time() * 1000),
-                    'sessionId': 'debug-session',
-                    'hypothesisId': 'H3'
-                }) + '\n')
-        except: pass
-        # #endregion
 
         return jsonify({
             'success': True,
