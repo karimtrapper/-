@@ -1442,6 +1442,22 @@ def create_wallet_operation(wallet_id):
     session = get_session()
     try:
         data = request.get_json()
+        
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            import json
+            log_data = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H1",
+                "location": "app.py:create_wallet_operation",
+                "message": "Creating wallet operation",
+                "data": {"wallet_id": wallet_id, "payload": data},
+                "timestamp": int(time.time() * 1000)
+            }
+            f.write(json.dumps(log_data) + '\n')
+        # #endregion
+
         op = WalletOperation(
             wallet_id=wallet_id,
             type=data['type'],  # 'income' or 'expense'
@@ -1451,6 +1467,22 @@ def create_wallet_operation(wallet_id):
         )
         session.add(op)
         session.commit()
+
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            import json
+            log_data = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H1",
+                "location": "app.py:create_wallet_operation",
+                "message": "Operation created successfully",
+                "data": {"op_id": op.id, "amount": op.amount, "type": op.type},
+                "timestamp": int(time.time() * 1000)
+            }
+            f.write(json.dumps(log_data) + '\n')
+        # #endregion
+
         return jsonify({'success': True, 'operation': op.to_dict()})
     except Exception as e:
         session.rollback()
@@ -1480,6 +1512,35 @@ def get_wallets_summary():
     try:
         # Возвращаем только те, что для баланса
         wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_balance == True).all()
+        
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            import json
+            log_data = {
+                "sessionId": "debug-session",
+                "runId": "run1",
+                "hypothesisId": "H2",
+                "location": "app.py:get_wallets_summary",
+                "message": "Fetching wallets summary",
+                "data": {"count": len(wallets), "wallet_ids": [w.id for w in wallets]},
+                "timestamp": int(time.time() * 1000)
+            }
+            f.write(json.dumps(log_data) + '\n')
+            
+            for w in wallets:
+                w_dict = w.to_dict(session)
+                log_data_w = {
+                    "sessionId": "debug-session",
+                    "runId": "run1",
+                    "hypothesisId": "H2",
+                    "location": "app.py:get_wallets_summary",
+                    "message": f"Wallet {w.id} summary",
+                    "data": {"id": w.id, "system_balance": w_dict['system_balance']},
+                    "timestamp": int(time.time() * 1000)
+                }
+                f.write(json.dumps(log_data_w) + '\n')
+        # #endregion
+
         return jsonify({
             'success': True, 
             'wallets': [w.to_dict(session) for w in wallets]

@@ -3172,6 +3172,9 @@
         };
 
         function openWithdrawModal() {
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:openWithdrawModal',message:'Opening withdraw modal',data:{currentActiveWalletId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
             document.getElementById('withdrawWalletId').value = currentActiveWalletId;
             document.getElementById('withdrawModal').classList.add('active');
@@ -3187,6 +3190,10 @@
                 amount: document.getElementById('withdrawAmount').value,
                 description: document.getElementById('withdrawDesc').value
             };
+
+            // #region agent log
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:withdrawForm.onsubmit',message:'Submitting withdraw form',data:{walletId,data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+            // #endregion
             
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
