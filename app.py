@@ -1057,11 +1057,13 @@ def get_incoming_transactions():
                 # Пагинация для загрузки большего количества транзакций
                 for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                    import time
                     params = {
                         'relatedAddress': wallet.address,
                         'contract_address': usdt_contract,
                         'limit': 50,
-                        'start': page * 50
+                        'start': page * 50,
+                        't': int(time.time()) # Добавляем timestamp для обхода кэша
                     }
                     
                     # #region agent log
@@ -1195,11 +1197,13 @@ def get_outgoing_transactions():
             try:
                 for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                    import time
                     params = {
                         'relatedAddress': wallet.address,
                         'contract_address': usdt_contract,
                         'limit': 50,
-                        'start': page * 50
+                        'start': page * 50,
+                        't': int(time.time())
                     }
                     
                     response = requests.get(url, params=params, headers=headers, timeout=10)
