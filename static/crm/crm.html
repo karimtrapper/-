@@ -1179,10 +1179,11 @@
 
                 <!-- Binance Sub-tab -->
                 <div id="subtabBinance" class="balance-subtab-content active">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                         <div id="walletsSummaryGrid" style="display: flex; gap: 1rem; flex-wrap: wrap; flex: 1;">
                             <!-- Загружается динамически -->
                         </div>
+                        <button class="btn btn-primary" onclick="openAddWalletModal()" style="white-space: nowrap; margin-left: 1rem;">+ Добавить кошелек</button>
                     </div>
 
                     <div id="walletHistorySection" style="display: none; background: #fff; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0;">
@@ -1490,6 +1491,29 @@
         </div>
     </div>
     
+    <!-- Add Wallet Modal -->
+    <div id="addWalletModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeAddWalletModal()">&times;</span>
+            <div class="card-title">Добавить кошелек</div>
+            <form id="addWalletFormBalance">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Название (например: Binance Основной)</label>
+                    <input type="text" class="form-control" id="newWalletLabel" placeholder="Binance" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Адрес (TRON) или ID (для вирт. учета)</label>
+                    <input type="text" class="form-control" id="newWalletAddress" placeholder="T... или просто имя" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Начальный баланс USDT</label>
+                    <input type="number" class="form-control" id="newWalletInitialBalance" value="0" step="0.01">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Добавить кошелек</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Topup Modal -->
     <div id="topupModal" class="modal">
         <div class="modal-content">
@@ -1736,14 +1760,16 @@
                     
                     // Загружаем список кошельков для выбора списания, если это Binance
                     let walletOptions = '';
+                    let selectedWalletLabel = '';
                     if (deal.payout_source === 'binance') {
                         try {
                             const wResp = await fetch(`${API_URL}/api/wallets/summary`);
                             const wData = await wResp.json();
                             if (wData.success) {
-                                walletOptions = wData.wallets.map(w => 
-                                    `<option value="${w.id}" ${deal.payout_wallet_id == w.id ? 'selected' : ''}>${w.label || w.address.substring(0,8)}</option>`
-                                ).join('');
+                                walletOptions = wData.wallets.map(w => {
+                                    if (deal.payout_wallet_id == w.id) selectedWalletLabel = w.label || w.address.substring(0,8);
+                                    return `<option value="${w.id}" ${deal.payout_wallet_id == w.id ? 'selected' : ''}>${w.label || w.address.substring(0,8)}</option>`;
+                                }).join('');
                             }
                         } catch (e) {}
                     }
@@ -1807,7 +1833,7 @@
                             <p><strong>Метод выдачи:</strong> ${getPayoutMethodLabel(deal.payout_method)}</p>
                         ` : `
                             <p><strong>Метод:</strong> ${getPayoutMethodLabel(deal.payout_method)}</p>
-                            <p><strong>Источник:</strong> ${getPayoutSourceLabel(deal.payout_source)}</p>
+                            <p><strong>Источник:</strong> ${getPayoutSourceLabel(deal.payout_source)} ${selectedWalletLabel ? `(${selectedWalletLabel})` : ''}</p>
                             ${deal.payout_source === 'binance' ? `
                                 <div style="background: #f1f5f9; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
                                     <label style="font-size: 0.8rem; color: #666;">Кошелек списания:</label>
@@ -2885,6 +2911,73 @@
         });
         
         // ==================== Balance Tab Logic ====================
+        function openAddWalletModal() {
+            document.getElementById('addWalletModal').classList.add('active');
+        }
+
+        function closeAddWalletModal() {
+            document.getElementById('addWalletModal').classList.remove('active');
+        }
+
+        document.getElementById('addWalletFormBalance').onsubmit = async function(e) {
+            e.preventDefault();
+            const label = document.getElementById('newWalletLabel').value;
+            const address = document.getElementById('newWalletAddress').value;
+            const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
+
+            try {
+                // 1. Создаем кошелек
+                const response = await fetch(`${API_URL}/api/wallets`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        address: address,
+                        label: label,
+                        blockchain: 'TRON'
+                    })
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    const walletId = result.wallet.id;
+                    
+                    // 2. Если есть начальный баланс, создаем операцию пополнения
+                    if (initialBalance > 0) {
+                        await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                type: 'income',
+                                amount: initialBalance,
+                                description: 'Начальный остаток'
+                            })
+                        });
+                    }
+                    
+                    closeAddWalletModal();
+                    loadWalletsSummary();
+                    alert('Кошелек добавлен!');
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Ошибка при добавлении кошелька');
+            }
+        };
+
+        async function deleteWalletOperation(walletId, opId) {
+            if (!confirm('Удалить эту операцию? Баланс будет пересчитан.')) return;
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/operations/${opId}`, {
+                    method: 'DELETE'
+                });
+                if ((await response.json()).success) {
+                    showWalletHistory(walletId, '', '');
+                }
+            } catch (e) { console.error(e); }
+        }
+
         let currentActiveWalletId = null;
 
         function switchBalanceSubTab(tabName) {
@@ -2906,6 +2999,18 @@
             }
         }
 
+        async function deleteWalletFromBalance(walletId) {
+            if (!confirm('Удалить этот кошелек и всю историю его операций?')) return;
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
+                if ((await response.json()).success) {
+                    currentActiveWalletId = null;
+                    document.getElementById('walletHistorySection').style.display = 'none';
+                    loadWalletsSummary();
+                }
+            } catch (e) { console.error(e); }
+        }
+
         async function loadWalletsSummary() {
             try {
                 const response = await fetch(`${API_URL}/api/wallets/summary`);
@@ -2915,6 +3020,7 @@
                     const grid = document.getElementById('walletsSummaryGrid');
                     grid.innerHTML = data.wallets.map(w => `
                         <div class="stat-card" style="cursor: pointer; position: relative; border: 2px solid ${currentActiveWalletId === w.id ? '#667eea' : '#f1f5f9'};" onclick="showWalletHistory(${w.id}, '${w.address}', '${w.label || 'Без названия'}')">
+                            <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteWalletFromBalance(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 0 5px; font-size: 0.7rem;">×</button>
                             <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">${w.label || 'Кошелек'}</div>
                             <div class="stat-value" style="font-size: 1.5rem; color: #10b981;">$${w.system_balance.toFixed(2)}</div>
                             <div style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
@@ -2952,7 +3058,7 @@
                                 ${op.tx_hash ? `<div style="font-size: 0.75rem; font-family: monospace; color: #666;">${op.tx_hash.substring(0,20)}...</div>` : ''}
                             </td>
                             <td>
-                                <!-- Можно добавить удаление ошибочных операций -->
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteWalletOperation(${walletId}, ${op.id})" title="Удалить">×</button>
                             </td>
                         </tr>
                     `).join('');

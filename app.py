@@ -1357,6 +1357,22 @@ def create_wallet_operation(wallet_id):
     finally:
         session.close()
 
+@app.route('/api/wallets/operations/<int:op_id>', methods=['DELETE'])
+def delete_wallet_operation(op_id):
+    session = get_session()
+    try:
+        op = session.query(WalletOperation).filter(WalletOperation.id == op_id).first()
+        if not op:
+            return jsonify({'success': False, 'error': 'Операция не найдена'}), 404
+        session.delete(op)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
 @app.route('/api/wallets/summary', methods=['GET'])
 def get_wallets_summary():
     session = get_session()
