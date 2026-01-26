@@ -1036,7 +1036,7 @@ def get_incoming_transactions():
             wallets_checked.append(wallet.address)
             try:
                 # Пагинация для загрузки большего количества транзакций
-                for page in range(5):  # До 5 страниц (250 транзакций на кошелек)
+                for page in range(10):  # До 10 страниц (500 транзакций на кошелек)
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
@@ -1045,11 +1045,18 @@ def get_incoming_transactions():
                         'start': page * 50
                     }
                     
+                    # #region agent log
+                    # print(f"[DEBUG] Fetching page {page} for {wallet.address}")
+                    # #endregion
+
                     response = requests.get(url, params=params, headers=headers, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
                         if not transfers:
+                            # #region agent log
+                            # print(f"[DEBUG] No more transfers for {wallet.address}")
+                            # #endregion
                             break
                             
                         reached_start_ts = False
@@ -1063,18 +1070,23 @@ def get_incoming_transactions():
                             if end_ts and tx_ts > end_ts:
                                 continue
                                 
-                            if tx.get('to_address') == wallet.address:
-                                amount = float(tx.get('quant', 0)) / 1_000_000
-                                all_incoming.append({
-                                    'tx_hash': tx.get('transaction_id'),
-                                    'from_address': tx.get('from_address'),
-                                    'to_address': tx.get('to_address'),
-                                    'amount_usdt': amount,
-                                    'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
-                                    'confirmed': tx.get('confirmed', False)
-                                })
+                            # Принимаем и входящие, и исходящие для истории баланса
+                            # Но для списка "доступных для сделок" (Pay-In) нужны только входящие
+                            amount = float(tx.get('quant', 0)) / 1_000_000
+                            all_incoming.append({
+                                'tx_hash': tx.get('transaction_id'),
+                                'from_address': tx.get('from_address'),
+                                'to_address': tx.get('to_address'),
+                                'amount_usdt': amount,
+                                'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
+                                'confirmed': tx.get('confirmed', False),
+                                'is_incoming': tx.get('to_address') == wallet.address
+                            })
                         
-                        if reached_start_ts or not transfers:
+                        if reached_start_ts:
+                            # #region agent log
+                            # print(f"[DEBUG] Reached start_ts for {wallet.address}")
+                            # #endregion
                             break
                     else:
                         print(f"[DEBUG] TronScan API error {response.status_code} for {wallet.address}")
@@ -1104,8 +1116,12 @@ def get_incoming_transactions():
         reimb_txs = session.query(Reimbursement.tx_hash).filter(Reimbursement.tx_hash != None).all()
         for r in reimb_txs: used_hashes.add(r[0])
         
-        # Фильтруем: available = не использованные
-        available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes]
+        # 5. Из таблицы WalletOperation
+        wallet_ops = session.query(WalletOperation.tx_hash).filter(WalletOperation.tx_hash != None).all()
+        for op in wallet_ops: used_hashes.add(op[0])
+        
+        # Фильтруем: available = входящие и не использованные
+        available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
         
         return jsonify({

@@ -4125,36 +4125,41 @@
                 if (data.success) {
                     if (data.available.length > 0) {
                         document.getElementById('availableTransactions').innerHTML = data.available.map(tx => `
-                            <div class="tx-item" onclick="selectTransaction('${tx.tx_hash}', ${tx.amount_usdt}, '${tx.from_address}')">
-                                <div style="flex: 1;">
+                            <div class="tx-item" style="cursor: default;">
+                                <div style="flex: 1;" onclick="selectTransaction('${tx.tx_hash}', ${tx.amount_usdt}, '${tx.from_address}')" style="cursor: pointer;">
                                     <div class="tx-amount">+$${tx.amount_usdt.toFixed(2)} USDT</div>
-                                    <div class="tx-hash">${tx.tx_hash.substring(0, 30)}...</div>
+                                    <div class="tx-hash" style="font-family: monospace; font-size: 0.8rem; color: #666; margin: 4px 0;">
+                                        От: ${tx.from_address} 
+                                        <span onclick="event.stopPropagation(); copyHash('${tx.from_address}')" style="cursor: pointer; margin-left: 5px;" title="Скопировать адрес">📋</span>
+                                    </div>
                                     <div class="tx-time">
                                         ${formatDate(tx.timestamp)} | 
-                                        От: ${tx.from_address.substring(0, 10)}... |
-                                        ${tx.confirmed ? '✅ Confirmed' : '⏳ Pending'}
+                                        <a href="https://tronscan.org/#/transaction/${tx.tx_hash}" target="_blank" onclick="event.stopPropagation()" style="color: #667eea; text-decoration: none;">TronScan ↗</a>
+                                        <span onclick="event.stopPropagation(); copyHash('${tx.tx_hash}')" style="cursor: pointer; margin-left: 5px;" title="Скопировать хэш">📋</span>
+                                        | ${tx.confirmed ? '✅ Confirmed' : '⏳ Pending'}
                                     </div>
                                 </div>
-                                <button class="btn btn-sm btn-success">Использовать</button>
+                                <button class="btn btn-sm btn-success" onclick="selectTransaction('${tx.tx_hash}', ${tx.amount_usdt}, '${tx.from_address}')">Использовать</button>
                             </div>
                         `).join('');
                     } else {
                         document.getElementById('availableTransactions').innerHTML = data.wallets_checked?.length > 0
-                            ? '<p style="color: #666;">Нет новых входящих транзакций</p>'
-                            : '<p style="color: #f59e0b;">Добавьте кошелек для мониторинга</p>';
+                            ? '<p style="color: #666; text-align: center; padding: 2rem;">Нет новых входящих транзакций</p>'
+                            : '<p style="color: #f59e0b; text-align: center; padding: 2rem;">Добавьте кошелек для мониторинга</p>';
                     }
                     
                     document.getElementById('usedTransactions').innerHTML = data.used.length > 0 
                         ? data.used.map(tx => `
-                            <div class="tx-item used">
-                                <div>
+                            <div class="tx-item used" style="opacity: 0.7;">
+                                <div style="flex: 1;">
                                     <div class="tx-amount">$${tx.amount_usdt.toFixed(2)} USDT</div>
                                     <div class="tx-hash">${tx.tx_hash.substring(0, 30)}...</div>
-                                    <div class="tx-time">Использовано в сделке</div>
+                                    <div class="tx-time">Использовано в сделке | ${formatDate(tx.timestamp)}</div>
                                 </div>
+                                <span class="badge">Использовано</span>
                             </div>
                         `).join('')
-                        : '<p style="color: #666;">Нет использованных транзакций</p>';
+                        : '<p style="color: #666; text-align: center; padding: 1rem;">Нет использованных транзакций</p>';
                 } else {
                     document.getElementById('availableTransactions').innerHTML = 
                         `<div class="alert alert-error">${data.error || 'Ошибка загрузки'}</div>`;
