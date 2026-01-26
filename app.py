@@ -1055,7 +1055,7 @@ def get_incoming_transactions():
             wallets_checked.append(wallet.address)
             try:
                 # Пагинация для загрузки большего количества транзакций
-                for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
+                for page in range(10):  # Уменьшаем до 10 страниц (500 транзакций) для скорости
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     import time
                     params = {
@@ -1063,15 +1063,14 @@ def get_incoming_transactions():
                         'contract_address': usdt_contract,
                         'limit': 50,
                         'start': page * 50,
-                        't': int(time.time()),
-                        'confirm': 'true' # Добавляем параметр подтверждения
+                        't': int(time.time())
                     }
                     
                     # #region agent log
                     # print(f"[DEBUG] Fetching page {page} for {wallet.address}")
                     # #endregion
 
-                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    response = requests.get(url, params=params, headers=headers, timeout=5)
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
@@ -1202,7 +1201,7 @@ def get_outgoing_transactions():
         
         for wallet in wallets:
             try:
-                for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
+                for page in range(10):  # Уменьшаем до 10 страниц
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     import time
                     params = {
@@ -1210,11 +1209,10 @@ def get_outgoing_transactions():
                         'contract_address': usdt_contract,
                         'limit': 50,
                         'start': page * 50,
-                        't': int(time.time()),
-                        'confirm': 'true'
+                        't': int(time.time())
                     }
                     
-                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    response = requests.get(url, params=params, headers=headers, timeout=5)
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
