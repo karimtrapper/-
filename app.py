@@ -530,20 +530,26 @@ def create_deal():
             created_at = datetime.now()
         
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
+        client_id = data.get('client_id')
         client_name = data.get('client_name')
-        if client_name:
+        
+        if not client_id and client_name:
             existing_client = session.query(Client).filter(Client.name == client_name).first()
             if not existing_client:
                 new_client = Client(name=client_name)
                 session.add(new_client)
                 session.flush()
+                client_id = new_client.id
+            else:
+                client_id = existing_client.id
         
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
             deal_type=DealType(data.get('deal_type', 'pay_in')),
             status=DealStatus(data.get('status', 'pending')),
-            client_name=data.get('client_name'),
+            client_id=client_id,
+            client_name=client_name,
             payin_method=PayInMethod(data['payin_method']) if data.get('payin_method') else None,
             payin_amount_rub=data.get('payin_amount_rub'),
             payin_amount_usdt=data.get('payin_amount_usdt'),
@@ -609,9 +615,19 @@ def update_deal(deal_id):
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
-                      'referrer_percent', 'referrer_payout_usdt', 'notes']:
+                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id']:
             if field in data:
                 setattr(deal, field, data[field])
+        
+        # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
+        if 'client_name' in data and deal.client_id:
+            client = session.query(Client).filter(Client.id == deal.client_id).first()
+            if client:
+                client.name = data['client_name']
+        
+        # Если пришел новый client_id, просто привязываем
+        if 'client_id' in data:
+            deal.client_id = data['client_id']
         
         if 'status' in data:
             deal.status = DealStatus(data['status'])

@@ -1714,6 +1714,18 @@
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
                     
                     // Проверяем - кастомная сделка или обычная
+                    
+                    // Общие поля для обоих типов сделок
+                    const form = document.getElementById('createDealForm');
+                    if (deal.manager_name) document.getElementById('managerSelect').value = deal.manager_name;
+                    if (deal.client_id) document.getElementById('clientSelect').value = deal.client_id;
+                    if (deal.client_name) form.client_name.value = deal.client_name;
+                    
+                    // Заполняем дату
+                    if (deal.created_at) {
+                        document.getElementById('dealDate').value = deal.created_at.split('T')[0];
+                    }
+
                     if (deal.is_custom) {
                         // Включаем режим кастомной сделки
                         document.getElementById('customDealToggle').checked = true;
@@ -1740,9 +1752,6 @@
                         toggleCustomDeal();
                         
                         // Заполняем обычную форму
-                        const form = document.getElementById('createDealForm');
-                        if (deal.manager_name) document.getElementById('managerSelect').value = deal.manager_name;
-                        if (deal.client_name) form.client_name.value = deal.client_name;
                         if (deal.payin_method) {
                             document.getElementById('payinMethod').value = deal.payin_method;
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
@@ -1838,6 +1847,11 @@
             const referrerName = document.getElementById('customReferrerName').value.trim();
             const referrerPercent = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
             
+            const managerName = document.getElementById('managerSelect').value;
+            const clientId = document.getElementById('clientSelect').value;
+            const clientName = document.querySelector('[name="client_name"]').value;
+            const createdAt = document.getElementById('dealDate').value;
+            
             // Конвертация
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
@@ -1846,6 +1860,10 @@
             const netProfit = profit - referrerPayout;
             
             const data = {
+                manager_name: managerName,
+                client_id: parseInt(clientId) || null,
+                client_name: clientName,
+                created_at: createdAt || null,
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
                 payout_method: payoutMethod,
@@ -2543,8 +2561,8 @@
                     } else if (key === 'client_id' || key === 'cash_batch_id') {
                         data[key] = parseInt(value) || null;
                     } else if (key === 'created_at') {
-                        // Конвертируем дату в ISO формат (добавляем время 12:00)
-                        data[key] = new Date(value + 'T12:00:00').toISOString();
+                        // Просто передаем строку даты, чтобы избежать смещения часовых поясов
+                        data[key] = value;
                     } else {
                         data[key] = value;
                     }
