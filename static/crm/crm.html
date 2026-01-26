@@ -2399,24 +2399,29 @@
 
         async function loadCashBatchesForSelect() {
             try {
-                const response = await fetch(`${API_URL}/api/cash/balance`);
+                const response = await fetch(`${API_URL}/api/cash/batches`);
                 const data = await response.json();
 
                 if (data.success) {
-                    cashBatchesData = data.batches;
+                    // Используем только активные партии для расчетов и списка
+                    const activeBatches = data.batches.filter(b => b.status === 'active');
+                    cashBatchesData = activeBatches;
 
                     // Info about cash balance
-                    const infoHtml = data.batches.length > 0
-                        ? `<strong>${formatNumber(data.total_thb)} THB</strong> доступно (${data.batches.length} партий)<br>
+                    const totalThb = data.summary?.total_remaining_thb || 0;
+                    const infoHtml = activeBatches.length > 0
+                        ? `<strong>${formatNumber(totalThb)} THB</strong> доступно (${activeBatches.length} партий)<br>
                            <small>Авто-списание FIFO: сначала старые партии</small>`
                         : '<span style="color: #ef4444;">Касса пуста</span>';
-                    document.getElementById('cashBalanceInfo').innerHTML = infoHtml;
+
+                    const el = document.getElementById('cashBalanceInfo');
+                    if (el) el.innerHTML = infoHtml;
 
                     // For card source batch
                     const cardSourceSelect = document.getElementById('cardSourceBatch');
                     if (cardSourceSelect) {
                         cardSourceSelect.innerHTML = '<option value="">Выберите партию</option>' +
-                            data.batches.map(b =>
+                            activeBatches.map(b =>
                                 `<option value="${b.id}" data-rate="${b.purchase_rate}" data-remaining="${b.remaining_thb}">Партия #${b.id}: ${formatNumber(b.remaining_thb)} THB (курс ${b.purchase_rate})</option>`
                             ).join('');
                     }
