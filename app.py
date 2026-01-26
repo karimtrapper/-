@@ -1166,7 +1166,20 @@ def get_incoming_transactions():
         # #region agent log
         with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
             import json, time
-            f.write(json.dumps({'location':'app.py:1146','message':'Filtering results','data':{'total':len(all_incoming),'available':len(available),'used_hashes_count':len(used_hashes)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H4'}) + '\n')
+            f.write(json.dumps({
+                'location':'app.py:1146',
+                'message':'Filtering results',
+                'data':{
+                    'total_fetched':len(all_incoming),
+                    'available_count':len(available),
+                    'used_count':len(used),
+                    'target_tx_in_used': '9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e' in used_hashes,
+                    'used_hashes_sample': list(used_hashes)[:10]
+                },
+                'timestamp':int(time.time()*1000),
+                'sessionId':'debug-session',
+                'hypothesisId':'H4'
+            }) + '\n')
         # #endregion
 
         # #region agent log
