@@ -247,6 +247,8 @@ class Wallet(Base):
     label = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
     active = Column(Boolean, default=True)
+    is_monitored = Column(Boolean, default=True)  # Виден во вкладке Транзакции
+    is_balance = Column(Boolean, default=False)   # Виден во вкладке Баланс (Binance)
     operations = relationship("WalletOperation", back_populates="wallet", cascade="all, delete-orphan")
     
     def to_dict(self, session=None):
@@ -264,6 +266,8 @@ class Wallet(Base):
             'id': self.id, 'address': self.address, 'blockchain': self.blockchain,
             'label': self.label, 'created_at': self.created_at.isoformat() if self.created_at else None,
             'active': self.active,
+            'is_monitored': self.is_monitored,
+            'is_balance': self.is_balance,
             'system_balance': round(system_balance, 2)
         }
 
@@ -396,16 +400,23 @@ class Deal(Base):
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
-# Миграция: добавляем payout_wallet_id если его нет
+# Миграция: добавляем колонки если их нет
 try:
     with engine.connect() as conn:
         from sqlalchemy import text
         # Для PostgreSQL
         if 'postgresql' in DATABASE_URL:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_wallet_id INTEGER REFERENCES wallets(id)"))
+            conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
+            conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
         # Для SQLite
         else:
-            conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_monitored BOOLEAN DEFAULT TRUE"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_balance BOOLEAN DEFAULT FALSE"))
+            except: pass
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
@@ -879,7 +890,8 @@ def create_manager():
 def get_wallets():
     session = get_session()
     try:
-        wallets = session.query(Wallet).filter(Wallet.active == True).order_by(Wallet.created_at.desc()).all()
+        # Возвращаем только те, что для мониторинга
+        wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).order_by(Wallet.created_at.desc()).all()
         wallets_with_balance = []
         
         headers = {
@@ -933,12 +945,19 @@ def add_wallet():
         # Проверяем что кошелёк не дублируется
         existing = session.query(Wallet).filter(Wallet.address == address).first()
         if existing:
-            return jsonify({'success': False, 'error': 'Кошелёк уже добавлен'}), 400
+            # Если уже есть, просто включаем нужный флаг
+            if data.get('is_monitored'): existing.is_monitored = True
+            if data.get('is_balance'): existing.is_balance = True
+            if data.get('label'): existing.label = data['label']
+            session.commit()
+            return jsonify({'success': True, 'wallet': existing.to_dict()})
         
         wallet = Wallet(
             address=address,
             blockchain=data.get('blockchain', 'TRON'),
-            label=data.get('label', '')
+            label=data.get('label', ''),
+            is_monitored=data.get('is_monitored', True),
+            is_balance=data.get('is_balance', False)
         )
         session.add(wallet)
         session.commit()
@@ -1014,7 +1033,7 @@ def get_incoming_transactions():
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
         else:
-            wallets = session.query(Wallet).filter(Wallet.active == True).all()
+            wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all()
         
         if not wallets:
             return jsonify({
@@ -1409,7 +1428,8 @@ def delete_wallet_operation(op_id):
 def get_wallets_summary():
     session = get_session()
     try:
-        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        # Возвращаем только те, что для баланса
+        wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_balance == True).all()
         return jsonify({
             'success': True, 
             'wallets': [w.to_dict(session) for w in wallets]

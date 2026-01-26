@@ -2926,14 +2926,16 @@
             const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
 
             try {
-                // 1. Создаем кошелек
+                // 1. Создаем кошелек (только для баланса)
                 const response = await fetch(`${API_URL}/api/wallets`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         address: address,
                         label: label,
-                        blockchain: 'TRON'
+                        blockchain: 'TRON',
+                        is_monitored: false,
+                        is_balance: true
                     })
                 });
                 const result = await response.json();
@@ -4185,7 +4187,11 @@
                 const response = await fetch(`${API_URL}/api/wallets`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ address })
+                    body: JSON.stringify({ 
+                        address,
+                        is_monitored: true,
+                        is_balance: false
+                    })
                 });
                 const data = await response.json();
                 
