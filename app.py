@@ -1053,6 +1053,11 @@ def get_incoming_transactions():
         
         for wallet in wallets:
             wallets_checked.append(wallet.address)
+            # #region agent log
+            with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                import json, time
+                f.write(json.dumps({'location':'app.py:1056','message':'Checking wallet','data':{'address':wallet.address},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H1'}) + '\n')
+            # #endregion
             try:
                 # Пагинация для загрузки большего количества транзакций
                 for page in range(10):  # Уменьшаем до 10 страниц (500 транзакций) для скорости
@@ -1067,17 +1072,19 @@ def get_incoming_transactions():
                     }
                     
                     # #region agent log
-                    # print(f"[DEBUG] Fetching page {page} for {wallet.address}")
+                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({'location':'app.py:1071','message':'Requesting TronScan','data':{'url':url,'params':params},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
                     # #endregion
 
                     response = requests.get(url, params=params, headers=headers, timeout=5)
+                    # #region agent log
+                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                        f.write(json.dumps({'location':'app.py:1075','message':'TronScan response','data':{'status':response.status_code,'count':len(response.json().get('token_transfers', [])) if response.status_code==200 else 0},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
+                    # #endregion
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
                         if not transfers:
-                            # #region agent log
-                            # print(f"[DEBUG] No more transfers for {wallet.address}")
-                            # #endregion
                             break
                             
                         reached_start_ts = False
@@ -1094,6 +1101,11 @@ def get_incoming_transactions():
                             # Принимаем и входящие, и исходящие для истории баланса
                             # Но для списка "доступных для сделок" (Pay-In) нужны только входящие
                             amount = float(tx.get('quant', 0)) / 1_000_000
+                            # #region agent log
+                            if tx.get('transaction_id') in ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e']:
+                                with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                                    f.write(json.dumps({'location':'app.py:1102','message':'Found target TX','data':{'tx':tx},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H3'}) + '\n')
+                            # #endregion
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
@@ -1145,6 +1157,12 @@ def get_incoming_transactions():
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
         
+        # #region agent log
+        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+            import json, time
+            f.write(json.dumps({'location':'app.py:1146','message':'Filtering results','data':{'total':len(all_incoming),'available':len(available),'used_hashes_count':len(used_hashes)},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H4'}) + '\n')
+        # #endregion
+
         # #region agent log
         print(f"[DEBUG] get_incoming_transactions: total={len(all_incoming)}, available={len(available)}, used={len(used)}")
         if wallets:
