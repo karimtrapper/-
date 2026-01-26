@@ -1220,7 +1220,17 @@
                 <div class="card-title">Входящие USDT транзакции</div>
                 <p style="color: #666; margin-bottom: 1rem;">Выберите транзакцию для создания сделки</p>
                 
-                <button class="btn btn-secondary btn-sm" onclick="loadTransactions()" style="margin-bottom: 1rem;">Обновить</button>
+                <div class="form-row" style="margin-bottom: 1rem; align-items: flex-end;">
+                    <div class="form-group" style="flex: 2;">
+                        <label class="form-label">Фильтр по кошельку</label>
+                        <select id="walletFilter" class="form-control" onchange="loadTransactions()">
+                            <option value="">Все кошельки</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <button class="btn btn-secondary" onclick="loadTransactions()">Обновить</button>
+                    </div>
+                </div>
                 
                 <div id="availableTransactions">
                     <!-- Available transactions -->
@@ -1371,29 +1381,37 @@
                 if (data.success) {
                     const d = data.dashboard;
                     
+                    // Защита от undefined
+                    const todayDeals = d.today?.deals_count ?? 0;
+                    const todayProfit = d.today?.profit_usdt ?? 0;
+                    const weekProfit = d.week?.profit_usdt ?? 0;
+                    const cashBalance = d.cash_balance?.total_thb ?? 0;
+                    const pendingDeals = d.attention?.pending_deals ?? 0;
+                    const unreimbursedFounders = d.attention?.unreimbursed_founders ?? 0;
+
                     document.getElementById('statsGrid').innerHTML = `
                         <div class="stat-card">
-                            <div class="stat-value">${d.today.deals_count}</div>
+                            <div class="stat-value">${todayDeals}</div>
                             <div class="stat-label">Сделок сегодня</div>
                         </div>
                         <div class="stat-card success">
-                            <div class="stat-value">$${d.today.profit_usdt}</div>
+                            <div class="stat-value">$${todayProfit}</div>
                             <div class="stat-label">Прибыль сегодня</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">$${d.week.profit_usdt}</div>
+                            <div class="stat-value">$${weekProfit}</div>
                             <div class="stat-label">Прибыль за неделю</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${formatNumber(d.cash_balance.total_thb)} ฿</div>
+                            <div class="stat-value">${formatNumber(cashBalance)} ฿</div>
                             <div class="stat-label">Баланс кассы</div>
                         </div>
                         <div class="stat-card warning">
-                            <div class="stat-value">${d.attention.pending_deals}</div>
+                            <div class="stat-value">${pendingDeals}</div>
                             <div class="stat-label">Ожидают обработки</div>
                         </div>
-                        <div class="stat-card ${d.attention.unreimbursed_founders > 0 ? 'warning' : ''}">
-                            <div class="stat-value">${d.attention.unreimbursed_founders}</div>
+                        <div class="stat-card ${unreimbursedFounders > 0 ? 'warning' : ''}">
+                            <div class="stat-value">${unreimbursedFounders}</div>
                             <div class="stat-label">Не возмещено фаундерам</div>
                         </div>
                     `;
@@ -3183,7 +3201,7 @@
                                 </div>
                             </div>
                             
-                            <button class="btn btn-success" onclick="createReimbursement('${founder.founder_name}')">
+                            <button class="btn btn-success reimburse-btn" data-founder="${founder.founder_name}" onclick="createReimbursement('${founder.founder_name}')">
                                 Создать возмещение и рассчитать прибыль
                             </button>
                         </div>
@@ -3239,6 +3257,30 @@
             }
         }
         
+        async function deleteReimbursement(reimbursementId) {
+            if (!confirm(`Удалить возмещение #${reimbursementId}?\n\nСвязанные сделки вернутся в статус "ожидает возмещения".`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_URL}/api/reimbursements/${reimbursementId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert(`Возмещение удалено.`);
+                    loadReimbursements();
+                    loadDashboard();
+                } else {
+                    alert('Ошибка: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting reimbursement:', error);
+                alert('Ошибка сети');
+            }
+        }
+
         function updateReimbursementTotal(founderName) {
             updateReimbursementRate(founderName);
         }
@@ -3282,19 +3324,46 @@
             }
         }
         
+        // Флаг для предотвращения дублирования запросов
+        const reimbursementInProgress = new Set();
+        
         async function createReimbursement(founderName) {
+            // Проверяем, не выполняется ли уже запрос для этого фаундера
+            if (reimbursementInProgress.has(founderName)) {
+                console.log('Запрос уже выполняется для', founderName);
+                return;
+            }
+            
+            // Блокируем кнопку
+            const btn = document.querySelector(`.reimburse-btn[data-founder="${founderName}"]`);
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Создаём...';
+            }
+            reimbursementInProgress.add(founderName);
+            
             // Get selected deals
             const checkboxes = document.querySelectorAll(`.reimburse-deal[data-founder="${founderName}"]:checked`);
             const dealIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.dealId));
             
             if (dealIds.length === 0) {
                 alert('Выберите хотя бы одну сделку');
+                reimbursementInProgress.delete(founderName);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Создать возмещение и рассчитать прибыль';
+                }
                 return;
             }
             
             const amountUsdt = parseFloat(document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`)?.value);
             if (!amountUsdt || amountUsdt <= 0) {
                 alert('Укажите сумму возмещения в USDT');
+                reimbursementInProgress.delete(founderName);
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Создать возмещение и рассчитать прибыль';
+                }
                 return;
             }
             
@@ -3311,17 +3380,29 @@
                         tx_hash: txHash
                     })
                 });
+                
                 const result = await response.json();
                 
                 if (result.success) {
-                    alert(`Возмещение создано!\n\nСумма: $${result.reimbursement.amount_usdt.toFixed(2)}\nКурс: ${result.real_rate} THB/USDT\nПрибыль: $${result.total_profit.toFixed(2)}`);
+                    alert(`Возмещение создано!\n\nСумма: $${result.reimbursement.amount_usdt.toFixed(2)}\nКурс: ${result.real_rate || '-'} THB/USDT\nПрибыль: $${result.total_profit?.toFixed(2) || '-'}`);
                     loadReimbursements();
                     loadDashboard();
                 } else {
                     alert('Ошибка: ' + result.error);
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.textContent = 'Создать возмещение и рассчитать прибыль';
+                    }
                 }
             } catch (error) {
                 console.error('Error creating reimbursement:', error);
+                alert('Ошибка сети');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Создать возмещение и рассчитать прибыль';
+                }
+            } finally {
+                reimbursementInProgress.delete(founderName);
             }
         }
         
@@ -3419,6 +3500,9 @@
                 const walletsResponse = await fetch(`${API_URL}/api/wallets`);
                 const walletsData = await walletsResponse.json();
                 
+                const walletFilter = document.getElementById('walletFilter');
+                const currentFilter = walletFilter?.value || '';
+
                 if (walletsData.success && walletsData.wallets.length > 0) {
                     document.getElementById('walletsInfo').innerHTML = `
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
@@ -3433,6 +3517,11 @@
                             `).join('')}
                         </div>
                     `;
+                    
+                    if (walletFilter) {
+                        walletFilter.innerHTML = '<option value="">Все кошельки</option>' + 
+                            walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${w.address.substring(0, 8)}... ($${w.usdt_balance.toFixed(0)})</option>`).join('');
+                    }
                 } else {
                     document.getElementById('walletsInfo').innerHTML = `
                         <div class="alert alert-warning">
@@ -3441,8 +3530,13 @@
                     `;
                 }
                 
-                // Загружаем транзакции
-                const response = await fetch(`${API_URL}/api/transactions/incoming`);
+                // Загружаем транзакции с фильтром
+                const selectedWallet = walletFilter?.value || '';
+                const txUrl = selectedWallet 
+                    ? `${API_URL}/api/transactions/incoming?wallet=${encodeURIComponent(selectedWallet)}`
+                    : `${API_URL}/api/transactions/incoming`;
+
+                const response = await fetch(txUrl);
                 const data = await response.json();
                 
                 if (data.success) {

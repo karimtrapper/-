@@ -1111,6 +1111,12 @@ def get_dashboard():
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
         pending_deals = session.query(Deal).filter(Deal.status == DealStatus.PENDING).all()
         
+        # Невозмещенные
+        unreimbursed = session.query(Deal).filter(
+            Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
+            Deal.reimbursement_id == None
+        ).all()
+        
         return jsonify({
             'success': True,
             'dashboard': {
@@ -1128,7 +1134,9 @@ def get_dashboard():
                     'batches_count': len(cash_batches)
                 },
                 'attention': {
-                    'pending_deals': len(pending_deals)
+                    'pending_deals': len(pending_deals),
+                    'unreimbursed_founders': len(unreimbursed),
+                    'unreimbursed_total_usdt': round(sum(d.payout_amount_usdt or 0 for d in unreimbursed), 2)
                 }
             }
         })

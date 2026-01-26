@@ -1,34 +1,41 @@
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
 env/
 venv/
 ENV/
-.venv
+
+# Local database
+*.db
+local.db
 
 # IDE
-.vscode/
 .idea/
+.vscode/
 *.swp
 *.swo
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Environment variables
-.env
-.env.local
-
-# Logs
-*.log
-
-# Старые версии файлов (не нужны в репозитории)
-calculator_old.js
-calculator_new.js
-index_old.html
-index_new.html
-
