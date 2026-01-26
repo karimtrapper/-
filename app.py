@@ -10,6 +10,7 @@ import os
 import requests
 import threading
 import asyncio
+import time
 
 # ==================== FLASK APP ====================
 app = Flask(__name__, static_folder='static')
@@ -561,35 +562,18 @@ def create_deal():
     try:
         data = request.get_json()
         
-        # #region agent log
-        print(f"[DEBUG] create_deal: keys={list(data.keys()) if data else []}, created_at={data.get('created_at')}, type={type(data.get('created_at')).__name__ if data else None}")
-        # #endregion
-        
         # Парсим дату если передана
         created_at = None
         if data.get('created_at'):
             try:
-                # Поддерживаем разные форматы даты
                 date_str = data['created_at']
-                # #region agent log
-                print(f"[DEBUG] Parsing date: date_str={date_str}, has_T={'T' in str(date_str)}")
-                # #endregion
                 if 'T' in date_str:
                     created_at = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
                 else:
                     created_at = datetime.strptime(date_str, '%Y-%m-%d')
-                # #region agent log
-                print(f"[DEBUG] Date parsed OK: created_at={created_at}")
-                # #endregion
-            except Exception as parse_err:
-                # #region agent log
-                print(f"[DEBUG] Date parse FAILED: error={parse_err}")
-                # #endregion
+            except:
                 created_at = datetime.now()
         else:
-            # #region agent log
-            print(f"[DEBUG] No created_at in request, using now()")
-            # #endregion
             created_at = datetime.now()
         
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
@@ -1053,14 +1037,9 @@ def get_incoming_transactions():
         
         for wallet in wallets:
             wallets_checked.append(wallet.address)
-            # #region agent log
-            with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                import json, time
-                f.write(json.dumps({'location':'app.py:1056','message':'Checking wallet','data':{'address':wallet.address},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H1'}) + '\n')
-            # #endregion
             try:
                 # Пагинация для загрузки большего количества транзакций
-                for page in range(10):  # Уменьшаем до 10 страниц (500 транзакций) для скорости
+                for page in range(10):  # 500 транзакций
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     import time
                     params = {
@@ -1071,19 +1050,7 @@ def get_incoming_transactions():
                         't': int(time.time())
                     }
                     
-                    # #region agent log
-                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({'location':'app.py:1071','message':'Requesting TronScan','data':{'url':url,'params':params},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
-                    # #endregion
-
                     response = requests.get(url, params=params, headers=headers, timeout=5)
-                    # #region agent log
-                    try:
-                        resp_json = response.json()
-                        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                            f.write(json.dumps({'location':'app.py:1075','message':'TronScan response','data':{'status':response.status_code,'count':len(resp_json.get('token_transfers', [])) if response.status_code==200 else 0, 'total': resp_json.get('total')},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
-                    except: pass
-                    # #endregion
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
@@ -1101,17 +1068,7 @@ def get_incoming_transactions():
                             if end_ts and tx_ts > end_ts:
                                 continue
                                 
-                            # Принимаем и входящие, и исходящие для истории баланса
-                            # Но для списка "доступных для сделок" (Pay-In) нужны только входящие
                             amount = float(tx.get('quant', 0)) / 1_000_000
-                            
-                            # #region agent log
-                            # Логируем подозрительные транзакции
-                            if tx.get('transaction_id') in ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e', '6649b741a63c621360667e4130f60742f5587130089882253896594375c2']:
-                                with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                                    f.write(json.dumps({'location':'app.py:1102','message':'Found target TX','data':{'tx_id': tx.get('transaction_id'), 'from': tx.get('from_address'), 'to': tx.get('to_address'), 'amount': amount},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H3'}) + '\n')
-                            # #endregion
-                            
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
@@ -1123,12 +1080,8 @@ def get_incoming_transactions():
                             })
                         
                         if reached_start_ts:
-                            # #region agent log
-                            # print(f"[DEBUG] Reached start_ts for {wallet.address}")
-                            # #endregion
                             break
                     else:
-                        print(f"[DEBUG] TronScan API error {response.status_code} for {wallet.address}")
                         break
             except Exception as e:
                 print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
@@ -1163,40 +1116,6 @@ def get_incoming_transactions():
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
         
-        # #region agent log
-        import json, time
-        try:
-            with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                target_txs = [
-                    '9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e',
-                    '471e9f75877c4139988294a20b080508053a4798642087c53e8d254adce2bb04'
-                ]
-                for tx_h in target_txs:
-                    in_all = any(x['tx_hash'] == tx_h for x in all_incoming)
-                    in_used = tx_h in used_hashes
-                    f.write(json.dumps({
-                        'location':'app.py:get_incoming_transactions',
-                        'message':'Checking target tx existence and usage',
-                        'data':{
-                            'tx_hash': tx_h,
-                            'in_all_incoming': in_all,
-                            'in_used_hashes': in_used,
-                            'total_incoming': len(all_incoming),
-                            'total_used': len(used_hashes)
-                        },
-                        'timestamp':int(time.time()*1000),
-                        'sessionId':'debug-session',
-                        'hypothesisId':'H4'
-                    }) + '\n')
-        except: pass
-        # #endregion
-
-        # #region agent log
-        print(f"[DEBUG] get_incoming_transactions: total={len(all_incoming)}, available={len(available)}, used={len(used)}")
-        if wallets:
-            print(f"[DEBUG] First wallet checked: {wallets[0].address}")
-        # #endregion
-
         return jsonify({
             'success': True,
             'available': available[:1000],
@@ -1247,7 +1166,7 @@ def get_outgoing_transactions():
         
         for wallet in wallets:
             try:
-                for page in range(10):  # Уменьшаем до 10 страниц
+                for page in range(10):
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     import time
                     params = {
@@ -1699,18 +1618,11 @@ def doverka_webhook():
 @app.route('/api/doverka/confirm/<int:deal_id>', methods=['POST'])
 def confirm_doverka(deal_id):
     """Подтвердить получение выплаты от Доверки вручную"""
-    import json
-    from datetime import datetime
     session = get_session()
     try:
         data = request.get_json()
         payout_hash = data.get('payout_hash')
         
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Confirming doverka', 'data': {'deal_id': deal_id, 'payout_hash': payout_hash}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-        # #endregion
-
         deal = session.query(Deal).filter(Deal.id == deal_id).first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
@@ -1744,18 +1656,9 @@ def confirm_doverka(deal_id):
 
         session.commit()
         
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Doverka confirmed successfully', 'data': {'deal_id': deal_id}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-        # #endregion
-
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
         session.rollback()
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'location': 'app.py:confirm_doverka', 'message': 'Error confirming doverka', 'data': {'error': str(e)}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-        # #endregion
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         session.close()
