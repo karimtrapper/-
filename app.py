@@ -1078,8 +1078,11 @@ def get_incoming_transactions():
 
                     response = requests.get(url, params=params, headers=headers, timeout=5)
                     # #region agent log
-                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({'location':'app.py:1075','message':'TronScan response','data':{'status':response.status_code,'count':len(response.json().get('token_transfers', [])) if response.status_code==200 else 0},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
+                    try:
+                        resp_json = response.json()
+                        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                            f.write(json.dumps({'location':'app.py:1075','message':'TronScan response','data':{'status':response.status_code,'count':len(resp_json.get('token_transfers', [])) if response.status_code==200 else 0, 'total': resp_json.get('total')},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H2'}) + '\n')
+                    except: pass
                     # #endregion
                     if response.status_code == 200:
                         data = response.json()
@@ -1101,11 +1104,14 @@ def get_incoming_transactions():
                             # Принимаем и входящие, и исходящие для истории баланса
                             # Но для списка "доступных для сделок" (Pay-In) нужны только входящие
                             amount = float(tx.get('quant', 0)) / 1_000_000
+                            
                             # #region agent log
-                            if tx.get('transaction_id') in ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e']:
+                            # Логируем подозрительные транзакции
+                            if tx.get('transaction_id') in ['9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e', '6649b741a63c621360667e4130f60742f5587130089882253896594375c2']:
                                 with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                                    f.write(json.dumps({'location':'app.py:1102','message':'Found target TX','data':{'tx':tx},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H3'}) + '\n')
+                                    f.write(json.dumps({'location':'app.py:1102','message':'Found target TX','data':{'tx_id': tx.get('transaction_id'), 'from': tx.get('from_address'), 'to': tx.get('to_address'), 'amount': amount},'timestamp':int(time.time()*1000),'sessionId':'debug-session','hypothesisId':'H3'}) + '\n')
                             # #endregion
+                            
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
