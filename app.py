@@ -1164,22 +1164,31 @@ def get_incoming_transactions():
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
         
         # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            import json, time
-            f.write(json.dumps({
-                'location':'app.py:1146',
-                'message':'Filtering results',
-                'data':{
-                    'total_fetched':len(all_incoming),
-                    'available_count':len(available),
-                    'used_count':len(used),
-                    'target_tx_in_used': '9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e' in used_hashes,
-                    'used_hashes_sample': list(used_hashes)[:10]
-                },
-                'timestamp':int(time.time()*1000),
-                'sessionId':'debug-session',
-                'hypothesisId':'H4'
-            }) + '\n')
+        import json, time
+        try:
+            with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
+                target_txs = [
+                    '9f40e2084358d7e7c28b23c76959cacb3207654598a887cf179c8892adce985e',
+                    '471e9f75877c4139988294a20b080508053a4798642087c53e8d254adce2bb04'
+                ]
+                for tx_h in target_txs:
+                    in_all = any(x['tx_hash'] == tx_h for x in all_incoming)
+                    in_used = tx_h in used_hashes
+                    f.write(json.dumps({
+                        'location':'app.py:get_incoming_transactions',
+                        'message':'Checking target tx existence and usage',
+                        'data':{
+                            'tx_hash': tx_h,
+                            'in_all_incoming': in_all,
+                            'in_used_hashes': in_used,
+                            'total_incoming': len(all_incoming),
+                            'total_used': len(used_hashes)
+                        },
+                        'timestamp':int(time.time()*1000),
+                        'sessionId':'debug-session',
+                        'hypothesisId':'H4'
+                    }) + '\n')
+        except: pass
         # #endregion
 
         # #region agent log
