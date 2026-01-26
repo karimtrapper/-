@@ -2823,8 +2823,7 @@
                         data[key] = value;
                     }
                 } else {
-                    // Если поле пустое, явно передаем null для опциональных полей
-                    if (['referrer_name', 'referrer_percent', 'referrer_fixed_usdt', 'notes', 'client_name', 'payin_tx_hash', 'payout_tx_hash'].includes(key)) {
+                    if (['referrer_name', 'referrer_percent', 'referrer_fixed_usdt', 'notes', 'payin_tx_hash', 'payout_tx_hash'].includes(key)) {
                         data[key] = null;
                     }
                 }

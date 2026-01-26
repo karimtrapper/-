@@ -717,10 +717,12 @@ def update_deal(deal_id):
                 existing_op.description = f"Сделка #{deal.id} ({deal.client_name or 'без имени'})"
 
         # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
-        if data.get('client_name') and deal.client_id:
+        # Если имя клиента передано и оно не пустое, и есть привязанный клиент - обновляем имя клиента в базе
+        client_name_val = data.get('client_name')
+        if client_name_val and str(client_name_val).strip() != "" and deal.client_id:
             client = session.query(Client).filter(Client.id == deal.client_id).first()
             if client:
-                client.name = data['client_name']
+                client.name = str(client_name_val)
         
         # Если пришел новый client_id, просто привязываем
         if 'client_id' in data:
