@@ -1947,6 +1947,14 @@
         }
         
         // Load incoming transactions for PayIn crypto select
+        async function deleteWallet(walletId) {
+            if (!confirm('Удалить этот кошелек из мониторинга?')) return;
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
+                if ((await response.json()).success) loadTransactions();
+            } catch (e) { console.error(e); }
+        }
+
         async function loadIncomingTxForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/transactions/incoming`);
@@ -3512,12 +3520,13 @@
                     document.getElementById('walletsInfo').innerHTML = `
                         <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
                             ${walletsData.wallets.map(w => `
-                                <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 8px; flex: 1; min-width: 200px;">
+                                <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 8px; flex: 1; min-width: 200px; position: relative;">
                                     <div style="font-family: monospace; font-size: 0.8rem; color: #666; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
                                     <div style="margin-top: 0.5rem;">
                                         <strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
                                         <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>
                                     </div>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">×</button>
                                 </div>
                             `).join('')}
                         </div>

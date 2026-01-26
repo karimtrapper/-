@@ -351,7 +351,10 @@ class Deal(Base):
             'custom_payout_currency': self.custom_payout_currency,
             'custom_payout_amount': self.custom_payout_amount,
             'custom_payout_rate': self.custom_payout_rate,
-            'notes': self.notes
+            'notes': self.notes,
+            'reimbursement_id': self.reimbursement_id,
+            'reimbursement': self.reimbursement.to_dict() if self.reimbursement else None,
+            'is_reimbursed': self.reimbursement_id is not None
         }
 
 # Создание таблиц
