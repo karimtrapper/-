@@ -1055,7 +1055,7 @@ def get_incoming_transactions():
             wallets_checked.append(wallet.address)
             try:
                 # Пагинация для загрузки большего количества транзакций
-                for page in range(10):  # До 10 страниц (500 транзакций на кошелек)
+                for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
@@ -1145,8 +1145,8 @@ def get_incoming_transactions():
         
         return jsonify({
             'success': True,
-            'available': available[:500],
-            'used': used[:100],
+            'available': available[:1000],
+            'used': used[:200],
             'wallets_checked': wallets_checked
         })
     except Exception as e:
@@ -1193,7 +1193,7 @@ def get_outgoing_transactions():
         
         for wallet in wallets:
             try:
-                for page in range(5):  # До 5 страниц (250 транзакций на кошелек)
+                for page in range(20):  # До 20 страниц (1000 транзакций на кошелек)
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
@@ -1240,7 +1240,7 @@ def get_outgoing_transactions():
                 print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
         
         all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-        return jsonify({'success': True, 'available': all_outgoing[:500]})
+        return jsonify({'success': True, 'available': all_outgoing[:1000]})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
