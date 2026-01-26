@@ -247,12 +247,45 @@ class Wallet(Base):
     label = Column(String(100))
     created_at = Column(DateTime, default=datetime.utcnow)
     active = Column(Boolean, default=True)
+    operations = relationship("WalletOperation", back_populates="wallet", cascade="all, delete-orphan")
     
-    def to_dict(self):
+    def to_dict(self, session=None):
+        # Если передан session, считаем системный баланс
+        system_balance = 0
+        if session:
+            ops = session.query(WalletOperation).filter(WalletOperation.wallet_id == self.id).all()
+            for op in ops:
+                if op.type == 'income':
+                    system_balance += op.amount
+                else:
+                    system_balance -= op.amount
+                    
         return {
             'id': self.id, 'address': self.address, 'blockchain': self.blockchain,
             'label': self.label, 'created_at': self.created_at.isoformat() if self.created_at else None,
-            'active': self.active
+            'active': self.active,
+            'system_balance': round(system_balance, 2)
+        }
+
+class WalletOperation(Base):
+    __tablename__ = 'wallet_operations'
+    id = Column(Integer, primary_key=True)
+    wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=False)
+    type = Column(String(20), nullable=False)  # 'income' или 'expense'
+    amount = Column(Float, nullable=False)
+    description = Column(String(255))
+    tx_hash = Column(String(100))
+    deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    wallet = relationship("Wallet", back_populates="operations")
+    
+    def to_dict(self):
+        return {
+            'id': self.id, 'wallet_id': self.wallet_id, 'type': self.type,
+            'amount': self.amount, 'description': self.description,
+            'tx_hash': self.tx_hash, 'deal_id': self.deal_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
 class Deal(Base):
@@ -284,6 +317,8 @@ class Deal(Base):
     payout_amount_thb = Column(Float)
     payout_amount_usdt = Column(Float)
     payout_tx_hash = Column(String(100))
+    payout_wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=True)
+    payout_wallet = relationship("Wallet", foreign_keys=[payout_wallet_id])
     cash_batch_id = Column(Integer, ForeignKey('cash_batches.id'), nullable=True)
     cash_batch = relationship("CashBatch", back_populates="deals")
     cash_batch_rate = Column(Float)
@@ -336,6 +371,7 @@ class Deal(Base):
             'payout_amount_thb': self.payout_amount_thb,
             'payout_amount_usdt': self.payout_amount_usdt,
             'payout_tx_hash': self.payout_tx_hash,
+            'payout_wallet_id': self.payout_wallet_id,
             'cash_batch_rate': self.cash_batch_rate,
             'payout_founder_name': self.payout_founder_name,
             'profit_usdt': self.profit_usdt,
@@ -558,6 +594,7 @@ def create_deal():
             doverka_transaction_id=data.get('doverka_transaction_id'),
             payout_method=PayOutMethod(data['payout_method']) if data.get('payout_method') else None,
             payout_source=PayOutSource(data['payout_source']) if data.get('payout_source') else None,
+            payout_wallet_id=data.get('payout_wallet_id'),
             payout_amount_thb=data.get('payout_amount_thb'),
             payout_amount_usdt=data.get('payout_amount_usdt'),
             payout_tx_hash=data.get('payout_tx_hash'),
@@ -577,6 +614,20 @@ def create_deal():
             notes=data.get('notes')
         )
         session.add(deal)
+        session.flush()
+
+        # Автоматическое списание с кошелька при создании
+        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+            op = WalletOperation(
+                wallet_id=deal.payout_wallet_id,
+                type='expense',
+                amount=deal.payout_amount_usdt,
+                description=f"Сделка #{deal.id} ({deal.client_name or 'без имени'})",
+                tx_hash=deal.payout_tx_hash,
+                deal_id=deal.id
+            )
+            session.add(op)
+
         session.commit()
         
         # Webhook если сделка создана сразу со статусом completed
@@ -615,7 +666,8 @@ def update_deal(deal_id):
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
-                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id', 'payout_founder_name']:
+                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id', 'payout_founder_name',
+                      'payout_wallet_id']:
             if field in data:
                 setattr(deal, field, data[field])
         
@@ -626,6 +678,31 @@ def update_deal(deal_id):
             deal.payout_method = PayOutMethod(data['payout_method']) if data['payout_method'] else None
         if 'payout_source' in data:
             deal.payout_source = PayOutSource(data['payout_source']) if data['payout_source'] else None
+
+        # Управление списанием с Binance кошелька при сохранении/завершении
+        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+            # Ищем существующую операцию для этой сделки
+            existing_op = session.query(WalletOperation).filter(
+                WalletOperation.deal_id == deal.id,
+                WalletOperation.type == 'expense'
+            ).first()
+            
+            if not existing_op:
+                op = WalletOperation(
+                    wallet_id=deal.payout_wallet_id,
+                    type='expense',
+                    amount=deal.payout_amount_usdt,
+                    description=f"Сделка #{deal.id} ({deal.client_name or 'без имени'})",
+                    tx_hash=deal.payout_tx_hash,
+                    deal_id=deal.id
+                )
+                session.add(op)
+            else:
+                # Обновляем существующую
+                existing_op.wallet_id = deal.payout_wallet_id
+                existing_op.amount = deal.payout_amount_usdt
+                existing_op.tx_hash = deal.payout_tx_hash
+                existing_op.description = f"Сделка #{deal.id} ({deal.client_name or 'без имени'})"
 
         # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
         if 'client_name' in data and deal.client_id:
@@ -1242,6 +1319,53 @@ def get_clients():
     try:
         clients = session.query(Client).order_by(Client.total_deals.desc()).limit(50).all()
         return jsonify({'success': True, 'clients': [c.to_dict() for c in clients]})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+# ==================== WALLET OPERATIONS API ====================
+
+@app.route('/api/wallets/<int:wallet_id>/operations', methods=['GET'])
+def get_wallet_operations(wallet_id):
+    session = get_session()
+    try:
+        ops = session.query(WalletOperation).filter(WalletOperation.wallet_id == wallet_id).order_by(WalletOperation.created_at.desc()).all()
+        return jsonify({'success': True, 'operations': [op.to_dict() for op in ops]})
+    finally:
+        session.close()
+
+@app.route('/api/wallets/<int:wallet_id>/operations', methods=['POST'])
+def create_wallet_operation(wallet_id):
+    session = get_session()
+    try:
+        data = request.get_json()
+        op = WalletOperation(
+            wallet_id=wallet_id,
+            type=data['type'],  # 'income' or 'expense'
+            amount=float(data['amount']),
+            description=data.get('description'),
+            tx_hash=data.get('tx_hash')
+        )
+        session.add(op)
+        session.commit()
+        return jsonify({'success': True, 'operation': op.to_dict()})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/wallets/summary', methods=['GET'])
+def get_wallets_summary():
+    session = get_session()
+    try:
+        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        return jsonify({
+            'success': True, 
+            'wallets': [w.to_dict(session) for w in wallets]
+        })
     finally:
         session.close()
 
@@ -1475,6 +1599,25 @@ def confirm_doverka(deal_id):
         if deal.status == DealStatus.PENDING:
             deal.status = DealStatus.COMPLETED
             
+        # Автоматическое списание с кошелька при подтверждении (если выбрано)
+        if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
+            # Ищем существующую операцию
+            existing_op = session.query(WalletOperation).filter(
+                WalletOperation.deal_id == deal.id,
+                WalletOperation.type == 'expense'
+            ).first()
+            
+            if not existing_op:
+                op = WalletOperation(
+                    wallet_id=deal.payout_wallet_id,
+                    type='expense',
+                    amount=deal.payout_amount_usdt,
+                    description=f"Сделка #{deal.id} ({deal.client_name or 'без имени'})",
+                    tx_hash=deal.payout_tx_hash,
+                    deal_id=deal.id
+                )
+                session.add(op)
+
         session.commit()
         
         # #region agent log

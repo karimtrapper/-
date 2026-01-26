@@ -503,6 +503,12 @@
                 grid-template-columns: 1fr;
             }
         }
+        .balance-subtab-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        .badge-success { background: #d1fae5; color: #065f46; }
+        .badge-danger { background: #fee2e2; color: #b91c1c; }
     </style>
 </head>
 <body>
@@ -519,9 +525,7 @@
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals">Сделки</button>
             <button class="nav-tab" data-section="create">+ Создать</button>
-            <button class="nav-tab" data-section="cash">Касса</button>
-            <button class="nav-tab" data-section="cards">Карты</button>
-            <button class="nav-tab" data-section="doverka">Доверка</button>
+            <button class="nav-tab" data-section="balance">Баланс</button>
             <button class="nav-tab" data-section="reimbursements">Возмещения</button>
             <button class="nav-tab" data-section="transactions">Транзакции</button>
             <button class="nav-tab" data-section="managers">Менеджеры</button>
@@ -861,6 +865,12 @@
                     
                     <div class="form-row" id="binanceGroup" style="display:none;">
                         <div class="form-group">
+                            <label class="form-label">Кошелек списания</label>
+                            <select class="form-control" name="payout_wallet_id" id="payoutWalletSelect">
+                                <!-- Загружается динамически -->
+                            </select>
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Хэш транзакции (исходящие)</label>
                             <select class="form-control" id="binanceTxSelect" onchange="selectBinanceTx()">
                                 <option value="">-- Выбрать из списка --</option>
@@ -1157,6 +1167,139 @@
             </div>
         </section>
         
+        <!-- Balance Section -->
+        <section id="balance" class="section">
+            <div class="card">
+                <div class="card-title">Финансовый баланс</div>
+                <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: #f1f5f9; padding: 0.5rem; border-radius: 10px;">
+                    <button class="btn btn-sm btn-light balance-subtab-btn active" onclick="switchBalanceSubTab('binance')" id="btnSubBinance">Binance (USDT)</button>
+                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cash')" id="btnSubCash">Наличные (THB)</button>
+                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cards')" id="btnSubCards">Карты (THB)</button>
+                </div>
+
+                <!-- Binance Sub-tab -->
+                <div id="subtabBinance" class="balance-subtab-content active">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; gap: 1rem; flex-wrap: wrap;">
+                        <div id="walletsSummaryGrid" style="display: flex; gap: 1rem; flex-wrap: wrap; flex: 1;">
+                            <!-- Загружается динамически -->
+                        </div>
+                    </div>
+
+                    <div id="walletHistorySection" style="display: none; background: #fff; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3 id="currentWalletName" style="margin: 0;">История операций</h3>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-success" onclick="openTopupModal()">+ Пополнить (+)</button>
+                                <button class="btn btn-outline-danger" onclick="openWithdrawModal()">- Списать (-)</button>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Дата</th>
+                                        <th>Тип</th>
+                                        <th>Сумма</th>
+                                        <th>Описание / Хэш</th>
+                                        <th>Действие</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="walletHistoryTable">
+                                    <!-- Загружается динамически -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cash Sub-tab -->
+                <div id="subtabCash" class="balance-subtab-content" style="display: none;">
+                    <div class="stats-grid">
+                        <div class="stat-card success">
+                            <div class="stat-value" id="totalCashThb">0</div>
+                            <div class="stat-label">Баланс THB</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="totalCashUsdt">0</div>
+                            <div class="stat-label">Эквивалент USDT</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avgCashRate">0</div>
+                            <div class="stat-label">Средний курс</div>
+                        </div>
+                    </div>
+                    
+                    <div class="card" style="box-shadow: none; border: 1px solid #eee;">
+                        <div class="card-title">Добавить партию наличных</div>
+                        <form id="addCashBatchForm">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Сумма THB</label>
+                                    <input type="number" class="form-control" name="amount_thb" required placeholder="1000000">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Стоимость USDT</label>
+                                    <input type="number" class="form-control" name="cost_usdt" required placeholder="28500" step="0.01">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Курс (авто)</label>
+                                    <input type="text" class="form-control" id="newBatchRate" readonly placeholder="THB/USDT">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Способ закупки</label>
+                                    <select class="form-control" name="purchase_method">
+                                        <option value="Binance P2P">Binance P2P</option>
+                                        <option value="OTC партнер">OTC партнер</option>
+                                        <option value="Другое">Другое</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Фаундер</label>
+                                    <select class="form-control" name="founder_name">
+                                        <option value="Андрей">Андрей</option>
+                                        <option value="Тимур">Тимур</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Хэш транзакции</label>
+                                    <input type="text" class="form-control" name="tx_hash" placeholder="TxHash...">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success">Добавить партию</button>
+                        </form>
+                    </div>
+                    
+                    <div class="card" style="box-shadow: none; border: 1px solid #eee;">
+                        <div class="card-title">Партии кассы (FIFO - сначала старые)</div>
+                        <div id="cashBatchesList">
+                            <!-- Batches will be loaded here -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Cards Sub-tab -->
+                <div id="subtabCards" class="balance-subtab-content" style="display: none;">
+                    <div class="stats-grid" style="margin-bottom: 1.5rem;">
+                        <div class="stat-card success">
+                            <div class="stat-value" id="totalCardsThb">0</div>
+                            <div class="stat-label">Баланс карт THB</div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="margin: 0;">Ваши карты</h3>
+                        <button class="btn btn-primary" onclick="openAddCardModal()">+ Добавить карту</button>
+                    </div>
+                    
+                    <div id="bankCardsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+                        <!-- Bank cards loaded here -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Reimbursements Section -->
         <section id="reimbursements" class="section">
             <div class="card">
@@ -1347,6 +1490,65 @@
         </div>
     </div>
     
+    <!-- Topup Modal -->
+    <div id="topupModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeTopupModal()">&times;</span>
+            <div class="card-title">Пополнение кошелька</div>
+            <form id="topupForm">
+                <input type="hidden" id="topupWalletId">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Тип пополнения</label>
+                    <select class="form-control" id="topupType" onchange="toggleTopupSource()">
+                        <option value="manual">Ввести вручную</option>
+                        <option value="tronscan">Выбрать из TronScan</option>
+                    </select>
+                </div>
+                
+                <div id="topupTronscanGroup" style="display: none; margin-bottom: 1rem;">
+                    <label class="form-label">Выберите входящую транзакцию</label>
+                    <select class="form-control" id="topupTxSelect" onchange="selectTopupTx()">
+                        <option value="">-- Загрузка... --</option>
+                    </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Сумма USDT</label>
+                    <input type="number" class="form-control" id="topupAmount" step="0.01" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Хэш транзакции</label>
+                    <input type="text" class="form-control" id="topupHash">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Описание</label>
+                    <input type="text" class="form-control" id="topupDesc" placeholder="Пополнение баланса">
+                </div>
+                <button type="submit" class="btn btn-success" style="width: 100%;">Подтвердить пополнение</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Withdraw Modal -->
+    <div id="withdrawModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeWithdrawModal()">&times;</span>
+            <div class="card-title">Списание (прочее)</div>
+            <form id="withdrawForm">
+                <input type="hidden" id="withdrawWalletId">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Сумма USDT</label>
+                    <input type="number" class="form-control" id="withdrawAmount" step="0.01" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Описание</label>
+                    <input type="text" class="form-control" id="withdrawDesc" placeholder="Причина списания" required>
+                </div>
+                <button type="submit" class="btn btn-danger" style="width: 100%;">Списать</button>
+            </form>
+        </div>
+    </div>
+
     <script>
         const API_URL = '';  // Same origin
         
@@ -1382,6 +1584,7 @@
         
         // ==================== Dashboard ====================
         async function loadDashboard() {
+            switchBalanceSubTab('binance'); // Инициализируем балансы при загрузке
             try {
                 const response = await fetch(`${API_URL}/api/analytics/dashboard`);
                 const data = await response.json();
@@ -1530,6 +1733,21 @@
                 
                 if (data.success) {
                     const deal = data.deal;
+                    
+                    // Загружаем список кошельков для выбора списания, если это Binance
+                    let walletOptions = '';
+                    if (deal.payout_source === 'binance') {
+                        try {
+                            const wResp = await fetch(`${API_URL}/api/wallets/summary`);
+                            const wData = await wResp.json();
+                            if (wData.success) {
+                                walletOptions = wData.wallets.map(w => 
+                                    `<option value="${w.id}" ${deal.payout_wallet_id == w.id ? 'selected' : ''}>${w.label || w.address.substring(0,8)}</option>`
+                                ).join('');
+                            }
+                        } catch (e) {}
+                    }
+
                     const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                     const isDoverka = deal.payin_method === 'spp_doverka';
                     const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed';
@@ -1590,6 +1808,15 @@
                         ` : `
                             <p><strong>Метод:</strong> ${getPayoutMethodLabel(deal.payout_method)}</p>
                             <p><strong>Источник:</strong> ${getPayoutSourceLabel(deal.payout_source)}</p>
+                            ${deal.payout_source === 'binance' ? `
+                                <div style="background: #f1f5f9; padding: 0.5rem; border-radius: 6px; margin-bottom: 0.5rem;">
+                                    <label style="font-size: 0.8rem; color: #666;">Кошелек списания:</label>
+                                    <select class="form-control form-control-sm" id="modalPayoutWalletId" onchange="updateDealWallet(${deal.id}, this.value)">
+                                        <option value="">-- Выберите кошелек --</option>
+                                        ${walletOptions}
+                                    </select>
+                                </div>
+                            ` : ''}
                             <p><strong>Сумма THB:</strong> ${formatNumber(deal.payout_amount_thb)} ฿</p>
                             <p><strong>Стоимость USDT:</strong> ${deal.payout_amount_usdt != null ? '$' + deal.payout_amount_usdt.toFixed(2) : '<span style="color: #f59e0b;">Ожидает возмещения</span>'}</p>
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
@@ -1673,6 +1900,19 @@
         
         function closeModal() {
             document.getElementById('dealModal').classList.remove('active');
+        }
+
+        async function updateDealWallet(dealId, walletId) {
+            try {
+                const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({payout_wallet_id: parseInt(walletId)})
+                });
+                if ((await response.json()).success) {
+                    showDealDetails(dealId); // Обновляем
+                }
+            } catch (e) { console.error(e); }
         }
         
         async function updateDealStatus(dealId, status) {
@@ -2644,6 +2884,172 @@
             }
         });
         
+        // ==================== Balance Tab Logic ====================
+        let currentActiveWalletId = null;
+
+        function switchBalanceSubTab(tabName) {
+            document.querySelectorAll('.balance-subtab-content').forEach(t => t.style.display = 'none');
+            document.querySelectorAll('.balance-subtab-btn').forEach(b => b.classList.remove('active'));
+            
+            if (tabName === 'binance') {
+                document.getElementById('subtabBinance').style.display = 'block';
+                document.getElementById('btnSubBinance').classList.add('active');
+                loadWalletsSummary();
+            } else if (tabName === 'cash') {
+                document.getElementById('subtabCash').style.display = 'block';
+                document.getElementById('btnSubCash').classList.add('active');
+                loadCashBatches();
+            } else if (tabName === 'cards') {
+                document.getElementById('subtabCards').style.display = 'block';
+                document.getElementById('btnSubCards').classList.add('active');
+                loadBankCards();
+            }
+        }
+
+        async function loadWalletsSummary() {
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/summary`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const grid = document.getElementById('walletsSummaryGrid');
+                    grid.innerHTML = data.wallets.map(w => `
+                        <div class="stat-card" style="cursor: pointer; position: relative; border: 2px solid ${currentActiveWalletId === w.id ? '#667eea' : '#f1f5f9'};" onclick="showWalletHistory(${w.id}, '${w.address}', '${w.label || 'Без названия'}')">
+                            <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">${w.label || 'Кошелек'}</div>
+                            <div class="stat-value" style="font-size: 1.5rem; color: #10b981;">$${w.system_balance.toFixed(2)}</div>
+                            <div style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
+                        </div>
+                    `).join('');
+                    
+                    // Обновляем выпадающий список в форме создания сделки
+                    const payoutWalletSelect = document.getElementById('payoutWalletSelect');
+                    if (payoutWalletSelect) {
+                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}">${w.label || w.address.substring(0,8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                    }
+                }
+            } catch (e) { console.error('Error loading wallets summary:', e); }
+        }
+
+        async function showWalletHistory(walletId, address, label) {
+            currentActiveWalletId = walletId;
+            document.getElementById('walletHistorySection').style.display = 'block';
+            document.getElementById('currentWalletName').textContent = `История: ${label || address.substring(0,10)}`;
+            loadWalletsSummary(); // Чтобы обновить рамку выбора
+            
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`);
+                const data = await response.json();
+                
+                if (data.success) {
+                    const tbody = document.getElementById('walletHistoryTable');
+                    tbody.innerHTML = data.operations.map(op => `
+                        <tr>
+                            <td>${formatDate(op.created_at)}</td>
+                            <td><span class="badge badge-${op.type === 'income' ? 'success' : 'danger'}">${op.type === 'income' ? 'Плюс' : 'Минус'}</span></td>
+                            <td style="color: ${op.type === 'income' ? '#10b981' : '#ef4444'}; font-weight: 600;">${op.type === 'income' ? '+' : '-'}$${op.amount.toFixed(2)}</td>
+                            <td>
+                                <div>${op.description || '-'}</div>
+                                ${op.tx_hash ? `<div style="font-size: 0.75rem; font-family: monospace; color: #666;">${op.tx_hash.substring(0,20)}...</div>` : ''}
+                            </td>
+                            <td>
+                                <!-- Можно добавить удаление ошибочных операций -->
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            } catch (e) { console.error('Error loading wallet history:', e); }
+        }
+
+        function openTopupModal() {
+            if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
+            document.getElementById('topupWalletId').value = currentActiveWalletId;
+            document.getElementById('topupModal').classList.add('active');
+            toggleTopupSource();
+        }
+
+        function closeTopupModal() { document.getElementById('topupModal').classList.remove('active'); }
+
+        async function toggleTopupSource() {
+            const type = document.getElementById('topupType').value;
+            const group = document.getElementById('topupTronscanGroup');
+            if (type === 'tronscan') {
+                group.style.display = 'block';
+                const select = document.getElementById('topupTxSelect');
+                select.innerHTML = '<option value="">Загрузка...</option>';
+                try {
+                    const response = await fetch(`${API_URL}/api/transactions/incoming`);
+                    const data = await response.json();
+                    if (data.success) {
+                        select.innerHTML = '<option value="">-- Выберите транзакцию --</option>' + 
+                            data.available.map(tx => `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address.substring(0,8)}... | ${formatDate(tx.timestamp)}</option>`).join('');
+                    }
+                } catch (e) { select.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+            } else {
+                group.style.display = 'none';
+            }
+        }
+
+        function selectTopupTx() {
+            const select = document.getElementById('topupTxSelect');
+            const hash = select.value;
+            const amount = select.selectedOptions[0]?.dataset?.amount;
+            if (hash) document.getElementById('topupHash').value = hash;
+            if (amount) document.getElementById('topupAmount').value = amount;
+        }
+
+        document.getElementById('topupForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const walletId = document.getElementById('topupWalletId').value;
+            const data = {
+                type: 'income',
+                amount: document.getElementById('topupAmount').value,
+                tx_hash: document.getElementById('topupHash').value,
+                description: document.getElementById('topupDesc').value || 'Пополнение'
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if ((await response.json()).success) {
+                    closeTopupModal();
+                    showWalletHistory(walletId, '', '');
+                }
+            } catch (e) { alert('Ошибка при пополнении'); }
+        };
+
+        function openWithdrawModal() {
+            if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
+            document.getElementById('withdrawWalletId').value = currentActiveWalletId;
+            document.getElementById('withdrawModal').classList.add('active');
+        }
+
+        function closeWithdrawModal() { document.getElementById('withdrawModal').classList.remove('active'); }
+
+        document.getElementById('withdrawForm').onsubmit = async function(e) {
+            e.preventDefault();
+            const walletId = document.getElementById('withdrawWalletId').value;
+            const data = {
+                type: 'expense',
+                amount: document.getElementById('withdrawAmount').value,
+                description: document.getElementById('withdrawDesc').value
+            };
+            
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                if ((await response.json()).success) {
+                    closeWithdrawModal();
+                    showWalletHistory(walletId, '', '');
+                }
+            } catch (e) { alert('Ошибка при списании'); }
+        };
+
         // ==================== Cash Batches ====================
         async function loadCashBatches() {
             try {
