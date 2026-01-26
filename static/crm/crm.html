@@ -918,15 +918,15 @@
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Имя партнера</label>
-                            <input type="text" class="form-control" name="referrer_name" placeholder="Имя партнера">
+                            <input type="text" class="form-control" name="referrer_name" placeholder="Имя партнера" oninput="calculateProfit()">
                         </div>
                         <div class="form-group">
                             <label class="form-label">% от прибыли</label>
-                            <input type="number" class="form-control" name="referrer_percent" placeholder="10" step="0.1">
+                            <input type="number" class="form-control" name="referrer_percent" placeholder="10" step="0.1" oninput="calculateProfit()">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Или фикс. сумма USDT</label>
-                            <input type="number" class="form-control" name="referrer_fixed_usdt" placeholder="50" step="0.01">
+                            <input type="number" class="form-control" name="referrer_fixed_usdt" placeholder="50" step="0.01" oninput="calculateProfit()">
                         </div>
                     </div>
                     
@@ -942,10 +942,12 @@
                         <div class="form-group">
                             <label class="form-label">Выплата партнеру</label>
                             <input type="text" class="form-control" id="referrerPayout" placeholder="0" readonly>
+                            <input type="hidden" name="referrer_payout_usdt" id="referrerPayoutRaw">
                         </div>
                         <div class="form-group">
                             <label class="form-label">Чистая прибыль</label>
                             <input type="text" class="form-control" id="netProfit" placeholder="Авто" readonly style="font-weight: 600; color: #10b981;">
+                            <input type="hidden" name="net_profit_usdt" id="netProfitRaw">
                         </div>
                     </div>
                     
@@ -1865,14 +1867,20 @@
                                 : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
                             }
                         </p>
-                        ${deal.referrer_name ? `<p><strong>Партнёр:</strong> ${deal.referrer_name} (${deal.referrer_percent || 0}%) → <span style="color: #f59e0b;">-$${(deal.referrer_payout_usdt || 0).toFixed(2)}</span></p>` : ''}
+                        
+                        ${deal.referrer_name ? `
+                            <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
+                                <p style="margin: 0;"><strong>Партнёр:</strong> ${deal.referrer_name}</p>
+                                <p style="margin: 0; color: #f59e0b;"><strong>Выплата:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)} (${deal.referrer_percent || 0}%)</p>
+                            </div>
+                        ` : ''}
+
                         <p><strong>Чистая прибыль:</strong> 
                             ${profitUnknown 
                                 ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>' 
-                                : `<span style="color: #10b981; font-weight: 600; font-size: 1.1rem;">$${(deal.net_profit_usdt || deal.profit_usdt || 0).toFixed(2)}</span>`
+                                : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                             }
                         </p>
-                        ${!profitUnknown && deal.net_profit_usdt != null ? `<p><strong>Чистая прибыль:</strong> <span style="color: #10b981; font-weight: 600;">$${deal.net_profit_usdt.toFixed(2)}</span></p>` : ''}
                         
                         ${deal.notes ? `<hr style="margin: 1rem 0;"><p><strong>Заметки:</strong> ${deal.notes}</p>` : ''}
                         
@@ -2057,6 +2065,8 @@
                         if (deal.payout_amount_thb) document.getElementById('payoutAmountThb').value = deal.payout_amount_thb;
                         if (deal.referrer_name) form.referrer_name.value = deal.referrer_name;
                         if (deal.referrer_percent) form.referrer_percent.value = deal.referrer_percent;
+                        if (deal.referrer_payout_usdt) document.getElementById('referrerPayoutRaw').value = deal.referrer_payout_usdt;
+                        if (deal.net_profit_usdt) document.getElementById('netProfitRaw').value = deal.net_profit_usdt;
                         if (deal.notes) form.notes.value = deal.notes;
                         
                         // Для Binance
@@ -2792,8 +2802,13 @@
                     document.getElementById('profitUsdt').style.color = profit >= 0 ? '#10b981' : '#ef4444';
                     document.getElementById('profitPercent').value = profitPercent.toFixed(2);
                     document.getElementById('cashBatchCostUsdt').value = '$' + binanceUsdt.toFixed(2);
+                    
                     document.getElementById('referrerPayout').value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '0';
+                    document.getElementById('referrerPayoutRaw').value = referrerPayout.toFixed(2);
+                    
                     document.getElementById('netProfit').value = '$' + netProfit.toFixed(2);
+                    document.getElementById('netProfitRaw').value = netProfit.toFixed(2);
+                    
                     document.getElementById('netProfit').style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
                     document.getElementById('exchangeRateCalc').value = exchangeRate.toFixed(2);
                     return;
@@ -2824,8 +2839,13 @@
             document.getElementById('profitPercent').value = profitPercent.toFixed(1);
             document.getElementById('profitPercent').placeholder = '%';
             document.getElementById('cashBatchCostUsdt').value = '$' + payoutUsdt.toFixed(2);
+            
             document.getElementById('referrerPayout').value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '0';
+            document.getElementById('referrerPayoutRaw').value = referrerPayout.toFixed(2);
+            
             document.getElementById('netProfit').value = '$' + netProfit.toFixed(2);
+            document.getElementById('netProfitRaw').value = netProfit.toFixed(2);
+            
             document.getElementById('netProfit').style.color = '#10b981';
         }
         
@@ -2857,7 +2877,8 @@
                 if (value) {
                     if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt', 
                          'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt', 
-                         'profit_percent', 'exchange_rate'].includes(key)) {
+                         'profit_percent', 'exchange_rate', 'referrer_payout_usdt', 
+                         'net_profit_usdt', 'referrer_percent', 'referrer_fixed_usdt'].includes(key)) {
                         data[key] = parseFloat(value);
                     } else if (key === 'client_id' || key === 'cash_batch_id') {
                         data[key] = parseInt(value) || null;
@@ -3070,7 +3091,12 @@
                             <td style="color: ${op.type === 'income' ? '#10b981' : '#ef4444'}; font-weight: 600;">${op.type === 'income' ? '+' : '-'}$${op.amount.toFixed(2)}</td>
                             <td>
                                 <div>${op.description || '-'}</div>
-                                ${op.tx_hash ? `<div style="font-size: 0.75rem; font-family: monospace; color: #666;">${op.tx_hash.substring(0,20)}...</div>` : ''}
+                                ${op.tx_hash ? `
+                                    <div style="font-size: 0.75rem; font-family: monospace; color: #666; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
+                                        <a href="https://tronscan.org/#/transaction/${op.tx_hash}" target="_blank" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${op.tx_hash.substring(0,16)}...</a>
+                                        <span style="cursor: pointer;" onclick="copyHash('${op.tx_hash}')" title="Копировать хэш">📋</span>
+                                    </div>
+                                ` : ''}
                             </td>
                             <td>
                                 <button class="btn btn-sm btn-outline-danger" onclick="deleteWalletOperation(${walletId}, ${op.id})" title="Удалить">×</button>
