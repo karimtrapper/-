@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,14 +12,14 @@
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: 'Inter', sans-serif;
             background: #f5f7fa;
             color: #1a1a2e;
             min-height: 100vh;
         }
-        
+
         /* Navigation */
         /* Global Top Navigation */
         .top-nav {
@@ -31,8 +32,9 @@
             position: sticky;
             top: 0;
             z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.15);
         }
+
         .top-nav a {
             color: white;
             text-decoration: none;
@@ -41,11 +43,13 @@
             font-weight: 600;
             font-size: 1rem;
             transition: all 0.2s;
-            background: rgba(255,255,255,0.15);
+            background: rgba(255, 255, 255, 0.15);
         }
+
         .top-nav a:hover {
-            background: rgba(255,255,255,0.3);
+            background: rgba(255, 255, 255, 0.3);
         }
+
         .top-nav a.active {
             background: white;
             color: #667eea;
@@ -57,22 +61,22 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
-        
+
         .nav-logo {
             color: white;
             font-size: 1.5rem;
             font-weight: 700;
         }
-        
+
         .nav-tabs {
             display: flex;
             gap: 0.5rem;
         }
-        
+
         .nav-tab {
-            background: rgba(255,255,255,0.2);
+            background: rgba(255, 255, 255, 0.2);
             color: white;
             border: none;
             padding: 0.6rem 1.2rem;
@@ -81,44 +85,45 @@
             font-weight: 500;
             transition: all 0.2s;
         }
-        
-        .nav-tab:hover, .nav-tab.active {
+
+        .nav-tab:hover,
+        .nav-tab.active {
             background: white;
             color: #667eea;
         }
-        
+
         /* Main container */
         .container {
             max-width: 1400px;
             margin: 0 auto;
             padding: 2rem;
         }
-        
+
         /* Sections */
         .section {
             display: none;
         }
-        
+
         .section.active {
             display: block;
         }
-        
+
         /* Cards */
         .card {
             background: white;
             border-radius: 12px;
             padding: 1.5rem;
             margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
-        
+
         .card-title {
             font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 1rem;
             color: #333;
         }
-        
+
         /* Dashboard Stats */
         .stats-grid {
             display: grid;
@@ -126,59 +131,60 @@
             gap: 1rem;
             margin-bottom: 2rem;
         }
-        
+
         .stat-card {
             background: white;
             border-radius: 12px;
             padding: 1.5rem;
             text-align: center;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
         }
-        
+
         .stat-value {
             font-size: 2rem;
             font-weight: 700;
             color: #667eea;
         }
-        
+
         .stat-label {
             color: #666;
             font-size: 0.9rem;
             margin-top: 0.5rem;
         }
-        
+
         .stat-card.warning {
             border-left: 4px solid #f59e0b;
         }
-        
+
         .stat-card.warning .stat-value {
             color: #f59e0b;
         }
-        
+
         .stat-card.success {
             border-left: 4px solid #10b981;
         }
-        
+
         .stat-card.success .stat-value {
             color: #10b981;
         }
-        
+
         /* Tables */
         .table-container {
             overflow-x: auto;
         }
-        
+
         table {
             width: 100%;
             border-collapse: collapse;
         }
-        
-        th, td {
+
+        th,
+        td {
             padding: 0.75rem 1rem;
             text-align: left;
             border-bottom: 1px solid #eee;
         }
-        
+
         th {
             background: #f8f9fa;
             font-weight: 600;
@@ -186,11 +192,11 @@
             font-size: 0.85rem;
             text-transform: uppercase;
         }
-        
+
         tr:hover {
             background: #f8f9fa;
         }
-        
+
         /* Status badges */
         .badge {
             display: inline-block;
@@ -199,39 +205,39 @@
             font-size: 0.8rem;
             font-weight: 500;
         }
-        
+
         .badge-pending {
             background: #fef3c7;
             color: #92400e;
         }
-        
+
         .badge-completed {
             background: #d1fae5;
             color: #065f46;
         }
-        
+
         .badge-verified {
             background: #dbeafe;
             color: #1e40af;
         }
-        
+
         .badge-cancelled {
             background: #fee2e2;
             color: #991b1b;
         }
-        
+
         /* Forms */
         .form-group {
             margin-bottom: 1rem;
         }
-        
+
         .form-label {
             display: block;
             margin-bottom: 0.5rem;
             font-weight: 500;
             color: #555;
         }
-        
+
         .form-control {
             width: 100%;
             padding: 0.75rem 1rem;
@@ -241,23 +247,23 @@
             font-family: inherit;
             transition: border-color 0.2s;
         }
-        
+
         .form-control:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-        
+
         select.form-control {
             cursor: pointer;
         }
-        
+
         .form-row {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1rem;
         }
-        
+
         /* Buttons */
         .btn {
             padding: 0.75rem 1.5rem;
@@ -268,59 +274,59 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
-        
+
         .btn-primary:hover {
             transform: translateY(-1px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
-        
+
         .btn-secondary {
             background: #e5e7eb;
             color: #374151;
         }
-        
+
         .btn-secondary:hover {
             background: #d1d5db;
         }
-        
+
         .btn-success {
             background: #10b981;
             color: white;
         }
-        
+
         .btn-danger {
             background: #ef4444;
             color: white;
         }
-        
+
         .btn-info {
             background: #3b82f6;
             color: white;
         }
-        
+
         .btn-info:hover {
             background: #2563eb;
         }
-        
+
         .btn-warning {
             background: #f59e0b;
             color: white;
         }
-        
+
         .btn-warning:hover {
             background: #d97706;
         }
-        
+
         .btn-sm {
             padding: 0.4rem 0.8rem;
             font-size: 0.85rem;
         }
-        
+
         /* Cash batches */
         .batch-card {
             background: #f8f9fa;
@@ -331,32 +337,32 @@
             justify-content: space-between;
             align-items: center;
         }
-        
+
         .batch-info h4 {
             font-size: 1rem;
             margin-bottom: 0.25rem;
         }
-        
+
         .batch-info p {
             color: #666;
             font-size: 0.85rem;
         }
-        
+
         .batch-amount {
             text-align: right;
         }
-        
+
         .batch-amount .thb {
             font-size: 1.25rem;
             font-weight: 600;
             color: #10b981;
         }
-        
+
         .batch-amount .rate {
             font-size: 0.85rem;
             color: #666;
         }
-        
+
         /* Progress bar */
         .progress {
             height: 6px;
@@ -365,13 +371,13 @@
             overflow: hidden;
             margin-top: 0.5rem;
         }
-        
+
         .progress-bar {
             height: 100%;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             transition: width 0.3s;
         }
-        
+
         /* Transactions list */
         .tx-item {
             display: flex;
@@ -384,57 +390,57 @@
             cursor: pointer;
             transition: all 0.2s;
         }
-        
+
         .tx-item:hover {
             background: #e5e7eb;
         }
-        
+
         .tx-item.used {
             opacity: 0.5;
         }
-        
+
         .tx-amount {
             font-size: 1.1rem;
             font-weight: 600;
             color: #10b981;
         }
-        
+
         .tx-hash {
             font-family: monospace;
             font-size: 0.8rem;
             color: #666;
         }
-        
+
         .tx-time {
             font-size: 0.85rem;
             color: #888;
         }
-        
+
         /* Alert boxes */
         .alert {
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1rem;
         }
-        
+
         .alert-warning {
             background: #fef3c7;
             border-left: 4px solid #f59e0b;
             color: #92400e;
         }
-        
+
         .alert-success {
             background: #d1fae5;
             border-left: 4px solid #10b981;
             color: #065f46;
         }
-        
+
         .alert-error {
             background: #fee2e2;
             border-left: 4px solid #ef4444;
             color: #991b1b;
         }
-        
+
         /* Modal */
         .modal {
             display: none;
@@ -443,16 +449,16 @@
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0,0,0,0.5);
+            background: rgba(0, 0, 0, 0.5);
             z-index: 1000;
             align-items: center;
             justify-content: center;
         }
-        
+
         .modal.active {
             display: flex;
         }
-        
+
         .modal-content {
             background: white;
             border-radius: 12px;
@@ -462,19 +468,19 @@
             max-height: 90vh;
             overflow-y: auto;
         }
-        
+
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
         }
-        
+
         .modal-title {
             font-size: 1.25rem;
             font-weight: 600;
         }
-        
+
         .modal-close {
             background: none;
             border: none;
@@ -482,35 +488,45 @@
             cursor: pointer;
             color: #666;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
             .nav {
                 flex-direction: column;
                 gap: 1rem;
             }
-            
+
             .nav-tabs {
                 flex-wrap: wrap;
                 justify-content: center;
             }
-            
+
             .container {
                 padding: 1rem;
             }
-            
+
             .form-row {
                 grid-template-columns: 1fr;
             }
         }
+
         .balance-subtab-btn.active {
             background: #667eea;
             color: white;
         }
-        .badge-success { background: #d1fae5; color: #065f46; }
-        .badge-danger { background: #fee2e2; color: #b91c1c; }
+
+        .badge-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .badge-danger {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
     </style>
 </head>
+
 <body>
     <!-- Global Navigation -->
     <nav class="top-nav">
@@ -532,14 +548,14 @@
             <button class="nav-tab" data-section="verification">Сверка</button>
         </div>
     </nav>
-    
+
     <div class="container">
         <!-- Dashboard Section -->
         <section id="dashboard" class="section active">
             <div class="stats-grid" id="statsGrid">
                 <!-- Stats will be loaded here -->
             </div>
-            
+
             <div class="card">
                 <div class="card-title">Последние сделки</div>
                 <div class="table-container">
@@ -561,12 +577,12 @@
                     </table>
                 </div>
             </div>
-            
+
             <div id="attentionAlerts">
                 <!-- Alerts will be loaded here -->
             </div>
         </section>
-        
+
         <!-- Deals Section -->
         <section id="deals" class="section">
             <div class="card">
@@ -596,7 +612,7 @@
                 </div>
                 <button class="btn btn-primary" onclick="loadDeals()">Применить</button>
             </div>
-            
+
             <div class="card">
                 <div class="card-title">Список сделок</div>
                 <div class="table-container">
@@ -622,12 +638,12 @@
                 </div>
             </div>
         </section>
-        
+
         <!-- Create Deal Section -->
         <section id="create" class="section">
             <div class="card">
                 <div class="card-title">Создать новую сделку</div>
-                
+
                 <form id="createDealForm">
                     <div class="form-row">
                         <div class="form-group">
@@ -647,26 +663,30 @@
                             <input type="text" class="form-control" name="client_name" placeholder="Новый клиент">
                         </div>
                     </div>
-                    
+
                     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
-                    
+
                     <!-- Переключатель кастомной сделки -->
-                    <div style="margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
+                    <div
+                        style="margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
                         <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
                             <input type="checkbox" id="customDealToggle" onchange="toggleCustomDeal()">
                             <strong>Кастомная сделка</strong>
-                            <span style="color: #666; font-size: 0.85rem;">(нестандартные валюты: THB→USDT, USD наличные и др.)</span>
+                            <span style="color: #666; font-size: 0.85rem;">(нестандартные валюты: THB→USDT, USD наличные
+                                и др.)</span>
                         </label>
                     </div>
-                    
+
                     <!-- Кастомная сделка - упрощенная форма -->
-                    <div id="customDealSection" style="display: none; padding: 1rem; background: #fffbeb; border-radius: 8px; margin-bottom: 1rem;">
+                    <div id="customDealSection"
+                        style="display: none; padding: 1rem; background: #fffbeb; border-radius: 8px; margin-bottom: 1rem;">
                         <h4 style="margin-bottom: 1rem; color: #92400e;">Кастомная сделка (любые валюты)</h4>
-                        
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Pay-In: Сумма</label>
-                                <input type="number" class="form-control" id="customPayinAmount" placeholder="1000" step="0.01" oninput="calcCustomProfit()">
+                                <input type="number" class="form-control" id="customPayinAmount" placeholder="1000"
+                                    step="0.01" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Валюта</label>
@@ -679,18 +699,21 @@
                             </div>
                             <div class="form-group" id="customPayinRateGroup">
                                 <label class="form-label">Курс к USDT</label>
-                                <input type="number" class="form-control" id="customPayinRate" placeholder="92.5" step="0.0001" oninput="calcCustomProfit()">
+                                <input type="number" class="form-control" id="customPayinRate" placeholder="92.5"
+                                    step="0.0001" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">= USDT</label>
-                                <input type="text" class="form-control" id="customPayinUsdt" readonly style="background: #e0f2fe; font-weight: 600;">
+                                <input type="text" class="form-control" id="customPayinUsdt" readonly
+                                    style="background: #e0f2fe; font-weight: 600;">
                             </div>
                         </div>
-                        
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Pay-Out: Сумма</label>
-                                <input type="number" class="form-control" id="customPayoutAmount" placeholder="35000" step="0.01" oninput="calcCustomProfit()">
+                                <input type="number" class="form-control" id="customPayoutAmount" placeholder="35000"
+                                    step="0.01" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Валюта</label>
@@ -703,37 +726,46 @@
                             </div>
                             <div class="form-group" id="customPayoutRateGroup">
                                 <label class="form-label">Курс к USDT</label>
-                                <input type="number" class="form-control" id="customPayoutRate" placeholder="35.5" step="0.0001" oninput="calcCustomProfit()">
+                                <input type="number" class="form-control" id="customPayoutRate" placeholder="35.5"
+                                    step="0.0001" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">= USDT</label>
-                                <input type="text" class="form-control" id="customPayoutUsdt" readonly style="background: #fee2e2; font-weight: 600;">
+                                <input type="text" class="form-control" id="customPayoutUsdt" readonly
+                                    style="background: #fee2e2; font-weight: 600;">
                             </div>
                         </div>
-                        
-                        <div class="form-row" style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+
+                        <div class="form-row"
+                            style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
                             <div class="form-group">
                                 <label class="form-label">Партнёр (реферер)</label>
-                                <input type="text" class="form-control" id="customReferrerName" placeholder="Имя партнёра" oninput="calcCustomProfit()">
+                                <input type="text" class="form-control" id="customReferrerName"
+                                    placeholder="Имя партнёра" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">% партнёра</label>
-                                <input type="number" class="form-control" id="customReferrerPercent" placeholder="0" step="0.1" min="0" max="100" oninput="calcCustomProfit()">
+                                <input type="number" class="form-control" id="customReferrerPercent" placeholder="0"
+                                    step="0.1" min="0" max="100" oninput="calcCustomProfit()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Выплата партнёру</label>
-                                <input type="text" class="form-control" id="customReferrerPayout" readonly style="background: #fef3c7;">
+                                <input type="text" class="form-control" id="customReferrerPayout" readonly
+                                    style="background: #fef3c7;">
                             </div>
                         </div>
-                        
-                        <div class="form-row" style="margin-top: 1rem; padding: 0.75rem; background: white; border-radius: 8px;">
+
+                        <div class="form-row"
+                            style="margin-top: 1rem; padding: 0.75rem; background: white; border-radius: 8px;">
                             <div class="form-group">
                                 <label class="form-label">Валовая прибыль</label>
-                                <input type="text" class="form-control" id="customProfitUsdt" readonly style="font-weight: 600;">
+                                <input type="text" class="form-control" id="customProfitUsdt" readonly
+                                    style="font-weight: 600;">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Чистая прибыль</label>
-                                <input type="text" class="form-control" id="customNetProfit" readonly style="font-weight: 600; font-size: 1.1rem;">
+                                <input type="text" class="form-control" id="customNetProfit" readonly
+                                    style="font-weight: 600; font-size: 1.1rem;">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Метод выдачи</label>
@@ -751,252 +783,279 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Заметки</label>
-                                <input type="text" class="form-control" id="customNotes" placeholder="Описание сделки...">
+                                <input type="text" class="form-control" id="customNotes"
+                                    placeholder="Описание сделки...">
                             </div>
                         </div>
-                        
-                        <button type="button" class="btn btn-success" style="margin-top: 1rem;" onclick="createCustomDeal()">
+
+                        <button type="button" class="btn btn-success" style="margin-top: 1rem;"
+                            onclick="createCustomDeal()">
                             Создать кастомную сделку
                         </button>
                     </div>
-                    
+
                     <!-- Стандартная форма -->
                     <div id="standardDealSection">
-                    <h3 style="margin-bottom: 1rem; color: #10b981;">Pay-In (Получение)</h3>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Метод Pay-In</label>
-                            <select class="form-control" name="payin_method" id="payinMethod" required>
-                                <option value="spp_doverka">СБП / Доверка</option>
-                                <option value="partners_cash">Партнеры (наличные)</option>
-                                <option value="crypto_direct">Крипта напрямую</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="payinRubGroup">
-                            <label class="form-label">Сумма RUB</label>
-                            <input type="number" class="form-control" name="payin_amount_rub" placeholder="100000">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Сумма USDT</label>
-                            <input type="number" class="form-control" name="payin_amount_usdt" placeholder="1000" step="0.01">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group" id="payinPartnerGroup" style="display:none;">
-                            <label class="form-label">Партнер (кто прислал)</label>
-                            <input type="text" class="form-control" name="payin_partner_name" placeholder="Имя партнера">
-                        </div>
-                        <div class="form-group" id="payinTxHashGroup">
-                            <label class="form-label">Хэш транзакции (для крипты)</label>
-                            <select class="form-control" id="payinTxSelect" onchange="selectPayinTx(this)" style="margin-bottom: 0.5rem;">
-                                <option value="">-- Выбрать из входящих --</option>
-                            </select>
-                            <input type="text" class="form-control" name="payin_tx_hash" placeholder="Или введите TxHash вручную...">
-                        </div>
-                        <div class="form-group" id="payinRateGroup">
-                            <label class="form-label">Курс RUB/USDT</label>
-                            <input type="number" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5" step="0.01">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row" id="doverkaGroup" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">ID транзакции Доверки</label>
-                            <input type="text" class="form-control" name="doverka_transaction_id" placeholder="47871">
-                        </div>
-                    </div>
-                    
-                    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
-                    
-                    <h3 style="margin-bottom: 1rem; color: #ef4444;">Pay-Out (Выдача)</h3>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Метод выдачи</label>
-                            <select class="form-control" name="payout_method">
-                                <option value="office">Офис</option>
-                                <option value="courier">Курьер</option>
-                                <option value="atm">Банкомат</option>
-                                <option value="transfer">Перевод</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Источник</label>
-                            <select class="form-control" name="payout_source" id="payoutSource">
-                                <option value="cash_batch">Из кассы (наличные)</option>
-                                <option value="bank_card">С карты банка</option>
-                                <option value="binance">Binance</option>
-                                <option value="founder_personal">Личные фаундера</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Сумма THB</label>
-                            <input type="number" class="form-control" name="payout_amount_thb" placeholder="50000" id="payoutAmountThb" step="0.01">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row" id="cashBatchGroup">
-                        <div class="form-group">
-                            <label class="form-label">Касса (FIFO авто-списание)</label>
-                            <div id="cashBalanceInfo" style="padding: 0.5rem; background: #f0fdf4; border-radius: 6px; font-size: 0.9rem;">
-                                Загрузка...
+                        <h3 style="margin-bottom: 1rem; color: #10b981;">Pay-In (Получение)</h3>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Метод Pay-In</label>
+                                <select class="form-control" name="payin_method" id="payinMethod" required>
+                                    <option value="spp_doverka">СБП / Доверка</option>
+                                    <option value="partners_cash">Партнеры (наличные)</option>
+                                    <option value="crypto_direct">Крипта напрямую</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="payinRubGroup">
+                                <label class="form-label">Сумма RUB</label>
+                                <input type="number" class="form-control" name="payin_amount_rub" placeholder="100000">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Сумма USDT</label>
+                                <input type="number" class="form-control" name="payin_amount_usdt" placeholder="1000"
+                                    step="0.01">
                             </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Расчетная стоимость USDT</label>
-                            <input type="text" class="form-control" id="cashBatchCostUsdt" readonly placeholder="Авто">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row" id="bankCardGroup" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">Карта банка</label>
-                            <select class="form-control" name="bank_card_id" id="bankCardSelect">
-                                <!-- Options loaded dynamically -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Остаток / Курс</label>
-                            <input type="text" class="form-control" id="bankCardInfo" readonly placeholder="Выберите карту">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row" id="binanceGroup" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">Кошелек списания</label>
-                            <select class="form-control" name="payout_wallet_id" id="payoutWalletSelect">
-                                <!-- Загружается динамически -->
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Хэш транзакции (исходящие)</label>
-                            <select class="form-control" id="binanceTxSelect" onchange="selectBinanceTx()">
-                                <option value="">-- Выбрать из списка --</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">или введите хэш</label>
-                            <input type="text" class="form-control" name="payout_tx_hash" id="binanceTxInput" placeholder="TxHash...">
-                        </div>
-                    </div>
-                    <div class="form-row" id="binanceGroup2" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">USDT из транзакции *</label>
-                            <input type="number" class="form-control" name="payout_amount_usdt" id="binanceUsdt" placeholder="Сколько USDT использовали" step="0.01" oninput="calcBinanceRate()">
-                            <small style="color: #666;">Сколько USDT из этой транзакции на сделку</small>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Курс THB/USDT (авто)</label>
-                            <input type="text" class="form-control" id="binanceRate" name="payout_rate" readonly style="background: #e0f2fe; font-weight: 600;">
-                        </div>
-                    </div>
-                    
-                    <div class="form-row" id="founderGroup" style="display:none;">
-                        <div class="form-group">
-                            <label class="form-label">Фаундер (кто оплатил)</label>
-                            <select class="form-control" name="payout_founder_name">
-                                <option value="Андрей">Андрей</option>
-                                <option value="Теодор">Теодор</option>
-                            </select>
-                        </div>
-                        <div class="form-group" style="grid-column: span 2;">
-                            <label class="form-label">Прибыль</label>
-                            <div style="padding: 0.75rem; background: #fef3c7; border-radius: 8px; color: #92400e; font-size: 0.9rem;">
-                                <strong>Неизвестна до возмещения.</strong><br>
-                                <small>Курс станет известен когда вернём деньги фаундеру. Создайте возмещение после сделки.</small>
+
+                        <div class="form-row">
+                            <div class="form-group" id="payinPartnerGroup" style="display:none;">
+                                <label class="form-label">Партнер (кто прислал)</label>
+                                <input type="text" class="form-control" name="payin_partner_name"
+                                    placeholder="Имя партнера">
+                            </div>
+                            <div class="form-group" id="payinTxHashGroup">
+                                <label class="form-label">Хэш транзакции (для крипты)</label>
+                                <select class="form-control" id="payinTxSelect" onchange="selectPayinTx(this)"
+                                    style="margin-bottom: 0.5rem;">
+                                    <option value="">-- Выбрать из входящих --</option>
+                                </select>
+                                <input type="text" class="form-control" name="payin_tx_hash"
+                                    placeholder="Или введите TxHash вручную...">
+                            </div>
+                            <div class="form-group" id="payinRateGroup">
+                                <label class="form-label">Курс RUB/USDT</label>
+                                <input type="number" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5"
+                                    step="0.01">
                             </div>
                         </div>
-                    </div>
-                    
-                    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
-                    
-                    <h3 style="margin-bottom: 1rem; color: #f59e0b;">Партнер-реферер (опционально)</h3>
-                    <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Если партнер помог со сделкой и получает часть прибыли</p>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Имя партнера</label>
-                            <input type="text" class="form-control" name="referrer_name" placeholder="Имя партнера" oninput="calculateProfit()">
+
+                        <div class="form-row" id="doverkaGroup" style="display:none;">
+                            <div class="form-group">
+                                <label class="form-label">ID транзакции Доверки</label>
+                                <input type="text" class="form-control" name="doverka_transaction_id"
+                                    placeholder="47871">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">% от прибыли</label>
-                            <input type="number" class="form-control" name="referrer_percent" placeholder="10" step="0.1" oninput="calculateProfit()">
+
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+
+                        <h3 style="margin-bottom: 1rem; color: #ef4444;">Pay-Out (Выдача)</h3>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Метод выдачи</label>
+                                <select class="form-control" name="payout_method">
+                                    <option value="office">Офис</option>
+                                    <option value="courier">Курьер</option>
+                                    <option value="atm">Банкомат</option>
+                                    <option value="transfer">Перевод</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Источник</label>
+                                <select class="form-control" name="payout_source" id="payoutSource">
+                                    <option value="cash_batch">Из кассы (наличные)</option>
+                                    <option value="bank_card">С карты банка</option>
+                                    <option value="binance">Binance</option>
+                                    <option value="founder_personal">Личные фаундера</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Сумма THB</label>
+                                <input type="number" class="form-control" name="payout_amount_thb" placeholder="50000"
+                                    id="payoutAmountThb" step="0.01">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Или фикс. сумма USDT</label>
-                            <input type="number" class="form-control" name="referrer_fixed_usdt" placeholder="50" step="0.01" oninput="calculateProfit()">
+
+                        <div class="form-row" id="cashBatchGroup">
+                            <div class="form-group">
+                                <label class="form-label">Касса (FIFO авто-списание)</label>
+                                <div id="cashBalanceInfo"
+                                    style="padding: 0.5rem; background: #f0fdf4; border-radius: 6px; font-size: 0.9rem;">
+                                    Загрузка...
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Расчетная стоимость USDT</label>
+                                <input type="text" class="form-control" id="cashBatchCostUsdt" readonly
+                                    placeholder="Авто">
+                            </div>
                         </div>
-                    </div>
-                    
-                    <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
-                    
-                    <h3 style="margin-bottom: 1rem; color: #667eea;">Расчет прибыли</h3>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Прибыль USDT (до партнера)</label>
-                            <input type="number" class="form-control" name="profit_usdt" id="profitUsdt" placeholder="Авто" step="0.01" readonly>
+
+                        <div class="form-row" id="bankCardGroup" style="display:none;">
+                            <div class="form-group">
+                                <label class="form-label">Карта банка</label>
+                                <select class="form-control" name="bank_card_id" id="bankCardSelect">
+                                    <!-- Options loaded dynamically -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Остаток / Курс</label>
+                                <input type="text" class="form-control" id="bankCardInfo" readonly
+                                    placeholder="Выберите карту">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Выплата партнеру</label>
-                            <input type="text" class="form-control" id="referrerPayout" placeholder="0" readonly>
-                            <input type="hidden" name="referrer_payout_usdt" id="referrerPayoutRaw">
+
+                        <div class="form-row" id="binanceGroup" style="display:none;">
+                            <div class="form-group">
+                                <label class="form-label">Кошелек списания</label>
+                                <select class="form-control" name="payout_wallet_id" id="payoutWalletSelect">
+                                    <!-- Загружается динамически -->
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Хэш транзакции (исходящие)</label>
+                                <select class="form-control" id="binanceTxSelect" onchange="selectBinanceTx()">
+                                    <option value="">-- Выбрать из списка --</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">или введите хэш</label>
+                                <input type="text" class="form-control" name="payout_tx_hash" id="binanceTxInput"
+                                    placeholder="TxHash...">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Чистая прибыль</label>
-                            <input type="text" class="form-control" id="netProfit" placeholder="Авто" readonly style="font-weight: 600; color: #10b981;">
-                            <input type="hidden" name="net_profit_usdt" id="netProfitRaw">
+                        <div class="form-row" id="binanceGroup2" style="display:none;">
+                            <div class="form-group">
+                                <label class="form-label">USDT из транзакции *</label>
+                                <input type="number" class="form-control" name="payout_amount_usdt" id="binanceUsdt"
+                                    placeholder="Сколько USDT использовали" step="0.01" oninput="calcBinanceRate()">
+                                <small style="color: #666;">Сколько USDT из этой транзакции на сделку</small>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Курс THB/USDT (авто)</label>
+                                <input type="text" class="form-control" id="binanceRate" name="payout_rate" readonly
+                                    style="background: #e0f2fe; font-weight: 600;">
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Прибыль %</label>
-                            <input type="number" class="form-control" name="profit_percent" id="profitPercent" placeholder="%" step="0.1" readonly>
+
+                        <div class="form-row" id="founderGroup" style="display:none;">
+                            <div class="form-group">
+                                <label class="form-label">Фаундер (кто оплатил)</label>
+                                <select class="form-control" name="payout_founder_name">
+                                    <option value="Андрей">Андрей</option>
+                                    <option value="Теодор">Теодор</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="grid-column: span 2;">
+                                <label class="form-label">Прибыль</label>
+                                <div
+                                    style="padding: 0.75rem; background: #fef3c7; border-radius: 8px; color: #92400e; font-size: 0.9rem;">
+                                    <strong>Неизвестна до возмещения.</strong><br>
+                                    <small>Курс станет известен когда вернём деньги фаундеру. Создайте возмещение после
+                                        сделки.</small>
+                                </div>
+                            </div>
                         </div>
-                        <div class="form-group" id="exchangeRateGroup">
-                            <label class="form-label">Курс для клиента</label>
-                            <input type="number" class="form-control" name="exchange_rate" placeholder="2.85" step="0.0001">
+
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+
+                        <h3 style="margin-bottom: 1rem; color: #f59e0b;">Партнер-реферер (опционально)</h3>
+                        <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Если партнер помог со сделкой и
+                            получает часть прибыли</p>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Имя партнера</label>
+                                <input type="text" class="form-control" name="referrer_name" placeholder="Имя партнера"
+                                    oninput="calculateProfit()">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">% от прибыли</label>
+                                <input type="number" class="form-control" name="referrer_percent" placeholder="10"
+                                    step="0.1" oninput="calculateProfit()">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Или фикс. сумма USDT</label>
+                                <input type="number" class="form-control" name="referrer_fixed_usdt" placeholder="50"
+                                    step="0.01" oninput="calculateProfit()">
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div class="form-row">
-                        <div class="form-group">
-                            <label class="form-label">Дата сделки</label>
-                            <input type="date" class="form-control" name="created_at" id="dealDate">
-                            <small style="color: #666;">Оставьте пустым для текущей даты</small>
+
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+
+                        <h3 style="margin-bottom: 1rem; color: #667eea;">Расчет прибыли</h3>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Прибыль USDT (до партнера)</label>
+                                <input type="number" class="form-control" name="profit_usdt" id="profitUsdt"
+                                    placeholder="Авто" step="0.01" readonly>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Выплата партнеру</label>
+                                <input type="text" class="form-control" id="referrerPayout" placeholder="0" readonly>
+                                <input type="hidden" name="referrer_payout_usdt" id="referrerPayoutRaw">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Чистая прибыль</label>
+                                <input type="text" class="form-control" id="netProfit" placeholder="Авто" readonly
+                                    style="font-weight: 600; color: #10b981;">
+                                <input type="hidden" name="net_profit_usdt" id="netProfitRaw">
+                            </div>
                         </div>
-                        <div class="form-group" style="flex: 2;">
-                            <label class="form-label">Заметки</label>
-                            <textarea class="form-control" name="notes" rows="2" placeholder="Дополнительная информация..."></textarea>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Прибыль %</label>
+                                <input type="number" class="form-control" name="profit_percent" id="profitPercent"
+                                    placeholder="%" step="0.1" readonly>
+                            </div>
+                            <div class="form-group" id="exchangeRateGroup">
+                                <label class="form-label">Курс для клиента</label>
+                                <input type="number" class="form-control" name="exchange_rate" placeholder="2.85"
+                                    step="0.0001">
+                            </div>
                         </div>
-                    </div>
-                    
-                    <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
-                        <button type="submit" class="btn btn-primary">Создать сделку</button>
-                        <button type="button" class="btn btn-secondary" onclick="calculateProfit()">Рассчитать прибыль</button>
-                    </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Дата сделки</label>
+                                <input type="date" class="form-control" name="created_at" id="dealDate">
+                                <small style="color: #666;">Оставьте пустым для текущей даты</small>
+                            </div>
+                            <div class="form-group" style="flex: 2;">
+                                <label class="form-label">Заметки</label>
+                                <textarea class="form-control" name="notes" rows="2"
+                                    placeholder="Дополнительная информация..."></textarea>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                            <button type="submit" class="btn btn-primary">Создать сделку</button>
+                            <button type="button" class="btn btn-secondary" onclick="calculateProfit()">Рассчитать
+                                прибыль</button>
+                        </div>
                     </div><!-- /standardDealSection -->
                 </form>
             </div>
         </section>
-        
+
         <!-- Doverka Section -->
         <section id="doverka" class="section">
             <div class="card">
                 <div class="card-title">Сделки ожидающие выплаты от Доверки</div>
                 <p style="color: #666; margin-bottom: 1rem;">
-                    Доверка выплачивает через несколько часов после оплаты клиентом. 
+                    Доверка выплачивает через несколько часов после оплаты клиентом.
                     Здесь отображаются сделки, по которым нужно проверить поступление.
                 </p>
-                
+
                 <div id="pendingDoverkaList">
                     <!-- Pending deals will be loaded here -->
                 </div>
             </div>
-            
+
             <div class="card">
                 <div class="card-title">Как работает</div>
                 <ol style="color: #666; line-height: 1.8;">
@@ -1008,32 +1067,41 @@
                 </ol>
             </div>
         </section>
-        
+
         <!-- Balance Section -->
         <section id="balance" class="section">
             <div class="card">
                 <div class="card-title">Финансовый баланс</div>
-                <div style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: #f1f5f9; padding: 0.5rem; border-radius: 10px;">
-                    <button class="btn btn-sm btn-light balance-subtab-btn active" onclick="switchBalanceSubTab('binance')" id="btnSubBinance">Binance (USDT)</button>
-                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cash')" id="btnSubCash">Наличные (THB)</button>
-                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cards')" id="btnSubCards">Карты (THB)</button>
+                <div
+                    style="display: flex; gap: 0.5rem; margin-bottom: 1.5rem; background: #f1f5f9; padding: 0.5rem; border-radius: 10px;">
+                    <button class="btn btn-sm btn-light balance-subtab-btn active"
+                        onclick="switchBalanceSubTab('binance')" id="btnSubBinance">Binance (USDT)</button>
+                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cash')"
+                        id="btnSubCash">Наличные (THB)</button>
+                    <button class="btn btn-sm btn-light balance-subtab-btn" onclick="switchBalanceSubTab('cards')"
+                        id="btnSubCards">Карты (THB)</button>
                 </div>
 
                 <!-- Binance Sub-tab -->
                 <div id="subtabBinance" class="balance-subtab-content active">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                         <div id="walletsSummaryGrid" style="display: flex; gap: 1rem; flex-wrap: wrap; flex: 1;">
                             <!-- Загружается динамически -->
                         </div>
-                        <button class="btn btn-primary" onclick="openAddWalletModal()" style="white-space: nowrap; margin-left: 1rem;">+ Добавить кошелек</button>
+                        <button class="btn btn-primary" onclick="openAddWalletModal()"
+                            style="white-space: nowrap; margin-left: 1rem;">+ Добавить кошелек</button>
                     </div>
 
-                    <div id="walletHistorySection" style="display: none; background: #fff; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <div id="walletHistorySection"
+                        style="display: none; background: #fff; padding: 1.5rem; border-radius: 12px; border: 1px solid #e2e8f0;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                             <h3 id="currentWalletName" style="margin: 0;">История операций</h3>
                             <div style="display: flex; gap: 0.5rem;">
                                 <button class="btn btn-success" onclick="openTopupModal()">+ Пополнить (+)</button>
-                                <button class="btn btn-outline-danger" onclick="openWithdrawModal()">- Списать (-)</button>
+                                <button class="btn btn-outline-danger" onclick="openWithdrawModal()">- Списать
+                                    (-)</button>
                             </div>
                         </div>
                         <div class="table-responsive">
@@ -1071,22 +1139,25 @@
                             <div class="stat-label">Средний курс</div>
                         </div>
                     </div>
-                    
+
                     <div class="card" style="box-shadow: none; border: 1px solid #eee;">
                         <div class="card-title">Добавить партию наличных</div>
                         <form id="addCashBatchForm">
                             <div class="form-row">
                                 <div class="form-group">
                                     <label class="form-label">Сумма THB</label>
-                                    <input type="number" class="form-control" name="amount_thb" required placeholder="1000000">
+                                    <input type="number" class="form-control" name="amount_thb" required
+                                        placeholder="1000000">
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Стоимость USDT</label>
-                                    <input type="number" class="form-control" name="cost_usdt" required placeholder="28500" step="0.01">
+                                    <input type="number" class="form-control" name="cost_usdt" required
+                                        placeholder="28500" step="0.01">
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Курс (авто)</label>
-                                    <input type="text" class="form-control" id="newBatchRate" readonly placeholder="THB/USDT">
+                                    <input type="text" class="form-control" id="newBatchRate" readonly
+                                        placeholder="THB/USDT">
                                 </div>
                             </div>
                             <div class="form-row">
@@ -1102,7 +1173,6 @@
                                     <label class="form-label">Фаундер</label>
                                     <select class="form-control" name="founder_name">
                                         <option value="Андрей">Андрей</option>
-                                        <option value="Тимур">Тимур</option>
                                         <option value="Теодор">Теодор</option>
                                     </select>
                                 </div>
@@ -1114,7 +1184,7 @@
                             <button type="submit" class="btn btn-success">Добавить партию</button>
                         </form>
                     </div>
-                    
+
                     <div class="card" style="box-shadow: none; border: 1px solid #eee;">
                         <div class="card-title">Партии кассы (FIFO - сначала старые)</div>
                         <div id="cashBatchesList">
@@ -1131,13 +1201,15 @@
                             <div class="stat-label">Баланс карт THB</div>
                         </div>
                     </div>
-                    
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
                         <h3 style="margin: 0;">Ваши карты</h3>
                         <button class="btn btn-primary" onclick="openAddCardModal()">+ Добавить карту</button>
                     </div>
-                    
-                    <div id="bankCardsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
+
+                    <div id="bankCardsGrid"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem;">
                         <!-- Bank cards loaded here -->
                     </div>
                 </div>
@@ -1149,15 +1221,15 @@
             <div class="card">
                 <div class="card-title">Создать возмещение фаундеру</div>
                 <p style="color: #666; margin-bottom: 1rem;">
-                    Когда переводите фаундеру USDT за несколько сделок одной транзакцией, 
+                    Когда переводите фаундеру USDT за несколько сделок одной транзакцией,
                     создайте возмещение и выберите сделки, которые оно покрывает.
                 </p>
-                
+
                 <div id="pendingReimbursementsList">
                     <!-- Pending deals by founder will be loaded here -->
                 </div>
             </div>
-            
+
             <div class="card">
                 <div class="card-title">История возмещений</div>
                 <div id="reimbursementsList">
@@ -1165,35 +1237,37 @@
                 </div>
             </div>
         </section>
-        
+
         <!-- Transactions Section -->
         <section id="transactions" class="section">
             <div class="card">
                 <div class="card-title">Мониторинг кошельков (TronScan API)</div>
-                
+
                 <form id="addWalletForm" style="margin-bottom: 1rem;">
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Добавить кошелек TRON для мониторинга</label>
-                            <input type="text" class="form-control" name="wallet_address" placeholder="TYourWalletAddress..." pattern="T[a-zA-Z0-9]{33}">
+                            <input type="text" class="form-control" name="wallet_address"
+                                placeholder="TYourWalletAddress..." pattern="T[a-zA-Z0-9]{33}">
                         </div>
                         <div class="form-group" style="display: flex; align-items: flex-end;">
                             <button type="submit" class="btn btn-primary">Добавить</button>
                         </div>
                     </div>
                 </form>
-                
+
                 <div id="walletsInfo" style="margin-bottom: 1rem;">
                     <!-- Wallets info -->
                 </div>
             </div>
-            
+
             <div class="card">
                 <div class="card-title">Проверить транзакцию</div>
                 <form id="verifyTxForm" style="margin-bottom: 1rem;">
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
-                            <input type="text" class="form-control" name="tx_hash" placeholder="Хэш транзакции (64 символа)">
+                            <input type="text" class="form-control" name="tx_hash"
+                                placeholder="Хэш транзакции (64 символа)">
                         </div>
                         <div class="form-group">
                             <button type="submit" class="btn btn-secondary">Проверить</button>
@@ -1202,11 +1276,11 @@
                 </form>
                 <div id="verifyResult"></div>
             </div>
-            
+
             <div class="card">
                 <div class="card-title">Входящие USDT транзакции</div>
                 <p style="color: #666; margin-bottom: 1rem;">Выберите транзакцию для создания сделки</p>
-                
+
                 <div class="form-row" style="margin-bottom: 1rem; align-items: flex-end;">
                     <div class="form-group" style="flex: 2;">
                         <label class="form-label">Фильтр по кошельку</label>
@@ -1226,46 +1300,47 @@
                         <button class="btn btn-secondary" onclick="loadTransactions()">Обновить</button>
                     </div>
                 </div>
-                
+
                 <div id="availableTransactions">
                     <!-- Available transactions -->
                 </div>
-                
+
                 <h4 style="margin: 1.5rem 0 1rem;">Использованные в сделках</h4>
                 <div id="usedTransactions">
                     <!-- Used transactions -->
                 </div>
             </div>
         </section>
-        
+
         <!-- Managers Section -->
         <section id="managers" class="section">
             <div class="card">
                 <div class="card-title">Управление менеджерами</div>
-                
+
                 <form id="addManagerForm" style="margin-bottom: 1.5rem;">
                     <div class="form-row">
                         <div class="form-group" style="flex: 2;">
                             <label class="form-label">Добавить менеджера</label>
-                            <input type="text" class="form-control" name="manager_name" placeholder="Имя менеджера" required>
+                            <input type="text" class="form-control" name="manager_name" placeholder="Имя менеджера"
+                                required>
                         </div>
                         <div class="form-group" style="display: flex; align-items: flex-end;">
                             <button type="submit" class="btn btn-primary">Добавить</button>
                         </div>
                     </div>
                 </form>
-                
+
                 <div id="managersList">
                     <!-- Managers list -->
                 </div>
             </div>
         </section>
-        
+
         <!-- Verification Section -->
         <section id="verification" class="section">
             <div class="card">
                 <div class="card-title">Сверка сделок</div>
-                
+
                 <div class="form-row" style="margin-bottom: 1.5rem;">
                     <div class="form-group">
                         <label class="form-label">Дата от</label>
@@ -1279,35 +1354,36 @@
                         <button class="btn btn-primary" onclick="loadVerificationSummary()">Загрузить сверку</button>
                     </div>
                 </div>
-                
+
                 <div id="verificationSummary">
                     <!-- Summary will be loaded here -->
                 </div>
             </div>
-            
+
             <!-- Webhook Configuration -->
             <div class="card" style="margin-top: 1.5rem;">
                 <div class="card-title">Webhook интеграция (n8n / Zapier / Make)</div>
                 <p style="color: #666; margin-bottom: 1rem;">
                     При завершении сделки (статус "Завершена") данные автоматически отправляются на указанный URL.
                 </p>
-                
+
                 <div class="form-row">
                     <div class="form-group" style="flex: 3;">
                         <label class="form-label">Webhook URL</label>
-                        <input type="url" class="form-control" id="webhookUrl" placeholder="https://your-n8n.com/webhook/xxx">
+                        <input type="url" class="form-control" id="webhookUrl"
+                            placeholder="https://your-n8n.com/webhook/xxx">
                     </div>
                     <div class="form-group" style="display: flex; align-items: flex-end; gap: 0.5rem;">
                         <button class="btn btn-primary" onclick="saveWebhookConfig()">Сохранить</button>
                         <button class="btn btn-secondary" onclick="testWebhook()">Тест</button>
                     </div>
                 </div>
-                
+
                 <div id="webhookStatus" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
             </div>
         </section>
     </div>
-    
+
     <!-- Modal for deal details -->
     <div class="modal" id="dealModal">
         <div class="modal-content">
@@ -1320,7 +1396,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Modal for history -->
     <div class="modal" id="historyModal">
         <div class="modal-content" style="max-width: 700px;">
@@ -1333,7 +1409,7 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Add Wallet Modal -->
     <div id="addWalletModal" class="modal">
         <div class="modal-content">
@@ -1346,7 +1422,8 @@
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Адрес (TRON) или ID (для вирт. учета)</label>
-                    <input type="text" class="form-control" id="newWalletAddress" placeholder="T... или просто имя" required>
+                    <input type="text" class="form-control" id="newWalletAddress" placeholder="T... или просто имя"
+                        required>
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Начальный баланс USDT</label>
@@ -1371,7 +1448,7 @@
                         <option value="tronscan">Выбрать из TronScan</option>
                     </select>
                 </div>
-                
+
                 <div id="topupTronscanGroup" style="display: none; margin-bottom: 1rem;">
                     <label class="form-label">Выберите входящую транзакцию</label>
                     <select class="form-control" id="topupTxSelect" onchange="selectTopupTx()">
@@ -1418,26 +1495,26 @@
 
     <script>
         const API_URL = '';  // Same origin
-        
+
         // ==================== Navigation ====================
         document.querySelectorAll('.nav-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-                
+
                 tab.classList.add('active');
                 document.getElementById(tab.dataset.section).classList.add('active');
-                
+
                 // Load section data
-                switch(tab.dataset.section) {
+                switch (tab.dataset.section) {
                     case 'dashboard': loadDashboard(); break;
                     case 'deals': loadDeals(); break;
-                    case 'create': 
+                    case 'create':
                         // Сбрасываем режим редактирования при ручном переходе на вкладку
                         if (typeof editingDealId !== 'undefined' && editingDealId !== null) {
                             cancelEditMode();
                         }
-                        loadCreateForm(); 
+                        loadCreateForm();
                         break;
                     case 'cash': loadCashBatches(); break;
                     case 'cards': loadBankCards(); break;
@@ -1448,17 +1525,17 @@
                 }
             });
         });
-        
+
         // ==================== Dashboard ====================
         async function loadDashboard() {
             switchBalanceSubTab('binance'); // Инициализируем балансы при загрузке
             try {
                 const response = await fetch(`${API_URL}/api/analytics/dashboard`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const d = data.dashboard;
-                    
+
                     // Защита от undefined
                     const todayDeals = d.today?.deals_count ?? 0;
                     const todayProfit = d.today?.profit_usdt ?? 0;
@@ -1493,7 +1570,7 @@
                             <div class="stat-label">Не возмещено фаундерам</div>
                         </div>
                     `;
-                    
+
                     // Alerts
                     let alertsHtml = '';
                     if (d.attention.unreimbursed_founders > 0) {
@@ -1505,11 +1582,11 @@
                     }
                     document.getElementById('attentionAlerts').innerHTML = alertsHtml;
                 }
-                
+
                 // Load recent deals
                 const dealsResponse = await fetch(`${API_URL}/api/deals?limit=5`);
                 const dealsData = await dealsResponse.json();
-                
+
                 if (dealsData.success) {
                     document.getElementById('recentDealsTable').innerHTML = dealsData.deals.map(deal => `
                         <tr onclick="showDealDetails(${deal.id})" style="cursor: pointer;">
@@ -1517,38 +1594,38 @@
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${deal.client_name || '-'}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
-                            <td>${deal.is_custom 
-                                ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
-                                : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
+                            <td>${deal.is_custom
+                            ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
+                            : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
                             <td class="${(deal.net_profit_usdt || deal.profit_usdt) > 0 ? 'text-success' : ''}">${deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt ? '$' + deal.profit_usdt.toFixed(2) : '-')}</td>
                             <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                         </tr>
                     `).join('');
                 }
-                
+
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             }
         }
-        
+
         // ==================== Deals ====================
         async function loadDeals() {
             const params = new URLSearchParams();
-            
+
             const status = document.getElementById('filterStatus').value;
             const manager = document.getElementById('filterManager').value;
             const dateFrom = document.getElementById('filterDateFrom').value;
             const dateTo = document.getElementById('filterDateTo').value;
-            
+
             if (status) params.append('status', status);
             if (manager) params.append('manager', manager);
             if (dateFrom) params.append('date_from', dateFrom);
             if (dateTo) params.append('date_to', dateTo);
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/deals?${params}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     document.getElementById('dealsTable').innerHTML = data.deals.map(deal => {
                         const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
@@ -1560,7 +1637,7 @@
                             <td>${deal.client_name || '-'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
-                            <td>${deal.is_custom 
+                            <td>${deal.is_custom
                                 ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                                 : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
@@ -1577,19 +1654,19 @@
                 console.error('Error loading deals:', error);
             }
         }
-        
+
         async function showDealDetails(dealId) {
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
-                
+
                 let incomingTxOptions = '';
                 if (data.success && data.deal.payin_method === 'spp_doverka') {
                     try {
                         const txResponse = await fetch(`${API_URL}/api/transactions/incoming`);
                         const txData = await txResponse.json();
                         if (txData.success && txData.available) {
-                            incomingTxOptions = txData.available.slice(0, 50).map(tx => 
+                            incomingTxOptions = txData.available.slice(0, 50).map(tx =>
                                 `<option value="${tx.tx_hash}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
                             ).join('');
                         }
@@ -1597,10 +1674,10 @@
                         console.error('Error loading tx for modal:', e);
                     }
                 }
-                
+
                 if (data.success) {
                     const deal = data.deal;
-                    
+
                     // Загружаем список кошельков для выбора списания, если это Binance
                     let walletOptions = '';
                     let selectedWalletLabel = '';
@@ -1610,17 +1687,17 @@
                             const wData = await wResp.json();
                             if (wData.success) {
                                 walletOptions = wData.wallets.map(w => {
-                                    if (deal.payout_wallet_id == w.id) selectedWalletLabel = w.label || w.address.substring(0,8);
-                                    return `<option value="${w.id}" ${deal.payout_wallet_id == w.id ? 'selected' : ''}>${w.label || w.address.substring(0,8)}</option>`;
+                                    if (deal.payout_wallet_id == w.id) selectedWalletLabel = w.label || w.address.substring(0, 8);
+                                    return `<option value="${w.id}" ${deal.payout_wallet_id == w.id ? 'selected' : ''}>${w.label || w.address.substring(0, 8)}</option>`;
                                 }).join('');
                             }
-                        } catch (e) {}
+                        } catch (e) { }
                     }
 
                     const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                     const isDoverka = deal.payin_method === 'spp_doverka';
                     const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed';
-                    
+
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
                             <div><strong>ID:</strong> #${deal.id}</div>
@@ -1703,10 +1780,10 @@
                         
                         <h4 style="color: #667eea; margin-bottom: 0.5rem;">Финансы</h4>
                         <p><strong>Валовая прибыль:</strong> 
-                            ${profitUnknown 
-                                ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>' 
-                                : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
-                            }
+                            ${profitUnknown
+                            ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
+                            : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
+                        }
                         </p>
                         
                         ${deal.referrer_name ? `
@@ -1717,10 +1794,10 @@
                         ` : ''}
 
                         <p><strong>Чистая прибыль:</strong> 
-                            ${profitUnknown 
-                                ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>' 
-                                : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && deal.referrer_name ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
-                            }
+                            ${profitUnknown
+                            ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
+                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && deal.referrer_name ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                        }
                         </p>
                         
                         ${deal.notes ? `<hr style="margin: 1rem 0;"><p><strong>Заметки:</strong> ${deal.notes}</p>` : ''}
@@ -1739,7 +1816,7 @@
                 console.error('Error loading deal:', error);
             }
         }
-        
+
         function selectDoverkaModalTx() {
             const select = document.getElementById('doverkaModalTxSelect');
             const hashInput = document.getElementById('doverkaModalTxHash');
@@ -1747,20 +1824,20 @@
                 hashInput.value = select.value;
             }
         }
-        
+
         async function confirmDoverkaFromModal(dealId) {
             const hashInput = document.getElementById('doverkaModalTxHash');
             const payoutHash = hashInput ? hashInput.value : '';
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/doverka/confirm/${dealId}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ payout_hash: payoutHash })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert('Получение от Доверки подтверждено!');
                     showDealDetails(dealId); // Обновляем модальное окно
@@ -1772,7 +1849,7 @@
                 console.error('Error confirming doverka:', error);
             }
         }
-        
+
         function closeModal() {
             document.getElementById('dealModal').classList.remove('active');
         }
@@ -1781,15 +1858,15 @@
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
                     method: 'PUT',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({payout_wallet_id: parseInt(walletId)})
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ payout_wallet_id: parseInt(walletId) })
                 });
                 if ((await response.json()).success) {
                     showDealDetails(dealId); // Обновляем
                 }
             } catch (e) { console.error(e); }
         }
-        
+
         async function updateDealStatus(dealId, status) {
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
@@ -1807,12 +1884,12 @@
                 console.error('Error updating deal:', error);
             }
         }
-        
+
         async function deleteDeal(dealId) {
             if (!confirm('Удалить сделку? Средства вернутся в кассу.')) return;
-            
+
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Attempting to delete deal',data:{dealId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Attempting to delete deal', data: { dealId }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
             // #endregion
 
             try {
@@ -1820,7 +1897,7 @@
                 const data = await response.json();
 
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Delete response received',data:{dealId,data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Delete response received', data: { dealId, data }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
                 // #endregion
 
                 if (data.success) {
@@ -1833,45 +1910,45 @@
             } catch (error) {
                 console.error('Error deleting deal:', error);
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteDeal',message:'Delete fetch error',data:{dealId,error:error.message},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H1'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Delete fetch error', data: { dealId, error: error.message }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
                 // #endregion
                 alert('Сетевая ошибка при удалении сделки');
             }
         }
-        
+
         // Глобальная переменная для режима редактирования
         let editingDealId = null;
-        
+
         async function openDealEditor(dealId) {
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const deal = data.deal;
                     editingDealId = dealId;
-                    
+
                     // Закрываем модальное окно
                     closeModal();
-                    
+
                     // Переключаемся на вкладку создания
                     showSection('create');
-                    
+
                     // Загружаем данные формы (менеджеры, клиенты и т.д.)
                     await loadCreateForm();
-                    
+
                     // Обновляем заголовок
-                    document.querySelector('#create .card-title').innerHTML = 
+                    document.querySelector('#create .card-title').innerHTML =
                         `Редактировать сделку #${dealId} <button class="btn btn-secondary btn-sm" style="margin-left: 1rem;" onclick="cancelEditMode()">Отмена</button>`;
-                    
+
                     // Проверяем - кастомная сделка или обычная
-                    
+
                     // Общие поля для обоих типов сделок
                     const form = document.getElementById('createDealForm');
                     if (deal.manager_name) document.getElementById('managerSelect').value = deal.manager_name;
                     if (deal.client_id) document.getElementById('clientSelect').value = deal.client_id;
                     if (deal.client_name) form.client_name.value = deal.client_name;
-                    
+
                     // Заполняем дату
                     if (deal.created_at) {
                         document.getElementById('dealDate').value = deal.created_at.split('T')[0];
@@ -1881,7 +1958,7 @@
                         // Включаем режим кастомной сделки
                         document.getElementById('customDealToggle').checked = true;
                         toggleCustomDeal();
-                        
+
                         // Заполняем кастомную форму
                         document.getElementById('customPayinAmount').value = deal.custom_payin_amount || '';
                         document.getElementById('customPayinCurrency').value = deal.custom_payin_currency || 'USDT';
@@ -1893,15 +1970,15 @@
                         document.getElementById('customReferrerName').value = deal.referrer_name || '';
                         document.getElementById('customReferrerPercent').value = deal.referrer_percent || '';
                         document.getElementById('customNotes').value = deal.notes || '';
-                        
+
                         // Пересчитываем
                         calcCustomProfit();
-                        
+
                     } else {
                         // Обычная сделка - выключаем кастомный режим
                         document.getElementById('customDealToggle').checked = false;
                         toggleCustomDeal();
-                        
+
                         // Заполняем обычную форму
                         if (deal.payin_method) {
                             document.getElementById('payinMethod').value = deal.payin_method;
@@ -1925,29 +2002,29 @@
                         if (deal.referrer_payout_usdt) document.getElementById('referrerPayoutRaw').value = deal.referrer_payout_usdt;
                         if (deal.net_profit_usdt) document.getElementById('netProfitRaw').value = deal.net_profit_usdt;
                         if (deal.notes) form.notes.value = deal.notes;
-                        
+
                         // Для Binance
                         if (deal.payout_source === 'binance') {
                             if (deal.payout_amount_usdt) document.getElementById('binanceUsdt').value = deal.payout_amount_usdt;
                             if (deal.payout_tx_hash) document.getElementById('binanceTxInput').value = deal.payout_tx_hash;
                         }
-                        
+
                         // Для личных фаундера
                         if (deal.payout_source === 'founder_personal' && deal.payout_founder_name) {
                             form.payout_founder_name.value = deal.payout_founder_name;
                         }
-                        
+
                         // Пересчитываем прибыль
                         setTimeout(calculateProfit, 100);
                     }
-                    
+
                     // Меняем кнопку отправки
                     const submitBtn = document.querySelector('#createDealForm button[type="submit"]');
                     if (submitBtn) {
                         submitBtn.textContent = 'Сохранить изменения';
                         submitBtn.dataset.editMode = 'true';
                     }
-                    
+
                     const customSubmitBtn = document.querySelector('#customDealSection .btn-success');
                     if (customSubmitBtn) {
                         customSubmitBtn.textContent = 'Сохранить изменения';
@@ -1958,61 +2035,61 @@
                 console.error('Error opening deal editor:', error);
             }
         }
-        
+
         function cancelEditMode() {
             editingDealId = null;
             document.querySelector('#create .card-title').textContent = 'Создать новую сделку';
             document.getElementById('createDealForm').reset();
-            
+
             // Сбрасываем кнопки
             const submitBtn = document.querySelector('#createDealForm button[type="submit"]');
             if (submitBtn) {
                 submitBtn.textContent = 'Создать сделку';
                 submitBtn.dataset.editMode = '';
             }
-            
+
             const customSubmitBtn = document.querySelector('#customDealSection .btn-success');
             if (customSubmitBtn) {
                 customSubmitBtn.textContent = 'Создать кастомную сделку';
                 customSubmitBtn.onclick = createCustomDeal;
             }
-            
+
             // Сбрасываем кастомную форму
             document.getElementById('customDealToggle').checked = false;
             toggleCustomDeal();
-            
+
             // Сбрасываем поля Pay-In/Pay-Out к дефолтному состоянию
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
         }
-        
+
         async function updateCustomDeal(dealId) {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
-            
+
             const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
             const payoutCurrency = document.getElementById('customPayoutCurrency').value;
             const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
-            
+
             const payoutMethod = document.getElementById('customPayoutMethod').value;
             const notes = document.getElementById('customNotes').value;
-            
+
             const referrerName = document.getElementById('customReferrerName').value.trim();
             const referrerPercent = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
-            
+
             const managerName = document.getElementById('managerSelect').value;
             const clientId = document.getElementById('clientSelect').value;
             const clientName = document.querySelector('[name="client_name"]').value;
             const createdAt = document.getElementById('dealDate').value;
-            
+
             // Конвертация
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
             const profit = payinUsdt - payoutUsdt;
             const referrerPayout = referrerPercent > 0 ? profit * (referrerPercent / 100) : 0;
             const netProfit = profit - referrerPayout;
-            
+
             const data = {
                 manager_name: managerName,
                 client_id: parseInt(clientId) || null,
@@ -2034,7 +2111,7 @@
                 net_profit_usdt: netProfit,
                 notes: notes || null
             };
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, {
                     method: 'PUT',
@@ -2042,7 +2119,7 @@
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert('Сделка обновлена!');
                     cancelEditMode();
@@ -2056,46 +2133,46 @@
                 alert('Ошибка при сохранении');
             }
         }
-        
+
         // ==================== Create Deal ====================
-        
+
         // Программное переключение секции
         function showSection(sectionName) {
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-            
+
             const tab = document.querySelector(`[data-section="${sectionName}"]`);
             if (tab) {
                 tab.classList.add('active');
                 document.getElementById(sectionName).classList.add('active');
             }
         }
-        
+
         async function loadCreateForm() {
             // Сбрасываем режим редактирования если пользователь пришёл через навигацию (не через openDealEditor)
             // НЕ сбрасываем если editingDealId уже установлен - значит пришли из редактора
             // Это будет сброшено в cancelEditMode() при необходимости
-            
+
             // Load managers
             try {
                 const response = await fetch(`${API_URL}/api/managers`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const select = document.getElementById('managerSelect');
-                    select.innerHTML = data.managers.filter(m => m.active).map(m => 
+                    select.innerHTML = data.managers.filter(m => m.active).map(m =>
                         `<option value="${m.name}">${m.name}</option>`
                     ).join('');
                 }
             } catch (error) {
                 console.error('Error loading managers:', error);
             }
-            
+
             // Load clients
             try {
                 const response = await fetch(`${API_URL}/api/clients`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const select = document.getElementById('clientSelect');
                     select.innerHTML = '<option value="">Выберите или введите ниже</option>' +
@@ -2104,20 +2181,20 @@
             } catch (error) {
                 console.error('Error loading clients:', error);
             }
-            
+
             // Load incoming transactions for crypto
             await loadIncomingTxForSelect();
-            
+
             // Load cash batches and bank cards
             await Promise.all([
                 loadCashBatchesForSelect(),
                 loadBankCardsForSelect()
             ]);
-            
+
             // Trigger payin method change to show correct fields
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
         }
-        
+
         // Load incoming transactions for PayIn crypto select
         async function deleteWallet(walletId) {
             if (!confirm('Удалить этот кошелек из мониторинга?')) return;
@@ -2132,17 +2209,17 @@
                 // Используем общие фильтры дат, если они установлены
                 const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
                 const endDate = document.getElementById('txEndDate')?.value || '';
-                
+
                 let url = `${API_URL}/api/transactions/incoming?start_date=${startDate}`;
                 if (endDate) url += `&end_date=${endDate}`;
 
                 const response = await fetch(url);
                 const data = await response.json();
-                
+
                 if (data.success && data.available) {
                     const select = document.getElementById('payinTxSelect');
                     select.innerHTML = '<option value="">-- Выбрать из входящих --</option>' +
-                        data.available.slice(0, 100).map(tx => 
+                        data.available.slice(0, 100).map(tx =>
                             `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
                         ).join('');
                 }
@@ -2150,11 +2227,11 @@
                 console.error('Error loading incoming transactions:', error);
             }
         }
-        
+
         function selectPayinTx(select) {
             const txHash = select.value;
             const amount = select.selectedOptions[0]?.dataset?.amount;
-            
+
             if (txHash) {
                 document.querySelector('[name="payin_tx_hash"]').value = txHash;
             }
@@ -2162,28 +2239,28 @@
                 document.querySelector('[name="payin_amount_usdt"]').value = amount;
             }
         }
-        
+
         // Загрузка исходящих транзакций для Binance
         async function loadOutgoingTxForBinance() {
             const select = document.getElementById('binanceTxSelect');
             select.innerHTML = '<option value="">Загрузка...</option>';
-            
+
             try {
                 // Используем общие фильтры дат, если они установлены
                 const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
                 const endDate = document.getElementById('txEndDate')?.value || '';
-                
+
                 let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}`;
                 if (endDate) url += `&end_date=${endDate}`;
 
                 const response = await fetch(url);
                 const data = await response.json();
-                
+
                 select.innerHTML = '<option value="">-- Выбрать из списка --</option>';
-                
+
                 // API возвращает available (исходящие транзакции)
                 const transactions = data.available || data.transactions || [];
-                
+
                 if (transactions.length > 0) {
                     transactions.slice(0, 100).forEach(tx => {
                         const date = formatDate(tx.timestamp);
@@ -2207,12 +2284,12 @@
                 select.innerHTML = '<option value="">Ошибка загрузки</option>';
             }
         }
-        
+
         function selectBinanceTx() {
             const select = document.getElementById('binanceTxSelect');
             const txHash = select.value;
             const amount = select.selectedOptions[0]?.dataset?.amount;
-            
+
             if (txHash) {
                 document.getElementById('binanceTxInput').value = txHash;
             }
@@ -2222,12 +2299,12 @@
                 calcBinanceRate();
             }
         }
-        
+
         function calcBinanceRate() {
             const thb = parseFloat(document.getElementById('payoutAmountThb')?.value) || 0;
             const usdt = parseFloat(document.getElementById('binanceUsdt')?.value) || 0;
             const rateEl = document.getElementById('binanceRate');
-            
+
             if (thb > 0 && usdt > 0) {
                 const rate = thb / usdt;
                 rateEl.value = rate.toFixed(4);
@@ -2236,30 +2313,30 @@
             }
             calculateProfit();
         }
-        
+
         let cashBatchesData = [];
         let bankCardsData = [];
-        
+
         async function loadCashBatchesForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/cash/balance`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     cashBatchesData = data.batches;
-                    
+
                     // Info about cash balance
-                    const infoHtml = data.batches.length > 0 
+                    const infoHtml = data.batches.length > 0
                         ? `<strong>${formatNumber(data.total_thb)} THB</strong> доступно (${data.batches.length} партий)<br>
                            <small>Авто-списание FIFO: сначала старые партии</small>`
                         : '<span style="color: #ef4444;">Касса пуста</span>';
                     document.getElementById('cashBalanceInfo').innerHTML = infoHtml;
-                    
+
                     // For card source batch
                     const cardSourceSelect = document.getElementById('cardSourceBatch');
                     if (cardSourceSelect) {
                         cardSourceSelect.innerHTML = '<option value="">Выберите партию</option>' +
-                            data.batches.map(b => 
+                            data.batches.map(b =>
                                 `<option value="${b.id}" data-rate="${b.purchase_rate}" data-remaining="${b.remaining_thb}">Партия #${b.id}: ${formatNumber(b.remaining_thb)} THB (курс ${b.purchase_rate})</option>`
                             ).join('');
                     }
@@ -2268,29 +2345,29 @@
                 console.error('Error loading cash batches:', error);
             }
         }
-        
+
         async function loadBankCardsForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/cards/balance`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     bankCardsData = data.cards;
-                    
+
                     const select = document.getElementById('bankCardSelect');
                     if (select) {
-                        select.innerHTML = data.cards.length > 0 
-                            ? data.cards.map(c => 
+                        select.innerHTML = data.cards.length > 0
+                            ? data.cards.map(c =>
                                 `<option value="${c.id}" data-rate="${c.avg_rate}" data-remaining="${c.balance_thb}">
                                     ${c.bank_name} (${c.holder_name}): ${formatNumber(c.balance_thb)} THB
                                 </option>`
                             ).join('')
                             : '<option value="">Нет доступных карт</option>';
-                        
+
                         // Update info for first card
                         if (data.cards.length > 0) {
                             const first = data.cards[0];
-                            document.getElementById('bankCardInfo').value = 
+                            document.getElementById('bankCardInfo').value =
                                 `${formatNumber(first.balance_thb)} THB / курс ${first.avg_rate}`;
                         }
                     }
@@ -2299,34 +2376,34 @@
                 console.error('Error loading bank cards:', error);
             }
         }
-        
+
         // Update card info when selected
-        document.getElementById('bankCardSelect')?.addEventListener('change', function() {
+        document.getElementById('bankCardSelect')?.addEventListener('change', function () {
             const selected = this.options[this.selectedIndex];
             if (selected.dataset.rate) {
-                document.getElementById('bankCardInfo').value = 
+                document.getElementById('bankCardInfo').value =
                     `${formatNumber(selected.dataset.remaining)} THB / курс ${selected.dataset.rate}`;
             }
         });
-        
+
         // Show/hide fields based on payin method
-        document.getElementById('payinMethod').addEventListener('change', function() {
+        document.getElementById('payinMethod').addEventListener('change', function () {
             const partnerGroup = document.getElementById('payinPartnerGroup');
             const rubGroup = document.getElementById('payinRubGroup');
             const doverkaGroup = document.getElementById('doverkaGroup');
             const txHashGroup = document.getElementById('payinTxHashGroup');
             const rateGroup = document.getElementById('payinRateGroup');
             const exchangeRateGroup = document.getElementById('exchangeRateGroup');
-            
+
             const isCryptoDirect = this.value === 'crypto_direct';
-            
+
             // Партнеры
             if (this.value === 'partners_cash') {
                 partnerGroup.style.display = 'block';
             } else {
                 partnerGroup.style.display = 'none';
             }
-            
+
             // Рубли и курс RUB/USDT - скрываем для крипты
             if (this.value === 'spp_doverka' || this.value === 'partners_cash') {
                 rubGroup.style.display = 'block';
@@ -2335,14 +2412,14 @@
                 rubGroup.style.display = 'none';
                 rateGroup.style.display = 'none';
             }
-            
+
             // Курс для клиента - скрываем для крипты
             if (isCryptoDirect) {
                 exchangeRateGroup.style.display = 'none';
             } else {
                 exchangeRateGroup.style.display = 'block';
             }
-            
+
             // Доверка
             if (this.value === 'spp_doverka') {
                 doverkaGroup.style.display = 'flex';
@@ -2352,21 +2429,21 @@
                 txHashGroup.style.display = 'block';
             }
         });
-        
+
         // Show/hide fields based on payout source
-        document.getElementById('payoutSource').addEventListener('change', function() {
+        document.getElementById('payoutSource').addEventListener('change', function () {
             const cashGroup = document.getElementById('cashBatchGroup');
             const cardGroup = document.getElementById('bankCardGroup');
             const binanceGroup = document.getElementById('binanceGroup');
             const binanceGroup2 = document.getElementById('binanceGroup2');
             const founderGroup = document.getElementById('founderGroup');
-            
+
             cashGroup.style.display = 'none';
             cardGroup.style.display = 'none';
             binanceGroup.style.display = 'none';
             binanceGroup2.style.display = 'none';
             founderGroup.style.display = 'none';
-            
+
             if (this.value === 'cash_batch') {
                 cashGroup.style.display = 'flex';
             } else if (this.value === 'bank_card') {
@@ -2378,51 +2455,51 @@
             } else if (this.value === 'founder_personal') {
                 founderGroup.style.display = 'flex';
             }
-            
+
             calculateProfit();
         });
-        
+
         // Binance USDT input triggers recalculation
-        document.getElementById('binanceUsdt')?.addEventListener('input', function() {
+        document.getElementById('binanceUsdt')?.addEventListener('input', function () {
             calcBinanceRate();
         });
-        
-        document.getElementById('payoutAmountThb')?.addEventListener('input', function() {
+
+        document.getElementById('payoutAmountThb')?.addEventListener('input', function () {
             const payoutSource = document.getElementById('payoutSource')?.value;
             if (payoutSource === 'binance') {
                 calcBinanceRate();
             }
         });
-        
+
         // ==================== Custom Deal ====================
         function toggleCustomDeal() {
             const isCustom = document.getElementById('customDealToggle').checked;
             document.getElementById('customDealSection').style.display = isCustom ? 'block' : 'none';
             document.getElementById('standardDealSection').style.display = isCustom ? 'none' : 'block';
-            
+
             // Обновляем required для полей
             const standardRequired = ['payin_method', 'payout_method', 'payout_source'];
             standardRequired.forEach(name => {
                 const el = document.querySelector(`[name="${name}"]`);
                 if (el) el.required = !isCustom;
             });
-            
+
             if (isCustom) calcCustomProfit();
         }
-        
+
         function calcCustomProfit() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
-            
+
             const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
             const payoutCurrency = document.getElementById('customPayoutCurrency').value;
             const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
-            
+
             // Показать/скрыть поле курса для USDT
             document.getElementById('customPayinRateGroup').style.display = payinCurrency === 'USDT' ? 'none' : 'block';
             document.getElementById('customPayoutRateGroup').style.display = payoutCurrency === 'USDT' ? 'none' : 'block';
-            
+
             // Конвертация в USDT
             let payinUsdt = 0;
             if (payinCurrency === 'USDT') {
@@ -2430,35 +2507,35 @@
             } else if (payinRate > 0) {
                 payinUsdt = payinAmount / payinRate;
             }
-            
+
             let payoutUsdt = 0;
             if (payoutCurrency === 'USDT') {
                 payoutUsdt = payoutAmount;
             } else if (payoutRate > 0) {
                 payoutUsdt = payoutAmount / payoutRate;
             }
-            
+
             // Отображение
             document.getElementById('customPayinUsdt').value = payinUsdt > 0 ? '$' + payinUsdt.toFixed(2) : '';
             document.getElementById('customPayoutUsdt').value = payoutUsdt > 0 ? '$' + payoutUsdt.toFixed(2) : '';
-            
+
             // Прибыль
             const profit = payinUsdt - payoutUsdt;
             const profitEl = document.getElementById('customProfitUsdt');
             const netProfitEl = document.getElementById('customNetProfit');
             const referrerPayoutEl = document.getElementById('customReferrerPayout');
-            
+
             // Партнёр
             const referrerPercent = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
             const referrerPayout = profit > 0 ? profit * (referrerPercent / 100) : 0;
             const netProfit = profit - referrerPayout;
-            
+
             if (payinUsdt > 0 && payoutUsdt > 0) {
                 profitEl.value = '$' + profit.toFixed(2);
                 profitEl.style.color = profit >= 0 ? '#10b981' : '#ef4444';
-                
+
                 referrerPayoutEl.value = referrerPercent > 0 ? '$' + referrerPayout.toFixed(2) : '-';
-                
+
                 netProfitEl.value = '$' + netProfit.toFixed(2);
                 netProfitEl.style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
             } else {
@@ -2467,99 +2544,99 @@
                 referrerPayoutEl.value = '';
             }
         }
-        
+
         async function createCustomDeal() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
-            
+
             const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
             const payoutCurrency = document.getElementById('customPayoutCurrency').value;
             const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
-            
+
             const payoutMethod = document.getElementById('customPayoutMethod').value;
             const notes = document.getElementById('customNotes').value;
             const customDate = document.getElementById('customDealDate').value;
-            
+
             // Партнёр
             const referrerName = document.getElementById('customReferrerName').value.trim();
             const referrerPercent = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
-            
+
             // Валидация
             if (payinAmount <= 0 || payoutAmount <= 0) {
                 alert('Укажите суммы Pay-In и Pay-Out');
                 return;
             }
-            
+
             if (payinCurrency !== 'USDT' && payinRate <= 0) {
                 alert('Укажите курс Pay-In к USDT');
                 return;
             }
-            
+
             if (payoutCurrency !== 'USDT' && payoutRate <= 0) {
                 alert('Укажите курс Pay-Out к USDT');
                 return;
             }
-            
+
             // Конвертация
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
             const profit = payinUsdt - payoutUsdt;
             const referrerPayout = referrerPercent > 0 ? profit * (referrerPercent / 100) : 0;
             const netProfit = profit - referrerPayout;
-            
+
             // Получаем данные менеджера и клиента из формы
             const managerName = document.getElementById('managerSelect').value;
             const clientId = document.getElementById('clientSelect').value;
             const clientName = document.querySelector('[name="client_name"]').value;
-            
+
             const data = {
                 deal_type: 'pay_in',
                 status: 'completed',  // Кастомная сделка сразу завершена
                 manager_name: managerName,
                 client_id: clientId ? parseInt(clientId) : null,
                 client_name: clientName || null,
-                
+
                 // Кастомная дата (если указана) - добавляем время 12:00 чтобы избежать проблем с часовыми поясами
                 created_at: customDate ? new Date(customDate + 'T12:00:00').toISOString() : null,
-                
+
                 // Флаг кастомной сделки
                 is_custom: true,
-                
+
                 // Pay-In
                 payin_method: 'crypto_direct',  // Базовый метод для совместимости
                 payin_amount_usdt: payinUsdt,
-                
+
                 // Кастомные данные Pay-In
                 custom_payin_currency: payinCurrency,
                 custom_payin_amount: payinAmount,
                 custom_payin_rate: payinCurrency !== 'USDT' ? payinRate : null,
-                
+
                 // Pay-Out
                 payout_method: payoutMethod,
                 payout_source: 'binance',  // Для совместимости
                 payout_amount_thb: payoutCurrency === 'THB' ? payoutAmount : null,
                 payout_amount_usdt: payoutUsdt,
-                
+
                 // Кастомные данные Pay-Out
                 custom_payout_currency: payoutCurrency,
                 custom_payout_amount: payoutAmount,
                 custom_payout_rate: payoutCurrency !== 'USDT' ? payoutRate : null,
-                
+
                 // Партнёр
                 referrer_name: referrerName || null,
                 referrer_percent: referrerPercent || null,
                 referrer_payout_usdt: referrerPayout > 0 ? referrerPayout : null,
-                
+
                 // Прибыль
                 profit_usdt: profit,
                 profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
                 net_profit_usdt: netProfit,
-                
+
                 // Заметки
                 notes: notes || null
             };
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/deals`, {
                     method: 'POST',
@@ -2567,7 +2644,7 @@
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     let msg = `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
                     if (referrerName && referrerPercent > 0) {
@@ -2575,7 +2652,7 @@
                     }
                     msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
                     alert(msg);
-                    
+
                     // Очистка формы
                     document.getElementById('customPayinAmount').value = '';
                     document.getElementById('customPayoutAmount').value = '';
@@ -2585,7 +2662,7 @@
                     document.getElementById('customReferrerPercent').value = '';
                     document.getElementById('customNotes').value = '';
                     calcCustomProfit();
-                    
+
                     loadDashboard();
                 } else {
                     alert('Ошибка: ' + result.error);
@@ -2595,13 +2672,13 @@
                 alert('Ошибка при создании сделки');
             }
         }
-        
+
         function calculateProfit() {
             const form = document.getElementById('createDealForm');
             const payinUsdt = parseFloat(form.payin_amount_usdt.value) || 0;
             const payoutThb = parseFloat(form.payout_amount_thb.value) || 0;
             const payoutSource = form.payout_source.value;
-            
+
             // Если ТОЛЬКО личные фаундера - прибыль неизвестна
             if (payoutSource === 'founder_personal') {
                 document.getElementById('profitUsdt').value = '';
@@ -2614,10 +2691,10 @@
                 document.getElementById('netProfit').style.color = '#f59e0b';
                 return;
             }
-            
+
             // Определяем курс в зависимости от источника
             let avgRate = 35; // Фоллбэк
-            
+
             if (payoutSource === 'cash_batch' && cashBatchesData.length > 0) {
                 // Рассчитываем средневзвешенный курс для FIFO
                 let remaining = payoutThb;
@@ -2640,72 +2717,72 @@
                     // Используем прямое значение USDT, не через курс
                     const profit = payinUsdt - binanceUsdt;
                     const profitPercent = binanceUsdt > 0 ? (profit / binanceUsdt) * 100 : 0;
-                    
+
                     // Партнер-реферер
                     const referrerPercent = parseFloat(form.referrer_percent?.value) || 0;
                     const referrerFixed = parseFloat(form.referrer_fixed_usdt?.value) || 0;
                     let referrerPayout = 0;
-                    
+
                     if (referrerPercent > 0 && profit > 0) {
                         referrerPayout = profit * (referrerPercent / 100);
                     } else if (referrerFixed > 0) {
                         referrerPayout = referrerFixed;
                     }
-                    
+
                     const netProfit = profit - referrerPayout;
                     const exchangeRate = payinUsdt > 0 && payoutThb > 0 ? payoutThb / payinUsdt : 0;
-                    
+
                     document.getElementById('profitUsdt').value = profit.toFixed(2);
                     document.getElementById('profitUsdt').style.color = profit >= 0 ? '#10b981' : '#ef4444';
                     document.getElementById('profitPercent').value = profitPercent.toFixed(2);
                     document.getElementById('cashBatchCostUsdt').value = '$' + binanceUsdt.toFixed(2);
-                    
+
                     document.getElementById('referrerPayout').value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '0';
                     document.getElementById('referrerPayoutRaw').value = referrerPayout.toFixed(2);
-                    
+
                     document.getElementById('netProfit').value = '$' + netProfit.toFixed(2);
                     document.getElementById('netProfitRaw').value = netProfit.toFixed(2);
-                    
+
                     document.getElementById('netProfit').style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
                     document.getElementById('exchangeRateCalc').value = exchangeRate.toFixed(2);
                     return;
                 }
                 avgRate = 35; // Fallback
             }
-            
+
             const payoutUsdt = payoutThb / avgRate;
             const profit = payinUsdt - payoutUsdt;
             const profitPercent = payoutUsdt > 0 ? (profit / payoutUsdt) * 100 : 0;
-            
+
             // Партнер-реферер
             const referrerPercent = parseFloat(form.referrer_percent?.value) || 0;
             const referrerFixed = parseFloat(form.referrer_fixed_usdt?.value) || 0;
             let referrerPayout = 0;
-            
+
             if (referrerPercent > 0 && profit > 0) {
                 referrerPayout = profit * (referrerPercent / 100);
             } else if (referrerFixed > 0) {
                 referrerPayout = referrerFixed;
             }
-            
+
             const netProfit = profit - referrerPayout;
-            
+
             // Обновляем поля
             document.getElementById('profitUsdt').value = profit.toFixed(2);
             document.getElementById('profitUsdt').placeholder = 'Авто';
             document.getElementById('profitPercent').value = profitPercent.toFixed(1);
             document.getElementById('profitPercent').placeholder = '%';
             document.getElementById('cashBatchCostUsdt').value = '$' + payoutUsdt.toFixed(2);
-            
+
             document.getElementById('referrerPayout').value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '0';
             document.getElementById('referrerPayoutRaw').value = referrerPayout.toFixed(2);
-            
+
             document.getElementById('netProfit').value = '$' + netProfit.toFixed(2);
             document.getElementById('netProfitRaw').value = netProfit.toFixed(2);
-            
+
             document.getElementById('netProfit').style.color = '#10b981';
         }
-        
+
         // Auto-calculate on input change
         ['payin_amount_usdt', 'payout_amount_thb', 'referrer_percent', 'referrer_fixed_usdt', 'referrer_name'].forEach(name => {
             const el = document.querySelector(`[name="${name}"]`);
@@ -2713,29 +2790,29 @@
         });
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
-        
-        document.getElementById('createDealForm').addEventListener('submit', async function(e) {
+
+        document.getElementById('createDealForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
             const data = {
                 deal_type: 'pay_in',
                 status: 'pending'
             };
-            
+
             // #region agent log
             console.log('[DEBUG] Form client_name input value:', this.client_name?.value);
             // #endregion
-            
+
             formData.forEach((value, key) => {
                 // #region agent log
                 if (key === 'client_name') console.log('[DEBUG] FormData client_name:', value);
                 // #endregion
                 if (value !== "") {
-                    if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt', 
-                         'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt', 
-                         'profit_percent', 'exchange_rate', 'referrer_payout_usdt', 
-                         'net_profit_usdt', 'referrer_percent', 'referrer_fixed_usdt'].includes(key)) {
+                    if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt',
+                        'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt',
+                        'profit_percent', 'exchange_rate', 'referrer_payout_usdt',
+                        'net_profit_usdt', 'referrer_percent', 'referrer_fixed_usdt'].includes(key)) {
                         data[key] = parseFloat(value);
                     } else if (key === 'client_id' || key === 'cash_batch_id') {
                         data[key] = parseInt(value) || null;
@@ -2752,17 +2829,17 @@
                     }
                 }
             });
-            
+
             // #region agent log
             console.log('[DEBUG] Final data.client_name:', data.client_name);
             // #endregion
-            
+
             try {
                 // Проверяем режим редактирования
                 const isEditMode = editingDealId !== null;
                 const url = isEditMode ? `${API_URL}/api/deals/${editingDealId}` : `${API_URL}/api/deals`;
                 const method = isEditMode ? 'PUT' : 'POST';
-                
+
                 // Добавляем данные из Binance полей
                 if (data.payout_source === 'binance') {
                     const binanceUsdt = parseFloat(document.getElementById('binanceUsdt')?.value);
@@ -2770,14 +2847,14 @@
                     if (binanceUsdt) data.payout_amount_usdt = binanceUsdt;
                     if (binanceTxHash) data.payout_tx_hash = binanceTxHash;
                 }
-                
+
                 const response = await fetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert(isEditMode ? 'Сделка обновлена!' : 'Сделка создана!');
                     this.reset();
@@ -2792,7 +2869,7 @@
                 alert('Ошибка при сохранении сделки');
             }
         });
-        
+
         // ==================== Balance Tab Logic ====================
         function openAddWalletModal() {
             document.getElementById('addWalletModal').classList.add('active');
@@ -2802,21 +2879,21 @@
             document.getElementById('addWalletModal').classList.remove('active');
         }
 
-        document.getElementById('addWalletFormBalance').onsubmit = async function(e) {
+        document.getElementById('addWalletFormBalance').onsubmit = async function (e) {
             e.preventDefault();
             const label = document.getElementById('newWalletLabel').value;
             const address = document.getElementById('newWalletAddress').value;
             const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
 
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:addWalletFormBalance.onsubmit',message:'Adding wallet from balance tab',data:{label,address,initialBalance},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H2'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:addWalletFormBalance.onsubmit', message: 'Adding wallet from balance tab', data: { label, address, initialBalance }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H2' }) }).catch(() => { });
             // #endregion
 
             try {
                 // 1. Создаем кошелек (только для баланса)
                 const response = await fetch(`${API_URL}/api/wallets`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         address: address,
                         label: label,
@@ -2826,15 +2903,15 @@
                     })
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     const walletId = result.wallet.id;
-                    
+
                     // 2. Если есть начальный баланс, создаем операцию пополнения
                     if (initialBalance > 0) {
                         await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
                             method: 'POST',
-                            headers: {'Content-Type': 'application/json'},
+                            headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 type: 'income',
                                 amount: initialBalance,
@@ -2842,7 +2919,7 @@
                             })
                         });
                     }
-                    
+
                     closeAddWalletModal();
                     loadWalletsSummary();
                     alert('Кошелек добавлен!');
@@ -2873,7 +2950,7 @@
         function switchBalanceSubTab(tabName) {
             document.querySelectorAll('.balance-subtab-content').forEach(t => t.style.display = 'none');
             document.querySelectorAll('.balance-subtab-btn').forEach(b => b.classList.remove('active'));
-            
+
             if (tabName === 'binance') {
                 document.getElementById('subtabBinance').style.display = 'block';
                 document.getElementById('btnSubBinance').classList.add('active');
@@ -2894,9 +2971,9 @@
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
                 const resData = await response.json();
-                
+
                 // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:deleteWalletFromBalance',message:'Wallet delete response',data:{walletId, success:resData.success, error:resData.error},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H4'})}).catch(()=>{});
+                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteWalletFromBalance', message: 'Wallet delete response', data: { walletId, success: resData.success, error: resData.error }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) }).catch(() => { });
                 // #endregion
 
                 if (resData.success) {
@@ -2906,7 +2983,7 @@
                 } else {
                     alert('Ошибка при удалении: ' + (resData.error || 'Неизвестная ошибка'));
                 }
-            } catch (e) { 
+            } catch (e) {
                 console.error(e);
                 alert('Ошибка сети при удалении');
             }
@@ -2916,7 +2993,7 @@
             try {
                 const response = await fetch(`${API_URL}/api/wallets/summary`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const grid = document.getElementById('walletsSummaryGrid');
                     grid.innerHTML = data.wallets.map(w => `
@@ -2927,11 +3004,11 @@
                             <div style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
                         </div>
                     `).join('');
-                    
+
                     // Обновляем выпадающий список в форме создания сделки
                     const payoutWalletSelect = document.getElementById('payoutWalletSelect');
                     if (payoutWalletSelect) {
-                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}">${w.label || w.address.substring(0,8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
                     }
                 }
             } catch (e) { console.error('Error loading wallets summary:', e); }
@@ -2941,13 +3018,13 @@
             currentActiveWalletId = walletId;
             currentActiveWalletAddress = address;
             document.getElementById('walletHistorySection').style.display = 'block';
-            document.getElementById('currentWalletName').textContent = `История: ${label || address.substring(0,10)}`;
+            document.getElementById('currentWalletName').textContent = `История: ${label || address.substring(0, 10)}`;
             loadWalletsSummary(); // Чтобы обновить рамку выбора
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const tbody = document.getElementById('walletHistoryTable');
                     tbody.innerHTML = data.operations.map(op => `
@@ -2959,7 +3036,7 @@
                                 <div>${op.description || '-'}</div>
                                 ${op.tx_hash ? `
                                     <div style="font-size: 0.75rem; font-family: monospace; color: #666; display: flex; align-items: center; gap: 8px; margin-top: 4px;">
-                                        <a href="https://tronscan.org/#/transaction/${op.tx_hash}" target="_blank" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${op.tx_hash.substring(0,16)}...</a>
+                                        <a href="https://tronscan.org/#/transaction/${op.tx_hash}" target="_blank" style="color: #667eea; text-decoration: none; border-bottom: 1px dashed #667eea;">${op.tx_hash.substring(0, 16)}...</a>
                                         <span style="cursor: pointer;" onclick="copyHash('${op.tx_hash}')" title="Копировать хэш">📋</span>
                                     </div>
                                 ` : ''}
@@ -2997,8 +3074,8 @@
                     const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {
-                        select.innerHTML = '<option value="">-- Выберите транзакцию --</option>' + 
-                            data.available.map(tx => `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address.substring(0,8)}... | ${formatDate(tx.timestamp)}</option>`).join('');
+                        select.innerHTML = '<option value="">-- Выберите транзакцию --</option>' +
+                            data.available.map(tx => `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address.substring(0, 8)}... | ${formatDate(tx.timestamp)}</option>`).join('');
                     }
                 } catch (e) { select.innerHTML = '<option value="">Ошибка загрузки</option>'; }
             } else {
@@ -3014,7 +3091,7 @@
             if (amount) document.getElementById('topupAmount').value = amount;
         }
 
-        document.getElementById('topupForm').onsubmit = async function(e) {
+        document.getElementById('topupForm').onsubmit = async function (e) {
             e.preventDefault();
             const walletId = document.getElementById('topupWalletId').value;
             const data = {
@@ -3023,11 +3100,11 @@
                 tx_hash: document.getElementById('topupHash').value,
                 description: document.getElementById('topupDesc').value || 'Пополнение'
             };
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 if ((await response.json()).success) {
@@ -3039,7 +3116,7 @@
 
         function openWithdrawModal() {
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:openWithdrawModal',message:'Opening withdraw modal',data:{currentActiveWalletId},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:openWithdrawModal', message: 'Opening withdraw modal', data: { currentActiveWalletId }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H3' }) }).catch(() => { });
             // #endregion
             if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
             document.getElementById('withdrawWalletId').value = currentActiveWalletId;
@@ -3048,7 +3125,7 @@
 
         function closeWithdrawModal() { document.getElementById('withdrawModal').classList.remove('active'); }
 
-        document.getElementById('withdrawForm').onsubmit = async function(e) {
+        document.getElementById('withdrawForm').onsubmit = async function (e) {
             e.preventDefault();
             const walletId = document.getElementById('withdrawWalletId').value;
             const data = {
@@ -3058,13 +3135,13 @@
             };
 
             // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'crm.html:withdrawForm.onsubmit',message:'Submitting withdraw form',data:{walletId,data},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'H3'})}).catch(()=>{});
+            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:withdrawForm.onsubmit', message: 'Submitting withdraw form', data: { walletId, data }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H3' }) }).catch(() => { });
             // #endregion
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
                 if ((await response.json()).success) {
@@ -3079,12 +3156,12 @@
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     document.getElementById('totalCashThb').textContent = formatNumber(data.summary.total_remaining_thb) + ' ฿';
                     document.getElementById('totalCashUsdt').textContent = '$' + formatNumber(data.summary.total_cost_usdt);
                     document.getElementById('avgCashRate').textContent = data.summary.weighted_avg_rate;
-                    
+
                     document.getElementById('cashBatchesList').innerHTML = data.batches
                         .filter(b => b.status === 'active')
                         .map(batch => `
@@ -3118,34 +3195,34 @@
                 console.error('Error loading cash batches:', error);
             }
         }
-        
+
         // Calculate rate when adding batch
         document.querySelector('[name="amount_thb"]').addEventListener('input', calcNewBatchRate);
         document.querySelector('[name="cost_usdt"]').addEventListener('input', calcNewBatchRate);
-        
+
         function calcNewBatchRate() {
             const thb = parseFloat(document.querySelector('[name="amount_thb"]').value) || 0;
             const usdt = parseFloat(document.querySelector('[name="cost_usdt"]').value) || 0;
             const rate = usdt > 0 ? (thb / usdt).toFixed(4) : '';
             document.getElementById('newBatchRate').value = rate;
         }
-        
+
         function closeHistoryModal() {
             document.getElementById('historyModal').classList.remove('active');
         }
-        
+
         async function showBatchHistory(batchId) {
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches/${batchId}/history`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const info = data.batch_info;
                     const summary = data.summary;
-                    
-                    document.getElementById('historyModalTitle').textContent = 
+
+                    document.getElementById('historyModalTitle').textContent =
                         `История партии #${batchId} - ${info.founder_name || 'Неизвестно'}`;
-                    
+
                     let html = `
                         <div style="background: #f0fdf4; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
@@ -3162,7 +3239,7 @@
                             </div>
                         </div>
                     `;
-                    
+
                     if (data.history.length === 0) {
                         html += '<p style="color: #888; text-align: center;">Нет операций</p>';
                     } else {
@@ -3171,7 +3248,7 @@
                             const isPositive = item.amount_thb > 0;
                             const color = isPositive ? '#10b981' : '#ef4444';
                             const sign = isPositive ? '+' : '';
-                            
+
                             html += `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee;">
                                     <div>
@@ -3191,7 +3268,7 @@
                         });
                         html += '</div>';
                     }
-                    
+
                     document.getElementById('historyModalContent').innerHTML = html;
                     document.getElementById('historyModal').classList.add('active');
                 } else {
@@ -3202,19 +3279,19 @@
                 alert('Ошибка загрузки истории');
             }
         }
-        
+
         async function showCardHistory(cardId) {
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}/history`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const info = data.card_info;
                     const summary = data.summary;
-                    
-                    document.getElementById('historyModalTitle').textContent = 
+
+                    document.getElementById('historyModalTitle').textContent =
                         `История карты: ${info.bank_name} - ${info.card_name || ''}`;
-                    
+
                     let html = `
                         <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
@@ -3229,7 +3306,7 @@
                             </div>
                         </div>
                     `;
-                    
+
                     if (data.history.length === 0) {
                         html += '<p style="color: #888; text-align: center;">Нет операций</p>';
                     } else {
@@ -3238,7 +3315,7 @@
                             const isPositive = item.amount_thb > 0;
                             const color = isPositive ? '#10b981' : '#ef4444';
                             const sign = isPositive ? '+' : '';
-                            
+
                             html += `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee;">
                                     <div>
@@ -3258,7 +3335,7 @@
                         });
                         html += '</div>';
                     }
-                    
+
                     document.getElementById('historyModalContent').innerHTML = html;
                     document.getElementById('historyModal').classList.add('active');
                 } else {
@@ -3269,7 +3346,7 @@
                 alert('Ошибка загрузки истории');
             }
         }
-        
+
         async function editCashBatch(batchId, currentRemaining) {
             const action = prompt(
                 `Текущий остаток: ${formatNumber(currentRemaining)} THB\n\n` +
@@ -3278,43 +3355,43 @@
                 `• Минус число = вычесть (например: -50000)`,
                 currentRemaining
             );
-            
+
             if (action === null) return;
-            
+
             let newRemaining;
             const inputValue = parseFloat(action);
-            
+
             if (isNaN(inputValue)) {
                 alert('Введите корректное число');
                 return;
             }
-            
+
             // Если начинается с минуса - вычитаем
             if (action.trim().startsWith('-')) {
                 newRemaining = currentRemaining + inputValue; // inputValue уже отрицательный
             } else {
                 newRemaining = inputValue;
             }
-            
+
             if (newRemaining < 0) {
                 alert('Остаток не может быть отрицательным');
                 return;
             }
-            
+
             const reason = prompt('Причина изменения (для истории):', 'Личные нужды');
             if (reason === null) return;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches/${batchId}/adjust`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         new_remaining: newRemaining,
                         reason: reason
                     })
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert(`Остаток изменён: ${formatNumber(currentRemaining)} → ${formatNumber(newRemaining)} THB`);
                     loadCashBatches();
@@ -3327,14 +3404,14 @@
                 alert('Ошибка при изменении партии');
             }
         }
-        
+
         async function deleteCashBatch(batchId) {
             if (!confirm('Удалить эту партию кассы?')) return;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches/${batchId}`, { method: 'DELETE' });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert('Партия удалена');
                     loadCashBatches();
@@ -3345,10 +3422,10 @@
                 console.error('Error deleting batch:', error);
             }
         }
-        
-        document.getElementById('addCashBatchForm').addEventListener('submit', async function(e) {
+
+        document.getElementById('addCashBatchForm').addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
             const data = {};
             formData.forEach((value, key) => {
@@ -3358,7 +3435,7 @@
                     data[key] = value;
                 }
             });
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches`, {
                     method: 'POST',
@@ -3366,7 +3443,7 @@
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert('Партия добавлена!');
                     this.reset();
@@ -3378,19 +3455,19 @@
                 console.error('Error adding batch:', error);
             }
         });
-        
+
         // ==================== Bank Cards ====================
         async function loadBankCards() {
             try {
                 const response = await fetch(`${API_URL}/api/cards`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     document.getElementById('totalCardsThb').textContent = formatNumber(data.total_remaining_thb) + ' ฿';
-                    
+
                     const activeCards = data.cards.filter(c => c.status === 'active');
-                    
-                    document.getElementById('bankCardsList').innerHTML = activeCards.length > 0 
+
+                    document.getElementById('bankCardsList').innerHTML = activeCards.length > 0
                         ? activeCards.map(card => `
                             <div class="card" style="background: #f8f9fa; padding: 1rem; margin-bottom: 1rem;">
                                 <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -3431,16 +3508,16 @@
                             </div>
                         `).join('')
                         : '<p style="color: #666;">Нет активных карт</p>';
-                    
+
                     // Load cards for topup select
                     const topupSelect = document.getElementById('topupCardSelect');
                     if (topupSelect) {
                         topupSelect.innerHTML = '<option value="">Выберите карту</option>' +
-                            activeCards.map(c => 
+                            activeCards.map(c =>
                                 `<option value="${c.id}">${c.bank_name} - ${c.card_name || 'Без названия'} (${c.holder_name})</option>`
                             ).join('');
                     }
-                    
+
                     // Load batches for source select
                     await loadCashBatchesForSelect();
                 }
@@ -3448,13 +3525,13 @@
                 console.error('Error loading bank cards:', error);
             }
         }
-        
+
         // Show/hide fields based on source type
-        document.getElementById('topupSourceType')?.addEventListener('change', function() {
+        document.getElementById('topupSourceType')?.addEventListener('change', function () {
             const batchGroup = document.getElementById('topupBatchGroup');
             const costGroup = document.getElementById('topupCostGroup');
             const autoInfo = document.getElementById('topupAutoInfo');
-            
+
             if (this.value === 'cash_batch') {
                 batchGroup.style.display = 'block';
                 costGroup.style.display = 'none';
@@ -3466,30 +3543,30 @@
                 autoInfo.style.display = 'none';
             }
         });
-        
+
         // Calculate cost when batch or amount changes
         document.getElementById('cardSourceBatch')?.addEventListener('change', calcTopupFromBatch);
         document.getElementById('topupAmountThb')?.addEventListener('input', calcTopupFromBatch);
-        
+
         function calcTopupFromBatch() {
             const sourceType = document.getElementById('topupSourceType')?.value;
             if (sourceType !== 'cash_batch') return;
-            
+
             const batchSelect = document.getElementById('cardSourceBatch');
             const amountThb = parseFloat(document.getElementById('topupAmountThb')?.value) || 0;
             const autoCalc = document.getElementById('topupAutoCalc');
-            
+
             if (!batchSelect || !autoCalc) return;
-            
+
             const selectedOption = batchSelect.options[batchSelect.selectedIndex];
             if (!selectedOption || !selectedOption.dataset.rate) {
                 autoCalc.value = 'Выберите партию';
                 return;
             }
-            
+
             const rate = parseFloat(selectedOption.dataset.rate);
             const remaining = parseFloat(selectedOption.dataset.remaining);
-            
+
             if (amountThb > remaining) {
                 autoCalc.value = `Недостаточно! Остаток: ${formatNumber(remaining)} THB`;
                 autoCalc.style.color = '#ef4444';
@@ -3502,14 +3579,14 @@
                 autoCalc.style.color = '#666';
             }
         }
-        
+
         async function deleteCard(cardId) {
             if (!confirm('Удалить эту карту? Средства вернутся в кассу.')) return;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}`, { method: 'DELETE' });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert('Карта удалена');
                     loadBankCards();
@@ -3520,17 +3597,17 @@
                 console.error('Error deleting card:', error);
             }
         }
-        
+
         async function deleteCardTopup(cardId, topupId) {
             if (!confirm('Удалить это пополнение? Если было из кассы - деньги вернутся в партию.')) return;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}/topup/${topupId}`, { method: 'DELETE' });
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    alert(data.returned_to_batch 
-                        ? `Пополнение удалено, ${formatNumber(data.amount_returned)} THB возвращено в партию #${data.returned_to_batch}` 
+                    alert(data.returned_to_batch
+                        ? `Пополнение удалено, ${formatNumber(data.amount_returned)} THB возвращено в партию #${data.returned_to_batch}`
                         : 'Пополнение удалено');
                     loadBankCards();
                     loadCashBatchesForSelect();
@@ -3541,16 +3618,16 @@
                 console.error('Error deleting topup:', error);
             }
         }
-        
-        document.getElementById('addCardForm')?.addEventListener('submit', async function(e) {
+
+        document.getElementById('addCardForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
             const data = {};
             formData.forEach((value, key) => {
                 if (value) data[key] = value;
             });
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cards`, {
                     method: 'POST',
@@ -3558,7 +3635,7 @@
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert('Карта создана! Теперь пополните её.');
                     this.reset();
@@ -3570,26 +3647,26 @@
                 console.error('Error adding card:', error);
             }
         });
-        
-        document.getElementById('topupCardForm')?.addEventListener('submit', async function(e) {
+
+        document.getElementById('topupCardForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
-            
+
             const formData = new FormData(this);
             const cardId = formData.get('card_id');
-            
+
             if (!cardId) {
                 alert('Выберите карту');
                 return;
             }
-            
+
             const sourceType = formData.get('source_type');
             const amountThb = parseFloat(formData.get('amount_thb'));
-            
+
             const data = {
                 amount_thb: amountThb,
                 source_type: sourceType
             };
-            
+
             if (sourceType === 'cash_batch') {
                 const batchId = formData.get('source_batch_id');
                 if (!batchId) {
@@ -3607,7 +3684,7 @@
                 }
                 data.cost_usdt = costUsdt;
             }
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}/topup`, {
                     method: 'POST',
@@ -3615,7 +3692,7 @@
                     body: JSON.stringify(data)
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert('Карта пополнена!');
                     this.reset();
@@ -3629,11 +3706,11 @@
                 console.error('Error topping up card:', error);
             }
         });
-        
+
         // ==================== Reimbursements ====================
         // Глобальный кэш исходящих транзакций
         let outgoingTransactionsCache = [];
-        
+
         async function loadReimbursements() {
             // Сначала загружаем исходящие транзакции
             try {
@@ -3644,12 +3721,12 @@
                 console.error('Error loading outgoing transactions:', e);
                 outgoingTransactionsCache = [];
             }
-            
+
             // Load pending deals by founder
             try {
                 const pendingResponse = await fetch(`${API_URL}/api/reimbursements/pending`);
                 const pendingData = await pendingResponse.json();
-                
+
                 if (pendingData.success && pendingData.by_founder.length > 0) {
                     document.getElementById('pendingReimbursementsList').innerHTML = pendingData.by_founder.map(founder => `
                         <div class="card" style="background: #fef3c7; margin-bottom: 1rem;">
@@ -3703,14 +3780,14 @@
                         </div>
                     `).join('');
                 } else {
-                    document.getElementById('pendingReimbursementsList').innerHTML = 
+                    document.getElementById('pendingReimbursementsList').innerHTML =
                         '<div class="alert alert-success">Нет сделок ожидающих возмещения</div>';
                 }
-                
+
                 // Load history
                 const historyResponse = await fetch(`${API_URL}/api/reimbursements`);
                 const historyData = await historyResponse.json();
-                
+
                 if (historyData.success && historyData.reimbursements.length > 0) {
                     document.getElementById('reimbursementsList').innerHTML = historyData.reimbursements.map(r => `
                         <div class="batch-card" style="position: relative;">
@@ -3729,15 +3806,15 @@
                         </div>
                     `).join('');
                 } else {
-                    document.getElementById('reimbursementsList').innerHTML = 
+                    document.getElementById('reimbursementsList').innerHTML =
                         '<p style="color: #666;">Нет истории возмещений</p>';
                 }
-                
+
             } catch (error) {
                 console.error('Error loading reimbursements:', error);
             }
         }
-        
+
         async function deleteReimbursement(id) {
             if (!confirm('Удалить это возмещение?')) return;
             try {
@@ -3752,18 +3829,18 @@
                 console.error('Error deleting reimbursement:', error);
             }
         }
-        
+
         async function deleteReimbursement(reimbursementId) {
             if (!confirm(`Удалить возмещение #${reimbursementId}?\n\nСвязанные сделки вернутся в статус "ожидает возмещения".`)) {
                 return;
             }
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements/${reimbursementId}`, {
                     method: 'DELETE'
                 });
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert(`Возмещение удалено.`);
                     loadReimbursements();
@@ -3780,24 +3857,24 @@
         function updateReimbursementTotal(founderName) {
             updateReimbursementRate(founderName);
         }
-        
+
         function selectOutgoingTx(founderName, selectEl) {
             const txHash = selectEl.value;
             const amount = selectEl.selectedOptions[0]?.dataset?.amount;
-            
+
             const hashInput = document.querySelector(`.reimburse-tx-hash[data-founder="${founderName}"]`);
             const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
-            
+
             if (txHash && hashInput) {
                 hashInput.value = txHash;
             }
-            
+
             if (amount && amountInput) {
                 amountInput.value = amount;
                 updateReimbursementRate(founderName);
             }
         }
-        
+
         function updateReimbursementRate(founderName) {
             // Считаем общую сумму THB выбранных сделок
             const checkboxes = document.querySelectorAll(`.reimburse-deal[data-founder="${founderName}"]:checked`);
@@ -3805,13 +3882,13 @@
             checkboxes.forEach(cb => {
                 totalThb += parseFloat(cb.dataset.thb) || 0;
             });
-            
+
             // Получаем введенную сумму USDT
             const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
             const rateInput = document.querySelector(`.reimburse-rate[data-founder="${founderName}"]`);
-            
+
             const amountUsdt = parseFloat(amountInput?.value) || 0;
-            
+
             if (amountUsdt > 0 && totalThb > 0) {
                 const rate = totalThb / amountUsdt;
                 rateInput.value = rate.toFixed(4) + ' THB/USDT';
@@ -3819,17 +3896,17 @@
                 rateInput.value = 'Введите сумму USDT';
             }
         }
-        
+
         // Флаг для предотвращения дублирования запросов
         const reimbursementInProgress = new Set();
-        
+
         async function createReimbursement(founderName) {
             // Проверяем, не выполняется ли уже запрос для этого фаундера
             if (reimbursementInProgress.has(founderName)) {
                 console.log('Запрос уже выполняется для', founderName);
                 return;
             }
-            
+
             // Блокируем кнопку
             const btn = document.querySelector(`.reimburse-btn[data-founder="${founderName}"]`);
             if (btn) {
@@ -3837,11 +3914,11 @@
                 btn.textContent = 'Создаём...';
             }
             reimbursementInProgress.add(founderName);
-            
+
             // Get selected deals
             const checkboxes = document.querySelectorAll(`.reimburse-deal[data-founder="${founderName}"]:checked`);
             const dealIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.dealId));
-            
+
             if (dealIds.length === 0) {
                 alert('Выберите хотя бы одну сделку');
                 reimbursementInProgress.delete(founderName);
@@ -3851,7 +3928,7 @@
                 }
                 return;
             }
-            
+
             const amountUsdt = parseFloat(document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`)?.value);
             if (!amountUsdt || amountUsdt <= 0) {
                 alert('Укажите сумму возмещения в USDT');
@@ -3862,9 +3939,9 @@
                 }
                 return;
             }
-            
+
             const txHash = document.querySelector(`.reimburse-tx-hash[data-founder="${founderName}"]`)?.value;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements`, {
                     method: 'POST',
@@ -3876,9 +3953,9 @@
                         tx_hash: txHash
                     })
                 });
-                
+
                 const result = await response.json();
-                
+
                 if (result.success) {
                     alert(`Возмещение создано!\n\nСумма: $${result.reimbursement.amount_usdt.toFixed(2)}\nКурс: ${result.real_rate || '-'} THB/USDT\nПрибыль: $${result.total_profit?.toFixed(2) || '-'}`);
                     loadReimbursements();
@@ -3901,10 +3978,10 @@
                 reimbursementInProgress.delete(founderName);
             }
         }
-        
+
         // ==================== Doverka ====================
         let incomingTxCache = [];
-        
+
         async function loadPendingDoverka() {
             // Сначала загрузим входящие транзакции для выбора
             try {
@@ -3914,13 +3991,13 @@
             } catch (e) {
                 incomingTxCache = [];
             }
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/doverka/pending`);
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    document.getElementById('pendingDoverkaList').innerHTML = data.deals.length > 0 
+                    document.getElementById('pendingDoverkaList').innerHTML = data.deals.length > 0
                         ? data.deals.map(deal => `
                             <div class="batch-card" style="border-left: 4px solid #f59e0b; padding: 1rem;">
                                 <div class="batch-info">
@@ -3956,7 +4033,7 @@
                 console.error('Error loading pending doverka:', error);
             }
         }
-        
+
         function selectDovekraTx(select) {
             const dealId = select.dataset.dealId;
             const txHash = select.value;
@@ -3965,11 +4042,11 @@
                 hashInput.value = txHash;
             }
         }
-        
+
         async function confirmDoverka(dealId) {
             const hashInput = document.querySelector(`.doverka-tx-hash[data-deal-id="${dealId}"]`);
             const payoutHash = hashInput ? hashInput.value : '';
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/doverka/confirm/${dealId}`, {
                     method: 'POST',
@@ -3977,7 +4054,7 @@
                     body: JSON.stringify({ payout_hash: payoutHash })
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert('Получение подтверждено!');
                     loadPendingDoverka();
@@ -3988,14 +4065,14 @@
                 console.error('Error confirming doverka:', error);
             }
         }
-        
+
         // ==================== Transactions (TronScan) ====================
         async function loadTransactions() {
             try {
                 // Загружаем кошельки
                 const walletsResponse = await fetch(`${API_URL}/api/wallets`);
                 const walletsData = await walletsResponse.json();
-                
+
                 const walletFilter = document.getElementById('walletFilter');
                 const currentFilter = walletFilter?.value || '';
 
@@ -4014,9 +4091,9 @@
                             `).join('')}
                         </div>
                     `;
-                    
+
                     if (walletFilter) {
-                        walletFilter.innerHTML = '<option value="">Все кошельки</option>' + 
+                        walletFilter.innerHTML = '<option value="">Все кошельки</option>' +
                             walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${w.address.substring(0, 8)}... ($${w.usdt_balance.toFixed(0)})</option>`).join('');
                     }
                 } else {
@@ -4026,12 +4103,12 @@
                         </div>
                     `;
                 }
-                
+
                 // Загружаем транзакции с фильтром
                 const selectedWallet = walletFilter?.value || '';
                 const startDate = document.getElementById('txStartDate')?.value || '';
                 const endDate = document.getElementById('txEndDate')?.value || '';
-                
+
                 let txUrl = `${API_URL}/api/transactions/incoming?`;
                 if (selectedWallet) txUrl += `wallet=${encodeURIComponent(selectedWallet)}&`;
                 if (startDate) txUrl += `start_date=${startDate}&`;
@@ -4039,7 +4116,7 @@
 
                 const response = await fetch(txUrl);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     if (data.available.length > 0) {
                         document.getElementById('availableTransactions').innerHTML = data.available.map(tx => `
@@ -4065,8 +4142,8 @@
                             ? '<p style="color: #666; text-align: center; padding: 2rem;">Нет новых входящих транзакций</p>'
                             : '<p style="color: #f59e0b; text-align: center; padding: 2rem;">Добавьте кошелек для мониторинга</p>';
                     }
-                    
-                    document.getElementById('usedTransactions').innerHTML = data.used.length > 0 
+
+                    document.getElementById('usedTransactions').innerHTML = data.used.length > 0
                         ? data.used.map(tx => `
                             <div class="tx-item used" style="opacity: 0.7;">
                                 <div style="flex: 1;">
@@ -4079,38 +4156,38 @@
                         `).join('')
                         : '<p style="color: #666; text-align: center; padding: 1rem;">Нет использованных транзакций</p>';
                 } else {
-                    document.getElementById('availableTransactions').innerHTML = 
+                    document.getElementById('availableTransactions').innerHTML =
                         `<div class="alert alert-error">${data.error || 'Ошибка загрузки'}</div>`;
                 }
             } catch (error) {
                 console.error('Error loading transactions:', error);
-                document.getElementById('availableTransactions').innerHTML = 
+                document.getElementById('availableTransactions').innerHTML =
                     '<div class="alert alert-error">Ошибка подключения к TronScan API</div>';
             }
         }
-        
+
         // Добавление кошелька
-        document.getElementById('addWalletForm')?.addEventListener('submit', async function(e) {
+        document.getElementById('addWalletForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
             const address = this.wallet_address.value.trim();
-            
+
             if (!address || !address.startsWith('T')) {
                 alert('Введите корректный адрес TRON кошелька (начинается с T)');
                 return;
             }
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/wallets`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         address,
                         is_monitored: true,
                         is_balance: false
                     })
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert(`Кошелек добавлен!\nUSDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`);
                     this.reset();
@@ -4122,19 +4199,19 @@
                 console.error('Error adding wallet:', error);
             }
         });
-        
+
         // Проверка транзакции
-        document.getElementById('verifyTxForm')?.addEventListener('submit', async function(e) {
+        document.getElementById('verifyTxForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
             const txHash = this.tx_hash.value.trim();
-            
+
             if (!txHash) {
                 alert('Введите хэш транзакции');
                 return;
             }
-            
+
             document.getElementById('verifyResult').innerHTML = '<p>Проверка...</p>';
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/transactions/verify`, {
                     method: 'POST',
@@ -4142,7 +4219,7 @@
                     body: JSON.stringify({ tx_hash: txHash })
                 });
                 const data = await response.json();
-                
+
                 if (data.success && data.found) {
                     const tx = data.transaction;
                     document.getElementById('verifyResult').innerHTML = `
@@ -4172,11 +4249,11 @@
                 }
             } catch (error) {
                 console.error('Error verifying transaction:', error);
-                document.getElementById('verifyResult').innerHTML = 
+                document.getElementById('verifyResult').innerHTML =
                     '<div class="alert alert-error">Ошибка проверки</div>';
             }
         });
-        
+
         function selectTransaction(txHash, amount, fromAddress) {
             // Switch to create tab and fill data
             document.querySelector('[data-section="create"]').click();
@@ -4185,26 +4262,26 @@
             document.getElementById('payinMethod').value = 'crypto_direct';
             // Trigger change to update form
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
-            
+
             alert(`Транзакция выбрана!\n\nСумма: $${amount} USDT\nОт: ${fromAddress}\n\nЗаполните остальные поля сделки.`);
         }
-        
+
         // ==================== Verification ====================
         async function loadVerificationSummary() {
             const dateFrom = document.getElementById('verifyDateFrom').value;
             const dateTo = document.getElementById('verifyDateTo').value;
-            
+
             const params = new URLSearchParams();
             if (dateFrom) params.append('date_from', dateFrom);
             if (dateTo) params.append('date_to', dateTo);
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/verification/summary?${params}`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     const stats = data.stats;
-                    
+
                     let html = `
                         <div class="stats-grid">
                             <div class="stat-card">
@@ -4229,50 +4306,50 @@
                             </div>
                         </div>
                     `;
-                    
+
                     if (stats.needs_attention.length > 0) {
                         html += `
                             <div class="alert alert-warning">
                                 <strong>Требуют внимания:</strong>
                                 <ul style="margin: 0.5rem 0 0 1.5rem;">
-                                    ${stats.needs_attention.map(item => 
-                                        `<li>Сделка #${item.deal_id} (${item.client}): ${item.issues.join(', ')}</li>`
-                                    ).join('')}
+                                    ${stats.needs_attention.map(item =>
+                            `<li>Сделка #${item.deal_id} (${item.client}): ${item.issues.join(', ')}</li>`
+                        ).join('')}
                                 </ul>
                             </div>
                         `;
                     }
-                    
+
                     if (stats.unreimbursed_founders.length > 0) {
                         html += `
                             <div class="alert alert-error">
                                 <strong>Не возмещено фаундерам:</strong>
                                 <ul style="margin: 0.5rem 0 0 1.5rem;">
-                                    ${stats.unreimbursed_founders.map(item => 
-                                        `<li>Сделка #${item.deal_id}: ${item.founder} - $${item.amount_usdt}</li>`
-                                    ).join('')}
+                                    ${stats.unreimbursed_founders.map(item =>
+                            `<li>Сделка #${item.deal_id}: ${item.founder} - $${item.amount_usdt}</li>`
+                        ).join('')}
                                 </ul>
                             </div>
                         `;
                     }
-                    
+
                     if (stats.needs_attention.length === 0 && stats.unreimbursed_founders.length === 0) {
                         html += `<div class="alert alert-success">Все сделки в порядке!</div>`;
                     }
-                    
+
                     document.getElementById('verificationSummary').innerHTML = html;
                 }
             } catch (error) {
                 console.error('Error loading verification:', error);
             }
         }
-        
+
         // ==================== Webhook ====================
         async function loadWebhookConfig() {
             try {
                 const response = await fetch(`${API_URL}/api/webhook/config`);
                 const data = await response.json();
-                
+
                 if (data.success) {
                     document.getElementById('webhookUrl').value = data.webhook_url || '';
                     updateWebhookStatus(data.is_configured);
@@ -4281,7 +4358,7 @@
                 console.error('Error loading webhook config:', error);
             }
         }
-        
+
         function updateWebhookStatus(isConfigured) {
             const statusEl = document.getElementById('webhookStatus');
             if (isConfigured) {
@@ -4290,10 +4367,10 @@
                 statusEl.innerHTML = '<span style="color: #f59e0b;">⚠ Webhook не настроен</span>';
             }
         }
-        
+
         async function saveWebhookConfig() {
             const url = document.getElementById('webhookUrl').value.trim();
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/webhook/config`, {
                     method: 'POST',
@@ -4301,7 +4378,7 @@
                     body: JSON.stringify({ webhook_url: url })
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     alert(data.message);
                     updateWebhookStatus(!!url);
@@ -4313,18 +4390,18 @@
                 alert('Ошибка сохранения');
             }
         }
-        
+
         async function testWebhook() {
             const statusEl = document.getElementById('webhookStatus');
             statusEl.innerHTML = '<span style="color: #666;">⏳ Отправка тестового сообщения...</span>';
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/webhook/test`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     statusEl.innerHTML = `<span style="color: #10b981;">✓ ${data.message}</span>`;
                 } else {
@@ -4335,30 +4412,30 @@
                 statusEl.innerHTML = '<span style="color: #ef4444;">✗ Ошибка отправки</span>';
             }
         }
-        
+
         // Загружаем конфиг webhook при загрузке страницы
         document.addEventListener('DOMContentLoaded', () => {
             loadWebhookConfig();
-            
+
             // Устанавливаем дефолтную дату начала для транзакций (1 декабря 2025)
             const startDateInput = document.getElementById('txStartDate');
             if (startDateInput) {
                 startDateInput.value = '2025-12-01';
             }
         });
-        
+
         // ==================== Helpers ====================
         function formatNumber(num) {
             if (!num) return '0';
             return Math.round(num).toLocaleString('ru-RU');
         }
-        
+
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const date = new Date(dateStr);
             return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         }
-        
+
         function getStatusLabel(status) {
             const labels = {
                 'pending': 'Ожидает',
@@ -4368,7 +4445,7 @@
             };
             return labels[status] || status;
         }
-        
+
         function getPayinMethodLabel(method) {
             const labels = {
                 'spp_doverka': 'СБП / Доверка',
@@ -4377,7 +4454,7 @@
             };
             return labels[method] || method || '-';
         }
-        
+
         function getPayoutMethodLabel(method) {
             const labels = {
                 'office': 'Офис',
@@ -4387,7 +4464,7 @@
             };
             return labels[method] || method || '-';
         }
-        
+
         function getPayoutSourceLabel(source) {
             const labels = {
                 'cash_batch': 'Касса',
@@ -4397,15 +4474,15 @@
             };
             return labels[source] || source || '-';
         }
-        
+
         // ==================== Managers ====================
         async function loadManagers() {
             try {
                 const response = await fetch(`${API_URL}/api/managers`);
                 const data = await response.json();
-                
+
                 if (data.success) {
-                    document.getElementById('managersList').innerHTML = data.managers.length > 0 
+                    document.getElementById('managersList').innerHTML = data.managers.length > 0
                         ? data.managers.map(m => `
                             <div class="batch-card" style="display: flex; justify-content: space-between; align-items: center;">
                                 <div>
@@ -4426,16 +4503,16 @@
                 console.error('Error loading managers:', error);
             }
         }
-        
-        document.getElementById('addManagerForm')?.addEventListener('submit', async function(e) {
+
+        document.getElementById('addManagerForm')?.addEventListener('submit', async function (e) {
             e.preventDefault();
             const name = this.manager_name.value.trim();
-            
+
             if (!name) {
                 alert('Введите имя менеджера');
                 return;
             }
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/managers`, {
                     method: 'POST',
@@ -4443,7 +4520,7 @@
                     body: JSON.stringify({ name })
                 });
                 const data = await response.json();
-                
+
                 if (data.success) {
                     this.reset();
                     loadManagers();
@@ -4454,7 +4531,7 @@
                 console.error('Error adding manager:', error);
             }
         });
-        
+
         async function toggleManager(id, active) {
             try {
                 const response = await fetch(`${API_URL}/api/managers/${id}`, {
@@ -4468,10 +4545,10 @@
                 console.error('Error updating manager:', error);
             }
         }
-        
+
         async function deleteManager(id) {
             if (!confirm('Удалить менеджера?')) return;
-            
+
             try {
                 const response = await fetch(`${API_URL}/api/managers/${id}`, { method: 'DELETE' });
                 const data = await response.json();
@@ -4480,7 +4557,7 @@
                 console.error('Error deleting manager:', error);
             }
         }
-        
+
         // ==================== Copy Hash Helper ====================
         function copyHash(hash) {
             navigator.clipboard.writeText(hash).then(() => {
@@ -4492,16 +4569,16 @@
                 setTimeout(() => toast.remove(), 2000);
             });
         }
-        
+
         // ==================== URL Parameters Population ====================
         function populateFromUrl() {
             const params = new URLSearchParams(window.location.search);
             const batchForm = document.getElementById('addCashBatchForm');
-            
+
             if (batchForm) {
                 let hasBatchParams = false;
                 const fields = ['amount_thb', 'cost_usdt', 'purchase_method', 'founder_name', 'tx_hash'];
-                
+
                 fields.forEach(field => {
                     const val = params.get(field);
                     if (val !== null) {
@@ -4512,21 +4589,21 @@
                         }
                     }
                 });
-                
+
                 if (hasBatchParams) {
                     // Switch to Balance tab
                     const balanceTab = document.querySelector('.nav-tab[data-section="balance"]');
                     if (balanceTab) balanceTab.click();
-                    
+
                     // Switch to Cash sub-tab
                     switchBalanceSubTab('cash');
-                    
+
                     // Recalculate rate
                     calcNewBatchRate();
                 }
             }
         }
-        
+
         // Initial load
         window.addEventListener('DOMContentLoaded', () => {
             loadDashboard(); // Default view
@@ -4534,4 +4611,5 @@
         });
     </script>
 </body>
+
 </html>
