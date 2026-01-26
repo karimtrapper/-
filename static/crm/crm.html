@@ -1878,7 +1878,7 @@
                         <p><strong>Чистая прибыль:</strong> 
                             ${profitUnknown 
                                 ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>' 
-                                : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                                : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && deal.referrer_name ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                             }
                         </p>
                         
@@ -2080,6 +2080,7 @@
                         if (deal.payout_amount_thb) document.getElementById('payoutAmountThb').value = deal.payout_amount_thb;
                         if (deal.referrer_name) form.referrer_name.value = deal.referrer_name;
                         if (deal.referrer_percent) form.referrer_percent.value = deal.referrer_percent;
+                        if (deal.referrer_fixed_usdt) form.referrer_fixed_usdt.value = deal.referrer_fixed_usdt;
                         if (deal.referrer_payout_usdt) document.getElementById('referrerPayoutRaw').value = deal.referrer_payout_usdt;
                         if (deal.net_profit_usdt) document.getElementById('netProfitRaw').value = deal.net_profit_usdt;
                         if (deal.notes) form.notes.value = deal.notes;
@@ -2865,7 +2866,7 @@
         }
         
         // Auto-calculate on input change
-        ['payin_amount_usdt', 'payout_amount_thb', 'referrer_percent', 'referrer_fixed_usdt'].forEach(name => {
+        ['payin_amount_usdt', 'payout_amount_thb', 'referrer_percent', 'referrer_fixed_usdt', 'referrer_name'].forEach(name => {
             const el = document.querySelector(`[name="${name}"]`);
             if (el) el.addEventListener('input', calculateProfit);
         });
@@ -2903,6 +2904,12 @@
                     } else {
                         data[key] = value;
                     }
+                } else if (key === 'referrer_name') {
+                    // Если имя партнера пустое - явно зануляем
+                    data[key] = null;
+                    data['referrer_percent'] = null;
+                    data['referrer_fixed_usdt'] = null;
+                    data['referrer_payout_usdt'] = null;
                 }
             });
             
