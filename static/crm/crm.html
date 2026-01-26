@@ -2011,13 +2011,20 @@
 
         async function loadIncomingTxForSelect() {
             try {
-                const response = await fetch(`${API_URL}/api/transactions/incoming`);
+                // Используем общие фильтры дат, если они установлены
+                const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
+                const endDate = document.getElementById('txEndDate')?.value || '';
+                
+                let url = `${API_URL}/api/transactions/incoming?start_date=${startDate}`;
+                if (endDate) url += `&end_date=${endDate}`;
+
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 if (data.success && data.available) {
                     const select = document.getElementById('payinTxSelect');
                     select.innerHTML = '<option value="">-- Выбрать из входящих --</option>' +
-                        data.available.slice(0, 20).map(tx => 
+                        data.available.slice(0, 100).map(tx => 
                             `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
                         ).join('');
                 }
@@ -2044,7 +2051,14 @@
             select.innerHTML = '<option value="">Загрузка...</option>';
             
             try {
-                const response = await fetch(`${API_URL}/api/transactions/outgoing`);
+                // Используем общие фильтры дат, если они установлены
+                const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
+                const endDate = document.getElementById('txEndDate')?.value || '';
+                
+                let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}`;
+                if (endDate) url += `&end_date=${endDate}`;
+
+                const response = await fetch(url);
                 const data = await response.json();
                 
                 select.innerHTML = '<option value="">-- Выбрать из списка --</option>';
@@ -2053,8 +2067,8 @@
                 const transactions = data.available || data.transactions || [];
                 
                 if (transactions.length > 0) {
-                    transactions.forEach(tx => {
-                        const date = new Date(tx.timestamp).toLocaleDateString('ru-RU', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+                    transactions.slice(0, 100).forEach(tx => {
+                        const date = formatDate(tx.timestamp);
                         const amount = tx.amount_usdt ? parseFloat(tx.amount_usdt).toFixed(2) : '?';
                         const shortHash = tx.tx_hash.substring(0, 10) + '...';
                         const opt = document.createElement('option');

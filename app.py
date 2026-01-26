@@ -1024,43 +1024,87 @@ def get_outgoing_transactions():
     """Получить исходящие USDT транзакции по всем кошелькам"""
     session = get_session()
     try:
-        wallets = session.query(Wallet).filter(Wallet.active == True).all()
+        # Получаем фильтры
+        wallet_filter = request.args.get('wallet')
+        start_date_str = request.args.get('start_date')
+        end_date_str = request.args.get('end_date')
+        
+        start_ts = None
+        if start_date_str:
+            try:
+                start_ts = int(datetime.strptime(start_date_str, '%Y-%m-%d').timestamp() * 1000)
+            except: pass
+            
+        end_ts = None
+        if end_date_str:
+            try:
+                end_ts = int((datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1)).timestamp() * 1000)
+            except: pass
+
+        if wallet_filter:
+            wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
+        else:
+            wallets = session.query(Wallet).filter(Wallet.active == True).all()
         
         if not wallets:
             return jsonify({'success': True, 'available': []})
         
         all_outgoing = []
+        usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         
         for wallet in wallets:
             try:
-                usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                params = {
-                    'relatedAddress': wallet.address,
-                    'contract_address': usdt_contract,
-                    'limit': 50,
-                    'start': 0
-                }
-                
-                response = requests.get(url, params=params, timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    for tx in data.get('token_transfers', []):
-                        # Только исходящие (from_address == наш кошелёк)
-                        if tx.get('from_address') == wallet.address:
-                            amount = float(tx.get('quant', 0)) / 1_000_000
-                            all_outgoing.append({
-                                'tx_hash': tx.get('transaction_id'),
-                                'from_address': tx.get('from_address'),
-                                'to_address': tx.get('to_address'),
-                                'amount_usdt': amount,
-                                'timestamp': datetime.fromtimestamp(tx.get('block_ts', 0) / 1000).isoformat(),
-                                'confirmed': tx.get('confirmed', False)
-                            })
+                for page in range(5):  # До 5 страниц (250 транзакций на кошелек)
+                    url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                    params = {
+                        'relatedAddress': wallet.address,
+                        'contract_address': usdt_contract,
+                        'limit': 50,
+                        'start': page * 50
+                    }
+                    
+                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    if response.status_code == 200:
+                        data = response.json()
+                        transfers = data.get('token_transfers', [])
+                        if not transfers:
+                            break
+                            
+                        reached_start_ts = False
+                        for tx in transfers:
+                            tx_ts = tx.get('block_ts', 0)
+                            
+                            # Фильтр по дате (если задан)
+                            if start_ts and tx_ts < start_ts:
+                                reached_start_ts = True
+                                continue
+                            if end_ts and tx_ts > end_ts:
+                                continue
+
+                            # Только исходящие (from_address == наш кошелёк)
+                            if tx.get('from_address') == wallet.address:
+                                amount = float(tx.get('quant', 0)) / 1_000_000
+                                all_outgoing.append({
+                                    'tx_hash': tx.get('transaction_id'),
+                                    'from_address': tx.get('from_address'),
+                                    'to_address': tx.get('to_address'),
+                                    'amount_usdt': amount,
+                                    'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
+                                    'confirmed': tx.get('confirmed', False)
+                                })
+                        
+                        if reached_start_ts:
+                            break
+                    else:
+                        break
             except Exception as e:
                 print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
         
-        return jsonify({'success': True, 'available': all_outgoing})
+        all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
+        return jsonify({'success': True, 'available': all_outgoing[:500]})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
