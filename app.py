@@ -599,13 +599,6 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
-        
-        # #region agent log
-        import json
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'location': 'app.py:update_deal', 'message': 'Received update request', 'data': {'deal_id': deal_id, 'received_payout_source': data.get('payout_source'), 'current_payout_source': deal.payout_source.value if deal.payout_source else None}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-        # #endregion
-
         old_status = deal.status
         
         # Обновляем дату если передана
@@ -622,15 +615,18 @@ def update_deal(deal_id):
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
-                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id']:
+                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id', 'payout_founder_name']:
             if field in data:
-                # #region agent log
-                if field == 'payout_source':
-                    with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-                        f.write(json.dumps({'location': 'app.py:update_deal:loop', 'message': 'Setting field', 'data': {'field': field, 'value': data[field]}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-                # #endregion
                 setattr(deal, field, data[field])
         
+        # Обновляем Enum поля
+        if 'payin_method' in data:
+            deal.payin_method = PayInMethod(data['payin_method']) if data['payin_method'] else None
+        if 'payout_method' in data:
+            deal.payout_method = PayOutMethod(data['payout_method']) if data['payout_method'] else None
+        if 'payout_source' in data:
+            deal.payout_source = PayOutSource(data['payout_source']) if data['payout_source'] else None
+
         # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
         if 'client_name' in data and deal.client_id:
             client = session.query(Client).filter(Client.id == deal.client_id).first()
@@ -641,11 +637,6 @@ def update_deal(deal_id):
         if 'client_id' in data:
             deal.client_id = data['client_id']
         
-        # #region agent log
-        with open('/Users/karimamirov/Desktop/untitled folder/.cursor/debug.log', 'a') as f:
-            f.write(json.dumps({'location': 'app.py:update_deal:post-loop', 'message': 'After update loop', 'data': {'payout_source_after': deal.payout_source.value if deal.payout_source else None}, 'timestamp': int(datetime.now().timestamp() * 1000), 'sessionId': 'debug-session', 'hypothesisId': '1'}) + '\n')
-        # #endregion
-
         if 'status' in data:
             deal.status = DealStatus(data['status'])
         
