@@ -919,6 +919,7 @@
                                 <select class="form-control" id="binanceTxSelect" onchange="selectBinanceTx()">
                                     <option value="">-- Выбрать из списка --</option>
                                 </select>
+                                <div id="binanceTxInfo"></div>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">или введите хэш</label>
@@ -2321,8 +2322,9 @@
         }
 
         // Загрузка исходящих транзакций для Binance
-        async function loadOutgoingTxForBinance() {
+        async function loadOutgoingTxForBinance(forceRefresh = false) {
             const select = document.getElementById('binanceTxSelect');
+            if (!select) return;
             select.innerHTML = '<option value="">Загрузка...</option>';
 
             try {
@@ -2332,6 +2334,7 @@
 
                 let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}`;
                 if (endDate) url += `&end_date=${endDate}`;
+                if (forceRefresh) url += `&force_refresh=true`;
 
                 const response = await fetch(url);
                 const data = await response.json();
@@ -2358,6 +2361,17 @@
                     opt.textContent = 'Нет исходящих транзакций';
                     opt.disabled = true;
                     select.appendChild(opt);
+                }
+
+                // Инфо о кэше
+                const infoEl = document.getElementById('binanceTxInfo');
+                if (infoEl) {
+                    if (data.cached) {
+                        const date = new Date(data.cache_time * 1000);
+                        infoEl.innerHTML = `<small style="color:#666">Данные из кэша (${date.toLocaleTimeString()}). <a href="#" onclick="loadOutgoingTxForBinance(true)">Обновить</a></small>`;
+                    } else {
+                        infoEl.innerHTML = `<small style="color:#666">Обновлено в ${new Date().toLocaleTimeString()}</small>`;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading outgoing tx:', error);
@@ -4159,10 +4173,13 @@
         }
 
         // ==================== Transactions (TronScan) ====================
-        async function loadTransactions() {
+        async function loadTransactions(forceRefresh = false) {
             try {
+                const refreshBtn = document.querySelector('button[onclick*="loadTransactions"]');
+                if (refreshBtn) refreshBtn.innerHTML = '⌛ Загрузка...';
+
                 // Загружаем кошельки
-                const walletsResponse = await fetch(`${API_URL}/api/wallets`);
+                const walletsResponse = await fetch(`${API_URL}/api/wallets${forceRefresh ? '?force_refresh=true' : ''}`);
                 const walletsData = await walletsResponse.json();
 
                 const walletFilter = document.getElementById('walletFilter');
@@ -4202,6 +4219,7 @@
                 const endDate = document.getElementById('txEndDate')?.value || '';
 
                 let txUrl = `${API_URL}/api/transactions/incoming?`;
+                if (forceRefresh) txUrl += `force_refresh=true&`;
                 if (selectedWallet) txUrl += `wallet=${encodeURIComponent(selectedWallet)}&`;
                 if (startDate) txUrl += `start_date=${startDate}&`;
                 if (endDate) txUrl += `end_date=${endDate}&`;
@@ -4209,7 +4227,19 @@
                 const response = await fetch(txUrl);
                 const data = await response.json();
 
+                if (refreshBtn) refreshBtn.innerHTML = '🔄 Обновить';
+
                 if (data.success) {
+                    // Показываем время обновления
+                    if (data.cached && data.cache_time) {
+                        const date = new Date(data.cache_time * 1000);
+                        document.getElementById('availableTransactions').parentElement.querySelector('p').innerHTML =
+                            `Данные из кэша (обновлено: ${date.toLocaleTimeString()}). <a href="#" onclick="loadTransactions(true)">Обновить сейчас</a>`;
+                    } else {
+                        document.getElementById('availableTransactions').parentElement.querySelector('p').innerHTML =
+                            `Данные обновлены с TronScan API в ${new Date().toLocaleTimeString()}`;
+                    }
+
                     if (data.available.length > 0) {
                         document.getElementById('availableTransactions').innerHTML = data.available.map(tx => `
                             <div class="tx-item" style="cursor: default;">

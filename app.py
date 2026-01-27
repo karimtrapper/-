@@ -40,6 +40,14 @@ Session = scoped_session(SessionLocal)
 def get_session():
     return Session()
 
+# ==================== TRONSCAN CACHE ====================
+TRONSCAN_CACHE = {
+    'incoming': {'data': None, 'timestamp': 0},
+    'outgoing': {'data': None, 'timestamp': 0},
+    'balances': {} # address -> {'data': data, 'timestamp': 0}
+}
+CACHE_TTL = 300 # 5 минут
+
 # ==================== MODELS ====================
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
@@ -884,16 +892,29 @@ def create_manager():
 def get_wallets():
     session = get_session()
     try:
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        current_time = time.time()
+        
         # Возвращаем только те, что для мониторинга
         wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).order_by(Wallet.created_at.desc()).all()
         wallets_with_balance = []
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
         for wallet in wallets:
             wallet_data = wallet.to_dict()
+            
+            # Проверяем кэш для данного кошелька
+            cache_entry = TRONSCAN_CACHE['balances'].get(wallet.address)
+            if not force_refresh and cache_entry and (current_time - cache_entry['timestamp'] < CACHE_TTL):
+                wallet_data['usdt_balance'] = cache_entry['usdt']
+                wallet_data['trx_balance'] = cache_entry['trx']
+                wallet_data['cached'] = True
+                wallets_with_balance.append(wallet_data)
+                continue
+
             wallet_data['usdt_balance'] = 0
             wallet_data['trx_balance'] = 0
             
@@ -908,6 +929,13 @@ def get_wallets():
                         if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                             wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                             break
+                    
+                    # Обновляем кэш
+                    TRONSCAN_CACHE['balances'][wallet.address] = {
+                        'usdt': wallet_data['usdt_balance'],
+                        'trx': wallet_data['trx_balance'],
+                        'timestamp': current_time
+                    }
                 else:
                     # Если ошибка, попробуем альтернативный эндпоинт баланса
                     alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
@@ -918,6 +946,15 @@ def get_wallets():
                             if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                                 wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                                 break
+                        
+                        # Обновляем кэш (даже если TRX не нашли тут)
+                        TRONSCAN_CACHE['balances'][wallet.address] = {
+                            'usdt': wallet_data['usdt_balance'],
+                            'trx': wallet_data['trx_balance'],
+                            'timestamp': current_time
+                        }
+                # Небольшая пауза между кошельками
+                time.sleep(0.3)
             except:
                 pass
             
@@ -1005,7 +1042,31 @@ def delete_wallet(wallet_id):
     finally:
         session.close()
 
-# ==================== TRANSACTIONS API (Frontend compatible) ====================
+def get_used_transaction_hashes(session):
+    """Собрать все хэши транзакций, которые уже используются в системе"""
+    used_hashes = set()
+    
+    # 1. Из таблицы Transaction
+    db_txs = session.query(Transaction.tx_hash).filter(Transaction.deal_id != None).all()
+    for tx in db_txs: used_hashes.add(tx[0])
+    
+    # 2. Из полей payin_tx_hash в Deal
+    deals_payin = session.query(Deal.payin_tx_hash).filter(Deal.payin_tx_hash != None).all()
+    for d in deals_payin: used_hashes.add(d[0])
+    
+    # 3. Из полей doverka_payout_hash в Deal
+    deals_doverka = session.query(Deal.doverka_payout_hash).filter(Deal.doverka_payout_hash != None).all()
+    for d in deals_doverka: used_hashes.add(d[0])
+    
+    # 4. Из полей tx_hash в Reimbursement
+    reimb_txs = session.query(Reimbursement.tx_hash).filter(Reimbursement.tx_hash != None).all()
+    for r in reimb_txs: used_hashes.add(r[0])
+    
+    # 5. Из таблицы WalletOperation
+    wallet_ops = session.query(WalletOperation.tx_hash).filter(WalletOperation.tx_hash != None).all()
+    for op in wallet_ops: used_hashes.add(op[0])
+    
+    return used_hashes
 
 @app.route('/api/transactions/incoming', methods=['GET'])
 def get_incoming_transactions():
@@ -1034,31 +1095,47 @@ def get_incoming_transactions():
         else:
             wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all()
         
-        if not wallets:
+        # Проверяем кэш
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        cache_key = wallet_filter or 'all'
+        current_time = time.time()
+        
+        # Если не форсируем и есть свежий кэш
+        if not force_refresh and TRONSCAN_CACHE['incoming']['data'] and (current_time - TRONSCAN_CACHE['incoming']['timestamp'] < CACHE_TTL):
+            # Фильтруем кэшированные данные по кошельку, если нужно
+            cached_data = TRONSCAN_CACHE['incoming']['data']
+            if wallet_filter:
+                cached_data = [tx for tx in cached_data if tx['to_address'] == wallet_filter]
+            
+            # Получаем актуальные использованные хэши
+            used_hashes = get_used_transaction_hashes(session)
+            
+            available = [tx for tx in cached_data if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
+            used = [tx for tx in cached_data if tx['tx_hash'] in used_hashes]
+            
             return jsonify({
                 'success': True,
-                'available': [],
-                'used': [],
-                'wallets_checked': []
+                'available': available[:1000],
+                'used': used[:200],
+                'cached': True,
+                'cache_time': TRONSCAN_CACHE['incoming']['timestamp']
             })
-        
+
         all_incoming = []
         wallets_checked = []
         
         usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
         for wallet in wallets:
             wallets_checked.append(wallet.address)
             
-
             try:
-                # Пагинация для загрузки большего количества транзакций
-                for page in range(10):  # 500 транзакций
+                # По просьбе пользователя: сначала 1 страница (50 транзакций), если не хватит - можно расширить
+                for page in range(2):  # Было 10, стало 2 (100 транзакций на кошелек)
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                    import time
                     params = {
                         'relatedAddress': wallet.address,
                         'contract_address': usdt_contract,
@@ -1087,7 +1164,6 @@ def get_incoming_transactions():
                                 
                             amount = float(tx.get('quant', 0)) / 1_000_000
                             
-
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
@@ -1100,6 +1176,8 @@ def get_incoming_transactions():
                         
                         if reached_start_ts:
                             break
+                        # Пауза между страницами, чтобы не триггерить лимиты
+                        time.sleep(0.3)
                     else:
                         break
             except Exception as e:
@@ -1108,30 +1186,13 @@ def get_incoming_transactions():
         # Сортируем все транзакции по времени
         all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
         
-        # Получаем использованные транзакции из БД (включая доверку и возмещения)
-        used_hashes = set()
+        # Обновляем кэш
+        if not wallet_filter: # Кэшируем только общий список
+            TRONSCAN_CACHE['incoming']['data'] = all_incoming
+            TRONSCAN_CACHE['incoming']['timestamp'] = current_time
         
-        # 1. Из таблицы Transaction
-        db_txs = session.query(Transaction).filter(Transaction.deal_id != None).all()
-        for tx in db_txs: used_hashes.add(tx.tx_hash)
+        used_hashes = get_used_transaction_hashes(session)
         
-        # 2. Из полей payin_tx_hash
-        deals_payin = session.query(Deal.payin_tx_hash).filter(Deal.payin_tx_hash != None).all()
-        for d in deals_payin: used_hashes.add(d[0])
-        
-        # 3. Из полей doverka_payout_hash
-        deals_doverka = session.query(Deal.doverka_payout_hash).filter(Deal.doverka_payout_hash != None).all()
-        for d in deals_doverka: used_hashes.add(d[0])
-        
-        # 4. Из полей tx_hash в Reimbursement
-        reimb_txs = session.query(Reimbursement.tx_hash).filter(Reimbursement.tx_hash != None).all()
-        for r in reimb_txs: used_hashes.add(r[0])
-        
-        # 5. Из таблицы WalletOperation
-        wallet_ops = session.query(WalletOperation.tx_hash).filter(WalletOperation.tx_hash != None).all()
-        for op in wallet_ops: used_hashes.add(op[0])
-        
-
         # Фильтруем: available = входящие и не использованные
         available = [tx for tx in all_incoming if tx['tx_hash'] not in used_hashes and tx.get('is_incoming')]
         used = [tx for tx in all_incoming if tx['tx_hash'] in used_hashes]
@@ -1140,7 +1201,8 @@ def get_incoming_transactions():
             'success': True,
             'available': available[:1000],
             'used': used[:200],
-            'wallets_checked': wallets_checked
+            'wallets_checked': wallets_checked,
+            'cached': False
         })
     except Exception as e:
         print(f"[DEBUG] get_incoming_transactions error: {e}")
@@ -1170,6 +1232,23 @@ def get_outgoing_transactions():
                 end_ts = int((datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1)).timestamp() * 1000)
             except: pass
 
+    # Проверяем кэш
+    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+    current_time = time.time()
+    
+    if not force_refresh and TRONSCAN_CACHE['outgoing']['data'] and (current_time - TRONSCAN_CACHE['outgoing']['timestamp'] < CACHE_TTL):
+        cached_data = TRONSCAN_CACHE['outgoing']['data']
+        if wallet_filter:
+            cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
+        
+        return jsonify({
+            'success': True,
+            'available': cached_data[:1000],
+            'cached': True,
+            'cache_time': TRONSCAN_CACHE['outgoing']['timestamp']
+        })
+
+    try:
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
         else:
@@ -1181,14 +1260,13 @@ def get_outgoing_transactions():
         all_outgoing = []
         usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
         for wallet in wallets:
             try:
-                for page in range(10):
+                for page in range(2): # Было 10
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                    import time
                     params = {
                         'relatedAddress': wallet.address,
                         'contract_address': usdt_contract,
@@ -1229,13 +1307,24 @@ def get_outgoing_transactions():
                         
                         if reached_start_ts:
                             break
+                        time.sleep(0.3)
                     else:
                         break
             except Exception as e:
                 print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
         
         all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-        return jsonify({'success': True, 'available': all_outgoing[:1000]})
+        
+        # Обновляем кэш
+        if not wallet_filter:
+            TRONSCAN_CACHE['outgoing']['data'] = all_outgoing
+            TRONSCAN_CACHE['outgoing']['timestamp'] = current_time
+
+        return jsonify({
+            'success': True, 
+            'available': all_outgoing[:1000],
+            'cached': False
+        })
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
