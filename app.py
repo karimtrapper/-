@@ -1232,23 +1232,22 @@ def get_outgoing_transactions():
                 end_ts = int((datetime.strptime(end_date_str, '%Y-%m-%d') + timedelta(days=1)).timestamp() * 1000)
             except: pass
 
-    # Проверяем кэш
-    force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
-    current_time = time.time()
-    
-    if not force_refresh and TRONSCAN_CACHE['outgoing']['data'] and (current_time - TRONSCAN_CACHE['outgoing']['timestamp'] < CACHE_TTL):
-        cached_data = TRONSCAN_CACHE['outgoing']['data']
-        if wallet_filter:
-            cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
+        # Проверяем кэш
+        force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
+        current_time = time.time()
         
-        return jsonify({
-            'success': True,
-            'available': cached_data[:1000],
-            'cached': True,
-            'cache_time': TRONSCAN_CACHE['outgoing']['timestamp']
-        })
+        if not force_refresh and TRONSCAN_CACHE['outgoing']['data'] and (current_time - TRONSCAN_CACHE['outgoing']['timestamp'] < CACHE_TTL):
+            cached_data = TRONSCAN_CACHE['outgoing']['data']
+            if wallet_filter:
+                cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
+            
+            return jsonify({
+                'success': True,
+                'available': cached_data[:1000],
+                'cached': True,
+                'cache_time': TRONSCAN_CACHE['outgoing']['timestamp']
+            })
 
-    try:
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
         else:
