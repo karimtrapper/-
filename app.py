@@ -543,7 +543,7 @@ def calculate():
 def get_deals():
     session = get_session()
     try:
-        query = session.query(Deal).order_by(Deal.created_at.desc())
+        query = session.query(Deal).order_by(Deal.created_at.desc(), Deal.id.desc())
         status = request.args.get('status')
         if status:
             query = query.filter(Deal.status == DealStatus(status))
