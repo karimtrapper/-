@@ -1455,6 +1455,7 @@
                     <select class="form-control" id="topupTxSelect" onchange="selectTopupTx()">
                         <option value="">-- Загрузка... --</option>
                     </select>
+                    <div id="topupTxInfo" style="margin-top: 0.5rem; font-size: 0.85rem; color: #666;"></div>
                 </div>
 
                 <div class="form-group" style="margin-bottom: 1rem;">
@@ -2336,6 +2337,16 @@
                 if (endDate) url += `&end_date=${endDate}`;
                 if (forceRefresh) url += `&force_refresh=true`;
 
+                // Фильтр по выбранному кошельку списания
+                const payoutWalletSelect = document.getElementById('payoutWalletSelect');
+                if (payoutWalletSelect && payoutWalletSelect.value) {
+                    const selectedOption = payoutWalletSelect.options[payoutWalletSelect.selectedIndex];
+                    const walletAddress = selectedOption.dataset.address;
+                    if (walletAddress) {
+                        url += `&wallet=${encodeURIComponent(walletAddress)}`;
+                    }
+                }
+
                 const response = await fetch(url);
                 const data = await response.json();
 
@@ -3124,7 +3135,9 @@
                     // Обновляем выпадающий список в форме создания сделки
                     const payoutWalletSelect = document.getElementById('payoutWalletSelect');
                     if (payoutWalletSelect) {
-                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                        payoutWalletSelect.innerHTML = data.wallets.map(w => `<option value="${w.id}" data-address="${w.address}">${w.label || w.address.substring(0, 8)} ($${w.system_balance.toFixed(0)})</option>`).join('');
+                        // Добавляем обработчик изменения кошелька для перезагрузки транзакций
+                        payoutWalletSelect.onchange = () => loadOutgoingTxForBinance(false);
                     }
                 }
             } catch (e) { console.error('Error loading wallets summary:', e); }
@@ -3175,25 +3188,42 @@
 
         function closeTopupModal() { document.getElementById('topupModal').classList.remove('active'); }
 
-        async function toggleTopupSource() {
+        async function toggleTopupSource(forceRefresh = false) {
             const type = document.getElementById('topupType').value;
             const group = document.getElementById('topupTronscanGroup');
             if (type === 'tronscan') {
                 group.style.display = 'block';
                 const select = document.getElementById('topupTxSelect');
+                const infoEl = document.getElementById('topupTxInfo');
                 select.innerHTML = '<option value="">Загрузка...</option>';
                 try {
                     let url = `${API_URL}/api/transactions/incoming`;
                     if (currentActiveWalletAddress) {
                         url += `?wallet=${encodeURIComponent(currentActiveWalletAddress)}`;
                     }
+                    if (forceRefresh) {
+                        url += (url.includes('?') ? '&' : '?') + 'force_refresh=true';
+                    }
                     const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {
                         select.innerHTML = '<option value="">-- Выберите транзакцию --</option>' +
                             data.available.map(tx => `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address.substring(0, 8)}... | ${formatDate(tx.timestamp)}</option>`).join('');
+
+                        // Показываем информацию о кеше
+                        if (infoEl) {
+                            if (data.cached) {
+                                const date = new Date(data.cache_time * 1000);
+                                infoEl.innerHTML = `Данные из кэша (${date.toLocaleTimeString()}). <a href="#" onclick="event.preventDefault(); toggleTopupSource(true);">Обновить</a>`;
+                            } else {
+                                infoEl.innerHTML = `Данные обновлены в ${new Date().toLocaleTimeString()}`;
+                            }
+                        }
                     }
-                } catch (e) { select.innerHTML = '<option value="">Ошибка загрузки</option>'; }
+                } catch (e) {
+                    select.innerHTML = '<option value="">Ошибка загрузки</option>';
+                    if (infoEl) infoEl.innerHTML = '';
+                }
             } else {
                 group.style.display = 'none';
             }
