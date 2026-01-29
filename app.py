@@ -815,6 +815,11 @@ def create_cash_batch():
         data = request.get_json()
         amount_thb = float(data['amount_thb'])
         cost_usdt = float(data['cost_usdt'])
+
+        # Валидация: сумма должна быть больше нуля
+        if amount_thb <= 0 or cost_usdt <= 0:
+            return jsonify({'success': False, 'error': 'Сумма должна быть больше нуля'}), 400
+
         batch = CashBatch(
             amount_thb=amount_thb, cost_usdt=cost_usdt,
             purchase_rate=amount_thb / cost_usdt, remaining_thb=amount_thb,
@@ -1669,6 +1674,46 @@ def topup_card(card_id):
     except Exception as e:
         session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/cards/<int:card_id>/history', methods=['GET'])
+def get_card_history(card_id):
+    """Получить историю пополнений карты"""
+    session = get_session()
+    try:
+        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        if not card:
+            return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
+
+        topups = session.query(CardTopup).filter(
+            CardTopup.card_id == card_id
+        ).order_by(CardTopup.created_at.desc()).all()
+
+        result = []
+        for t in topups:
+            topup_data = {
+                'id': t.id,
+                'created_at': t.created_at.isoformat() if t.created_at else None,
+                'amount_thb': t.amount_thb,
+                'cost_usdt': t.cost_usdt,
+                'purchase_rate': t.purchase_rate,
+                'source_type': t.source_type,
+                'source_batch_id': t.source_batch_id
+            }
+            result.append(topup_data)
+
+        return jsonify({
+            'success': True,
+            'card': {
+                'id': card.id,
+                'bank_name': card.bank_name,
+                'card_name': card.card_name,
+                'balance_thb': card.balance_thb
+            },
+            'topups': result,
+            'total_topups': len(result)
+        })
     finally:
         session.close()
 
