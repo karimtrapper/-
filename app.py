@@ -1583,6 +1583,40 @@ def delete_card(card_id):
     finally:
         session.close()
 
+@app.route('/api/cards/balance', methods=['GET'])
+def get_cards_balance():
+    """Получить баланс всех активных карт для dropdown'а"""
+    session = get_session()
+    try:
+        cards = session.query(BankCard).filter(
+            BankCard.status == CashBatchStatus.ACTIVE,
+            BankCard.balance_thb > 0
+        ).order_by(BankCard.bank_name).all()
+
+        result = []
+        for c in cards:
+            # Рассчитываем средневзвешенный курс закупки
+            total_thb = sum(t.amount_thb for t in c.topups) if c.topups else 0
+            total_usdt = sum(t.cost_usdt for t in c.topups) if c.topups else 0
+            avg_rate = total_thb / total_usdt if total_usdt > 0 else 0
+
+            result.append({
+                'id': c.id,
+                'bank_name': c.bank_name,
+                'card_name': c.card_name,
+                'holder_name': c.holder_name,
+                'balance_thb': c.balance_thb,
+                'avg_rate': round(avg_rate, 4) if avg_rate else 0
+            })
+
+        return jsonify({
+            'success': True,
+            'cards': result,
+            'total_thb': sum(c.balance_thb for c in cards)
+        })
+    finally:
+        session.close()
+
 @app.route('/api/cards/<int:card_id>/topup', methods=['POST'])
 def topup_card(card_id):
     session = get_session()
