@@ -3432,8 +3432,11 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    const info = data.card_info;
-                    const summary = data.summary;
+                    const info = data.card;
+                    const topups = data.topups || [];
+
+                    // Рассчитываем summary из topups
+                    const total_in = topups.reduce((sum, t) => sum + t.amount_thb, 0);
 
                     document.getElementById('historyModalTitle').textContent =
                         `История карты: ${info.bank_name} - ${info.card_name || ''}`;
@@ -3442,39 +3445,42 @@
                         <div style="background: #eff6ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                                 <div>
-                                    <strong>Владелец:</strong> ${info.holder_name || 'Неизвестно'}<br>
+                                    <strong>Банк:</strong> ${info.bank_name}<br>
                                     <strong>Баланс:</strong> ${formatNumber(info.balance_thb)} THB
                                 </div>
                                 <div style="text-align: right;">
-                                    <span style="color: #10b981;">Пополнений: +${formatNumber(summary.total_in)} THB</span><br>
-                                    <span style="color: #ef4444;">Списаний: -${formatNumber(summary.total_out)} THB</span>
+                                    <span style="color: #10b981;">Пополнений: ${data.total_topups}</span><br>
+                                    <span style="color: #10b981;">Всего: +${formatNumber(total_in)} THB</span>
                                 </div>
                             </div>
                         </div>
                     `;
 
-                    if (data.history.length === 0) {
-                        html += '<p style="color: #888; text-align: center;">Нет операций</p>';
+                    if (topups.length === 0) {
+                        html += '<p style="color: #888; text-align: center;">Нет пополнений</p>';
                     } else {
                         html += '<div style="max-height: 400px; overflow-y: auto;">';
-                        data.history.forEach(item => {
-                            const isPositive = item.amount_thb > 0;
-                            const color = isPositive ? '#10b981' : '#ef4444';
-                            const sign = isPositive ? '+' : '';
+                        topups.forEach(item => {
+                            const icon = item.source_type === 'cash_batch' ? '💰' : '💳';
+                            const description = item.source_type === 'cash_batch'
+                                ? `Пополнение из партии #${item.source_batch_id}`
+                                : 'Отдельная закупка';
 
                             html += `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; border-bottom: 1px solid #eee;">
                                     <div>
-                                        <span style="font-size: 1.2rem; margin-right: 0.5rem;">${item.icon}</span>
-                                        <strong>${item.description}</strong>
+                                        <span style="font-size: 1.2rem; margin-right: 0.5rem;">${icon}</span>
+                                        <strong>${description}</strong>
                                         <br>
-                                        <small style="color: #888;">${formatDate(item.date)}</small>
+                                        <small style="color: #888;">${formatDate(item.created_at)}</small>
                                     </div>
                                     <div style="text-align: right;">
-                                        <div style="color: ${color}; font-weight: bold;">
-                                            ${sign}${formatNumber(item.amount_thb)} THB
+                                        <div style="color: #10b981; font-weight: bold;">
+                                            +${formatNumber(item.amount_thb)} THB
                                         </div>
-                                        <small style="color: #888;">~$${item.amount_usdt?.toFixed(2) || '0'}</small>
+                                        <small style="color: #888;">
+                                            ~$${item.cost_usdt?.toFixed(2) || '0'} @ ${item.purchase_rate?.toFixed(2)}
+                                        </small>
                                     </div>
                                 </div>
                             `;
