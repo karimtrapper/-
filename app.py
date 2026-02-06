@@ -527,22 +527,22 @@ def get_precise_rate():
 
         print(f"🎯 Scenario: {scenario}, Amount: {amount}, Margin: {profit_margin}%", flush=True)
 
-        # Вычисляем USDT сумму для парсинга (с учётом маржи)
+        # Вычисляем USDT сумму для парсинга (БЕЗ вычитания маржи!)
+        # Маржа применяется калькулятором через комиссию USDT-THB, а не вычитанием из USDT
         usdt_for_parsing = 0
 
         if scenario == 'rub-to-thb':
-            # RUB → USDT → вычитаем маржу
-            usdt_from_rub = amount / rub_usdt
-            usdt_for_parsing = usdt_from_rub * (1 - profit_margin / 100)
-            print(f"📊 {amount} RUB → {usdt_for_parsing:.2f} USDT (после маржи {profit_margin}%)", flush=True)
+            # RUB → USDT (без вычитания маржи)
+            usdt_for_parsing = amount / rub_usdt
+            print(f"📊 {amount} RUB → {usdt_for_parsing:.2f} USDT (полная сумма)", flush=True)
 
         elif scenario == 'usdt-to-thb':
-            # USDT → вычитаем маржу
-            usdt_for_parsing = amount * (1 - profit_margin / 100)
-            print(f"📊 {amount} USDT → {usdt_for_parsing:.2f} USDT (после маржи {profit_margin}%)", flush=True)
+            # Берём USDT как есть (без вычитания маржи)
+            usdt_for_parsing = amount
+            print(f"📊 {amount} USDT (полная сумма)", flush=True)
 
         elif scenario == 'thb-to-rub' or scenario == 'thb-to-usdt':
-            # Для обратного направления парсим как есть
+            # Для обратного направления парсим THB
             usdt_for_parsing = amount
             print(f"📊 {amount} THB (обратное направление)", flush=True)
 
