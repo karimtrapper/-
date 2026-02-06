@@ -592,6 +592,12 @@ def calculate():
 
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
 
+        # Если передан точный курс USDT-THB (от Playwright), используем его
+        custom_usdt_thb = data.get('custom_usdt_thb')
+        if custom_usdt_thb:
+            rates['usdt_thb'] = float(custom_usdt_thb)
+            print(f"🎯 Использую точный курс USDT-THB: {rates['usdt_thb']:.4f}", flush=True)
+
         if method == 'broker':
             from broker_detailed import BrokerCalculatorDetailed
             custom_rub_usdt = float(data.get('custom_rub_usdt', 80.9))

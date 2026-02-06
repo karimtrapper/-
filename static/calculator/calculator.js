@@ -526,6 +526,7 @@ async function calculate() {
                 direction: state.direction,
                 amount: amount,
                 custom_rub_usdt: state.customRubUsdt,
+                custom_usdt_thb: state.rates.usdt_thb,  // Передаём точный курс если был запрошен
                 profit_margin: state.profitMargin
             };
             
@@ -557,6 +558,7 @@ async function calculate() {
                 scenario: effectiveScenario,
                 direction: effectiveDirection,
                 amount: amount,
+                custom_usdt_thb: state.rates.usdt_thb,  // Передаём точный курс если был запрошен
                 // Передаем маржу только если включена "скидка" (ручной режим)
                 profit_margin: state.applyDiscount ? state.profitMargin : null
             };
