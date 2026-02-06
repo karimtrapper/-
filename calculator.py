@@ -8,6 +8,7 @@ import os
 from typing import Dict, Tuple
 from dotenv import load_dotenv
 from decimal import Decimal, ROUND_HALF_UP
+from playwright.async_api import async_playwright
 
 # Загружаем переменные окружения
 def load_env():
@@ -179,6 +180,71 @@ class ExchangeRateProvider:
             "usdt_thb": usdt_thb,
             "rub_usdt": rub_usdt
         }
+
+    @staticmethod
+    async def get_precise_binance_rate(usdt_amount: float) -> dict:
+        """
+        Получить ТОЧНЫЙ курс USDT-THB от Binance Easy Buy/Sell через Playwright
+        Парсит реальный калькулятор Binance для заданной суммы USDT
+
+        Args:
+            usdt_amount: Сумма USDT для конвертации
+
+        Returns:
+            {
+                'usdt': 1000.0,
+                'thb': 31532.08,
+                'rate': 31.53208,
+                'time': 8.5  # seconds
+            }
+        """
+        import time
+        start_time = time.time()
+
+        try:
+            async with async_playwright() as p:
+                browser = await p.chromium.launch(headless=True)
+                page = await browser.new_page()
+
+                # Открываем страницу Easy Buy/Sell
+                await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=15000)
+
+                # Принимаем cookies если появляется диалог
+                try:
+                    await page.click('button:has-text("Accept")', timeout=2000)
+                except:
+                    pass  # Если нет диалога - продолжаем
+
+                # Вводим сумму USDT в первое поле
+                await page.fill('input[placeholder*="99999"]', str(usdt_amount))
+
+                # Ждём обновления результата (2 секунды достаточно)
+                await page.wait_for_timeout(2000)
+
+                # Читаем результат из второго поля (THB)
+                thb_text = await page.input_value('input[placeholder*="3248999"]')
+                thb_received = float(thb_text.replace(',', ''))
+
+                # Вычисляем курс
+                rate = thb_received / usdt_amount
+
+                await browser.close()
+
+                elapsed = time.time() - start_time
+
+                return {
+                    'usdt': usdt_amount,
+                    'thb': thb_received,
+                    'rate': rate,
+                    'time': round(elapsed, 2)
+                }
+
+        except Exception as e:
+            print(f"❌ Playwright parsing error: {e}")
+            return {
+                'error': str(e),
+                'time': round(time.time() - start_time, 2)
+            }
 
 
 class CommissionCalculator:

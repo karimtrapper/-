@@ -596,6 +596,84 @@ async function calculate() {
     }
 }
 
+// Получить точный курс Binance через Playwright
+async function getPreciseRate() {
+    const amount = getAmount();
+    const preciseRateBtn = document.getElementById('preciseRateBtn');
+    const preciseRateTime = document.getElementById('preciseRateTime');
+
+    if (amount <= 0) {
+        alert('⚠️ Введите сумму для расчета точного курса');
+        return;
+    }
+
+    const originalText = preciseRateBtn.innerHTML;
+    preciseRateBtn.disabled = true;
+    preciseRateBtn.innerHTML = '⏳ Загрузка точного курса... (~10 сек)';
+    preciseRateTime.style.display = 'none';
+
+    try {
+        // Вычисляем сумму USDT на основе текущего amount
+        let usdtAmount;
+
+        if (state.scenario === 'rub-to-thb' || state.scenario === 'thb-to-rub') {
+            // Для RUB сначала конвертируем в USDT
+            const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+            usdtAmount = amount / rubUsdt;
+        } else if (state.scenario === 'usdt-to-thb' || state.scenario === 'thb-to-usdt') {
+            // Для USDT берем напрямую
+            usdtAmount = amount;
+        } else {
+            usdtAmount = 1000; // Дефолтное значение
+        }
+
+        usdtAmount = Math.round(usdtAmount); // Округляем до целого
+
+        console.log(`🎯 Запрос точного курса для ${usdtAmount} USDT...`);
+
+        const response = await fetch(`${CONFIG.API_URL}/rates/precise`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usdt_amount: usdtAmount })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+            throw new Error(result.error || 'Unknown error');
+        }
+
+        console.log('✅ Точный курс получен:', result);
+
+        // Обновляем курс USDT-THB в state
+        state.rates.usdt_thb = result.rate;
+
+        // Обновляем UI с новым курсом
+        document.getElementById('usdtThbRate').textContent = `${result.rate.toFixed(2)} ฿`;
+
+        // Показываем время запроса
+        preciseRateTime.textContent = `(${result.time} сек)`;
+        preciseRateTime.style.display = 'inline';
+
+        // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
+        await calculate();
+
+        // Показываем уведомление
+        alert(`✅ Точный курс Binance получен!\n\nUSDT-THB: ${result.rate.toFixed(4)} ฿\nВремя: ${result.time} сек\n\nРасчет автоматически обновлен с точным курсом.`);
+
+    } catch (error) {
+        console.error('❌ Ошибка получения точного курса:', error);
+        alert(`❌ Ошибка получения точного курса: ${error.message}\n\nИспользуется курс API.`);
+    } finally {
+        preciseRateBtn.disabled = false;
+        preciseRateBtn.innerHTML = originalText;
+    }
+}
+
 // Локальный расчет (фоллбэк)
 function calculateLocal(amount) {
     // В локальном режиме (file://) берем профит из стейта, если включена скидка,

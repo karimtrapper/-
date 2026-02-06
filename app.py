@@ -488,6 +488,50 @@ def get_rates():
     except Exception as e:
         return jsonify({'error': str(e), 'usdt_thb': 35.20, 'rub_usdt': 86.50, 'success': False})
 
+@app.route('/api/rates/precise', methods=['POST'])
+def get_precise_rate():
+    """
+    Получить ТОЧНЫЙ курс USDT-THB от Binance через Playwright парсинг
+
+    POST /api/rates/precise
+    {
+        "usdt_amount": 1000
+    }
+
+    Returns:
+    {
+        "success": true,
+        "usdt": 1000,
+        "thb": 31532.08,
+        "rate": 31.53208,
+        "time": 8.5
+    }
+    """
+    try:
+        data = request.get_json()
+        usdt_amount = float(data.get('usdt_amount', 1000))
+
+        if usdt_amount <= 0:
+            return jsonify({'success': False, 'error': 'Invalid amount'}), 400
+
+        # Запускаем Playwright парсинг
+        result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(usdt_amount))
+
+        if 'error' in result:
+            return jsonify({
+                'success': False,
+                'error': result['error'],
+                'time': result.get('time', 0)
+            }), 500
+
+        return jsonify({
+            'success': True,
+            **result
+        })
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/calculate', methods=['POST'])
 def calculate():
     try:

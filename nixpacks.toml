@@ -1,0 +1,36 @@
+# Nixpacks конфигурация для Railway
+# Устанавливает системные зависимости для Playwright Chromium
+
+[phases.setup]
+# Системные библиотеки необходимые для Chromium
+aptPkgs = [
+    "libglib2.0-0",
+    "libnss3",
+    "libnspr4",
+    "libatk1.0-0",
+    "libatk-bridge2.0-0",
+    "libcups2",
+    "libdrm2",
+    "libdbus-1-3",
+    "libxkbcommon0",
+    "libatspi2.0-0",
+    "libxcomposite1",
+    "libxdamage1",
+    "libxfixes3",
+    "libxrandr2",
+    "libgbm1",
+    "libpango-1.0-0",
+    "libcairo2",
+    "libasound2"
+]
+
+[phases.install]
+# Устанавливаем Python зависимости и Playwright с Chromium
+cmds = [
+    "pip install -r requirements.txt",
+    "playwright install --with-deps chromium"
+]
+
+[start]
+# Запускаем приложение через gunicorn
+cmd = "gunicorn app:app"
