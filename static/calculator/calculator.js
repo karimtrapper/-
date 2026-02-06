@@ -638,13 +638,28 @@ async function getPreciseRate() {
         });
 
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            const errorMsg = errorData.error || `HTTP ${response.status}`;
+
+            // Специальное сообщение если Playwright не установлен
+            if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
+                throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
+            }
+
+            throw new Error(errorMsg);
         }
 
         const result = await response.json();
 
         if (!result.success) {
-            throw new Error(result.error || 'Unknown error');
+            const errorMsg = result.error || 'Unknown error';
+
+            // Специальное сообщение если Playwright не установлен
+            if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
+                throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
+            }
+
+            throw new Error(errorMsg);
         }
 
         console.log('✅ Точный курс получен:', result);
