@@ -527,17 +527,24 @@ def get_precise_rate():
 
         print(f"🎯 Scenario: {scenario}, Amount: {amount}, Margin: {profit_margin}%", flush=True)
 
-        # Вычисляем USDT сумму для парсинга (БЕЗ вычитания маржи!)
-        # Маржа применяется калькулятором через комиссию USDT-THB, а не вычитанием из USDT
+        # Вычисляем USDT сумму для парсинга (С учётом комиссии RUB-USDT, как в broker_detailed.py)
+        # В broker_detailed.py для rub_to_thb_amount (строка 127):
+        # rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.usdt_comm)
+        # usdt_amount = rub_amount / rub_usdt_rate_sell
+        #
+        # Для profit_margin=5%: usdt_comm=0.0257 (2.57%)
+        # 200,000 / (82.78 × 1.0257) = 200,000 / 84.91 = 2,355.45 USDT
         usdt_for_parsing = 0
 
         if scenario == 'rub-to-thb':
-            # RUB → USDT (без вычитания маржи)
-            usdt_for_parsing = amount / rub_usdt
-            print(f"📊 {amount} RUB → {usdt_for_parsing:.2f} USDT (полная сумма)", flush=True)
+            # Применяем комиссию usdt_comm к курсу RUB/USDT (из broker_detailed.py)
+            usdt_comm_approx = (profit_margin / 100.0) / 2.0  # Упрощённо: половина от прибыли
+            rub_usdt_sell = rub_usdt * (1 + usdt_comm_approx)
+            usdt_for_parsing = amount / rub_usdt_sell
+            print(f"📊 {amount} RUB / {rub_usdt_sell:.2f} = {usdt_for_parsing:.2f} USDT (с комиссией {usdt_comm_approx*100:.2f}%)", flush=True)
 
         elif scenario == 'usdt-to-thb':
-            # Берём USDT как есть (без вычитания маржи)
+            # Берём USDT как есть
             usdt_for_parsing = amount
             print(f"📊 {amount} USDT (полная сумма)", flush=True)
 
