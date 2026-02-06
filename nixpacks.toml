@@ -31,13 +31,9 @@ aptPkgs = [
 ]
 
 [phases.install]
-# Устанавливаем Python зависимости
+# Устанавливаем Python зависимости и Playwright
 cmds = ["pip install -r requirements.txt"]
 
-[phases.build]
-# Устанавливаем Playwright Chromium после установки pip пакетов
-cmds = ["playwright install chromium"]
-
 [start]
-# Запускаем приложение через gunicorn
-cmd = "gunicorn app:app"
+# Устанавливаем Chromium при старте (если ещё не установлен) и запускаем приложение
+cmd = "playwright install chromium && gunicorn app:app"
