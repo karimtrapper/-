@@ -508,28 +508,39 @@ def get_precise_rate():
     }
     """
     try:
+        print(f"🎯 Precise rate request received", flush=True)
         data = request.get_json()
         usdt_amount = float(data.get('usdt_amount', 1000))
+        print(f"🎯 USDT amount: {usdt_amount}", flush=True)
 
         if usdt_amount <= 0:
             return jsonify({'success': False, 'error': 'Invalid amount'}), 400
 
         # Запускаем Playwright парсинг
+        print(f"🎯 Starting Playwright parsing...", flush=True)
         result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(usdt_amount))
+        print(f"🎯 Playwright result: {result}", flush=True)
 
         if 'error' in result:
+            error_msg = result['error']
+            print(f"❌ Playwright error: {error_msg}", flush=True)
             return jsonify({
                 'success': False,
-                'error': result['error'],
+                'error': error_msg,
                 'time': result.get('time', 0)
             }), 500
 
+        print(f"✅ Precise rate success: {result['rate']}", flush=True)
         return jsonify({
             'success': True,
             **result
         })
 
     except Exception as e:
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"❌ Exception in /api/rates/precise: {e}", flush=True)
+        print(f"❌ Traceback: {error_trace}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/calculate', methods=['POST'])
