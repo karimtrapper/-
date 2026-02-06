@@ -182,20 +182,23 @@ class ExchangeRateProvider:
         }
 
     @staticmethod
-    async def get_precise_binance_rate(usdt_amount: float) -> dict:
+    async def get_precise_binance_rate(usdt_amount: float = None, thb_amount: float = None, direction: str = 'usdt_to_thb') -> dict:
         """
-        Получить ТОЧНЫЙ курс USDT-THB от Binance Easy Buy/Sell через Playwright
-        Парсит реальный калькулятор Binance для заданной суммы USDT
+        Получить ТОЧНЫЙ курс от Binance Easy Buy/Sell через Playwright
+        Поддерживает оба направления: USDT→THB и THB→USDT
 
         Args:
-            usdt_amount: Сумма USDT для конвертации
+            usdt_amount: Сумма USDT (для direction='usdt_to_thb')
+            thb_amount: Сумма THB (для direction='thb_to_usdt')
+            direction: 'usdt_to_thb' или 'thb_to_usdt'
 
         Returns:
             {
+                'direction': 'usdt_to_thb',
                 'usdt': 1000.0,
                 'thb': 31532.08,
-                'rate': 31.53208,
-                'time': 8.5  # seconds
+                'rate': 31.53208,  # USDT→THB курс
+                'time': 8.5
             }
         """
         import time
@@ -206,38 +209,66 @@ class ExchangeRateProvider:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page()
 
-                # Открываем страницу Easy Buy/Sell
-                await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=15000)
+                if direction == 'thb_to_usdt':
+                    # THB → USDT: открываем обратную страницу
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=15000)
 
-                # Принимаем cookies если появляется диалог
-                try:
-                    await page.click('button:has-text("Accept")', timeout=2000)
-                except:
-                    pass  # Если нет диалога - продолжаем
+                    try:
+                        await page.click('button:has-text("Accept")', timeout=2000)
+                    except:
+                        pass
 
-                # Вводим сумму USDT в первое поле
-                await page.fill('input[placeholder*="99999"]', str(usdt_amount))
+                    # Вводим сумму THB
+                    await page.fill('input[placeholder*="3248999"]', str(thb_amount))
+                    await page.wait_for_timeout(2000)
 
-                # Ждём обновления результата (2 секунды достаточно)
-                await page.wait_for_timeout(2000)
+                    # Читаем USDT
+                    usdt_text = await page.input_value('input[placeholder*="99999"]')
+                    usdt_received = float(usdt_text.replace(',', ''))
 
-                # Читаем результат из второго поля (THB)
-                thb_text = await page.input_value('input[placeholder*="3248999"]')
-                thb_received = float(thb_text.replace(',', ''))
+                    # Курс THB→USDT
+                    rate_thb_usdt = usdt_received / thb_amount
+                    # Курс USDT→THB (для единообразия всегда возвращаем USDT→THB)
+                    rate_usdt_thb = 1 / rate_thb_usdt
 
-                # Вычисляем курс
-                rate = thb_received / usdt_amount
+                    await browser.close()
+                    elapsed = time.time() - start_time
 
-                await browser.close()
+                    return {
+                        'direction': 'thb_to_usdt',
+                        'thb': thb_amount,
+                        'usdt': usdt_received,
+                        'rate': rate_usdt_thb,  # Всегда USDT→THB для совместимости
+                        'rate_thb_usdt': rate_thb_usdt,
+                        'time': round(elapsed, 2)
+                    }
+                else:
+                    # USDT → THB (дефолтное направление)
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=15000)
 
-                elapsed = time.time() - start_time
+                    try:
+                        await page.click('button:has-text("Accept")', timeout=2000)
+                    except:
+                        pass
 
-                return {
-                    'usdt': usdt_amount,
-                    'thb': thb_received,
-                    'rate': rate,
-                    'time': round(elapsed, 2)
-                }
+                    await page.fill('input[placeholder*="99999"]', str(usdt_amount))
+                    await page.wait_for_timeout(2000)
+
+                    thb_text = await page.input_value('input[placeholder*="3248999"]')
+                    thb_received = float(thb_text.replace(',', ''))
+
+                    rate = thb_received / usdt_amount
+
+                    await browser.close()
+                    elapsed = time.time() - start_time
+
+                    return {
+                        'direction': 'usdt_to_thb',
+                        'usdt': usdt_amount,
+                        'thb': thb_received,
+                        'rate': rate,
+                        'time': round(elapsed, 2)
+                    }
 
         except Exception as e:
             print(f"❌ Playwright parsing error: {e}")

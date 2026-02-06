@@ -613,35 +613,27 @@ async function getPreciseRate() {
     preciseRateTime.style.display = 'none';
 
     try {
-        // Вычисляем сумму USDT на основе текущего amount
-        let usdtAmount;
+        // Получаем курс RUB/USDT
+        const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
 
-        if (state.scenario === 'rub-to-thb' || state.scenario === 'thb-to-rub') {
-            // Для RUB сначала конвертируем в USDT
-            const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
-            usdtAmount = amount / rubUsdt;
-        } else if (state.scenario === 'usdt-to-thb' || state.scenario === 'thb-to-usdt') {
-            // Для USDT берем напрямую
-            usdtAmount = amount;
-        } else {
-            usdtAmount = 1000; // Дефолтное значение
-        }
-
-        usdtAmount = Math.round(usdtAmount); // Округляем до целого
-
-        console.log(`🎯 Запрос точного курса для ${usdtAmount} USDT...`);
+        console.log(`🎯 Запрос точного расчета: ${state.scenario}, сумма ${amount}...`);
 
         const response = await fetch(`${CONFIG.API_URL}/rates/precise`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ usdt_amount: usdtAmount })
+            body: JSON.stringify({
+                scenario: state.scenario,
+                amount: amount,
+                method: state.method,
+                rub_usdt: rubUsdt,
+                profit_margin: state.profitMargin
+            })
         });
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorMsg = errorData.error || `HTTP ${response.status}`;
 
-            // Специальное сообщение если Playwright не установлен
             if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
                 throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
             }
@@ -654,7 +646,6 @@ async function getPreciseRate() {
         if (!result.success) {
             const errorMsg = result.error || 'Unknown error';
 
-            // Специальное сообщение если Playwright не установлен
             if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
                 throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
             }
@@ -662,23 +653,69 @@ async function getPreciseRate() {
             throw new Error(errorMsg);
         }
 
-        console.log('✅ Точный курс получен:', result);
+        console.log('✅ Точный расчет получен:', result);
 
-        // Обновляем курс USDT-THB в state
-        state.rates.usdt_thb = result.rate;
-
-        // Обновляем UI с новым курсом
-        document.getElementById('usdtThbRate').textContent = `${result.rate.toFixed(2)} ฿`;
+        // Обновляем курс USDT-THB в state и UI
+        state.rates.usdt_thb = result.rate_used;
+        document.getElementById('usdtThbRate').textContent = `${result.rate_used.toFixed(2)} ฿`;
 
         // Показываем время запроса
         preciseRateTime.textContent = `(${result.time} сек)`;
         preciseRateTime.style.display = 'inline';
 
-        // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
-        await calculate();
+        // Отображаем ТОЧНЫЙ результат напрямую из backend
+        const resultsSection = document.getElementById('resultsSection');
+        const resultAmountEl = document.getElementById('resultAmount');
+        const resultCurrencyEl = document.getElementById('resultCurrency');
+        const effectiveRateEl = document.getElementById('effectiveRate');
+        const detailsEl = document.getElementById('details');
+
+        resultsSection.style.display = 'block';
+
+        if (result.scenario === 'rub-to-thb' || result.scenario === 'usdt-to-thb') {
+            // Клиент получает THB
+            resultAmountEl.textContent = result.client_receives.toFixed(2);
+            resultCurrencyEl.textContent = ' ฿';
+
+            if (result.scenario === 'rub-to-thb') {
+                const effectiveRate = amount / result.client_receives;
+                effectiveRateEl.textContent = `Курс: ${effectiveRate.toFixed(6)} ₽/฿`;
+            }
+
+            detailsEl.innerHTML = `
+                <strong>📊 Детали расчета (точный курс Binance):</strong><br>
+                ${result.calculation_steps.rub_input ? `Входящая сумма: ${result.calculation_steps.rub_input.toLocaleString('ru-RU')} ₽<br>` : ''}
+                ${result.calculation_steps.usdt_before_margin ? `USDT до маржи: ${result.calculation_steps.usdt_before_margin.toFixed(2)} USDT<br>` : ''}
+                Маржа: ${result.calculation_steps.margin_percent}%<br>
+                USDT после маржи: ${result.calculation_steps.usdt_after_margin.toFixed(2)} USDT<br>
+                <strong>Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿</strong><br>
+                <strong>Клиент получит: ${result.calculation_steps.thb_output.toFixed(2)} ฿</strong><br>
+                Время парсинга: ${result.time} сек
+            `;
+        } else if (result.scenario === 'thb-to-rub' || result.scenario === 'thb-to-usdt') {
+            // Клиент должен заплатить RUB
+            resultAmountEl.textContent = result.client_must_pay.toFixed(2);
+            resultCurrencyEl.textContent = result.scenario === 'thb-to-rub' ? ' ₽' : ' USDT';
+
+            if (result.scenario === 'thb-to-rub') {
+                const effectiveRate = result.client_must_pay / amount;
+                effectiveRateEl.textContent = `Курс: ${effectiveRate.toFixed(6)} ₽/฿`;
+            }
+
+            detailsEl.innerHTML = `
+                <strong>📊 Детали расчета (точный курс Binance):</strong><br>
+                Клиент хочет: ${result.calculation_steps.thb_target.toFixed(2)} ฿<br>
+                USDT от Binance: ${result.calculation_steps.usdt_from_binance.toFixed(2)} USDT<br>
+                Маржа: ${result.calculation_steps.margin_percent}%<br>
+                USDT с маржей: ${result.calculation_steps.usdt_with_margin.toFixed(2)} USDT<br>
+                <strong>Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿</strong><br>
+                <strong>Клиент должен дать: ${result.client_must_pay.toFixed(2)} ${result.scenario === 'thb-to-rub' ? '₽' : 'USDT'}</strong><br>
+                Время парсинга: ${result.time} сек
+            `;
+        }
 
         // Показываем уведомление
-        alert(`✅ Точный курс Binance получен!\n\nUSDT-THB: ${result.rate.toFixed(4)} ฿\nВремя: ${result.time} сек\n\nРасчет автоматически обновлен с точным курсом.`);
+        alert(`✅ Точный курс Binance получен!\n\nUSDT-THB: ${result.rate_used.toFixed(4)} ฿\nВремя: ${result.time} сек\n\nРасчет выполнен с учетом точного курса и маржи.`);
 
     } catch (error) {
         console.error('❌ Ошибка получения точного курса:', error);
