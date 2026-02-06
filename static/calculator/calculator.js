@@ -665,57 +665,64 @@ async function getPreciseRate() {
 
         // Отображаем ТОЧНЫЙ результат напрямую из backend
         const resultsSection = document.getElementById('resultsSection');
-        const resultAmountEl = document.getElementById('resultAmount');
-        const resultCurrencyEl = document.getElementById('resultCurrency');
-        const effectiveRateEl = document.getElementById('effectiveRate');
-        const detailsEl = document.getElementById('details');
+        const resultValueEl = document.getElementById('resultValue');
+        const resultLabelEl = document.getElementById('resultLabel');
+        const finalRateEl = document.getElementById('finalRate');
 
         resultsSection.style.display = 'block';
 
         if (result.scenario === 'rub-to-thb' || result.scenario === 'usdt-to-thb') {
             // Клиент получает THB
-            resultAmountEl.textContent = result.client_receives.toFixed(2);
-            resultCurrencyEl.textContent = ' ฿';
+            resultLabelEl.textContent = 'Клиент получит:';
+            resultValueEl.textContent = `${result.client_receives.toFixed(2)} ฿`;
 
             if (result.scenario === 'rub-to-thb') {
                 const effectiveRate = amount / result.client_receives;
-                effectiveRateEl.textContent = `Курс: ${effectiveRate.toFixed(6)} ₽/฿`;
+                finalRateEl.textContent = effectiveRate.toFixed(6);
             }
 
-            detailsEl.innerHTML = `
-                <strong>📊 Детали расчета (точный курс Binance):</strong><br>
-                ${result.calculation_steps.rub_input ? `Входящая сумма: ${result.calculation_steps.rub_input.toLocaleString('ru-RU')} ₽<br>` : ''}
-                ${result.calculation_steps.usdt_before_margin ? `USDT до маржи: ${result.calculation_steps.usdt_before_margin.toFixed(2)} USDT<br>` : ''}
-                Маржа: ${result.calculation_steps.margin_percent}%<br>
-                USDT после маржи: ${result.calculation_steps.usdt_after_margin.toFixed(2)} USDT<br>
-                <strong>Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿</strong><br>
-                <strong>Клиент получит: ${result.calculation_steps.thb_output.toFixed(2)} ฿</strong><br>
-                Время парсинга: ${result.time} сек
-            `;
+            // Показываем детали расчёта в alert
+            const details = `
+📊 Детали расчета (точный курс Binance):
+
+${result.calculation_steps.rub_input ? `Входящая сумма: ${result.calculation_steps.rub_input.toLocaleString('ru-RU')} ₽\n` : ''}${result.calculation_steps.usdt_before_margin ? `USDT до маржи: ${result.calculation_steps.usdt_before_margin.toFixed(2)} USDT\n` : ''}Маржа: ${result.calculation_steps.margin_percent}%
+USDT после маржи: ${result.calculation_steps.usdt_after_margin.toFixed(2)} USDT
+
+Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿
+Клиент получит: ${result.calculation_steps.thb_output.toFixed(2)} ฿
+
+Время парсинга: ${result.time} сек`;
+
+            alert(`✅ Точный курс Binance получен!\n${details}`);
+
         } else if (result.scenario === 'thb-to-rub' || result.scenario === 'thb-to-usdt') {
             // Клиент должен заплатить RUB
-            resultAmountEl.textContent = result.client_must_pay.toFixed(2);
-            resultCurrencyEl.textContent = result.scenario === 'thb-to-rub' ? ' ₽' : ' USDT';
+            resultLabelEl.textContent = 'Клиент должен дать:';
+            resultValueEl.textContent = result.scenario === 'thb-to-rub' ?
+                `${result.client_must_pay.toFixed(2)} ₽` :
+                `${result.client_must_pay.toFixed(2)} USDT`;
 
             if (result.scenario === 'thb-to-rub') {
                 const effectiveRate = result.client_must_pay / amount;
-                effectiveRateEl.textContent = `Курс: ${effectiveRate.toFixed(6)} ₽/฿`;
+                finalRateEl.textContent = effectiveRate.toFixed(6);
             }
 
-            detailsEl.innerHTML = `
-                <strong>📊 Детали расчета (точный курс Binance):</strong><br>
-                Клиент хочет: ${result.calculation_steps.thb_target.toFixed(2)} ฿<br>
-                USDT от Binance: ${result.calculation_steps.usdt_from_binance.toFixed(2)} USDT<br>
-                Маржа: ${result.calculation_steps.margin_percent}%<br>
-                USDT с маржей: ${result.calculation_steps.usdt_with_margin.toFixed(2)} USDT<br>
-                <strong>Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿</strong><br>
-                <strong>Клиент должен дать: ${result.client_must_pay.toFixed(2)} ${result.scenario === 'thb-to-rub' ? '₽' : 'USDT'}</strong><br>
-                Время парсинга: ${result.time} сек
-            `;
-        }
+            // Показываем детали расчёта в alert
+            const details = `
+📊 Детали расчета (точный курс Binance):
 
-        // Показываем уведомление
-        alert(`✅ Точный курс Binance получен!\n\nUSDT-THB: ${result.rate_used.toFixed(4)} ฿\nВремя: ${result.time} сек\n\nРасчет выполнен с учетом точного курса и маржи.`);
+Клиент хочет: ${result.calculation_steps.thb_target.toFixed(2)} ฿
+USDT от Binance: ${result.calculation_steps.usdt_from_binance.toFixed(2)} USDT
+Маржа: ${result.calculation_steps.margin_percent}%
+USDT с маржей: ${result.calculation_steps.usdt_with_margin.toFixed(2)} USDT
+
+Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿
+Клиент должен дать: ${result.client_must_pay.toFixed(2)} ${result.scenario === 'thb-to-rub' ? '₽' : 'USDT'}
+
+Время парсинга: ${result.time} сек`;
+
+            alert(`✅ Точный курс Binance получен!\n${details}`);
+        }
 
     } catch (error) {
         console.error('❌ Ошибка получения точного курса:', error);
