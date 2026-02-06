@@ -46,8 +46,5 @@ RUN playwright install chromium
 # Копируем весь проект
 COPY . .
 
-# Порт для Railway
-ENV PORT=8080
-
-# Запуск через gunicorn
-CMD gunicorn app:app --bind 0.0.0.0:$PORT
+# Запуск через gunicorn (Railway сам установит $PORT)
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080}
