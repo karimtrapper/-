@@ -653,76 +653,26 @@ async function getPreciseRate() {
             throw new Error(errorMsg);
         }
 
-        console.log('✅ Точный расчет получен:', result);
+        console.log('✅ Точный курс получен:', result);
 
         // Обновляем курс USDT-THB в state и UI
         state.rates.usdt_thb = result.rate_used;
         document.getElementById('usdtThbRate').textContent = `${result.rate_used.toFixed(2)} ฿`;
 
-        // Показываем время запроса
-        preciseRateTime.textContent = `(${result.time} сек)`;
+        // Показываем подпись "Точный курс для X рублей"
+        const formattedAmount = amount.toLocaleString('ru-RU');
+        let currencyLabel = '';
+        if (state.scenario === 'rub-to-thb' || state.scenario === 'thb-to-rub') {
+            currencyLabel = state.scenario === 'rub-to-thb' ? '₽' : '฿';
+        } else if (state.scenario === 'usdt-to-thb' || state.scenario === 'thb-to-usdt') {
+            currencyLabel = state.scenario === 'usdt-to-thb' ? 'USDT' : '฿';
+        }
+
+        preciseRateTime.textContent = `(точный курс для ${formattedAmount} ${currencyLabel}, ${result.time} сек)`;
         preciseRateTime.style.display = 'inline';
 
-        // Отображаем ТОЧНЫЙ результат напрямую из backend
-        const resultsSection = document.getElementById('resultsSection');
-        const resultValueEl = document.getElementById('resultValue');
-        const resultLabelEl = document.getElementById('resultLabel');
-        const finalRateEl = document.getElementById('finalRate');
-
-        resultsSection.style.display = 'block';
-
-        if (result.scenario === 'rub-to-thb' || result.scenario === 'usdt-to-thb') {
-            // Клиент получает THB
-            resultLabelEl.textContent = 'Клиент получит:';
-            resultValueEl.textContent = `${result.client_receives.toFixed(2)} ฿`;
-
-            if (result.scenario === 'rub-to-thb') {
-                const effectiveRate = amount / result.client_receives;
-                finalRateEl.textContent = effectiveRate.toFixed(6);
-            }
-
-            // Показываем детали расчёта в alert
-            const details = `
-📊 Детали расчета (точный курс Binance):
-
-${result.calculation_steps.rub_input ? `Входящая сумма: ${result.calculation_steps.rub_input.toLocaleString('ru-RU')} ₽\n` : ''}${result.calculation_steps.usdt_before_margin ? `USDT до маржи: ${result.calculation_steps.usdt_before_margin.toFixed(2)} USDT\n` : ''}Маржа: ${result.calculation_steps.margin_percent}%
-USDT после маржи: ${result.calculation_steps.usdt_after_margin.toFixed(2)} USDT
-
-Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿
-Клиент получит: ${result.calculation_steps.thb_output.toFixed(2)} ฿
-
-Время парсинга: ${result.time} сек`;
-
-            alert(`✅ Точный курс Binance получен!\n${details}`);
-
-        } else if (result.scenario === 'thb-to-rub' || result.scenario === 'thb-to-usdt') {
-            // Клиент должен заплатить RUB
-            resultLabelEl.textContent = 'Клиент должен дать:';
-            resultValueEl.textContent = result.scenario === 'thb-to-rub' ?
-                `${result.client_must_pay.toFixed(2)} ₽` :
-                `${result.client_must_pay.toFixed(2)} USDT`;
-
-            if (result.scenario === 'thb-to-rub') {
-                const effectiveRate = result.client_must_pay / amount;
-                finalRateEl.textContent = effectiveRate.toFixed(6);
-            }
-
-            // Показываем детали расчёта в alert
-            const details = `
-📊 Детали расчета (точный курс Binance):
-
-Клиент хочет: ${result.calculation_steps.thb_target.toFixed(2)} ฿
-USDT от Binance: ${result.calculation_steps.usdt_from_binance.toFixed(2)} USDT
-Маржа: ${result.calculation_steps.margin_percent}%
-USDT с маржей: ${result.calculation_steps.usdt_with_margin.toFixed(2)} USDT
-
-Точный курс USDT-THB: ${result.rate_used.toFixed(4)} ฿
-Клиент должен дать: ${result.client_must_pay.toFixed(2)} ${result.scenario === 'thb-to-rub' ? '₽' : 'USDT'}
-
-Время парсинга: ${result.time} сек`;
-
-            alert(`✅ Точный курс Binance получен!\n${details}`);
-        }
+        // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
+        await calculate();
 
     } catch (error) {
         console.error('❌ Ошибка получения точного курса:', error);

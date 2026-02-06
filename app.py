@@ -491,29 +491,29 @@ def get_rates():
 @app.route('/api/rates/precise', methods=['POST'])
 def get_precise_rate():
     """
-    ТОЧНЫЙ расчёт через Playwright парсинг Binance
+    ТОЧНЫЙ курс USDT-THB через Playwright парсинг Binance
+
+    Вычисляет USDT сумму с учётом маржи для текущего сценария,
+    затем парсит точный курс для этой суммы.
 
     POST /api/rates/precise
     {
         "scenario": "rub-to-thb",  # rub-to-thb | thb-to-rub | usdt-to-thb | thb-to-usdt
         "amount": 100000,          # Входная сумма
         "method": "doverka",       # doverka | broker
-        "rub_usdt": 82.0,          # Курс RUB/USDT (для doverka из API, для broker - кастомный)
+        "rub_usdt": 82.0,          # Курс RUB/USDT
         "profit_margin": 5.0       # Маржа %
     }
 
     Returns:
     {
         "success": true,
-        "scenario": "rub-to-thb",
-        "client_receives": 37348.72,  # Итоговая сумма клиенту
-        "rate_used": 31.5152,         # Точный курс USDT-THB
-        "calculation_steps": {...},   # Детали расчёта
+        "rate_used": 31.5152,  # Точный курс USDT-THB
         "time": 6.5
     }
     """
     try:
-        print(f"🎯 Precise calculation request received", flush=True)
+        print(f"🎯 Precise rate request received", flush=True)
         data = request.get_json()
 
         scenario = data.get('scenario', 'rub-to-thb')
@@ -527,144 +527,47 @@ def get_precise_rate():
 
         print(f"🎯 Scenario: {scenario}, Amount: {amount}, Margin: {profit_margin}%", flush=True)
 
-        # ==================== RUB → THB ====================
+        # Вычисляем USDT сумму для парсинга (с учётом маржи)
+        usdt_for_parsing = 0
+
         if scenario == 'rub-to-thb':
-            # 1. RUB → USDT
+            # RUB → USDT → вычитаем маржу
             usdt_from_rub = amount / rub_usdt
-            print(f"📊 {amount} RUB → {usdt_from_rub:.2f} USDT (курс {rub_usdt})", flush=True)
+            usdt_for_parsing = usdt_from_rub * (1 - profit_margin / 100)
+            print(f"📊 {amount} RUB → {usdt_for_parsing:.2f} USDT (после маржи {profit_margin}%)", flush=True)
 
-            # 2. Вычитаем маржу
-            usdt_after_margin = usdt_from_rub * (1 - profit_margin / 100)
-            print(f"📊 После маржи {profit_margin}%: {usdt_after_margin:.2f} USDT", flush=True)
-
-            # 3. Парсим точный курс USDT → THB для суммы ПОСЛЕ маржи
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                usdt_amount=round(usdt_after_margin, 2),
-                direction='usdt_to_thb'
-            ))
-
-            if 'error' in playwright_result:
-                return jsonify({'success': False, 'error': playwright_result['error']}), 500
-
-            thb_received = playwright_result['thb']
-            rate_used = playwright_result['rate']
-
-            print(f"✅ Клиент получит: {thb_received:.2f} THB (курс {rate_used:.4f})", flush=True)
-
-            return jsonify({
-                'success': True,
-                'scenario': 'rub-to-thb',
-                'client_receives': round(thb_received, 2),
-                'rate_used': round(rate_used, 4),
-                'calculation_steps': {
-                    'rub_input': amount,
-                    'usdt_before_margin': round(usdt_from_rub, 2),
-                    'margin_percent': profit_margin,
-                    'usdt_after_margin': round(usdt_after_margin, 2),
-                    'thb_output': round(thb_received, 2)
-                },
-                'time': playwright_result['time']
-            })
-
-        # ==================== THB → RUB ====================
-        elif scenario == 'thb-to-rub':
-            # Клиент хочет получить X THB, сколько RUB он должен дать?
-
-            # 1. Парсим точный курс THB → USDT
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                thb_amount=amount,
-                direction='thb_to_usdt'
-            ))
-
-            if 'error' in playwright_result:
-                return jsonify({'success': False, 'error': playwright_result['error']}), 500
-
-            usdt_from_thb = playwright_result['usdt']
-            rate_usdt_thb = playwright_result['rate']
-
-            print(f"📊 {amount} THB → {usdt_from_thb:.2f} USDT (обратный курс)", flush=True)
-
-            # 2. Добавляем маржу (клиент должен дать БОЛЬШЕ USDT)
-            usdt_with_margin = usdt_from_thb / (1 - profit_margin / 100)
-            print(f"📊 С маржой {profit_margin}%: {usdt_with_margin:.2f} USDT", flush=True)
-
-            # 3. USDT → RUB
-            rub_needed = usdt_with_margin * rub_usdt
-            print(f"✅ Клиент должен дать: {rub_needed:.2f} RUB (курс {rub_usdt})", flush=True)
-
-            return jsonify({
-                'success': True,
-                'scenario': 'thb-to-rub',
-                'client_must_pay': round(rub_needed, 2),
-                'client_receives': amount,
-                'rate_used': round(rate_usdt_thb, 4),
-                'calculation_steps': {
-                    'thb_target': amount,
-                    'usdt_from_binance': round(usdt_from_thb, 2),
-                    'margin_percent': profit_margin,
-                    'usdt_with_margin': round(usdt_with_margin, 2),
-                    'rub_needed': round(rub_needed, 2)
-                },
-                'time': playwright_result['time']
-            })
-
-        # ==================== USDT → THB ====================
         elif scenario == 'usdt-to-thb':
-            # Вычитаем маржу
-            usdt_after_margin = amount * (1 - profit_margin / 100)
+            # USDT → вычитаем маржу
+            usdt_for_parsing = amount * (1 - profit_margin / 100)
+            print(f"📊 {amount} USDT → {usdt_for_parsing:.2f} USDT (после маржи {profit_margin}%)", flush=True)
 
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                usdt_amount=round(usdt_after_margin, 2),
-                direction='usdt_to_thb'
-            ))
-
-            if 'error' in playwright_result:
-                return jsonify({'success': False, 'error': playwright_result['error']}), 500
-
-            return jsonify({
-                'success': True,
-                'scenario': 'usdt-to-thb',
-                'client_receives': round(playwright_result['thb'], 2),
-                'rate_used': round(playwright_result['rate'], 4),
-                'calculation_steps': {
-                    'usdt_input': amount,
-                    'margin_percent': profit_margin,
-                    'usdt_after_margin': round(usdt_after_margin, 2),
-                    'thb_output': round(playwright_result['thb'], 2)
-                },
-                'time': playwright_result['time']
-            })
-
-        # ==================== THB → USDT ====================
-        elif scenario == 'thb-to-usdt':
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                thb_amount=amount,
-                direction='thb_to_usdt'
-            ))
-
-            if 'error' in playwright_result:
-                return jsonify({'success': False, 'error': playwright_result['error']}), 500
-
-            usdt_before_margin = playwright_result['usdt']
-            usdt_with_margin = usdt_before_margin / (1 - profit_margin / 100)
-
-            return jsonify({
-                'success': True,
-                'scenario': 'thb-to-usdt',
-                'client_must_pay': round(usdt_with_margin, 2),
-                'client_receives': amount,
-                'rate_used': round(playwright_result['rate'], 4),
-                'calculation_steps': {
-                    'thb_target': amount,
-                    'usdt_from_binance': round(usdt_before_margin, 2),
-                    'margin_percent': profit_margin,
-                    'usdt_needed': round(usdt_with_margin, 2)
-                },
-                'time': playwright_result['time']
-            })
+        elif scenario == 'thb-to-rub' or scenario == 'thb-to-usdt':
+            # Для обратного направления парсим как есть
+            usdt_for_parsing = amount
+            print(f"📊 {amount} THB (обратное направление)", flush=True)
 
         else:
-            return jsonify({'success': False, 'error': 'Invalid scenario'}), 400
+            # Дефолт — берём amount как USDT
+            usdt_for_parsing = amount
+
+        # Парсим точный курс для вычисленной USDT суммы
+        playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
+            usdt_amount=round(usdt_for_parsing, 2) if scenario in ['rub-to-thb', 'usdt-to-thb'] else None,
+            thb_amount=usdt_for_parsing if scenario in ['thb-to-rub', 'thb-to-usdt'] else None,
+            direction='usdt_to_thb' if scenario in ['rub-to-thb', 'usdt-to-thb'] else 'thb_to_usdt'
+        ))
+
+        if 'error' in playwright_result:
+            return jsonify({'success': False, 'error': playwright_result['error']}), 500
+
+        rate_used = playwright_result['rate']
+        print(f"✅ Точный курс USDT-THB: {rate_used:.4f}", flush=True)
+
+        return jsonify({
+            'success': True,
+            'rate_used': round(rate_used, 4),
+            'time': playwright_result['time']
+        })
 
     except Exception as e:
         import traceback
@@ -672,6 +575,8 @@ def get_precise_rate():
         print(f"❌ Exception in /api/rates/precise: {e}", flush=True)
         print(f"❌ Traceback: {error_trace}", flush=True)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+# Удалён старый код THB → RUB, USDT → THB, THB → USDT (теперь обработано выше)
 
 @app.route('/api/calculate', methods=['POST'])
 def calculate():
@@ -681,12 +586,12 @@ def calculate():
         scenario = data.get('scenario', 'rub-to-thb')
         direction = data.get('direction', 'amount')
         amount = float(data.get('amount', 0))
-        
+
         if amount <= 0:
             return jsonify({'error': 'Invalid amount'}), 400
-        
+
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
-        
+
         if method == 'broker':
             from broker_detailed import BrokerCalculatorDetailed
             custom_rub_usdt = float(data.get('custom_rub_usdt', 80.9))
