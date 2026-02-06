@@ -3,35 +3,33 @@ FROM python:3.11-slim
 
 # Установка системных зависимостей для Chromium
 RUN apt-get update && apt-get install -y \
-    libglib2.0-0 \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libdbus-1-3 \
-    libxkbcommon0 \
-    libatspi2.0-0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libpango-1.0-0 \
-    libcairo2 \
+    wget \
+    ca-certificates \
+    fonts-liberation \
     libasound2 \
-    libxshmfence1 \
+    libatk-bridge2.0-0 \
+    libatk1.0-0 \
+    libatspi2.0-0 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libdrm2 \
+    libgbm1 \
+    libglib2.0-0 \
+    libnspr4 \
+    libnss3 \
+    libpango-1.0-0 \
     libx11-6 \
     libx11-xcb1 \
     libxcb1 \
+    libxcomposite1 \
+    libxdamage1 \
     libxext6 \
-    fonts-liberation \
+    libxfixes3 \
+    libxkbcommon0 \
+    libxrandr2 \
+    libxshmfence1 \
     libexpat1 \
-    libgobject-2.0-0 \
-    libgio-2.0-0 \
-    libnssutil3 \
-    libsmime3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
