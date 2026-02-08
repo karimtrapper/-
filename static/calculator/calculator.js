@@ -395,9 +395,18 @@ function updateRatesDisplay() {
     if (state.rates.usdt_thb) {
         usdtThbEl.textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
         usdtThbEl.classList.remove('rate-error');
+        // Сбрасываем красную подсветку точного курса при обновлении
+        usdtThbEl.style.color = '';
+        usdtThbEl.style.fontWeight = '';
     } else {
         usdtThbEl.textContent = '—';
         usdtThbEl.classList.add('rate-error');
+    }
+
+    // Скрываем метку точного курса при обновлении курсов
+    const preciseRateTime = document.getElementById('preciseRateTime');
+    if (preciseRateTime) {
+        preciseRateTime.style.display = 'none';
     }
     
     // Показываем RUB-USDT
@@ -599,6 +608,9 @@ async function calculate() {
 }
 
 // Получить точный курс Binance через Playwright
+// Флаг активного запроса точного курса
+let isPreciseRateLoading = false;
+
 async function getPreciseRate() {
     const amount = getAmount();
     const preciseRateBtn = document.getElementById('preciseRateBtn');
@@ -609,10 +621,19 @@ async function getPreciseRate() {
         return;
     }
 
+    // Защита от двойного нажатия
+    if (isPreciseRateLoading) {
+        console.log('⚠️ Запрос точного курса уже выполняется, игнорируем...');
+        return;
+    }
+
+    isPreciseRateLoading = true;
     const originalText = preciseRateBtn.innerHTML;
     preciseRateBtn.disabled = true;
     preciseRateBtn.innerHTML = '⏳ Загрузка точного курса... (~10 сек)';
-    preciseRateTime.style.display = 'none';
+    if (preciseRateTime) {
+        preciseRateTime.style.display = 'none';
+    }
 
     try {
         // Получаем курс RUB/USDT
@@ -659,7 +680,12 @@ async function getPreciseRate() {
 
         // Обновляем курс USDT-THB в state и UI
         state.rates.usdt_thb = result.rate_used;
-        document.getElementById('usdtThbRate').textContent = `${result.rate_used.toFixed(2)} ฿`;
+        const usdtThbRateEl = document.getElementById('usdtThbRate');
+        usdtThbRateEl.textContent = `${result.rate_used.toFixed(2)} ฿`;
+
+        // Подсвечиваем курс красным чтобы показать что это точный курс
+        usdtThbRateEl.style.color = '#ff4444';
+        usdtThbRateEl.style.fontWeight = 'bold';
 
         // Показываем подпись "Точный курс для X рублей"
         const formattedAmount = amount.toLocaleString('ru-RU');
@@ -670,8 +696,11 @@ async function getPreciseRate() {
             currencyLabel = state.scenario === 'usdt-to-thb' ? 'USDT' : '฿';
         }
 
-        preciseRateTime.textContent = `(точный курс для ${formattedAmount} ${currencyLabel}, ${result.time} сек)`;
-        preciseRateTime.style.display = 'inline';
+        if (preciseRateTime) {
+            preciseRateTime.textContent = `(точный курс для ${formattedAmount} ${currencyLabel}, ${result.time} сек)`;
+            preciseRateTime.style.display = 'inline';
+            preciseRateTime.style.color = '#ff4444';
+        }
 
         // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
         await calculate();
@@ -680,6 +709,7 @@ async function getPreciseRate() {
         console.error('❌ Ошибка получения точного курса:', error);
         alert(`❌ Ошибка получения точного курса: ${error.message}\n\nИспользуется курс API.`);
     } finally {
+        isPreciseRateLoading = false;
         preciseRateBtn.disabled = false;
         preciseRateBtn.innerHTML = originalText;
     }
