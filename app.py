@@ -539,10 +539,10 @@ def get_precise_rate():
 
         if scenario == 'rub-to-thb':
             if direction == 'target':
-                # Хочу получить N THB → парсим THB→USDT
+                # Хочу получить N THB → на странице USDT/THB вводим THB в Receive, читаем USDT из From
                 thb_amount_for_parsing = round(amount)
-                playwright_direction = 'thb_to_usdt'
-                print(f"📊 Хочу {amount} THB → парсим THB→USDT", flush=True)
+                playwright_direction = 'usdt_to_thb_reverse'
+                print(f"📊 Хочу {amount} THB → парсим USDT/THB reverse (вводим THB в Receive)", flush=True)
             else:
                 # Вношу N RUB → пересчитать в USDT → парсим USDT→THB
                 rub_usdt_sell = rub_usdt * (1 + usdt_comm_approx)
@@ -552,10 +552,10 @@ def get_precise_rate():
 
         elif scenario == 'usdt-to-thb':
             if direction == 'target':
-                # Хочу получить N THB → парсим THB→USDT
+                # Хочу получить N THB → на странице USDT/THB вводим THB в Receive, читаем USDT из From
                 thb_amount_for_parsing = round(amount)
-                playwright_direction = 'thb_to_usdt'
-                print(f"📊 Хочу {amount} THB → парсим THB→USDT", flush=True)
+                playwright_direction = 'usdt_to_thb_reverse'
+                print(f"📊 Хочу {amount} THB → парсим USDT/THB reverse (вводим THB в Receive)", flush=True)
             else:
                 # Вношу N USDT → парсим USDT→THB
                 usdt_amount_for_parsing = round(amount, 2)
