@@ -647,6 +647,7 @@ async function getPreciseRate() {
             body: JSON.stringify({
                 scenario: state.scenario,
                 amount: amount,
+                direction: state.direction,
                 method: state.method,
                 rub_usdt: rubUsdt,
                 profit_margin: state.profitMargin

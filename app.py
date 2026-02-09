@@ -518,6 +518,7 @@ def get_precise_rate():
 
         scenario = data.get('scenario', 'rub-to-thb')
         amount = float(data.get('amount', 0))
+        direction = data.get('direction', 'amount')  # 'amount' (вношу) или 'target' (хочу получить)
         method = data.get('method', 'doverka')
         rub_usdt = float(data.get('rub_usdt', 82.0))
         profit_margin = float(data.get('profit_margin', 5.0))
@@ -525,43 +526,89 @@ def get_precise_rate():
         if amount <= 0:
             return jsonify({'success': False, 'error': 'Invalid amount'}), 400
 
-        print(f"🎯 Scenario: {scenario}, Amount: {amount}, Margin: {profit_margin}%", flush=True)
+        print(f"🎯 Scenario: {scenario}, Direction: {direction}, Amount: {amount}, Margin: {profit_margin}%", flush=True)
 
-        # Вычисляем USDT сумму для парсинга (С учётом комиссии RUB-USDT, как в broker_detailed.py)
-        # В broker_detailed.py для rub_to_thb_amount (строка 127):
-        # rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.usdt_comm)
-        # usdt_amount = rub_amount / rub_usdt_rate_sell
-        #
-        # Для profit_margin=5%: usdt_comm=0.0257 (2.57%)
-        # 200,000 / (82.78 × 1.0257) = 200,000 / 84.91 = 2,355.45 USDT
-        usdt_for_parsing = 0
+        # Определяем что парсить на Binance с учётом direction
+        # direction='amount' — клиент вводит сумму которую ВНОСИТ (исходная валюта)
+        # direction='target' — клиент вводит сумму которую ХОЧЕТ ПОЛУЧИТЬ (целевая валюта)
+        usdt_amount_for_parsing = None
+        thb_amount_for_parsing = None
+        playwright_direction = None
+
+        usdt_comm_approx = (profit_margin / 100.0) / 2.0
 
         if scenario == 'rub-to-thb':
-            # Применяем комиссию usdt_comm к курсу RUB/USDT (из broker_detailed.py)
-            usdt_comm_approx = (profit_margin / 100.0) / 2.0  # Упрощённо: половина от прибыли
-            rub_usdt_sell = rub_usdt * (1 + usdt_comm_approx)
-            usdt_for_parsing = amount / rub_usdt_sell
-            print(f"📊 {amount} RUB / {rub_usdt_sell:.2f} = {usdt_for_parsing:.2f} USDT (с комиссией {usdt_comm_approx*100:.2f}%)", flush=True)
+            if direction == 'target':
+                # Хочу получить N THB → парсим THB→USDT
+                thb_amount_for_parsing = round(amount)
+                playwright_direction = 'thb_to_usdt'
+                print(f"📊 Хочу {amount} THB → парсим THB→USDT", flush=True)
+            else:
+                # Вношу N RUB → пересчитать в USDT → парсим USDT→THB
+                rub_usdt_sell = rub_usdt * (1 + usdt_comm_approx)
+                usdt_amount_for_parsing = round(amount / rub_usdt_sell, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 {amount} RUB / {rub_usdt_sell:.2f} = {usdt_amount_for_parsing:.2f} USDT → парсим USDT→THB", flush=True)
 
         elif scenario == 'usdt-to-thb':
-            # Берём USDT как есть
-            usdt_for_parsing = amount
-            print(f"📊 {amount} USDT (полная сумма)", flush=True)
+            if direction == 'target':
+                # Хочу получить N THB → парсим THB→USDT
+                thb_amount_for_parsing = round(amount)
+                playwright_direction = 'thb_to_usdt'
+                print(f"📊 Хочу {amount} THB → парсим THB→USDT", flush=True)
+            else:
+                # Вношу N USDT → парсим USDT→THB
+                usdt_amount_for_parsing = round(amount, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 {amount} USDT → парсим USDT→THB", flush=True)
 
-        elif scenario == 'thb-to-rub' or scenario == 'thb-to-usdt':
-            # Для обратного направления парсим THB
-            usdt_for_parsing = amount
-            print(f"📊 {amount} THB (обратное направление)", flush=True)
+        elif scenario == 'thb-to-rub':
+            if direction == 'target':
+                # Хочу получить N RUB → пересчитать в USDT → парсим USDT→THB
+                rub_usdt_buy = rub_usdt / (1 + usdt_comm_approx)
+                usdt_amount_for_parsing = round(amount / rub_usdt_buy, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 Хочу {amount} RUB → {usdt_amount_for_parsing} USDT → парсим USDT→THB", flush=True)
+            else:
+                # Вношу N THB → парсим THB→USDT
+                thb_amount_for_parsing = round(amount)
+                playwright_direction = 'thb_to_usdt'
+                print(f"📊 {amount} THB → парсим THB→USDT", flush=True)
+
+        elif scenario == 'thb-to-usdt':
+            if direction == 'target':
+                # Хочу получить N USDT → парсим USDT→THB (сколько THB это стоит)
+                usdt_amount_for_parsing = round(amount, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 Хочу {amount} USDT → парсим USDT→THB", flush=True)
+            else:
+                # Вношу N THB → парсим THB→USDT
+                thb_amount_for_parsing = round(amount)
+                playwright_direction = 'thb_to_usdt'
+                print(f"📊 {amount} THB → парсим THB→USDT", flush=True)
+
+        elif scenario == 'rub-to-usdt':
+            if direction == 'target':
+                # Хочу получить N USDT → парсим USDT→THB (для курса)
+                usdt_amount_for_parsing = round(amount, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 Хочу {amount} USDT → парсим USDT→THB", flush=True)
+            else:
+                # Вношу N RUB → пересчитать в USDT → парсим USDT→THB
+                rub_usdt_sell = rub_usdt * (1 + usdt_comm_approx)
+                usdt_amount_for_parsing = round(amount / rub_usdt_sell, 2)
+                playwright_direction = 'usdt_to_thb'
+                print(f"📊 {amount} RUB / {rub_usdt_sell:.2f} = {usdt_amount_for_parsing} USDT → парсим USDT→THB", flush=True)
 
         else:
-            # Дефолт — берём amount как USDT
-            usdt_for_parsing = amount
+            usdt_amount_for_parsing = round(amount, 2)
+            playwright_direction = 'usdt_to_thb'
 
-        # Парсим точный курс для вычисленной USDT суммы
+        # Парсим точный курс
         playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-            usdt_amount=round(usdt_for_parsing, 2) if scenario in ['rub-to-thb', 'usdt-to-thb'] else None,
-            thb_amount=usdt_for_parsing if scenario in ['thb-to-rub', 'thb-to-usdt'] else None,
-            direction='usdt_to_thb' if scenario in ['rub-to-thb', 'usdt-to-thb'] else 'thb_to_usdt'
+            usdt_amount=usdt_amount_for_parsing,
+            thb_amount=thb_amount_for_parsing,
+            direction=playwright_direction
         ))
 
         if 'error' in playwright_result:
