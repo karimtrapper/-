@@ -185,10 +185,11 @@ class ExchangeRateProvider:
     async def get_precise_binance_rate(usdt_amount: float = None, thb_amount: float = None, direction: str = 'usdt_to_thb') -> dict:
         """
         Получить ТОЧНЫЙ курс от Binance Easy Buy/Sell через Playwright
-        Поддерживает 3 режима:
+        Поддерживает 4 режима:
         - usdt_to_thb: страница USDT/THB, вводим USDT в From → читаем THB из Receive
         - thb_to_usdt: страница THB/USDT, вводим THB в From → читаем USDT из Receive
         - usdt_to_thb_reverse: страница USDT/THB, вводим THB в Receive → читаем USDT из From
+        - thb_to_usdt_reverse: страница THB/USDT, вводим USDT в Receive → читаем THB из From
 
         Returns: dict с полями direction, usdt, thb, rate (всегда USDT→THB), time
         """
@@ -223,6 +224,36 @@ class ExchangeRateProvider:
                         'direction': 'thb_to_usdt',
                         'thb': thb_amount,
                         'usdt': usdt_received,
+                        'rate': rate_usdt_thb,
+                        'time': round(elapsed, 2)
+                    }
+
+                elif direction == 'thb_to_usdt_reverse':
+                    # Обратный ввод: страница THB/USDT, вводим USDT в поле Receive → читаем THB из From
+                    # Используется когда клиент хочет получить N USDT и нужно узнать сколько THB платить
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=15000)
+                    try:
+                        await page.click('button:has-text("Accept")', timeout=2000)
+                    except:
+                        pass
+
+                    # Вводим USDT в поле Receive (второе поле)
+                    await page.fill('input[placeholder*="99999"]', str(usdt_amount))
+                    await page.wait_for_timeout(2000)
+
+                    # Читаем THB из поля From (первое поле)
+                    thb_text = await page.input_value('input[placeholder*="3248999"]')
+                    thb_needed = float(thb_text.replace(',', ''))
+
+                    rate_usdt_thb = thb_needed / usdt_amount
+
+                    await browser.close()
+                    elapsed = time.time() - start_time
+
+                    return {
+                        'direction': 'thb_to_usdt_reverse',
+                        'thb': thb_needed,
+                        'usdt': usdt_amount,
                         'rate': rate_usdt_thb,
                         'time': round(elapsed, 2)
                     }
