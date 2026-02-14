@@ -639,15 +639,23 @@ async function getPreciseRate() {
         // Получаем курс RUB/USDT
         const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
 
-        console.log(`🎯 Запрос точного расчета: ${state.scenario}, сумма ${amount}...`);
+        // Маппинг сценария thb-to-rub → rub-to-thb + target (аналогично calculate())
+        let preciseScenario = state.scenario;
+        let preciseDirection = state.direction;
+        if (state.scenario === 'thb-to-rub') {
+            preciseScenario = 'rub-to-thb';
+            preciseDirection = 'target';
+        }
+
+        console.log(`🎯 Запрос точного расчета: ${preciseScenario}, direction: ${preciseDirection}, сумма ${amount}...`);
 
         const response = await fetch(`${CONFIG.API_URL}/rates/precise`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                scenario: state.scenario,
+                scenario: preciseScenario,
                 amount: amount,
-                direction: state.direction,
+                direction: preciseDirection,
                 method: state.method,
                 rub_usdt: rubUsdt,
                 profit_margin: state.profitMargin
