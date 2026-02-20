@@ -2568,6 +2568,28 @@ def kyc_reject(token):
     finally:
         session.close()
 
+@app.route('/api/kyc/<token>', methods=['DELETE'])
+def kyc_cancel(token):
+    """CRM: отменить/удалить KYC-запрос"""
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+
+        # Удаляем файлы если есть
+        _delete_kyc_files(token)
+
+        # Удаляем запись из БД
+        session.delete(kyc)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
 def _delete_kyc_files(token):
     """Удалить загруженные файлы KYC"""
     upload_dir = os.path.join(KYC_UPLOAD_DIR, token)

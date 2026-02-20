@@ -5246,6 +5246,21 @@
             }
         }
 
+        async function cancelKYC(token, clientName) {
+            if (!confirm(`Отменить KYC-запрос${clientName ? ' для ' + clientName : ''}? Ссылка перестанет работать.`)) return;
+            try {
+                const resp = await fetch(`${API_URL}/api/kyc/${token}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) {
+                    loadKYCSection();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'неизвестная'));
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+            }
+        }
+
         async function loadKYCSection() {
             // Загружаем ожидающие проверки
             try {
@@ -5260,7 +5275,10 @@
                                 <strong>${k.client_name || 'Клиент #' + k.id}</strong>
                                 <div style="font-size:0.8rem;color:#999;">${new Date(k.created_at).toLocaleDateString('ru-RU')} — ${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''} ${k.has_doc ? 'Файлы загружены' : 'Ожидание загрузки'}</div>
                             </div>
-                            ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${k.token}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${k.token}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
+                                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="cancelKYC('${k.token}','${(k.client_name || '').replace(/'/g, "\\'")}')">Отменить</button>
+                            </div>
                         </div>
                     `).join('');
                 } else {
