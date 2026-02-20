@@ -2395,6 +2395,8 @@ def kyc_status(token):
             return jsonify({'success': False, 'error': 'invalid_token'}), 404
 
         result = {'success': True, 'status': kyc.status}
+        if kyc.client_name:
+            result['client_name'] = kyc.client_name
         if kyc.status == KycStatus.REJECTED:
             result['rejection_reason'] = kyc.rejection_reason
         return jsonify(result)

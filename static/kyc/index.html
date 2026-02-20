@@ -767,6 +767,12 @@
                     }
                     goToStep('stateRejected');
                 }
+                // Подставляем имя клиента в заголовок
+                if (data.client_name) {
+                    document.querySelector('.intro-title').innerHTML =
+                        data.client_name + ', подтвердите личность<br>для безопасного обмена';
+                }
+
                 // pending или новый — показываем intro
             } catch (err) {
                 console.error('Ошибка проверки статуса:', err);
