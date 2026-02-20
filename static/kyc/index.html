@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Подтверждение личности — Grusha Exchange</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=7">
+</head>
+
+<body>
+    <div class="container">
+
+        <!-- ============================================ -->
+        <!-- STEP 0: Intro (Вступительный экран)          -->
+        <!-- ============================================ -->
+        <div class="step" id="stepIntro">
+            <div class="step-content">
+                <div class="intro-logo"><img src="grusha-logo.png" alt="Grusha" width="56" height="56"></div>
+                <h1 class="intro-title">Подтвердите личность<br>для безопасного обмена</h1>
+                <p class="intro-subtitle">Это быстро — займёт меньше минуты</p>
+
+                <div class="intro-checklist">
+                    <div class="checklist-item">
+                        <div class="checklist-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.8"/>
+                                <circle cx="8.5" cy="10.5" r="2" stroke="currentColor" stroke-width="1.5"/>
+                                <path d="M14 9h4M14 12.5h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="checklist-text">
+                            <strong>Приготовьте документ</strong>
+                            <span>Паспорт, загранпаспорт, права или ID</span>
+                        </div>
+                    </div>
+                    <div class="checklist-item">
+                        <div class="checklist-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <circle cx="12" cy="12" r="4" stroke="currentColor" stroke-width="1.8"/>
+                                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.93 4.93l2.12 2.12M16.95 16.95l2.12 2.12M4.93 19.07l2.12-2.12M16.95 7.05l2.12-2.12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="checklist-text">
+                            <strong>Хорошее освещение</strong>
+                            <span>Фото должно быть чётким и читаемым</span>
+                        </div>
+                    </div>
+                    <div class="checklist-item">
+                        <div class="checklist-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                                <rect x="2" y="3" width="20" height="18" rx="4" stroke="currentColor" stroke-width="1.8"/>
+                                <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8"/>
+                                <circle cx="12" cy="12" r="1" fill="currentColor"/>
+                            </svg>
+                        </div>
+                        <div class="checklist-text">
+                            <strong>Селфи с документом</strong>
+                            <span>Держите документ рядом с лицом</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step-footer">
+                <button class="btn-primary" onclick="goToStep('stepDocument')">
+                    Начать проверку
+                </button>
+                <div class="privacy-note" style="margin-top: 12px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" stroke-width="2"/>
+                        <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Данные зашифрованы и удаляются после проверки
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STEP 1: Фото документа                       -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stepDocument">
+            <div class="step-content">
+                <div class="step-header">
+                    <button class="btn-back" onclick="goToStep('stepIntro')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="step-indicator">Шаг 1 из 3</div>
+                    <div style="width:24px"></div>
+                </div>
+
+                <h1 class="step-title">Фото документа</h1>
+                <p class="step-subtitle">Сфотографируйте разворот с фото и данными</p>
+
+                <!-- Upload Area -->
+                <div class="upload-zone" id="docUploadZone" onclick="openFileInput('doc')">
+                    <!-- Empty state -->
+                    <div class="upload-empty" id="docEmpty">
+                        <div class="upload-illustration">
+                            <svg width="64" height="48" viewBox="0 0 64 48" fill="none">
+                                <rect x="1" y="1" width="62" height="46" rx="6" stroke="currentColor" stroke-width="2" stroke-dasharray="6 4"/>
+                                <circle cx="20" cy="20" r="6" stroke="currentColor" stroke-width="1.5"/>
+                                <path d="M20 17v6M17 20h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                                <rect x="34" y="15" width="18" height="2.5" rx="1.25" fill="currentColor" opacity="0.3"/>
+                                <rect x="34" y="21" width="14" height="2.5" rx="1.25" fill="currentColor" opacity="0.3"/>
+                                <rect x="34" y="27" width="10" height="2.5" rx="1.25" fill="currentColor" opacity="0.3"/>
+                            </svg>
+                        </div>
+                        <span class="upload-label">Нажмите, чтобы сфотографировать</span>
+                        <span class="upload-hint">Откроется камера телефона</span>
+                    </div>
+                    <!-- Preview state -->
+                    <div class="upload-filled hidden" id="docFilled">
+                        <img class="upload-preview-img" id="docPreviewImg" src="" alt="Документ">
+                    </div>
+                </div>
+                <input type="file" id="docInput" accept="image/*" capture="environment"
+                    onchange="handleFile(this, 'doc')" style="display:none">
+
+                <!-- Preview controls -->
+                <div class="preview-controls hidden" id="docControls">
+                    <span class="preview-hint">Убедитесь, что фото чёткое и данные читаемы</span>
+                    <div class="preview-actions">
+                        <button class="btn-secondary" onclick="retakePhoto('doc')">Переснять</button>
+                    </div>
+                </div>
+
+                <!-- Tips -->
+                <div class="tips" id="docTips">
+                    <div class="tip tip-good">
+                        <div class="tip-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="9" stroke="#16A34A" stroke-width="1.5"/>
+                                <path d="M6 10l3 3 5-5" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <span>Чётко и полностью</span>
+                    </div>
+                    <div class="tip tip-bad">
+                        <div class="tip-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="9" stroke="#EF4444" stroke-width="1.5"/>
+                                <path d="M7 7l6 6M13 7l-6 6" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <span>Размыто / обрезано</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step-footer" id="docFooter">
+                <button class="btn-primary" id="docActionBtn" onclick="openFileInput('doc')">
+                    Сфотографировать документ
+                </button>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STEP 2: Селфи с документом                   -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stepSelfie">
+            <div class="step-content">
+                <div class="step-header">
+                    <button class="btn-back" onclick="goToStep('stepDocument')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="step-indicator">Шаг 2 из 3</div>
+                    <div style="width:24px"></div>
+                </div>
+
+                <h1 class="step-title">Селфи с документом</h1>
+                <p class="step-subtitle">Держите документ рядом с лицом, чтобы были видны оба</p>
+
+                <!-- Upload Area -->
+                <div class="upload-zone" id="selfieUploadZone" onclick="openFileInput('selfie')">
+                    <!-- Empty state -->
+                    <div class="upload-empty" id="selfieEmpty">
+                        <div class="upload-illustration selfie-illustration">
+                            <svg width="64" height="64" viewBox="0 0 64 64" fill="none">
+                                <circle cx="32" cy="24" r="12" stroke="currentColor" stroke-width="2"/>
+                                <path d="M12 56c0-11.046 8.954-20 20-20s20 8.954 20 20" stroke="currentColor" stroke-width="2"/>
+                                <rect x="40" y="32" width="20" height="14" rx="2" stroke="currentColor" stroke-width="1.5" stroke-dasharray="4 3"/>
+                            </svg>
+                        </div>
+                        <span class="upload-label">Нажмите, чтобы сделать селфи</span>
+                        <span class="upload-hint">Лицо и документ должны быть видны</span>
+                    </div>
+                    <!-- Preview state -->
+                    <div class="upload-filled hidden" id="selfieFilled">
+                        <img class="upload-preview-img" id="selfiePreviewImg" src="" alt="Селфи">
+                    </div>
+                </div>
+                <input type="file" id="selfieInput" accept="image/*" capture="user"
+                    onchange="handleFile(this, 'selfie')" style="display:none">
+
+                <!-- Preview controls -->
+                <div class="preview-controls hidden" id="selfieControls">
+                    <span class="preview-hint">Проверьте — лицо и документ хорошо видны?</span>
+                    <div class="preview-actions">
+                        <button class="btn-secondary" onclick="retakePhoto('selfie')">Переснять</button>
+                    </div>
+                </div>
+
+                <!-- Tips -->
+                <div class="tips" id="selfieTips">
+                    <div class="tip tip-good">
+                        <div class="tip-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="9" stroke="#16A34A" stroke-width="1.5"/>
+                                <path d="M6 10l3 3 5-5" stroke="#16A34A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <span>Лицо + документ видны</span>
+                    </div>
+                    <div class="tip tip-bad">
+                        <div class="tip-icon">
+                            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                                <circle cx="10" cy="10" r="9" stroke="#EF4444" stroke-width="1.5"/>
+                                <path d="M7 7l6 6M13 7l-6 6" stroke="#EF4444" stroke-width="1.5" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <span>Документ закрывает лицо</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="step-footer" id="selfieFooter">
+                <button class="btn-primary" id="selfieActionBtn" onclick="openFileInput('selfie')">
+                    Сделать селфи
+                </button>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STEP 3: Liveness-проверка (видео-кружок)     -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stepLiveness">
+            <div class="step-content">
+                <div class="step-header">
+                    <button class="btn-back" onclick="stopLiveness(); goToStep('stepSelfie')">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+                            <path d="M15 19l-7-7 7-7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <div class="step-indicator">Шаг 3 из 3</div>
+                    <div style="width:24px"></div>
+                </div>
+
+                <h1 class="step-title">Проверка лица</h1>
+                <p class="step-subtitle" id="livenessSubtitle">Нажмите кнопку и медленно поверните голову по кругу</p>
+
+                <!-- Camera container -->
+                <div class="liveness-container" id="livenessContainer">
+                    <!-- Before camera starts -->
+                    <div class="liveness-placeholder" id="livenessPlaceholder">
+                        <div class="liveness-oval-placeholder">
+                            <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+                                <circle cx="40" cy="32" r="16" stroke="currentColor" stroke-width="2"/>
+                                <path d="M16 72c0-13.255 10.745-24 24-24s24 10.745 24 24" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </div>
+                        <span class="liveness-placeholder-text">Расположите лицо в овале</span>
+                    </div>
+
+                    <!-- Camera view (hidden until started) -->
+                    <div class="liveness-camera hidden" id="livenessCamera">
+                        <div class="liveness-oval-wrap">
+                            <video id="livenessVideo" autoplay playsinline muted></video>
+                            <div class="liveness-oval-border" id="livenessOvalBorder"></div>
+                            <!-- Progress ring -->
+                            <svg class="liveness-progress-ring" id="livenessRing" viewBox="0 0 280 360">
+                                <ellipse cx="140" cy="180" rx="130" ry="170" fill="none" stroke="var(--border)" stroke-width="4"/>
+                                <ellipse class="liveness-progress-path" id="livenessProgressPath" cx="140" cy="180" rx="130" ry="170" fill="none" stroke="var(--accent-dark)" stroke-width="4" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                        <div class="liveness-status" id="livenessStatus">Держите телефон перед лицом</div>
+                        <div class="liveness-step-dots" id="livenessDots">
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                            <span class="dot"></span>
+                        </div>
+                    </div>
+
+                    <!-- Done state -->
+                    <div class="liveness-done hidden" id="livenessDone">
+                        <div class="liveness-done-icon">
+                            <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                                <circle cx="24" cy="24" r="20" stroke="#16A34A" stroke-width="2.5"/>
+                                <path d="M15 24l7 7 11-11" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <span class="liveness-done-text">Проверка пройдена</span>
+                    </div>
+                </div>
+                <canvas id="livenessCanvas" style="display:none"></canvas>
+            </div>
+
+            <div class="step-footer">
+                <button class="btn-primary" id="livenessBtn" onclick="startLiveness()">
+                    Начать проверку
+                </button>
+                <button class="btn-primary hidden" id="submitBtn" onclick="submitKYC()">
+                    Отправить на проверку
+                </button>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STATE: Отправка (спиннер)                    -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stateUploading">
+            <div class="state-center">
+                <div class="spinner"></div>
+                <h2 class="state-title">Отправляем...</h2>
+                <p class="state-text">Защищаем ваши данные и отправляем менеджеру</p>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STATE: Документы отправлены (ожидание)        -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="statePending">
+            <div class="state-center">
+                <div class="state-icon state-icon-pending">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M24 14v12l8 4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h2 class="state-title">Документы отправлены</h2>
+                <p class="state-text">Менеджер проверит их в ближайшее время.<br>Обычно это занимает 5–15 минут.</p>
+                <div class="state-badge">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2v10z" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                    Результат сообщим в Telegram
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STATE: Верификация пройдена                   -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stateApproved">
+            <div class="state-center">
+                <div class="state-icon state-icon-success">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M15 24l7 7 11-11" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h2 class="state-title">Верификация пройдена</h2>
+                <p class="state-text">Ваша личность подтверждена.<br>Можно продолжать обмен.</p>
+                <div class="state-badge state-badge-muted">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    Данные удалены — мы не храним копии
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STATE: Отклонено (нужно переделать)           -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stateRejected">
+            <div class="state-center">
+                <div class="state-icon state-icon-error">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M24 16v10" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+                        <circle cx="24" cy="32" r="1.5" fill="currentColor"/>
+                    </svg>
+                </div>
+                <h2 class="state-title">Нужно переделать</h2>
+                <div class="rejection-reason">
+                    <strong>Причина:</strong>
+                    <span id="rejectionReasonText">Фото документа размыто — сделайте чёткий снимок</span>
+                </div>
+                <button class="btn-primary" onclick="retryKYC()">
+                    Загрузить заново
+                </button>
+            </div>
+        </div>
+
+        <!-- ============================================ -->
+        <!-- STATE: Уже верифицирован                      -->
+        <!-- ============================================ -->
+        <div class="step hidden" id="stateAlreadyVerified">
+            <div class="state-center">
+                <div class="state-icon state-icon-success">
+                    <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="2.5"/>
+                        <path d="M15 24l7 7 11-11" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h2 class="state-title">Вы уже верифицированы</h2>
+                <p class="state-text">Повторная проверка не требуется.</p>
+                <div class="state-badge">
+                    <svg width="16" height="16" viewBox="0 0 48 48" fill="none">
+                        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="3"/>
+                        <path d="M15 24l7 7 11-11" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Можно продолжать обмен
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="app-footer">
+            Grusha Exchange — безопасный обмен валют в Таиланде
+        </div>
+
+    </div>
+
+    <script>
+        // ============================
+        // State
+        // ============================
+        let docFile = null;
+        let selfieFile = null;
+        let livenessPhotos = [];
+        let livenessStream = null;
+
+        // ============================
+        // Navigation
+        // ============================
+        function goToStep(stepId) {
+            document.querySelectorAll('.step').forEach(el => el.classList.add('hidden'));
+            const target = document.getElementById(stepId);
+            target.classList.remove('hidden');
+            target.classList.add('fade-in');
+            window.scrollTo(0, 0);
+        }
+
+        function showState(stateId) {
+            goToStep(stateId);
+        }
+
+        // ============================
+        // File Upload
+        // ============================
+        function openFileInput(type) {
+            const zone = document.getElementById(type === 'doc' ? 'docUploadZone' : 'selfieUploadZone');
+            if (zone.classList.contains('has-file')) return;
+            document.getElementById(type === 'doc' ? 'docInput' : 'selfieInput').click();
+        }
+
+        function handleFile(input, type) {
+            const file = input.files[0];
+            if (!file) return;
+
+            if (!file.type.startsWith('image/')) {
+                alert('Пожалуйста, выберите изображение');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                alert('Файл слишком большой. Максимум 10 МБ');
+                return;
+            }
+
+            if (type === 'doc') {
+                docFile = file;
+            } else {
+                selfieFile = file;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const previewImg = document.getElementById(type === 'doc' ? 'docPreviewImg' : 'selfiePreviewImg');
+                const emptyEl = document.getElementById(type === 'doc' ? 'docEmpty' : 'selfieEmpty');
+                const filledEl = document.getElementById(type === 'doc' ? 'docFilled' : 'selfieFilled');
+                const controls = document.getElementById(type === 'doc' ? 'docControls' : 'selfieControls');
+                const tips = document.getElementById(type === 'doc' ? 'docTips' : 'selfieTips');
+                const zone = document.getElementById(type === 'doc' ? 'docUploadZone' : 'selfieUploadZone');
+
+                previewImg.src = e.target.result;
+                emptyEl.classList.add('hidden');
+                filledEl.classList.remove('hidden');
+                controls.classList.remove('hidden');
+                tips.classList.add('hidden');
+                zone.classList.add('has-file');
+
+                if (type === 'doc') {
+                    const btn = document.getElementById('docActionBtn');
+                    btn.textContent = 'Продолжить';
+                    btn.onclick = () => goToStep('stepSelfie');
+                }
+                if (type === 'selfie') {
+                    const btn = document.getElementById('selfieActionBtn');
+                    btn.textContent = 'Продолжить';
+                    btn.onclick = () => goToStep('stepLiveness');
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function retakePhoto(type) {
+            if (type === 'doc') {
+                docFile = null;
+                document.getElementById('docInput').value = '';
+                document.getElementById('docEmpty').classList.remove('hidden');
+                document.getElementById('docFilled').classList.add('hidden');
+                document.getElementById('docControls').classList.add('hidden');
+                document.getElementById('docTips').classList.remove('hidden');
+                document.getElementById('docUploadZone').classList.remove('has-file');
+                const docBtn = document.getElementById('docActionBtn');
+                docBtn.textContent = 'Сфотографировать документ';
+                docBtn.onclick = () => openFileInput('doc');
+            } else {
+                selfieFile = null;
+                document.getElementById('selfieInput').value = '';
+                document.getElementById('selfieEmpty').classList.remove('hidden');
+                document.getElementById('selfieFilled').classList.add('hidden');
+                document.getElementById('selfieControls').classList.add('hidden');
+                document.getElementById('selfieTips').classList.remove('hidden');
+                document.getElementById('selfieUploadZone').classList.remove('has-file');
+                const selfBtn = document.getElementById('selfieActionBtn');
+                selfBtn.textContent = 'Сделать селфи';
+                selfBtn.onclick = () => openFileInput('selfie');
+            }
+        }
+
+        // ============================
+        // Liveness (WebRTC — live видео в кружке)
+        // ============================
+        const LIVENESS_TOTAL = 5;
+        const LIVENESS_DELAY = 1200; // мс между кадрами
+
+        const livenessInstructions = [
+            'Поверните голову влево',
+            'Теперь вправо',
+            'Поднимите подбородок',
+            'Опустите подбородок',
+            'Отлично! Смотрите прямо'
+        ];
+
+        async function startLiveness() {
+            livenessPhotos = [];
+            const btn = document.getElementById('livenessBtn');
+            btn.disabled = true;
+            btn.textContent = 'Запускаем камеру...';
+
+            try {
+                livenessStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+                    audio: false
+                });
+
+                const video = document.getElementById('livenessVideo');
+                video.srcObject = livenessStream;
+
+                await new Promise(resolve => {
+                    video.onloadedmetadata = resolve;
+                });
+
+                // Показываем live камеру в овале
+                document.getElementById('livenessPlaceholder').classList.add('hidden');
+                document.getElementById('livenessCamera').classList.remove('hidden');
+                document.getElementById('livenessDone').classList.add('hidden');
+                btn.classList.add('hidden');
+
+                // Настраиваем progress ring
+                const path = document.getElementById('livenessProgressPath');
+                const ellipseLength = getEllipseCircumference(130, 170);
+                path.style.strokeDasharray = ellipseLength;
+                path.style.strokeDashoffset = ellipseLength;
+
+                document.getElementById('livenessStatus').textContent = 'Расположите лицо в овале';
+
+                // Даём 1.5 сек расположить лицо, потом начинаем захват
+                setTimeout(() => {
+                    captureFrames(0, ellipseLength);
+                }, 1500);
+
+            } catch (err) {
+                btn.disabled = false;
+                btn.textContent = 'Начать проверку';
+                if (err.name === 'NotAllowedError') {
+                    alert('Необходим доступ к камере для проверки лица. Разрешите доступ в настройках браузера.');
+                } else {
+                    alert('Не удалось запустить камеру. Убедитесь, что страница открыта по HTTPS.');
+                }
+            }
+        }
+
+        function captureFrames(index, ellipseLength) {
+            if (index >= LIVENESS_TOTAL) {
+                finishLiveness();
+                return;
+            }
+
+            // Захват кадра с live видео
+            const video = document.getElementById('livenessVideo');
+            const canvas = document.getElementById('livenessCanvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+
+            canvas.toBlob(blob => {
+                livenessPhotos.push(blob);
+            }, 'image/jpeg', 0.85);
+
+            // Прогресс-кольцо
+            const progress = (index + 1) / LIVENESS_TOTAL;
+            const path = document.getElementById('livenessProgressPath');
+            path.style.strokeDashoffset = ellipseLength * (1 - progress);
+
+            // Точки
+            const dots = document.querySelectorAll('#livenessDots .dot');
+            if (dots[index]) dots[index].classList.add('dot-active');
+
+            // Инструкция
+            document.getElementById('livenessStatus').textContent = livenessInstructions[index] || 'Подождите...';
+
+            // Вспышка рамки при захвате
+            const border = document.getElementById('livenessOvalBorder');
+            border.classList.add('capture-flash');
+            setTimeout(() => border.classList.remove('capture-flash'), 300);
+
+            // Следующий кадр
+            setTimeout(() => {
+                captureFrames(index + 1, ellipseLength);
+            }, LIVENESS_DELAY);
+        }
+
+        function finishLiveness() {
+            stopLivenessStream();
+
+            document.getElementById('livenessCamera').classList.add('hidden');
+            document.getElementById('livenessDone').classList.remove('hidden');
+            document.getElementById('livenessSubtitle').textContent = 'Проверка завершена';
+
+            document.getElementById('livenessBtn').classList.add('hidden');
+            document.getElementById('submitBtn').classList.remove('hidden');
+        }
+
+        function stopLiveness() {
+            stopLivenessStream();
+            document.getElementById('livenessPlaceholder').classList.remove('hidden');
+            document.getElementById('livenessCamera').classList.add('hidden');
+            document.getElementById('livenessDone').classList.add('hidden');
+            document.getElementById('livenessBtn').classList.remove('hidden');
+            document.getElementById('livenessBtn').disabled = false;
+            document.getElementById('livenessBtn').textContent = 'Начать проверку';
+            document.getElementById('submitBtn').classList.add('hidden');
+            document.getElementById('livenessSubtitle').textContent = 'Нажмите кнопку и медленно поверните голову по кругу';
+            document.querySelectorAll('#livenessDots .dot').forEach(d => d.classList.remove('dot-active'));
+            livenessPhotos = [];
+        }
+
+        function stopLivenessStream() {
+            if (livenessStream) {
+                livenessStream.getTracks().forEach(t => t.stop());
+                livenessStream = null;
+            }
+        }
+
+        function getEllipseCircumference(rx, ry) {
+            const h = Math.pow(rx - ry, 2) / Math.pow(rx + ry, 2);
+            return Math.PI * (rx + ry) * (1 + (3 * h) / (10 + Math.sqrt(4 - 3 * h)));
+        }
+
+        // ============================
+        // Token из URL
+        // ============================
+        function getToken() {
+            return new URLSearchParams(window.location.search).get('token');
+        }
+
+        // ============================
+        // Submit — реальная отправка на API
+        // ============================
+        async function submitKYC() {
+            if (!docFile || !selfieFile || livenessPhotos.length === 0) return;
+
+            const token = getToken();
+            if (!token) {
+                alert('Ошибка: отсутствует токен верификации');
+                return;
+            }
+
+            goToStep('stateUploading');
+
+            try {
+                const formData = new FormData();
+                formData.append('token', token);
+                formData.append('document', docFile);
+                formData.append('selfie', selfieFile);
+                livenessPhotos.forEach(blob => {
+                    formData.append('liveness', blob, 'liveness.jpg');
+                });
+
+                const resp = await fetch('/api/kyc/submit', {
+                    method: 'POST',
+                    body: formData
+                });
+                const result = await resp.json();
+
+                if (result.success) {
+                    goToStep('statePending');
+                } else if (result.error === 'already_verified') {
+                    goToStep('stateAlreadyVerified');
+                } else {
+                    alert('Ошибка отправки: ' + (result.error || 'попробуйте ещё раз'));
+                    goToStep('stepLiveness');
+                }
+            } catch (err) {
+                alert('Ошибка сети. Проверьте подключение и попробуйте снова.');
+                goToStep('stepLiveness');
+            }
+        }
+
+        // ============================
+        // Retry (after rejection)
+        // ============================
+        function retryKYC() {
+            docFile = null;
+            selfieFile = null;
+            livenessPhotos = [];
+            retakePhoto('doc');
+            retakePhoto('selfie');
+            stopLiveness();
+            goToStep('stepDocument');
+        }
+
+        // ============================
+        // Инициализация — проверяем токен при загрузке
+        // ============================
+        (async function init() {
+            const token = getToken();
+            if (!token) {
+                // Без токена — показываем intro как обычно (для демо/тестов)
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/kyc/status/${token}`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    // Невалидный токен
+                    document.querySelector('.intro-title').textContent = 'Ссылка недействительна';
+                    document.querySelector('.intro-subtitle').textContent = 'Запросите новую ссылку у менеджера';
+                    document.querySelector('.intro-checklist').classList.add('hidden');
+                    document.querySelector('.step-footer .btn-primary').classList.add('hidden');
+                    return;
+                }
+
+                if (data.status === 'approved') {
+                    goToStep('stateAlreadyVerified');
+                } else if (data.status === 'rejected') {
+                    // Показываем экран отклонения с причиной
+                    const reasonEl = document.querySelector('#stateRejected .rejection-reason span');
+                    if (reasonEl && data.rejection_reason) {
+                        reasonEl.textContent = data.rejection_reason;
+                    }
+                    goToStep('stateRejected');
+                }
+                // pending или новый — показываем intro
+            } catch (err) {
+                console.error('Ошибка проверки статуса:', err);
+            }
+        })();
+    </script>
+</body>
+
+</html>

@@ -546,6 +546,7 @@
             <button class="nav-tab" data-section="transactions">Транзакции</button>
             <button class="nav-tab" data-section="managers">Менеджеры</button>
             <button class="nav-tab" data-section="verification">Сверка</button>
+            <button class="nav-tab" data-section="kyc">KYC</button>
         </div>
     </nav>
 
@@ -1383,6 +1384,40 @@
                 <div id="webhookStatus" style="margin-top: 0.5rem; font-size: 0.9rem;"></div>
             </div>
         </section>
+
+        <!-- KYC Section -->
+        <section id="kyc" class="section">
+            <div class="card">
+                <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Верификация клиентов (KYC)</span>
+                    <button class="btn btn-primary" onclick="openGenerateKYCModal()" style="font-size: 0.9rem;">
+                        + Запросить KYC
+                    </button>
+                </div>
+
+                <!-- Pending KYC requests -->
+                <div id="kycPendingSection" style="margin-top: 1rem;">
+                    <h4 style="font-size: 0.95rem; color: #666; margin-bottom: 0.75rem;">Ожидают проверки</h4>
+                    <div id="kycPendingList">
+                        <!-- Pending KYC items will be loaded here -->
+                        <div style="color: #999; font-style: italic; padding: 1rem; text-align: center;">
+                            Нет ожидающих проверок
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Verified clients -->
+                <div style="margin-top: 1.5rem;">
+                    <h4 style="font-size: 0.95rem; color: #666; margin-bottom: 0.75rem;">Верифицированные клиенты</h4>
+                    <div id="kycVerifiedList">
+                        <!-- Verified clients will be loaded here -->
+                        <div style="color: #999; font-style: italic; padding: 1rem; text-align: center;">
+                            Пока нет верифицированных клиентов
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- Modal for deal details -->
@@ -1575,6 +1610,210 @@
         </div>
     </div>
 
+    <!-- KYC Generate Link Modal -->
+    <div id="kycGenerateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Запросить KYC</h3>
+                <button class="modal-close" onclick="closeKYCGenerateModal()">&times;</button>
+            </div>
+            <form id="kycGenerateForm" onsubmit="event.preventDefault(); generateKYCLink();">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Клиент</label>
+                    <select class="form-control" id="kycClientSelect">
+                        <option value="">Выберите клиента</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Или имя нового клиента</label>
+                    <input type="text" class="form-control" id="kycClientName" placeholder="Имя клиента">
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Сгенерировать ссылку</button>
+            </form>
+            <!-- Generated link result -->
+            <div id="kycLinkResult" style="display: none; margin-top: 1rem;">
+                <div
+                    style="background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px; padding: 1rem; text-align: center;">
+                    <div style="font-size: 0.85rem; color: #666; margin-bottom: 0.5rem;">Ссылка для клиента:</div>
+                    <div id="kycLinkValue"
+                        style="font-family: monospace; font-size: 0.85rem; word-break: break-all; margin-bottom: 0.75rem; color: #1a1a2e;">
+                    </div>
+                    <button class="btn btn-success" onclick="copyKYCLink()" style="font-size: 0.85rem;">
+                        Скопировать ссылку
+                    </button>
+                    <div style="font-size: 0.8rem; color: #666; margin-top: 0.75rem;">
+                        Скрипт для Telegram:<br>
+                        <em style="color: #444;">"Для безопасного обмена нужна быстрая проверка — займёт 1 минуту. Данные
+                            удалим сразу после подтверждения."</em>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Review Modal -->
+    <div id="kycReviewModal" class="modal">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3 class="modal-title">Проверка KYC</h3>
+                <button class="modal-close" onclick="closeKYCReviewModal()">&times;</button>
+            </div>
+            <div id="kycReviewContent">
+                <!-- KYC review content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Styles -->
+    <style>
+        /* KYC Pending Card */
+        .kyc-pending-item {
+            background: #fffbeb;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .kyc-pending-info {
+            flex: 1;
+        }
+
+        .kyc-pending-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #1a1a2e;
+        }
+
+        .kyc-pending-meta {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 2px;
+        }
+
+        .kyc-pending-badge {
+            background: #fbbf24;
+            color: #78350f;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-right: 0.75rem;
+        }
+
+        /* KYC Verified Card */
+        .kyc-verified-item {
+            background: #f0fdf4;
+            border: 1px solid #86efac;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .kyc-verified-name {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #065f46;
+        }
+
+        .kyc-verified-date {
+            font-size: 0.8rem;
+            color: #059669;
+        }
+
+        /* KYC Review Layout */
+        .kyc-review-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .kyc-review-client {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .kyc-review-meta {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        .kyc-review-photos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .kyc-review-photo {
+            text-align: center;
+        }
+
+        .kyc-review-photo-label {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+
+        .kyc-review-photo img {
+            width: 100%;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .kyc-review-photo img:hover {
+            transform: scale(1.02);
+        }
+
+        .kyc-review-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .kyc-review-actions .btn {
+            flex: 1;
+            padding: 0.75rem;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+
+        .kyc-reject-reason {
+            margin-top: 0.75rem;
+            display: none;
+        }
+
+        .kyc-reject-reason.visible {
+            display: block;
+        }
+
+        .kyc-review-warning {
+            background: #fef3c7;
+            border: 1px solid #fde68a;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.85rem;
+            color: #92400e;
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        @media (max-width: 600px) {
+            .kyc-review-photos {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
     <script>
         const API_URL = '';  // Same origin
 
@@ -1604,6 +1843,7 @@
                     case 'reimbursements': loadReimbursements(); break;
                     case 'transactions': loadTransactions(); break;
                     case 'managers': loadManagers(); break;
+                    case 'kyc': loadKYCSection(); break;
                 }
             });
         });
@@ -4767,6 +5007,276 @@
             loadDashboard(); // Default view
             populateFromUrl();
         });
+
+        // ==================== KYC Module ====================
+
+        function openGenerateKYCModal() {
+            document.getElementById('kycGenerateModal').classList.add('active');
+            document.getElementById('kycLinkResult').style.display = 'none';
+            document.getElementById('kycGenerateForm').reset();
+
+            // Подгружаем список клиентов
+            loadKYCClients();
+        }
+
+        function closeKYCGenerateModal() {
+            document.getElementById('kycGenerateModal').classList.remove('active');
+        }
+
+        async function loadKYCClients() {
+            try {
+                const res = await fetch(`${API_URL}/api/clients`);
+                const data = await res.json();
+                const clients = data.clients || data || [];
+                const select = document.getElementById('kycClientSelect');
+                select.innerHTML = '<option value="">Выберите клиента</option>';
+                clients.forEach(c => {
+                    select.innerHTML += `<option value="${c.id}">${c.name} (${c.telegram || 'нет TG'})</option>`;
+                });
+            } catch (e) {
+                console.error('Ошибка загрузки клиентов для KYC:', e);
+            }
+        }
+
+        async function generateKYCLink() {
+            const clientId = document.getElementById('kycClientSelect').value;
+            const clientName = document.getElementById('kycClientName').value;
+
+            if (!clientId && !clientName) {
+                alert('Выберите клиента или введите имя');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/api/kyc/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_id: clientId || null,
+                        client_name: clientName || document.getElementById('kycClientSelect').selectedOptions[0]?.text?.split(' (')[0] || ''
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const baseUrl = window.location.origin;
+                    const link = `${baseUrl}/kyc/?token=${data.token}`;
+                    document.getElementById('kycLinkValue').textContent = link;
+                    document.getElementById('kycLinkResult').style.display = 'block';
+                } else {
+                    alert('Ошибка: ' + (data.error || 'не удалось создать ссылку'));
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+                console.error(e);
+            }
+        }
+
+        function copyKYCLink() {
+            const link = document.getElementById('kycLinkValue').textContent;
+            navigator.clipboard.writeText(link).then(() => {
+                const btn = event.target;
+                const orig = btn.textContent;
+                btn.textContent = 'Скопировано!';
+                btn.style.background = '#10B981';
+                setTimeout(() => {
+                    btn.textContent = orig;
+                    btn.style.background = '';
+                }, 2000);
+            });
+        }
+
+        function closeKYCReviewModal() {
+            document.getElementById('kycReviewModal').classList.remove('active');
+        }
+
+        async function openKYCReview(token) {
+            const content = document.getElementById('kycReviewContent');
+            content.innerHTML = '<div style="text-align:center;padding:2rem;color:#999;">Загрузка...</div>';
+            document.getElementById('kycReviewModal').classList.add('active');
+
+            try {
+                const res = await fetch(`${API_URL}/api/kyc/review/${token}`);
+                const data = await res.json();
+                if (!data.success) {
+                    content.innerHTML = '<div style="color:red;padding:1rem;">Ошибка загрузки</div>';
+                    return;
+                }
+                const kyc = data.kyc;
+                const createdDate = new Date(kyc.created_at).toLocaleDateString('ru-RU');
+                const createdTime = new Date(kyc.created_at).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+
+                content.innerHTML = `
+                    <div class="kyc-review-header">
+                        <div class="kyc-review-client">${kyc.client_name || 'Клиент #' + (kyc.client_id || kyc.id)}</div>
+                        <div class="kyc-review-meta">Загружено: ${createdDate} в ${createdTime}</div>
+                    </div>
+
+                    <div class="kyc-review-photos">
+                        <div class="kyc-review-photo">
+                            <div class="kyc-review-photo-label">Документ</div>
+                            ${kyc.has_doc
+                                ? `<img src="${API_URL}/api/kyc/photo/${token}/doc" style="width:100%;border-radius:8px;border:1px solid #e5e7eb;">`
+                                : '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>'}
+                        </div>
+                        <div class="kyc-review-photo">
+                            <div class="kyc-review-photo-label">Селфи с документом</div>
+                            ${kyc.has_selfie
+                                ? `<img src="${API_URL}/api/kyc/photo/${token}/selfie" style="width:100%;border-radius:8px;border:1px solid #e5e7eb;">`
+                                : '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>'}
+                        </div>
+                    </div>
+
+                    ${kyc.has_liveness ? `
+                    <div style="margin-top:1rem;">
+                        <div class="kyc-review-photo-label" style="margin-bottom:0.5rem;">Liveness-кадры</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                            ${[0,1,2,3,4].map(i => `<img src="${API_URL}/api/kyc/photo/${token}/liveness_${i}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" onerror="this.style.display='none'">`).join('')}
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="kyc-review-actions">
+                        <button class="btn btn-success" onclick="approveKYC('${token}')">Одобрить</button>
+                        <button class="btn btn-outline-danger" onclick="toggleRejectReason()">Отклонить</button>
+                    </div>
+
+                    <div class="kyc-reject-reason" id="kycRejectReason">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label class="form-label">Причина отклонения</label>
+                            <select class="form-control" id="kycRejectReasonSelect">
+                                <option value="Фото документа размыто — пожалуйста, сделайте чёткий снимок">Фото размыто</option>
+                                <option value="На селфи не видно документ — поднесите ближе к лицу">Не видно документ на селфи</option>
+                                <option value="Документ обрезан — загрузите полный разворот">Документ обрезан</option>
+                                <option value="Лицо на селфи не совпадает с фото в документе">Лицо не совпадает</option>
+                                <option value="other">Другая причина...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="kycCustomReasonGroup" style="display: none; margin-bottom: 0.75rem;">
+                            <input type="text" class="form-control" id="kycCustomReason" placeholder="Опишите причину">
+                        </div>
+                        <button class="btn btn-danger" onclick="rejectKYC('${token}')" style="width: 100%;">Отклонить и отправить причину клиенту</button>
+                    </div>
+
+                    <div class="kyc-review-warning">
+                        <span>⚠️</span>
+                        <span>После решения фото будут автоматически удалены</span>
+                    </div>
+                `;
+
+                setTimeout(() => {
+                    const select = document.getElementById('kycRejectReasonSelect');
+                    if (select) {
+                        select.addEventListener('change', () => {
+                            document.getElementById('kycCustomReasonGroup').style.display =
+                                select.value === 'other' ? 'block' : 'none';
+                        });
+                    }
+                }, 100);
+            } catch (e) {
+                content.innerHTML = '<div style="color:red;padding:1rem;">Ошибка сети</div>';
+                console.error(e);
+            }
+        }
+
+        function toggleRejectReason() {
+            document.getElementById('kycRejectReason').classList.toggle('visible');
+        }
+
+        async function approveKYC(token) {
+            if (!confirm('Одобрить верификацию? Фото будут удалены.')) return;
+            try {
+                const res = await fetch(`${API_URL}/api/kyc/approve/${token}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ manager: 'manager' })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeKYCReviewModal();
+                    loadKYCSection();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'не удалось одобрить'));
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+                console.error(e);
+            }
+        }
+
+        async function rejectKYC(token) {
+            const select = document.getElementById('kycRejectReasonSelect');
+            let reason = select.value;
+            if (reason === 'other') {
+                reason = document.getElementById('kycCustomReason').value;
+                if (!reason) {
+                    alert('Укажите причину отклонения');
+                    return;
+                }
+            }
+
+            if (!confirm(`Отклонить KYC? Причина: "${reason}"`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/kyc/reject/${token}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ manager: 'manager', reason: reason })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    closeKYCReviewModal();
+                    loadKYCSection();
+                } else {
+                    alert('Ошибка: ' + (data.error || 'не удалось отклонить'));
+                }
+            } catch (e) {
+                alert('Ошибка сети');
+                console.error(e);
+            }
+        }
+
+        async function loadKYCSection() {
+            // Загружаем ожидающие проверки
+            try {
+                const pendingRes = await fetch(`${API_URL}/api/kyc/list?status=pending`);
+                const pendingData = await pendingRes.json();
+                const pendingList = document.getElementById('kycPendingList');
+
+                if (pendingData.success && pendingData.kyc_requests.length > 0) {
+                    pendingList.innerHTML = pendingData.kyc_requests.map(k => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:0.5rem;">
+                            <div>
+                                <strong>${k.client_name || 'Клиент #' + k.id}</strong>
+                                <div style="font-size:0.8rem;color:#999;">${new Date(k.created_at).toLocaleDateString('ru-RU')} — ${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''} ${k.has_doc ? 'Файлы загружены' : 'Ожидание загрузки'}</div>
+                            </div>
+                            ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${k.token}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
+                        </div>
+                    `).join('');
+                } else {
+                    pendingList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет ожидающих проверок</div>';
+                }
+
+                // Загружаем одобренные
+                const approvedRes = await fetch(`${API_URL}/api/kyc/list?status=approved`);
+                const approvedData = await approvedRes.json();
+                const verifiedList = document.getElementById('kycVerifiedList');
+
+                if (approvedData.success && approvedData.kyc_requests.length > 0) {
+                    verifiedList.innerHTML = approvedData.kyc_requests.map(k => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
+                            <div>
+                                <strong>${k.client_name || 'Клиент #' + k.id}</strong>
+                                <span style="color:#16a34a;margin-left:0.5rem;">✓</span>
+                            </div>
+                            <div style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</div>
+                        </div>
+                    `).join('');
+                } else {
+                    verifiedList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Пока нет верифицированных клиентов</div>';
+                }
+            } catch (e) {
+                console.error('Ошибка загрузки KYC:', e);
+            }
+        }
     </script>
 </body>
 

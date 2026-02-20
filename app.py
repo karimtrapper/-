@@ -121,6 +121,40 @@ class Client(Base):
         return {'id': self.id, 'name': self.name, 'telegram': self.telegram, 'phone': self.phone,
                 'total_deals': self.total_deals, 'total_volume_usdt': self.total_volume_usdt}
 
+class KycStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+class KycRequest(Base):
+    """Запрос на KYC-верификацию клиента"""
+    __tablename__ = 'kyc_requests'
+    id = Column(Integer, primary_key=True)
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    client_id = Column(Integer, ForeignKey('clients.id'), nullable=True)
+    client_name = Column(String(100))
+    status = Column(String(20), default=KycStatus.PENDING)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String(100), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    doc_path = Column(String(500), nullable=True)
+    selfie_path = Column(String(500), nullable=True)
+    liveness_paths = Column(Text, nullable=True)  # JSON-массив путей
+
+    client = relationship("Client", backref="kyc_requests")
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'token': self.token, 'client_id': self.client_id,
+            'client_name': self.client_name, 'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
+            'reviewed_by': self.reviewed_by, 'rejection_reason': self.rejection_reason,
+            'has_doc': bool(self.doc_path), 'has_selfie': bool(self.selfie_path),
+            'has_liveness': bool(self.liveness_paths)
+        }
+
 class CashBatch(Base):
     __tablename__ = 'cash_batches'
     id = Column(Integer, primary_key=True)
@@ -466,6 +500,16 @@ from calculator import ExchangeRateProvider, ExchangeCalculator
 def calculator_index():
     """Главная страница - Калькулятор"""
     return send_from_directory('static/calculator', 'index.html')
+
+@app.route('/kyc/')
+def kyc_index():
+    """KYC страница для клиента"""
+    return send_from_directory('static/kyc', 'index.html')
+
+@app.route('/kyc/<path:filename>')
+def kyc_static(filename):
+    """Статика KYC (CSS, изображения)"""
+    return send_from_directory('static/kyc', filename)
 
 @app.route('/crm')
 def crm_index():
@@ -2139,6 +2183,238 @@ def confirm_doverka(deal_id):
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         session.close()
+
+# ==================== KYC API ====================
+
+import secrets
+import shutil
+from werkzeug.utils import secure_filename
+
+# Папка для временного хранения KYC-файлов
+KYC_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'kyc_uploads')
+os.makedirs(KYC_UPLOAD_DIR, exist_ok=True)
+
+@app.route('/api/kyc/generate', methods=['POST'])
+def kyc_generate_token():
+    """Менеджер генерирует ссылку для клиента"""
+    session = get_session()
+    try:
+        data = request.json or {}
+        client_id = data.get('client_id')
+        client_name = data.get('client_name', '')
+
+        # Проверяем, нет ли уже активного KYC для клиента
+        if client_id:
+            existing = session.query(KycRequest).filter(
+                KycRequest.client_id == client_id,
+                KycRequest.status == KycStatus.PENDING
+            ).first()
+            if existing:
+                return jsonify({'success': True, 'token': existing.token, 'existing': True})
+
+        token = secrets.token_urlsafe(16)
+        kyc = KycRequest(
+            token=token,
+            client_id=client_id,
+            client_name=client_name
+        )
+        session.add(kyc)
+        session.commit()
+        return jsonify({'success': True, 'token': token})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+@app.route('/api/kyc/status/<token>', methods=['GET'])
+def kyc_status(token):
+    """Клиент проверяет статус своей верификации"""
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'invalid_token'}), 404
+
+        result = {'success': True, 'status': kyc.status}
+        if kyc.status == KycStatus.REJECTED:
+            result['rejection_reason'] = kyc.rejection_reason
+        return jsonify(result)
+    finally:
+        session.close()
+
+@app.route('/api/kyc/submit', methods=['POST'])
+def kyc_submit():
+    """Клиент загружает файлы верификации"""
+    token = request.form.get('token')
+    if not token:
+        return jsonify({'success': False, 'error': 'missing_token'}), 400
+
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'invalid_token'}), 404
+
+        if kyc.status == KycStatus.APPROVED:
+            return jsonify({'success': False, 'error': 'already_verified'}), 400
+
+        # Создаём папку для этого запроса
+        upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
+        os.makedirs(upload_dir, exist_ok=True)
+
+        # Сохраняем документ
+        doc = request.files.get('document')
+        if doc:
+            doc_filename = f"doc_{secure_filename(doc.filename)}"
+            doc_path = os.path.join(upload_dir, doc_filename)
+            doc.save(doc_path)
+            kyc.doc_path = doc_path
+
+        # Сохраняем селфи
+        selfie = request.files.get('selfie')
+        if selfie:
+            selfie_filename = f"selfie_{secure_filename(selfie.filename)}"
+            selfie_path = os.path.join(upload_dir, selfie_filename)
+            selfie.save(selfie_path)
+            kyc.selfie_path = selfie_path
+
+        # Сохраняем liveness-кадры
+        liveness_files = request.files.getlist('liveness')
+        if liveness_files:
+            liveness_paths = []
+            for i, f in enumerate(liveness_files):
+                liveness_filename = f"liveness_{i}.jpg"
+                liveness_path = os.path.join(upload_dir, liveness_filename)
+                f.save(liveness_path)
+                liveness_paths.append(liveness_path)
+            kyc.liveness_paths = json.dumps(liveness_paths)
+
+        # Сбрасываем статус на pending если клиент перезагружает после отклонения
+        kyc.status = KycStatus.PENDING
+        kyc.rejection_reason = None
+        kyc.reviewed_at = None
+        kyc.reviewed_by = None
+
+        session.commit()
+        return jsonify({'success': True, 'status': 'pending'})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/kyc/list', methods=['GET'])
+def kyc_list():
+    """CRM: список всех KYC-запросов"""
+    session = get_session()
+    try:
+        status_filter = request.args.get('status')
+        query = session.query(KycRequest).order_by(KycRequest.created_at.desc())
+        if status_filter:
+            query = query.filter(KycRequest.status == status_filter)
+        kycs = query.limit(100).all()
+        return jsonify({'success': True, 'kyc_requests': [k.to_dict() for k in kycs]})
+    finally:
+        session.close()
+
+@app.route('/api/kyc/review/<token>', methods=['GET'])
+def kyc_review(token):
+    """CRM: получить детали KYC для проверки"""
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        return jsonify({'success': True, 'kyc': kyc.to_dict()})
+    finally:
+        session.close()
+
+@app.route('/api/kyc/photo/<token>/<photo_type>', methods=['GET'])
+def kyc_photo(token, photo_type):
+    """CRM: получить фото для просмотра (doc, selfie, liveness_0..4)"""
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return '', 404
+
+        if photo_type == 'doc' and kyc.doc_path and os.path.exists(kyc.doc_path):
+            directory = os.path.dirname(kyc.doc_path)
+            filename = os.path.basename(kyc.doc_path)
+            return send_from_directory(directory, filename)
+        elif photo_type == 'selfie' and kyc.selfie_path and os.path.exists(kyc.selfie_path):
+            directory = os.path.dirname(kyc.selfie_path)
+            filename = os.path.basename(kyc.selfie_path)
+            return send_from_directory(directory, filename)
+        elif photo_type.startswith('liveness_') and kyc.liveness_paths:
+            idx = int(photo_type.split('_')[1])
+            paths = json.loads(kyc.liveness_paths)
+            if idx < len(paths) and os.path.exists(paths[idx]):
+                directory = os.path.dirname(paths[idx])
+                filename = os.path.basename(paths[idx])
+                return send_from_directory(directory, filename)
+
+        return '', 404
+    finally:
+        session.close()
+
+@app.route('/api/kyc/approve/<token>', methods=['POST'])
+def kyc_approve(token):
+    """CRM: одобрить KYC"""
+    session = get_session()
+    try:
+        data = request.json or {}
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+
+        kyc.status = KycStatus.APPROVED
+        kyc.reviewed_at = datetime.utcnow()
+        kyc.reviewed_by = data.get('manager', 'unknown')
+        session.commit()
+
+        # Удаляем файлы после одобрения — хранить не нужно
+        _delete_kyc_files(token)
+
+        return jsonify({'success': True, 'status': 'approved'})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+@app.route('/api/kyc/reject/<token>', methods=['POST'])
+def kyc_reject(token):
+    """CRM: отклонить KYC"""
+    session = get_session()
+    try:
+        data = request.json or {}
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+
+        kyc.status = KycStatus.REJECTED
+        kyc.reviewed_at = datetime.utcnow()
+        kyc.reviewed_by = data.get('manager', 'unknown')
+        kyc.rejection_reason = data.get('reason', 'Фото не соответствует требованиям')
+        session.commit()
+
+        # Удаляем старые файлы — клиент загрузит новые
+        _delete_kyc_files(token)
+
+        return jsonify({'success': True, 'status': 'rejected'})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+def _delete_kyc_files(token):
+    """Удалить загруженные файлы KYC"""
+    upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
+    if os.path.exists(upload_dir):
+        shutil.rmtree(upload_dir, ignore_errors=True)
 
 # ==================== HEALTH CHECK ====================
 
