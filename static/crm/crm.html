@@ -27,7 +27,6 @@
             padding: 0.75rem 2rem;
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 1rem;
             position: sticky;
             top: 0;
@@ -532,6 +531,7 @@
     <nav class="top-nav">
         <a href="/">🧮 Калькулятор</a>
         <a href="/crm" class="active">📊 CRM</a>
+        <a href="#" onclick="logout(); return false;" style="margin-left: auto; background: rgba(255,255,255,0.1); font-size: 0.85rem;">Выйти</a>
     </nav>
 
     <!-- CRM Navigation -->
@@ -1816,6 +1816,13 @@
 
     <script>
         const API_URL = '';  // Same origin
+
+        // ==================== Auth ====================
+        async function logout() {
+            if (!confirm('Выйти из CRM?')) return;
+            await fetch('/api/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
 
         // ==================== Navigation ====================
         document.querySelectorAll('.nav-tab').forEach(tab => {

@@ -3,19 +3,50 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, redirect, url_for, session as flask_session
 from flask_cors import CORS
 from datetime import datetime, timedelta
+from functools import wraps
 import os
 import requests
 import threading
 import asyncio
 import time
 import json
+import hashlib
 
 # ==================== FLASK APP ====================
 app = Flask(__name__, static_folder='static')
-CORS(app)
+app.secret_key = os.environ.get('SECRET_KEY', 'grusha-crm-secret-change-in-prod-2026')
+CORS(app, supports_credentials=True)
+
+# Публичные пути — без авторизации
+PUBLIC_PATHS = [
+    '/api/rates', '/api/calculate',           # Калькулятор
+    '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
+    '/api/health',                             # Health check
+    '/api/auth/',                              # Авторизация
+]
+
+@app.before_request
+def check_auth():
+    """Проверка авторизации для всех /api/* и /crm кроме публичных"""
+    path = request.path
+
+    # Статика, калькулятор, KYC-страница, логин — пропускаем
+    if not path.startswith('/api/') and not path.startswith('/crm'):
+        return None
+
+    # Публичные API — пропускаем
+    for pub in PUBLIC_PATHS:
+        if path.startswith(pub):
+            return None
+
+    # Проверяем сессию
+    if not flask_session.get('user_id'):
+        if path.startswith('/api/'):
+            return jsonify({'success': False, 'error': 'unauthorized'}), 401
+        return redirect('/login')
 
 # ==================== DATABASE ====================
 from sqlalchemy import create_engine
@@ -55,6 +86,39 @@ from sqlalchemy.orm import relationship
 from enum import Enum
 
 Base = declarative_base()
+
+class AdminUser(Base):
+    """Администратор/менеджер CRM"""
+    __tablename__ = 'admin_users'
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True, nullable=False)
+    password_hash = Column(String(128), nullable=False)
+    display_name = Column(String(100))
+    role = Column(String(20), default='admin')  # admin / manager (на будущее)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    @staticmethod
+    def hash_password(password):
+        """SHA-256 хэш пароля с солью"""
+        salt = 'grusha-salt-2026'
+        return hashlib.sha256(f'{salt}{password}'.encode()).hexdigest()
+
+    def check_password(self, password):
+        return self.password_hash == self.hash_password(password)
+
+
+def login_required(f):
+    """Декоратор: требует авторизации для доступа"""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not flask_session.get('user_id'):
+            # API-запрос — 401, страница — редирект на логин
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'unauthorized'}), 401
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated
+
 
 class DealType(str, Enum):
     PAY_IN = "pay_in"
@@ -494,16 +558,110 @@ def send_deal_completed_webhook(deal):
 # ==================== CALCULATOR IMPORTS ====================
 from calculator import ExchangeRateProvider, ExchangeCalculator
 
+# ==================== AUTH ====================
+
+@app.route('/login', methods=['GET'])
+def login_page():
+    """Страница входа"""
+    if flask_session.get('user_id'):
+        return redirect('/crm')
+    return send_from_directory('static/auth', 'login.html')
+
+@app.route('/api/auth/login', methods=['POST'])
+def auth_login():
+    """Авторизация"""
+    data = request.get_json() or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '')
+
+    if not username or not password:
+        return jsonify({'success': False, 'error': 'Введите логин и пароль'}), 400
+
+    db = get_session()
+    try:
+        user = db.query(AdminUser).filter_by(username=username).first()
+        if not user or not user.check_password(password):
+            return jsonify({'success': False, 'error': 'Неверный логин или пароль'}), 401
+
+        flask_session['user_id'] = user.id
+        flask_session['username'] = user.username
+        flask_session['display_name'] = user.display_name or user.username
+        flask_session.permanent = True
+        app.permanent_session_lifetime = timedelta(days=30)
+
+        return jsonify({'success': True, 'user': user.display_name or user.username})
+    finally:
+        db.close()
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    """Выход"""
+    flask_session.clear()
+    return jsonify({'success': True})
+
+@app.route('/api/auth/me', methods=['GET'])
+def auth_me():
+    """Текущий пользователь"""
+    if flask_session.get('user_id'):
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': flask_session['user_id'],
+                'username': flask_session.get('username'),
+                'display_name': flask_session.get('display_name')
+            }
+        })
+    return jsonify({'success': False}), 401
+
+@app.route('/api/auth/setup', methods=['POST'])
+def auth_setup():
+    """Первоначальная настройка — создание админа (только если нет ни одного пользователя)"""
+    db = get_session()
+    try:
+        existing = db.query(AdminUser).first()
+        if existing:
+            return jsonify({'success': False, 'error': 'Админ уже создан'}), 403
+
+        data = request.get_json() or {}
+        username = data.get('username', '').strip()
+        password = data.get('password', '')
+        display_name = data.get('display_name', '').strip()
+
+        if not username or not password:
+            return jsonify({'success': False, 'error': 'Укажите логин и пароль'}), 400
+
+        if len(password) < 4:
+            return jsonify({'success': False, 'error': 'Пароль минимум 4 символа'}), 400
+
+        admin = AdminUser(
+            username=username,
+            password_hash=AdminUser.hash_password(password),
+            display_name=display_name or username,
+            role='admin'
+        )
+        db.add(admin)
+        db.commit()
+
+        flask_session['user_id'] = admin.id
+        flask_session['username'] = admin.username
+        flask_session['display_name'] = admin.display_name
+        flask_session.permanent = True
+        app.permanent_session_lifetime = timedelta(days=30)
+
+        return jsonify({'success': True, 'user': admin.display_name})
+    finally:
+        db.close()
+
 # ==================== PAGES ====================
 
 @app.route('/')
 def calculator_index():
-    """Главная страница - Калькулятор"""
+    """Главная страница - Калькулятор (публичная)"""
     return send_from_directory('static/calculator', 'index.html')
 
 @app.route('/kyc/')
 def kyc_index():
-    """KYC страница для клиента"""
+    """KYC страница для клиента (публичная)"""
     return send_from_directory('static/kyc', 'index.html')
 
 @app.route('/kyc/<path:filename>')
@@ -513,7 +671,7 @@ def kyc_static(filename):
 
 @app.route('/crm')
 def crm_index():
-    """CRM страница"""
+    """CRM страница (защищённая)"""
     response = send_from_directory('static/crm', 'crm.html')
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
     response.headers['Pragma'] = 'no-cache'
@@ -2432,6 +2590,11 @@ def health_check():
 @app.route('/calculator/<path:filename>')
 def calculator_static(filename):
     return send_from_directory('static/calculator', filename)
+
+@app.route('/auth/<path:filename>')
+def auth_static(filename):
+    """Статика страницы логина (публичная)"""
+    return send_from_directory('static/auth', filename)
 
 @app.route('/crm/<path:filename>')
 def crm_static(filename):
