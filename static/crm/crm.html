@@ -1917,7 +1917,9 @@
                 const dealsData = await dealsResponse.json();
 
                 if (dealsData.success) {
-                    document.getElementById('recentDealsTable').innerHTML = dealsData.deals.map(deal => `
+                    document.getElementById('recentDealsTable').innerHTML = dealsData.deals.map(deal => {
+                        const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
+                        return `
                         <tr onclick="showDealDetails(${deal.id})" style="cursor: pointer;">
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
@@ -1926,10 +1928,10 @@
                             <td>${deal.is_custom
                             ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                             : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
-                            <td class="${(deal.net_profit_usdt || deal.profit_usdt) > 0 ? 'text-success' : ''}">${deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt ? '$' + deal.profit_usdt.toFixed(2) : '-')}</td>
+                            <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
                             <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                         </tr>
-                    `).join('');
+                    `}).join('');
                 }
 
             } catch (error) {
@@ -3046,6 +3048,9 @@
                 document.getElementById('referrerPayout').value = 'После возмещения';
                 document.getElementById('netProfit').value = 'Неизвестно';
                 document.getElementById('netProfit').style.color = '#f59e0b';
+                // Очищаем hidden-поля, чтобы не отправить мусорные значения
+                document.getElementById('netProfitRaw').value = '';
+                document.getElementById('referrerPayoutRaw').value = '';
                 return;
             }
 
