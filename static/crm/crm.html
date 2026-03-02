@@ -2424,10 +2424,13 @@ select.form-control { cursor: pointer; }
             const netProfit = profit - referrerPayout;
 
             const data = {
+                is_custom: true,
                 manager_name: managerName,
                 client_id: parseInt(clientId) || null,
                 client_name: clientName,
                 created_at: createdAt || null,
+                payin_method: 'crypto_direct',  // Базовый метод для совместимости
+                payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
                 payout_method: payoutMethod,
@@ -2441,6 +2444,7 @@ select.form-control { cursor: pointer; }
                 referrer_percent: referrerPercent || null,
                 referrer_payout_usdt: referrerPayout > 0 ? referrerPayout : null,
                 profit_usdt: profit,
+                profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
                 net_profit_usdt: netProfit,
                 notes: notes || null
             };
@@ -3192,6 +3196,16 @@ select.form-control { cursor: pointer; }
 
         document.getElementById('createDealForm').addEventListener('submit', async function (e) {
             e.preventDefault();
+
+            // Если включена кастомная сделка — перенаправляем на кастомный обработчик
+            if (document.getElementById('customDealToggle').checked) {
+                if (editingDealId !== null) {
+                    updateCustomDeal(editingDealId);
+                } else {
+                    createCustomDeal();
+                }
+                return;
+            }
 
             const formData = new FormData(this);
             const data = {

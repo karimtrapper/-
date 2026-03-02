@@ -1018,8 +1018,10 @@ def update_deal(deal_id):
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
-                      'referrer_percent', 'referrer_payout_usdt', 'notes', 'client_id', 'payout_founder_name',
-                      'payout_wallet_id']:
+                      'referrer_percent', 'referrer_payout_usdt', 'referrer_fixed_usdt', 'notes', 'client_id',
+                      'payout_founder_name', 'payout_wallet_id',
+                      'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
+                      'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate']:
             if field in data:
                 setattr(deal, field, data[field])
         
