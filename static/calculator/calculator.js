@@ -47,7 +47,7 @@ let state = {
     direction: 'amount',  // 'amount' (вношу) или 'target' (хочу получить)
     profitMargin: 4.0,    // чистая прибыль брокера в %
     rates: CONFIG.FALLBACK_RATES,
-    customRubUsdt: 80.90,  // кастомный курс для broker
+    customRubUsdt: null,  // кастомный курс для broker (null = не введён)
     detailsOpen: false,
     infoOpen: false,
     applyDiscount: false,
@@ -87,6 +87,12 @@ function switchMethod(method) {
         document.getElementById('customRateSection').style.display = 'block';
         document.getElementById('directionSwitcher').style.display = 'block';
         document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Кастомный)';
+
+        // Очищаем курс — менеджер должен ввести сам
+        const customInput = document.getElementById('customRubUsdt');
+        customInput.value = '';
+        state.customRubUsdt = null;
+        updateBrokerRateUI();
         
         // Показываем broker сценарии, скрываем doverka
         document.querySelectorAll('.scenario-btn').forEach(btn => {
@@ -395,14 +401,20 @@ function updateRatesDisplay() {
     // Показываем RUB-USDT
     const rubUsdtEl = document.getElementById('rubUsdtRate');
     if (state.method === 'broker') {
-        const customRate = parseFloat(document.getElementById('customRubUsdt').value.replace(/\s/g, '')) || 80.90;
-        rubUsdtEl.textContent = `${customRate.toFixed(4)} ₽`;
-        state.customRubUsdt = customRate;
-        rubUsdtEl.classList.remove('rate-error');
-        
-        // В брокере заменяем примерный курс на прочерк, пока нет суммы
-        estimatedEl.textContent = '—';
-        estimatedEl.classList.add('rate-info-pending');
+        if (state.customRubUsdt && state.customRubUsdt > 0) {
+            rubUsdtEl.textContent = `${state.customRubUsdt.toFixed(4)} ₽`;
+            rubUsdtEl.classList.remove('rate-error');
+            if (state.rates.usdt_thb) {
+                const estimatedRate = (state.customRubUsdt / state.rates.usdt_thb).toFixed(2);
+                estimatedEl.textContent = `~${estimatedRate} ₽/฿`;
+                estimatedEl.classList.remove('rate-error', 'rate-info-pending');
+            }
+        } else {
+            rubUsdtEl.textContent = '— ₽';
+            rubUsdtEl.classList.add('rate-error');
+            estimatedEl.textContent = '—';
+            estimatedEl.classList.add('rate-info-pending');
+        }
     } else {
         if (state.rates.rub_usdt) {
             rubUsdtEl.textContent = `${state.rates.rub_usdt.toFixed(4)} ₽`;
@@ -427,20 +439,48 @@ function updateRatesDisplay() {
     document.getElementById('updateTime').textContent = now.toLocaleTimeString('ru-RU');
 }
 
+// Обновление UI поля курса брокера (пустое / заполненное)
+function updateBrokerRateUI() {
+    const card = document.querySelector('.custom-rate-card');
+    const hint = document.getElementById('customRateHint');
+    if (!card || !hint) return;
+
+    if (state.customRubUsdt && state.customRubUsdt > 0) {
+        card.classList.remove('rate-empty');
+        card.classList.add('rate-filled');
+        hint.classList.add('hidden');
+    } else {
+        card.classList.add('rate-empty');
+        card.classList.remove('rate-filled');
+        hint.classList.remove('hidden');
+    }
+}
+
 // Обновление кастомного курса (вызывается при изменении поля)
 function updateCustomRate() {
     if (state.method === 'broker') {
-        const customRubUsdt = parseFloat(document.getElementById('customRubUsdt').value.replace(/\s/g, '')) || 80.90;
-        
-        // Обновляем state
-        state.customRubUsdt = customRubUsdt;
-        
-        // Обновляем отображение курса RUB-USDT с 4 знаками
-        document.getElementById('rubUsdtRate').textContent = `${customRubUsdt.toFixed(4)} ₽`;
-        
-        // Обновляем примерный курс RUB-THB (USDT-THB от Binance API)
-        const estimatedRate = (customRubUsdt / state.rates.usdt_thb).toFixed(2);
-        document.getElementById('estimatedRate').textContent = `~${estimatedRate} ₽/฿`;
+        const raw = document.getElementById('customRubUsdt').value.replace(/\s/g, '');
+        const customRubUsdt = parseFloat(raw) || 0;
+
+        // Обновляем state (null если пусто)
+        state.customRubUsdt = customRubUsdt > 0 ? customRubUsdt : null;
+
+        // Обновляем UI состояние поля
+        updateBrokerRateUI();
+
+        if (state.customRubUsdt) {
+            // Обновляем отображение курса RUB-USDT с 4 знаками
+            document.getElementById('rubUsdtRate').textContent = `${customRubUsdt.toFixed(4)} ₽`;
+
+            // Обновляем примерный курс RUB-THB
+            if (state.rates.usdt_thb) {
+                const estimatedRate = (customRubUsdt / state.rates.usdt_thb).toFixed(2);
+                document.getElementById('estimatedRate').textContent = `~${estimatedRate} ₽/฿`;
+            }
+        } else {
+            document.getElementById('rubUsdtRate').textContent = '— ₽';
+            document.getElementById('estimatedRate').textContent = '—';
+        }
     }
 }
 
@@ -479,6 +519,20 @@ async function calculate() {
     
     if (amount <= 0) {
         resultsSection.style.display = 'none';
+        return;
+    }
+
+    // Блокируем расчёт в режиме брокера без курса
+    if (state.method === 'broker' && !state.customRubUsdt) {
+        const customInput = document.getElementById('customRubUsdt');
+        customInput.focus();
+        const card = document.querySelector('.custom-rate-card');
+        if (card) {
+            card.classList.add('rate-empty');
+            card.style.animation = 'none';
+            card.offsetHeight; // force reflow
+            card.style.animation = '';
+        }
         return;
     }
 

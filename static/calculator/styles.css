@@ -161,6 +161,40 @@ body {
     color: var(--indigo);
     text-align: center;
 }
+.custom-rate-card .amount-input::placeholder {
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.custom-rate-hint {
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--coral);
+    margin-top: 8px;
+    transition: opacity 0.2s;
+}
+.custom-rate-hint.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.custom-rate-card.rate-empty {
+    border-color: var(--coral);
+    animation: pulseRate 1.5s ease infinite;
+}
+@keyframes pulseRate {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.3); }
+    50% { box-shadow: 0 0 0 6px rgba(249, 115, 22, 0); }
+}
+.custom-rate-card.rate-filled {
+    border-color: var(--green);
+}
+.custom-rate-card.rate-filled .input-label {
+    color: var(--green-dark);
+}
+.custom-rate-card.rate-filled .amount-input {
+    border-color: var(--green);
+    color: var(--green-dark);
+}
 
 /* === RATES CARD === */
 .rates-card {
