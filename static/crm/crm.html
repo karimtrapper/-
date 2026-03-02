@@ -1792,6 +1792,21 @@
 
     <script>
         const API_URL = '';  // Same origin
+        let currentUsdtThbRate = null; // Актуальный курс USDT-THB от API
+
+        // Загружаем актуальный курс при старте
+        async function loadCurrentRate() {
+            try {
+                const resp = await fetch(`${API_URL}/api/rates`);
+                const data = await resp.json();
+                if (data.usdt_thb) {
+                    currentUsdtThbRate = data.usdt_thb;
+                }
+            } catch (e) {
+                console.error('Не удалось загрузить курс:', e);
+            }
+        }
+        loadCurrentRate();
 
         // ==================== Auth ====================
         async function logout() {
@@ -3014,7 +3029,8 @@
             }
 
             // Определяем курс в зависимости от источника
-            let avgRate = 35; // Фоллбэк
+            const fallbackRate = currentUsdtThbRate || 31.50; // Актуальный курс от API
+            let avgRate = fallbackRate;
 
             if (payoutSource === 'cash_batch' && cashBatchesData.length > 0) {
                 // Рассчитываем средневзвешенный курс для FIFO
@@ -3026,11 +3042,11 @@
                     totalUsdt += take / batch.purchase_rate;
                     remaining -= take;
                 }
-                avgRate = remaining <= 0 ? payoutThb / totalUsdt : 35;
+                avgRate = remaining <= 0 ? payoutThb / totalUsdt : fallbackRate;
             } else if (payoutSource === 'bank_card') {
                 const select = document.getElementById('bankCardSelect');
                 const selected = select.options[select.selectedIndex];
-                avgRate = parseFloat(selected?.dataset?.rate) || 35;
+                avgRate = parseFloat(selected?.dataset?.rate) || fallbackRate;
             } else if (payoutSource === 'binance') {
                 // Binance - USDT напрямую из поля
                 const binanceUsdt = parseFloat(document.getElementById('binanceUsdt')?.value) || 0;
@@ -3068,7 +3084,7 @@
                     document.getElementById('exchangeRateCalc').value = exchangeRate.toFixed(2);
                     return;
                 }
-                avgRate = 35; // Fallback
+                avgRate = fallbackRate;
             }
 
             const payoutUsdt = payoutThb / avgRate;
