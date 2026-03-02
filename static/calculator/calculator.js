@@ -1357,7 +1357,11 @@ function createDealFromCalc() {
         payin_method: state.method === 'doverka' ? 'spp_doverka' : 'crypto_direct',
         notes: comment,
         scenario: r.scenario || '',
-        method: state.method
+        method: state.method,
+        // Данные для корректного расчёта прибыли в CRM
+        outgoing_usdt: r.outgoing_usdt || null,
+        incoming_usdt: r.incoming_usdt || null,
+        bonus_usdt: r.bonus_usdt || null
     };
 
     // Партнер

@@ -5030,8 +5030,36 @@
                 if (refInput) refInput.value = data.referrer_percent;
             }
 
-            // Рассчитываем прибыль
-            setTimeout(() => calculateProfit(), 100);
+            // Если есть outgoing_usdt — данные уже рассчитаны калькулятором, заполняем напрямую
+            if (data.outgoing_usdt) {
+                const profitUsdt = data.profit_usdt || 0;
+                const profitPercent = data.profit_percent || 0;
+                const outgoingUsdt = data.outgoing_usdt;
+
+                // Расчет выплаты партнеру
+                const referrerPercent = data.referrer_percent || 0;
+                let referrerPayout = 0;
+                if (referrerPercent > 0 && profitUsdt > 0) {
+                    referrerPayout = profitUsdt * (referrerPercent / 100);
+                }
+                const netProfit = profitUsdt - referrerPayout;
+
+                document.getElementById('profitUsdt').value = profitUsdt.toFixed(2);
+                document.getElementById('profitUsdt').style.color = profitUsdt >= 0 ? '#10b981' : '#ef4444';
+                document.getElementById('profitPercent').value = profitPercent.toFixed(1);
+                document.getElementById('cashBatchCostUsdt').value = '$' + outgoingUsdt.toFixed(2);
+                document.getElementById('referrerPayout').value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '0';
+                document.getElementById('referrerPayoutRaw').value = referrerPayout.toFixed(2);
+                document.getElementById('netProfit').value = '$' + netProfit.toFixed(2);
+                document.getElementById('netProfitRaw').value = netProfit.toFixed(2);
+                document.getElementById('netProfit').style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
+                if (data.exchange_rate) {
+                    document.getElementById('exchangeRateCalc').value = data.exchange_rate.toFixed(4);
+                }
+            } else {
+                // Нет данных из калькулятора — считаем через CRM логику
+                setTimeout(() => calculateProfit(), 100);
+            }
 
             // Убираем hash из URL чтобы не мешал при обновлении
             history.replaceState(null, '', window.location.pathname + window.location.search);
