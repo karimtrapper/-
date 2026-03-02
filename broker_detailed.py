@@ -409,14 +409,3 @@ class BrokerCalculatorDetailed:
             'profit_percent_actual': profit_percent_actual
         }
 
-
-
-# Тестирование
-if __name__ == '__main__':
-    calc = BrokerCalculatorDetailed(usdt_thb_rate=31.12, custom_rub_usdt_rate=80.90, commission_level='high')
-    
-    print("Операция 2.1: RUB → THB (amount, 5%)")
-    result = calc.rub_to_thb_amount(2741.18)
-    print(f"THB received: {result['thb_received']} (expected: 979.21)")
-    print(f"Final rate: {result['final_rate']}")
-    print()

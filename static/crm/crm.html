@@ -1018,7 +1018,7 @@
                             </div>
                             <div class="form-group" id="exchangeRateGroup">
                                 <label class="form-label">Курс для клиента</label>
-                                <input type="number" class="form-control" name="exchange_rate" placeholder="2.85"
+                                <input type="number" class="form-control" name="exchange_rate" id="exchangeRateCalc" placeholder="2.85"
                                     step="0.0001">
                             </div>
                         </div>
@@ -1043,32 +1043,6 @@
                         </div>
                     </div><!-- /standardDealSection -->
                 </form>
-            </div>
-        </section>
-
-        <!-- Doverka Section -->
-        <section id="doverka" class="section">
-            <div class="card">
-                <div class="card-title">Сделки ожидающие выплаты от Доверки</div>
-                <p style="color: #666; margin-bottom: 1rem;">
-                    Доверка выплачивает через несколько часов после оплаты клиентом.
-                    Здесь отображаются сделки, по которым нужно проверить поступление.
-                </p>
-
-                <div id="pendingDoverkaList">
-                    <!-- Pending deals will be loaded here -->
-                </div>
-            </div>
-
-            <div class="card">
-                <div class="card-title">Как работает</div>
-                <ol style="color: #666; line-height: 1.8;">
-                    <li>Клиент оплачивает через СБП, вы получаете ID транзакции Доверки (например: 47871)</li>
-                    <li>Сделка создается со статусом "Ожидает выплаты"</li>
-                    <li>Через несколько часов Доверка переводит USDT на ваш кошелек</li>
-                    <li>Вы заходите сюда, видите поступление и нажимаете "Подтвердить получение"</li>
-                    <li>Указываете хэш транзакции от Доверки для сверки</li>
-                </ol>
             </div>
         </section>
 
@@ -1846,9 +1820,6 @@
                         }
                         loadCreateForm();
                         break;
-                    case 'cash': loadCashBatches(); break;
-                    case 'cards': loadBankCards(); break;
-                    case 'doverka': loadPendingDoverka(); break;
                     case 'reimbursements': loadReimbursements(); break;
                     case 'transactions': loadTransactions(); break;
                     case 'managers': loadManagers(); break;
@@ -2221,17 +2192,9 @@
         async function deleteDeal(dealId) {
             if (!confirm('Удалить сделку? Средства вернутся в кассу.')) return;
 
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Attempting to delete deal', data: { dealId }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
-            // #endregion
-
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, { method: 'DELETE' });
                 const data = await response.json();
-
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Delete response received', data: { dealId, data }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
-                // #endregion
 
                 if (data.success) {
                     closeModal();
@@ -2242,9 +2205,6 @@
                 }
             } catch (error) {
                 console.error('Error deleting deal:', error);
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteDeal', message: 'Delete fetch error', data: { dealId, error: error.message }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H1' }) }).catch(() => { });
-                // #endregion
                 alert('Сетевая ошибка при удалении сделки');
             }
         }
@@ -2671,7 +2631,6 @@
         }
 
         let cashBatchesData = [];
-        let bankCardsData = [];
 
         async function loadCashBatchesForSelect() {
             try {
@@ -2713,8 +2672,6 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    bankCardsData = data.cards;
-
                     const select = document.getElementById('bankCardSelect');
                     if (select) {
                         select.innerHTML = data.cards.length > 0
@@ -3164,14 +3121,7 @@
                 status: 'pending'
             };
 
-            // #region agent log
-            console.log('[DEBUG] Form client_name input value:', this.client_name?.value);
-            // #endregion
-
             formData.forEach((value, key) => {
-                // #region agent log
-                if (key === 'client_name') console.log('[DEBUG] FormData client_name:', value);
-                // #endregion
                 if (value !== "") {
                     if (['payin_amount_rub', 'payin_amount_thb', 'payin_amount_usdt',
                         'payin_rate_rub_usdt', 'payout_amount_thb', 'profit_usdt',
@@ -3192,10 +3142,6 @@
                     }
                 }
             });
-
-            // #region agent log
-            console.log('[DEBUG] Final data.client_name:', data.client_name);
-            // #endregion
 
             try {
                 // Проверяем режим редактирования
@@ -3265,10 +3211,6 @@
             const label = document.getElementById('newWalletLabel').value;
             const address = document.getElementById('newWalletAddress').value;
             const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
-
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:addWalletFormBalance.onsubmit', message: 'Adding wallet from balance tab', data: { label, address, initialBalance }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H2' }) }).catch(() => { });
-            // #endregion
 
             try {
                 // 1. Создаем кошелек (только для баланса)
@@ -3352,10 +3294,6 @@
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
                 const resData = await response.json();
-
-                // #region agent log
-                fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:deleteWalletFromBalance', message: 'Wallet delete response', data: { walletId, success: resData.success, error: resData.error }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H4' }) }).catch(() => { });
-                // #endregion
 
                 if (resData.success) {
                     currentActiveWalletId = null;
@@ -3515,9 +3453,6 @@
         };
 
         function openWithdrawModal() {
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:openWithdrawModal', message: 'Opening withdraw modal', data: { currentActiveWalletId }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H3' }) }).catch(() => { });
-            // #endregion
             if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
             document.getElementById('withdrawWalletId').value = currentActiveWalletId;
             document.getElementById('withdrawModal').classList.add('active');
@@ -3533,10 +3468,6 @@
                 amount: document.getElementById('withdrawAmount').value,
                 description: document.getElementById('withdrawDesc').value
             };
-
-            // #region agent log
-            fetch('http://127.0.0.1:7242/ingest/b22c41db-a601-4afa-88ea-35acbba1dc11', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'crm.html:withdrawForm.onsubmit', message: 'Submitting withdraw form', data: { walletId, data }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'H3' }) }).catch(() => { });
-            // #endregion
 
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}/operations`, {
@@ -5014,6 +4945,98 @@
                     calcNewBatchRate();
                 }
             }
+
+            // Предзаполнение формы сделки из калькулятора
+            const hash = window.location.hash;
+            if (hash.startsWith('#create?data=')) {
+                try {
+                    const jsonStr = decodeURIComponent(hash.replace('#create?data=', ''));
+                    const data = JSON.parse(jsonStr);
+                    console.log('📊 Предзаполнение из калькулятора:', data);
+
+                    // Переключаемся на таб создания сделки
+                    showSection('create');
+                    loadCreateForm().then(() => {
+                        prefillDealForm(data);
+                    });
+                } catch (e) {
+                    console.error('Ошибка парсинга данных из калькулятора:', e);
+                }
+            }
+        }
+
+        // Предзаполнение формы сделки данными из калькулятора
+        function prefillDealForm(data) {
+            const form = document.getElementById('createDealForm');
+            if (!form) return;
+
+            // Метод Pay-In
+            if (data.payin_method) {
+                const payinMethod = form.querySelector('[name="payin_method"]');
+                if (payinMethod) payinMethod.value = data.payin_method;
+            }
+
+            // Сумма RUB
+            if (data.payin_amount_rub) {
+                const rubInput = form.querySelector('[name="payin_amount_rub"]');
+                if (rubInput) rubInput.value = Math.round(data.payin_amount_rub);
+            }
+
+            // Сумма USDT
+            if (data.payin_amount_usdt) {
+                const usdtInput = form.querySelector('[name="payin_amount_usdt"]');
+                if (usdtInput) usdtInput.value = data.payin_amount_usdt.toFixed(2);
+            }
+
+            // Курс RUB/USDT
+            if (data.payin_rate_rub_usdt) {
+                const rateInput = form.querySelector('[name="payin_rate_rub_usdt"]');
+                if (rateInput) rateInput.value = data.payin_rate_rub_usdt.toFixed(2);
+            }
+
+            // Сумма THB (выдача)
+            if (data.payout_amount_thb) {
+                const thbInput = form.querySelector('[name="payout_amount_thb"]');
+                if (thbInput) thbInput.value = Math.round(data.payout_amount_thb);
+            }
+
+            // Прибыль USDT
+            if (data.profit_usdt) {
+                const profitInput = form.querySelector('[name="profit_usdt"]');
+                if (profitInput) profitInput.value = data.profit_usdt.toFixed(2);
+            }
+
+            // Прибыль %
+            if (data.profit_percent) {
+                const profitPctInput = form.querySelector('[name="profit_percent"]');
+                if (profitPctInput) profitPctInput.value = data.profit_percent.toFixed(1);
+            }
+
+            // Курс для клиента
+            if (data.exchange_rate) {
+                const exchInput = form.querySelector('[name="exchange_rate"]');
+                if (exchInput) exchInput.value = data.exchange_rate.toFixed(4);
+            }
+
+            // Заметки
+            if (data.notes) {
+                const notesInput = form.querySelector('[name="notes"]');
+                if (notesInput) notesInput.value = data.notes;
+            }
+
+            // Партнер
+            if (data.referrer_percent) {
+                const refInput = form.querySelector('[name="referrer_percent"]');
+                if (refInput) refInput.value = data.referrer_percent;
+            }
+
+            // Рассчитываем прибыль
+            setTimeout(() => calculateProfit(), 100);
+
+            // Убираем hash из URL чтобы не мешал при обновлении
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+
+            console.log('✅ Форма предзаполнена из калькулятора');
         }
 
         // Initial load

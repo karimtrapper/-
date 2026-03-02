@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Калькулятор обмена - Doverka & Broker</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=10">
+    <link rel="stylesheet" href="styles.css?v=11">
     <style>
         .top-nav {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -240,21 +240,30 @@
                     </div>
                 </div>
 
-                <!-- Кнопка создания платежа (только для Doverka) -->
-                <div id="paymentActionSection" style="display: none; margin-bottom: 20px;">
-                    <button class="calculate-btn" id="createPaymentBtn" onclick="createPayment()" style="background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%);">
-                        💳 СОЗДАТЬ ПЛАТЕЖ
-                    </button>
-                    <div id="paymentResult" style="margin-top: 15px; display: none;">
-                        <div class="info-note" style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; display: flex; align-items: flex-start; gap: 12px;">
-                            <div style="flex: 1;">
-                                <strong>✅ Ссылка на оплату создана:</strong><br>
-                                <a id="paymentLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
-                            </div>
-                            <button onclick="copyPaymentLink()" class="refresh-btn" style="background: #10B981; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
-                                📋 Копировать
-                            </button>
+                <!-- Кнопки действий -->
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px;">
+                    <!-- Кнопка создания платежа (только для Doverka) -->
+                    <div id="paymentActionSection" style="display: none; flex: 1; min-width: 200px;">
+                        <button class="calculate-btn" id="createPaymentBtn" onclick="createPayment()" style="background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%); width: 100%;">
+                            💳 СОЗДАТЬ ПЛАТЕЖ
+                        </button>
+                    </div>
+                    <!-- Кнопка создания сделки в CRM (всегда видна после расчёта) -->
+                    <div id="createDealSection" style="flex: 1; min-width: 200px;">
+                        <button class="calculate-btn" id="createDealBtn" onclick="createDealFromCalc()" style="background: linear-gradient(135deg, #10B981 0%, #059669 100%); width: 100%;">
+                            📊 СОЗДАТЬ СДЕЛКУ В CRM
+                        </button>
+                    </div>
+                </div>
+                <div id="paymentResult" style="margin-bottom: 20px; display: none;">
+                    <div class="info-note" style="background: #F0FDF4; border: 1px solid #BBF7D0; color: #166534; display: flex; align-items: flex-start; gap: 12px;">
+                        <div style="flex: 1;">
+                            <strong>✅ Ссылка на оплату создана:</strong><br>
+                            <a id="paymentLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
                         </div>
+                        <button onclick="copyPaymentLink()" class="refresh-btn" style="background: #10B981; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
+                            📋 Копировать
+                        </button>
                     </div>
                 </div>
 
@@ -292,13 +301,12 @@
         </footer>
     </div>
 
-    <script src="calculator.js?v=20"></script>
+    <script src="calculator.js?v=21"></script>
     <script>
         // Диагностика загрузки
         console.log('🔍 Проверка функций:');
         console.log('switchMethod:', typeof switchMethod);
         console.log('switchScenario:', typeof switchScenario);
-        console.log('setCommissionLevel:', typeof setCommissionLevel);
         console.log('updateCustomRate:', typeof updateCustomRate);
         
         // Тест кнопок при загрузке

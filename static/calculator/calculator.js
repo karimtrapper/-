@@ -52,7 +52,10 @@ let state = {
     infoOpen: false,
     applyDiscount: false,
     lastResult: null, // Храним последний результат для создания платежа
-    lastUpdateTimestamp: 0 // Время последнего обновления курсов
+    lastUpdateTimestamp: 0, // Время последнего обновления курсов
+    preciseRateTimestamp: 0, // Когда получен точный курс Binance
+    preciseRateLocked: false, // Точный курс зафиксирован (не обновлять 5 мин)
+    preciseRateTimer: null // ID таймера обратного отсчёта
 };
 
 // Инициализация
@@ -147,9 +150,7 @@ function updateScenarioUI() {
                 currency: '฿',
                 placeholder: '1000000',
                 result: 'Клиент должен внести:',
-                resultCurrency: '₽',
-                rateCurrency: '₽/฿',
-                quickAmounts: [100000, 500000, 1000000, 2000000]
+                rateCurrency: '₽/฿'
             };
         } else {
             // Вношу конкретную сумму RUB
@@ -158,9 +159,7 @@ function updateScenarioUI() {
                 currency: '₽',
                 placeholder: '2741',
                 result: 'Клиент получит:',
-                resultCurrency: '฿',
-                rateCurrency: '₽/฿',
-                quickAmounts: [1000, 5000, 10000, 50000]
+                rateCurrency: '₽/฿'
             };
         }
     } else if (state.scenario === 'thb-to-usdt') {
@@ -171,9 +170,7 @@ function updateScenarioUI() {
                 currency: 'USDT',
                 placeholder: '13050',
                 result: 'Клиент должен внести:',
-                resultCurrency: '฿',
-                rateCurrency: '฿/USDT',
-                quickAmounts: [1000, 5000, 13000, 30000]
+                rateCurrency: '฿/USDT'
             };
         } else {
             // Вношу конкретную сумму THB
@@ -182,9 +179,7 @@ function updateScenarioUI() {
                 currency: '฿',
                 placeholder: '400000',
                 result: 'Клиент получит:',
-                resultCurrency: 'USDT',
-                rateCurrency: '฿/USDT',
-                quickAmounts: [100000, 400000, 1000000, 2000000]
+                rateCurrency: '฿/USDT'
             };
         }
     } else if (state.scenario === 'usdt-to-thb') {
@@ -195,9 +190,7 @@ function updateScenarioUI() {
                 currency: '฿',
                 placeholder: '400000',
                 result: 'Клиент должен внести:',
-                resultCurrency: 'USDT',
-                rateCurrency: '฿/USDT',
-                quickAmounts: [100000, 400000, 1000000, 2000000]
+                rateCurrency: '฿/USDT'
             };
         } else {
             // Вношу конкретную сумму USDT
@@ -206,9 +199,7 @@ function updateScenarioUI() {
                 currency: 'USDT',
                 placeholder: '13050',
                 result: 'Клиент получит:',
-                resultCurrency: '฿',
-                rateCurrency: '฿/USDT',
-                quickAmounts: [1000, 5000, 13000, 30000]
+                rateCurrency: '฿/USDT'
             };
         }
     } else if (state.scenario === 'rub-to-usdt') {
@@ -219,9 +210,7 @@ function updateScenarioUI() {
                 currency: 'USDT',
                 placeholder: '10000',
                 result: 'Клиент должен внести:',
-                resultCurrency: '₽',
-                rateCurrency: '₽/USDT',
-                quickAmounts: [1000, 5000, 10000, 20000]
+                rateCurrency: '₽/USDT'
             };
         } else {
             // Вношу конкретную сумму RUB
@@ -230,9 +219,7 @@ function updateScenarioUI() {
                 currency: '₽',
                 placeholder: '1000000',
                 result: 'Клиент получит:',
-                resultCurrency: 'USDT',
-                rateCurrency: '₽/USDT',
-                quickAmounts: [100000, 500000, 1000000, 5000000]
+                rateCurrency: '₽/USDT'
             };
         }
     } else if (state.scenario === 'thb-to-rub') {
@@ -242,9 +229,7 @@ function updateScenarioUI() {
             currency: '฿',
             placeholder: '148001',
             result: 'Клиент должен внести:',
-            resultCurrency: '₽',
-            rateCurrency: '₽/฿',
-            quickAmounts: [10000, 100000, 500000, 1000000]
+            rateCurrency: '₽/฿'
         };
     } else {
         // Doverka: RUB → THB (клиент вносит сумму в рублях)
@@ -253,9 +238,7 @@ function updateScenarioUI() {
             currency: '₽',
             placeholder: '100000',
             result: 'Клиент получит:',
-            resultCurrency: '฿',
-            rateCurrency: '₽/฿',
-            quickAmounts: [10000, 100000, 500000, 1000000]
+            rateCurrency: '₽/฿'
         };
     }
     
@@ -329,12 +312,6 @@ function setProfitMargin(profit) {
     }
 }
 
-// Установка уровня комиссий (старая функция для совместимости, если где-то осталась)
-function setCommissionLevel(level) {
-    const marginMap = { 'high': 5.0, 'medium': 4.0, 'low': 3.0 };
-    setProfitMargin(marginMap[level] || 4.0);
-}
-
 // Установка direction (целевая/вносимая)
 function setDirection(direction) {
     state.direction = direction;
@@ -350,9 +327,15 @@ function setDirection(direction) {
 
 // Получение курсов
 async function refreshRates() {
+    // Если точный курс зафиксирован — не обновлять автоматически
+    if (state.preciseRateLocked) {
+        console.log('🔒 Точный курс зафиксирован, пропускаем обновление');
+        return;
+    }
+
     const refreshBtn = document.getElementById('refreshBtn');
     refreshBtn.classList.add('loading');
-    
+
     try {
         if (CONFIG.USE_API) {
             const response = await fetch(`${CONFIG.API_URL}/rates`);
@@ -370,10 +353,10 @@ async function refreshRates() {
                 rub_usdt: CONFIG.FALLBACK_RATES.rub_usdt + (Math.random() - 0.5) * 0.5
             };
         }
-        
+
         updateRatesDisplay();
         hideResults();
-        
+
     } catch (error) {
         console.error('Error fetching rates:', error);
         state.rates = CONFIG.FALLBACK_RATES;
@@ -481,13 +464,6 @@ function formatInput(input) {
     input.value = value;
 }
 
-// Установка быстрой суммы
-function setAmount(amount) {
-    const input = document.getElementById('amount');
-    input.value = amount.toLocaleString('ru-RU');
-    hideResults();
-}
-
 // Получение числового значения
 function getAmount() {
     const input = document.getElementById('amount');
@@ -511,11 +487,14 @@ async function calculate() {
 
     try {
         // Если курсы устарели (более 1 минуты), обновляем их принудительно перед расчетом
-        const timeSinceUpdate = Date.now() - state.lastUpdateTimestamp;
-        if (timeSinceUpdate > 60000) {
-            console.log('🔄 Курсы устарели, обновляю перед расчетом...');
-            calculateBtn.innerHTML = '⏳ ОБНОВЛЕНИЕ КУРСОВ...';
-            await refreshRates();
+        // Но НЕ обновляем, если точный курс зафиксирован
+        if (!state.preciseRateLocked) {
+            const timeSinceUpdate = Date.now() - state.lastUpdateTimestamp;
+            if (timeSinceUpdate > 60000) {
+                console.log('🔄 Курсы устарели, обновляю перед расчетом...');
+                calculateBtn.innerHTML = '⏳ ОБНОВЛЕНИЕ КУРСОВ...';
+                await refreshRates();
+            }
         }
         
         // Проверка наличия курсов перед расчетом
@@ -711,6 +690,9 @@ async function getPreciseRate() {
             preciseRateTime.style.color = '#ff4444';
         }
 
+        // Фиксируем точный курс на 5 минут
+        lockPreciseRate();
+
         // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
         await calculate();
 
@@ -880,6 +862,10 @@ function displayResult(result) {
     } else {
         paymentSection.style.display = 'none';
     }
+
+    // Кнопка "Создать сделку в CRM" — всегда видна после расчёта
+    const dealSection = document.getElementById('createDealSection');
+    if (dealSection) dealSection.style.display = 'block';
 
     // Определяем что показывать (ПОРЯДОК ВАЖЕН!)
     let resultValue = '';
@@ -1262,5 +1248,127 @@ function copyPaymentLink() {
         document.body.removeChild(input);
         alert('Ссылка скопирована!');
     });
+}
+
+// === Фиксация точного курса на 5 минут ===
+const PRECISE_RATE_LOCK_MS = 5 * 60 * 1000; // 5 минут
+
+function lockPreciseRate() {
+    state.preciseRateLocked = true;
+    state.preciseRateTimestamp = Date.now();
+
+    // Очищаем предыдущий таймер если был
+    if (state.preciseRateTimer) {
+        clearInterval(state.preciseRateTimer);
+    }
+
+    // Показываем индикатор фиксации
+    showPreciseRateLockIndicator();
+
+    // Обратный отсчёт каждую секунду
+    state.preciseRateTimer = setInterval(() => {
+        const elapsed = Date.now() - state.preciseRateTimestamp;
+        const remaining = PRECISE_RATE_LOCK_MS - elapsed;
+
+        if (remaining <= 0) {
+            unlockPreciseRate();
+        } else {
+            updatePreciseRateCountdown(remaining);
+        }
+    }, 1000);
+}
+
+function unlockPreciseRate() {
+    state.preciseRateLocked = false;
+    state.preciseRateTimestamp = 0;
+
+    if (state.preciseRateTimer) {
+        clearInterval(state.preciseRateTimer);
+        state.preciseRateTimer = null;
+    }
+
+    // Убираем индикатор
+    hidePreciseRateLockIndicator();
+
+    // Сбрасываем подсветку точного курса
+    const usdtThbRateEl = document.getElementById('usdtThbRate');
+    usdtThbRateEl.style.color = '';
+    usdtThbRateEl.style.fontWeight = '';
+
+    const preciseRateTime = document.getElementById('preciseRateTime');
+    if (preciseRateTime) preciseRateTime.style.display = 'none';
+
+    // Обновляем курсы
+    console.log('🔓 Точный курс разблокирован, обновляю курсы...');
+    refreshRates();
+}
+
+function showPreciseRateLockIndicator() {
+    let indicator = document.getElementById('preciseRateLockIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'preciseRateLockIndicator';
+        indicator.style.cssText = 'background: linear-gradient(135deg, #fef3c7, #fde68a); border: 1px solid #f59e0b; border-radius: 8px; padding: 8px 16px; margin-top: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 0.9rem; color: #92400e;';
+        const ratesCard = document.getElementById('ratesCard');
+        ratesCard.appendChild(indicator);
+    }
+    indicator.style.display = 'flex';
+    updatePreciseRateCountdown(PRECISE_RATE_LOCK_MS);
+}
+
+function hidePreciseRateLockIndicator() {
+    const indicator = document.getElementById('preciseRateLockIndicator');
+    if (indicator) indicator.style.display = 'none';
+}
+
+function updatePreciseRateCountdown(remainingMs) {
+    const indicator = document.getElementById('preciseRateLockIndicator');
+    if (!indicator) return;
+
+    const minutes = Math.floor(remainingMs / 60000);
+    const seconds = Math.floor((remainingMs % 60000) / 1000);
+    const timeStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+    indicator.innerHTML = `
+        <span>🔒 Точный курс зафиксирован <strong>(${timeStr})</strong></span>
+        <button onclick="unlockPreciseRate()" style="background: #f59e0b; color: white; border: none; border-radius: 6px; padding: 4px 12px; cursor: pointer; font-size: 0.85rem; font-weight: 600;">Разблокировать</button>
+    `;
+}
+
+// === Кнопка "Создать сделку в CRM" ===
+function createDealFromCalc() {
+    if (!state.lastResult) {
+        alert('Сначала выполните расчёт');
+        return;
+    }
+
+    const r = state.lastResult;
+    const comment = document.getElementById('paymentComment')?.value?.trim() || '';
+
+    // Маппинг данных калькулятора → поля CRM
+    const dealData = {
+        payin_amount_rub: r.rub_paid || r.rub_to_pay || null,
+        payin_amount_usdt: r.usdt_amount || null,
+        payin_rate_rub_usdt: r.rub_usdt_rate || null,
+        payout_amount_thb: r.thb_received || r.thb_target || null,
+        profit_usdt: r.profit_usdt || null,
+        profit_percent: r.profit_percent_actual || r.profit_percent || null,
+        exchange_rate: r.final_rate || null,
+        payin_method: state.method === 'doverka' ? 'spp_doverka' : 'crypto_direct',
+        notes: comment,
+        scenario: r.scenario || '',
+        method: state.method
+    };
+
+    // Партнер
+    const hasPartner = document.getElementById('hasPartner')?.checked;
+    if (hasPartner) {
+        const partnerPercent = parseFloat(document.getElementById('partnerPercent')?.value) || 0;
+        dealData.referrer_percent = partnerPercent;
+    }
+
+    // Открываем CRM с данными в URL
+    const encoded = encodeURIComponent(JSON.stringify(dealData));
+    window.open(`/crm#create?data=${encoded}`, '_blank');
 }
 
