@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CRM - Учет сделок</title>
+    <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -812,7 +813,8 @@
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
-                                <input type="number" class="form-control" name="payin_amount_rub" placeholder="100000">
+                                <input type="number" class="form-control" name="payin_amount_rub" placeholder="100000"
+                                    oninput="autoCalcUsdt()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма USDT</label>
@@ -839,7 +841,7 @@
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
                                 <input type="number" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5"
-                                    step="0.01">
+                                    step="0.01" oninput="autoCalcUsdt()">
                             </div>
                         </div>
 
@@ -3004,6 +3006,17 @@
                 console.error('Error creating custom deal:', error);
                 alert('Ошибка при создании сделки');
             }
+        }
+
+        // Авто-расчёт USDT из RUB и курса
+        function autoCalcUsdt() {
+            const form = document.getElementById('createDealForm');
+            const rub = parseFloat(form.payin_amount_rub.value) || 0;
+            const rate = parseFloat(form.payin_rate_rub_usdt.value) || 0;
+            if (rub > 0 && rate > 0) {
+                form.payin_amount_usdt.value = (rub / rate).toFixed(2);
+            }
+            calculateProfit();
         }
 
         function calculateProfit() {
