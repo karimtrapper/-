@@ -676,24 +676,34 @@ class ExchangeCalculator:
         }
 
     def rub_to_usdt_target(self, usdt_target: float, custom_profit_margin: float = None) -> dict:
-        """Операция 7: RUB → USDT (target)"""
-        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
-        rub_comm = target_profit / 100.0
-        bonus = 0.024
-        
-        withdrawal_commission = 1
+        """Операция 7: RUB → USDT (target) — хочу получить N USDT, сколько рублей заплатить"""
+        # Тиры по сумме: оцениваем примерную сумму RUB для определения тира
+        estimated_rub = usdt_target * self.rub_usdt_rate * 1.05
+        _, default_comm = CommissionCalculator.get_level(estimated_rub)
+        target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
+        bonus = default_comm['bonus_percent']  # 0.024
+
+        # Комиссия с учётом бонуса: если target_profit=5% и bonus=2.4%, то rub_comm=2.6%
+        rub_comm = (target_profit - bonus * 100) / 100.0
+
+        withdrawal_commission = 1  # 1 USDT
         usdt_before_commission = usdt_target + withdrawal_commission
-        
+
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
-        
+
         final_rate = excel_round(rub_amount / usdt_target, 6)
-        
-        bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
-        incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
-        outgoing_usdt = usdt_before_commission
+
+        # Прибыль: USDT по рыночному курсу + бонус - выплата клиенту
+        usdt_at_market = rub_amount / self.rub_usdt_rate
+        bonus_usdt = excel_round(usdt_at_market * bonus, 2)
+        incoming_usdt = excel_round(usdt_at_market + bonus_usdt, 2)
+        outgoing_usdt = excel_round(usdt_before_commission, 2)
         profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
-        
+        profit_percent = excel_round((profit_usdt / outgoing_usdt) * 100, 2) if outgoing_usdt > 0 else 0
+
+        level_name = f"Индивидуальный ({target_profit}%)" if custom_profit_margin is not None else "Стандартный"
+
         return {
             'scenario': 'RUB → USDT',
             'direction': 'target',
@@ -710,29 +720,39 @@ class ExchangeCalculator:
             'incoming_usdt': incoming_usdt,
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
-            'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'profit_percent_actual': profit_percent,
+            'commission_level': f"Doverka ({target_profit}%)",
+            'level_name': level_name
         }
 
     def rub_to_usdt_amount(self, rub_amount: float, custom_profit_margin: float = None) -> dict:
-        """Операция 8: RUB → USDT (amount)"""
-        target_profit = custom_profit_margin if custom_profit_margin is not None else 3.0
-        rub_comm = target_profit / 100.0
-        bonus = 0.024
-        
+        """Операция 8: RUB → USDT (amount) — вношу N рублей, сколько USDT получу"""
+        # Тиры по сумме рублей
+        _, default_comm = CommissionCalculator.get_level(rub_amount)
+        target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
+        bonus = default_comm['bonus_percent']  # 0.024
+
+        # Комиссия с учётом бонуса
+        rub_comm = (target_profit - bonus * 100) / 100.0
+
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         usdt_before_commission = rub_amount / rub_usdt_rate_sell
-        
-        withdrawal_commission = 1
+
+        withdrawal_commission = 1  # 1 USDT
         usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
-        
+
         final_rate = excel_round(rub_amount / usdt_received, 6)
-        
-        bonus_usdt = excel_round(usdt_before_commission * bonus, 2)
-        incoming_usdt = excel_round(usdt_before_commission + bonus_usdt, 2)
-        outgoing_usdt = usdt_before_commission
+
+        # Прибыль: USDT по рыночному курсу + бонус - выплата клиенту
+        usdt_at_market = rub_amount / self.rub_usdt_rate
+        bonus_usdt = excel_round(usdt_at_market * bonus, 2)
+        incoming_usdt = excel_round(usdt_at_market + bonus_usdt, 2)
+        outgoing_usdt = excel_round(usdt_before_commission, 2)
         profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
-        
+        profit_percent = excel_round((profit_usdt / outgoing_usdt) * 100, 2) if outgoing_usdt > 0 else 0
+
+        level_name = f"Индивидуальный ({target_profit}%)" if custom_profit_margin is not None else "Стандартный"
+
         return {
             'scenario': 'RUB → USDT',
             'direction': 'amount',
@@ -749,7 +769,8 @@ class ExchangeCalculator:
             'incoming_usdt': incoming_usdt,
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
-            'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'profit_percent_actual': profit_percent,
+            'commission_level': f"Doverka ({target_profit}%)",
+            'level_name': level_name
         }
 

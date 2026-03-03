@@ -240,6 +240,15 @@ function updateScenarioUI() {
                 rateCurrency: '₽/USDT'
             };
         }
+    } else if (state.scenario === 'usdt-from-rub') {
+        // Doverka: USDT ← RUB (клиент хочет получить конкретную сумму USDT)
+        config = {
+            input: 'Введите желаемую сумму в USDT',
+            currency: 'USDT',
+            placeholder: '1000',
+            result: 'Клиент должен внести:',
+            rateCurrency: '₽/USDT'
+        };
     } else if (state.scenario === 'thb-to-rub') {
         // Doverka: THB ← RUB (клиент хочет получить конкретную сумму THB)
         config = {
@@ -269,6 +278,13 @@ function updateScenarioUI() {
     // Очищаем поле ввода
     document.getElementById('amount').value = '';
     document.getElementById('resultsSection').style.display = 'none';
+
+    // Скрываем кнопку точного курса для RUB→USDT (Playwright не парсит RUB-USDT)
+    const preciseBtn = document.getElementById('preciseRateBtn');
+    if (preciseBtn) {
+        const hidePrecise = state.scenario === 'rub-to-usdt' || state.scenario === 'usdt-from-rub';
+        preciseBtn.style.display = hidePrecise ? 'none' : '';
+    }
 }
 
 // Переключение скидки
@@ -286,7 +302,9 @@ function toggleDiscount() {
             // Определяем базу для расчета (рубли)
             let baseAmount = amount;
             if (state.scenario === 'thb-to-rub' || state.scenario === 'usdt-to-thb' && state.direction === 'target') {
-                baseAmount = amount * 2.8; // Примерный эквивалент для оценки порога
+                baseAmount = amount * 2.8; // Примерный эквивалент THB → RUB
+            } else if (state.scenario === 'usdt-from-rub' || (state.scenario === 'rub-to-usdt' && state.direction === 'target')) {
+                baseAmount = amount * (state.rates.rub_usdt || 82); // USDT → RUB для оценки порога
             }
             
             if (baseAmount < 500000) defaultProfit = 5.0;
@@ -606,6 +624,9 @@ async function calculate() {
             if (state.scenario === 'thb-to-rub') {
                 effectiveScenario = 'rub-to-thb';
                 effectiveDirection = 'target';
+            } else if (state.scenario === 'usdt-from-rub') {
+                effectiveScenario = 'rub-to-usdt';
+                effectiveDirection = 'target';
             }
 
             const requestData = {
@@ -690,6 +711,9 @@ async function getPreciseRate() {
         let preciseDirection = state.direction;
         if (state.scenario === 'thb-to-rub') {
             preciseScenario = 'rub-to-thb';
+            preciseDirection = 'target';
+        } else if (state.scenario === 'usdt-from-rub') {
+            preciseScenario = 'rub-to-usdt';
             preciseDirection = 'target';
         }
 
