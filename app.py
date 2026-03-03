@@ -709,8 +709,9 @@ def get_precise_rate():
         direction = data.get('direction', 'amount')  # 'amount' (вношу) или 'target' (хочу получить)
         method = data.get('method', 'doverka')
         rub_usdt_raw = data.get('rub_usdt')
-        rub_usdt = float(rub_usdt_raw) if rub_usdt_raw is not None else 82.0
-        profit_margin = float(data.get('profit_margin', 5.0))
+        rub_usdt = float(rub_usdt_raw) if rub_usdt_raw not in (None, '', 0) else 82.0
+        pm_raw = data.get('profit_margin')
+        profit_margin = float(pm_raw) if pm_raw not in (None, '') else 5.0
 
         if amount <= 0:
             return jsonify({'success': False, 'error': 'Invalid amount'}), 400
@@ -838,8 +839,9 @@ def calculate():
         if method == 'broker':
             from broker_detailed import BrokerCalculatorDetailed
             custom_rub_usdt_raw = data.get('custom_rub_usdt')
-            custom_rub_usdt = float(custom_rub_usdt_raw) if custom_rub_usdt_raw is not None else 80.9
-            profit_margin = float(data.get('profit_margin', 4.0))
+            custom_rub_usdt = float(custom_rub_usdt_raw) if custom_rub_usdt_raw not in (None, '', 0) else 80.9
+            pm_raw = data.get('profit_margin')
+            profit_margin = float(pm_raw) if pm_raw not in (None, '') else 4.0
             broker_calc = BrokerCalculatorDetailed(rates['usdt_thb'], custom_rub_usdt, profit_margin)
             
             if scenario == 'rub-to-thb':
