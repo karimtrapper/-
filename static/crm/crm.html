@@ -61,7 +61,7 @@ body {
 .top-nav {
     background: var(--navy-800);
     padding: 10px 16px;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
+    display: flex; align-items: center; justify-content: flex-start; gap: 8px;
     position: sticky; top: 0; z-index: 100;
     border-bottom: 1px solid var(--navy-700);
 }
@@ -73,6 +73,22 @@ body {
 .top-nav a:hover { background: rgba(255,255,255,0.08); color: white; }
 .top-nav a.active {
     background: var(--coral); color: white;
+}
+.top-nav .instruction-btn {
+    background: rgba(139, 92, 246, 0.2);
+    color: #C4B5FD;
+    border: 1px solid rgba(139, 92, 246, 0.4);
+    padding: 8px 18px;
+    border-radius: var(--r-sm);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+.top-nav .instruction-btn:hover {
+    background: rgba(139, 92, 246, 0.35);
+    color: white;
+    border-color: #8B5CF6;
 }
 .top-nav .logout-btn {
     margin-left: auto; font-size: 13px;
@@ -541,6 +557,7 @@ select.form-control { cursor: pointer; }
     <nav class="top-nav">
         <a href="/">🧮 Калькулятор</a>
         <a href="/crm" class="active">📊 CRM</a>
+        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">📋 Инструкция</a>
         <button class="logout-btn" onclick="logout()">Выйти</button>
     </nav>
 

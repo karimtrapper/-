@@ -2524,6 +2524,11 @@ def health_check():
 
 # ==================== STATIC FILES ====================
 
+@app.route('/docs/<path:filename>')
+def docs_static(filename):
+    """Статические документы (инструкции)"""
+    return send_from_directory('static/docs', filename)
+
 @app.route('/calculator/<path:filename>')
 def calculator_static(filename):
     return send_from_directory('static/calculator', filename)

@@ -13,7 +13,7 @@
             padding: 10px 16px;
             display: flex;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
             gap: 8px;
             position: sticky;
             top: 0;
@@ -37,6 +37,23 @@
             background: #F97316;
             color: white;
         }
+        .top-nav .instruction-btn {
+            margin-left: auto;
+            background: rgba(139, 92, 246, 0.2);
+            color: #C4B5FD;
+            border: 1px solid rgba(139, 92, 246, 0.4);
+            padding: 8px 18px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .top-nav .instruction-btn:hover {
+            background: rgba(139, 92, 246, 0.35);
+            color: white;
+            border-color: #8B5CF6;
+        }
     </style>
 </head>
 <body>
@@ -44,6 +61,7 @@
     <nav class="top-nav">
         <a href="/" class="active">🧮 Калькулятор</a>
         <a href="/crm">📊 CRM</a>
+        <a href="/docs/instruction.html" class="instruction-btn" target="_blank">📋 Инструкция</a>
     </nav>
 
     <div class="container">

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Калькулятор Grusha — Инструкция для менеджеров</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #f5f5f5;
+            color: #1a1a2e;
+            line-height: 1.6;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.08);
+        }
+        h1 {
+            font-size: 28px;
+            color: #1E293B;
+            margin-bottom: 8px;
+            text-align: center;
+        }
+        .subtitle {
+            text-align: center;
+            color: #64748B;
+            font-size: 14px;
+            margin-bottom: 32px;
+        }
+        .subtitle a { color: #3B82F6; text-decoration: none; }
+        h2 {
+            font-size: 20px;
+            color: #1E293B;
+            margin-top: 36px;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #F1F5F9;
+        }
+        h3 {
+            font-size: 16px;
+            color: #334155;
+            margin-top: 24px;
+            margin-bottom: 12px;
+        }
+        p { margin-bottom: 12px; }
+        .scenario-box {
+            background: #F8FAFC;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 20px;
+            margin: 16px 0;
+        }
+        .scenario-title {
+            font-weight: 700;
+            font-size: 16px;
+            color: #1E293B;
+            margin-bottom: 8px;
+        }
+        .client-says {
+            background: #EFF6FF;
+            border-left: 4px solid #3B82F6;
+            padding: 10px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 8px 0 12px 0;
+            font-style: italic;
+            color: #1E40AF;
+        }
+        .steps {
+            list-style: none;
+            counter-reset: step;
+        }
+        .steps li {
+            counter-increment: step;
+            padding: 6px 0 6px 36px;
+            position: relative;
+        }
+        .steps li::before {
+            content: counter(step);
+            position: absolute;
+            left: 0;
+            top: 6px;
+            width: 24px;
+            height: 24px;
+            background: #F97316;
+            color: white;
+            border-radius: 50%;
+            font-size: 13px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            line-height: 24px;
+        }
+        .result-box {
+            background: #1E293B;
+            color: white;
+            padding: 16px 20px;
+            border-radius: 10px;
+            margin: 12px 0;
+            text-align: center;
+        }
+        .result-box .label { color: #94A3B8; font-size: 13px; }
+        .result-box .value { font-size: 24px; font-weight: 700; margin: 4px 0; }
+        .result-box .rate { color: #94A3B8; font-size: 13px; }
+        .warning {
+            background: #FFF7ED;
+            border-left: 4px solid #F97316;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 12px 0;
+        }
+        .warning strong { color: #C2410C; }
+        .tip {
+            background: #F0FDF4;
+            border-left: 4px solid #22C55E;
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin: 12px 0;
+        }
+        .tip strong { color: #15803D; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+        }
+        th, td {
+            padding: 10px 14px;
+            text-align: left;
+            border-bottom: 1px solid #E2E8F0;
+        }
+        th {
+            background: #F8FAFC;
+            font-weight: 600;
+            color: #475569;
+            font-size: 13px;
+            text-transform: uppercase;
+        }
+        td { color: #334155; }
+        .percent-table td:first-child { font-weight: 600; }
+        .screenshot {
+            margin: 16px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #E2E8F0;
+        }
+        .screenshot img {
+            width: 100%;
+            display: block;
+        }
+        .screenshot-caption {
+            background: #F8FAFC;
+            padding: 8px 12px;
+            font-size: 13px;
+            color: #64748B;
+            text-align: center;
+        }
+        .faq-item {
+            margin: 12px 0;
+            padding: 12px 16px;
+            background: #F8FAFC;
+            border-radius: 8px;
+        }
+        .faq-q { font-weight: 600; color: #1E293B; margin-bottom: 4px; }
+        .faq-a { color: #475569; }
+        .quick-ref {
+            background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+            color: white;
+            padding: 24px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+        .quick-ref h3 { color: #F97316; margin-top: 0; }
+        .quick-ref table { margin: 0; }
+        .quick-ref th { background: rgba(255,255,255,0.1); color: #CBD5E1; border-bottom-color: rgba(255,255,255,0.1); }
+        .quick-ref td { color: white; border-bottom-color: rgba(255,255,255,0.1); }
+        @media print {
+            body { padding: 0; background: white; }
+            .container { box-shadow: none; padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+
+        <h1>Калькулятор Grusha</h1>
+        <p class="subtitle">Инструкция для менеджеров &bull; <a href="https://proud-renewal-production-e9b8.up.railway.app">Открыть калькулятор</a></p>
+
+        <!-- ===== ЧТО ТАКОЕ ===== -->
+        <h2>Что такое калькулятор</h2>
+        <p>Калькулятор автоматически считает курс для клиента. Ты вводишь сумму — он выдаёт, сколько клиент получит или сколько заплатит. Всё с учётом всех комиссий.</p>
+        <p>Курсы обновляются автоматически с Binance и Doverka.</p>
+
+        <div class="screenshot">
+            <img src="screenshots/01-main-doverka.png" alt="Главный экран калькулятора">
+            <div class="screenshot-caption">Главный экран — режим Doverka, 4 сценария</div>
+        </div>
+
+        <!-- ===== РЕЖИМЫ ===== -->
+        <h2>Когда какой режим использовать</h2>
+        <p>Вверху калькулятора две кнопки:</p>
+        <table>
+            <tr>
+                <th>Режим</th>
+                <th>Когда использовать</th>
+            </tr>
+            <tr>
+                <td><strong>Doverka (SBP)</strong></td>
+                <td>Клиент платит <strong>рублями через СБП</strong>. Курс RUB-USDT берётся автоматически.</td>
+            </tr>
+            <tr>
+                <td><strong>Брокер</strong></td>
+                <td>Клиент отдаёт <strong>USDT напрямую</strong>, или ты сам задаёшь курс RUB-USDT от брокера.</td>
+            </tr>
+        </table>
+
+        <!-- ===== ШПАРГАЛКА ===== -->
+        <div class="quick-ref">
+            <h3>Шпаргалка — быстрый выбор сценария</h3>
+            <table>
+                <tr>
+                    <th>Клиент хочет</th>
+                    <th>Нажимаешь</th>
+                </tr>
+                <tr>
+                    <td>Отдать рубли &rarr; получить баты</td>
+                    <td><strong>RUB &rarr; THB</strong></td>
+                </tr>
+                <tr>
+                    <td>Получить N бат &rarr; узнать цену в рублях</td>
+                    <td><strong>THB &larr; RUB</strong></td>
+                </tr>
+                <tr>
+                    <td>Отдать рубли &rarr; получить USDT</td>
+                    <td><strong>RUB &rarr; USDT</strong></td>
+                </tr>
+                <tr>
+                    <td>Получить N USDT &rarr; узнать цену в рублях</td>
+                    <td><strong>USDT &larr; RUB</strong></td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- ===== СЦЕНАРИИ DOVERKA ===== -->
+        <h2>Режим Doverka — сценарии</h2>
+
+        <!-- Сценарий 1 -->
+        <div class="scenario-box">
+            <div class="scenario-title">Сценарий 1: RUB &rarr; THB</div>
+            <div class="client-says">Клиент: &laquo;У меня 100,000 рублей, сколько бат я получу?&raquo;</div>
+            <ol class="steps">
+                <li>Убедись что выбран режим <strong>Doverka (SBP)</strong></li>
+                <li>Нажми кнопку <strong>RUB &rarr; THB</strong></li>
+                <li>Введи сумму в рублях: <strong>100000</strong></li>
+                <li>Нажми <strong>РАССЧИТАТЬ</strong></li>
+                <li>Нажми <strong>&laquo;Узнать точный курс Binance&raquo;</strong> &mdash; подожди ~10 секунд</li>
+            </ol>
+            <div class="result-box">
+                <div class="label">Клиент получит:</div>
+                <div class="value">37 327 &#3647;</div>
+                <div class="rate">Курс: 2.679 &#8381;/&#3647;</div>
+            </div>
+        </div>
+
+        <div class="screenshot">
+            <img src="screenshots/02-doverka-rub-thb-result.png" alt="RUB → THB результат">
+            <div class="screenshot-caption">RUB &rarr; THB: ввод суммы и результат</div>
+        </div>
+
+        <!-- Сценарий 2 -->
+        <div class="scenario-box">
+            <div class="scenario-title">Сценарий 2: THB &larr; RUB</div>
+            <div class="client-says">Клиент: &laquo;Мне нужно 50,000 бат, сколько рублей заплатить?&raquo;</div>
+            <ol class="steps">
+                <li>Режим <strong>Doverka (SBP)</strong></li>
+                <li>Нажми кнопку <strong>THB &larr; RUB</strong></li>
+                <li>Введи сумму в <strong>батах</strong>: <strong>50000</strong></li>
+                <li>Нажми <strong>РАССЧИТАТЬ</strong></li>
+                <li>Нажми <strong>&laquo;Узнать точный курс Binance&raquo;</strong> &mdash; подожди ~10 секунд</li>
+            </ol>
+            <div class="result-box">
+                <div class="label">Клиент должен внести:</div>
+                <div class="value">133 932 &#8381;</div>
+                <div class="rate">Курс: 2.679 &#8381;/&#3647;</div>
+            </div>
+        </div>
+
+        <div class="screenshot">
+            <img src="screenshots/06-doverka-thb-from-rub-result.png" alt="THB ← RUB результат">
+            <div class="screenshot-caption">THB &larr; RUB: клиент хочет 50,000 бат &mdash; калькулятор считает сколько рублей</div>
+        </div>
+
+        <!-- Сценарий 3 -->
+        <div class="scenario-box">
+            <div class="scenario-title">Сценарий 3: RUB &rarr; USDT</div>
+            <div class="client-says">Клиент: &laquo;У меня 100,000 рублей, сколько USDT я получу?&raquo;</div>
+            <ol class="steps">
+                <li>Режим <strong>Doverka (SBP)</strong></li>
+                <li>Нажми кнопку <strong>RUB &rarr; USDT</strong></li>
+                <li>Введи сумму в рублях: <strong>100000</strong></li>
+                <li>Нажми <strong>РАССЧИТАТЬ</strong></li>
+            </ol>
+            <div class="result-box">
+                <div class="label">Клиент получит:</div>
+                <div class="value">1 187.23 USDT</div>
+                <div class="rate">Курс: 84.23 &#8381;/USDT</div>
+            </div>
+        </div>
+
+        <div class="screenshot">
+            <img src="screenshots/07-doverka-rub-usdt-result.png" alt="RUB → USDT результат">
+            <div class="screenshot-caption">RUB &rarr; USDT: клиент вносит 100,000 &#8381; &mdash; получает 1,187 USDT</div>
+        </div>
+
+        <!-- Сценарий 4 -->
+        <div class="scenario-box">
+            <div class="scenario-title">Сценарий 4: USDT &larr; RUB</div>
+            <div class="client-says">Клиент: &laquo;Мне нужно 1,000 USDT, сколько рублей заплатить?&raquo;</div>
+            <ol class="steps">
+                <li>Режим <strong>Doverka (SBP)</strong></li>
+                <li>Нажми кнопку <strong>USDT &larr; RUB</strong></li>
+                <li>Введи сумму в <strong>USDT</strong>: <strong>1000</strong></li>
+                <li>Нажми <strong>РАССЧИТАТЬ</strong></li>
+            </ol>
+            <div class="result-box">
+                <div class="label">Клиент должен внести:</div>
+                <div class="value">84 243 &#8381;</div>
+                <div class="rate">Курс: 84.24 &#8381;/USDT</div>
+            </div>
+        </div>
+
+        <div class="screenshot">
+            <img src="screenshots/09-doverka-usdt-from-rub-result.png" alt="USDT ← RUB результат">
+            <div class="screenshot-caption">USDT &larr; RUB: клиент хочет 1,000 USDT &mdash; калькулятор считает сколько рублей</div>
+        </div>
+
+        <!-- ===== ТОЧНЫЙ КУРС ===== -->
+        <h2>Точный курс Binance (шаг 5)</h2>
+        <p>Для сценариев с батами (RUB &rarr; THB и THB &larr; RUB) после обычного расчёта появляется фиолетовая кнопка <strong>&laquo;Узнать точный курс Binance&raquo;</strong>.</p>
+
+        <div class="tip">
+            <strong>Рекомендуем всегда нажимать!</strong> Точный курс берёт реальную цену с Binance для конкретной суммы &mdash; это самый точный результат, который ты можешь дать клиенту.
+        </div>
+
+        <table>
+            <tr>
+                <th>Что делает</th>
+                <td>Идёт на Binance и берёт реальный курс для конкретной суммы. Точнее стандартного расчёта.</td>
+            </tr>
+            <tr>
+                <th>Сколько ждать</th>
+                <td>~10 секунд</td>
+            </tr>
+            <tr>
+                <th>Когда особенно важно</th>
+                <td>Если курс USDT-THB подсвечен <strong style="color:#ef4444;">красным</strong> &mdash; это значит, что автоматический курс не получен. Нажми точный курс, чтобы получить актуальный курс с Binance.</td>
+            </tr>
+            <tr>
+                <th>Когда можно пропустить</th>
+                <td>Если клиент ещё думает и тебе нужно просто прикинуть &mdash; достаточно обычного &laquo;РАССЧИТАТЬ&raquo;, будет быстрее</td>
+            </tr>
+        </table>
+
+        <div class="warning">
+            <strong>Лимит Binance: ~3,000,000 THB.</strong> Если сумма в батах превышает этот лимит &mdash; точный курс выдаст ошибку.<br><br>
+            <strong>Для крупных сумм (>3 млн ฿):</strong> свяжись с фаундерами (Bitazo), узнай у них актуальный курс &rarr; переключись в режим <strong>Брокер</strong> &rarr; введи курс вручную &rarr; нажми <strong>РАССЧИТАТЬ</strong>.
+        </div>
+
+        <div class="tip">
+            <strong>Для RUB &rarr; USDT и USDT &larr; RUB</strong> этой кнопки нет &mdash; курс RUB-USDT берётся автоматически с Doverka, нажимать ничего не нужно.
+        </div>
+
+        <!-- ===== СКИДКА ===== -->
+        <h2>Скидка (изменение прибыли)</h2>
+        <p>Если нужно дать клиенту скидку (постоянный клиент, большая сумма, конкурентный курс):</p>
+
+        <ol class="steps">
+            <li>Поставь галочку <strong>&laquo;Сделать скидку (изменить прибыль)&raquo;</strong></li>
+            <li>Появятся кнопки с процентами: 1.5%, 2%, 2.4%, 3%, 3.5%, 4%, 4.5%, 5%</li>
+            <li>Выбери нужный процент</li>
+            <li>Введи сумму и нажми РАССЧИТАТЬ</li>
+        </ol>
+
+        <div class="screenshot">
+            <img src="screenshots/08-discount-buttons.png" alt="Кнопки скидки">
+            <div class="screenshot-caption">Кнопки выбора прибыли &mdash; нажми на нужный процент</div>
+        </div>
+
+        <h3>Что означают проценты</h3>
+        <p>Это <strong>НАША ПРИБЫЛЬ</strong> от сделки:</p>
+        <table class="percent-table">
+            <tr>
+                <th>Процент</th>
+                <th>Когда</th>
+                <th>Пояснение</th>
+            </tr>
+            <tr>
+                <td>5%</td>
+                <td>Сумма до 500,000 &#8381;</td>
+                <td>Стандартная прибыль (по умолчанию)</td>
+            </tr>
+            <tr>
+                <td>4%</td>
+                <td>500,000 &ndash; 1,000,000 &#8381;</td>
+                <td>Стандартная прибыль (по умолчанию)</td>
+            </tr>
+            <tr>
+                <td>3%</td>
+                <td>От 1,000,000 &#8381;</td>
+                <td>Стандартная прибыль (по умолчанию)</td>
+            </tr>
+            <tr>
+                <td>2.4%</td>
+                <td>Скидка</td>
+                <td>Работаем в ноль (вся прибыль = бонус Doverka)</td>
+            </tr>
+            <tr>
+                <td>1.5%</td>
+                <td>Большая скидка</td>
+                <td>Минимальная прибыль, дальше уже в убыток</td>
+            </tr>
+        </table>
+
+        <div class="tip">
+            <strong>Если не включать скидку</strong> &mdash; калькулятор сам выберет процент по сумме (5%, 4% или 3%).
+        </div>
+
+        <!-- ===== ДЕТАЛИ ===== -->
+        <h2>Как проверить процент прибыли</h2>
+
+        <div class="warning">
+            <strong>ВАЖНО:</strong> Всегда проверяй детали расчёта! Процент может отличаться от ожиданий.
+        </div>
+
+        <ol class="steps">
+            <li>После расчёта нажми <strong>&laquo;Детали расчета&raquo;</strong> (внизу результата)</li>
+            <li>Посмотри жёлтый блок вверху &mdash; там написано <strong>&laquo;Стандартный&raquo;</strong> или <strong>&laquo;Doverka (5%)&raquo;</strong> и <strong>&laquo;% прибыли: 5.26%&raquo;</strong></li>
+            <li>Если процент не тот &mdash; включи скидку и выбери нужный</li>
+        </ol>
+
+        <div class="screenshot">
+            <img src="screenshots/04-doverka-rub-thb-details-open.png" alt="Детали расчёта">
+            <div class="screenshot-caption">Детали расчёта &mdash; жёлтый блок показывает % прибыли</div>
+        </div>
+
+        <h3>Что смотреть в деталях</h3>
+        <table>
+            <tr>
+                <th>Поле</th>
+                <th>Что значит</th>
+            </tr>
+            <tr>
+                <td><strong>% прибыли</strong></td>
+                <td>Наша реальная прибыль в процентах</td>
+            </tr>
+            <tr>
+                <td><strong>Прибыль</strong></td>
+                <td>Наша прибыль в USDT</td>
+            </tr>
+            <tr>
+                <td><strong>Поступление</strong></td>
+                <td>Сколько USDT мы получаем всего (включая бонус 2.4%)</td>
+            </tr>
+            <tr>
+                <td><strong>Выплата</strong></td>
+                <td>Сколько USDT мы тратим на клиента</td>
+            </tr>
+        </table>
+
+        <div class="screenshot">
+            <img src="screenshots/05-doverka-rub-thb-profit.png" alt="Прибыльность">
+            <div class="screenshot-caption">Блок &laquo;Прибыльность&raquo; &mdash; поступление, выплата, прибыль</div>
+        </div>
+
+        <!-- ===== ПОСЛЕ РАСЧЁТА ===== -->
+        <h2>После расчёта &mdash; что делать</h2>
+        <p>Когда расчёт готов и клиент согласен:</p>
+        <ol class="steps">
+            <li>(Опционально) Впиши комментарий &mdash; имя клиента или номер заказа</li>
+            <li>Нажми <strong>&laquo;СОЗДАТЬ ПЛАТЕЖ&raquo;</strong> &mdash; создаст платёжную ссылку для клиента</li>
+            <li>Или нажми <strong>&laquo;СОЗДАТЬ СДЕЛКУ В CRM&raquo;</strong> &mdash; запишет сделку в CRM для учёта</li>
+        </ol>
+
+        <div class="screenshot">
+            <img src="screenshots/03-doverka-rub-thb-details.png" alt="Кнопки создания платежа">
+            <div class="screenshot-caption">Кнопки &laquo;Создать платеж&raquo; и &laquo;Создать сделку в CRM&raquo;</div>
+        </div>
+
+        <!-- ===== БРОКЕР ===== -->
+        <h2>Режим Брокер &mdash; когда использовать</h2>
+        <p>Режим <strong>&laquo;Брокер&raquo;</strong> нужен когда:</p>
+        <ul style="margin: 12px 0 12px 24px;">
+            <li>Клиент отдаёт USDT напрямую (не рубли)</li>
+            <li>Ты сам знаешь курс RUB-USDT (от внешнего брокера)</li>
+        </ul>
+
+        <div class="warning">
+            <strong>В режиме Брокер</strong> нужно самому ввести курс RUB-USDT в поле наверху (для сценариев с рублями).
+        </div>
+
+        <p>Сценарии Брокера:</p>
+        <table>
+            <tr><th>Сценарий</th><th>Что происходит</th></tr>
+            <tr><td><strong>USDT &rarr; THB</strong></td><td>Клиент даёт USDT, получает баты</td></tr>
+            <tr><td><strong>THB &rarr; USDT</strong></td><td>Клиент даёт баты, получает USDT</td></tr>
+            <tr><td><strong>RUB &rarr; THB</strong></td><td>Как Doverka, но с ручным курсом RUB-USDT</td></tr>
+            <tr><td><strong>RUB &rarr; USDT</strong></td><td>Как Doverka, но с ручным курсом RUB-USDT</td></tr>
+        </table>
+
+        <h3>Где брать курс RUB-USDT</h3>
+        <p>Для сценариев с рублями нужно ввести актуальный курс вручную. Берём из двух источников:</p>
+
+        <h3 style="font-size:14px; margin-top:16px;">1. Telegram-группы (основной источник)</h3>
+        <p>Смотри актуальные котировки в этих трёх чатах:</p>
+        <ul style="margin: 8px 0 16px 24px; line-height: 2;">
+            <li><strong>Max Finance | RealPay</strong></li>
+            <li><strong>Покупка тезера в регионах</strong></li>
+            <li><strong>USDT/PRO100TRADE</strong> (он же Никита / Ликвидность)</li>
+        </ul>
+
+        <h3 style="font-size:14px; margin-top:0;">2. Aifory.pro (если группы молчат)</h3>
+        <div class="tip">
+            <strong>Преимущество Aifory:</strong> показывает реальный курс в моменте, когда группы ещё не обновились. Курсы там хорошие.
+        </div>
+
+        <p>Как посмотреть курс на Aifory:</p>
+        <ol class="steps">
+            <li>Зарегистрируйся на <strong>app.aifory.pro</strong></li>
+            <li>Нажми фиолетовую кнопку <strong>Exchange</strong> в главном меню</li>
+            <li>Выбери валюту, которую <strong>отдаёшь</strong> &mdash; например, рубли</li>
+            <li>Выбери валюту, которую <strong>получаешь</strong> &mdash; например, USDT</li>
+            <li>Введи примерную сумму</li>
+            <li>Видишь курс &mdash; вводи его в калькулятор</li>
+        </ol>
+
+        <!-- ===== FAQ ===== -->
+        <h2>Частые вопросы</h2>
+
+        <div class="faq-item">
+            <div class="faq-q">В: Курс обновился, но расчёт старый. Что делать?</div>
+            <div class="faq-a">О: Нажми &laquo;Обновить&raquo; рядом с курсами, потом пересчитай.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-q">В: Калькулятор показывает ошибку</div>
+            <div class="faq-a">О: Проверь что ввёл число (не текст). Если режим Брокер &mdash; проверь что ввёл курс RUB-USDT наверху.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-q">В: Какой сценарий использовать если клиент хочет купить USDT за рубли?</div>
+            <div class="faq-a">О: Doverka &rarr; <strong>RUB &rarr; USDT</strong> (знаем рубли) или <strong>USDT &larr; RUB</strong> (знаем сколько USDT хочет).</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-q">В: Нужно ли нажимать &laquo;Точный курс&raquo; каждый раз?</div>
+            <div class="faq-a">О: <strong>Да, рекомендуем всегда</strong> для THB-сценариев &mdash; это даёт клиенту самый точный курс. Пропустить можно только если клиент ещё думает и нужно быстро прикинуть. Лимит Binance &mdash; ~3,000,000 THB, для бо́льших сумм используй обычный &laquo;РАССЧИТАТЬ&raquo;.</div>
+        </div>
+
+        <div class="faq-item">
+            <div class="faq-q">В: Как дать скидку клиенту?</div>
+            <div class="faq-a">О: Поставь галочку &laquo;Сделать скидку&raquo;, выбери процент, пересчитай.</div>
+        </div>
+
+        <p style="margin-top: 40px; text-align: center; color: #94A3B8; font-size: 13px;">
+            Grusha Exchange &bull; Обновлено: Март 2026
+        </p>
+
+    </div>
+</body>
+</html>
