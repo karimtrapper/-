@@ -708,7 +708,8 @@ def get_precise_rate():
         amount = float(data.get('amount', 0))
         direction = data.get('direction', 'amount')  # 'amount' (вношу) или 'target' (хочу получить)
         method = data.get('method', 'doverka')
-        rub_usdt = float(data.get('rub_usdt', 82.0))
+        rub_usdt_raw = data.get('rub_usdt')
+        rub_usdt = float(rub_usdt_raw) if rub_usdt_raw is not None else 82.0
         profit_margin = float(data.get('profit_margin', 5.0))
 
         if amount <= 0:
