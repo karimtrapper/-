@@ -1122,7 +1122,10 @@ function displayDetailedSteps(result) {
         html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (0,25%):</span><span class="detail-value">${formatNumber(result.withdrawal_percent)} ฿</span></div>`;
     }
     if (result.withdrawal_fixed !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (фикс 20 THB):</span><span class="detail-value">${result.withdrawal_fixed} ฿</span></div>`;
+        const isUsdtScenario = result.scenario === 'RUB → USDT';
+        const wdLabel = isUsdtScenario ? 'Комиссия за выдачу (фикс 1 USDT):' : 'Комиссия за выдачу (фикс 20 THB):';
+        const wdCurrency = isUsdtScenario ? ' USDT' : ' ฿';
+        html += `<div class="detail-row"><span class="detail-label">${wdLabel}</span><span class="detail-value">${result.withdrawal_fixed}${wdCurrency}</span></div>`;
     }
     
     // Итоговая сумма THB
