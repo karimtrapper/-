@@ -837,7 +837,8 @@ def calculate():
 
         if method == 'broker':
             from broker_detailed import BrokerCalculatorDetailed
-            custom_rub_usdt = float(data.get('custom_rub_usdt', 80.9))
+            custom_rub_usdt_raw = data.get('custom_rub_usdt')
+            custom_rub_usdt = float(custom_rub_usdt_raw) if custom_rub_usdt_raw is not None else 80.9
             profit_margin = float(data.get('profit_margin', 4.0))
             broker_calc = BrokerCalculatorDetailed(rates['usdt_thb'], custom_rub_usdt, profit_margin)
             

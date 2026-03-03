@@ -129,11 +129,23 @@ function switchMethod(method) {
     hideResults();
 }
 
+// Нужен ли курс RUB-USDT для текущего сценария?
+// USDT→THB и THB→USDT — прямые, без рубля
+function scenarioNeedsRubRate(scenario) {
+    return scenario !== 'usdt-to-thb' && scenario !== 'thb-to-usdt';
+}
+
 // Переключение сценария
 function switchScenario(scenario) {
     state.scenario = scenario;
     updateScenarioUI();
     hideResults();
+
+    // Показываем/скрываем поле RUB-USDT в зависимости от сценария
+    if (state.method === 'broker') {
+        const section = document.getElementById('customRateSection');
+        section.style.display = scenarioNeedsRubRate(scenario) ? 'block' : 'none';
+    }
 }
 
 // Обновление UI сценария
@@ -522,8 +534,8 @@ async function calculate() {
         return;
     }
 
-    // Блокируем расчёт в режиме брокера без курса
-    if (state.method === 'broker' && !state.customRubUsdt) {
+    // Блокируем расчёт в режиме брокера без курса (только для RUB-сценариев)
+    if (state.method === 'broker' && !state.customRubUsdt && scenarioNeedsRubRate(state.scenario)) {
         const customInput = document.getElementById('customRubUsdt');
         customInput.focus();
         const card = document.querySelector('.custom-rate-card');
@@ -553,7 +565,8 @@ async function calculate() {
         
         // Проверка наличия курсов перед расчетом
         const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
-        if (!rubUsdt || !state.rates.usdt_thb) {
+        const needsRub = scenarioNeedsRubRate(state.scenario);
+        if ((needsRub && !rubUsdt) || !state.rates.usdt_thb) {
             alert('⚠️ Ошибка: Курсы валют не получены. Расчет невозможен.');
             return;
         }
