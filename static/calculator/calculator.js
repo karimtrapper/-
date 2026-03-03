@@ -1047,9 +1047,10 @@ function displayDetailedSteps(result) {
         html += `<div class="detail-row"><span class="detail-label">Комиссия на этапе RUB-USDT:</span><span class="detail-value">${result.rub_usdt_commission.toFixed(2)}%</span></div>`;
     }
 
-    // Курс продажи RUB-USDT
+    // Курс продажи RUB-USDT (базовый курс + комиссия)
     if (result.rub_usdt_rate_sell !== undefined) {
         html += `<div class="detail-row"><span class="detail-label">Курс продажи RUB-USDT:</span><span class="detail-value highlight">${result.rub_usdt_rate_sell.toFixed(4)} ₽</span></div>`;
+        html += `<div class="detail-row detail-hint"><span class="detail-label" style="font-size:0.8rem;color:#888;">= базовый курс + ${result.rub_usdt_commission !== undefined ? result.rub_usdt_commission.toFixed(2) + '% комиссия' : 'комиссия'}</span></div>`;
     }
 
     // Сумма USDT
@@ -1101,6 +1102,7 @@ function displayDetailedSteps(result) {
     else if (result.scenario === 'RUB → USDT') finalRateLabel = 'Итоговый курс RUB-USDT:';
     
     html += `<div class="detail-row"><span class="detail-label">${finalRateLabel}</span><span class="detail-value highlight-final">${result.final_rate.toFixed(4)}</span></div>`;
+    html += `<div class="detail-row detail-hint"><span class="detail-label" style="font-size:0.8rem;color:#888;">= курс продажи + withdrawal fee (размазан по сумме)</span></div>`;
     
     html += `</div>`;
     
