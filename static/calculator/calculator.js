@@ -1094,11 +1094,11 @@ function displayDetailedSteps(result) {
         html += `<div class="detail-row"><span class="detail-label">Сумма THB к выдаче:</span><span class="detail-value highlight-final">${formatNumber(result.thb_target)} ฿</span></div>`;
     }
     
-    // Курс продажи RUB-THB
-    let finalRateLabel = 'Курс продажи RUB-THB:';
-    if (result.scenario === 'USDT → THB') finalRateLabel = 'Курс продажи USDT-THB:';
-    else if (result.scenario === 'THB → USDT') finalRateLabel = 'Курс продажи THB-USDT:';
-    else if (result.scenario === 'RUB → USDT') finalRateLabel = 'Курс продажи RUB-USDT:';
+    // Итоговый курс для клиента (с учётом всех комиссий и withdrawal)
+    let finalRateLabel = 'Итоговый курс RUB-THB:';
+    if (result.scenario === 'USDT → THB') finalRateLabel = 'Итоговый курс USDT-THB:';
+    else if (result.scenario === 'THB → USDT') finalRateLabel = 'Итоговый курс THB-USDT:';
+    else if (result.scenario === 'RUB → USDT') finalRateLabel = 'Итоговый курс RUB-USDT:';
     
     html += `<div class="detail-row"><span class="detail-label">${finalRateLabel}</span><span class="detail-value highlight-final">${result.final_rate.toFixed(4)}</span></div>`;
     
