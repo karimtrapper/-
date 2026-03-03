@@ -60,6 +60,10 @@ class BrokerCalculatorDetailed:
             self.usdt_comm = self.rub_comm
             self.thb_usdt_comm = (target_profit / 100.0) * 1.025
             self.usdt_thb_direct = target_profit / 100.0
+
+        # Комиссия для одноэтапных RUB→USDT операций (операции 7, 8)
+        # В отличие от RUB→THB (два этапа), тут вся прибыль на одном шаге
+        self.rub_usdt_direct = target_profit / 100.0
             
         self.commission_name = f"Брокер ({target_profit}%)"
 
@@ -331,23 +335,22 @@ class BrokerCalculatorDetailed:
     def rub_to_usdt_target(self, usdt_target: float) -> dict:
         """
         Операция 7: RUB → USDT (клиент хочет получить конкретную сумму USDT)
-        Соответствует операциям 1.1-1.4 (второй сет) в CSV
+        Одноэтапная операция — используем rub_usdt_direct (полный % прибыли)
         """
         withdrawal_commission = 1 # 1 USDT фикс
         usdt_before_commission = usdt_target + withdrawal_commission
-        
-        # В CSV для 3% прибыли комиссия 1.55%, для 5% - 2.56%, для 4% - 2.05%
-        # Мы используем self.rub_comm, который уже рассчитан в __init__
-        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_comm)
+
+        # Одноэтапная операция: вся прибыль на одном шаге RUB→USDT
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_usdt_direct)
         rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
-        
+
         final_rate = excel_round(rub_amount / usdt_target, 6)
-        
+
         incoming_usdt = excel_round(rub_amount / self.rub_usdt_rate, 2)
         outgoing_usdt = usdt_before_commission
         profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
         profit_percent_actual = excel_round((profit_usdt / incoming_usdt) * 100, 2) if incoming_usdt > 0 else 0
-        
+
         return {
             'operation': '7',
             'operation_name': 'Обменять сумму в рублях на конкретную сумму USDT',
@@ -357,7 +360,7 @@ class BrokerCalculatorDetailed:
             'withdrawal_commission': withdrawal_commission,
             'usdt_before_commission': usdt_before_commission,
             'rub_usdt_rate': self.rub_usdt_rate,
-            'rub_usdt_commission': excel_round(self.rub_comm * 100, 2),
+            'rub_usdt_commission': excel_round(self.rub_usdt_direct * 100, 2),
             'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
             'rub_amount': rub_amount,
             'final_rate': final_rate,
@@ -372,22 +375,23 @@ class BrokerCalculatorDetailed:
     def rub_to_usdt_amount(self, rub_amount: float) -> dict:
         """
         Операция 8: RUB → USDT (клиент вносит конкретную сумму RUB)
-        Соответствует операциям 2.1-2.4 (второй сет) в CSV
+        Одноэтапная операция — используем rub_usdt_direct (полный % прибыли)
         """
-        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_comm)
+        # Одноэтапная операция: вся прибыль на одном шаге RUB→USDT
+        rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_usdt_direct)
         usdt_before_commission = rub_amount / rub_usdt_rate_sell
         usdt_before_commission_display = excel_round(usdt_before_commission, 2)
-        
+
         withdrawal_commission = 1
         usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
-        
+
         final_rate = excel_round(rub_amount / usdt_received, 6)
-        
+
         incoming_usdt = excel_round(rub_amount / self.rub_usdt_rate, 2)
         outgoing_usdt = usdt_before_commission
         profit_usdt = excel_round(incoming_usdt - outgoing_usdt, 2)
         profit_percent_actual = excel_round((profit_usdt / incoming_usdt) * 100, 2) if incoming_usdt > 0 else 0
-        
+
         return {
             'operation': '8',
             'operation_name': 'Обменять конкретную сумму в рублях на USDT',
@@ -395,7 +399,7 @@ class BrokerCalculatorDetailed:
             'scenario': 'RUB → USDT',
             'rub_amount': rub_amount,
             'rub_usdt_rate': self.rub_usdt_rate,
-            'rub_usdt_commission': excel_round(self.rub_comm * 100, 2),
+            'rub_usdt_commission': excel_round(self.rub_usdt_direct * 100, 2),
             'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
             'usdt_before_commission': usdt_before_commission_display,
             'withdrawal_commission': withdrawal_commission,
