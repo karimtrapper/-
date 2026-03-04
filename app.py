@@ -2195,6 +2195,21 @@ def send_telegram_notification(text):
     except:
         return False
 
+@app.route('/api/proxy/create-payment', methods=['POST'])
+def proxy_create_payment():
+    """Прокси для создания платежа через Doverka — обходит CORS"""
+    try:
+        data = request.get_json()
+        response = requests.post(
+            'https://grushab-2-b.ru/api/payments',
+            json=data,
+            headers={'Content-Type': 'application/json', 'X-Provider-Name': 'doverkapay'},
+            timeout=15
+        )
+        return jsonify(response.json()), response.status_code
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 502
+
 @app.route('/api/webhook/doverka', methods=['POST'])
 def doverka_webhook():
     try:

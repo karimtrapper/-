@@ -1260,11 +1260,10 @@ async function createPayment() {
         const orderId = `GR-${Date.now()}`;
         const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
 
-        const response = await fetch('https://grushab-2-b.ru/api/payments', {
+        const response = await fetch('/api/proxy/create-payment', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'X-Provider-Name': 'doverkapay'
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify({
                 "amount": parseFloat(rubAmount.toFixed(2)),
