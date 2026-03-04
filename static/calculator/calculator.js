@@ -1269,7 +1269,6 @@ async function createPayment() {
                 "amount": parseFloat(rubAmount.toFixed(2)),
                 "currency": "RUB",
                 "order_id": orderId,
-                "callback_url": "https://grushab-2-b.ru/api/webhook/doverka",
                 "merchant_id": "grusha",
                 "description": description,
                 "success_url": "",

@@ -2206,7 +2206,10 @@ def proxy_create_payment():
             headers={'Content-Type': 'application/json', 'X-Provider-Name': 'doverkapay'},
             timeout=15
         )
-        return jsonify(response.json()), response.status_code
+        try:
+            return jsonify(response.json()), response.status_code
+        except Exception:
+            return jsonify({'success': False, 'message': f'Doverka HTTP {response.status_code}: {response.text[:300]}'}), 502
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 502
 
