@@ -2506,9 +2506,6 @@ select.form-control { cursor: pointer; }
                 case 'dashboard': loadDashboard(); break;
                 case 'deals': loadDeals(); break;
                 case 'create':
-                    if (typeof editingDealId !== 'undefined' && editingDealId !== null) {
-                        cancelEditMode();
-                    }
                     loadCreateForm();
                     break;
                 case 'reimbursements': loadReimbursements(); break;
