@@ -1473,9 +1473,13 @@ def get_incoming_transactions():
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
 
-        for wallet in wallets:
+        for wallet_idx, wallet in enumerate(wallets):
             wallet_tx_count = 0
             wallets_checked.append(wallet.address)
+
+            # Пауза между кошельками чтобы не словить 429 от TronScan
+            if wallet_idx > 0:
+                time.sleep(1.5)
 
             try:
                 for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
@@ -1488,7 +1492,16 @@ def get_incoming_transactions():
                         't': int(time.time())
                     }
 
-                    response = requests.get(url, params=params, headers=headers, timeout=10)
+                    # Retry при 429 (rate limit)
+                    for attempt in range(3):
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+                        if response.status_code == 429:
+                            wait_time = 2 * (attempt + 1)
+                            print(f"[DEBUG] TronScan 429 for {wallet.address[:10]}..., waiting {wait_time}s (attempt {attempt+1})")
+                            time.sleep(wait_time)
+                            continue
+                        break
+
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
@@ -1521,8 +1534,8 @@ def get_incoming_transactions():
 
                         if reached_start_ts:
                             break
-                        # Пауза между страницами, чтобы не триггерить лимиты
-                        time.sleep(0.3)
+                        # Пауза между страницами
+                        time.sleep(1)
                     else:
                         error_msg = f"HTTP {response.status_code}"
                         wallets_errors.append({'address': wallet.address, 'error': error_msg})
@@ -1615,9 +1628,13 @@ def get_outgoing_transactions():
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
         
-        for wallet in wallets:
+        for wallet_idx, wallet in enumerate(wallets):
+            # Пауза между кошельками чтобы не словить 429 от TronScan
+            if wallet_idx > 0:
+                time.sleep(1.5)
+
             try:
-                for page in range(2): # Было 10
+                for page in range(2):
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
@@ -1626,19 +1643,27 @@ def get_outgoing_transactions():
                         'start': page * 50,
                         't': int(time.time())
                     }
-                    
-                    response = requests.get(url, params=params, headers=headers, timeout=5)
+
+                    # Retry при 429 (rate limit)
+                    for attempt in range(3):
+                        response = requests.get(url, params=params, headers=headers, timeout=10)
+                        if response.status_code == 429:
+                            wait_time = 2 * (attempt + 1)
+                            print(f"[DEBUG] TronScan outgoing 429 for {wallet.address[:10]}..., waiting {wait_time}s")
+                            time.sleep(wait_time)
+                            continue
+                        break
+
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
                         if not transfers:
                             break
-                            
+
                         reached_start_ts = False
                         for tx in transfers:
                             tx_ts = tx.get('block_ts', 0)
-                            
-                            # Фильтр по дате (если задан)
+
                             if start_ts and tx_ts < start_ts:
                                 reached_start_ts = True
                                 continue
@@ -1656,11 +1681,12 @@ def get_outgoing_transactions():
                                     'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
                                     'confirmed': tx.get('confirmed', False)
                                 })
-                        
+
                         if reached_start_ts:
                             break
-                        time.sleep(0.3)
+                        time.sleep(1)
                     else:
+                        print(f"[DEBUG] TronScan outgoing HTTP {response.status_code} for {wallet.address[:10]}...")
                         break
             except Exception as e:
                 print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
