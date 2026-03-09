@@ -1076,7 +1076,15 @@ def update_deal(deal_id):
         
         if 'status' in data:
             deal.status = DealStatus(data['status'])
-        
+
+        # Автоматический пересчёт прибыли при изменении сумм
+        if deal.payin_amount_usdt and deal.payout_amount_usdt:
+            deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
+            deal.profit_percent = round((deal.profit_usdt / deal.payout_amount_usdt * 100), 2) if deal.payout_amount_usdt > 0 else 0
+            # Пересчёт с учётом реферала
+            referrer_payout = deal.referrer_payout_usdt or 0
+            deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
+
         session.commit()
         
         # Webhook при завершении
