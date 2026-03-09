@@ -4563,8 +4563,14 @@ select.form-control { cursor: pointer; }
                         document.getElementById('availableTransactions').parentElement.querySelector('p').innerHTML =
                             `Данные из кэша (обновлено: ${date.toLocaleTimeString()}). <a href="#" onclick="loadTransactions(true)">Обновить сейчас</a>`;
                     } else {
-                        document.getElementById('availableTransactions').parentElement.querySelector('p').innerHTML =
-                            `Данные обновлены с TronScan API в ${new Date().toLocaleTimeString()}`;
+                        let statusText = `Данные обновлены с TronScan API в ${new Date().toLocaleTimeString()}`;
+                        if (data.wallets_errors && data.wallets_errors.length > 0) {
+                            statusText += `<br><span style="color: #ef4444;">Ошибки: ${data.wallets_errors.map(e => e.address.substring(0, 10) + '... — ' + e.error).join(', ')}</span>`;
+                        }
+                        if (data.wallets_checked) {
+                            statusText += `<br><small style="color: #999;">Кошельки: ${data.wallets_checked.map(a => a.substring(0, 10) + '...').join(', ')} | Всего транзакций: ${data.total_fetched || 0}</small>`;
+                        }
+                        document.getElementById('availableTransactions').parentElement.querySelector('p').innerHTML = statusText;
                     }
 
                     if (data.available.length > 0) {

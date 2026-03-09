@@ -1466,18 +1466,19 @@ def get_incoming_transactions():
 
         all_incoming = []
         wallets_checked = []
-        
+        wallets_errors = []
+
         usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
         headers = {
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        
+
         for wallet in wallets:
+            wallet_tx_count = 0
             wallets_checked.append(wallet.address)
-            
+
             try:
-                # По просьбе пользователя: сначала 1 страница (50 транзакций), если не хватит - можно расширить
-                for page in range(2):  # Было 10, стало 2 (100 транзакций на кошелек)
+                for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
                     url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
@@ -1486,27 +1487,27 @@ def get_incoming_transactions():
                         'start': page * 50,
                         't': int(time.time())
                     }
-                    
-                    response = requests.get(url, params=params, headers=headers, timeout=5)
+
+                    response = requests.get(url, params=params, headers=headers, timeout=10)
                     if response.status_code == 200:
                         data = response.json()
                         transfers = data.get('token_transfers', [])
                         if not transfers:
                             break
-                            
+
                         reached_start_ts = False
                         for tx in transfers:
                             tx_ts = tx.get('block_ts', 0)
-                            
+
                             # Фильтр по дате (если задан)
                             if start_ts and tx_ts < start_ts:
                                 reached_start_ts = True
                                 continue
                             if end_ts and tx_ts > end_ts:
                                 continue
-                                
+
                             amount = float(tx.get('quant', 0)) / 1_000_000
-                            
+
                             all_incoming.append({
                                 'tx_hash': tx.get('transaction_id'),
                                 'from_address': tx.get('from_address'),
@@ -1516,15 +1517,22 @@ def get_incoming_transactions():
                                 'confirmed': tx.get('confirmed', False),
                                 'is_incoming': tx.get('to_address', '').lower() == wallet.address.lower()
                             })
-                        
+                            wallet_tx_count += 1
+
                         if reached_start_ts:
                             break
                         # Пауза между страницами, чтобы не триггерить лимиты
                         time.sleep(0.3)
                     else:
+                        error_msg = f"HTTP {response.status_code}"
+                        wallets_errors.append({'address': wallet.address, 'error': error_msg})
+                        print(f"[DEBUG] TronScan HTTP error for {wallet.address}: {error_msg}")
                         break
             except Exception as e:
+                wallets_errors.append({'address': wallet.address, 'error': str(e)})
                 print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
+
+            print(f"[DEBUG] Wallet {wallet.address[:10]}... fetched {wallet_tx_count} transfers")
         
         # Сортируем все транзакции по времени
         all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
@@ -1545,6 +1553,8 @@ def get_incoming_transactions():
             'available': available[:1000],
             'used': used[:200],
             'wallets_checked': wallets_checked,
+            'wallets_errors': wallets_errors,
+            'total_fetched': len(all_incoming),
             'cached': False
         })
     except Exception as e:
