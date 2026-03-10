@@ -1442,7 +1442,7 @@ function createDealFromCalc() {
     // Маппинг данных калькулятора → поля CRM
     const dealData = {
         payin_amount_rub: r.rub_paid || r.rub_to_pay || null,
-        payin_amount_usdt: r.usdt_amount || null,
+        payin_amount_usdt: r.incoming_usdt || r.usdt_amount || null,
         payin_rate_rub_usdt: r.rub_usdt_rate || null,
         payout_amount_thb: r.thb_received || r.thb_target || null,
         profit_usdt: r.profit_usdt || null,
