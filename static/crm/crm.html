@@ -1861,10 +1861,6 @@ select.form-control { cursor: pointer; }
                     case 'dashboard': loadDashboard(); break;
                     case 'deals': loadDeals(); break;
                     case 'create':
-                        // Сбрасываем режим редактирования при ручном переходе на вкладку
-                        if (typeof editingDealId !== 'undefined' && editingDealId !== null) {
-                            cancelEditMode();
-                        }
                         loadCreateForm();
                         break;
                     case 'reimbursements': loadReimbursements(); break;
@@ -2006,7 +2002,7 @@ select.form-control { cursor: pointer; }
                             </td>
                             <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                             <td>
-                                <button class="btn btn-sm btn-secondary" onclick="showDealDetails(${deal.id})">Детали</button>
+                                <button class="btn btn-sm btn-secondary" onclick="showDealDetails(${deal.id}, this)">Детали</button>
                             </td>
                         </tr>
                     `}).join('');
@@ -2016,7 +2012,8 @@ select.form-control { cursor: pointer; }
             }
         }
 
-        async function showDealDetails(dealId) {
+        async function showDealDetails(dealId, btnEl) {
+            if (btnEl) { btnEl.textContent = '...'; btnEl.disabled = true; }
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
@@ -2175,6 +2172,8 @@ select.form-control { cursor: pointer; }
                 }
             } catch (error) {
                 console.error('Error loading deal:', error);
+            } finally {
+                if (btnEl) { btnEl.textContent = 'Детали'; btnEl.disabled = false; }
             }
         }
 
@@ -3274,8 +3273,8 @@ select.form-control { cursor: pointer; }
                     alert(isEditMode ? 'Сделка обновлена!' : 'Сделка создана!');
                     this.reset();
                     if (isEditMode) cancelEditMode();
+                    showSection('deals');
                     loadDashboard();
-                    loadDeals();
                 } else {
                     alert('Ошибка: ' + result.error);
                 }
@@ -4159,6 +4158,7 @@ select.form-control { cursor: pointer; }
         let outgoingTransactionsCache = [];
 
         async function loadReimbursements() {
+            document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
             // Сначала загружаем исходящие транзакции
             try {
                 const outgoingResponse = await fetch(`${API_URL}/api/transactions/outgoing`);
