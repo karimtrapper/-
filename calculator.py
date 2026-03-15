@@ -118,7 +118,21 @@ class ExchangeRateProvider:
                         return float(data['price'])
         except Exception as e:
             print(f"❌ Binance Global error: {e}")
-            
+
+        # 3. Фоллбэк на CoinGecko (бесплатный, без ключа)
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "https://api.coingecko.com/api/v3/simple/price"
+                params = {"ids": "tether", "vs_currencies": "thb"}
+                async with session.get(url, params=params, timeout=5) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        rate = float(data['tether']['thb'])
+                        print(f"DEBUG: CoinGecko USDT/THB rate: {rate}")
+                        return rate
+        except Exception as e:
+            print(f"❌ CoinGecko error: {e}")
+
         return None
     
     @staticmethod
@@ -163,7 +177,22 @@ class ExchangeRateProvider:
                         return None
         except Exception as e:
             print(f"⚠️ Ошибка Doverka API: {e}")
-            return None
+
+        # Фоллбэк на Binance Global USDTRUB (как резерв если Doverka недоступна)
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "https://api.binance.com/api/v3/ticker/price"
+                params = {"symbol": "USDTRUB"}
+                async with session.get(url, params=params, timeout=5) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        rate = float(data['price'])
+                        print(f"DEBUG: Binance Global USDT/RUB fallback rate: {rate}")
+                        return rate
+        except Exception as e:
+            print(f"❌ Binance USDTRUB fallback error: {e}")
+
+        return None
     
     @staticmethod
     async def get_all_rates() -> Dict[str, float]:
@@ -203,7 +232,7 @@ class ExchangeRateProvider:
 
                 if direction == 'thb_to_usdt':
                     # THB → USDT: страница THB/USDT, вводим THB в From
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=15000)
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -231,7 +260,7 @@ class ExchangeRateProvider:
                 elif direction == 'thb_to_usdt_reverse':
                     # Обратный ввод: страница THB/USDT, вводим USDT в поле Receive → читаем THB из From
                     # Используется когда клиент хочет получить N USDT и нужно узнать сколько THB платить
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=15000)
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -261,7 +290,7 @@ class ExchangeRateProvider:
                 elif direction == 'usdt_to_thb_reverse':
                     # Обратный ввод: страница USDT/THB, вводим THB в поле Receive → читаем USDT из From
                     # Используется когда клиент хочет получить N бат и нужно узнать сколько USDT платить
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=15000)
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -290,7 +319,7 @@ class ExchangeRateProvider:
 
                 else:
                     # USDT → THB: страница USDT/THB, вводим USDT в From
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=15000)
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:

@@ -796,6 +796,30 @@ def get_precise_rate():
         ))
 
         if 'error' in playwright_result:
+            # Playwright не сработал — фоллбэк на CoinGecko API
+            print(f"⚠️ Playwright failed: {playwright_result['error']}. Falling back to CoinGecko.", flush=True)
+            try:
+                import aiohttp
+                async def _get_coingecko_rate():
+                    async with aiohttp.ClientSession() as session:
+                        url = "https://api.coingecko.com/api/v3/simple/price"
+                        params = {"ids": "tether", "vs_currencies": "thb"}
+                        async with session.get(url, params=params, timeout=5) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                return float(data['tether']['thb'])
+                    return None
+                fallback_rate = asyncio.run(_get_coingecko_rate())
+                if fallback_rate:
+                    print(f"✅ CoinGecko fallback rate: {fallback_rate:.4f}", flush=True)
+                    return jsonify({
+                        'success': True,
+                        'rate_used': round(fallback_rate, 4),
+                        'time': playwright_result.get('time', 0),
+                        'source': 'coingecko_fallback'
+                    })
+            except Exception as fe:
+                print(f"❌ CoinGecko fallback error: {fe}", flush=True)
             return jsonify({'success': False, 'error': playwright_result['error']}), 500
 
         rate_used = playwright_result['rate']
