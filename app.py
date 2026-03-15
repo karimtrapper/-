@@ -25,7 +25,6 @@ PUBLIC_PATHS = [
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
-    '/api/debug/doverka',                      # Временная диагностика
 ]
 
 @app.before_request
@@ -666,26 +665,6 @@ def crm_index():
     return response
 
 # ==================== CALCULATOR API ====================
-
-@app.route('/api/debug/doverka', methods=['GET'])
-def debug_doverka():
-    """Временный эндпоинт — сырой ответ Doverka API для диагностики"""
-    import aiohttp as _aiohttp
-    async def _fetch():
-        key = ExchangeRateProvider.DOVERKA_API_KEY
-        if not key:
-            return {'error': 'NO_KEY', 'env_key_set': bool(os.getenv('DOVERKA_API_KEY'))}
-        async with _aiohttp.ClientSession() as session:
-            url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
-            headers = {'Authorization': f'Bearer {key}', 'accept': 'application/json'}
-            async with session.get(url, headers=headers, timeout=10) as resp:
-                data = await resp.json()
-                return {'status': resp.status, 'raw': data, 'key_prefix': key[:12] + '...'}
-    try:
-        result = asyncio.run(_fetch())
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({'error': str(e)})
 
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
