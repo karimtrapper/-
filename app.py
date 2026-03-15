@@ -25,6 +25,7 @@ PUBLIC_PATHS = [
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
+    '/api/debug/doverka',                      # Временная диагностика
 ]
 
 @app.before_request
