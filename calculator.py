@@ -119,20 +119,7 @@ class ExchangeRateProvider:
         except Exception as e:
             print(f"❌ Binance Global error: {e}")
 
-        # 3. Фоллбэк на CoinGecko (бесплатный, без ключа)
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = "https://api.coingecko.com/api/v3/simple/price"
-                params = {"ids": "tether", "vs_currencies": "thb"}
-                async with session.get(url, params=params, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        rate = float(data['tether']['thb'])
-                        print(f"DEBUG: CoinGecko USDT/THB rate: {rate}")
-                        return rate
-        except Exception as e:
-            print(f"❌ CoinGecko error: {e}")
-
+        print(f"❌ Binance TH и Global недоступны — курс USDT/THB не получен")
         return None
     
     @staticmethod
@@ -178,20 +165,7 @@ class ExchangeRateProvider:
         except Exception as e:
             print(f"⚠️ Ошибка Doverka API: {e}")
 
-        # Фоллбэк на Binance Global USDTRUB (как резерв если Doverka недоступна)
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = "https://api.binance.com/api/v3/ticker/price"
-                params = {"symbol": "USDTRUB"}
-                async with session.get(url, params=params, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        rate = float(data['price'])
-                        print(f"DEBUG: Binance Global USDT/RUB fallback rate: {rate}")
-                        return rate
-        except Exception as e:
-            print(f"❌ Binance USDTRUB fallback error: {e}")
-
+        print(f"❌ Doverka недоступна — курс RUB/USDT не получен")
         return None
     
     @staticmethod

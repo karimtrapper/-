@@ -670,11 +670,21 @@ def crm_index():
 def get_rates():
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
-        usdt_thb = rates.get('usdt_thb') or 35.20
-        rub_usdt = rates.get('rub_usdt') or 86.50
-        return jsonify({'usdt_thb': usdt_thb, 'rub_usdt': rub_usdt, 'success': True})
+        usdt_thb = rates.get('usdt_thb')
+        rub_usdt = rates.get('rub_usdt')
+        errors = []
+        if not usdt_thb:
+            errors.append('USDT/THB недоступен (Binance)')
+        if not rub_usdt:
+            errors.append('RUB/USDT недоступен (Doverka)')
+        return jsonify({
+            'usdt_thb': usdt_thb,
+            'rub_usdt': rub_usdt,
+            'success': bool(usdt_thb and rub_usdt),
+            'errors': errors
+        })
     except Exception as e:
-        return jsonify({'error': str(e), 'usdt_thb': 35.20, 'rub_usdt': 86.50, 'success': False})
+        return jsonify({'error': str(e), 'usdt_thb': None, 'rub_usdt': None, 'success': False})
 
 @app.route('/api/rates/precise', methods=['POST'])
 def get_precise_rate():
