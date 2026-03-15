@@ -77,41 +77,41 @@ class ExchangeRateProvider:
         """
         Получить курс от Binance (сначала TH, потом Global как фоллбэк)
         """
-        # 1. Пробуем Binance Thailand
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
-                params = {"symbol": symbol}
-                headers = {}
-                if ExchangeRateProvider.BINANCE_API_KEY:
-                    headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
-                
-                async with session.get(url, params=params, headers=headers, timeout=5) as response:
-                    print(f"DEBUG: Binance TH status: {response.status}", flush=True)
-                    if response.status == 200:
-                        data = await response.json()
-                        print(f"DEBUG: Binance TH raw data: {data}", flush=True)
-                        # Проверяем структуру (Binance TH возвращает {'code':0, 'msg':'success', 'data':{...}} или прямой список)
-                        if isinstance(data, dict):
-                            if data.get("code") == 0 and "data" in data:
-                                price_data = data["data"]
-                                if isinstance(price_data, list):
-                                    for item in price_data:
-                                        if item.get("symbol") == symbol:
-                                            return float(item.get("price"))
-                                elif isinstance(price_data, dict):
-                                    return float(price_data.get("price"))
-                            elif "price" in data:
-                                return float(data["price"])
-        except Exception as e:
-            print(f"⚠️ Binance TH error: {e}")
+        # 1. Пробуем Binance Thailand (2 попытки)
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{ExchangeRateProvider.BINANCE_API}/ticker/price"
+                    params = {"symbol": symbol}
+                    headers = {}
+                    if ExchangeRateProvider.BINANCE_API_KEY:
+                        headers['X-MBX-APIKEY'] = ExchangeRateProvider.BINANCE_API_KEY
+
+                    async with session.get(url, params=params, headers=headers, timeout=10) as response:
+                        print(f"DEBUG: Binance TH status: {response.status}", flush=True)
+                        if response.status == 200:
+                            data = await response.json()
+                            print(f"DEBUG: Binance TH raw data: {data}", flush=True)
+                            if isinstance(data, dict):
+                                if data.get("code") == 0 and "data" in data:
+                                    price_data = data["data"]
+                                    if isinstance(price_data, list):
+                                        for item in price_data:
+                                            if item.get("symbol") == symbol:
+                                                return float(item.get("price"))
+                                    elif isinstance(price_data, dict):
+                                        return float(price_data.get("price"))
+                                elif "price" in data:
+                                    return float(data["price"])
+            except Exception as e:
+                print(f"⚠️ Binance TH attempt {attempt+1} error: {e}")
 
         # 2. Фоллбэк на Binance Global
         try:
             async with aiohttp.ClientSession() as session:
                 url = "https://api.binance.com/api/v3/ticker/price"
                 params = {"symbol": "USDTTHB"}
-                async with session.get(url, params=params, timeout=5) as response:
+                async with session.get(url, params=params, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
                         print(f"DEBUG: Binance Global rate: {data.get('price')}")
@@ -139,21 +139,16 @@ class ExchangeRateProvider:
                     'accept': 'application/json'
                 }
                 
-                async with session.get(url, headers=headers, timeout=5) as response:
+                async with session.get(url, headers=headers, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
                         currencies = data if isinstance(data, list) else [data]
-                        print(f"DEBUG: Doverka currencies raw: {currencies}", flush=True)
                         for currency in currencies:
                             symbol = currency.get('symbol', '').upper()
-                            # Пытаемся найти наиболее подходящий курс для продажи USDT за RUB
-                            # Часто это rate_from_rub или просто поле с самым большим значением
                             rate_to_rub = currency.get('rate_to_rub')
                             rate_from_rub = currency.get('rate_from_rub')
-                            
                             if symbol in ['USD', 'USDT']:
-                                print(f"DEBUG: Found {symbol}. to_rub: {rate_to_rub}, from_rub: {rate_from_rub}", flush=True)
-                                # Если есть rate_from_rub и он больше 85, скорее всего это то, что нам нужно
+                                print(f"DEBUG: Doverka {symbol}: to_rub={rate_to_rub}, from_rub={rate_from_rub}", flush=True)
                                 if rate_from_rub and float(rate_from_rub) > 80:
                                     return float(rate_from_rub)
                                 if rate_to_rub:
@@ -163,7 +158,32 @@ class ExchangeRateProvider:
                         print(f"⚠️ Doverka API error status: {response.status}")
                         return None
         except Exception as e:
-            print(f"⚠️ Ошибка Doverka API: {e}")
+            print(f"⚠️ Doverka attempt 1 error: {e}")
+
+        # Retry
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
+                headers = {
+                    'Authorization': f'Bearer {ExchangeRateProvider.DOVERKA_API_KEY}',
+                    'accept': 'application/json'
+                }
+                async with session.get(url, headers=headers, timeout=10) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        currencies = data if isinstance(data, list) else [data]
+                        for currency in currencies:
+                            symbol = currency.get('symbol', '').upper()
+                            rate_to_rub = currency.get('rate_to_rub')
+                            rate_from_rub = currency.get('rate_from_rub')
+                            if symbol in ['USD', 'USDT']:
+                                if rate_from_rub and float(rate_from_rub) > 80:
+                                    return float(rate_from_rub)
+                                if rate_to_rub:
+                                    return float(rate_to_rub)
+                        return None
+        except Exception as e:
+            print(f"⚠️ Doverka attempt 2 error: {e}")
 
         print(f"❌ Doverka недоступна — курс RUB/USDT не получен")
         return None
