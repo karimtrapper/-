@@ -560,18 +560,19 @@ def sync_deals_to_gsheet(deals):
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
 
-        # Находим ПОСЛЕДНЮЮ строку "итого" — вставляем перед ней
-        itogo_row = None
-        for i, row in enumerate(all_rows):
-            if any('итого' in str(cell).lower() for cell in row):
-                itogo_row = i + 1  # 1-indexed (берём последнюю)
-        if not itogo_row:
-            itogo_row = len(all_rows) + 1
+        # Находим последнюю строку с данными или заголовком недели
+        insert_row = len(all_rows) + 1
+        for i in range(len(all_rows) - 1, -1, -1):
+            row = all_rows[i]
+            if (row[0] and str(row[0]).strip().isdigit()) or \
+               (row[1] and 'неделя' in str(row[1]).lower()):
+                insert_row = i + 2  # после этой строки (1-indexed + 1)
+                break
 
         # Последний номер сделки
         last_num = 0
-        for row in reversed(all_rows[:itogo_row]):
-            if row[0] and row[0].isdigit():
+        for row in reversed(all_rows):
+            if row[0] and str(row[0]).strip().isdigit():
                 last_num = int(row[0])
                 break
 
@@ -637,8 +638,8 @@ def sync_deals_to_gsheet(deals):
             new_rows.append(row)
 
         if new_rows:
-            ws.insert_rows(new_rows, row=itogo_row, value_input_option='USER_ENTERED')
-            print(f'[GSheet] Synced {len(new_rows)} deals to row {itogo_row}')
+            ws.insert_rows(new_rows, row=insert_row, value_input_option='USER_ENTERED')
+            print(f'[GSheet] Synced {len(new_rows)} deals to row {insert_row}')
 
     except Exception as e:
         print(f'[GSheet] Sync error: {e}')
