@@ -43,3 +43,4 @@ static/cert.pem
 static/key.pem
 static/serve_https.py
 kyc_uploads/
+google_sa.json

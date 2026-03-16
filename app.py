@@ -13,6 +13,8 @@ import asyncio
 import time
 import json
 import hashlib
+import gspread
+from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== FLASK APP ====================
 app = Flask(__name__, static_folder='static')
@@ -520,6 +522,130 @@ print("✅ Database initialized")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
+
+# ==================== GOOGLE SHEETS SYNC ====================
+GSHEET_ID = '1aW84o8JmiIOPpCaSyGQuWCmf_h7H6uPWBCloq7_WDOY'
+GSHEET_WORKSHEET = 'общая сделка'
+GOOGLE_SA_JSON = os.environ.get('GOOGLE_SA_JSON', '')  # JSON строка service account
+
+
+def get_gsheet_client():
+    """Возвращает авторизованный gspread клиент"""
+    if GOOGLE_SA_JSON:
+        import json as _json
+        sa_info = _json.loads(GOOGLE_SA_JSON)
+        creds = GoogleCredentials.from_service_account_info(
+            sa_info, scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+    else:
+        # Локально — из файла
+        sa_path = os.path.join(os.path.dirname(__file__), 'google_sa.json')
+        if not os.path.exists(sa_path):
+            return None
+        creds = GoogleCredentials.from_service_account_file(
+            sa_path, scopes=['https://www.googleapis.com/auth/spreadsheets']
+        )
+    return gspread.authorize(creds)
+
+
+def sync_deals_to_gsheet(deals):
+    """Добавляет завершённые сделки в Google Sheet 'общая сделка'"""
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            print('[GSheet] No credentials, skipping sync')
+            return
+
+        sh = gc.open_by_key(GSHEET_ID)
+        ws = sh.worksheet(GSHEET_WORKSHEET)
+        all_rows = ws.get_all_values()
+
+        # Находим ПОСЛЕДНЮЮ строку "итого" — вставляем перед ней
+        itogo_row = None
+        for i, row in enumerate(all_rows):
+            if any('итого' in str(cell).lower() for cell in row):
+                itogo_row = i + 1  # 1-indexed (берём последнюю)
+        if not itogo_row:
+            itogo_row = len(all_rows) + 1
+
+        # Последний номер сделки
+        last_num = 0
+        for row in reversed(all_rows[:itogo_row]):
+            if row[0] and row[0].isdigit():
+                last_num = int(row[0])
+                break
+
+        new_rows = []
+        for deal in deals:
+            last_num += 1
+
+            # Маппинг payin_method → способ пополнения
+            payin_map = {
+                'spp_doverka': 'доверка',
+                'crypto_direct': 'крипта',
+                'partners_cash': 'наличные',
+            }
+            # Маппинг payout_method → способ выдачи
+            payout_map = {
+                'office': 'офис',
+                'courier': 'курьер',
+                'atm': 'банкомат',
+                'transfer': 'перевод',
+            }
+
+            payin_method_str = payin_map.get(
+                deal.payin_method.value if deal.payin_method else '', ''
+            )
+            payout_method_str = payout_map.get(
+                deal.payout_method.value if deal.payout_method else '', ''
+            )
+
+            # Валюта пополнения
+            if deal.payin_method == PayInMethod.CRYPTO_DIRECT:
+                currency_in = 'usdt'
+                amount_in = deal.payin_amount_usdt or 0
+                amount_in_usdt = amount_in
+            else:
+                currency_in = 'rub'
+                amount_in = deal.payin_amount_rub or 0
+                amount_in_usdt = deal.payin_amount_usdt or 0
+
+            # Форматируем
+            date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+            amount_in_fmt = f'{amount_in:,.2f}' if amount_in else ''
+            amount_in_usdt_fmt = f'${amount_in_usdt:,.2f}' if amount_in_usdt else ''
+            payout_thb = deal.payout_amount_thb or 0
+            payout_usdt = deal.payout_amount_usdt or 0
+            payout_usdt_fmt = f'${payout_usdt:,.2f}' if payout_usdt else ''
+            profit_fmt = f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else ''
+            tx_hash = deal.payin_tx_hash or ''
+
+            row = [
+                str(last_num),           # A: номер
+                deal.client_name or '',  # B: клиент
+                '',                      # C: пусто
+                date_str,                # D: дата
+                amount_in_fmt,           # E: сумма получения
+                currency_in,             # F: валюта
+                amount_in_usdt_fmt,      # G: сумма получения в USDT
+                str(int(payout_thb)) if payout_thb else '',  # H: выдача клиенту
+                'thb',                   # I: валюта выдачи
+                payout_usdt_fmt,         # J: сумма выдачи в USDT
+                '',                      # K: брокеру
+                '',                      # L: партнеру
+                profit_fmt,              # M: доходность
+                payout_method_str,       # N: способ выдачи
+                payin_method_str,        # O: способ пополнения
+                tx_hash,                 # P: хеш
+            ]
+            new_rows.append(row)
+
+        if new_rows:
+            ws.insert_rows(new_rows, row=itogo_row)
+            print(f'[GSheet] Synced {len(new_rows)} deals to row {itogo_row}')
+
+    except Exception as e:
+        print(f'[GSheet] Sync error: {e}')
 
 def send_webhook_async(url, data):
     def _send():
@@ -2211,8 +2337,15 @@ def create_reimbursement():
                 deal.net_profit_usdt = deal.profit_usdt - referrer_payout
         
         session.commit()
+
+        # Синк в Google Sheets после возмещения
+        try:
+            sync_deals_to_gsheet(deals)
+        except Exception as gsheet_err:
+            print(f'[GSheet] Error after reimbursement: {gsheet_err}')
+
         return jsonify({
-            'success': True, 
+            'success': True,
             'reimbursement': reimbursement.to_dict(),
             'deals_updated': len(deals),
             'total_thb': total_thb
