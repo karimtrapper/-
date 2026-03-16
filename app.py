@@ -2564,6 +2564,7 @@ def send_telegram_notification(text):
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '')
     thread_id = os.environ.get('TELEGRAM_THREAD_ID', '')
     if not token or not chat_id:
+        print(f'[Telegram] Skip: token={bool(token)} chat_id={bool(chat_id)}')
         return False
     try:
         payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
@@ -2571,8 +2572,10 @@ def send_telegram_notification(text):
             payload["message_thread_id"] = int(thread_id)
         response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                                 json=payload, timeout=10)
+        print(f'[Telegram] Sent: {response.status_code}')
         return response.status_code == 200
-    except:
+    except Exception as e:
+        print(f'[Telegram] Error: {e}')
         return False
 
 @app.route('/api/proxy/create-payment', methods=['POST'])
