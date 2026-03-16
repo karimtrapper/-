@@ -610,38 +610,34 @@ def sync_deals_to_gsheet(deals):
                 amount_in = deal.payin_amount_rub or 0
                 amount_in_usdt = deal.payin_amount_usdt or 0
 
-            # Форматируем
+            # Значения как числа — Google Sheets сам отформатирует
             date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-            amount_in_fmt = f'{amount_in:,.2f}' if amount_in else ''
-            amount_in_usdt_fmt = f'${amount_in_usdt:,.2f}' if amount_in_usdt else ''
             payout_thb = deal.payout_amount_thb or 0
             payout_usdt = deal.payout_amount_usdt or 0
-            payout_usdt_fmt = f'${payout_usdt:,.2f}' if payout_usdt else ''
-            profit_fmt = f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else ''
             tx_hash = deal.payin_tx_hash or ''
 
             row = [
-                str(last_num),           # A: номер
-                deal.client_name or '',  # B: клиент
-                '',                      # C: пусто
-                date_str,                # D: дата
-                amount_in_fmt,           # E: сумма получения
-                currency_in,             # F: валюта
-                amount_in_usdt_fmt,      # G: сумма получения в USDT
-                str(int(payout_thb)) if payout_thb else '',  # H: выдача клиенту
-                'thb',                   # I: валюта выдачи
-                payout_usdt_fmt,         # J: сумма выдачи в USDT
-                '',                      # K: брокеру
-                '',                      # L: партнеру
-                profit_fmt,              # M: доходность
-                payout_method_str,       # N: способ выдачи
-                payin_method_str,        # O: способ пополнения
-                tx_hash,                 # P: хеш
+                last_num,                              # A: номер
+                deal.client_name or '',                # B: клиент
+                '',                                    # C: пусто
+                date_str,                              # D: дата
+                f'{amount_in:,.2f}' if amount_in else '',  # E: сумма получения
+                currency_in,                           # F: валюта
+                f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',  # G: получение в USDT
+                int(payout_thb) if payout_thb else '',  # H: выдача клиенту
+                'thb',                                 # I: валюта выдачи
+                f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
+                '',                                    # K: брокеру
+                '',                                    # L: партнеру
+                f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',  # M: доходность
+                payout_method_str,                     # N: способ выдачи
+                payin_method_str,                      # O: способ пополнения
+                tx_hash,                               # P: хеш
             ]
             new_rows.append(row)
 
         if new_rows:
-            ws.insert_rows(new_rows, row=itogo_row)
+            ws.insert_rows(new_rows, row=itogo_row, value_input_option='USER_ENTERED')
             print(f'[GSheet] Synced {len(new_rows)} deals to row {itogo_row}')
 
     except Exception as e:
