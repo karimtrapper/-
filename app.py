@@ -638,11 +638,143 @@ def sync_deals_to_gsheet(deals):
             new_rows.append(row)
 
         if new_rows:
+            # Находим строку-образец для копирования формата (последняя строка с номером)
+            template_row_idx = None
+            for i in range(len(all_rows) - 1, -1, -1):
+                if all_rows[i][0] and str(all_rows[i][0]).strip().isdigit():
+                    template_row_idx = i  # 0-indexed
+                    break
+
             ws.insert_rows(new_rows, row=insert_row, value_input_option='USER_ENTERED')
             print(f'[GSheet] Synced {len(new_rows)} deals to row {insert_row}')
 
+            # Копируем форматирование (дропдауны, цвета, формат чисел) с образца
+            if template_row_idx is not None:
+                sheet_id = ws.id
+                num_cols = max(len(r) for r in new_rows)
+                for offset in range(len(new_rows)):
+                    sh.batch_update({
+                        'requests': [{
+                            'copyPaste': {
+                                'source': {
+                                    'sheetId': sheet_id,
+                                    'startRowIndex': template_row_idx,
+                                    'endRowIndex': template_row_idx + 1,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': num_cols,
+                                },
+                                'destination': {
+                                    'sheetId': sheet_id,
+                                    'startRowIndex': insert_row - 1 + offset,  # 0-indexed
+                                    'endRowIndex': insert_row + offset,
+                                    'startColumnIndex': 0,
+                                    'endColumnIndex': num_cols,
+                                },
+                                'pasteType': 'PASTE_FORMAT',
+                            }
+                        }]
+                    })
+                print(f'[GSheet] Copied formatting from row {template_row_idx + 1}')
+
     except Exception as e:
         print(f'[GSheet] Sync error: {e}')
+
+
+def find_deal_row_in_gsheet(ws, all_rows, deal):
+    """Находит строку сделки в Google Sheet по клиенту + дате.
+    Возвращает 1-indexed номер строки или None."""
+    deal_date = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    deal_name = (deal.client_name or '').strip().lower()
+    for i, row in enumerate(all_rows):
+        if len(row) >= 4:
+            row_name = str(row[1]).strip().lower()
+            row_date = str(row[3]).strip()
+            if row_name == deal_name and row_date == deal_date:
+                return i + 1  # 1-indexed
+    return None
+
+
+def delete_deal_from_gsheet(deal):
+    """Удаляет строку сделки из Google Sheet"""
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return
+        sh = gc.open_by_key(GSHEET_ID)
+        ws = sh.worksheet(GSHEET_WORKSHEET)
+        all_rows = ws.get_all_values()
+        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
+        if row_num:
+            ws.delete_rows(row_num)
+            print(f'[GSheet] Deleted row {row_num} ({deal.client_name})')
+        else:
+            print(f'[GSheet] Row not found for {deal.client_name}')
+    except Exception as e:
+        print(f'[GSheet] Delete error: {e}')
+
+
+def update_deal_in_gsheet(deal):
+    """Обновляет строку сделки в Google Sheet (только если возмещена)"""
+    if not deal.is_reimbursed:
+        return
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return
+        sh = gc.open_by_key(GSHEET_ID)
+        ws = sh.worksheet(GSHEET_WORKSHEET)
+        all_rows = ws.get_all_values()
+        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
+        if not row_num:
+            print(f'[GSheet] Row not found for update: {deal.client_name}')
+            return
+
+        # Маппинг
+        payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные'}
+        payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
+        payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
+        payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
+
+        if deal.payin_method == PayInMethod.CRYPTO_DIRECT:
+            currency_in = 'usdt'
+            amount_in = deal.payin_amount_usdt or 0
+            amount_in_usdt = amount_in
+        else:
+            currency_in = 'rub'
+            amount_in = deal.payin_amount_rub or 0
+            amount_in_usdt = deal.payin_amount_usdt or 0
+
+        date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+        payout_thb = deal.payout_amount_thb or 0
+        payout_usdt = deal.payout_amount_usdt or 0
+
+        # Сохраняем номер из колонки A (не перезаписываем)
+        existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
+
+        row = [
+            existing_num,
+            deal.client_name or '',
+            '',
+            date_str,
+            f'{amount_in:,.2f}' if amount_in else '',
+            currency_in,
+            f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
+            int(payout_thb) if payout_thb else '',
+            'thb',
+            f'${payout_usdt:,.2f}' if payout_usdt else '',
+            '',
+            '',
+            f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',
+            payout_method_str,
+            payin_method_str,
+            deal.payin_tx_hash or '',
+        ]
+
+        ws.update(values=[row], range_name=f'A{row_num}:P{row_num}', value_input_option='USER_ENTERED')
+        print(f'[GSheet] Updated row {row_num} ({deal.client_name})')
+    except Exception as e:
+        print(f'[GSheet] Update error: {e}')
+
 
 def send_webhook_async(url, data):
     def _send():
@@ -1247,7 +1379,11 @@ def update_deal(deal_id):
         # Webhook при завершении
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
-        
+
+        # Синхронизация с Google Sheet (если сделка возмещена)
+        if deal.is_reimbursed:
+            update_deal_in_gsheet(deal)
+
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
         session.rollback()
@@ -1264,15 +1400,18 @@ def delete_deal(deal_id):
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
-        # Запоминаем reimbursement_id до удаления
+        # Запоминаем данные до удаления для Google Sheet
         reimbursement_id = deal.reimbursement_id
-        
+        was_reimbursed = deal.is_reimbursed
+        deal_client_name = deal.client_name
+        deal_created_at = deal.created_at
+
         # Удаляем связанные операции по кошелькам (Binance списания)
         session.query(WalletOperation).filter(WalletOperation.deal_id == deal_id).delete()
 
         session.delete(deal)
         session.flush()
-        
+
         # Удаляем пустые возмещения (без сделок)
         if reimbursement_id:
             remaining_deals = session.query(Deal).filter(Deal.reimbursement_id == reimbursement_id).count()
@@ -1280,9 +1419,17 @@ def delete_deal(deal_id):
                 reimbursement = session.query(Reimbursement).filter(Reimbursement.id == reimbursement_id).first()
                 if reimbursement:
                     session.delete(reimbursement)
-        
+
         session.commit()
 
+        # Удаляем из Google Sheet (если была возмещена)
+        if was_reimbursed:
+            class _DealStub:
+                pass
+            stub = _DealStub()
+            stub.client_name = deal_client_name
+            stub.created_at = deal_created_at
+            delete_deal_from_gsheet(stub)
 
         return jsonify({'success': True})
     except Exception as e:
