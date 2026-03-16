@@ -2562,11 +2562,15 @@ def set_webhook_config():
 def send_telegram_notification(text):
     token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '')
+    thread_id = os.environ.get('TELEGRAM_THREAD_ID', '')
     if not token or not chat_id:
         return False
     try:
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+        if thread_id:
+            payload["message_thread_id"] = int(thread_id)
         response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
+                                json=payload, timeout=10)
         return response.status_code == 200
     except:
         return False
