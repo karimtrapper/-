@@ -715,7 +715,7 @@ def delete_deal_from_gsheet(deal):
 
 def update_deal_in_gsheet(deal):
     """Обновляет строку сделки в Google Sheet (только если возмещена)"""
-    if not deal.is_reimbursed:
+    if deal.reimbursement_id is None:
         return
     try:
         gc = get_gsheet_client()
@@ -1381,7 +1381,7 @@ def update_deal(deal_id):
             send_deal_completed_webhook(deal)
 
         # Синхронизация с Google Sheet (если сделка возмещена)
-        if deal.is_reimbursed:
+        if deal.reimbursement_id is not None:
             update_deal_in_gsheet(deal)
 
         return jsonify({'success': True, 'deal': deal.to_dict()})
@@ -1402,7 +1402,7 @@ def delete_deal(deal_id):
         
         # Запоминаем данные до удаления для Google Sheet
         reimbursement_id = deal.reimbursement_id
-        was_reimbursed = deal.is_reimbursed
+        was_reimbursed = deal.reimbursement_id is not None
         deal_client_name = deal.client_name
         deal_created_at = deal.created_at
 
