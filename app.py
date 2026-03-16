@@ -2562,9 +2562,9 @@ def set_webhook_config():
 # ==================== TELEGRAM NOTIFICATION ====================
 
 def send_telegram_notification(text):
-    token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
-    chat_id = os.environ.get('TELEGRAM_CHAT_ID', '')
-    thread_id = os.environ.get('TELEGRAM_THREAD_ID', '')
+    token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
+    chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip()
+    thread_id = os.environ.get('TELEGRAM_THREAD_ID', '2108').strip()
     if not token or not chat_id:
         print(f'[Telegram] Skip: token={bool(token)} chat_id={bool(chat_id)}')
         return False
