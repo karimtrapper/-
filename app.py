@@ -2489,25 +2489,27 @@ def create_reimbursement():
             print(f'[GSheet] Error after reimbursement: {gsheet_err}')
 
         # Уведомление в Telegram
-        for deal in deals:
-            payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные'}
-            payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
-            pm = deal.payin_method.value if deal.payin_method else ''
-            currency = 'usdt' if pm == 'crypto_direct' else 'rub'
-            amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
-            amount_in_usdt = deal.payin_amount_usdt or 0
-            payout_thb = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
-            payout_usdt = deal.payout_amount_usdt or 0
-            profit = deal.profit_usdt or 0
-            date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+        try:
+            for deal in deals:
+                pm = deal.payin_method.value if deal.payin_method else ''
+                currency = 'usdt' if pm == 'crypto_direct' else 'rub'
+                amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
+                amount_in_usdt = deal.payin_amount_usdt or 0
+                payout_thb = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
+                payout_usdt = deal.payout_amount_usdt or 0
+                profit = deal.profit_usdt or 0
+                date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
 
-            msg = (
-                f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
-                f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
-                f"Выдано: {payout_thb:,} ฿ (${payout_usdt:,.2f})\n"
-                f"Прибыль: ${profit:,.2f}"
-            )
-            send_telegram_notification(msg)
+                msg = (
+                    f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
+                    f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
+                    f"Выдано: {payout_thb:,} ฿ (${payout_usdt:,.2f})\n"
+                    f"Прибыль: ${profit:,.2f}"
+                )
+                print(f'[Telegram] Sending for deal #{deal.id}...')
+                send_telegram_notification(msg)
+        except Exception as tg_err:
+            print(f'[Telegram] Build message error: {tg_err}')
 
         return jsonify({
             'success': True,
