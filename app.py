@@ -1471,6 +1471,7 @@ def delete_deal(deal_id):
         # Запоминаем данные до удаления для Google Sheet
         reimbursement_id = deal.reimbursement_id
         was_reimbursed = deal.reimbursement_id is not None
+        was_completed = deal.status == DealStatus.COMPLETED
         deal_client_name = deal.client_name
         deal_created_at = deal.created_at
 
@@ -1490,8 +1491,8 @@ def delete_deal(deal_id):
 
         session.commit()
 
-        # Удаляем из Google Sheet (если была возмещена)
-        if was_reimbursed:
+        # Удаляем из Google Sheet (если сделка была завершена — она могла попасть в таблицу)
+        if was_completed or was_reimbursed:
             class _DealStub:
                 pass
             stub = _DealStub()
