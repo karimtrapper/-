@@ -2655,6 +2655,22 @@ def send_telegram_notification(text):
         print(f'[Telegram] Error: {e}')
         return False
 
+@app.route('/api/doverka/payments', methods=['GET'])
+def doverka_payments_history():
+    """Прокси для получения истории платежей Доверки"""
+    from calculator import ExchangeRateProvider
+    key = ExchangeRateProvider.DOVERKA_API_KEY
+    if not key:
+        return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
+    params = {k: v for k, v in request.args.items()}
+    resp = requests.get(
+        'https://api.doverkapay.com/v1/payments',
+        headers={'Authorization': f'Bearer {key}', 'accept': 'application/json'},
+        params=params, timeout=15
+    )
+    return jsonify(resp.json()), resp.status_code
+
+
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
     """Прокси для создания платежа через Doverka — обходит CORS"""
