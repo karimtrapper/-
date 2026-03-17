@@ -795,6 +795,35 @@ def update_deal_in_gsheet(deal):
         print(f'[GSheet] Update error: {e}')
 
 
+def _send_deal_telegram(deal):
+    """Отправляет уведомление о сделке в Telegram"""
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    payout_usdt = deal.payout_amount_usdt or 0
+    profit = deal.profit_usdt or 0
+
+    if deal.is_custom:
+        currency = (deal.custom_payin_currency or '').lower()
+        amount_in = deal.custom_payin_amount or 0
+        amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+        payout_val = deal.custom_payout_amount or deal.payout_amount_thb or 0
+        payout_cur = (deal.custom_payout_currency or 'THB').upper()
+    else:
+        pm = deal.payin_method.value if deal.payin_method else ''
+        currency = 'usdt' if pm == 'crypto_direct' else 'rub'
+        amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
+        amount_in_usdt = deal.payin_amount_usdt or 0
+        payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
+        payout_cur = 'THB'
+
+    msg = (
+        f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
+        f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
+        f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
+        f"Прибыль: ${profit:,.2f}"
+    )
+    send_telegram_notification(msg)
+
+
 def send_webhook_async(url, data):
     def _send():
         try:
@@ -1294,10 +1323,20 @@ def create_deal():
 
         session.commit()
         
-        # Webhook если сделка создана сразу со статусом completed
+        # Если сделка создана сразу со статусом completed
         if deal.status == DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
-        
+            # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
+            if deal.profit_usdt is not None:
+                try:
+                    sync_deals_to_gsheet([deal])
+                except Exception as e:
+                    print(f'[GSheet] Sync error on create: {e}')
+                try:
+                    _send_deal_telegram(deal)
+                except Exception as e:
+                    print(f'[Telegram] Error on create: {e}')
+
         return jsonify({'success': True, 'deal': deal.to_dict()}), 201
     except Exception as e:
         session.rollback()
@@ -1398,8 +1437,18 @@ def update_deal(deal_id):
         # Webhook при завершении
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
+            # GSheet + Telegram для завершённых сделок с прибылью (без ожидания возмещения)
+            if deal.profit_usdt is not None:
+                try:
+                    sync_deals_to_gsheet([deal])
+                except Exception as e:
+                    print(f'[GSheet] Sync error on complete: {e}')
+                try:
+                    _send_deal_telegram(deal)
+                except Exception as e:
+                    print(f'[Telegram] Error on complete: {e}')
 
-        # Синхронизация с Google Sheet (если сделка возмещена)
+        # Синхронизация с Google Sheet (если сделка возмещена — обновление существующей строки)
         if deal.reimbursement_id is not None:
             update_deal_in_gsheet(deal)
 
@@ -2513,35 +2562,9 @@ def create_reimbursement():
         # Уведомление в Telegram
         try:
             for deal in deals:
-                date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-                payout_usdt = deal.payout_amount_usdt or 0
-                profit = deal.profit_usdt or 0
-
-                # Кастомные сделки — данные из custom_* полей
-                if deal.is_custom:
-                    currency = (deal.custom_payin_currency or '').lower()
-                    amount_in = deal.custom_payin_amount or 0
-                    amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-                    payout_val = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                    payout_cur = (deal.custom_payout_currency or 'thb').upper()
-                else:
-                    pm = deal.payin_method.value if deal.payin_method else ''
-                    currency = 'usdt' if pm == 'crypto_direct' else 'rub'
-                    amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
-                    amount_in_usdt = deal.payin_amount_usdt or 0
-                    payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
-                    payout_cur = 'THB'
-
-                msg = (
-                    f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
-                    f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
-                    f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
-                    f"Прибыль: ${profit:,.2f}"
-                )
-                print(f'[Telegram] Sending for deal #{deal.id}...')
-                send_telegram_notification(msg)
+                _send_deal_telegram(deal)
         except Exception as tg_err:
-            print(f'[Telegram] Build message error: {tg_err}')
+            print(f'[Telegram] Error on reimbursement: {tg_err}')
 
         return jsonify({
             'success': True,
@@ -2574,6 +2597,25 @@ def delete_reimbursement(reimbursement_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
+    finally:
+        session.close()
+
+# ==================== MANUAL SYNC ====================
+
+@app.route('/api/deals/sync-gsheet', methods=['POST'])
+def manual_sync_gsheet():
+    """Ручной синк сделок в Google Sheet по списку ID"""
+    session = get_session()
+    try:
+        data = request.get_json()
+        deal_ids = data.get('deal_ids', [])
+        deals = session.query(Deal).filter(Deal.id.in_(deal_ids)).all()
+        if not deals:
+            return jsonify({'success': False, 'error': 'Сделки не найдены'}), 404
+        sync_deals_to_gsheet(deals)
+        return jsonify({'success': True, 'synced': len(deals)})
+    except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 400
     finally:
         session.close()
