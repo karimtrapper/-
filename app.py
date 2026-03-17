@@ -2635,20 +2635,6 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
-@app.route('/api/telegram/test', methods=['POST'])
-def test_telegram():
-    """Тестовая отправка в Telegram"""
-    token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
-    chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip()
-    thread_id = os.environ.get('TELEGRAM_THREAD_ID', '2108').strip()
-    has_token = bool(token)
-    result = {'has_token': has_token, 'chat_id': chat_id, 'thread_id': thread_id, 'token_prefix': token[:10] + '...' if token else 'EMPTY'}
-    if has_token:
-        ok = send_telegram_notification("🧪 Тест отправки из CalcCRM")
-        result['sent'] = ok
-    return jsonify(result)
-
-
 def send_telegram_notification(text):
     token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip()
