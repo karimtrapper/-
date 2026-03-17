@@ -601,19 +601,28 @@ def sync_deals_to_gsheet(deals):
                 deal.payout_method.value if deal.payout_method else '', ''
             )
 
-            # Валюта пополнения
-            if deal.payin_method == PayInMethod.CRYPTO_DIRECT:
+            # Валюта пополнения (кастомные сделки используют custom_* поля)
+            if deal.is_custom:
+                currency_in = (deal.custom_payin_currency or '').lower()
+                amount_in = deal.custom_payin_amount or 0
+                amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+                payout_currency = (deal.custom_payout_currency or 'thb').lower()
+            elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
                 currency_in = 'usdt'
                 amount_in = deal.payin_amount_usdt or 0
                 amount_in_usdt = amount_in
+                payout_thb = deal.payout_amount_thb or 0
+                payout_currency = 'thb'
             else:
                 currency_in = 'rub'
                 amount_in = deal.payin_amount_rub or 0
                 amount_in_usdt = deal.payin_amount_usdt or 0
+                payout_thb = deal.payout_amount_thb or 0
+                payout_currency = 'thb'
 
             # Значения как числа — Google Sheets сам отформатирует
             date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-            payout_thb = deal.payout_amount_thb or 0
             payout_usdt = deal.payout_amount_usdt or 0
             tx_hash = deal.payin_tx_hash or ''
 
@@ -626,13 +635,13 @@ def sync_deals_to_gsheet(deals):
                 currency_in,                           # F: валюта
                 f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',  # G: получение в USDT
                 int(payout_thb) if payout_thb else '',  # H: выдача клиенту
-                'thb',                                 # I: валюта выдачи
+                payout_currency,                       # I: валюта выдачи
                 f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
                 '',                                    # K: брокеру
                 '',                                    # L: партнеру
                 f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',  # M: доходность
                 payout_method_str,                     # N: способ выдачи
-                payin_method_str,                      # O: способ пополнения
+                payin_method_str if not deal.is_custom else 'кастом',  # O: способ пополнения
                 tx_hash,                               # P: хеш
             ]
             new_rows.append(row)
@@ -735,17 +744,27 @@ def update_deal_in_gsheet(deal):
         payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
         payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
 
-        if deal.payin_method == PayInMethod.CRYPTO_DIRECT:
+        # Кастомные сделки используют custom_* поля
+        if deal.is_custom:
+            currency_in = (deal.custom_payin_currency or '').lower()
+            amount_in = deal.custom_payin_amount or 0
+            amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+            payout_currency = (deal.custom_payout_currency or 'thb').lower()
+        elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
             currency_in = 'usdt'
             amount_in = deal.payin_amount_usdt or 0
             amount_in_usdt = amount_in
+            payout_thb = deal.payout_amount_thb or 0
+            payout_currency = 'thb'
         else:
             currency_in = 'rub'
             amount_in = deal.payin_amount_rub or 0
             amount_in_usdt = deal.payin_amount_usdt or 0
+            payout_thb = deal.payout_amount_thb or 0
+            payout_currency = 'thb'
 
         date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-        payout_thb = deal.payout_amount_thb or 0
         payout_usdt = deal.payout_amount_usdt or 0
 
         # Сохраняем номер из колонки A (не перезаписываем)
@@ -760,13 +779,13 @@ def update_deal_in_gsheet(deal):
             currency_in,
             f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
             int(payout_thb) if payout_thb else '',
-            'thb',
+            payout_currency,
             f'${payout_usdt:,.2f}' if payout_usdt else '',
             '',
             '',
             f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',
             payout_method_str,
-            payin_method_str,
+            payin_method_str if not deal.is_custom else 'кастом',
             deal.payin_tx_hash or '',
         ]
 
@@ -2466,10 +2485,13 @@ def create_reimbursement():
         # Update deals
         deals = session.query(Deal).filter(Deal.id.in_(deal_ids)).all()
         total_thb = 0
+        # Для пропорционального распределения USDT учитываем custom_payout_amount
+        total_payout = sum((d.payout_amount_thb or d.custom_payout_amount or 0) for d in deals)
         for deal in deals:
             deal.reimbursement_id = reimbursement.id
-            deal.payout_amount_usdt = amount_usdt * (deal.payout_amount_thb / sum(d.payout_amount_thb for d in deals)) if deal.payout_amount_thb else 0
-            total_thb += deal.payout_amount_thb or 0
+            deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
+            deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
+            total_thb += deal_payout
             
             # Recalculate profit now that we know payout USDT
             if deal.payin_amount_usdt and deal.payout_amount_usdt:
@@ -2491,19 +2513,29 @@ def create_reimbursement():
         # Уведомление в Telegram
         try:
             for deal in deals:
-                pm = deal.payin_method.value if deal.payin_method else ''
-                currency = 'usdt' if pm == 'crypto_direct' else 'rub'
-                amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
-                amount_in_usdt = deal.payin_amount_usdt or 0
-                payout_thb = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
+                date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
                 payout_usdt = deal.payout_amount_usdt or 0
                 profit = deal.profit_usdt or 0
-                date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+
+                # Кастомные сделки — данные из custom_* полей
+                if deal.is_custom:
+                    currency = (deal.custom_payin_currency or '').lower()
+                    amount_in = deal.custom_payin_amount or 0
+                    amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+                    payout_val = deal.custom_payout_amount or deal.payout_amount_thb or 0
+                    payout_cur = (deal.custom_payout_currency or 'thb').upper()
+                else:
+                    pm = deal.payin_method.value if deal.payin_method else ''
+                    currency = 'usdt' if pm == 'crypto_direct' else 'rub'
+                    amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
+                    amount_in_usdt = deal.payin_amount_usdt or 0
+                    payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
+                    payout_cur = 'THB'
 
                 msg = (
                     f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
                     f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
-                    f"Выдано: {payout_thb:,} ฿ (${payout_usdt:,.2f})\n"
+                    f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
                     f"Прибыль: ${profit:,.2f}"
                 )
                 print(f'[Telegram] Sending for deal #{deal.id}...')
