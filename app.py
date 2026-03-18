@@ -628,7 +628,7 @@ def sync_deals_to_gsheet(deals):
 
             row = [
                 last_num,                              # A: номер
-                deal.client_name or '',                # B: клиент
+                (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
                 '',                                    # C: пусто
                 date_str,                              # D: дата
                 f'{amount_in:,.2f}' if amount_in else '',  # E: сумма получения
@@ -772,7 +772,7 @@ def update_deal_in_gsheet(deal):
 
         row = [
             existing_num,
-            deal.client_name or '',
+            (deal.client.name if deal.client else deal.client_name) or '',
             '',
             date_str,
             f'{amount_in:,.2f}' if amount_in else '',
@@ -790,7 +790,7 @@ def update_deal_in_gsheet(deal):
         ]
 
         ws.update(values=[row], range_name=f'A{row_num}:P{row_num}', value_input_option='USER_ENTERED')
-        print(f'[GSheet] Updated row {row_num} ({deal.client_name})')
+        print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
 
