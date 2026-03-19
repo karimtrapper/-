@@ -221,7 +221,14 @@ class ExchangeRateProvider:
 
         try:
             async with async_playwright() as p:
-                browser = await p.chromium.launch(headless=True)
+                browser = await p.chromium.launch(headless=True, args=[
+                    '--no-sandbox',
+                    '--disable-dev-shm-usage',  # использовать /tmp вместо /dev/shm (критично в Docker)
+                    '--disable-gpu',
+                    '--single-process',          # без дочернего renderer-процесса, ~100MB меньше
+                    '--no-zygote',
+                    '--disable-extensions',
+                ])
                 page = await browser.new_page()
 
                 if direction == 'thb_to_usdt':
