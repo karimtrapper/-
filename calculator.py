@@ -225,8 +225,6 @@ class ExchangeRateProvider:
                     '--no-sandbox',
                     '--disable-dev-shm-usage',  # использовать /tmp вместо /dev/shm (критично в Docker)
                     '--disable-gpu',
-                    '--single-process',          # без дочернего renderer-процесса, ~100MB меньше
-                    '--no-zygote',
                     '--disable-extensions',
                 ])
                 page = await browser.new_page()
