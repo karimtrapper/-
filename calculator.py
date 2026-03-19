@@ -229,15 +229,6 @@ class ExchangeRateProvider:
                 ])
                 page = await browser.new_page()
 
-                # Блокируем ненужные ресурсы — ускоряет загрузку в 2-3 раза
-                async def block_resources(route):
-                    if route.request.resource_type in ('image', 'media', 'font', 'stylesheet'):
-                        await route.abort()
-                    else:
-                        await route.continue_()
-                await page.route('**/*', block_resources)
-                page.set_default_timeout(60000)  # все операции (fill, click, etc.) ждут до 60 сек
-
                 async def wait_for_value(selector, max_ms=8000):
                     """Ждёт пока поле заполнится числом, не дольше max_ms"""
                     for _ in range(max_ms // 150):
@@ -252,7 +243,7 @@ class ExchangeRateProvider:
 
                 if direction == 'thb_to_usdt':
                     # THB → USDT: страница THB/USDT, вводим THB в From
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=60000)
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -278,7 +269,7 @@ class ExchangeRateProvider:
                 elif direction == 'thb_to_usdt_reverse':
                     # Обратный ввод: страница THB/USDT, вводим USDT в поле Receive → читаем THB из From
                     # Используется когда клиент хочет получить N USDT и нужно узнать сколько THB платить
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=60000)
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -307,7 +298,7 @@ class ExchangeRateProvider:
                 elif direction == 'usdt_to_thb_reverse':
                     # Обратный ввод: страница USDT/THB, вводим THB в поле Receive → читаем USDT из From
                     # Используется когда клиент хочет получить N бат и нужно узнать сколько USDT платить
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=60000)
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -335,7 +326,7 @@ class ExchangeRateProvider:
 
                 else:
                     # USDT → THB: страница USDT/THB, вводим USDT в From
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=60000)
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
