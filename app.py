@@ -59,7 +59,7 @@ if DATABASE_URL:
     # Railway PostgreSQL (иногда начинается с postgres://, нужно postgresql://)
     if DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
-    engine = create_engine(DATABASE_URL, echo=False)
+    engine = create_engine(DATABASE_URL, echo=False, connect_args={'connect_timeout': 10})
 else:
     # Локальная SQLite
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'local.db')
@@ -502,6 +502,7 @@ try:
         from sqlalchemy import text
         # Для PostgreSQL
         if 'postgresql' in DATABASE_URL:
+            conn.execute(text("SET lock_timeout = '3s'"))  # не ждать лок дольше 3 сек
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_wallet_id INTEGER REFERENCES wallets(id)"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
