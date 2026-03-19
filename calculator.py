@@ -236,6 +236,7 @@ class ExchangeRateProvider:
                     else:
                         await route.continue_()
                 await page.route('**/*', block_resources)
+                page.set_default_timeout(60000)  # все операции (fill, click, etc.) ждут до 60 сек
 
                 async def wait_for_value(selector, max_ms=8000):
                     """Ждёт пока поле заполнится числом, не дольше max_ms"""
