@@ -237,29 +237,34 @@ class ExchangeRateProvider:
                         await route.continue_()
                 await page.route('**/*', block_heavy)
 
-                async def wait_for_value(selector, max_ms=8000):
-                    """Ждёт пока поле заполнится числом, не дольше max_ms"""
+                async def wait_for_nth_value(nth, max_ms=8000):
+                    """Ждёт пока поле nth заполнится числом, не дольше max_ms"""
+                    loc = page.locator('input').nth(nth)
                     for _ in range(max_ms // 150):
                         try:
-                            val = await page.input_value(selector)
-                            if val and val not in ('0', '0.00', '0.0', ''):
+                            val = await loc.input_value()
+                            if val and val not in ('0', '0.00', '0.0', '', '--'):
                                 return val
                         except Exception:
-                            pass  # элемент ещё не в DOM, ждём
+                            pass
                         await page.wait_for_timeout(150)
-                    return await page.input_value(selector)
+                    return await loc.input_value()
 
-                if direction == 'thb_to_usdt':
-                    # THB → USDT: страница THB/USDT, вводим THB в From
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=60000, wait_until='domcontentloaded')
+                async def goto_and_wait(url):
+                    """Переходим и ждём появления первого инпута"""
+                    await page.goto(url, timeout=60000, wait_until='domcontentloaded')
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
                         pass
+                    # Ждём первый инпут — признак что React отрисовался
+                    await page.locator('input').nth(0).wait_for(timeout=30000)
 
-                    await page.wait_for_selector('input[placeholder*="3248999"]', timeout=60000)
-                    await page.fill('input[placeholder*="3248999"]', str(thb_amount))
-                    usdt_text = await wait_for_value('input[placeholder*="99999"]')
+                if direction == 'thb_to_usdt':
+                    # THB → USDT: страница THB/USDT, nth(0)=THB From, nth(1)=USDT Receive
+                    await goto_and_wait('https://www.binance.th/en/convert/THB/USDT')
+                    await page.locator('input').nth(0).fill(str(thb_amount))
+                    usdt_text = await wait_for_nth_value(1)
                     usdt_received = float(usdt_text.replace(',', ''))
 
                     rate_usdt_thb = thb_amount / usdt_received
@@ -276,20 +281,10 @@ class ExchangeRateProvider:
                     }
 
                 elif direction == 'thb_to_usdt_reverse':
-                    # Обратный ввод: страница THB/USDT, вводим USDT в поле Receive → читаем THB из From
-                    # Используется когда клиент хочет получить N USDT и нужно узнать сколько THB платить
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=60000, wait_until='domcontentloaded')
-                    try:
-                        await page.click('button:has-text("Accept")', timeout=2000)
-                    except:
-                        pass
-
-                    # Вводим USDT в поле Receive (второе поле)
-                    await page.wait_for_selector('input[placeholder*="99999"]', timeout=60000)
-                    await page.fill('input[placeholder*="99999"]', str(usdt_amount))
-                    thb_text = await wait_for_value('input[placeholder*="3248999"]')
-
-                    # Читаем THB из поля From (первое поле)
+                    # Обратный ввод: THB/USDT, вводим USDT в Receive nth(1), читаем THB из From nth(0)
+                    await goto_and_wait('https://www.binance.th/en/convert/THB/USDT')
+                    await page.locator('input').nth(1).fill(str(usdt_amount))
+                    thb_text = await wait_for_nth_value(0)
                     thb_needed = float(thb_text.replace(',', ''))
 
                     rate_usdt_thb = thb_needed / usdt_amount
@@ -306,20 +301,10 @@ class ExchangeRateProvider:
                     }
 
                 elif direction == 'usdt_to_thb_reverse':
-                    # Обратный ввод: страница USDT/THB, вводим THB в поле Receive → читаем USDT из From
-                    # Используется когда клиент хочет получить N бат и нужно узнать сколько USDT платить
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=60000, wait_until='domcontentloaded')
-                    try:
-                        await page.click('button:has-text("Accept")', timeout=2000)
-                    except:
-                        pass
-
-                    # Вводим THB в поле Receive (второе поле)
-                    await page.wait_for_selector('input[placeholder*="3248999"]', timeout=60000)
-                    await page.fill('input[placeholder*="3248999"]', str(thb_amount))
-                    usdt_text = await wait_for_value('input[placeholder*="99999"]')
-
-                    # Читаем USDT из поля From (первое поле)
+                    # Обратный ввод: USDT/THB, вводим THB в Receive nth(1), читаем USDT из From nth(0)
+                    await goto_and_wait('https://www.binance.th/en/convert/USDT/THB')
+                    await page.locator('input').nth(1).fill(str(thb_amount))
+                    usdt_text = await wait_for_nth_value(0)
                     usdt_needed = float(usdt_text.replace(',', ''))
 
                     rate_usdt_thb = thb_amount / usdt_needed
@@ -336,16 +321,10 @@ class ExchangeRateProvider:
                     }
 
                 else:
-                    # USDT → THB: страница USDT/THB, вводим USDT в From
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=60000, wait_until='domcontentloaded')
-                    try:
-                        await page.click('button:has-text("Accept")', timeout=2000)
-                    except:
-                        pass
-
-                    await page.wait_for_selector('input[placeholder*="99999"]', timeout=60000)
-                    await page.fill('input[placeholder*="99999"]', str(usdt_amount))
-                    thb_text = await wait_for_value('input[placeholder*="3248999"]')
+                    # USDT → THB: страница USDT/THB, nth(0)=USDT From, nth(1)=THB Receive
+                    await goto_and_wait('https://www.binance.th/en/convert/USDT/THB')
+                    await page.locator('input').nth(0).fill(str(usdt_amount))
+                    thb_text = await wait_for_nth_value(1)
                     thb_received = float(thb_text.replace(',', ''))
 
                     rate = thb_received / usdt_amount
