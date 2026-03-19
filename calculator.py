@@ -229,6 +229,14 @@ class ExchangeRateProvider:
                 ])
                 page = await browser.new_page()
 
+                # Блокируем только тяжёлые бинарные ресурсы (не CSS/JS — нужны для React)
+                async def block_heavy(route):
+                    if route.request.resource_type in ('image', 'media'):
+                        await route.abort()
+                    else:
+                        await route.continue_()
+                await page.route('**/*', block_heavy)
+
                 async def wait_for_value(selector, max_ms=8000):
                     """Ждёт пока поле заполнится числом, не дольше max_ms"""
                     for _ in range(max_ms // 150):
