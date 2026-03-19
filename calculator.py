@@ -251,7 +251,7 @@ class ExchangeRateProvider:
 
                 if direction == 'thb_to_usdt':
                     # THB → USDT: страница THB/USDT, вводим THB в From
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000, wait_until='networkidle')
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -277,7 +277,7 @@ class ExchangeRateProvider:
                 elif direction == 'thb_to_usdt_reverse':
                     # Обратный ввод: страница THB/USDT, вводим USDT в поле Receive → читаем THB из From
                     # Используется когда клиент хочет получить N USDT и нужно узнать сколько THB платить
-                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000, wait_until='networkidle')
+                    await page.goto('https://www.binance.th/en/convert/THB/USDT', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -306,7 +306,7 @@ class ExchangeRateProvider:
                 elif direction == 'usdt_to_thb_reverse':
                     # Обратный ввод: страница USDT/THB, вводим THB в поле Receive → читаем USDT из From
                     # Используется когда клиент хочет получить N бат и нужно узнать сколько USDT платить
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000, wait_until='networkidle')
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
@@ -334,7 +334,7 @@ class ExchangeRateProvider:
 
                 else:
                     # USDT → THB: страница USDT/THB, вводим USDT в From
-                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000, wait_until='networkidle')
+                    await page.goto('https://www.binance.th/en/convert/USDT/THB', timeout=30000)
                     try:
                         await page.click('button:has-text("Accept")', timeout=2000)
                     except:
