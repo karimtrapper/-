@@ -4179,17 +4179,20 @@ select.form-control { cursor: pointer; }
                         <div class="card" style="background: #fef3c7; margin-bottom: 1rem;">
                             <h4 style="margin-bottom: 0.5rem;">${founder.founder_name} - ожидает возмещения</h4>
                             <p style="color: #92400e; margin-bottom: 1rem;">
-                                <strong>Всего THB:</strong> ${formatNumber(founder.deals.reduce((sum, d) => sum + d.payout_amount_thb, 0))} THB 
+                                <strong>Всего THB:</strong> ${formatNumber(founder.deals.reduce((sum, d) => sum + (d.payout_amount_thb || d.custom_payout_amount || 0), 0))} THB
                                 (${founder.deals.length} сделок)
                             </p>
-                            
+
                             <div style="margin-bottom: 1rem;">
-                                ${founder.deals.map(deal => `
+                                ${founder.deals.map(deal => {
+                                    const thbAmount = deal.payout_amount_thb || deal.custom_payout_amount || 0;
+                                    const thbLabel = deal.is_custom && deal.custom_payout_currency ? `${formatNumber(thbAmount)} ${deal.custom_payout_currency}` : `${formatNumber(thbAmount)} THB`;
+                                    return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
-                                        <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${deal.payout_amount_thb}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
-                                        <span>Сделка #${deal.id} - ${deal.client_name}: <strong>${formatNumber(deal.payout_amount_thb)} THB</strong></span>
-                                    </label>
-                                `).join('')}
+                                        <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbAmount}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
+                                        <span>Сделка #${deal.id} - ${deal.client_name}: <strong>${thbLabel}</strong></span>
+                                    </label>`;
+                                }).join('')}
                             </div>
                             
                             <!-- Выбор исходящей транзакции из списка -->
