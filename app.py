@@ -19,7 +19,9 @@ import gspread
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== FLASK APP ====================
+from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static')
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Railway proxy
 app.secret_key = os.environ['SECRET_KEY']  # Без fallback — crash если не задан
 cors_origins = os.environ.get('CORS_ORIGINS', 'https://proud-renewal-production-e9b8.up.railway.app').split(',')
 CORS(app, origins=cors_origins, supports_credentials=True)
