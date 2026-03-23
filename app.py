@@ -13,13 +13,22 @@ import asyncio
 import time
 import json
 import hashlib
+import bcrypt
+import logging
 import gspread
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== FLASK APP ====================
 app = Flask(__name__, static_folder='static')
-app.secret_key = os.environ.get('SECRET_KEY', 'grusha-crm-secret-change-in-prod-2026')
-CORS(app, supports_credentials=True)
+app.secret_key = os.environ['SECRET_KEY']  # Без fallback — crash если не задан
+cors_origins = os.environ.get('CORS_ORIGINS', 'https://proud-renewal-production-e9b8.up.railway.app').split(',')
+CORS(app, origins=cors_origins, supports_credentials=True)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB макс размер загрузки
+
+# Rate limiting
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+limiter = Limiter(get_remote_address, app=app, default_limits=[])
 
 # Публичные пути — без авторизации
 PUBLIC_PATHS = [
@@ -100,12 +109,25 @@ class AdminUser(Base):
 
     @staticmethod
     def hash_password(password):
-        """SHA-256 хэш пароля с солью"""
+        """Bcrypt хэш пароля"""
+        return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+    @staticmethod
+    def _legacy_hash(password):
+        """Старый SHA-256 хэш — только для миграции"""
         salt = 'grusha-salt-2026'
         return hashlib.sha256(f'{salt}{password}'.encode()).hexdigest()
 
     def check_password(self, password):
-        return self.password_hash == self.hash_password(password)
+        """Проверка пароля с автомиграцией SHA-256 → bcrypt"""
+        # Новый bcrypt хэш (начинается с $2b$)
+        if self.password_hash.startswith('$2b$'):
+            return bcrypt.checkpw(password.encode(), self.password_hash.encode())
+        # Старый SHA-256 — проверяем и мигрируем
+        if self.password_hash == self._legacy_hash(password):
+            self.password_hash = self.hash_password(password)
+            return True
+        return False
 
 
 class DealType(str, Enum):
@@ -858,6 +880,7 @@ def login_page():
     return send_from_directory('static/auth', 'login.html')
 
 @app.route('/api/auth/login', methods=['POST'])
+@limiter.limit("5/minute")
 def auth_login():
     """Авторизация"""
     data = request.get_json() or {}
@@ -873,11 +896,14 @@ def auth_login():
         if not user or not user.check_password(password):
             return jsonify({'success': False, 'error': 'Неверный логин или пароль'}), 401
 
+        # Сохраняем rehash если произошла миграция SHA-256 → bcrypt
+        db.commit()
+
         flask_session['user_id'] = user.id
         flask_session['username'] = user.username
         flask_session['display_name'] = user.display_name or user.username
         flask_session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=30)
+        app.permanent_session_lifetime = timedelta(days=7)
 
         return jsonify({'success': True, 'user': user.display_name or user.username})
     finally:
@@ -904,8 +930,11 @@ def auth_me():
     return jsonify({'success': False}), 401
 
 @app.route('/api/auth/setup', methods=['POST'])
+@limiter.limit("3/minute")
 def auth_setup():
     """Первоначальная настройка — создание админа (только если нет ни одного пользователя)"""
+    if os.environ.get('SETUP_ENABLED') != 'true':
+        return jsonify({'success': False, 'error': 'Setup отключён'}), 403
     db = get_session()
     try:
         existing = db.query(AdminUser).first()
@@ -920,8 +949,8 @@ def auth_setup():
         if not username or not password:
             return jsonify({'success': False, 'error': 'Укажите логин и пароль'}), 400
 
-        if len(password) < 4:
-            return jsonify({'success': False, 'error': 'Пароль минимум 4 символа'}), 400
+        if len(password) < 8:
+            return jsonify({'success': False, 'error': 'Пароль минимум 8 символов'}), 400
 
         admin = AdminUser(
             username=username,
@@ -936,7 +965,7 @@ def auth_setup():
         flask_session['username'] = admin.username
         flask_session['display_name'] = admin.display_name
         flask_session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=30)
+        app.permanent_session_lifetime = timedelta(days=7)
 
         return jsonify({'success': True, 'user': admin.display_name})
     finally:
@@ -988,7 +1017,8 @@ def get_rates():
             'errors': errors
         })
     except Exception as e:
-        return jsonify({'error': str(e), 'usdt_thb': None, 'rub_usdt': None, 'success': False})
+        app.logger.error(f'Rates error: {e}')
+        return jsonify({'error': 'Ошибка получения курсов', 'usdt_thb': None, 'rub_usdt': None, 'success': False})
 
 @app.route('/api/rates/precise', methods=['POST'])
 def get_precise_rate():
@@ -1150,7 +1180,8 @@ def get_precise_rate():
         error_trace = traceback.format_exc()
         print(f"❌ Exception in /api/rates/precise: {e}", flush=True)
         print(f"❌ Traceback: {error_trace}", flush=True)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
 
 # Удалён старый код THB → RUB, USDT → THB, THB → USDT (теперь обработано выше)
 
@@ -1209,7 +1240,8 @@ def calculate():
         
         return jsonify(result)
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'Webhook error: {e}')
+        return jsonify({'error': 'Внутренняя ошибка'}), 500
 
 # ==================== CRM API - DEALS ====================
 
@@ -1341,7 +1373,8 @@ def create_deal():
         return jsonify({'success': True, 'deal': deal.to_dict()}), 201
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -1456,7 +1489,8 @@ def update_deal(deal_id):
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -1505,7 +1539,8 @@ def delete_deal(deal_id):
     except Exception as e:
         session.rollback()
         # Error logged internally
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -1551,7 +1586,8 @@ def create_cash_batch():
         return jsonify({'success': True, 'batch': batch.to_dict()}), 201
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -1578,7 +1614,8 @@ def adjust_cash_batch(batch_id):
         return jsonify({'success': True, 'batch': batch.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -1607,7 +1644,8 @@ def create_manager():
         return jsonify({'success': True, 'manager': manager.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -1742,7 +1780,8 @@ def add_wallet():
         return jsonify({'success': True, 'wallet': wallet_data})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -1763,7 +1802,8 @@ def delete_wallet(wallet_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -1954,7 +1994,8 @@ def get_incoming_transactions():
         })
     except Exception as e:
         print(f"[DEBUG] get_incoming_transactions error: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -2086,7 +2127,8 @@ def get_outgoing_transactions():
             'cached': False
         })
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -2125,7 +2167,8 @@ def verify_transaction_post():
         
         return jsonify({'success': False, 'error': 'Не USDT транзакция'}), 400
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
 
 # ==================== CRM API - CLIENTS ====================
 
@@ -2137,7 +2180,8 @@ def get_clients():
         return jsonify({'success': True, 'clients': [c.to_dict() for c in clients]})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2173,7 +2217,8 @@ def create_wallet_operation(wallet_id):
         return jsonify({'success': True, 'operation': op.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2189,7 +2234,8 @@ def delete_wallet_operation(op_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2240,7 +2286,8 @@ def create_card():
         return jsonify({'success': True, 'card': card.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2261,7 +2308,8 @@ def delete_card(card_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2350,7 +2398,8 @@ def topup_card(card_id):
         return jsonify({'success': True, 'topup': topup.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2419,7 +2468,8 @@ def delete_card_topup(card_id, topup_id):
         return jsonify({'success': True, 'returned_to_batch': returned_to_batch, 'amount_returned': topup.amount_thb})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2576,7 +2626,8 @@ def create_reimbursement():
         })
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2599,7 +2650,8 @@ def delete_reimbursement(reimbursement_id):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2618,7 +2670,8 @@ def manual_sync_gsheet():
         sync_deals_to_gsheet(deals)
         return jsonify({'success': True, 'synced': len(deals)})
     except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2688,7 +2741,8 @@ def proxy_create_payment():
         except Exception:
             return jsonify({'success': False, 'message': f'Doverka HTTP {response.status_code}: {response.text[:300]}'}), 502
     except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 502
+        app.logger.error(f'Proxy error: {e}')
+        return jsonify({'success': False, 'message': 'Ошибка платёжного шлюза'}), 502
 
 @app.route('/api/webhook/doverka', methods=['POST'])
 def doverka_webhook():
@@ -2700,7 +2754,8 @@ def doverka_webhook():
             send_telegram_notification(msg)
         return jsonify({'status': 'ok'})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        app.logger.error(f'Webhook error: {e}')
+        return jsonify({'error': 'Внутренняя ошибка'}), 500
 
 @app.route('/api/doverka/confirm/<int:deal_id>', methods=['POST'])
 def confirm_doverka(deal_id):
@@ -2746,7 +2801,8 @@ def confirm_doverka(deal_id):
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2789,7 +2845,8 @@ def kyc_generate_token():
         return jsonify({'success': True, 'token': token})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 400
+        app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()
 
@@ -2868,7 +2925,8 @@ def kyc_submit():
         return jsonify({'success': True, 'status': 'pending'})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -2901,6 +2959,8 @@ def kyc_review(token):
 @app.route('/api/kyc/photo/<token>/<photo_type>', methods=['GET'])
 def kyc_photo(token, photo_type):
     """CRM: получить фото для просмотра (doc, selfie, liveness_0..4)"""
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
     session = get_session()
     try:
         kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
@@ -2948,7 +3008,8 @@ def kyc_approve(token):
         return jsonify({'success': True, 'status': 'approved'})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -2974,7 +3035,8 @@ def kyc_reject(token):
         return jsonify({'success': True, 'status': 'rejected'})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
@@ -2996,7 +3058,8 @@ def kyc_cancel(token):
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
 
