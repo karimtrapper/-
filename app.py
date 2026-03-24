@@ -979,7 +979,9 @@ def auth_setup():
 
 @app.route('/')
 def calculator_index():
-    """Главная страница - Калькулятор (публичная)"""
+    """Главная страница - Калькулятор (авторизация)"""
+    if not flask_session.get('user_id'):
+        return redirect('/login')
     return send_from_directory('static/calculator', 'index.html')
 
 @app.route('/kyc/')
@@ -3093,6 +3095,8 @@ def docs_static(filename):
 
 @app.route('/calculator/<path:filename>')
 def calculator_static(filename):
+    if not flask_session.get('user_id'):
+        return redirect('/login')
     return send_from_directory('static/calculator', filename)
 
 @app.route('/auth/<path:filename>')
@@ -3102,6 +3106,8 @@ def auth_static(filename):
 
 @app.route('/crm/<path:filename>')
 def crm_static(filename):
+    if not flask_session.get('user_id'):
+        return redirect('/login')
     return send_from_directory('static/crm', filename)
 
 @app.route('/<path:filename>')
@@ -3110,7 +3116,8 @@ def static_files(filename):
         return '', 404
     allowed = ['.css', '.js', '.png', '.jpg', '.svg', '.ico']
     if any(filename.endswith(ext) for ext in allowed):
-        # Сначала ищем в calculator, потом в crm
+        if not flask_session.get('user_id'):
+            return '', 401
         try:
             return send_from_directory('static/calculator', filename)
         except:
