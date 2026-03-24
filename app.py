@@ -35,6 +35,7 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[])
 # Публичные пути — без авторизации
 PUBLIC_PATHS = [
     '/api/rates', '/api/calculate',           # Калькулятор
+    '/api/proxy/create-payment',              # Создание платежа из калькулятора
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
