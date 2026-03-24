@@ -186,8 +186,8 @@
                     body: JSON.stringify({username: '', password: ''})
                 });
                 const data = await resp.json();
-                if (data.error === 'Админ уже создан') {
-                    // Обычный логин
+                if (resp.status === 403) {
+                    // Админ уже создан или setup отключён — показываем логин
                     document.getElementById('loginMode').style.display = 'block';
                     document.getElementById('setupMode').style.display = 'none';
                 } else {
