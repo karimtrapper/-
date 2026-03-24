@@ -1288,7 +1288,10 @@ async function createPayment() {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || 'Ошибка API при создании платежа');
+            if (response.status === 401) {
+                throw new Error('Сессия истекла. Перезайдите: ' + window.location.origin + '/login');
+            }
+            throw new Error(errorData.message || errorData.error || `Ошибка API (${response.status})`);
         }
 
         const data = await response.json();
