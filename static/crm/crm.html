@@ -843,13 +843,12 @@ select.form-control { cursor: pointer; }
                             </div>
                             <div class="form-group" id="payinRubGroup">
                                 <label class="form-label">Сумма RUB</label>
-                                <input type="number" class="form-control" name="payin_amount_rub" placeholder="100000"
+                                <input type="number" step="any" class="form-control" name="payin_amount_rub" placeholder="100000"
                                     oninput="autoCalcUsdt()">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма USDT</label>
-                                <input type="number" class="form-control" name="payin_amount_usdt" placeholder="1000"
-                                    step="0.01">
+                                <input type="number" step="any" class="form-control" name="payin_amount_usdt" placeholder="1000">
                             </div>
                         </div>
 
@@ -870,8 +869,8 @@ select.form-control { cursor: pointer; }
                             </div>
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
-                                <input type="number" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5"
-                                    step="0.01" oninput="autoCalcUsdt()">
+                                <input type="number" step="any" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5"
+                                    oninput="autoCalcUsdt()">
                             </div>
                         </div>
 
@@ -908,8 +907,8 @@ select.form-control { cursor: pointer; }
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма THB</label>
-                                <input type="number" class="form-control" name="payout_amount_thb" placeholder="50000"
-                                    id="payoutAmountThb" step="0.01">
+                                <input type="number" step="any" class="form-control" name="payout_amount_thb" placeholder="50000"
+                                    id="payoutAmountThb">
                             </div>
                         </div>
 
@@ -966,7 +965,7 @@ select.form-control { cursor: pointer; }
                             <div class="form-group">
                                 <label class="form-label">USDT из транзакции *</label>
                                 <input type="number" class="form-control" name="payout_amount_usdt" id="binanceUsdt"
-                                    placeholder="Сколько USDT использовали" step="0.01" oninput="calcBinanceRate()">
+                                    placeholder="Сколько USDT использовали" step="any" oninput="calcBinanceRate()">
                                 <small style="color: #666;">Сколько USDT из этой транзакции на сделку</small>
                             </div>
                             <div class="form-group">
@@ -3074,9 +3073,14 @@ select.form-control { cursor: pointer; }
             }
         }
 
-        // Авто-расчёт USDT из RUB и курса
+        // Авто-расчёт USDT из RUB и курса (только при создании, не при редактировании)
         function autoCalcUsdt() {
             const form = document.getElementById('createDealForm');
+            // Не перезаписывать USDT при редактировании существующей сделки
+            if (editingDealId !== null) {
+                calculateProfit();
+                return;
+            }
             const rub = parseFloat(form.payin_amount_rub.value) || 0;
             const rate = parseFloat(form.payin_rate_rub_usdt.value) || 0;
             if (rub > 0 && rate > 0) {
