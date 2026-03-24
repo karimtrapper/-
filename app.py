@@ -26,6 +26,10 @@ app.secret_key = os.environ['SECRET_KEY']  # Без fallback — crash если 
 cors_origins = os.environ.get('CORS_ORIGINS', 'https://proud-renewal-production-e9b8.up.railway.app').split(',')
 CORS(app, origins=cors_origins, supports_credentials=True)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB макс размер загрузки
+app.permanent_session_lifetime = timedelta(days=30)  # Сессия 30 дней
+app.config['SESSION_COOKIE_SECURE'] = True            # Только HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True           # Нет доступа из JS
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # Защита от CSRF
 
 # Rate limiting
 from flask_limiter import Limiter
@@ -35,7 +39,6 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[])
 # Публичные пути — без авторизации
 PUBLIC_PATHS = [
     '/api/rates', '/api/calculate',           # Калькулятор
-    '/api/proxy/create-payment',              # Создание платежа из калькулятора
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
@@ -906,7 +909,6 @@ def auth_login():
         flask_session['username'] = user.username
         flask_session['display_name'] = user.display_name or user.username
         flask_session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=7)
 
         return jsonify({'success': True, 'user': user.display_name or user.username})
     finally:
@@ -968,7 +970,6 @@ def auth_setup():
         flask_session['username'] = admin.username
         flask_session['display_name'] = admin.display_name
         flask_session.permanent = True
-        app.permanent_session_lifetime = timedelta(days=7)
 
         return jsonify({'success': True, 'user': admin.display_name})
     finally:

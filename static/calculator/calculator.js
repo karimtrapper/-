@@ -58,8 +58,24 @@ let state = {
     preciseRateTimer: null // ID таймера обратного отсчёта
 };
 
+// Проверка авторизации — редирект на логин если не залогинен
+async function checkAuth() {
+    try {
+        const resp = await fetch('/api/auth/me');
+        if (!resp.ok) {
+            window.location.href = '/login';
+            return false;
+        }
+        return true;
+    } catch(e) {
+        window.location.href = '/login';
+        return false;
+    }
+}
+
 // Инициализация
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    if (!await checkAuth()) return;
     refreshRates();
     // Фоновое обновление курсов каждые 5 минут
     setInterval(refreshRates, 5 * 60 * 1000);
