@@ -536,6 +536,7 @@ try:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_wallet_id INTEGER REFERENCES wallets(id)"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
         # Для SQLite
         else:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
@@ -543,6 +544,8 @@ try:
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_monitored BOOLEAN DEFAULT TRUE"))
             except: pass
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_balance BOOLEAN DEFAULT FALSE"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
             except: pass
         conn.commit()
     print("✅ Database migration successful")
