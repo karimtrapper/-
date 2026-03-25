@@ -462,6 +462,7 @@ class Deal(Base):
     referrer_payout_usdt = Column(Float)
     referrer_paid = Column(Boolean, default=False)
     net_profit_usdt = Column(Float)
+    needs_reimbursement = Column(Boolean, default=True)
     is_custom = Column(Boolean, default=False)
     custom_payin_currency = Column(String(10))
     custom_payin_amount = Column(Float)
@@ -518,7 +519,8 @@ class Deal(Base):
             'notes': self.notes,
             'reimbursement_id': self.reimbursement_id,
             'reimbursement': self.reimbursement.to_dict() if self.reimbursement else None,
-            'is_reimbursed': self.reimbursement_id is not None
+            'needs_reimbursement': self.needs_reimbursement if self.needs_reimbursement is not None else True,
+            'is_reimbursed': self.reimbursement_id is not None or not (self.needs_reimbursement if self.needs_reimbursement is not None else True)
         }
 
 # Создание таблиц
@@ -1412,7 +1414,8 @@ def update_deal(deal_id):
                       'referrer_percent', 'referrer_payout_usdt', 'referrer_fixed_usdt', 'notes', 'client_id',
                       'payout_founder_name', 'payout_wallet_id',
                       'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
-                      'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate']:
+                      'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate',
+                      'needs_reimbursement']:
             if field in data:
                 setattr(deal, field, data[field])
         
@@ -2535,7 +2538,8 @@ def get_pending_reimbursements():
         deals = session.query(Deal).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None,
-            Deal.payout_founder_name != None
+            Deal.payout_founder_name != None,
+            Deal.needs_reimbursement != False
         ).order_by(Deal.payout_founder_name, Deal.created_at.desc()).all()
         
         # Group by founder
