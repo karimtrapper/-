@@ -850,7 +850,7 @@ def _send_deal_telegram(deal):
         payout_cur = 'THB'
 
     msg = (
-        f"✅ <b>Сделка {deal.id} — {deal.client_name} — {date_str}</b>\n"
+        f"✅ <b>Сделка {deal.id} — {(deal.client.name if deal.client else deal.client_name) or 'без имени'} — {date_str}</b>\n"
         f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
         f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
         f"Прибыль: ${profit:,.2f}"
@@ -1315,7 +1315,11 @@ def create_deal():
                 client_id = new_client.id
             else:
                 client_id = existing_client.id
-        
+        elif client_id and not client_name:
+            client = session.query(Client).get(client_id)
+            if client:
+                client_name = client.name
+
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
