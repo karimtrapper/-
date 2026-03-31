@@ -836,11 +836,18 @@ def _send_deal_telegram(deal):
     profit = deal.profit_usdt or 0
 
     if deal.is_custom:
-        currency = (deal.custom_payin_currency or '').lower()
+        currency = (deal.custom_payin_currency or '').upper()
         amount_in = deal.custom_payin_amount or 0
-        amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+        # USDT эквивалент: если payin уже в USDT — берём его, иначе payin_amount_usdt
+        if (deal.custom_payin_currency or '').upper() == 'USDT':
+            amount_in_usdt = deal.custom_payin_amount or 0
+        else:
+            amount_in_usdt = deal.payin_amount_usdt or 0
+        # Payout: если payout в USDT — usdt эквивалент = custom_payout_amount
         payout_val = deal.custom_payout_amount or deal.payout_amount_thb or 0
         payout_cur = (deal.custom_payout_currency or 'THB').upper()
+        if payout_cur == 'USDT':
+            payout_usdt = deal.custom_payout_amount or 0
     else:
         pm = deal.payin_method.value if deal.payin_method else ''
         currency = 'usdt' if pm == 'crypto_direct' else 'rub'
