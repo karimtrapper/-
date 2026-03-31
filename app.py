@@ -1494,8 +1494,9 @@ def update_deal(deal_id):
         # Webhook при завершении
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
-            # GSheet + Telegram для завершённых сделок с прибылью (без ожидания возмещения)
-            if deal.profit_usdt is not None:
+            # GSheet + Telegram только если сделка ещё НЕ была возмещена
+            # (возмещение уже отправило уведомления при create_reimbursement)
+            if deal.profit_usdt is not None and deal.reimbursement_id is None:
                 try:
                     sync_deals_to_gsheet([deal])
                 except Exception as e:
@@ -1505,9 +1506,12 @@ def update_deal(deal_id):
                 except Exception as e:
                     print(f'[Telegram] Error on complete: {e}')
 
-        # Синхронизация с Google Sheet (если сделка возмещена — обновление существующей строки)
+        # Обновление строки в Google Sheet (если сделка возмещена — обновляем статус)
         if deal.reimbursement_id is not None:
-            update_deal_in_gsheet(deal)
+            try:
+                update_deal_in_gsheet(deal)
+            except Exception as e:
+                print(f'[GSheet] Update error: {e}')
 
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
