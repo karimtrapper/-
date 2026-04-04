@@ -258,6 +258,17 @@
                     <div class="result-rate">
                         Курс: <span id="finalRate">0</span> <span id="rateCurrency">₽/฿</span>
                     </div>
+                    <div class="result-profit" id="resultProfit" style="display: none;"></div>
+                </div>
+
+                <!-- Блок для копирования клиенту -->
+                <div id="clientCopyBlock" style="display: none; margin-bottom: 20px;">
+                    <div style="background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 16px; position: relative;">
+                        <div id="clientCopyText" style="font-size: 15px; line-height: 1.6; color: #E2E8F0; white-space: pre-line;"></div>
+                        <button onclick="copyClientMessage()" id="copyClientBtn" style="position: absolute; top: 12px; right: 12px; background: #4F46E5; border: none; border-radius: 8px; padding: 6px 14px; color: white; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+                            📋 Копировать
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Поле для комментария -->

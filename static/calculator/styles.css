@@ -645,6 +645,18 @@ body {
     opacity: 0.9;
 }
 
+.result-profit {
+    margin-top: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 4px 12px;
+    border-radius: 8px;
+    display: inline-block;
+}
+.result-profit.profit-high { background: rgba(16, 185, 129, 0.2); color: #10B981; }
+.result-profit.profit-medium { background: rgba(245, 158, 11, 0.2); color: #F59E0B; }
+.result-profit.profit-low { background: rgba(239, 68, 68, 0.2); color: #EF4444; }
+
 /* Comment section */
 .comment-section { margin-bottom: 16px; }
 

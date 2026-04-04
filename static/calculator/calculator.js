@@ -1044,7 +1044,43 @@ function displayResult(result) {
     document.getElementById('resultValue').textContent = resultValue;
     document.getElementById('finalRate').textContent = rateValue;
     document.getElementById('rateCurrency').textContent = rateCurrency;
-    
+
+    // Показываем процент прибыли
+    const profitEl = document.getElementById('resultProfit');
+    const profitPct = result.profit_percent_actual || result.profit_percent || 0;
+    if (profitPct > 0) {
+        const profitClass = profitPct >= 5 ? 'profit-high' : profitPct >= 4 ? 'profit-medium' : 'profit-low';
+        profitEl.className = `result-profit ${profitClass}`;
+        profitEl.textContent = `Прибыль: ${profitPct.toFixed(2)}%`;
+        if (result.profit_usdt !== undefined) {
+            profitEl.textContent += ` (${formatNumber(result.profit_usdt)} USDT)`;
+        }
+        profitEl.style.display = '';
+    } else {
+        profitEl.style.display = 'none';
+    }
+
+    // Блок для копирования клиенту
+    const copyBlock = document.getElementById('clientCopyBlock');
+    const copyText = document.getElementById('clientCopyText');
+
+    let inputAmount = getAmount();
+    let inputCurrency = document.getElementById('inputCurrency').textContent;
+    let outputAmount = resultValue;
+
+    // Определяем текст для клиента
+    let clientMsg;
+    if (isTarget) {
+        // direction=target: клиент хочет получить inputAmount, должен отдать resultValue
+        clientMsg = `Отдаёте: ${outputAmount}\nПолучаете: ${formatNumber(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
+    } else {
+        // direction=amount: клиент отдаёт inputAmount, получит resultValue
+        clientMsg = `Отдаёте: ${formatNumber(inputAmount)} ${inputCurrency}\nПолучаете: ${outputAmount}\nКурс: ${rateValue} ${rateCurrency}`;
+    }
+
+    copyText.textContent = clientMsg;
+    copyBlock.style.display = '';
+
     // Генерируем детальные шаги расчета
     displayDetailedSteps(result);
 }
@@ -1336,6 +1372,27 @@ async function createPayment() {
 }
 
 // Функция для копирования ссылки в буфер обмена
+// Копирование сообщения для клиента
+function copyClientMessage() {
+    const text = document.getElementById('clientCopyText').textContent;
+    if (!text) return;
+
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.getElementById('copyClientBtn');
+        const original = btn.innerHTML;
+        btn.innerHTML = '✅ Скопировано!';
+        btn.style.background = '#059669';
+        setTimeout(() => { btn.innerHTML = original; btn.style.background = '#4F46E5'; }, 2000);
+    }).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+    });
+}
+
 function copyPaymentLink() {
     const link = document.getElementById('paymentLink').innerText;
     if (!link) return;
