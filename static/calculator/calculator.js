@@ -315,17 +315,23 @@ function toggleDiscount() {
         const amount = getAmount();
         if (amount > 0) {
             let defaultProfit = 4.0;
-            // Определяем базу для расчета (рубли)
-            let baseAmount = amount;
-            if (state.scenario === 'thb-to-rub' || state.scenario === 'usdt-to-thb' && state.direction === 'target') {
-                baseAmount = amount * 2.8; // Примерный эквивалент THB → RUB
-            } else if (state.scenario === 'usdt-from-rub' || (state.scenario === 'rub-to-usdt' && state.direction === 'target')) {
-                baseAmount = amount * (state.rates.rub_usdt || 82); // USDT → RUB для оценки порога
+            // Для USDT-сценариев дефолт 2.5%
+            const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
+            if (isUsdtScenario) {
+                defaultProfit = 2.5;
+            } else {
+                // Определяем базу для расчета (рубли)
+                let baseAmount = amount;
+                if (state.scenario === 'thb-to-rub') {
+                    baseAmount = amount * 2.8;
+                } else if (state.scenario === 'usdt-from-rub' || (state.scenario === 'rub-to-usdt' && state.direction === 'target')) {
+                    baseAmount = amount * (state.rates.rub_usdt || 82);
+                }
+
+                if (baseAmount < 500000) defaultProfit = 5.0;
+                else if (baseAmount < 1000000) defaultProfit = 4.0;
+                else defaultProfit = 3.0;
             }
-            
-            if (baseAmount < 500000) defaultProfit = 5.0;
-            else if (baseAmount < 1000000) defaultProfit = 4.0;
-            else defaultProfit = 3.0;
             
             // Устанавливаем маржу (это также обновит кнопки)
             setProfitMargin(defaultProfit);
@@ -817,16 +823,16 @@ async function getPreciseRate() {
 function calculateLocal(amount) {
     // В локальном режиме (file://) берем профит из стейта, если включена скидка,
     // иначе определяем его по порогам Doverka (имитируем поведение сервера)
-    let targetProfit = 4.0;
+    const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
+    let targetProfit = isUsdtScenario ? 2.5 : 4.0;
     if (state.applyDiscount) {
         targetProfit = state.profitMargin;
-    } else {
-        // Определяем базу для расчета (рубли)
+    } else if (!isUsdtScenario) {
         let baseAmount = amount;
         if (state.scenario === 'thb-to-rub') {
-            baseAmount = amount * 2.8; 
+            baseAmount = amount * 2.8;
         }
-        
+
         if (baseAmount < 500000) targetProfit = 5.0;
         else if (baseAmount < 1000000) targetProfit = 4.0;
         else targetProfit = 3.0;
@@ -1068,14 +1074,16 @@ function displayResult(result) {
     let inputCurrency = document.getElementById('inputCurrency').textContent;
     let outputAmount = resultValue;
 
+    // Форматирование без лишних .00 для копирования клиенту
+    const fmtClean = (n) => { const s = n % 1 === 0 ? n.toFixed(0) : n.toFixed(2); return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' '); };
+    const cleanOutput = outputAmount.replace(/\.00(?=\s)/, '').replace(/\.00$/, '');
+
     // Определяем текст для клиента
     let clientMsg;
     if (isTarget) {
-        // direction=target: клиент хочет получить inputAmount, должен отдать resultValue
-        clientMsg = `Отдаёте: ${outputAmount}\nПолучаете: ${formatNumber(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
+        clientMsg = `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
     } else {
-        // direction=amount: клиент отдаёт inputAmount, получит resultValue
-        clientMsg = `Отдаёте: ${formatNumber(inputAmount)} ${inputCurrency}\nПолучаете: ${outputAmount}\nКурс: ${rateValue} ${rateCurrency}`;
+        clientMsg = `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
     }
 
     copyText.textContent = clientMsg;
