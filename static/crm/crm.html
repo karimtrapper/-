@@ -123,11 +123,11 @@ body {
     background: var(--bg);
     border-bottom: 1px solid var(--border);
     padding: 0 16px;
-    overflow-x: auto; -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    display: flex; align-items: center;
+    display: flex; align-items: center; gap: 8px;
 }
-.nav-create-btn { margin-left: auto; flex-shrink: 0; padding: 8px 16px !important; min-height: 40px !important; }
+.nav-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex: 1; }
+.nav-tabs::-webkit-scrollbar { display: none; }
+.nav-create-btn { flex-shrink: 0; padding: 8px 16px !important; min-height: 40px !important; }
 @media (max-width: 640px) { .nav-create-btn { display: none; } }
 .crm-nav::-webkit-scrollbar, .nav::-webkit-scrollbar { display: none; }
 .crm-nav-inner, .nav-tabs {
@@ -2671,10 +2671,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
 
             const tab = document.querySelector(`[data-section="${sectionName}"]`);
-            if (tab) {
-                tab.classList.add('active');
-                document.getElementById(sectionName).classList.add('active');
-            }
+            if (tab) tab.classList.add('active');
+            const section = document.getElementById(sectionName);
+            if (section) section.classList.add('active');
 
             // Load section data
             switch (sectionName) {
