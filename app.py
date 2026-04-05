@@ -2212,12 +2212,36 @@ def verify_transaction_post():
 def get_clients():
     session = get_session()
     try:
-        clients = session.query(Client).order_by(Client.total_deals.desc()).limit(50).all()
+        query = session.query(Client)
+        search = request.args.get('search', '').strip()
+        if search:
+            query = query.filter(Client.name.ilike(f'%{search}%'))
+        clients = query.order_by(Client.name).all()
         return jsonify({'success': True, 'clients': [c.to_dict() for c in clients]})
     except Exception as e:
         session.rollback()
         app.logger.error(f'Request error: {e}')
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+    finally:
+        session.close()
+
+@app.route('/api/clients/<int:client_id>', methods=['DELETE'])
+def delete_client(client_id):
+    """Удаление клиента (только если нет сделок)."""
+    session = get_session()
+    try:
+        client = session.query(Client).filter(Client.id == client_id).first()
+        if not client:
+            return jsonify({'success': False, 'error': 'Клиент не найден'}), 404
+        deals_count = session.query(Deal).filter(Deal.client_id == client_id).count()
+        if deals_count > 0:
+            return jsonify({'success': False, 'error': f'У клиента {deals_count} сделок. Сначала удалите или переназначьте сделки.'}), 400
+        session.delete(client)
+        session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
     finally:
         session.close()
 

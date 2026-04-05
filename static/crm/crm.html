@@ -125,7 +125,10 @@ body {
     padding: 0 16px;
     overflow-x: auto; -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
+    display: flex; align-items: center;
 }
+.nav-create-btn { margin-left: auto; flex-shrink: 0; padding: 8px 16px !important; min-height: 40px !important; }
+@media (max-width: 640px) { .nav-create-btn { display: none; } }
 .crm-nav::-webkit-scrollbar, .nav::-webkit-scrollbar { display: none; }
 .crm-nav-inner, .nav-tabs {
     display: flex; gap: 4px; min-width: max-content;
@@ -272,7 +275,56 @@ tr:hover { background: var(--navy-50); }
 .form-control[readonly] {
     background: var(--navy-50); color: var(--navy-600);
 }
-select.form-control { cursor: pointer; }
+select.form-control {
+    cursor: pointer;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 36px;
+}
+select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23F97316' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E"); }
+/* Клиент-комбобокс */
+.client-dropdown {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+    max-height: 280px; overflow-y: auto;
+    background: var(--bg); border: 1.5px solid var(--coral);
+    border-radius: 0 0 var(--r-sm) var(--r-sm);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    margin-top: -1px;
+}
+.client-dropdown-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; cursor: pointer; transition: background 0.1s;
+    border-bottom: 1px solid var(--border-light);
+}
+.client-dropdown-item:hover { background: var(--navy-100); }
+.client-dropdown-item.active { background: var(--coral-light); }
+.client-dropdown-item .client-name { font-size: 15px; color: var(--text); }
+.client-dropdown-item .client-meta { font-size: 12px; color: var(--text-sec); }
+.client-dropdown-item .client-delete {
+    color: var(--navy-400); padding: 4px 8px; border-radius: 4px;
+    border: none; background: none; cursor: pointer; font-size: 14px;
+    opacity: 0; transition: opacity 0.15s;
+}
+.client-dropdown-item:hover .client-delete { opacity: 1; }
+.client-dropdown-item .client-delete:hover { color: var(--red); background: #FEE2E2; }
+.client-dropdown-create {
+    padding: 10px 14px; cursor: pointer; color: var(--coral);
+    font-weight: 600; display: flex; align-items: center; gap: 6px;
+}
+.client-dropdown-create:hover { background: var(--coral-light); }
+/* Toast уведомления */
+.toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+    padding: 14px 20px; border-radius: var(--r-sm); color: white;
+    font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    animation: toastIn 0.3s ease-out; max-width: 360px;
+}
+.toast.success { background: var(--green-dark); }
+.toast.error { background: var(--red); }
+.toast.info { background: var(--blue); }
+@keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
 .form-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -573,7 +625,6 @@ select.form-control { cursor: pointer; }
         <div class="nav-tabs">
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals">Сделки</button>
-            <button class="nav-tab" data-section="create">+ Создать</button>
             <button class="nav-tab" data-section="balance">Баланс</button>
             <button class="nav-tab" data-section="reimbursements">Возмещения</button>
             <button class="nav-tab" data-section="transactions">Транзакции</button>
@@ -581,6 +632,7 @@ select.form-control { cursor: pointer; }
             <button class="nav-tab" data-section="verification">Сверка</button>
             <button class="nav-tab" data-section="kyc">KYC</button>
         </div>
+        <button class="btn btn-primary nav-create-btn" onclick="showSection('create')" style="margin-left:auto;white-space:nowrap;">+ Создать сделку</button>
     </nav>
 
     <div class="container">
@@ -686,16 +738,17 @@ select.form-control { cursor: pointer; }
                                 <!-- Загружается динамически -->
                             </select>
                         </div>
-                        <div class="form-group">
+                        <div class="form-group" style="position:relative;">
                             <label class="form-label">Клиент</label>
-                            <select class="form-control" name="client_id" id="clientSelect">
+                            <input type="hidden" name="client_id" id="clientIdHidden">
+                            <input type="text" class="form-control" id="clientSearchInput" name="client_name" placeholder="Поиск или новый клиент..." autocomplete="off">
+                            <div id="clientDropdown" class="client-dropdown" style="display:none;"></div>
+                            <!-- Старый select скрыт для совместимости -->
+                            <select class="form-control" name="_client_id_old" id="clientSelect" style="display:none;">
                                 <option value="">Выберите или введите ниже</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label class="form-label">Или имя клиента</label>
-                            <input type="text" class="form-control" name="client_name" placeholder="Новый клиент">
-                        </div>
+                        <!-- Объединено в combobox выше -->
                     </div>
 
                     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
@@ -1880,6 +1933,112 @@ select.form-control { cursor: pointer; }
             });
         });
 
+        // ==================== Toast уведомления ====================
+        function showToast(message, type = 'success', duration = 3000) {
+            let container = document.querySelector('.toast-container');
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'toast-container';
+                document.body.appendChild(container);
+            }
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
+        }
+
+        // ==================== Клиент-комбобокс ====================
+        let allClients = [];
+
+        async function loadClientCombobox() {
+            try {
+                const resp = await fetch(`${API_URL}/api/clients`);
+                const data = await resp.json();
+                allClients = data.clients || data.data || (Array.isArray(data) ? data : []);
+            } catch (e) { allClients = []; }
+        }
+
+        function renderClientDropdown(filter = '') {
+            const dropdown = document.getElementById('clientDropdown');
+            if (!dropdown) return;
+            const q = filter.toLowerCase().trim();
+            const filtered = q ? allClients.filter(c =>
+                (c.name || '').toLowerCase().includes(q) ||
+                (c.telegram || '').toLowerCase().includes(q) ||
+                (c.phone || '').toLowerCase().includes(q)
+            ) : allClients;
+
+            let html = filtered.slice(0, 30).map(c => `
+                <div class="client-dropdown-item" data-id="${c.id}" data-name="${c.name}" onclick="selectClient(${c.id}, '${(c.name||'').replace(/'/g, "\\'")}')">
+                    <div>
+                        <div class="client-name">${c.name || 'Без имени'}</div>
+                        ${c.telegram || c.phone ? `<div class="client-meta">${c.telegram || c.phone || ''}</div>` : ''}
+                    </div>
+                    <button class="client-delete" onclick="event.stopPropagation(); deleteClient(${c.id}, '${(c.name||'').replace(/'/g, "\\'")}')" title="Удалить">✕</button>
+                </div>
+            `).join('');
+
+            if (q && !filtered.some(c => (c.name || '').toLowerCase() === q)) {
+                html += `<div class="client-dropdown-create" onclick="selectNewClient('${q.replace(/'/g, "\\'")}')">
+                    <span>+</span> Создать «${filter.trim()}»
+                </div>`;
+            }
+
+            dropdown.innerHTML = html || '<div style="padding:12px;color:var(--text-sec);">Ничего не найдено</div>';
+            dropdown.style.display = 'block';
+        }
+
+        function selectClient(id, name) {
+            document.getElementById('clientIdHidden').value = id;
+            document.getElementById('clientSearchInput').value = name;
+            document.getElementById('clientDropdown').style.display = 'none';
+        }
+
+        function selectNewClient(name) {
+            document.getElementById('clientIdHidden').value = '';
+            document.getElementById('clientSearchInput').value = name;
+            document.getElementById('clientDropdown').style.display = 'none';
+        }
+
+        async function deleteClient(clientId, clientName) {
+            if (!confirm(`Удалить клиента «${clientName}»?`)) return;
+            try {
+                const resp = await fetch(`${API_URL}/api/clients/${clientId}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) {
+                    allClients = allClients.filter(c => c.id !== clientId);
+                    renderClientDropdown(document.getElementById('clientSearchInput')?.value || '');
+                    showToast(`Клиент «${clientName}» удалён`);
+                } else {
+                    showToast(data.error || 'Ошибка удаления', 'error');
+                }
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        // Привязка событий к combobox
+        document.addEventListener('DOMContentLoaded', () => {
+            const input = document.getElementById('clientSearchInput');
+            const dropdown = document.getElementById('clientDropdown');
+            if (!input) return;
+
+            input.addEventListener('focus', () => { loadClientCombobox().then(() => renderClientDropdown(input.value)); });
+            input.addEventListener('input', () => {
+                document.getElementById('clientIdHidden').value = '';
+                renderClientDropdown(input.value);
+            });
+            // Закрытие при клике вне
+            document.addEventListener('click', (e) => {
+                if (dropdown && !dropdown.contains(e.target) && e.target !== input) {
+                    dropdown.style.display = 'none';
+                }
+            });
+
+            // Запоминание вкладки
+            const savedSection = localStorage.getItem('crm_section');
+            if (savedSection) showSection(savedSection);
+        });
+
         // ==================== Dashboard ====================
         async function loadDashboard() {
             switchBalanceSubTab('binance'); // Инициализируем балансы при загрузке
@@ -2507,6 +2666,7 @@ select.form-control { cursor: pointer; }
 
         // Программное переключение секции
         function showSection(sectionName) {
+            localStorage.setItem('crm_section', sectionName);
             document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
 
@@ -3086,7 +3246,7 @@ select.form-control { cursor: pointer; }
                 }
             } catch (error) {
                 console.error('Error creating custom deal:', error);
-                alert('Ошибка при создании сделки');
+                showToast('Ошибка при создании сделки', 'error');
             }
         }
 
@@ -3291,13 +3451,14 @@ select.form-control { cursor: pointer; }
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(isEditMode ? 'Сделка обновлена!' : 'Сделка создана!');
+                    const dealId = result.deal?.id || '';
+                    showToast(isEditMode ? `Сделка #${dealId} обновлена` : `Сделка #${dealId} создана`, 'success');
                     this.reset();
                     if (isEditMode) cancelEditMode();
                     showSection('deals');
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error', 5000);
                 }
             } catch (error) {
                 console.error('Error creating/updating deal:', error);
