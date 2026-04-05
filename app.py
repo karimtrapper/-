@@ -1473,6 +1473,10 @@ def update_deal(deal_id):
             client = session.query(Client).filter(Client.id == deal.client_id).first()
             if client:
                 client.name = str(client_name_val)
+                # Синхронизируем client_name во всех сделках этого клиента
+                session.query(Deal).filter(Deal.client_id == deal.client_id).update(
+                    {"client_name": str(client_name_val)}, synchronize_session=False
+                )
         
         # Если пришел новый client_id, просто привязываем
         if 'client_id' in data:
@@ -2553,7 +2557,7 @@ def get_pending_reimbursements():
     session = get_session()
     try:
         # Find deals with founder_personal source that haven't been reimbursed
-        deals = session.query(Deal).filter(
+        deals = session.query(Deal).options(joinedload(Deal.client)).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None,
             Deal.payout_founder_name != None,
