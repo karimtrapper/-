@@ -4180,20 +4180,16 @@ select.form-control { cursor: pointer; }
 
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
-            // Сначала загружаем исходящие транзакции
-            try {
-                const outgoingResponse = await fetch(`${API_URL}/api/transactions/outgoing`);
-                const outgoingData = await outgoingResponse.json();
-                outgoingTransactionsCache = outgoingData.success ? outgoingData.available : [];
-            } catch (e) {
-                console.error('Error loading outgoing transactions:', e);
-                outgoingTransactionsCache = [];
-            }
+            // Загружаем всё параллельно (3 запроса одновременно)
+            const [outgoingResult, pendingResult, historyResult] = await Promise.all([
+                fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).catch(() => ({ success: false })),
+                fetch(`${API_URL}/api/reimbursements/pending`).then(r => r.json()).catch(() => ({ success: false })),
+                fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({ success: false })),
+            ]);
+            outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
 
-            // Load pending deals by founder
             try {
-                const pendingResponse = await fetch(`${API_URL}/api/reimbursements/pending`);
-                const pendingData = await pendingResponse.json();
+                const pendingData = pendingResult;
 
                 if (pendingData.success && pendingData.by_founder.length > 0) {
                     document.getElementById('pendingReimbursementsList').innerHTML = pendingData.by_founder.map(founder => `
@@ -4255,9 +4251,8 @@ select.form-control { cursor: pointer; }
                         '<div class="alert alert-success">Нет сделок ожидающих возмещения</div>';
                 }
 
-                // Load history
-                const historyResponse = await fetch(`${API_URL}/api/reimbursements`);
-                const historyData = await historyResponse.json();
+                // История (уже загружена параллельно)
+                const historyData = historyResult;
 
                 if (historyData.success && historyData.reimbursements.length > 0) {
                     document.getElementById('reimbursementsList').innerHTML = historyData.reimbursements.map(r => `
