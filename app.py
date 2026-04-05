@@ -2410,7 +2410,7 @@ def topup_card(card_id):
             # Списываем из партии
             batch.remaining_thb -= amount_thb
             if batch.remaining_thb < 0.1:
-                batch.status = CashBatchStatus.COMPLETED
+                batch.status = CashBatchStatus.DEPLETED
         else:
             # Отдельная закупка
             cost_usdt = float(data['cost_usdt'])
