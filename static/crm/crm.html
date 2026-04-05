@@ -4951,7 +4951,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const address = this.wallet_address.value.trim();
 
             if (!address || !address.startsWith('T')) {
-                showToast('Введите корректный адрес TRON кошелька (начинается с T, 'error')');
+                showToast('Введите корректный адрес TRON кошелька (начинается с T)', 'error');
                 return;
             }
 
