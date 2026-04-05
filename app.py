@@ -2539,7 +2539,20 @@ def get_dashboard():
     try:
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         week_ago = today - timedelta(days=7)
-        
+
+        # Период для графиков
+        period = request.args.get('period', '30d')
+        if period == 'today':
+            chart_start = today
+        elif period == 'week':
+            chart_start = week_ago
+        elif period == 'month':
+            chart_start = today.replace(day=1)
+        elif period == 'all':
+            chart_start = datetime(2024, 1, 1)
+        else:  # 30d
+            chart_start = today - timedelta(days=30)
+
         today_deals = session.query(Deal).filter(Deal.created_at >= today).all()
         week_deals = session.query(Deal).filter(Deal.created_at >= week_ago).all()
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
@@ -2557,9 +2570,8 @@ def get_dashboard():
         today_with_payin = [d for d in today_deals if d.payin_amount_usdt and d.payin_amount_usdt > 0]
         today_avg_check = round(sum(d.payin_amount_usdt for d in today_with_payin) / len(today_with_payin), 2) if today_with_payin else 0
 
-        # График: прибыль и объём по дням за 30 дней
-        month_ago = today - timedelta(days=30)
-        month_deals = session.query(Deal).filter(Deal.created_at >= month_ago).all()
+        # График: прибыль и объём по дням за выбранный период
+        month_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
         daily_data = {}
         for d in month_deals:
             day_key = d.created_at.strftime('%d.%m') if d.created_at else None
@@ -2573,7 +2585,8 @@ def get_dashboard():
 
         # Сортируем по дате
         chart_days = []
-        for i in range(30, -1, -1):
+        num_days = (today - chart_start).days
+        for i in range(num_days, -1, -1):
             day = today - timedelta(days=i)
             key = day.strftime('%d.%m')
             entry = daily_data.get(key, {'profit': 0, 'volume': 0, 'count': 0})

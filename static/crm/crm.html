@@ -7,6 +7,7 @@
     <title>CRM - Учет сделок</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
     <style>
 /* ==========================================
    CLEAN NAVY THEME — CRM
@@ -136,6 +137,9 @@ body {
     z-index: 2;
 }
 @media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { padding-right: 0; } #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
+.period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:all .2s }
+.period-btn.active { background:#FF6B35;color:#fff;border-color:#FF6B35 }
+.period-btn:hover:not(.active) { border-color:#FF6B35;color:#FF6B35 }
 .crm-nav-inner { display: flex; gap: 4px; min-width: max-content; padding: 8px 0; }
 .nav-tabs { display: flex; gap: 4px; padding: 8px 0; }
 .nav-logo { display: none; }
@@ -674,6 +678,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <section id="dashboard" class="section active">
             <!-- Action items -->
             <div id="attentionAlerts" style="margin-bottom:16px"></div>
+
+            <!-- Переключатель периода -->
+            <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="periodSelector">
+                <button class="period-btn" data-period="today" onclick="switchDashPeriod('today')">Сегодня</button>
+                <button class="period-btn" data-period="week" onclick="switchDashPeriod('week')">Неделя</button>
+                <button class="period-btn active" data-period="30d" onclick="switchDashPeriod('30d')">30 дней</button>
+                <button class="period-btn" data-period="month" onclick="switchDashPeriod('month')">Месяц</button>
+                <button class="period-btn" data-period="all" onclick="switchDashPeriod('all')">Всё время</button>
+            </div>
 
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
@@ -2189,7 +2202,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         async function loadDashboard() {
             switchBalanceSubTab('binance'); // Инициализируем балансы при загрузке
             try {
-                const response = await fetch(`${API_URL}/api/analytics/dashboard`);
+                const response = await fetch(`${API_URL}/api/analytics/dashboard?period=${currentPeriod}`);
                 const data = await response.json();
 
                 if (data.success) {
@@ -2283,126 +2296,92 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // ==================== Charts ====================
+        let chartInstances = {};
+        const METHOD_NAMES = {'spp_doverka': 'СБП/Доверка', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'custom': 'Кастомная', 'unknown': 'Другое'};
+        let currentPeriod = '30d';
+
+        function switchDashPeriod(period) {
+            currentPeriod = period;
+            document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+            loadDashboard();
+        }
+
         function renderCharts(charts) {
-            // Прибыль за 30 дней (bar chart)
-            const profitCanvas = document.getElementById('profitChart');
-            if (profitCanvas && charts.daily) {
-                const ctx = profitCanvas.getContext('2d');
-                const data = charts.daily;
-                const maxProfit = Math.max(...data.map(d => d.profit), 1);
-                const w = profitCanvas.width = profitCanvas.parentElement.clientWidth - 40;
-                const h = profitCanvas.height = 200;
-                const barW = Math.max((w - 40) / data.length - 2, 2);
-                const chartH = h - 30;
+            const chartFont = { family: 'Inter, sans-serif', size: 11 };
+            const gridColor = '#f0f0f0';
 
-                ctx.clearRect(0, 0, w, h);
-                // Сетка
-                ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
-                for (let i = 0; i <= 4; i++) {
-                    const y = chartH - (chartH * i / 4);
-                    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(w, y); ctx.stroke();
-                    ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
-                    ctx.fillText('$' + Math.round(maxProfit * i / 4), 28, y + 4);
-                }
-                // Столбцы
-                data.forEach((d, i) => {
-                    const x = 35 + i * ((w - 40) / data.length);
-                    const barH = (d.profit / maxProfit) * chartH;
-                    ctx.fillStyle = d.profit > 0 ? '#FF6B35' : '#e5e7eb';
-                    ctx.beginPath();
-                    ctx.roundRect(x, chartH - barH, barW, barH, 2);
-                    ctx.fill();
-                    // Подписи дат (каждые 5 дней)
-                    if (i % 5 === 0 || i === data.length - 1) {
-                        ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-                        ctx.fillText(d.date, x + barW/2, h - 2);
+            // Уничтожаем старые
+            Object.values(chartInstances).forEach(c => c.destroy());
+            chartInstances = {};
+
+            // Прибыль (bar)
+            if (charts.daily) {
+                chartInstances.profit = new Chart(document.getElementById('profitChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: charts.daily.map(d => d.date),
+                        datasets: [{
+                            label: 'Прибыль $',
+                            data: charts.daily.map(d => d.profit),
+                            backgroundColor: '#FF6B35',
+                            borderRadius: 4,
+                            maxBarThickness: 24
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => `$${ctx.raw.toFixed(2)}` } } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: chartFont, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+                            y: { grid: { color: gridColor }, ticks: { font: chartFont, callback: v => '$' + v } }
+                        }
+                    }
+                });
+
+                // Сделки (line)
+                chartInstances.deals = new Chart(document.getElementById('dealsChart'), {
+                    type: 'line',
+                    data: {
+                        labels: charts.daily.map(d => d.date),
+                        datasets: [{
+                            label: 'Сделок',
+                            data: charts.daily.map(d => d.count),
+                            borderColor: '#3b82f6',
+                            backgroundColor: 'rgba(59,130,246,0.1)',
+                            fill: true, tension: 0.3, pointRadius: 3, pointHoverRadius: 6
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: chartFont, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 } },
+                            y: { grid: { color: gridColor }, ticks: { font: chartFont, stepSize: 1 } }
+                        }
                     }
                 });
             }
 
-            // Сделки за 30 дней (line chart)
-            const dealsCanvas = document.getElementById('dealsChart');
-            if (dealsCanvas && charts.daily) {
-                const ctx = dealsCanvas.getContext('2d');
-                const data = charts.daily;
-                const maxCount = Math.max(...data.map(d => d.count), 1);
-                const w = dealsCanvas.width = dealsCanvas.parentElement.clientWidth - 40;
-                const h = dealsCanvas.height = 160;
-                const chartH = h - 30;
-
-                ctx.clearRect(0, 0, w, h);
-                // Сетка
-                ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
-                for (let i = 0; i <= 3; i++) {
-                    const y = chartH - (chartH * i / 3);
-                    ctx.beginPath(); ctx.moveTo(25, y); ctx.lineTo(w, y); ctx.stroke();
-                    ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
-                    ctx.fillText(Math.round(maxCount * i / 3), 23, y + 4);
-                }
-                // Линия + точки
-                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath();
-                data.forEach((d, i) => {
-                    const x = 30 + i * ((w - 35) / (data.length - 1));
-                    const y = chartH - (d.count / maxCount) * chartH;
-                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-                });
-                ctx.stroke();
-                // Заливка
-                const lastX = 30 + (data.length - 1) * ((w - 35) / (data.length - 1));
-                ctx.lineTo(lastX, chartH); ctx.lineTo(30, chartH); ctx.closePath();
-                ctx.fillStyle = 'rgba(59,130,246,0.1)'; ctx.fill();
-                // Точки
-                data.forEach((d, i) => {
-                    if (d.count > 0) {
-                        const x = 30 + i * ((w - 35) / (data.length - 1));
-                        const y = chartH - (d.count / maxCount) * chartH;
-                        ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
-                    }
-                });
-                // Подписи дат
-                data.forEach((d, i) => {
-                    if (i % 7 === 0 || i === data.length - 1) {
-                        const x = 30 + i * ((w - 35) / (data.length - 1));
-                        ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-                        ctx.fillText(d.date, x, h - 2);
-                    }
-                });
-            }
-
-            // Методы оплаты (donut chart)
-            const methodsCanvas = document.getElementById('methodsChart');
-            if (methodsCanvas && charts.methods) {
-                const ctx = methodsCanvas.getContext('2d');
-                const w = methodsCanvas.width = methodsCanvas.parentElement.clientWidth - 40;
-                const h = methodsCanvas.height = 160;
-                const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 10;
-                const methodNames = {'spp_doverka': 'СБП/Доверка', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'custom': 'Кастомная', 'unknown': 'Другое'};
-                const colors = ['#FF6B35', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7'];
+            // Методы (doughnut)
+            if (charts.methods) {
                 const entries = Object.entries(charts.methods);
-                const total = entries.reduce((s, [,v]) => s + v.count, 0);
-
-                ctx.clearRect(0, 0, w, h);
-                let angle = -Math.PI / 2;
-                let legendHtml = '';
-                entries.forEach(([key, val], i) => {
-                    const slice = (val.count / total) * Math.PI * 2;
-                    ctx.beginPath(); ctx.moveTo(cx, cy);
-                    ctx.arc(cx, cy, r, angle, angle + slice);
-                    ctx.fillStyle = colors[i % colors.length]; ctx.fill();
-                    angle += slice;
-                    const pct = Math.round(val.count / total * 100);
-                    legendHtml += `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:10px;height:10px;border-radius:50%;background:${colors[i % colors.length]};display:inline-block"></span>${methodNames[key] || key} ${pct}%</span>`;
+                const colors = ['#FF6B35', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7'];
+                chartInstances.methods = new Chart(document.getElementById('methodsChart'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: entries.map(([k]) => METHOD_NAMES[k] || k),
+                        datasets: [{
+                            data: entries.map(([,v]) => v.count),
+                            backgroundColor: colors.slice(0, entries.length),
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, cutout: '60%',
+                        plugins: { legend: { position: 'bottom', labels: { font: chartFont, padding: 12, usePointStyle: true, pointStyle: 'circle' } } }
+                    }
                 });
-                // Donut hole
-                ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
-                ctx.fillStyle = '#fff'; ctx.fill();
-                // Total в центре
-                ctx.fillStyle = '#333'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
-                ctx.fillText(total, cx, cy + 3);
-                ctx.fillStyle = '#999'; ctx.font = '10px sans-serif';
-                ctx.fillText('сделок', cx, cy + 16);
-
-                document.getElementById('methodsLegend').innerHTML = legendHtml;
+                document.getElementById('methodsLegend').innerHTML = '';
             }
 
             // Buyers
