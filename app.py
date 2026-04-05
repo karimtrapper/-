@@ -2792,7 +2792,7 @@ def proxy_create_payment():
                 if cur_resp.status_code == 200:
                     for c in cur_resp.json():
                         if c.get('symbol', '').upper() in ('USD', 'USDT'):
-                            proxy_create_payment._currency_id = c['id']
+                            proxy_create_payment._currency_id = c.get('currency_id') or c.get('id')
                             break
                 if not hasattr(proxy_create_payment, '_currency_id'):
                     return jsonify({'success': False, 'message': 'Не удалось получить currency_id'}), 500
