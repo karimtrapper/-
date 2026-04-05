@@ -312,14 +312,16 @@ class Reimbursement(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     founder_name = Column(String(100), nullable=False)
     amount_usdt = Column(Float, nullable=False)
-    tx_hash = Column(String(100))
+    tx_hash = Column(Text)  # Несколько хэшей через запятую
     tx_verified = Column(Boolean, default=False)
     notes = Column(Text)
     deals = relationship("Deal", back_populates="reimbursement")
-    
+
     def to_dict(self):
+        # tx_hashes — список для фронта
+        hashes = [h.strip() for h in (self.tx_hash or '').split(',') if h.strip()]
         return {'id': self.id, 'founder_name': self.founder_name, 'amount_usdt': self.amount_usdt,
-                'tx_hash': self.tx_hash, 'tx_verified': self.tx_verified,
+                'tx_hash': self.tx_hash, 'tx_hashes': hashes, 'tx_verified': self.tx_verified,
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
 class CashAllocation(Base):
@@ -2608,11 +2610,15 @@ def create_reimbursement():
         founder_name = data.get('founder_name')
         deal_ids = data.get('deal_ids', [])
         amount_usdt = data.get('amount_usdt')
-        tx_hash = data.get('tx_hash')
-        
+        tx_hash = data.get('tx_hash', '')
+        # Поддержка массива хэшей (фронт может передать tx_hashes[] или tx_hash строкой)
+        tx_hashes = data.get('tx_hashes', [])
+        if tx_hashes:
+            tx_hash = ', '.join(h.strip() for h in tx_hashes if h.strip())
+
         if not founder_name or not deal_ids or not amount_usdt:
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
-        
+
         # Create reimbursement
         reimbursement = Reimbursement(
             founder_name=founder_name,

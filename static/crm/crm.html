@@ -4235,9 +4235,14 @@ select.form-control { cursor: pointer; }
                                     <label class="form-label">Итоговый курс (авто)</label>
                                     <input type="text" class="form-control reimburse-rate" data-founder="${founder.founder_name}" readonly placeholder="THB/USDT">
                                 </div>
-                                <div class="form-group">
-                                    <label class="form-label">Хэш транзакции</label>
-                                    <input type="text" class="form-control reimburse-tx-hash" data-founder="${founder.founder_name}" placeholder="TxHash...">
+                                <div class="form-group" style="flex: 2;">
+                                    <label class="form-label">Хэши транзакций</label>
+                                    <div class="reimburse-tx-hashes" data-founder="${founder.founder_name}">
+                                        <div style="display:flex;gap:0.25rem;margin-bottom:0.25rem;">
+                                            <input type="text" class="form-control reimburse-tx-hash-input" placeholder="TxHash #1" style="flex:1;">
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.25rem;" onclick="addTxHashField('${founder.founder_name}')">+ ещё хэш</button>
                                 </div>
                             </div>
                             
@@ -4261,7 +4266,7 @@ select.form-control { cursor: pointer; }
                                 <h4>Возмещение #${r.id} - ${r.founder_name}</h4>
                                 <p>
                                     ${r.deals_count} сделок | ${formatDate(r.created_at)}<br>
-                                    ${r.tx_hash ? `<code style="font-size: 0.8rem; cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px;" onclick="copyHash('${r.tx_hash}')" title="Нажмите чтобы скопировать">${r.tx_hash.substring(0, 25)}...</code>` : '<span style="color: #f59e0b;">Без хэша</span>'}
+                                    ${(r.tx_hashes && r.tx_hashes.length > 0) ? r.tx_hashes.map(h => `<code style="font-size: 0.8rem; cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; display:inline-block; margin: 1px 0;" onclick="copyHash('${h}')" title="Нажмите чтобы скопировать">${h.substring(0, 25)}...</code>`).join('<br>') : '<span style="color: #f59e0b;">Без хэша</span>'}
                                 </p>
                             </div>
                             <div class="batch-amount">
@@ -4310,21 +4315,42 @@ select.form-control { cursor: pointer; }
             updateReimbursementRate(founderName);
         }
 
+        function addTxHashField(founderName) {
+            const container = document.querySelector(`.reimburse-tx-hashes[data-founder="${founderName}"]`);
+            if (!container) return;
+            const count = container.querySelectorAll('.reimburse-tx-hash-input').length + 1;
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:0.25rem;margin-bottom:0.25rem;';
+            row.innerHTML = `<input type="text" class="form-control reimburse-tx-hash-input" placeholder="TxHash #${count}" style="flex:1;">
+                <button type="button" class="btn btn-sm btn-danger" onclick="this.parentElement.remove()" style="padding:0.25rem 0.5rem;">✕</button>`;
+            container.appendChild(row);
+        }
+
         function selectOutgoingTx(founderName, selectEl) {
             const txHash = selectEl.value;
             const amount = selectEl.selectedOptions[0]?.dataset?.amount;
 
-            const hashInput = document.querySelector(`.reimburse-tx-hash[data-founder="${founderName}"]`);
-            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
-
-            if (txHash && hashInput) {
-                hashInput.value = txHash;
+            // Вставляем хэш в первое пустое поле, или создаём новое
+            const inputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
+            let filled = false;
+            for (const inp of inputs) {
+                if (!inp.value.trim()) { inp.value = txHash; filled = true; break; }
+            }
+            if (!filled && txHash) {
+                addTxHashField(founderName);
+                const newInputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
+                newInputs[newInputs.length - 1].value = txHash;
             }
 
+            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
             if (amount && amountInput) {
-                amountInput.value = amount;
+                // Суммируем если уже есть значение (несколько транзакций)
+                const current = parseFloat(amountInput.value) || 0;
+                amountInput.value = (current + parseFloat(amount)).toFixed(2);
                 updateReimbursementRate(founderName);
             }
+            // Сбрасываем селект
+            selectEl.selectedIndex = 0;
         }
 
         function updateReimbursementRate(founderName) {
@@ -4392,7 +4418,9 @@ select.form-control { cursor: pointer; }
                 return;
             }
 
-            const txHash = document.querySelector(`.reimburse-tx-hash[data-founder="${founderName}"]`)?.value;
+            // Собираем все хэши из полей
+            const hashInputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
+            const txHashes = Array.from(hashInputs).map(i => i.value.trim()).filter(Boolean);
 
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements`, {
@@ -4402,7 +4430,7 @@ select.form-control { cursor: pointer; }
                         founder_name: founderName,
                         deal_ids: dealIds,
                         amount_usdt: amountUsdt,
-                        tx_hash: txHash
+                        tx_hashes: txHashes
                     })
                 });
 
