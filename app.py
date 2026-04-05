@@ -2554,6 +2554,7 @@ def get_dashboard():
 @app.route('/api/reimbursements/pending', methods=['GET'])
 def get_pending_reimbursements():
     """Get deals awaiting reimbursement, grouped by founder"""
+    from sqlalchemy.orm import joinedload
     session = get_session()
     try:
         # Find deals with founder_personal source that haven't been reimbursed
