@@ -2553,22 +2553,23 @@ def get_dashboard():
         else:  # 30d
             chart_start = today - timedelta(days=30)
 
-        today_deals = session.query(Deal).filter(Deal.created_at >= today).all()
-        week_deals = session.query(Deal).filter(Deal.created_at >= week_ago).all()
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
         pending_deals = session.query(Deal).filter(Deal.status == DealStatus.PENDING).all()
-        
+
         # Невозмещенные
         unreimbursed = session.query(Deal).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None
         ).all()
 
-        # Средняя маржа и чек за сегодня
-        today_with_margin = [d for d in today_deals if d.profit_percent and d.profit_percent > 0]
-        today_avg_margin = round(sum(d.profit_percent for d in today_with_margin) / len(today_with_margin), 1) if today_with_margin else 0
-        today_with_payin = [d for d in today_deals if d.payin_amount_usdt and d.payin_amount_usdt > 0]
-        today_avg_check = round(sum(d.payin_amount_usdt for d in today_with_payin) / len(today_with_payin), 2) if today_with_payin else 0
+        # Метрики за выбранный период (chart_start)
+        period_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
+        period_with_margin = [d for d in period_deals if d.profit_percent and d.profit_percent > 0]
+        period_avg_margin = round(sum(d.profit_percent for d in period_with_margin) / len(period_with_margin), 1) if period_with_margin else 0
+        period_with_payin = [d for d in period_deals if d.payin_amount_usdt and d.payin_amount_usdt > 0]
+        period_avg_check = round(sum(d.payin_amount_usdt for d in period_with_payin) / len(period_with_payin), 2) if period_with_payin else 0
+        period_profit = round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in period_deals), 2)
+        period_volume = round(sum(d.payin_amount_usdt or 0 for d in period_deals), 2)
 
         # График: прибыль и объём по дням за выбранный период
         month_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
@@ -2606,34 +2607,24 @@ def get_dashboard():
             method_stats[method]['count'] += 1
             method_stats[method]['volume'] += d.payin_amount_usdt or 0
 
-        # New vs Old buyers за текущий месяц
-        month_start = today.replace(day=1)
-        month_completed = [d for d in month_deals if d.created_at and d.created_at >= month_start]
-        month_client_ids = {d.client_id for d in month_completed if d.client_id}
+        # New vs Old buyers за выбранный период
+        period_client_ids = {d.client_id for d in period_deals if d.client_id}
         new_buyers = 0
-        for cid in month_client_ids:
+        for cid in period_client_ids:
             first = session.query(Deal).filter(Deal.client_id == cid).order_by(Deal.created_at).first()
-            if first and first.created_at and first.created_at >= month_start:
+            if first and first.created_at and first.created_at >= chart_start:
                 new_buyers += 1
-        old_buyers = len(month_client_ids) - new_buyers
+        old_buyers = len(period_client_ids) - new_buyers
 
         return jsonify({
             'success': True,
             'dashboard': {
-                'today': {
-                    'deals_count': len(today_deals),
-                    'profit_usdt': round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in today_deals), 2),
-                    'volume_usdt': round(sum(d.payin_amount_usdt or 0 for d in today_deals), 2),
-                    'avg_margin': today_avg_margin,
-                    'avg_check': today_avg_check
-                },
-                'week': {
-                    'deals_count': len(week_deals),
-                    'profit_usdt': round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in week_deals), 2)
-                },
-                'cash_balance': {
-                    'total_thb': sum(b.remaining_thb for b in cash_batches),
-                    'batches_count': len(cash_batches)
+                'period': {
+                    'deals_count': len(period_deals),
+                    'profit_usdt': period_profit,
+                    'volume_usdt': period_volume,
+                    'avg_margin': period_avg_margin,
+                    'avg_check': period_avg_check
                 },
                 'attention': {
                     'pending_deals': len(pending_deals),
@@ -2643,7 +2634,7 @@ def get_dashboard():
                 'charts': {
                     'daily': chart_days,
                     'methods': method_stats,
-                    'buyers': {'new': new_buyers, 'old': old_buyers, 'total': len(month_client_ids)}
+                    'buyers': {'new': new_buyers, 'old': old_buyers, 'total': len(period_client_ids)}
                 }
             }
         })

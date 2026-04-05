@@ -694,23 +694,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <!-- Графики -->
             <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
                 <div class="card" style="padding:20px">
-                    <div class="card-title" style="margin-bottom:12px">Прибыль за 30 дней ($)</div>
-                    <canvas id="profitChart" height="200"></canvas>
+                    <div class="card-title" style="margin-bottom:12px" id="profitChartTitle">Прибыль ($)</div>
+                    <div style="position:relative;height:220px"><canvas id="profitChart"></canvas></div>
                 </div>
                 <div class="card" style="padding:20px">
                     <div class="card-title" style="margin-bottom:12px">Методы оплаты</div>
-                    <canvas id="methodsChart" height="200"></canvas>
+                    <div style="position:relative;height:200px"><canvas id="methodsChart"></canvas></div>
                     <div id="methodsLegend" style="margin-top:12px;font-size:12px"></div>
                 </div>
             </div>
 
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
                 <div class="card" style="padding:20px">
-                    <div class="card-title" style="margin-bottom:12px">Сделки за 30 дней</div>
-                    <canvas id="dealsChart" height="160"></canvas>
+                    <div class="card-title" style="margin-bottom:12px" id="dealsChartTitle">Сделки</div>
+                    <div style="position:relative;height:180px"><canvas id="dealsChart"></canvas></div>
                 </div>
                 <div class="card" style="padding:20px">
-                    <div class="card-title" style="margin-bottom:12px">Клиенты (месяц)</div>
+                    <div class="card-title" style="margin-bottom:12px" id="buyersTitle">Клиенты</div>
                     <div id="buyersBlock" style="display:flex;align-items:center;justify-content:center;height:140px;gap:24px">
                         <div style="text-align:center">
                             <div id="buyersNew" style="font-size:32px;font-weight:700;color:#22c55e">-</div>
@@ -2207,43 +2207,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 if (data.success) {
                     const d = data.dashboard;
+                    const periodLabels = {today:'сегодня', week:'за неделю', '30d':'за 30 дней', month:'за месяц', all:'за всё время'};
+                    const pl = periodLabels[currentPeriod] || '';
 
-                    // Защита от undefined
-                    const todayDeals = d.today?.deals_count ?? 0;
-                    const todayProfit = d.today?.profit_usdt ?? 0;
-                    const weekProfit = d.week?.profit_usdt ?? 0;
-                    const cashBalance = d.cash_balance?.total_thb ?? 0;
+                    const p = d.period || {};
                     const pendingDeals = d.attention?.pending_deals ?? 0;
                     const unreimbursedFounders = d.attention?.unreimbursed_founders ?? 0;
 
-                    const todayVolume = d.today?.volume_usdt ?? 0;
-                    const avgMargin = d.today?.avg_margin ?? 0;
-                    const avgCheck = d.today?.avg_check ?? 0;
-
                     document.getElementById('statsGrid').innerHTML = `
                         <div class="stat-card">
-                            <div class="stat-value">${todayDeals}</div>
-                            <div class="stat-label">Сделок сегодня</div>
+                            <div class="stat-value">${p.deals_count ?? 0}</div>
+                            <div class="stat-label">Сделок ${pl}</div>
                         </div>
                         <div class="stat-card success">
-                            <div class="stat-value">$${todayProfit}</div>
-                            <div class="stat-label">Прибыль сегодня</div>
+                            <div class="stat-value">$${p.profit_usdt ?? 0}</div>
+                            <div class="stat-label">Прибыль ${pl}</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">$${formatNumber(todayVolume)}</div>
-                            <div class="stat-label">Объём сегодня</div>
+                            <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
+                            <div class="stat-label">Объём ${pl}</div>
+                        </div>
+                        <div class="stat-card ${(p.avg_margin ?? 0) > 0 ? '' : 'warning'}">
+                            <div class="stat-value">${p.avg_margin ?? 0}%</div>
+                            <div class="stat-label">Ср. маржа ${pl}</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">$${weekProfit}</div>
-                            <div class="stat-label">Прибыль за неделю</div>
-                        </div>
-                        <div class="stat-card ${avgMargin > 0 ? '' : 'warning'}">
-                            <div class="stat-value">${avgMargin}%</div>
-                            <div class="stat-label">Ср. маржа сегодня</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">$${formatNumber(avgCheck)}</div>
-                            <div class="stat-label">Ср. чек сегодня</div>
+                            <div class="stat-value">$${formatNumber(p.avg_check ?? 0)}</div>
+                            <div class="stat-label">Ср. чек ${pl}</div>
                         </div>
                         <div class="stat-card warning" onclick="showSection('deals')" style="cursor:pointer">
                             <div class="stat-value">${pendingDeals}</div>
@@ -2254,6 +2244,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="stat-label">Не возмещено</div>
                         </div>
                     `;
+
+                    // Обновляем заголовки графиков
+                    document.getElementById('profitChartTitle').textContent = `Прибыль ${pl} ($)`;
+                    document.getElementById('dealsChartTitle').textContent = `Сделки ${pl}`;
+                    document.getElementById('buyersTitle').textContent = `Клиенты ${pl}`;
 
                     // Alerts
                     let alertsHtml = '';
