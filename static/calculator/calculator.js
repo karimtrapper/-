@@ -2,6 +2,38 @@
 // Используем ваш основной API сервер
 const API_URL = 'https://proud-renewal-production-e9b8.up.railway.app/api';
 
+// Toast-уведомления вместо системных alert/confirm
+function showToast(message, type = 'info', duration = 3000) {
+    const existing = document.getElementById('toast-container');
+    if (existing) existing.remove();
+    const container = document.createElement('div');
+    container.id = 'toast-container';
+    const colors = { success: '#22c55e', error: '#ef4444', info: '#3b82f6', warning: '#f59e0b' };
+    container.innerHTML = `<div style="position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:10000;
+        background:${colors[type] || colors.info};color:#fff;padding:12px 24px;border-radius:12px;
+        font-size:14px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,0.15);max-width:90vw;text-align:center;
+        animation:toastIn .3s ease">${message.replace(/\n/g, '<br>')}</div>`;
+    document.body.appendChild(container);
+    setTimeout(() => container.remove(), duration);
+}
+
+function showConfirm(message) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+        overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+            <div style="font-size:15px;line-height:1.5;margin-bottom:20px">${message.replace(/\n/g, '<br>')}</div>
+            <div style="display:flex;gap:12px;justify-content:flex-end">
+                <button id="confirm-cancel" style="padding:10px 20px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:14px">Отмена</button>
+                <button id="confirm-ok" style="padding:10px 20px;border-radius:10px;border:none;background:#FF6B35;color:#fff;cursor:pointer;font-size:14px;font-weight:600">OK</button>
+            </div></div>`;
+        document.body.appendChild(overlay);
+        overlay.querySelector('#confirm-cancel').onclick = () => { overlay.remove(); resolve(false); };
+        overlay.querySelector('#confirm-ok').onclick = () => { overlay.remove(); resolve(true); };
+        overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+    });
+}
+
 const CONFIG = {
     API_URL: API_URL,
     USE_API: true,
@@ -607,7 +639,7 @@ async function calculate() {
         const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
         const needsRub = scenarioNeedsRubRate(state.scenario);
         if ((needsRub && !rubUsdt) || !state.rates.usdt_thb) {
-            alert('⚠️ Ошибка: Курсы валют не получены. Расчет невозможен.');
+            showToast('Курсы валют не получены. Расчет невозможен.', 'error');
             return;
         }
 
@@ -706,7 +738,7 @@ async function getPreciseRate() {
     const preciseRateTime = document.getElementById('preciseRateTime');
 
     if (amount <= 0) {
-        alert('⚠️ Введите сумму для расчета точного курса');
+        showToast('Введите сумму для расчета точного курса', 'warning');
         return;
     }
 
@@ -811,7 +843,7 @@ async function getPreciseRate() {
 
     } catch (error) {
         console.error('❌ Ошибка получения точного курса:', error);
-        alert(`❌ Ошибка получения точного курса: ${error.message}\n\nИспользуется курс API.`);
+        showToast(`Ошибка получения точного курса: ${error.message}. Используется курс API.`, 'error', 5000);
     } finally {
         isPreciseRateLoading = false;
         preciseRateBtn.disabled = false;
@@ -1349,7 +1381,7 @@ async function _sendPayment(provider) {
 
 async function createPayment() {
     if (!state.lastResult || !state.lastResult.usdt_amount) {
-        alert('⚠️ Сначала выполните расчет суммы');
+        showToast('Сначала выполните расчет суммы', 'warning');
         return;
     }
 
@@ -1369,10 +1401,10 @@ async function createPayment() {
 
         // Шаг 2: grusha не работает — спрашиваем
         if (result.data.grusha_down) {
-            const useDoverka = confirm(
-                '⚠️ grushab-2-b.ru не отвечает.\n\n' +
-                'Создать платёж напрямую через Доверку?\n' +
-                '(Клиент получит ссылку merchant.doverkapay.com)'
+            const useDoverka = await showConfirm(
+                '⚠️ grushab-2-b.ru не отвечает.<br><br>' +
+                'Создать платёж напрямую через Доверку?<br>' +
+                '<small style="color:#666">(Клиент получит ссылку merchant.doverkapay.com)</small>'
             );
             if (!useDoverka) return;
 
@@ -1394,7 +1426,7 @@ async function createPayment() {
 
     } catch (error) {
         console.error('Payment creation error:', error);
-        alert('❌ Ошибка при создании платежа: ' + error.message);
+        showToast('Ошибка при создании платежа: ' + error.message, 'error', 5000);
     } finally {
         createBtn.disabled = false;
         createBtn.innerText = originalText;
@@ -1446,7 +1478,7 @@ function copyPaymentLink() {
         input.select();
         document.execCommand('copy');
         document.body.removeChild(input);
-        alert('Ссылка скопирована!');
+        showToast('Ссылка скопирована!', 'success');
     });
 }
 
@@ -1538,7 +1570,7 @@ function updatePreciseRateCountdown(remainingMs) {
 // === Кнопка "Создать сделку в CRM" ===
 function createDealFromCalc() {
     if (!state.lastResult) {
-        alert('Сначала выполните расчёт');
+        showToast('Сначала выполните расчёт', 'warning');
         return;
     }
 

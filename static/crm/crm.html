@@ -1928,7 +1928,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Auth ====================
         async function logout() {
-            if (!confirm('Выйти из CRM?')) return;
+            if (!(await showConfirm('Выйти из CRM?'))) return;
             await fetch('/api/auth/logout', { method: 'POST' });
             window.location.href = '/login';
         }
@@ -2042,6 +2042,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
         }
 
+        function showConfirm(message) {
+            return new Promise(resolve => {
+                const overlay = document.createElement('div');
+                overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+                overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+                    <div style="font-size:15px;line-height:1.5;margin-bottom:20px">${message.replace(/\n/g, '<br>')}</div>
+                    <div style="display:flex;gap:12px;justify-content:flex-end">
+                        <button class="confirm-cancel" style="padding:10px 20px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:14px">Отмена</button>
+                        <button class="confirm-ok" style="padding:10px 20px;border-radius:10px;border:none;background:#FF6B35;color:#fff;cursor:pointer;font-size:14px;font-weight:600">OK</button>
+                    </div></div>`;
+                document.body.appendChild(overlay);
+                overlay.querySelector('.confirm-cancel').onclick = () => { overlay.remove(); resolve(false); };
+                overlay.querySelector('.confirm-ok').onclick = () => { overlay.remove(); resolve(true); };
+                overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+            });
+        }
+
         // ==================== Клиент-комбобокс ====================
         let allClients = [];
 
@@ -2096,7 +2113,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteClient(clientId, clientName) {
-            if (!confirm(`Удалить клиента «${clientName}»?`)) return;
+            if (!(await showConfirm(`Удалить клиента «${clientName}»?`))) return;
             try {
                 const resp = await fetch(`${API_URL}/api/clients/${clientId}`, { method: 'DELETE' });
                 const data = await resp.json();
@@ -2130,7 +2147,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             // Запоминание вкладки
             const savedSection = localStorage.getItem('crm_section');
-            if (savedSection) showSection(savedSection);
+            // 'create' — не запоминаем (это action, не view)
+            if (savedSection && savedSection !== 'create') showSection(savedSection);
         });
 
         // ==================== Dashboard ====================
@@ -2468,11 +2486,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('Получение от Доверки подтверждено!');
+                    showToast('Получение от Доверки подтверждено!');
                     showDealDetails(dealId); // Обновляем модальное окно
                     loadDeals();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error confirming doverka:', error);
@@ -2515,7 +2533,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteDeal(dealId) {
-            if (!confirm('Удалить сделку? Средства вернутся в кассу.')) return;
+            if (!(await showConfirm('Удалить сделку? Средства вернутся в кассу.'))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/deals/${dealId}`, { method: 'DELETE' });
@@ -2526,11 +2544,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     loadDeals();
                     loadDashboard();
                 } else {
-                    alert('Ошибка при удалении: ' + (data.error || 'Неизвестная ошибка'));
+                    showToast('Ошибка при удалении: ' + (data.error || 'Неизвестная ошибка', 'error'));
                 }
             } catch (error) {
                 console.error('Error deleting deal:', error);
-                alert('Сетевая ошибка при удалении сделки');
+                showToast('Сетевая ошибка при удалении сделки', 'error');
             }
         }
 
@@ -2743,16 +2761,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Сделка обновлена!');
+                    showToast('Сделка обновлена!');
                     cancelEditMode();
                     loadDeals();
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                 }
             } catch (error) {
                 console.error('Error updating custom deal:', error);
-                alert('Ошибка при сохранении');
+                showToast('Ошибка при сохранении', 'error');
             }
         }
 
@@ -2845,7 +2863,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Load incoming transactions for PayIn crypto select
         async function deleteWallet(walletId) {
-            if (!confirm('Удалить этот кошелек из мониторинга?')) return;
+            if (!(await showConfirm('Удалить этот кошелек из мониторинга?'))) return;
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
                 if ((await response.json()).success) loadTransactions();
@@ -3237,17 +3255,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             // Валидация
             if (payinAmount <= 0 || payoutAmount <= 0) {
-                alert('Укажите суммы Pay-In и Pay-Out');
+                showToast('Укажите суммы Pay-In и Pay-Out', 'error');
                 return;
             }
 
             if (payinCurrency !== 'USDT' && payinRate <= 0) {
-                alert('Укажите курс Pay-In к USDT');
+                showToast('Укажите курс Pay-In к USDT', 'error');
                 return;
             }
 
             if (payoutCurrency !== 'USDT' && payoutRate <= 0) {
-                alert('Укажите курс Pay-Out к USDT');
+                showToast('Укажите курс Pay-Out к USDT', 'error');
                 return;
             }
 
@@ -3324,7 +3342,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         msg += `\n\nПартнёр: ${referrerName} (${referrerPercent}%)\nВыплата партнёру: $${referrerPayout.toFixed(2)}`;
                     }
                     msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
-                    alert(msg);
+                    showToast(msg);
 
                     // Очистка формы
                     document.getElementById('customPayinAmount').value = '';
@@ -3338,7 +3356,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                 }
             } catch (error) {
                 console.error('Error creating custom deal:', error);
@@ -3553,12 +3571,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (isEditMode) cancelEditMode();
                     showSection('deals');
                     loadDashboard();
+                    // Автооткрытие деталей новой сделки
+                    if (dealId) setTimeout(() => showDealDetails(dealId), 500);
                 } else {
                     showToast('Ошибка: ' + result.error, 'error', 5000);
                 }
             } catch (error) {
                 console.error('Error creating/updating deal:', error);
-                alert('Ошибка при сохранении сделки');
+                showToast('Ошибка при сохранении сделки', 'error');
             }
         });
 
@@ -3628,18 +3648,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     closeAddWalletModal();
                     loadWalletsSummary();
-                    alert('Кошелек добавлен!');
+                    showToast('Кошелек добавлен!');
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                 }
             } catch (e) {
                 console.error(e);
-                alert('Ошибка при добавлении кошелька');
+                showToast('Ошибка при добавлении кошелька', 'error');
             }
         };
 
         async function deleteWalletOperation(walletId, opId) {
-            if (!confirm('Удалить эту операцию? Баланс будет пересчитан.')) return;
+            if (!(await showConfirm('Удалить эту операцию? Баланс будет пересчитан.'))) return;
             try {
                 const response = await fetch(`${API_URL}/api/wallets/operations/${opId}`, {
                     method: 'DELETE'
@@ -3673,7 +3693,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteWalletFromBalance(walletId) {
-            if (!confirm('Удалить этот кошелек и всю историю его операций?')) return;
+            if (!(await showConfirm('Удалить этот кошелек и всю историю его операций?'))) return;
             try {
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
                 const resData = await response.json();
@@ -3683,11 +3703,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('walletHistorySection').style.display = 'none';
                     loadWalletsSummary();
                 } else {
-                    alert('Ошибка при удалении: ' + (resData.error || 'Неизвестная ошибка'));
+                    showToast('Ошибка при удалении: ' + (resData.error || 'Неизвестная ошибка', 'error'));
                 }
             } catch (e) {
                 console.error(e);
-                alert('Ошибка сети при удалении');
+                showToast('Ошибка сети при удалении', 'error');
             }
         }
 
@@ -3755,7 +3775,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         function openTopupModal() {
-            if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
+            if (!currentActiveWalletId) { showToast('Сначала выберите кошелек', 'error'); return; }
             document.getElementById('topupWalletId').value = currentActiveWalletId;
             document.getElementById('topupModal').classList.add('active');
             toggleTopupSource();
@@ -3832,11 +3852,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     closeTopupModal();
                     showWalletHistory(walletId, '', '');
                 }
-            } catch (e) { alert('Ошибка при пополнении'); }
+            } catch (e) { showToast('Ошибка при пополнении', 'error'); }
         };
 
         function openWithdrawModal() {
-            if (!currentActiveWalletId) { alert('Сначала выберите кошелек'); return; }
+            if (!currentActiveWalletId) { showToast('Сначала выберите кошелек', 'error'); return; }
             document.getElementById('withdrawWalletId').value = currentActiveWalletId;
             document.getElementById('withdrawModal').classList.add('active');
         }
@@ -3862,7 +3882,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     closeWithdrawModal();
                     showWalletHistory(walletId, '', '');
                 }
-            } catch (e) { alert('Ошибка при списании'); }
+            } catch (e) { showToast('Ошибка при списании', 'error'); }
         };
 
         // ==================== Cash Batches ====================
@@ -3986,11 +4006,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('historyModalContent').innerHTML = html;
                     document.getElementById('historyModal').classList.add('active');
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error loading batch history:', error);
-                alert('Ошибка загрузки истории');
+                showToast('Ошибка загрузки истории', 'error');
             }
         }
 
@@ -4059,11 +4079,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('historyModalContent').innerHTML = html;
                     document.getElementById('historyModal').classList.add('active');
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error loading card history:', error);
-                alert('Ошибка загрузки истории');
+                showToast('Ошибка загрузки истории', 'error');
             }
         }
 
@@ -4082,7 +4102,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const inputValue = parseFloat(action);
 
             if (isNaN(inputValue)) {
-                alert('Введите корректное число');
+                showToast('Введите корректное число', 'error');
                 return;
             }
 
@@ -4094,7 +4114,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
 
             if (newRemaining < 0) {
-                alert('Остаток не может быть отрицательным');
+                showToast('Остаток не может быть отрицательным', 'error');
                 return;
             }
 
@@ -4113,30 +4133,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    alert(`Остаток изменён: ${formatNumber(currentRemaining)} → ${formatNumber(newRemaining)} THB`);
+                    showToast(`Остаток изменён: ${formatNumber(currentRemaining)} → ${formatNumber(newRemaining)} THB`);
                     loadCashBatches();
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error editing batch:', error);
-                alert('Ошибка при изменении партии');
+                showToast('Ошибка при изменении партии', 'error');
             }
         }
 
         async function deleteCashBatch(batchId) {
-            if (!confirm('Удалить эту партию кассы?')) return;
+            if (!(await showConfirm('Удалить эту партию кассы?'))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/cash/batches/${batchId}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('Партия удалена');
+                    showToast('Партия удалена');
                     loadCashBatches();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error deleting batch:', error);
@@ -4165,11 +4185,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Партия добавлена!');
+                    showToast('Партия добавлена!');
                     this.reset();
                     loadCashBatches();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                 }
             } catch (error) {
                 console.error('Error adding batch:', error);
@@ -4301,17 +4321,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteCard(cardId) {
-            if (!confirm('Удалить эту карту? Средства вернутся в кассу.')) return;
+            if (!(await showConfirm('Удалить эту карту? Средства вернутся в кассу.'))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('Карта удалена');
+                    showToast('Карта удалена');
                     loadBankCards();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error deleting card:', error);
@@ -4319,20 +4339,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteCardTopup(cardId, topupId) {
-            if (!confirm('Удалить это пополнение? Если было из кассы - деньги вернутся в партию.')) return;
+            if (!(await showConfirm('Удалить это пополнение? Если было из кассы - деньги вернутся в партию.'))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}/topup/${topupId}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.success) {
-                    alert(data.returned_to_batch
+                    showToast(data.returned_to_batch
                         ? `Пополнение удалено, ${formatNumber(data.amount_returned)} THB возвращено в партию #${data.returned_to_batch}`
                         : 'Пополнение удалено');
                     loadBankCards();
                     loadCashBatchesForSelect();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error deleting topup:', error);
@@ -4357,16 +4377,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Карта создана! Теперь пополните её.');
+                    showToast('Карта создана! Теперь пополните её.');
                     this.reset();
                     closeAddCardModal();
                     loadBankCards();
                 } else {
-                    alert('Ошибка при создании карты: ' + (result.error || 'Неизвестная ошибка'));
+                    showToast('Ошибка при создании карты: ' + (result.error || 'Неизвестная ошибка', 'error'));
                 }
             } catch (error) {
                 console.error('Error adding card:', error);
-                alert('Ошибка сети или сервера при создании карты');
+                showToast('Ошибка сети или сервера при создании карты', 'error');
             }
         });
 
@@ -4377,7 +4397,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const cardId = formData.get('card_id');
 
             if (!cardId) {
-                alert('Выберите карту');
+                showToast('Выберите карту', 'error');
                 return;
             }
 
@@ -4392,7 +4412,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (sourceType === 'cash_batch') {
                 const batchId = formData.get('source_batch_id');
                 if (!batchId) {
-                    alert('Выберите партию кассы');
+                    showToast('Выберите партию кассы', 'error');
                     return;
                 }
                 data.source_batch_id = parseInt(batchId);
@@ -4401,7 +4421,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Отдельная закупка - нужен cost_usdt
                 const costUsdt = parseFloat(formData.get('cost_usdt'));
                 if (!costUsdt) {
-                    alert('Укажите стоимость в USDT');
+                    showToast('Укажите стоимость в USDT', 'error');
                     return;
                 }
                 data.cost_usdt = costUsdt;
@@ -4416,18 +4436,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert('Карта пополнена!');
+                    showToast('Карта пополнена!');
                     this.reset();
                     closeTopupCardModal();
                     loadBankCards();
                     // Обновляем select партий
                     loadCashBatchesForSelect();
                 } else {
-                    alert('Ошибка пополнения: ' + (result.error || 'Неизвестная ошибка'));
+                    showToast('Ошибка пополнения: ' + (result.error || 'Неизвестная ошибка', 'error'));
                 }
             } catch (error) {
                 console.error('Error topping up card:', error);
-                alert('Ошибка сети или сервера при пополнении карты');
+                showToast('Ошибка сети или сервера при пополнении карты', 'error');
             }
         });
 
@@ -4544,7 +4564,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteReimbursement(reimbursementId) {
-            if (!confirm(`Удалить возмещение #${reimbursementId}?\n\nСвязанные сделки вернутся в статус "ожидает возмещения".`)) {
+            if (!(await showConfirm(`Удалить возмещение #${reimbursementId}?\n\nСвязанные сделки вернутся в статус "ожидает возмещения".`))) {
                 return;
             }
 
@@ -4555,15 +4575,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(`Возмещение удалено.`);
+                    showToast(`Возмещение удалено.`);
                     loadReimbursements();
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                 }
             } catch (error) {
                 console.error('Error deleting reimbursement:', error);
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
             }
         }
 
@@ -4655,7 +4675,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const dealIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.dealId));
 
             if (dealIds.length === 0) {
-                alert('Выберите хотя бы одну сделку');
+                showToast('Выберите хотя бы одну сделку', 'error');
                 reimbursementInProgress.delete(founderName);
                 if (btn) {
                     btn.disabled = false;
@@ -4666,7 +4686,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const amountUsdt = parseFloat(document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`)?.value);
             if (!amountUsdt || amountUsdt <= 0) {
-                alert('Укажите сумму возмещения в USDT');
+                showToast('Укажите сумму возмещения в USDT', 'error');
                 reimbursementInProgress.delete(founderName);
                 if (btn) {
                     btn.disabled = false;
@@ -4694,11 +4714,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const result = await response.json();
 
                 if (result.success) {
-                    alert(`Возмещение создано!\n\nСумма: $${result.reimbursement.amount_usdt.toFixed(2)}\nКурс: ${result.real_rate || '-'} THB/USDT\nПрибыль: $${result.total_profit?.toFixed(2) || '-'}`);
+                    showToast(`Возмещение создано!\n\nСумма: $${result.reimbursement.amount_usdt.toFixed(2)}\nКурс: ${result.real_rate || '-'} THB/USDT\nПрибыль: $${result.total_profit?.toFixed(2) || '-'}`);
                     loadReimbursements();
                     loadDashboard();
                 } else {
-                    alert('Ошибка: ' + result.error);
+                    showToast('Ошибка: ' + result.error, 'error');
                     if (btn) {
                         btn.disabled = false;
                         btn.textContent = 'Создать возмещение и рассчитать прибыль';
@@ -4706,7 +4726,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
             } catch (error) {
                 console.error('Error creating reimbursement:', error);
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
                 if (btn) {
                     btn.disabled = false;
                     btn.textContent = 'Создать возмещение и рассчитать прибыль';
@@ -4793,10 +4813,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    alert('Получение подтверждено!');
+                    showToast('Получение подтверждено!');
                     loadPendingDoverka();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error confirming doverka:', error);
@@ -4931,7 +4951,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const address = this.wallet_address.value.trim();
 
             if (!address || !address.startsWith('T')) {
-                alert('Введите корректный адрес TRON кошелька (начинается с T)');
+                showToast('Введите корректный адрес TRON кошелька (начинается с T, 'error')');
                 return;
             }
 
@@ -4948,11 +4968,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    alert(`Кошелек добавлен!\nUSDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`);
+                    showToast(`Кошелек добавлен!\nUSDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`);
                     this.reset();
                     loadTransactions();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error adding wallet:', error);
@@ -4965,7 +4985,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const txHash = this.tx_hash.value.trim();
 
             if (!txHash) {
-                alert('Введите хэш транзакции');
+                showToast('Введите хэш транзакции', 'error');
                 return;
             }
 
@@ -5022,7 +5042,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Trigger change to update form
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
 
-            alert(`Транзакция выбрана!\n\nСумма: $${amount} USDT\nОт: ${fromAddress}\n\nЗаполните остальные поля сделки.`);
+            showToast(`Транзакция выбрана!\n\nСумма: $${amount} USDT\nОт: ${fromAddress}\n\nЗаполните остальные поля сделки.`);
         }
 
         // ==================== Verification ====================
@@ -5139,14 +5159,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    alert(data.message);
+                    showToast(data.message);
                     updateWebhookStatus(!!url);
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error saving webhook config:', error);
-                alert('Ошибка сохранения');
+                showToast('Ошибка сохранения', 'error');
             }
         }
 
@@ -5268,7 +5288,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const name = this.manager_name.value.trim();
 
             if (!name) {
-                alert('Введите имя менеджера');
+                showToast('Введите имя менеджера', 'error');
                 return;
             }
 
@@ -5284,7 +5304,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     this.reset();
                     loadManagers();
                 } else {
-                    alert('Ошибка: ' + data.error);
+                    showToast('Ошибка: ' + data.error, 'error');
                 }
             } catch (error) {
                 console.error('Error adding manager:', error);
@@ -5306,7 +5326,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function deleteManager(id) {
-            if (!confirm('Удалить менеджера?')) return;
+            if (!(await showConfirm('Удалить менеджера?'))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/managers/${id}`, { method: 'DELETE' });
@@ -5524,7 +5544,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const clientName = document.getElementById('kycClientName').value;
 
             if (!clientId && !clientName) {
-                alert('Выберите клиента или введите имя');
+                showToast('Выберите клиента или введите имя', 'error');
                 return;
             }
 
@@ -5544,10 +5564,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('kycLinkValue').textContent = link;
                     document.getElementById('kycLinkResult').style.display = 'block';
                 } else {
-                    alert('Ошибка: ' + (data.error || 'не удалось создать ссылку'));
+                    showToast('Ошибка: ' + (data.error || 'не удалось создать ссылку', 'error'));
                 }
             } catch (e) {
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
                 console.error(e);
             }
         }
@@ -5664,7 +5684,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function approveKYC(token) {
-            if (!confirm('Одобрить верификацию? Фото будут удалены.')) return;
+            if (!(await showConfirm('Одобрить верификацию? Фото будут удалены.'))) return;
             try {
                 const res = await fetch(`${API_URL}/api/kyc/approve/${token}`, {
                     method: 'POST',
@@ -5676,10 +5696,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     closeKYCReviewModal();
                     loadKYCSection();
                 } else {
-                    alert('Ошибка: ' + (data.error || 'не удалось одобрить'));
+                    showToast('Ошибка: ' + (data.error || 'не удалось одобрить', 'error'));
                 }
             } catch (e) {
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
                 console.error(e);
             }
         }
@@ -5690,12 +5710,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (reason === 'other') {
                 reason = document.getElementById('kycCustomReason').value;
                 if (!reason) {
-                    alert('Укажите причину отклонения');
+                    showToast('Укажите причину отклонения', 'error');
                     return;
                 }
             }
 
-            if (!confirm(`Отклонить KYC? Причина: "${reason}"`)) return;
+            if (!(await showConfirm(`Отклонить KYC? Причина: "${reason}"`))) return;
             try {
                 const res = await fetch(`${API_URL}/api/kyc/reject/${token}`, {
                     method: 'POST',
@@ -5707,26 +5727,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     closeKYCReviewModal();
                     loadKYCSection();
                 } else {
-                    alert('Ошибка: ' + (data.error || 'не удалось отклонить'));
+                    showToast('Ошибка: ' + (data.error || 'не удалось отклонить', 'error'));
                 }
             } catch (e) {
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
                 console.error(e);
             }
         }
 
         async function cancelKYC(token, clientName) {
-            if (!confirm(`Отменить KYC-запрос${clientName ? ' для ' + clientName : ''}? Ссылка перестанет работать.`)) return;
+            if (!(await showConfirm(`Отменить KYC-запрос${clientName ? ' для ' + clientName : ''}? Ссылка перестанет работать.`))) return;
             try {
                 const resp = await fetch(`${API_URL}/api/kyc/${token}`, { method: 'DELETE' });
                 const data = await resp.json();
                 if (data.success) {
                     loadKYCSection();
                 } else {
-                    alert('Ошибка: ' + (data.error || 'неизвестная'));
+                    showToast('Ошибка: ' + (data.error || 'неизвестная', 'error'));
                 }
             } catch (e) {
-                alert('Ошибка сети');
+                showToast('Ошибка сети', 'error');
             }
         }
 
