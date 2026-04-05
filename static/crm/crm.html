@@ -130,10 +130,8 @@ body {
 .nav-create-btn { flex-shrink: 0; padding: 8px 16px !important; min-height: 40px !important; }
 @media (max-width: 640px) { .nav-create-btn { display: none; } }
 .crm-nav::-webkit-scrollbar, .nav::-webkit-scrollbar { display: none; }
-.crm-nav-inner, .nav-tabs {
-    display: flex; gap: 4px; min-width: max-content;
-    padding: 8px 0;
-}
+.crm-nav-inner { display: flex; gap: 4px; min-width: max-content; padding: 8px 0; }
+.nav-tabs { display: flex; gap: 4px; padding: 8px 0; }
 .nav-logo { display: none; }
 .nav-tab {
     background: none; border: none; color: var(--text-sec);
@@ -284,6 +282,36 @@ select.form-control {
     padding-right: 36px;
 }
 select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%23F97316' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E"); }
+/* Кастомный select (замена нативного) */
+.custom-select-wrap { position: relative; }
+.custom-select-btn {
+    width: 100%; padding: 12px 36px 12px 14px;
+    border: 1.5px solid var(--border); border-radius: var(--r-sm);
+    font-size: 15px; font-family: inherit; background: var(--bg);
+    color: var(--text); cursor: pointer; text-align: left;
+    min-height: 48px; transition: all 0.15s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2364748B' viewBox='0 0 16 16'%3E%3Cpath d='M4.646 5.646a.5.5 0 0 1 .708 0L8 8.293l2.646-2.647a.5.5 0 0 1 .708.708l-3 3a.5.5 0 0 1-.708 0l-3-3a.5.5 0 0 1 0-.708z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn {
+    outline: none; border-color: var(--coral);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.12);
+}
+.custom-select-list {
+    display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+    max-height: 240px; overflow-y: auto; margin-top: -1px;
+    background: var(--bg); border: 1.5px solid var(--coral);
+    border-radius: 0 0 var(--r-sm) var(--r-sm);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+.custom-select-wrap.open .custom-select-list { display: block; }
+.custom-select-opt {
+    padding: 10px 14px; cursor: pointer; font-size: 15px; transition: background 0.1s;
+}
+.custom-select-opt:hover { background: var(--navy-100); }
+.custom-select-opt.selected { background: var(--coral-light); font-weight: 600; }
+
 /* Клиент-комбобокс */
 .client-dropdown {
     position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
@@ -1933,6 +1961,66 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             });
         });
 
+        // ==================== Кастомный Select ====================
+        function upgradeSelect(select) {
+            if (select.dataset.upgraded || select.style.display === 'none') return;
+            select.dataset.upgraded = 'true';
+            select.style.display = 'none';
+
+            const wrap = document.createElement('div');
+            wrap.className = 'custom-select-wrap';
+            select.parentNode.insertBefore(wrap, select);
+            wrap.appendChild(select);
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'custom-select-btn';
+
+            const list = document.createElement('div');
+            list.className = 'custom-select-list';
+
+            function renderOptions() {
+                const opts = Array.from(select.options);
+                const selectedVal = select.value;
+                btn.textContent = select.selectedOptions[0]?.text || 'Выберите...';
+                list.innerHTML = opts.map((o, i) => `<div class="custom-select-opt ${o.value === selectedVal ? 'selected' : ''}" data-index="${i}" data-value="${o.value}">${o.text}</div>`).join('');
+            }
+            renderOptions();
+
+            wrap.appendChild(btn);
+            wrap.appendChild(list);
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Закрыть другие
+                document.querySelectorAll('.custom-select-wrap.open').forEach(w => { if (w !== wrap) w.classList.remove('open'); });
+                wrap.classList.toggle('open');
+                if (wrap.classList.contains('open')) renderOptions();
+            });
+
+            list.addEventListener('click', (e) => {
+                const opt = e.target.closest('.custom-select-opt');
+                if (!opt) return;
+                select.selectedIndex = parseInt(opt.dataset.index);
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                btn.textContent = opt.textContent;
+                wrap.classList.remove('open');
+            });
+
+            // Обновление при программном изменении select
+            const observer = new MutationObserver(renderOptions);
+            observer.observe(select, { childList: true, attributes: true });
+
+            // Закрытие при клике вне
+            document.addEventListener('click', (e) => {
+                if (!wrap.contains(e.target)) wrap.classList.remove('open');
+            });
+        }
+
+        function upgradeAllSelects() {
+            document.querySelectorAll('select.form-control').forEach(upgradeSelect);
+        }
+
         // ==================== Toast уведомления ====================
         function showToast(message, type = 'success', duration = 3000) {
             let container = document.querySelector('.toast-container');
@@ -2744,6 +2832,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             // Trigger payin method change to show correct fields
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
+
+            // Апгрейд нативных select → кастомные dropdown
+            setTimeout(upgradeAllSelects, 50);
         }
 
         // Load incoming transactions for PayIn crypto select
