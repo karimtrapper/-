@@ -1298,6 +1298,55 @@ function togglePartner() {
 }
 
 // Функция создания платежа через API Doverka
+function _buildPaymentPayload(provider) {
+    const rubAmount = state.lastResult.rub_paid || state.lastResult.rub_to_pay || 0;
+    const thbAmount = state.lastResult.thb_received || state.lastResult.thb_target || 0;
+    const profitUsdt = state.lastResult.profit_usdt || 0;
+    const comment = document.getElementById('paymentComment').value.trim();
+    const orderId = `GR-${Date.now()}`;
+    const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
+
+    return {
+        "provider": provider,
+        "amount": parseFloat(rubAmount.toFixed(2)),
+        "currency": "RUB",
+        "order_id": orderId,
+        "merchant_id": "grusha",
+        "description": description,
+        "success_url": "",
+        "cancel_url": "",
+        "failure_url": "",
+        "metadata": {
+            "rub_amount": rubAmount,
+            "thb_amount": thbAmount,
+            "order_id": orderId,
+            "profit_usdt": profitUsdt,
+            "comment": comment
+        },
+        "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
+        "merchant_description": "grusha exchange"
+    };
+}
+
+function _showPaymentLink(publicLink) {
+    const resultDiv = document.getElementById('paymentResult');
+    const linkA = document.getElementById('paymentLink');
+    linkA.href = publicLink;
+    linkA.innerText = publicLink;
+    resultDiv.style.display = 'block';
+    resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+async function _sendPayment(provider) {
+    const response = await fetch('/api/proxy/create-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(_buildPaymentPayload(provider))
+    });
+    const data = await response.json().catch(() => ({}));
+    return { ok: response.ok, status: response.status, data };
+}
+
 async function createPayment() {
     if (!state.lastResult || !state.lastResult.usdt_amount) {
         alert('⚠️ Сначала выполните расчет суммы');
@@ -1310,65 +1359,38 @@ async function createPayment() {
     createBtn.innerText = '⏳ СОЗДАНИЕ...';
 
     try {
-        // Берем сумму из "Поступление" (incoming_usdt), если она есть, иначе usdt_amount
-        const amount = state.lastResult.incoming_usdt || state.lastResult.usdt_amount;
-        const rubAmount = state.lastResult.rub_paid || state.lastResult.rub_to_pay || 0;
-        const thbAmount = state.lastResult.thb_received || state.lastResult.thb_target || 0;
-        const profitUsdt = state.lastResult.profit_usdt || 0;
-        const comment = document.getElementById('paymentComment').value.trim();
-        
-        const orderId = `GR-${Date.now()}`;
-        const description = `Обмен ${formatNumber(rubAmount)} RUB на ${formatNumber(thbAmount)} THB`;
+        // Шаг 1: пробуем grushab-2-b.ru
+        const result = await _sendPayment('grusha');
 
-        const response = await fetch('/api/proxy/create-payment', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                "amount": parseFloat(rubAmount.toFixed(2)),
-                "currency": "RUB",
-                "order_id": orderId,
-                "merchant_id": "grusha",
-                "description": description,
-                "success_url": "",
-                "cancel_url": "",
-                "failure_url": "",
-                "metadata": {
-                    "rub_amount": rubAmount,
-                    "thb_amount": thbAmount,
-                    "order_id": orderId,
-                    "profit_usdt": profitUsdt,
-                    "comment": comment
-                },
-                "merchant_image_url": "https://i.ibb.co/h1RX3TTv/2026-01-20-19-39-50.jpg",
-                "merchant_description": "grusha exchange"
-            })
-        });
+        if (result.ok && result.data.public_link) {
+            _showPaymentLink(result.data.public_link);
+            return;
+        }
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            if (response.status === 401) {
-                throw new Error('Сессия истекла. Перезайдите: ' + window.location.origin + '/login');
+        // Шаг 2: grusha не работает — спрашиваем
+        if (result.data.grusha_down) {
+            const useDoverka = confirm(
+                '⚠️ grushab-2-b.ru не отвечает.\n\n' +
+                'Создать платёж напрямую через Доверку?\n' +
+                '(Клиент получит ссылку merchant.doverkapay.com)'
+            );
+            if (!useDoverka) return;
+
+            createBtn.innerText = '⏳ СОЗДАНИЕ ЧЕРЕЗ ДОВЕРКУ...';
+            const doverkaResult = await _sendPayment('doverka');
+
+            if (doverkaResult.ok && doverkaResult.data.public_link) {
+                _showPaymentLink(doverkaResult.data.public_link);
+                return;
             }
-            throw new Error(errorData.message || errorData.error || `Ошибка API (${response.status})`);
+            throw new Error(doverkaResult.data.message || 'Ошибка Doverka API');
         }
 
-        const data = await response.json();
-        
-        if (data.public_link) {
-            const resultDiv = document.getElementById('paymentResult');
-            const linkA = document.getElementById('paymentLink');
-            
-            linkA.href = data.public_link;
-            linkA.innerText = data.public_link;
-            resultDiv.style.display = 'block';
-            
-            // Скроллим к результату
-            resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            throw new Error('API не вернул ссылку на оплату');
+        // Другая ошибка
+        if (result.status === 401) {
+            throw new Error('Сессия истекла. Перезайдите: ' + window.location.origin + '/login');
         }
+        throw new Error(result.data.message || result.data.error || `Ошибка API (${result.status})`);
 
     } catch (error) {
         console.error('Payment creation error:', error);

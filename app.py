@@ -2755,62 +2755,75 @@ def doverka_payments_history():
 
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
-    """Прокси для создания платежа через Doverka Partner API.
+    """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API."""
+    data = request.get_json()
+    provider = data.pop('provider', 'grusha')  # 'grusha' или 'doverka'
 
-    Фронт шлёт старый формат (amount, currency, order_id, description).
-    Прокси конвертирует в формат Doverka API (currency_id, amount_rub, order_transaction_id).
-    """
-    from calculator import ExchangeRateProvider
-    key = ExchangeRateProvider.DOVERKA_API_KEY
-    if not key:
-        return jsonify({'success': False, 'message': 'No Doverka API key'}), 500
-    try:
-        data = request.get_json()
-
-        # Получаем currency_id для USD (кэшируем)
-        if not hasattr(proxy_create_payment, '_currency_id'):
-            cur_resp = requests.get(
-                'https://api.doverkapay.com/v1/currencies',
-                headers={'Authorization': f'Bearer {key}', 'accept': 'application/json'},
-                timeout=10
-            )
-            if cur_resp.status_code == 200:
-                for c in cur_resp.json():
-                    if c.get('symbol', '').upper() in ('USD', 'USDT'):
-                        proxy_create_payment._currency_id = c['id']
-                        break
-            if not hasattr(proxy_create_payment, '_currency_id'):
-                return jsonify({'success': False, 'message': 'Не удалось получить currency_id'}), 500
-
-        # Конвертируем формат фронта → Doverka API
-        doverka_payload = {
-            'currency_id': proxy_create_payment._currency_id,
-            'amount_rub': data.get('amount'),
-            'order_transaction_id': data.get('order_id', f'GR-{int(__import__("time").time() * 1000)}'),
-            'order_title': data.get('description', 'Grusha Exchange'),
-        }
-        # Пробрасываем callback_url если есть
-        webhook_url = os.environ.get('DOVERKA_WEBHOOK_URL')
-        if webhook_url:
-            doverka_payload['callback_url'] = webhook_url
-
-        response = requests.post(
-            'https://api.doverkapay.com/v1/payments',
-            json=doverka_payload,
-            headers={
-                'Authorization': f'Bearer {key}',
-                'Content-Type': 'application/json',
-                'accept': 'application/json',
-            },
-            timeout=15
-        )
+    if provider == 'grusha':
+        # Пробуем grushab-2-b.ru (персонализированная страница)
         try:
-            return jsonify(response.json()), response.status_code
-        except Exception:
-            return jsonify({'success': False, 'message': f'Doverka HTTP {response.status_code}: {response.text[:300]}'}), 502
-    except Exception as e:
-        app.logger.error(f'Proxy create-payment error: {e}')
-        return jsonify({'success': False, 'message': f'Ошибка платёжного шлюза: {e}'}), 502
+            response = requests.post(
+                'https://grushab-2-b.ru/api/payments',
+                json=data,
+                headers={'Content-Type': 'application/json', 'X-Provider-Name': 'doverkapay'},
+                timeout=8
+            )
+            try:
+                return jsonify(response.json()), response.status_code
+            except Exception:
+                return jsonify({'success': False, 'message': f'Grusha HTTP {response.status_code}', 'grusha_down': True}), 502
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+            return jsonify({'success': False, 'message': 'grushab-2-b.ru не отвечает', 'grusha_down': True}), 503
+
+    elif provider == 'doverka':
+        # Прямой Doverka Partner API
+        from calculator import ExchangeRateProvider
+        key = ExchangeRateProvider.DOVERKA_API_KEY
+        if not key:
+            return jsonify({'success': False, 'message': 'No Doverka API key'}), 500
+        try:
+            # Получаем currency_id для USD (кэшируем)
+            if not hasattr(proxy_create_payment, '_currency_id'):
+                cur_resp = requests.get(
+                    'https://api.doverkapay.com/v1/currencies',
+                    headers={'Authorization': f'Bearer {key}', 'accept': 'application/json'},
+                    timeout=10
+                )
+                if cur_resp.status_code == 200:
+                    for c in cur_resp.json():
+                        if c.get('symbol', '').upper() in ('USD', 'USDT'):
+                            proxy_create_payment._currency_id = c['id']
+                            break
+                if not hasattr(proxy_create_payment, '_currency_id'):
+                    return jsonify({'success': False, 'message': 'Не удалось получить currency_id'}), 500
+
+            doverka_payload = {
+                'currency_id': proxy_create_payment._currency_id,
+                'amount_rub': data.get('amount'),
+                'order_transaction_id': data.get('order_id', f'GR-{int(__import__("time").time() * 1000)}'),
+                'order_title': data.get('description', 'Grusha Exchange'),
+            }
+            webhook_url = os.environ.get('DOVERKA_WEBHOOK_URL')
+            if webhook_url:
+                doverka_payload['callback_url'] = webhook_url
+
+            response = requests.post(
+                'https://api.doverkapay.com/v1/payments',
+                json=doverka_payload,
+                headers={
+                    'Authorization': f'Bearer {key}',
+                    'Content-Type': 'application/json',
+                    'accept': 'application/json',
+                },
+                timeout=15
+            )
+            try:
+                return jsonify(response.json()), response.status_code
+            except Exception:
+                return jsonify({'success': False, 'message': f'Doverka HTTP {response.status_code}: {response.text[:300]}'}), 502
+        except Exception as e:
+            app.logger.error(f'Doverka create-payment error: {e}')
+            return jsonify({'success': False, 'message': f'Ошибка: {e}'}), 502
 
 
 @app.route('/api/doverka/currencies', methods=['GET'])
