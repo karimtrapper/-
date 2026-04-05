@@ -135,7 +135,7 @@ body {
     padding: 8px 16px !important; min-height: 40px !important; white-space: nowrap;
     z-index: 2;
 }
-@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { padding-right: 0; } }
+@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { padding-right: 0; } #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
 .crm-nav-inner { display: flex; gap: 4px; min-width: max-content; padding: 8px 0; }
 .nav-tabs { display: flex; gap: 4px; padding: 8px 0; }
 .nav-logo { display: none; }
@@ -672,10 +672,50 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     <div class="container">
         <!-- Dashboard Section -->
         <section id="dashboard" class="section active">
-            <div class="stats-grid" id="statsGrid">
-                <!-- Stats will be loaded here -->
+            <!-- Action items -->
+            <div id="attentionAlerts" style="margin-bottom:16px"></div>
+
+            <!-- Метрики -->
+            <div class="stats-grid" id="statsGrid"></div>
+
+            <!-- Графики -->
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
+                <div class="card" style="padding:20px">
+                    <div class="card-title" style="margin-bottom:12px">Прибыль за 30 дней ($)</div>
+                    <canvas id="profitChart" height="200"></canvas>
+                </div>
+                <div class="card" style="padding:20px">
+                    <div class="card-title" style="margin-bottom:12px">Методы оплаты</div>
+                    <canvas id="methodsChart" height="200"></canvas>
+                    <div id="methodsLegend" style="margin-top:12px;font-size:12px"></div>
+                </div>
             </div>
 
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                <div class="card" style="padding:20px">
+                    <div class="card-title" style="margin-bottom:12px">Сделки за 30 дней</div>
+                    <canvas id="dealsChart" height="160"></canvas>
+                </div>
+                <div class="card" style="padding:20px">
+                    <div class="card-title" style="margin-bottom:12px">Клиенты (месяц)</div>
+                    <div id="buyersBlock" style="display:flex;align-items:center;justify-content:center;height:140px;gap:24px">
+                        <div style="text-align:center">
+                            <div id="buyersNew" style="font-size:32px;font-weight:700;color:#22c55e">-</div>
+                            <div style="font-size:12px;color:#666">Новые</div>
+                        </div>
+                        <div style="text-align:center">
+                            <div id="buyersOld" style="font-size:32px;font-weight:700;color:#3b82f6">-</div>
+                            <div style="font-size:12px;color:#666">Повторные</div>
+                        </div>
+                        <div style="text-align:center">
+                            <div id="buyersTotal" style="font-size:32px;font-weight:700;color:#333">-</div>
+                            <div style="font-size:12px;color:#666">Всего</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Последние сделки -->
             <div class="card">
                 <div class="card-title">Последние сделки</div>
                 <div class="table-container">
@@ -691,15 +731,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <th>Статус</th>
                             </tr>
                         </thead>
-                        <tbody id="recentDealsTable">
-                            <!-- Deals will be loaded here -->
-                        </tbody>
+                        <tbody id="recentDealsTable"></tbody>
                     </table>
                 </div>
-            </div>
-
-            <div id="attentionAlerts">
-                <!-- Alerts will be loaded here -->
             </div>
         </section>
 
@@ -2169,6 +2203,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const pendingDeals = d.attention?.pending_deals ?? 0;
                     const unreimbursedFounders = d.attention?.unreimbursed_founders ?? 0;
 
+                    const todayVolume = d.today?.volume_usdt ?? 0;
+                    const avgMargin = d.today?.avg_margin ?? 0;
+                    const avgCheck = d.today?.avg_check ?? 0;
+
                     document.getElementById('statsGrid').innerHTML = `
                         <div class="stat-card">
                             <div class="stat-value">${todayDeals}</div>
@@ -2179,33 +2217,42 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="stat-label">Прибыль сегодня</div>
                         </div>
                         <div class="stat-card">
+                            <div class="stat-value">$${formatNumber(todayVolume)}</div>
+                            <div class="stat-label">Объём сегодня</div>
+                        </div>
+                        <div class="stat-card">
                             <div class="stat-value">$${weekProfit}</div>
                             <div class="stat-label">Прибыль за неделю</div>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${formatNumber(cashBalance)} ฿</div>
-                            <div class="stat-label">Баланс кассы</div>
+                        <div class="stat-card ${avgMargin > 0 ? '' : 'warning'}">
+                            <div class="stat-value">${avgMargin}%</div>
+                            <div class="stat-label">Ср. маржа сегодня</div>
                         </div>
-                        <div class="stat-card warning">
+                        <div class="stat-card">
+                            <div class="stat-value">$${formatNumber(avgCheck)}</div>
+                            <div class="stat-label">Ср. чек сегодня</div>
+                        </div>
+                        <div class="stat-card warning" onclick="showSection('deals')" style="cursor:pointer">
                             <div class="stat-value">${pendingDeals}</div>
                             <div class="stat-label">Ожидают обработки</div>
                         </div>
-                        <div class="stat-card ${unreimbursedFounders > 0 ? 'warning' : ''}">
+                        <div class="stat-card ${unreimbursedFounders > 0 ? 'warning' : ''}" onclick="showSection('reimbursements')" style="cursor:pointer">
                             <div class="stat-value">${unreimbursedFounders}</div>
-                            <div class="stat-label">Не возмещено фаундерам</div>
+                            <div class="stat-label">Не возмещено</div>
                         </div>
                     `;
 
                     // Alerts
                     let alertsHtml = '';
                     if (d.attention.unreimbursed_founders > 0) {
-                        alertsHtml += `
-                            <div class="alert alert-warning">
-                                <strong>Внимание!</strong> ${d.attention.unreimbursed_founders} сделок ожидают возмещения фаундерам на сумму $${d.attention.unreimbursed_total_usdt}
-                            </div>
-                        `;
+                        alertsHtml += `<div class="alert alert-warning" onclick="showSection('reimbursements')" style="cursor:pointer">
+                            <strong>Внимание!</strong> ${d.attention.unreimbursed_founders} сделок ожидают возмещения на сумму $${d.attention.unreimbursed_total_usdt}
+                        </div>`;
                     }
                     document.getElementById('attentionAlerts').innerHTML = alertsHtml;
+
+                    // Графики
+                    if (d.charts) renderCharts(d.charts);
                 }
 
                 // Load recent deals
@@ -2232,6 +2279,137 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+            }
+        }
+
+        // ==================== Charts ====================
+        function renderCharts(charts) {
+            // Прибыль за 30 дней (bar chart)
+            const profitCanvas = document.getElementById('profitChart');
+            if (profitCanvas && charts.daily) {
+                const ctx = profitCanvas.getContext('2d');
+                const data = charts.daily;
+                const maxProfit = Math.max(...data.map(d => d.profit), 1);
+                const w = profitCanvas.width = profitCanvas.parentElement.clientWidth - 40;
+                const h = profitCanvas.height = 200;
+                const barW = Math.max((w - 40) / data.length - 2, 2);
+                const chartH = h - 30;
+
+                ctx.clearRect(0, 0, w, h);
+                // Сетка
+                ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
+                for (let i = 0; i <= 4; i++) {
+                    const y = chartH - (chartH * i / 4);
+                    ctx.beginPath(); ctx.moveTo(30, y); ctx.lineTo(w, y); ctx.stroke();
+                    ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+                    ctx.fillText('$' + Math.round(maxProfit * i / 4), 28, y + 4);
+                }
+                // Столбцы
+                data.forEach((d, i) => {
+                    const x = 35 + i * ((w - 40) / data.length);
+                    const barH = (d.profit / maxProfit) * chartH;
+                    ctx.fillStyle = d.profit > 0 ? '#FF6B35' : '#e5e7eb';
+                    ctx.beginPath();
+                    ctx.roundRect(x, chartH - barH, barW, barH, 2);
+                    ctx.fill();
+                    // Подписи дат (каждые 5 дней)
+                    if (i % 5 === 0 || i === data.length - 1) {
+                        ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+                        ctx.fillText(d.date, x + barW/2, h - 2);
+                    }
+                });
+            }
+
+            // Сделки за 30 дней (line chart)
+            const dealsCanvas = document.getElementById('dealsChart');
+            if (dealsCanvas && charts.daily) {
+                const ctx = dealsCanvas.getContext('2d');
+                const data = charts.daily;
+                const maxCount = Math.max(...data.map(d => d.count), 1);
+                const w = dealsCanvas.width = dealsCanvas.parentElement.clientWidth - 40;
+                const h = dealsCanvas.height = 160;
+                const chartH = h - 30;
+
+                ctx.clearRect(0, 0, w, h);
+                // Сетка
+                ctx.strokeStyle = '#f0f0f0'; ctx.lineWidth = 1;
+                for (let i = 0; i <= 3; i++) {
+                    const y = chartH - (chartH * i / 3);
+                    ctx.beginPath(); ctx.moveTo(25, y); ctx.lineTo(w, y); ctx.stroke();
+                    ctx.fillStyle = '#999'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+                    ctx.fillText(Math.round(maxCount * i / 3), 23, y + 4);
+                }
+                // Линия + точки
+                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath();
+                data.forEach((d, i) => {
+                    const x = 30 + i * ((w - 35) / (data.length - 1));
+                    const y = chartH - (d.count / maxCount) * chartH;
+                    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+                // Заливка
+                const lastX = 30 + (data.length - 1) * ((w - 35) / (data.length - 1));
+                ctx.lineTo(lastX, chartH); ctx.lineTo(30, chartH); ctx.closePath();
+                ctx.fillStyle = 'rgba(59,130,246,0.1)'; ctx.fill();
+                // Точки
+                data.forEach((d, i) => {
+                    if (d.count > 0) {
+                        const x = 30 + i * ((w - 35) / (data.length - 1));
+                        const y = chartH - (d.count / maxCount) * chartH;
+                        ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI*2); ctx.fill();
+                    }
+                });
+                // Подписи дат
+                data.forEach((d, i) => {
+                    if (i % 7 === 0 || i === data.length - 1) {
+                        const x = 30 + i * ((w - 35) / (data.length - 1));
+                        ctx.fillStyle = '#999'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+                        ctx.fillText(d.date, x, h - 2);
+                    }
+                });
+            }
+
+            // Методы оплаты (donut chart)
+            const methodsCanvas = document.getElementById('methodsChart');
+            if (methodsCanvas && charts.methods) {
+                const ctx = methodsCanvas.getContext('2d');
+                const w = methodsCanvas.width = methodsCanvas.parentElement.clientWidth - 40;
+                const h = methodsCanvas.height = 160;
+                const cx = w / 2, cy = h / 2, r = Math.min(cx, cy) - 10;
+                const methodNames = {'spp_doverka': 'СБП/Доверка', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'custom': 'Кастомная', 'unknown': 'Другое'};
+                const colors = ['#FF6B35', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7'];
+                const entries = Object.entries(charts.methods);
+                const total = entries.reduce((s, [,v]) => s + v.count, 0);
+
+                ctx.clearRect(0, 0, w, h);
+                let angle = -Math.PI / 2;
+                let legendHtml = '';
+                entries.forEach(([key, val], i) => {
+                    const slice = (val.count / total) * Math.PI * 2;
+                    ctx.beginPath(); ctx.moveTo(cx, cy);
+                    ctx.arc(cx, cy, r, angle, angle + slice);
+                    ctx.fillStyle = colors[i % colors.length]; ctx.fill();
+                    angle += slice;
+                    const pct = Math.round(val.count / total * 100);
+                    legendHtml += `<span style="display:inline-flex;align-items:center;gap:4px;margin-right:12px"><span style="width:10px;height:10px;border-radius:50%;background:${colors[i % colors.length]};display:inline-block"></span>${methodNames[key] || key} ${pct}%</span>`;
+                });
+                // Donut hole
+                ctx.beginPath(); ctx.arc(cx, cy, r * 0.55, 0, Math.PI * 2);
+                ctx.fillStyle = '#fff'; ctx.fill();
+                // Total в центре
+                ctx.fillStyle = '#333'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillText(total, cx, cy + 3);
+                ctx.fillStyle = '#999'; ctx.font = '10px sans-serif';
+                ctx.fillText('сделок', cx, cy + 16);
+
+                document.getElementById('methodsLegend').innerHTML = legendHtml;
+            }
+
+            // Buyers
+            if (charts.buyers) {
+                document.getElementById('buyersNew').textContent = charts.buyers.new;
+                document.getElementById('buyersOld').textContent = charts.buyers.old;
+                document.getElementById('buyersTotal').textContent = charts.buyers.total;
             }
         }
 

@@ -2550,7 +2550,59 @@ def get_dashboard():
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None
         ).all()
-        
+
+        # Средняя маржа и чек за сегодня
+        today_with_margin = [d for d in today_deals if d.profit_percent and d.profit_percent > 0]
+        today_avg_margin = round(sum(d.profit_percent for d in today_with_margin) / len(today_with_margin), 1) if today_with_margin else 0
+        today_with_payin = [d for d in today_deals if d.payin_amount_usdt and d.payin_amount_usdt > 0]
+        today_avg_check = round(sum(d.payin_amount_usdt for d in today_with_payin) / len(today_with_payin), 2) if today_with_payin else 0
+
+        # График: прибыль и объём по дням за 30 дней
+        month_ago = today - timedelta(days=30)
+        month_deals = session.query(Deal).filter(Deal.created_at >= month_ago).all()
+        daily_data = {}
+        for d in month_deals:
+            day_key = d.created_at.strftime('%d.%m') if d.created_at else None
+            if not day_key:
+                continue
+            if day_key not in daily_data:
+                daily_data[day_key] = {'profit': 0, 'volume': 0, 'count': 0}
+            daily_data[day_key]['profit'] += d.net_profit_usdt or d.profit_usdt or 0
+            daily_data[day_key]['volume'] += d.payin_amount_usdt or 0
+            daily_data[day_key]['count'] += 1
+
+        # Сортируем по дате
+        chart_days = []
+        for i in range(30, -1, -1):
+            day = today - timedelta(days=i)
+            key = day.strftime('%d.%m')
+            entry = daily_data.get(key, {'profit': 0, 'volume': 0, 'count': 0})
+            chart_days.append({
+                'date': key,
+                'profit': round(entry['profit'], 2),
+                'volume': round(entry['volume'], 2),
+                'count': entry['count']
+            })
+
+        # Распределение по методам Pay-In
+        method_stats = {}
+        for d in month_deals:
+            method = d.payin_method.value if d.payin_method else 'unknown'
+            if method not in method_stats:
+                method_stats[method] = {'count': 0, 'volume': 0}
+            method_stats[method]['count'] += 1
+            method_stats[method]['volume'] += d.payin_amount_usdt or 0
+
+        # New vs Old buyers за текущий месяц
+        month_start = today.replace(day=1)
+        month_completed = [d for d in month_deals if d.created_at and d.created_at >= month_start]
+        month_client_ids = {d.client_id for d in month_completed if d.client_id}
+        new_buyers = 0
+        for cid in month_client_ids:
+            first = session.query(Deal).filter(Deal.client_id == cid).order_by(Deal.created_at).first()
+            if first and first.created_at and first.created_at >= month_start:
+                new_buyers += 1
+        old_buyers = len(month_client_ids) - new_buyers
 
         return jsonify({
             'success': True,
@@ -2558,7 +2610,9 @@ def get_dashboard():
                 'today': {
                     'deals_count': len(today_deals),
                     'profit_usdt': round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in today_deals), 2),
-                    'volume_usdt': round(sum(d.payin_amount_usdt or 0 for d in today_deals), 2)
+                    'volume_usdt': round(sum(d.payin_amount_usdt or 0 for d in today_deals), 2),
+                    'avg_margin': today_avg_margin,
+                    'avg_check': today_avg_check
                 },
                 'week': {
                     'deals_count': len(week_deals),
@@ -2572,6 +2626,11 @@ def get_dashboard():
                     'pending_deals': len(pending_deals),
                     'unreimbursed_founders': len(unreimbursed),
                     'unreimbursed_total_usdt': round(sum(d.payout_amount_usdt or 0 for d in unreimbursed), 2)
+                },
+                'charts': {
+                    'daily': chart_days,
+                    'methods': method_stats,
+                    'buyers': {'new': new_buyers, 'old': old_buyers, 'total': len(month_client_ids)}
                 }
             }
         })
