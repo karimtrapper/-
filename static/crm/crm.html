@@ -123,16 +123,19 @@ body {
     background: var(--bg);
     border-bottom: 1px solid var(--border);
     padding: 0 16px;
-    display: flex; align-items: center; gap: 8px;
-    flex-wrap: nowrap; overflow: hidden;
+    position: relative;
 }
 .nav-tabs {
     overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    flex: 1; min-width: 0; /* Ключевое: позволяет ужиматься */
+    padding-right: 180px; /* Место для кнопки справа */
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
-.nav-create-btn { flex: 0 0 auto; padding: 8px 16px !important; min-height: 40px !important; white-space: nowrap; }
-@media (max-width: 640px) { .nav-create-btn { display: none; } }
+.nav-create-btn {
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    padding: 8px 16px !important; min-height: 40px !important; white-space: nowrap;
+    z-index: 2;
+}
+@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { padding-right: 0; } }
 .crm-nav-inner { display: flex; gap: 4px; min-width: max-content; padding: 8px 0; }
 .nav-tabs { display: flex; gap: 4px; padding: 8px 0; }
 .nav-logo { display: none; }
