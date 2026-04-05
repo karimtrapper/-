@@ -1265,9 +1265,12 @@ def calculate():
 
 @app.route('/api/deals', methods=['GET'])
 def get_deals():
+    from sqlalchemy.orm import joinedload
     session = get_session()
     try:
-        query = session.query(Deal).order_by(Deal.created_at.desc(), Deal.id.desc())
+        query = session.query(Deal).options(
+            joinedload(Deal.client), joinedload(Deal.reimbursement)
+        ).order_by(Deal.created_at.desc(), Deal.id.desc())
         status = request.args.get('status')
         if status:
             query = query.filter(Deal.status == DealStatus(status))
@@ -2581,9 +2584,12 @@ def get_pending_reimbursements():
 @app.route('/api/reimbursements', methods=['GET'])
 def get_reimbursements():
     """Get reimbursement history"""
+    from sqlalchemy.orm import joinedload
     session = get_session()
     try:
-        reimbursements = session.query(Reimbursement).order_by(Reimbursement.created_at.desc()).all()
+        reimbursements = session.query(Reimbursement).options(
+            joinedload(Reimbursement.deals)
+        ).order_by(Reimbursement.created_at.desc()).all()
         result = []
         for r in reimbursements:
             data = r.to_dict()
