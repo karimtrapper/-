@@ -1276,9 +1276,30 @@ def get_deals():
         status = request.args.get('status')
         if status:
             query = query.filter(Deal.status == DealStatus(status))
-        limit = int(request.args.get('limit', 50))
-        deals = query.limit(limit).all()
-        return jsonify({'success': True, 'count': len(deals), 'deals': [d.to_dict() for d in deals]})
+        manager = request.args.get('manager')
+        if manager:
+            query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
+        date_from = request.args.get('date_from')
+        if date_from:
+            query = query.filter(Deal.created_at >= datetime.strptime(date_from, '%Y-%m-%d'))
+        date_to = request.args.get('date_to')
+        if date_to:
+            # Включаем весь день date_to
+            query = query.filter(Deal.created_at < datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1))
+        # Пагинация
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        total = query.count()
+        deals = query.offset((page - 1) * per_page).limit(per_page).all()
+        return jsonify({
+            'success': True,
+            'count': len(deals),
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page,
+            'deals': [d.to_dict() for d in deals]
+        })
     finally:
         session.close()
 
@@ -1383,8 +1404,9 @@ def create_deal():
 
         session.commit()
         
-        # Если сделка создана сразу со статусом completed
-        if deal.status == DealStatus.COMPLETED:
+        # Если сделка создана сразу со статусом completed (skip_sync — для импорта исторических сделок)
+        skip_sync = data.get('skip_sync', False)
+        if deal.status == DealStatus.COMPLETED and not skip_sync:
             send_deal_completed_webhook(deal)
             # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
             if deal.profit_usdt is not None:

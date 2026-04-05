@@ -777,7 +777,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <input type="date" class="form-control" id="filterDateTo">
                     </div>
                 </div>
-                <button class="btn btn-primary" onclick="loadDeals()">Применить</button>
+                <button class="btn btn-primary" onclick="loadDeals(true)">Применить</button>
             </div>
 
             <div class="card">
@@ -802,6 +802,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <!-- Deals will be loaded here -->
                         </tbody>
                     </table>
+                </div>
+                <!-- Пагинация -->
+                <div id="dealsPagination" style="display:none; padding:16px 0; display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:wrap;">
+                    <button class="btn btn-sm btn-secondary" id="prevPage" onclick="changePage(-1)">← Назад</button>
+                    <span id="pageInfo" style="font-size:14px; color:var(--navy-500);"></span>
+                    <button class="btn btn-sm btn-secondary" id="nextPage" onclick="changePage(1)">Вперёд →</button>
                 </div>
             </div>
         </section>
@@ -2388,7 +2394,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // ==================== Deals ====================
-        async function loadDeals() {
+        let currentPage = 1;
+        function changePage(delta) {
+            currentPage += delta;
+            if (currentPage < 1) currentPage = 1;
+            loadDeals();
+        }
+        async function loadDeals(resetPage) {
+            if (resetPage) currentPage = 1;
             const params = new URLSearchParams();
 
             const status = document.getElementById('filterStatus').value;
@@ -2400,6 +2413,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (manager) params.append('manager', manager);
             if (dateFrom) params.append('date_from', dateFrom);
             if (dateTo) params.append('date_to', dateTo);
+            params.append('page', currentPage);
+            params.append('per_page', 50);
 
             try {
                 const response = await fetch(`${API_URL}/api/deals?${params}`);
@@ -2428,6 +2443,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </td>
                         </tr>
                     `}).join('');
+
+                    // Пагинация
+                    const pg = document.getElementById('dealsPagination');
+                    if (data.total_pages > 1) {
+                        pg.style.display = 'flex';
+                        document.getElementById('pageInfo').textContent = `${data.page} / ${data.total_pages} (${data.total} сделок)`;
+                        document.getElementById('prevPage').disabled = data.page <= 1;
+                        document.getElementById('nextPage').disabled = data.page >= data.total_pages;
+                    } else {
+                        pg.style.display = data.total ? 'flex' : 'none';
+                        document.getElementById('pageInfo').textContent = data.total ? `${data.total} сделок` : '';
+                        document.getElementById('prevPage').disabled = true;
+                        document.getElementById('nextPage').disabled = true;
+                    }
                 }
             } catch (error) {
                 console.error('Error loading deals:', error);
