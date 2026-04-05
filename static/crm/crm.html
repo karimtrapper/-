@@ -2014,16 +2014,30 @@ select.form-control { cursor: pointer; }
         async function showDealDetails(dealId, btnEl) {
             if (btnEl) { btnEl.textContent = '...'; btnEl.disabled = true; }
             try {
-                // Запускаем все запросы параллельно
-                const [response, txResponse, wResp] = await Promise.all([
-                    fetch(`${API_URL}/api/deals/${dealId}`),
-                    fetch(`${API_URL}/api/transactions/incoming`).catch(() => null),
-                    fetch(`${API_URL}/api/wallets/summary`).catch(() => null),
-                ]);
+                // Сначала загружаем сделку
+                const response = await fetch(`${API_URL}/api/deals/${dealId}`);
                 const data = await response.json();
 
                 let incomingTxOptions = '';
-                if (data.success && data.deal.payin_method === 'spp_doverka' && txResponse) {
+                let txResponse = null, wResp = null;
+
+                if (data.success) {
+                    const deal = data.deal;
+                    // Доп. запросы только если данные ещё не привязаны
+                    const needTx = deal.payin_method === 'spp_doverka' && !deal.payin_tx_hash;
+                    const needWallets = deal.payout_source === 'binance' && !deal.payout_wallet_id;
+
+                    if (needTx || needWallets) {
+                        const promises = await Promise.all([
+                            needTx ? fetch(`${API_URL}/api/transactions/incoming`).catch(() => null) : null,
+                            needWallets ? fetch(`${API_URL}/api/wallets/summary`).catch(() => null) : null,
+                        ]);
+                        txResponse = promises[0];
+                        wResp = promises[1];
+                    }
+                }
+
+                if (txResponse) {
                     try {
                         const txData = await txResponse.json();
                         if (txData.success && txData.available) {
@@ -2039,10 +2053,10 @@ select.form-control { cursor: pointer; }
                 if (data.success) {
                     const deal = data.deal;
 
-                    // Список кошельков (уже загружен параллельно)
+                    // Список кошельков (загружен только если не привязан)
                     let walletOptions = '';
                     let selectedWalletLabel = '';
-                    if (deal.payout_source === 'binance' && wResp) {
+                    if (wResp) {
                         try {
                             const wData = await wResp.json();
                             if (wData.success) {
