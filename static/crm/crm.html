@@ -2014,13 +2014,17 @@ select.form-control { cursor: pointer; }
         async function showDealDetails(dealId, btnEl) {
             if (btnEl) { btnEl.textContent = '...'; btnEl.disabled = true; }
             try {
-                const response = await fetch(`${API_URL}/api/deals/${dealId}`);
+                // Запускаем все запросы параллельно
+                const [response, txResponse, wResp] = await Promise.all([
+                    fetch(`${API_URL}/api/deals/${dealId}`),
+                    fetch(`${API_URL}/api/transactions/incoming`).catch(() => null),
+                    fetch(`${API_URL}/api/wallets/summary`).catch(() => null),
+                ]);
                 const data = await response.json();
 
                 let incomingTxOptions = '';
-                if (data.success && data.deal.payin_method === 'spp_doverka') {
+                if (data.success && data.deal.payin_method === 'spp_doverka' && txResponse) {
                     try {
-                        const txResponse = await fetch(`${API_URL}/api/transactions/incoming`);
                         const txData = await txResponse.json();
                         if (txData.success && txData.available) {
                             incomingTxOptions = txData.available.slice(0, 50).map(tx =>
@@ -2035,12 +2039,11 @@ select.form-control { cursor: pointer; }
                 if (data.success) {
                     const deal = data.deal;
 
-                    // Загружаем список кошельков для выбора списания, если это Binance
+                    // Список кошельков (уже загружен параллельно)
                     let walletOptions = '';
                     let selectedWalletLabel = '';
-                    if (deal.payout_source === 'binance') {
+                    if (deal.payout_source === 'binance' && wResp) {
                         try {
-                            const wResp = await fetch(`${API_URL}/api/wallets/summary`);
                             const wData = await wResp.json();
                             if (wData.success) {
                                 walletOptions = wData.wallets.map(w => {
