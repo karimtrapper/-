@@ -1258,7 +1258,16 @@ def calculate():
             else:
                 return jsonify({'error': 'Invalid scenario'}), 400
         
-        return jsonify(result)
+        # Фильтруем ответ — отдаём только клиентские поля
+        PUBLIC_FIELDS = {
+            'scenario', 'direction',
+            'rub_amount', 'rub_to_pay', 'rub_paid',
+            'usdt_amount', 'usdt_to_pay', 'usdt_paid', 'usdt_received',
+            'thb_received', 'thb_target', 'thb_amount',
+            'final_rate',
+        }
+        filtered = {k: v for k, v in result.items() if k in PUBLIC_FIELDS}
+        return jsonify(filtered)
     except Exception as e:
         app.logger.error(f'Webhook error: {e}')
         return jsonify({'error': 'Внутренняя ошибка'}), 500
@@ -2066,6 +2075,7 @@ def get_outgoing_transactions():
         wallet_filter = request.args.get('wallet')
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
+        result_limit = request.args.get('limit', type=int)  # Ограничить кол-во результатов
         
         start_ts = None
         if start_date_str:
@@ -2090,7 +2100,7 @@ def get_outgoing_transactions():
             
             return jsonify({
                 'success': True,
-                'available': cached_data[:1000],
+                'available': cached_data[:result_limit or 1000],
                 'cached': True,
                 'cache_time': TRONSCAN_CACHE['outgoing']['timestamp']
             })
@@ -2115,13 +2125,16 @@ def get_outgoing_transactions():
                 time.sleep(1.5)
 
             try:
-                for page in range(2):
+                # При наличии limit — 1 страница с меньшим кол-вом, иначе 2 по 50
+                api_limit = min(result_limit or 50, 50)
+                max_pages = 1 if result_limit else 2
+                for page in range(max_pages):
                     url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                     params = {
                         'relatedAddress': wallet.address,
                         'contract_address': usdt_contract,
-                        'limit': 50,
-                        'start': page * 50,
+                        'limit': api_limit,
+                        'start': page * api_limit,
                         't': int(time.time())
                     }
 
@@ -2173,15 +2186,16 @@ def get_outgoing_transactions():
                 print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
         
         all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-        
-        # Обновляем кэш
-        if not wallet_filter:
+
+        # Обновляем кэш (полный набор, без limit-фильтра)
+        if not wallet_filter and not result_limit:
             TRONSCAN_CACHE['outgoing']['data'] = all_outgoing
             TRONSCAN_CACHE['outgoing']['timestamp'] = current_time
 
+        final_limit = result_limit or 1000
         return jsonify({
-            'success': True, 
-            'available': all_outgoing[:1000],
+            'success': True,
+            'available': all_outgoing[:final_limit],
             'cached': False
         })
     except Exception as e:

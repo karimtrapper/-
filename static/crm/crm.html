@@ -4810,7 +4810,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             _outgoingLoaded = true;
             selectEl.innerHTML = '<option value="">Загрузка...</option>';
             try {
-                const res = await fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json());
+                const res = await fetch(`${API_URL}/api/transactions/outgoing?limit=10`).then(r => r.json());
                 outgoingTransactionsCache = res.success ? res.available : [];
             } catch { outgoingTransactionsCache = []; }
             // Обновляем все селекты на странице
