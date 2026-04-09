@@ -2108,18 +2108,18 @@ def get_outgoing_transactions():
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
         else:
-            wallets = session.query(Wallet).filter(Wallet.active == True).all()
-        
+            wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all()
+
         if not wallets:
             return jsonify({'success': True, 'available': []})
-        
+
         all_outgoing = []
         usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
         headers = {
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
 
-        # Собираем все адреса наших кошельков — для фильтрации внутренних переводов
+        # Все кошельки (monitored + balance) — для фильтрации внутренних переводов
         all_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True).all())
 
         for wallet_idx, wallet in enumerate(wallets):
