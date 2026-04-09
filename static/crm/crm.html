@@ -4810,6 +4810,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         let _outgoingPage = 0;        // Текущая страница в селекте
         const _TX_PAGE_SIZE = 10;
 
+        // Дедупликация по tx_hash (одна транзакция видна нескольким кошелькам)
+        function _dedupTx(txList) {
+            const seen = new Set();
+            return txList.filter(tx => {
+                if (seen.has(tx.tx_hash)) return false;
+                seen.add(tx.tx_hash);
+                return true;
+            });
+        }
+
         async function lazyLoadOutgoingTx(selectEl) {
             if (_outgoingLoaded) return;
             _outgoingLoaded = true;
@@ -4817,15 +4827,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Быстро: первые 10
             try {
                 const res = await fetch(`${API_URL}/api/transactions/outgoing?limit=10`).then(r => r.json());
-                outgoingTransactionsCache = res.success ? res.available : [];
+                outgoingTransactionsCache = res.success ? _dedupTx(res.available) : [];
             } catch { outgoingTransactionsCache = []; }
             _outgoingFullCache = [...outgoingTransactionsCache];
             _outgoingPage = 0;
             _renderTxSelects();
             // Фоном: полный список
             fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).then(res => {
-                if (res.success && res.available.length > _outgoingFullCache.length) {
-                    _outgoingFullCache = res.available;
+                if (res.success) {
+                    const deduped = _dedupTx(res.available);
+                    if (deduped.length > _outgoingFullCache.length) {
+                        _outgoingFullCache = deduped;
+                        _renderTxSelects();  // Перерисовать — покажет "Ещё" если есть
+                    }
                 }
             }).catch(() => {});
         }
