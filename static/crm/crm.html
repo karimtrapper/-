@@ -4638,11 +4638,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
-            // Только 2 запроса — outgoing грузится лениво по клику на селект
-            const [pendingResult, historyResult] = await Promise.all([
+            // 3 запроса параллельно (outgoing теперь быстрый — внутренние переводы отфильтрованы на бэке)
+            const [pendingResult, historyResult, outgoingResult] = await Promise.all([
                 fetch(`${API_URL}/api/reimbursements/pending`).then(r => r.json()).catch(() => ({ success: false })),
                 fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({ success: false })),
+                fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).catch(() => ({ success: false })),
             ]);
+            outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
 
             try {
                 const pendingData = pendingResult;
@@ -4671,9 +4673,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <!-- Выбор исходящей транзакции из списка -->
                             <div class="form-group" style="margin-bottom: 1rem;">
                                 <label class="form-label">Выбрать перевод из истории (исходящие USDT)</label>
-                                <select class="form-control reimburse-tx-select" data-founder="${founder.founder_name}" onchange="selectOutgoingTx('${founder.founder_name}', this)" onfocus="lazyLoadOutgoingTx(this)">
-                                    <option value="">-- Кликните для загрузки переводов --</option>
+                                <select class="form-control reimburse-tx-select" data-founder="${founder.founder_name}" onchange="selectOutgoingTx('${founder.founder_name}', this)">
+                                    <option value="">-- Выбрать из списка или ввести вручную --</option>
+                                    ${outgoingTransactionsCache.map(tx => `
+                                        <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">
+                                            -$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
+                                        </option>
+                                    `).join('')}
                                 </select>
+                                ${outgoingTransactionsCache.length === 0 ? '<small style="color: #666;">Нет исходящих транзакций</small>' : ''}
                             </div>
                             
                             <div class="form-row" style="margin-bottom: 1rem;">
@@ -4777,7 +4785,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         function selectOutgoingTx(founderName, selectEl) {
-            if (selectEl.value === '__more__') { showMoreOutgoingTx(selectEl); return; }
             const txHash = selectEl.value;
             const amount = selectEl.selectedOptions[0]?.dataset?.amount;
 
@@ -4802,71 +4809,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             // Сбрасываем селект
             selectEl.selectedIndex = 0;
-        }
-
-        // Ленивая загрузка исходящих транзакций с пагинацией в селекте
-        let _outgoingLoaded = false;
-        let _outgoingFullCache = [];  // Полный список (грузится в фоне)
-        let _outgoingPage = 0;        // Текущая страница в селекте
-        const _TX_PAGE_SIZE = 10;
-
-        // Дедупликация по tx_hash (одна транзакция видна нескольким кошелькам)
-        function _dedupTx(txList) {
-            const seen = new Set();
-            return txList.filter(tx => {
-                if (seen.has(tx.tx_hash)) return false;
-                seen.add(tx.tx_hash);
-                return true;
-            });
-        }
-
-        async function lazyLoadOutgoingTx(selectEl) {
-            if (_outgoingLoaded) return;
-            _outgoingLoaded = true;
-            selectEl.innerHTML = '<option value="">Загрузка...</option>';
-            // Быстро: первые 10
-            try {
-                const res = await fetch(`${API_URL}/api/transactions/outgoing?limit=10`).then(r => r.json());
-                outgoingTransactionsCache = res.success ? _dedupTx(res.available) : [];
-            } catch { outgoingTransactionsCache = []; }
-            _outgoingFullCache = [...outgoingTransactionsCache];
-            _outgoingPage = 0;
-            _renderTxSelects();
-            // Фоном: полный список
-            fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).then(res => {
-                if (res.success) {
-                    const deduped = _dedupTx(res.available);
-                    if (deduped.length > _outgoingFullCache.length) {
-                        _outgoingFullCache = deduped;
-                        _renderTxSelects();  // Перерисовать — покажет "Ещё" если есть
-                    }
-                }
-            }).catch(() => {});
-        }
-
-        function _renderTxSelects() {
-            const start = 0;
-            const end = (_outgoingPage + 1) * _TX_PAGE_SIZE;
-            const visible = _outgoingFullCache.slice(start, end);
-            const hasMore = _outgoingFullCache.length > end;
-            document.querySelectorAll('.reimburse-tx-select').forEach(sel => {
-                sel.innerHTML = '<option value="">-- Выбрать из списка или ввести вручную --</option>' +
-                    visible.map(tx =>
-                        `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
-                    ).join('') +
-                    (hasMore ? `<option value="__more__">── Показать ещё ${_TX_PAGE_SIZE} ──</option>` : '');
-            });
-            if (_outgoingFullCache.length === 0) {
-                document.querySelectorAll('.reimburse-tx-select').forEach(sel => {
-                    sel.innerHTML = '<option value="">Нет исходящих транзакций</option>';
-                });
-            }
-        }
-
-        function showMoreOutgoingTx(selectEl) {
-            _outgoingPage++;
-            _renderTxSelects();
-            selectEl.value = '';
         }
 
         function updateReimbursementRate(founderName) {
