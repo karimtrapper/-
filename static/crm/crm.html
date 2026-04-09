@@ -2004,7 +2004,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         break;
                     case 'reimbursements': loadReimbursements(); break;
                     case 'transactions': loadTransactions(); break;
-                    case 'managers': loadManagers(); break;
+                    case 'managers': loadManagers(); loadWebhookConfig(); break;
                     case 'kyc': loadKYCSection(); break;
                 }
 
@@ -2977,7 +2977,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     break;
                 case 'reimbursements': loadReimbursements(); break;
                 case 'transactions': loadTransactions(); break;
-                case 'managers': loadManagers(); break;
+                case 'managers': loadManagers(); loadWebhookConfig(); break;
                 case 'kyc': loadKYCSection(); break;
             }
 
@@ -4638,13 +4638,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
-            // Загружаем всё параллельно (3 запроса одновременно)
-            const [outgoingResult, pendingResult, historyResult] = await Promise.all([
-                fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).catch(() => ({ success: false })),
+            // Только 2 запроса — outgoing грузится лениво по клику на селект
+            const [pendingResult, historyResult] = await Promise.all([
                 fetch(`${API_URL}/api/reimbursements/pending`).then(r => r.json()).catch(() => ({ success: false })),
                 fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({ success: false })),
             ]);
-            outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
 
             try {
                 const pendingData = pendingResult;
@@ -4673,15 +4671,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <!-- Выбор исходящей транзакции из списка -->
                             <div class="form-group" style="margin-bottom: 1rem;">
                                 <label class="form-label">Выбрать перевод из истории (исходящие USDT)</label>
-                                <select class="form-control reimburse-tx-select" data-founder="${founder.founder_name}" onchange="selectOutgoingTx('${founder.founder_name}', this)">
-                                    <option value="">-- Выбрать из списка или ввести вручную --</option>
-                                    ${outgoingTransactionsCache.map(tx => `
-                                        <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">
-                                            -$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
-                                        </option>
-                                    `).join('')}
+                                <select class="form-control reimburse-tx-select" data-founder="${founder.founder_name}" onchange="selectOutgoingTx('${founder.founder_name}', this)" onfocus="lazyLoadOutgoingTx(this)">
+                                    <option value="">-- Кликните для загрузки переводов --</option>
                                 </select>
-                                ${outgoingTransactionsCache.length === 0 ? '<small style="color: #666;">Добавьте кошелек в разделе "Транзакции" для отслеживания переводов</small>' : ''}
                             </div>
                             
                             <div class="form-row" style="margin-bottom: 1rem;">
@@ -4809,6 +4801,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             // Сбрасываем селект
             selectEl.selectedIndex = 0;
+        }
+
+        // Ленивая загрузка исходящих транзакций при клике на селект
+        let _outgoingLoaded = false;
+        async function lazyLoadOutgoingTx(selectEl) {
+            if (_outgoingLoaded) return;
+            _outgoingLoaded = true;
+            selectEl.innerHTML = '<option value="">Загрузка...</option>';
+            try {
+                const res = await fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json());
+                outgoingTransactionsCache = res.success ? res.available : [];
+            } catch { outgoingTransactionsCache = []; }
+            // Обновляем все селекты на странице
+            document.querySelectorAll('.reimburse-tx-select').forEach(sel => {
+                const founder = sel.dataset.founder;
+                sel.innerHTML = '<option value="">-- Выбрать из списка или ввести вручную --</option>' +
+                    outgoingTransactionsCache.map(tx =>
+                        `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
+                    ).join('');
+            });
+            if (outgoingTransactionsCache.length === 0) {
+                selectEl.innerHTML = '<option value="">Нет исходящих транзакций</option>';
+            }
         }
 
         function updateReimbursementRate(founderName) {
@@ -5373,10 +5388,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        // Загружаем конфиг webhook при загрузке страницы
         document.addEventListener('DOMContentLoaded', () => {
-            loadWebhookConfig();
-
             // Устанавливаем дефолтную дату начала для транзакций (1 декабря 2025)
             const startDateInput = document.getElementById('txStartDate');
             if (startDateInput) {
