@@ -2190,6 +2190,21 @@ def get_outgoing_transactions():
         
         all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
 
+        # Дедупликация цепочек переводов: кошелёк → посредник → конечный
+        # TronScan relatedAddress показывает обе ноги. Оставляем одну по amount+время (±15мин)
+        deduped = []
+        seen = set()
+        for tx in all_outgoing:
+            # Округляем время до 15 минут для группировки
+            from datetime import datetime as dt
+            ts = dt.fromisoformat(tx['timestamp'])
+            bucket = (round(tx['amount_usdt'], 2), ts.strftime('%Y-%m-%d'), ts.hour, ts.minute // 15)
+            if bucket in seen:
+                continue
+            seen.add(bucket)
+            deduped.append(tx)
+        all_outgoing = deduped
+
         # Обновляем кэш (полный набор, без limit-фильтра)
         if not wallet_filter and not result_limit:
             TRONSCAN_CACHE['outgoing']['data'] = all_outgoing
