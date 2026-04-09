@@ -2118,7 +2118,10 @@ def get_outgoing_transactions():
         headers = {
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        
+
+        # Собираем все адреса наших кошельков — для фильтрации внутренних переводов
+        all_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True).all())
+
         for wallet_idx, wallet in enumerate(wallets):
             # Пауза между кошельками чтобы не словить 429 от TronScan
             if wallet_idx > 0:
@@ -2164,8 +2167,8 @@ def get_outgoing_transactions():
                             if end_ts and tx_ts > end_ts:
                                 continue
 
-                            # Только исходящие (from_address == наш кошелёк)
-                            if tx.get('from_address') == wallet.address:
+                            # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы
+                            if tx.get('from_address') == wallet.address and tx.get('to_address') not in all_wallet_addresses:
                                 amount = float(tx.get('quant', 0)) / 1_000_000
                                 all_outgoing.append({
                                     'tx_hash': tx.get('transaction_id'),
