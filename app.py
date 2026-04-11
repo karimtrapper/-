@@ -2113,8 +2113,11 @@ def get_outgoing_transactions():
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
 
-        # Все кошельки (monitored + balance) — для фильтрации внутренних переводов
-        all_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True).all())
+        # Только monitored-кошельки — для фильтрации внутренних переводов между своими.
+        # Balance-кошельки (is_monitored=False) НЕ считаются внутренними: переводы туда
+        # — легитимные исходящие (например, возмещения фаундеру на его balance-адрес),
+        # и их нужно видеть в дропдауне возмещений.
+        internal_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all())
 
         for wallet_idx, wallet in enumerate(wallets):
             # Пауза между кошельками чтобы не словить 429 от TronScan
@@ -2161,8 +2164,8 @@ def get_outgoing_transactions():
                             if end_ts and tx_ts > end_ts:
                                 continue
 
-                            # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы
-                            if tx.get('from_address') == wallet.address and tx.get('to_address') not in all_wallet_addresses:
+                            # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы между monitored-кошельками
+                            if tx.get('from_address') == wallet.address and tx.get('to_address') not in internal_wallet_addresses:
                                 amount = float(tx.get('quant', 0)) / 1_000_000
                                 all_outgoing.append({
                                     'tx_hash': tx.get('transaction_id'),
