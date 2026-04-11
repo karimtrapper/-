@@ -585,12 +585,13 @@ def get_gsheet_client():
 
 
 def sync_deals_to_gsheet(deals):
-    """Добавляет завершённые сделки в Google Sheet 'общая сделка'"""
+    """Добавляет завершённые сделки в Google Sheet 'общая сделка'.
+    Возвращает dict {ok: bool, inserted: int, error: str|None} для диагностики."""
     try:
         gc = get_gsheet_client()
         if not gc:
             print('[GSheet] No credentials, skipping sync')
-            return
+            return {'ok': False, 'inserted': 0, 'error': 'no_credentials'}
 
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
@@ -721,8 +722,13 @@ def sync_deals_to_gsheet(deals):
                     })
                 print(f'[GSheet] Copied formatting from row {template_row_idx + 1}')
 
+        return {'ok': True, 'inserted': len(new_rows), 'error': None}
     except Exception as e:
-        print(f'[GSheet] Sync error: {e}')
+        import traceback
+        tb = traceback.format_exc()
+        print(f'[GSheet] Sync error: {e}', flush=True)
+        print(f'[GSheet] Traceback: {tb}', flush=True)
+        return {'ok': False, 'inserted': 0, 'error': f'{type(e).__name__}: {e}'}
 
 
 def find_deal_row_in_gsheet(ws, all_rows, deal):
@@ -2857,8 +2863,18 @@ def manual_sync_gsheet():
         deals = session.query(Deal).filter(Deal.id.in_(deal_ids)).all()
         if not deals:
             return jsonify({'success': False, 'error': 'Сделки не найдены'}), 404
-        sync_deals_to_gsheet(deals)
-        return jsonify({'success': True, 'synced': len(deals)})
+        result = sync_deals_to_gsheet(deals) or {}
+        if not result.get('ok'):
+            return jsonify({
+                'success': False,
+                'error': result.get('error', 'sync_failed'),
+                'found_deals': len(deals),
+            }), 500
+        return jsonify({
+            'success': True,
+            'synced': len(deals),
+            'inserted': result.get('inserted', 0),
+        })
     except Exception as e:
         app.logger.error(f'Request error: {e}')
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
