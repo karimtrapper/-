@@ -728,7 +728,7 @@ def sync_deals_to_gsheet(deals):
         tb = traceback.format_exc()
         print(f'[GSheet] Sync error: {e}', flush=True)
         print(f'[GSheet] Traceback: {tb}', flush=True)
-        return {'ok': False, 'inserted': 0, 'error': f'{type(e).__name__}: {e}'}
+        return {'ok': False, 'inserted': 0, 'error': f'{type(e).__name__}: {e}', 'traceback': tb}
 
 
 def find_deal_row_in_gsheet(ws, all_rows, deal):
@@ -2868,6 +2868,7 @@ def manual_sync_gsheet():
             return jsonify({
                 'success': False,
                 'error': result.get('error', 'sync_failed'),
+                'traceback': result.get('traceback'),
                 'found_deals': len(deals),
             }), 500
         return jsonify({
