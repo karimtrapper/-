@@ -1258,16 +1258,10 @@ def calculate():
             else:
                 return jsonify({'error': 'Invalid scenario'}), 400
         
-        # Фильтруем ответ — отдаём только клиентские поля
-        PUBLIC_FIELDS = {
-            'scenario', 'direction',
-            'rub_amount', 'rub_to_pay', 'rub_paid',
-            'usdt_amount', 'usdt_to_pay', 'usdt_paid', 'usdt_received',
-            'thb_received', 'thb_target', 'thb_amount',
-            'final_rate',
-        }
-        filtered = {k: v for k, v in result.items() if k in PUBLIC_FIELDS}
-        return jsonify(filtered)
+        # CalcCRM — внутренний инструмент за авторизацией, отдаём всю кухню
+        # (profit_usdt, комиссии, incoming/outgoing, bonus_usdt, курсы).
+        # Фильтр PUBLIC_FIELDS применяем только в api_server.py на VPS.
+        return jsonify(result)
     except Exception as e:
         app.logger.error(f'Webhook error: {e}')
         return jsonify({'error': 'Внутренняя ошибка'}), 500
