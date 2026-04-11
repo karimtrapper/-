@@ -2781,18 +2781,25 @@ def create_reimbursement():
             if deal.payin_amount_usdt and deal.payout_amount_usdt:
                 deal.profit_usdt = deal.payin_amount_usdt - deal.payout_amount_usdt
                 deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
-                
+
                 # Recalculate net profit
                 referrer_payout = deal.referrer_payout_usdt or 0
                 deal.net_profit_usdt = deal.profit_usdt - referrer_payout
-        
+
+            # Возмещение = автозавершение сделки. Прибыль посчитана, деньги
+            # фаундеру вернули — pending на этом этапе уже некорректен.
+            if deal.status == DealStatus.PENDING:
+                deal.status = DealStatus.COMPLETED
+
         session.commit()
 
         # Синк в Google Sheets после возмещения
         try:
             sync_deals_to_gsheet(deals)
         except Exception as gsheet_err:
-            print(f'[GSheet] Error after reimbursement: {gsheet_err}')
+            import traceback
+            print(f'[GSheet] Error after reimbursement: {gsheet_err}', flush=True)
+            print(f'[GSheet] Traceback: {traceback.format_exc()}', flush=True)
 
         # Уведомление в Telegram
         try:
