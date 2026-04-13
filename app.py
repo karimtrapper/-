@@ -563,24 +563,45 @@ WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
 GSHEET_ID = '1aW84o8JmiIOPpCaSyGQuWCmf_h7H6uPWBCloq7_WDOY'
 GSHEET_WORKSHEET = 'общая сделка'
 GOOGLE_SA_JSON = os.environ.get('GOOGLE_SA_JSON', '')  # JSON строка service account
+# OAuth user-credentials (для доступа к файлам в закрытых папках Workspace)
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get('GOOGLE_OAUTH_CLIENT_SECRET', '')
+GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
 
 
 def get_gsheet_client():
-    """Возвращает авторизованный gspread клиент"""
+    """Возвращает авторизованный gspread клиент.
+    Приоритет: OAuth user-credentials > Service Account > локальный SA файл."""
+    # 1. OAuth user-credentials — работает с закрытыми папками Workspace
+    if GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_OAUTH_CLIENT_ID:
+        from google.oauth2.credentials import Credentials
+        creds = Credentials(
+            token=None,
+            refresh_token=GOOGLE_OAUTH_REFRESH_TOKEN,
+            client_id=GOOGLE_OAUTH_CLIENT_ID,
+            client_secret=GOOGLE_OAUTH_CLIENT_SECRET,
+            token_uri='https://oauth2.googleapis.com/token',
+            scopes=['https://www.googleapis.com/auth/spreadsheets'],
+        )
+        print('[GSheet] Using OAuth user-credentials', flush=True)
+        return gspread.authorize(creds)
+
+    # 2. Service Account из env (Railway)
     if GOOGLE_SA_JSON:
         import json as _json
         sa_info = _json.loads(GOOGLE_SA_JSON)
         creds = GoogleCredentials.from_service_account_info(
             sa_info, scopes=['https://www.googleapis.com/auth/spreadsheets']
         )
-    else:
-        # Локально — из файла
-        sa_path = os.path.join(os.path.dirname(__file__), 'google_sa.json')
-        if not os.path.exists(sa_path):
-            return None
-        creds = GoogleCredentials.from_service_account_file(
-            sa_path, scopes=['https://www.googleapis.com/auth/spreadsheets']
-        )
+        return gspread.authorize(creds)
+
+    # 3. Локально — SA из файла
+    sa_path = os.path.join(os.path.dirname(__file__), 'google_sa.json')
+    if not os.path.exists(sa_path):
+        return None
+    creds = GoogleCredentials.from_service_account_file(
+        sa_path, scopes=['https://www.googleapis.com/auth/spreadsheets']
+    )
     return gspread.authorize(creds)
 
 
