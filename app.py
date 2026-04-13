@@ -749,7 +749,7 @@ def sync_deals_to_gsheet(deals):
         tb = traceback.format_exc()
         print(f'[GSheet] Sync error: {e}', flush=True)
         print(f'[GSheet] Traceback: {tb}', flush=True)
-        return {'ok': False, 'inserted': 0, 'error': f'{type(e).__name__}: {e}', 'traceback': tb}
+        return {'ok': False, 'inserted': 0, 'error': f'{type(e).__name__}: {e}'}
 
 
 def find_deal_row_in_gsheet(ws, all_rows, deal):
@@ -2874,24 +2874,6 @@ def delete_reimbursement(reimbursement_id):
 
 # ==================== MANUAL SYNC ====================
 
-@app.route('/api/gsheet/debug', methods=['GET'])
-def gsheet_debug():
-    """Возвращает email service account — нужен чтобы расшарить таблицу."""
-    try:
-        if GOOGLE_SA_JSON:
-            import json as _json
-            sa_info = _json.loads(GOOGLE_SA_JSON)
-            return jsonify({
-                'client_email': sa_info.get('client_email'),
-                'project_id': sa_info.get('project_id'),
-                'sheet_id': GSHEET_ID,
-                'worksheet': GSHEET_WORKSHEET,
-            })
-        return jsonify({'error': 'no GOOGLE_SA_JSON env'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @app.route('/api/deals/sync-gsheet', methods=['POST'])
 def manual_sync_gsheet():
     """Ручной синк сделок в Google Sheet по списку ID"""
@@ -2907,7 +2889,6 @@ def manual_sync_gsheet():
             return jsonify({
                 'success': False,
                 'error': result.get('error', 'sync_failed'),
-                'traceback': result.get('traceback'),
                 'found_deals': len(deals),
             }), 500
         return jsonify({
