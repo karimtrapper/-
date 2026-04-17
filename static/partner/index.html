@@ -42,18 +42,6 @@
             border: 1px solid var(--navy-100);
         }
 
-        /* Rate */
-        .rate-display {
-            text-align: center; padding: 12px;
-            background: var(--navy-50); border-radius: 10px; margin-bottom: 20px;
-        }
-        .rate-label {
-            font-size: 12px; color: var(--navy-500);
-            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
-        }
-        .rate-value { font-size: 22px; font-weight: 700; }
-        .rate-value .currency { font-size: 13px; font-weight: 500; color: var(--navy-400); }
-
         /* Fields */
         .field-group { margin-bottom: 12px; }
         .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--navy-500); margin-bottom: 6px; }
@@ -122,13 +110,6 @@
 
         .footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--navy-400); }
 
-        /* Precise badge */
-        .precise-badge {
-            display: inline-block; font-size: 10px; font-weight: 700;
-            background: var(--green); color: white;
-            padding: 2px 6px; border-radius: 4px; margin-left: 6px;
-            vertical-align: middle;
-        }
     </style>
 </head>
 <body>
@@ -152,11 +133,6 @@
         </div>
 
         <div class="card" id="calcState" style="display:none">
-            <div class="rate-display">
-                <div class="rate-label" id="rateLabel">Rate USDT → THB</div>
-                <div class="rate-value">1 USDT = <span id="rateValue">—</span> <span class="currency">THB</span> <span id="preciseBadge" class="precise-badge" style="display:none">PRECISE</span></div>
-            </div>
-
             <div class="field-group">
                 <label class="field-label" id="topLabel">You send</label>
                 <div class="field-wrapper">
@@ -194,7 +170,6 @@
         let rateBuy = null;     // USDT→THB: Binance × (1 - markup)
         let rateSell = null;    // THB→USDT: Binance × (1 + markup)
         let lastEdited = 'top';
-        let isPrecise = false;
 
         function getRate() { return mode === 'usdt-top' ? rateBuy : rateSell; }
 
@@ -209,7 +184,7 @@
                 document.getElementById('partnerName').textContent = data.name;
                 rateBuy = data.rate_buy;
                 rateSell = data.rate_sell;
-                updateRateDisplay();
+                updateLabels();
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('calcState').style.display = 'block';
@@ -224,19 +199,14 @@
             document.getElementById('errorState').style.display = 'block';
         }
 
-        function updateRateDisplay() {
-            const rate = getRate();
-            document.getElementById('rateValue').textContent = rate?.toFixed(4) || '—';
+        function updateLabels() {
             if (mode === 'usdt-top') {
-                document.getElementById('rateLabel').textContent = 'Rate USDT → THB';
                 document.getElementById('topCurrency').textContent = 'USDT';
                 document.getElementById('bottomCurrency').textContent = 'THB';
             } else {
-                document.getElementById('rateLabel').textContent = 'Rate THB → USDT';
                 document.getElementById('topCurrency').textContent = 'THB';
                 document.getElementById('bottomCurrency').textContent = 'USDT';
             }
-            document.getElementById('preciseBadge').style.display = isPrecise ? 'inline-block' : 'none';
         }
 
         function swapDirection() {
@@ -246,8 +216,7 @@
             document.getElementById('topInput').value = bottomVal;
             document.getElementById('bottomInput').value = topVal;
             lastEdited = lastEdited === 'top' ? 'bottom' : 'top';
-            isPrecise = false;
-            updateRateDisplay();
+            updateLabels();
             recalculate();
             document.getElementById('swapBtn').classList.toggle('rotated');
         }
@@ -320,8 +289,7 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
-                    isPrecise = true;
-                    updateRateDisplay();
+                    updateLabels();
                     recalculate();
                     btn.innerHTML = '✅ Precise rate applied';
                     setTimeout(() => {
@@ -351,8 +319,7 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
-                    isPrecise = false;
-                    updateRateDisplay();
+                    updateLabels();
                     recalculate();
                 }
             } catch (e) {}
@@ -363,13 +330,11 @@
         }
 
         document.getElementById('topInput').addEventListener('input', () => {
-            lastEdited = 'top'; isPrecise = false;
-            document.getElementById('preciseBadge').style.display = 'none';
+            lastEdited = 'top';
             recalculate();
         });
         document.getElementById('bottomInput').addEventListener('input', () => {
-            lastEdited = 'bottom'; isPrecise = false;
-            document.getElementById('preciseBadge').style.display = 'none';
+            lastEdited = 'bottom';
             recalculate();
         });
 
