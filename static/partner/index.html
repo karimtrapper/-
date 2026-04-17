@@ -151,7 +151,7 @@
             </div>
 
             <button class="precise-btn" id="preciseBtn" onclick="getPreciseRate()">
-                🎯 Get precise rate from Binance
+                Calculate
             </button>
         </div>
 
@@ -250,7 +250,7 @@
 
             const btn = document.getElementById('preciseBtn');
             btn.disabled = true;
-            btn.innerHTML = '⏳ Getting precise rate<span class="loading-dots"></span>';
+            btn.innerHTML = '⏳ Calculating<span class="loading-dots"></span>';
 
             try {
                 // Определяем USDT и THB суммы
@@ -277,22 +277,22 @@
                     rateSell = data.rate_sell;
                     updateLabels();
                     recalculate();
-                    btn.innerHTML = '✅ Precise rate applied';
+                    btn.innerHTML = '✅ Done';
                     setTimeout(() => {
-                        btn.innerHTML = '🎯 Get precise rate from Binance';
+                        btn.innerHTML = 'Calculate';
                         btn.disabled = false;
                     }, 3000);
                 } else {
                     btn.innerHTML = '❌ ' + (data.error || 'Failed');
                     setTimeout(() => {
-                        btn.innerHTML = '🎯 Get precise rate from Binance';
+                        btn.innerHTML = 'Calculate';
                         btn.disabled = false;
                     }, 3000);
                 }
             } catch (e) {
                 btn.innerHTML = '❌ Network error';
                 setTimeout(() => {
-                    btn.innerHTML = '🎯 Get precise rate from Binance';
+                    btn.innerHTML = 'Calculate';
                     btn.disabled = false;
                 }, 3000);
             }
