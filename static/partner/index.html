@@ -92,9 +92,6 @@
             80%, 100% { content: '...'; }
         }
 
-        /* Info */
-        .calc-info { text-align: center; font-size: 12px; color: var(--navy-400); margin-top: 12px; min-height: 18px; }
-
         /* Error/loading states */
         .error-state { text-align: center; padding: 40px 20px; }
         .error-state .icon { font-size: 48px; margin-bottom: 12px; }
@@ -152,8 +149,6 @@
                     <span class="field-suffix" id="bottomCurrency">THB</span>
                 </div>
             </div>
-
-            <div class="calc-info" id="calcInfo"></div>
 
             <button class="precise-btn" id="preciseBtn" onclick="getPreciseRate()">
                 🎯 Get precise rate from Binance
@@ -226,31 +221,22 @@
             if (!rate) return;
             const topInput = document.getElementById('topInput');
             const bottomInput = document.getElementById('bottomInput');
-            const info = document.getElementById('calcInfo');
 
             if (lastEdited === 'top') {
                 const amount = parseFloat(topInput.value);
-                if (!amount || amount <= 0) { bottomInput.value = ''; info.textContent = ''; return; }
+                if (!amount || amount <= 0) { bottomInput.value = ''; return; }
                 if (mode === 'usdt-top') {
-                    const thb = amount * rate;
-                    bottomInput.value = thb.toFixed(2);
-                    info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
+                    bottomInput.value = (amount * rate).toFixed(2);
                 } else {
-                    const usdt = amount / rate;
-                    bottomInput.value = usdt.toFixed(2);
-                    info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
+                    bottomInput.value = (amount / rate).toFixed(2);
                 }
             } else {
                 const amount = parseFloat(bottomInput.value);
-                if (!amount || amount <= 0) { topInput.value = ''; info.textContent = ''; return; }
+                if (!amount || amount <= 0) { topInput.value = ''; return; }
                 if (mode === 'usdt-top') {
-                    const usdt = amount / rate;
-                    topInput.value = usdt.toFixed(2);
-                    info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
+                    topInput.value = (amount / rate).toFixed(2);
                 } else {
-                    const thb = amount * rate;
-                    topInput.value = thb.toFixed(2);
-                    info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
+                    topInput.value = (amount * rate).toFixed(2);
                 }
             }
         }
