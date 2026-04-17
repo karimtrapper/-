@@ -669,6 +669,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="managers">Менеджеры</button>
             <button class="nav-tab" data-section="verification">Сверка</button>
             <button class="nav-tab" data-section="kyc">KYC</button>
+            <button class="nav-tab" data-section="partners">Партнёры</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -1565,6 +1566,48 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
             </div>
         </section>
+
+        <!-- Partners Section -->
+        <section id="partners" class="section">
+            <div class="card">
+                <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Партнёры</span>
+                    <button class="btn btn-primary" onclick="openPartnerModal()" style="font-size: 0.9rem;">
+                        + Добавить партнёра
+                    </button>
+                </div>
+                <div id="partnersList" style="margin-top: 1rem;">
+                    <div style="color: #999; font-style: italic; padding: 1rem; text-align: center;">
+                        Загрузка...
+                    </div>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Partner Modal -->
+    <div id="partnerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="partnerModalTitle">Добавить партнёра</h3>
+                <button class="modal-close" onclick="closePartnerModal()">&times;</button>
+            </div>
+            <form id="partnerForm" onsubmit="savePartner(event)">
+                <input type="hidden" id="partnerEditId">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Имя партнёра</label>
+                    <input type="text" class="form-control" id="partnerName" placeholder="99 Property" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Наценка (%)</label>
+                    <input type="number" class="form-control" id="partnerMarkup" value="1.4" step="0.1" min="0" max="20" required>
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
+                        Процент сверх курса Binance. Например 1.4% — клиент получит курс на 1.4% хуже рынка.
+                    </small>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Сохранить</button>
+            </form>
+        </div>
     </div>
 
     <!-- Modal for deal details -->
@@ -2979,6 +3022,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'transactions': loadTransactions(); break;
                 case 'managers': loadManagers(); loadWebhookConfig(); break;
                 case 'kyc': loadKYCSection(); break;
+                case 'partners': loadPartners(); break;
             }
 
             // Update bottom nav highlight
@@ -5975,6 +6019,115 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
+        // ==================== PARTNERS ====================
+
+        async function loadPartners() {
+            try {
+                const res = await fetch(`${API_URL}/api/partners`);
+                const data = await res.json();
+                const list = document.getElementById('partnersList');
+
+                if (!data.success || data.partners.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет партнёров. Нажмите «+ Добавить партнёра»</div>';
+                    return;
+                }
+
+                const baseUrl = window.location.origin;
+                list.innerHTML = data.partners.map(p => `
+                    <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid ${p.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${p.active ? '' : 'opacity:0.5;'}">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;font-size:14px;">${p.name}</div>
+                            <div style="font-size:12px;color:#64748b;margin-top:2px;">Наценка: ${p.markup_percent}%${p.active ? '' : ' · Неактивен'}</div>
+                            <div style="margin-top:6px;">
+                                <input type="text" readonly value="${baseUrl}/partner/${p.token}"
+                                    style="width:100%;font-size:12px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка скопирована')">
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:6px;margin-left:12px;flex-shrink:0;">
+                            <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="editPartner(${p.id},'${p.name.replace(/'/g,"\\'")}',${p.markup_percent})">Изм.</button>
+                            <button class="btn btn-sm" style="background:${p.active ? '#fef3c7' : '#f0fdf4'};color:${p.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="togglePartner(${p.id},${!p.active})">${p.active ? 'Откл.' : 'Вкл.'}</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Ошибка загрузки партнёров:', e);
+            }
+        }
+
+        function openPartnerModal() {
+            document.getElementById('partnerEditId').value = '';
+            document.getElementById('partnerName').value = '';
+            document.getElementById('partnerMarkup').value = '1.4';
+            document.getElementById('partnerModalTitle').textContent = 'Добавить партнёра';
+            document.getElementById('partnerModal').classList.add('open');
+        }
+
+        function editPartner(id, name, markup) {
+            document.getElementById('partnerEditId').value = id;
+            document.getElementById('partnerName').value = name;
+            document.getElementById('partnerMarkup').value = markup;
+            document.getElementById('partnerModalTitle').textContent = 'Редактировать партнёра';
+            document.getElementById('partnerModal').classList.add('open');
+        }
+
+        function closePartnerModal() {
+            document.getElementById('partnerModal').classList.remove('open');
+        }
+
+        async function savePartner(e) {
+            e.preventDefault();
+            const editId = document.getElementById('partnerEditId').value;
+            const name = document.getElementById('partnerName').value.trim();
+            const markup = parseFloat(document.getElementById('partnerMarkup').value);
+
+            try {
+                let res;
+                if (editId) {
+                    res = await fetch(`${API_URL}/api/partners/${editId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({name, markup_percent: markup})
+                    });
+                } else {
+                    res = await fetch(`${API_URL}/api/partners`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({name, markup_percent: markup})
+                    });
+                }
+                const data = await res.json();
+                if (data.success) {
+                    showToast(editId ? 'Партнёр обновлён' : 'Партнёр создан');
+                    closePartnerModal();
+                    loadPartners();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            } catch (e) {
+                showToast('Ошибка сети', 'error');
+            }
+        }
+
+        async function togglePartner(id, active) {
+            try {
+                const res = await fetch(`${API_URL}/api/partners/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({active})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(active ? 'Партнёр активирован' : 'Партнёр деактивирован');
+                    loadPartners();
+                }
+            } catch (e) {
+                showToast('Ошибка сети', 'error');
+            }
+        }
+
         // More panel toggle
         function toggleMorePanel() {
             document.getElementById('morePanel').classList.toggle('open');
@@ -5995,6 +6148,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="more-panel-item" onclick="showSection('transactions'); closeMorePanel();"><span class="icon">🔗</span><span>Транзакции</span></button>
             <button class="more-panel-item" onclick="showSection('managers'); closeMorePanel();"><span class="icon">👥</span><span>Менеджеры</span></button>
             <button class="more-panel-item" onclick="showSection('verification'); closeMorePanel();"><span class="icon">✅</span><span>Сверка</span></button>
+            <button class="more-panel-item" onclick="showSection('partners'); closeMorePanel();"><span class="icon">🤝</span><span>Партнёры</span></button>
             <button class="more-panel-item" onclick="window.location.href='/'; closeMorePanel();"><span class="icon">🚪</span><span>Выйти</span></button>
         </div>
     </div>

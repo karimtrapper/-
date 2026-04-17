@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grusha Exchange — Калькулятор</title>
+    <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy-900: #0F172A;
+            --navy-800: #1E293B;
+            --navy-700: #334155;
+            --navy-500: #64748B;
+            --navy-400: #94A3B8;
+            --navy-300: #CBD5E1;
+            --navy-200: #E2E8F0;
+            --navy-100: #F1F5F9;
+            --navy-50: #F8FAFC;
+            --coral: #F97316;
+            --coral-hover: #EA580C;
+            --green: #22C55E;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--navy-50);
+            color: var(--navy-900);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 24px 16px;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 440px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .header .logo {
+            width: 56px;
+            height: 56px;
+            margin: 0 auto 12px;
+        }
+
+        .header .logo img {
+            width: 100%;
+            height: 100%;
+            border-radius: 12px;
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--navy-900);
+        }
+
+        .header .partner-name {
+            font-size: 14px;
+            color: var(--navy-500);
+            margin-top: 4px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            border: 1px solid var(--navy-100);
+        }
+
+        /* Переключатель направления */
+        .direction-toggle {
+            display: flex;
+            background: var(--navy-100);
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+
+        .direction-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--navy-500);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .direction-btn.active {
+            background: white;
+            color: var(--navy-900);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        /* Курс */
+        .rate-display {
+            text-align: center;
+            padding: 12px;
+            background: var(--navy-50);
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .rate-label {
+            font-size: 12px;
+            color: var(--navy-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .rate-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--navy-900);
+        }
+
+        .rate-value .currency {
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--navy-400);
+        }
+
+        /* Ввод суммы */
+        .input-group {
+            margin-bottom: 16px;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--navy-500);
+            margin-bottom: 6px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-wrapper input {
+            width: 100%;
+            padding: 14px 60px 14px 16px;
+            border: 2px solid var(--navy-200);
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--navy-900);
+            background: white;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .input-wrapper input:focus {
+            border-color: var(--coral);
+        }
+
+        .input-wrapper input::placeholder {
+            color: var(--navy-300);
+            font-weight: 400;
+        }
+
+        .input-suffix {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--navy-400);
+        }
+
+        /* Результат */
+        .result-box {
+            background: var(--navy-900);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .result-label {
+            font-size: 13px;
+            color: var(--navy-400);
+            margin-bottom: 6px;
+        }
+
+        .result-amount {
+            font-size: 32px;
+            font-weight: 700;
+            color: white;
+        }
+
+        .result-amount .currency {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--navy-400);
+        }
+
+        .result-rate-info {
+            font-size: 12px;
+            color: var(--navy-500);
+            margin-top: 8px;
+        }
+
+        /* Ошибки */
+        .error-state {
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        .error-state .icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+
+        .error-state h2 {
+            font-size: 18px;
+            color: var(--navy-900);
+            margin-bottom: 8px;
+        }
+
+        .error-state p {
+            font-size: 14px;
+            color: var(--navy-500);
+        }
+
+        /* Загрузка */
+        .loading {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--navy-500);
+        }
+
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 3px solid var(--navy-200);
+            border-top-color: var(--coral);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* Футер */
+        .footer {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 12px;
+            color: var(--navy-400);
+        }
+
+        /* Анимация результата */
+        .result-amount.updating {
+            opacity: 0.4;
+            transition: opacity 0.15s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <img src="/static/kyc/grusha-logo.png" alt="Grusha">
+            </div>
+            <h1>Grusha Exchange</h1>
+            <div class="partner-name" id="partnerName"></div>
+        </div>
+
+        <!-- Загрузка -->
+        <div class="card" id="loadingState">
+            <div class="loading">
+                <div class="spinner"></div>
+                <div>Загрузка...</div>
+            </div>
+        </div>
+
+        <!-- Ошибка -->
+        <div class="card" id="errorState" style="display:none">
+            <div class="error-state">
+                <div class="icon">🔗</div>
+                <h2>Ссылка недействительна</h2>
+                <p>Обратитесь к менеджеру Grusha для получения новой ссылки</p>
+            </div>
+        </div>
+
+        <!-- Калькулятор -->
+        <div class="card" id="calcState" style="display:none">
+            <div class="direction-toggle">
+                <button class="direction-btn active" data-dir="usdt-to-thb" onclick="setDirection('usdt-to-thb')">USDT → THB</button>
+                <button class="direction-btn" data-dir="thb-to-usdt" onclick="setDirection('thb-to-usdt')">THB → USDT</button>
+            </div>
+
+            <div class="rate-display">
+                <div class="rate-label">Текущий курс</div>
+                <div class="rate-value">1 USDT = <span id="rateValue">—</span> <span class="currency">THB</span></div>
+            </div>
+
+            <div class="input-group">
+                <label class="input-label" id="inputLabel">Отправляете</label>
+                <div class="input-wrapper">
+                    <input type="number" id="amountInput" placeholder="0" inputmode="decimal" min="0" step="any">
+                    <span class="input-suffix" id="inputCurrency">USDT</span>
+                </div>
+            </div>
+
+            <div class="result-box">
+                <div class="result-label" id="resultLabel">Получаете</div>
+                <div class="result-amount" id="resultAmount">0 <span class="currency" id="resultCurrency">THB</span></div>
+                <div class="result-rate-info" id="rateInfo"></div>
+            </div>
+        </div>
+
+        <div class="footer">
+            Курсы обновляются в реальном времени
+        </div>
+    </div>
+
+    <script>
+        // Токен из URL
+        const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
+        let currentDirection = 'usdt-to-thb';
+        let currentRate = null;
+        let debounceTimer = null;
+
+        // Инициализация
+        async function init() {
+            if (!TOKEN) return showError();
+
+            try {
+                const res = await fetch(`/api/partner/${TOKEN}/info`);
+                if (!res.ok) return showError();
+
+                const data = await res.json();
+                if (!data.success) return showError();
+
+                document.getElementById('partnerName').textContent = data.name;
+                currentRate = data.rate;
+                document.getElementById('rateValue').textContent = data.rate?.toFixed(4) || '—';
+
+                document.getElementById('loadingState').style.display = 'none';
+                document.getElementById('calcState').style.display = 'block';
+
+                // Автофокус на инпут
+                document.getElementById('amountInput').focus();
+
+                // Автообновление курса каждые 60 сек
+                setInterval(refreshRate, 60000);
+            } catch (e) {
+                showError();
+            }
+        }
+
+        function showError() {
+            document.getElementById('loadingState').style.display = 'none';
+            document.getElementById('errorState').style.display = 'block';
+        }
+
+        // Переключение направления
+        function setDirection(dir) {
+            currentDirection = dir;
+            document.querySelectorAll('.direction-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.dir === dir);
+            });
+
+            if (dir === 'usdt-to-thb') {
+                document.getElementById('inputLabel').textContent = 'Отправляете';
+                document.getElementById('inputCurrency').textContent = 'USDT';
+                document.getElementById('resultLabel').textContent = 'Получаете';
+                document.getElementById('resultCurrency').textContent = 'THB';
+            } else {
+                document.getElementById('inputLabel').textContent = 'Отправляете';
+                document.getElementById('inputCurrency').textContent = 'THB';
+                document.getElementById('resultLabel').textContent = 'Получаете';
+                document.getElementById('resultCurrency').textContent = 'USDT';
+            }
+
+            // Пересчитать с текущей суммой
+            calculate();
+        }
+
+        // Расчёт
+        async function calculate() {
+            const input = document.getElementById('amountInput');
+            const amount = parseFloat(input.value);
+            const resultEl = document.getElementById('resultAmount');
+
+            if (!amount || amount <= 0) {
+                const cur = currentDirection === 'usdt-to-thb' ? 'THB' : 'USDT';
+                resultEl.innerHTML = `0 <span class="currency">${cur}</span>`;
+                document.getElementById('rateInfo').textContent = '';
+                return;
+            }
+
+            resultEl.classList.add('updating');
+
+            try {
+                const res = await fetch(`/api/partner/${TOKEN}/calculate?amount=${amount}&direction=${currentDirection}`);
+                const data = await res.json();
+
+                if (data.success) {
+                    currentRate = data.rate;
+                    document.getElementById('rateValue').textContent = data.rate.toFixed(4);
+
+                    if (currentDirection === 'usdt-to-thb') {
+                        resultEl.innerHTML = `${formatNumber(data.thb)} <span class="currency">THB</span>`;
+                        document.getElementById('rateInfo').textContent = `${formatNumber(amount)} USDT × ${data.rate} = ${formatNumber(data.thb)} THB`;
+                    } else {
+                        resultEl.innerHTML = `${formatNumber(data.usdt)} <span class="currency">USDT</span>`;
+                        document.getElementById('rateInfo').textContent = `${formatNumber(amount)} THB ÷ ${data.rate} = ${formatNumber(data.usdt)} USDT`;
+                    }
+                }
+            } catch (e) {
+                // Молча — курс мог быть недоступен
+            }
+
+            resultEl.classList.remove('updating');
+        }
+
+        // Обновление курса
+        async function refreshRate() {
+            try {
+                const res = await fetch(`/api/partner/${TOKEN}/info`);
+                const data = await res.json();
+                if (data.success && data.rate) {
+                    currentRate = data.rate;
+                    document.getElementById('rateValue').textContent = data.rate.toFixed(4);
+                    // Если есть сумма — пересчитать
+                    const amount = parseFloat(document.getElementById('amountInput').value);
+                    if (amount > 0) calculate();
+                }
+            } catch (e) {}
+        }
+
+        // Форматирование числа
+        function formatNumber(n) {
+            return new Intl.NumberFormat('ru-RU', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(n);
+        }
+
+        // Дебаунс ввода
+        document.getElementById('amountInput').addEventListener('input', () => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(calculate, 300);
+        });
+
+        init();
+    </script>
+</body>
+</html>

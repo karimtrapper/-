@@ -40,6 +40,7 @@ limiter = Limiter(get_remote_address, app=app, default_limits=[])
 PUBLIC_PATHS = [
     '/api/rates', '/api/calculate',           # Калькулятор
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
+    '/api/partner/',                           # Партнёрский калькулятор
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
 ]
@@ -49,7 +50,7 @@ def check_auth():
     """Проверка авторизации для всех /api/* и /crm кроме публичных"""
     path = request.path
 
-    # Статика, калькулятор, KYC-страница, логин — пропускаем
+    # Статика, калькулятор, KYC-страница, логин, партнёрский ЛК — пропускаем
     if not path.startswith('/api/') and not path.startswith('/crm'):
         return None
 
@@ -200,6 +201,24 @@ class Client(Base):
     def to_dict(self):
         return {'id': self.id, 'name': self.name, 'telegram': self.telegram, 'phone': self.phone,
                 'total_deals': self.total_deals, 'total_volume_usdt': self.total_volume_usdt}
+
+class Partner(Base):
+    """Партнёр (риелтор) — доступ к персональному калькулятору по ссылке"""
+    __tablename__ = 'partners'
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    token = Column(String(32), unique=True, nullable=False, index=True)
+    markup_percent = Column(Float, default=1.4)  # Наценка сверх Binance
+    active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'name': self.name, 'token': self.token,
+            'markup_percent': self.markup_percent, 'active': self.active,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
 
 class KycStatus(str, Enum):
     PENDING = "pending"
@@ -1024,6 +1043,16 @@ def calculator_index():
     if not flask_session.get('user_id'):
         return redirect('/login')
     return send_from_directory('static/calculator', 'index.html')
+
+@app.route('/partner/<token>')
+def partner_page(token):
+    """Страница партнёрского калькулятора (публичная, по токену)"""
+    return send_from_directory('static/partner', 'index.html')
+
+@app.route('/partner/<token>/<path:filename>')
+def partner_static(token, filename):
+    """Статика партнёрского калькулятора"""
+    return send_from_directory('static/partner', filename)
 
 @app.route('/kyc/')
 def kyc_index():
@@ -3363,6 +3392,147 @@ def _delete_kyc_files(token):
     upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
     if os.path.exists(upload_dir):
         shutil.rmtree(upload_dir, ignore_errors=True)
+
+# ==================== PARTNER CALCULATOR ====================
+
+@app.route('/api/partner/<token>/calculate', methods=['GET'])
+def partner_calculate(token):
+    """Расчёт курса для партнёра — публичный, по токену"""
+    db = get_session()
+    try:
+        partner = db.query(Partner).filter_by(token=token, active=True).first()
+        if not partner:
+            return jsonify({'success': False, 'error': 'Недействительная ссылка'}), 404
+
+        amount = request.args.get('amount', type=float)
+        direction = request.args.get('direction', 'usdt-to-thb')  # usdt-to-thb | thb-to-usdt
+
+        if not amount or amount <= 0:
+            return jsonify({'success': False, 'error': 'Укажите сумму'}), 400
+
+        # Получаем курс Binance
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        binance_rate = rates.get('usdt_thb')
+        if not binance_rate:
+            return jsonify({'success': False, 'error': 'Курс временно недоступен'}), 503
+
+        # Курс партнёра = Binance × (1 − наценка/100)
+        partner_rate = binance_rate * (1 - partner.markup_percent / 100)
+
+        if direction == 'usdt-to-thb':
+            result_amount = round(amount * partner_rate, 2)
+            return jsonify({
+                'success': True,
+                'rate': round(partner_rate, 4),
+                'usdt': amount,
+                'thb': result_amount
+            })
+        else:  # thb-to-usdt
+            result_amount = round(amount / partner_rate, 2)
+            return jsonify({
+                'success': True,
+                'rate': round(partner_rate, 4),
+                'thb': amount,
+                'usdt': result_amount
+            })
+    finally:
+        db.close()
+
+
+@app.route('/api/partner/<token>/info', methods=['GET'])
+def partner_info(token):
+    """Проверка токена партнёра — имя + текущий курс"""
+    db = get_session()
+    try:
+        partner = db.query(Partner).filter_by(token=token, active=True).first()
+        if not partner:
+            return jsonify({'success': False}), 404
+
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        binance_rate = rates.get('usdt_thb')
+        partner_rate = round(binance_rate * (1 - partner.markup_percent / 100), 4) if binance_rate else None
+
+        return jsonify({
+            'success': True,
+            'name': partner.name,
+            'rate': partner_rate
+        })
+    finally:
+        db.close()
+
+
+# ==================== PARTNER ADMIN (CRM) ====================
+
+@app.route('/api/partners', methods=['GET'])
+def get_partners():
+    """Список партнёров (для CRM)"""
+    db = get_session()
+    try:
+        partners = db.query(Partner).order_by(Partner.created_at.desc()).all()
+        return jsonify({'success': True, 'partners': [p.to_dict() for p in partners]})
+    finally:
+        db.close()
+
+
+@app.route('/api/partners', methods=['POST'])
+def create_partner():
+    """Создать партнёра"""
+    import secrets
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    markup = data.get('markup_percent', 1.4)
+
+    if not name:
+        return jsonify({'success': False, 'error': 'Укажите имя'}), 400
+
+    db = get_session()
+    try:
+        token = secrets.token_hex(12)  # 24 символа
+        partner = Partner(name=name, token=token, markup_percent=float(markup))
+        db.add(partner)
+        db.commit()
+        return jsonify({'success': True, 'partner': partner.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/partners/<int:partner_id>', methods=['PUT'])
+def update_partner(partner_id):
+    """Обновить партнёра (наценку, имя, активность)"""
+    data = request.get_json() or {}
+    db = get_session()
+    try:
+        partner = db.query(Partner).get(partner_id)
+        if not partner:
+            return jsonify({'success': False, 'error': 'Партнёр не найден'}), 404
+
+        if 'name' in data:
+            partner.name = data['name'].strip()
+        if 'markup_percent' in data:
+            partner.markup_percent = float(data['markup_percent'])
+        if 'active' in data:
+            partner.active = bool(data['active'])
+
+        db.commit()
+        return jsonify({'success': True, 'partner': partner.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/partners/<int:partner_id>', methods=['DELETE'])
+def delete_partner(partner_id):
+    """Удалить партнёра"""
+    db = get_session()
+    try:
+        partner = db.query(Partner).get(partner_id)
+        if not partner:
+            return jsonify({'success': False, 'error': 'Партнёр не найден'}), 404
+        db.delete(partner)
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
 
 # ==================== HEALTH CHECK ====================
 
