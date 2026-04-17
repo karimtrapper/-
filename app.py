@@ -3463,6 +3463,52 @@ def partner_info(token):
         db.close()
 
 
+@app.route('/api/partner/<token>/precise', methods=['POST'])
+def partner_precise_rate(token):
+    """Точный курс через Playwright для партнёра"""
+    db = get_session()
+    try:
+        partner = db.query(Partner).filter_by(token=token, active=True).first()
+        if not partner:
+            return jsonify({'success': False, 'error': 'Invalid link'}), 404
+
+        data = request.get_json() or {}
+        usdt_amount = data.get('usdt_amount')
+        thb_amount = data.get('thb_amount')
+
+        if not usdt_amount and not thb_amount:
+            return jsonify({'success': False, 'error': 'Specify amount'}), 400
+
+        # Определяем направление парсинга
+        if usdt_amount:
+            # USDT→THB: парсим сколько THB за X USDT
+            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
+                usdt_amount=round(float(usdt_amount), 2),
+                direction='usdt_to_thb'
+            ))
+        else:
+            # THB→USDT: парсим сколько USDT за X THB
+            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
+                thb_amount=round(float(thb_amount)),
+                direction='usdt_to_thb_reverse'
+            ))
+
+        if 'error' in playwright_result:
+            return jsonify({'success': False, 'error': 'Rate temporarily unavailable'}), 503
+
+        binance_rate = playwright_result['rate']
+        markup = partner.markup_percent
+
+        return jsonify({
+            'success': True,
+            'rate_buy': round(binance_rate * (1 - markup / 100), 4),
+            'rate_sell': round(binance_rate * (1 + markup / 100), 4),
+            'time': playwright_result['time']
+        })
+    finally:
+        db.close()
+
+
 # ==================== PARTNER ADMIN (CRM) ====================
 
 @app.route('/api/partners', methods=['GET'])

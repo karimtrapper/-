@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grusha Exchange — Калькулятор</title>
+    <title>Grusha Exchange — Calculator</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -21,20 +21,13 @@
             --coral-hover: #EA580C;
             --green: #22C55E;
         }
-
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--navy-50);
-            color: var(--navy-900);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 24px 16px;
+            background: var(--navy-50); color: var(--navy-900);
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; padding: 24px 16px;
         }
-
         .container { width: 100%; max-width: 440px; }
 
         .header { text-align: center; margin-bottom: 24px; }
@@ -44,20 +37,15 @@
         .header .partner-name { font-size: 14px; color: var(--navy-500); margin-top: 4px; }
 
         .card {
-            background: white;
-            border-radius: 16px;
-            padding: 24px;
+            background: white; border-radius: 16px; padding: 24px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
             border: 1px solid var(--navy-100);
         }
 
-        /* Курс */
+        /* Rate */
         .rate-display {
-            text-align: center;
-            padding: 12px;
-            background: var(--navy-50);
-            border-radius: 10px;
-            margin-bottom: 20px;
+            text-align: center; padding: 12px;
+            background: var(--navy-50); border-radius: 10px; margin-bottom: 20px;
         }
         .rate-label {
             font-size: 12px; color: var(--navy-500);
@@ -66,12 +54,9 @@
         .rate-value { font-size: 22px; font-weight: 700; }
         .rate-value .currency { font-size: 13px; font-weight: 500; color: var(--navy-400); }
 
-        /* Поля ввода */
+        /* Fields */
         .field-group { margin-bottom: 12px; }
-        .field-label {
-            display: block; font-size: 13px; font-weight: 600;
-            color: var(--navy-500); margin-bottom: 6px;
-        }
+        .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--navy-500); margin-bottom: 6px; }
         .field-wrapper { position: relative; }
         .field-wrapper input {
             width: 100%; padding: 14px 60px 14px 16px;
@@ -87,11 +72,8 @@
             font-size: 14px; font-weight: 700; color: var(--navy-400);
         }
 
-        /* Кнопка свопа */
-        .swap-row {
-            display: flex; justify-content: center; align-items: center;
-            margin: 4px 0;
-        }
+        /* Swap */
+        .swap-row { display: flex; justify-content: center; align-items: center; margin: 4px 0; }
         .swap-btn {
             width: 40px; height: 40px; border-radius: 50%;
             background: var(--navy-100); border: 2px solid white;
@@ -101,18 +83,35 @@
         .swap-btn:hover { background: var(--coral); color: white; }
         .swap-btn.rotated { transform: rotate(180deg); }
 
-        /* Инфо под расчётом */
-        .calc-info {
-            text-align: center; font-size: 12px; color: var(--navy-400);
-            margin-top: 12px; min-height: 18px;
+        /* Precise rate button */
+        .precise-btn {
+            display: block; width: 100%; margin-top: 16px;
+            padding: 12px; border: 2px solid var(--navy-200);
+            border-radius: 10px; background: white;
+            font-family: inherit; font-size: 14px; font-weight: 600;
+            color: var(--navy-700); cursor: pointer; transition: all 0.2s;
+            text-align: center;
+        }
+        .precise-btn:hover { border-color: var(--coral); color: var(--coral); }
+        .precise-btn:disabled { opacity: 0.5; cursor: wait; }
+        .precise-btn .loading-dots::after {
+            content: ''; animation: dots 1.5s steps(4, end) infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: ''; }
+            40% { content: '.'; }
+            60% { content: '..'; }
+            80%, 100% { content: '...'; }
         }
 
-        /* Ошибки и загрузка */
+        /* Info */
+        .calc-info { text-align: center; font-size: 12px; color: var(--navy-400); margin-top: 12px; min-height: 18px; }
+
+        /* Error/loading states */
         .error-state { text-align: center; padding: 40px 20px; }
         .error-state .icon { font-size: 48px; margin-bottom: 12px; }
         .error-state h2 { font-size: 18px; margin-bottom: 8px; }
         .error-state p { font-size: 14px; color: var(--navy-500); }
-
         .loading { text-align: center; padding: 60px 20px; color: var(--navy-500); }
         .spinner {
             width: 32px; height: 32px; border: 3px solid var(--navy-200);
@@ -122,6 +121,14 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--navy-400); }
+
+        /* Precise badge */
+        .precise-badge {
+            display: inline-block; font-size: 10px; font-weight: 700;
+            background: var(--green); color: white;
+            padding: 2px 6px; border-radius: 4px; margin-left: 6px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -132,44 +139,38 @@
             <div class="partner-name" id="partnerName"></div>
         </div>
 
-        <!-- Загрузка -->
         <div class="card" id="loadingState">
-            <div class="loading"><div class="spinner"></div><div>Загрузка...</div></div>
+            <div class="loading"><div class="spinner"></div><div>Loading...</div></div>
         </div>
 
-        <!-- Ошибка -->
         <div class="card" id="errorState" style="display:none">
             <div class="error-state">
                 <div class="icon">🔗</div>
-                <h2>Ссылка недействительна</h2>
-                <p>Обратитесь к менеджеру Grusha для получения новой ссылки</p>
+                <h2>Invalid link</h2>
+                <p>Please contact your Grusha manager for a new link</p>
             </div>
         </div>
 
-        <!-- Калькулятор -->
         <div class="card" id="calcState" style="display:none">
             <div class="rate-display">
-                <div class="rate-label" id="rateLabel">Курс USDT → THB</div>
-                <div class="rate-value">1 USDT = <span id="rateValue">—</span> <span class="currency">THB</span></div>
+                <div class="rate-label" id="rateLabel">Rate USDT → THB</div>
+                <div class="rate-value">1 USDT = <span id="rateValue">—</span> <span class="currency">THB</span> <span id="preciseBadge" class="precise-badge" style="display:none">PRECISE</span></div>
             </div>
 
-            <!-- Верхнее поле -->
             <div class="field-group">
-                <label class="field-label" id="topLabel">Отдаёте</label>
+                <label class="field-label" id="topLabel">You send</label>
                 <div class="field-wrapper">
                     <input type="number" id="topInput" placeholder="0" inputmode="decimal" min="0" step="any">
                     <span class="field-suffix" id="topCurrency">USDT</span>
                 </div>
             </div>
 
-            <!-- Свопнуть -->
             <div class="swap-row">
                 <button class="swap-btn" id="swapBtn" onclick="swapDirection()">⇅</button>
             </div>
 
-            <!-- Нижнее поле -->
             <div class="field-group">
-                <label class="field-label" id="bottomLabel">Получаете</label>
+                <label class="field-label" id="bottomLabel">You receive</label>
                 <div class="field-wrapper">
                     <input type="number" id="bottomInput" placeholder="0" inputmode="decimal" min="0" step="any">
                     <span class="field-suffix" id="bottomCurrency">THB</span>
@@ -177,27 +178,26 @@
             </div>
 
             <div class="calc-info" id="calcInfo"></div>
+
+            <button class="precise-btn" id="preciseBtn" onclick="getPreciseRate()">
+                🎯 Get precise rate from Binance
+            </button>
         </div>
 
-        <div class="footer">Курсы обновляются автоматически</div>
+        <div class="footer">Rates update automatically every 60s</div>
     </div>
 
     <script>
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
 
-        // Состояние: какая валюта сверху
-        // 'usdt-top' → сверху USDT, снизу THB (режим USDT→THB, rateBuy)
-        // 'thb-top'  → сверху THB, снизу USDT (режим THB→USDT, rateSell)
-        let mode = 'usdt-top';
-        let rateBuy = null;   // USDT→THB: Binance × (1 - markup)
-        let rateSell = null;  // THB→USDT: Binance × (1 + markup)
-        let lastEdited = 'top'; // какое поле редактировали последним
+        let mode = 'usdt-top';  // 'usdt-top' | 'thb-top'
+        let rateBuy = null;     // USDT→THB: Binance × (1 - markup)
+        let rateSell = null;    // THB→USDT: Binance × (1 + markup)
+        let lastEdited = 'top';
+        let isPrecise = false;
 
-        function getRate() {
-            return mode === 'usdt-top' ? rateBuy : rateSell;
-        }
+        function getRate() { return mode === 'usdt-top' ? rateBuy : rateSell; }
 
-        // Инициализация
         async function init() {
             if (!TOKEN) return showError();
             try {
@@ -228,79 +228,57 @@
             const rate = getRate();
             document.getElementById('rateValue').textContent = rate?.toFixed(4) || '—';
             if (mode === 'usdt-top') {
-                document.getElementById('rateLabel').textContent = 'Курс USDT → THB';
+                document.getElementById('rateLabel').textContent = 'Rate USDT → THB';
                 document.getElementById('topCurrency').textContent = 'USDT';
                 document.getElementById('bottomCurrency').textContent = 'THB';
             } else {
-                document.getElementById('rateLabel').textContent = 'Курс THB → USDT';
+                document.getElementById('rateLabel').textContent = 'Rate THB → USDT';
                 document.getElementById('topCurrency').textContent = 'THB';
                 document.getElementById('bottomCurrency').textContent = 'USDT';
             }
+            document.getElementById('preciseBadge').style.display = isPrecise ? 'inline-block' : 'none';
         }
 
-        // Своп направления
         function swapDirection() {
             const topVal = document.getElementById('topInput').value;
             const bottomVal = document.getElementById('bottomInput').value;
-
             mode = mode === 'usdt-top' ? 'thb-top' : 'usdt-top';
-            updateRateDisplay();
-
-            // Значения меняются местами
             document.getElementById('topInput').value = bottomVal;
             document.getElementById('bottomInput').value = topVal;
             lastEdited = lastEdited === 'top' ? 'bottom' : 'top';
-
-            // Пересчитать
+            isPrecise = false;
+            updateRateDisplay();
             recalculate();
-
-            // Анимация кнопки
             document.getElementById('swapBtn').classList.toggle('rotated');
         }
 
-        // Пересчёт: из одного поля вычисляем другое
         function recalculate() {
             const rate = getRate();
             if (!rate) return;
-
             const topInput = document.getElementById('topInput');
             const bottomInput = document.getElementById('bottomInput');
             const info = document.getElementById('calcInfo');
 
             if (lastEdited === 'top') {
                 const amount = parseFloat(topInput.value);
-                if (!amount || amount <= 0) {
-                    bottomInput.value = '';
-                    info.textContent = '';
-                    return;
-                }
-                // Верхнее поле → считаем нижнее
+                if (!amount || amount <= 0) { bottomInput.value = ''; info.textContent = ''; return; }
                 if (mode === 'usdt-top') {
-                    // USDT → THB
                     const thb = amount * rate;
                     bottomInput.value = thb.toFixed(2);
                     info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
                 } else {
-                    // THB → USDT
                     const usdt = amount / rate;
                     bottomInput.value = usdt.toFixed(2);
                     info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
                 }
             } else {
                 const amount = parseFloat(bottomInput.value);
-                if (!amount || amount <= 0) {
-                    topInput.value = '';
-                    info.textContent = '';
-                    return;
-                }
-                // Нижнее поле → считаем верхнее
+                if (!amount || amount <= 0) { topInput.value = ''; info.textContent = ''; return; }
                 if (mode === 'usdt-top') {
-                    // Хочу получить X THB → сколько USDT нужно
                     const usdt = amount / rate;
                     topInput.value = usdt.toFixed(2);
                     info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
                 } else {
-                    // Хочу получить X USDT → сколько THB нужно
                     const thb = amount * rate;
                     topInput.value = thb.toFixed(2);
                     info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
@@ -308,7 +286,64 @@
             }
         }
 
-        // Обновление курса с сервера
+        // Playwright precise rate
+        async function getPreciseRate() {
+            const topVal = parseFloat(document.getElementById('topInput').value);
+            const bottomVal = parseFloat(document.getElementById('bottomInput').value);
+
+            if (!topVal && !bottomVal) return;
+
+            const btn = document.getElementById('preciseBtn');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Getting precise rate<span class="loading-dots"></span>';
+
+            try {
+                // Определяем USDT и THB суммы
+                let body = {};
+                if (mode === 'usdt-top') {
+                    if (lastEdited === 'top' && topVal) body.usdt_amount = topVal;
+                    else if (bottomVal) body.thb_amount = bottomVal;
+                    else body.usdt_amount = topVal;
+                } else {
+                    if (lastEdited === 'top' && topVal) body.thb_amount = topVal;
+                    else if (bottomVal) body.usdt_amount = bottomVal;
+                    else body.thb_amount = topVal;
+                }
+
+                const res = await fetch(`/api/partner/${TOKEN}/precise`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    rateBuy = data.rate_buy;
+                    rateSell = data.rate_sell;
+                    isPrecise = true;
+                    updateRateDisplay();
+                    recalculate();
+                    btn.innerHTML = '✅ Precise rate applied';
+                    setTimeout(() => {
+                        btn.innerHTML = '🎯 Get precise rate from Binance';
+                        btn.disabled = false;
+                    }, 3000);
+                } else {
+                    btn.innerHTML = '❌ ' + (data.error || 'Failed');
+                    setTimeout(() => {
+                        btn.innerHTML = '🎯 Get precise rate from Binance';
+                        btn.disabled = false;
+                    }, 3000);
+                }
+            } catch (e) {
+                btn.innerHTML = '❌ Network error';
+                setTimeout(() => {
+                    btn.innerHTML = '🎯 Get precise rate from Binance';
+                    btn.disabled = false;
+                }, 3000);
+            }
+        }
+
         async function refreshRate() {
             try {
                 const res = await fetch(`/api/partner/${TOKEN}/info`);
@@ -316,6 +351,7 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
+                    isPrecise = false;
                     updateRateDisplay();
                     recalculate();
                 }
@@ -323,16 +359,17 @@
         }
 
         function fmt(n) {
-            return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+            return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
         }
 
-        // Обработчики ввода
         document.getElementById('topInput').addEventListener('input', () => {
-            lastEdited = 'top';
+            lastEdited = 'top'; isPrecise = false;
+            document.getElementById('preciseBadge').style.display = 'none';
             recalculate();
         });
         document.getElementById('bottomInput').addEventListener('input', () => {
-            lastEdited = 'bottom';
+            lastEdited = 'bottom'; isPrecise = false;
+            document.getElementById('preciseBadge').style.display = 'none';
             recalculate();
         });
 
