@@ -3479,19 +3479,34 @@ def partner_precise_rate(token):
         if not usdt_amount and not thb_amount:
             return jsonify({'success': False, 'error': 'Specify amount'}), 400
 
+        # Безопасные суммы для ретрая при превышении лимита Binance
+        SAFE_USDT = 50000
+        SAFE_THB = 1600000
+
         # Определяем направление парсинга
         if usdt_amount:
-            # USDT→THB: парсим сколько THB за X USDT
             playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
                 usdt_amount=round(float(usdt_amount), 2),
                 direction='usdt_to_thb'
             ))
+            # Если упал — ретрай с безопасной суммой
+            if 'error' in playwright_result:
+                print(f"⚠️ Playwright failed for {usdt_amount} USDT, retrying with {SAFE_USDT}", flush=True)
+                playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
+                    usdt_amount=SAFE_USDT,
+                    direction='usdt_to_thb'
+                ))
         else:
-            # THB→USDT: парсим сколько USDT за X THB
             playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
                 thb_amount=round(float(thb_amount)),
                 direction='usdt_to_thb_reverse'
             ))
+            if 'error' in playwright_result:
+                print(f"⚠️ Playwright failed for {thb_amount} THB, retrying with {SAFE_THB}", flush=True)
+                playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
+                    thb_amount=SAFE_THB,
+                    direction='usdt_to_thb_reverse'
+                ))
 
         if 'error' in playwright_result:
             return jsonify({'success': False, 'error': 'Rate temporarily unavailable'}), 503
