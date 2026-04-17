@@ -55,6 +55,10 @@
         }
         .field-wrapper input:focus { border-color: var(--coral); }
         .field-wrapper input::placeholder { color: var(--navy-300); font-weight: 400; }
+        .field-wrapper input:read-only {
+            background: var(--navy-50); color: var(--navy-700); cursor: default;
+        }
+        .field-wrapper input:read-only:focus { border-color: var(--navy-200); }
         .field-suffix {
             position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
             font-size: 14px; font-weight: 700; color: var(--navy-400);
@@ -71,18 +75,17 @@
         .swap-btn:hover { background: var(--coral); color: white; }
         .swap-btn.rotated { transform: rotate(180deg); }
 
-        /* Precise rate button */
-        .precise-btn {
+        /* Calculate button */
+        .calc-btn {
             display: block; width: 100%; margin-top: 16px;
-            padding: 12px; border: 2px solid var(--navy-200);
-            border-radius: 10px; background: white;
-            font-family: inherit; font-size: 14px; font-weight: 600;
-            color: var(--navy-700); cursor: pointer; transition: all 0.2s;
-            text-align: center;
+            padding: 14px; border: none; border-radius: 10px;
+            background: var(--coral); color: white;
+            font-family: inherit; font-size: 16px; font-weight: 700;
+            cursor: pointer; transition: background 0.2s;
         }
-        .precise-btn:hover { border-color: var(--coral); color: var(--coral); }
-        .precise-btn:disabled { opacity: 0.5; cursor: wait; }
-        .precise-btn .loading-dots::after {
+        .calc-btn:hover { background: var(--coral-hover); }
+        .calc-btn:disabled { opacity: 0.6; cursor: wait; }
+        .loading-dots::after {
             content: ''; animation: dots 1.5s steps(4, end) infinite;
         }
         @keyframes dots {
@@ -90,6 +93,20 @@
             40% { content: '.'; }
             60% { content: '..'; }
             80%, 100% { content: '...'; }
+        }
+
+        /* Result block */
+        .result-block {
+            margin-top: 20px; padding: 20px;
+            background: var(--navy-900); border-radius: 12px;
+            text-align: center;
+        }
+        .result-rate {
+            font-size: 16px; font-weight: 600; color: var(--navy-400);
+            margin-bottom: 8px;
+        }
+        .result-amount {
+            font-size: 28px; font-weight: 700; color: white;
         }
 
         /* Error/loading states */
@@ -106,7 +123,6 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         .footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--navy-400); }
-
     </style>
 </head>
 <body>
@@ -133,7 +149,7 @@
             <div class="field-group">
                 <label class="field-label" id="topLabel">You send</label>
                 <div class="field-wrapper">
-                    <input type="number" id="topInput" placeholder="0" inputmode="decimal" min="0" step="any">
+                    <input type="number" id="topInput" placeholder="Enter amount" inputmode="decimal" min="0" step="any">
                     <span class="field-suffix" id="topCurrency">USDT</span>
                 </div>
             </div>
@@ -145,26 +161,31 @@
             <div class="field-group">
                 <label class="field-label" id="bottomLabel">You receive</label>
                 <div class="field-wrapper">
-                    <input type="number" id="bottomInput" placeholder="0" inputmode="decimal" min="0" step="any">
+                    <input type="text" id="bottomInput" placeholder="—" readonly>
                     <span class="field-suffix" id="bottomCurrency">THB</span>
                 </div>
             </div>
 
-            <button class="precise-btn" id="preciseBtn" onclick="getPreciseRate()">
+            <button class="calc-btn" id="calcBtn" onclick="calculate()">
                 Calculate
             </button>
+
+            <!-- Результат — появляется после расчёта -->
+            <div class="result-block" id="resultBlock" style="display:none">
+                <div class="result-rate" id="resultRate"></div>
+                <div class="result-amount" id="resultAmount"></div>
+            </div>
         </div>
 
-        <div class="footer">Rates update automatically every 60s</div>
+        <div class="footer">Grusha Exchange</div>
     </div>
 
     <script>
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
 
         let mode = 'usdt-top';  // 'usdt-top' | 'thb-top'
-        let rateBuy = null;     // USDT→THB: Binance × (1 - markup)
-        let rateSell = null;    // THB→USDT: Binance × (1 + markup)
-        let lastEdited = 'top';
+        let rateBuy = null;
+        let rateSell = null;
 
         function getRate() { return mode === 'usdt-top' ? rateBuy : rateSell; }
 
@@ -179,12 +200,12 @@
                 document.getElementById('partnerName').textContent = data.name;
                 rateBuy = data.rate_buy;
                 rateSell = data.rate_sell;
-                updateLabels();
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('calcState').style.display = 'block';
                 document.getElementById('topInput').focus();
 
+                // Обновляем курс в фоне каждые 60 сек
                 setInterval(refreshRate, 60000);
             } catch (e) { showError(); }
         }
@@ -194,7 +215,8 @@
             document.getElementById('errorState').style.display = 'block';
         }
 
-        function updateLabels() {
+        function swapDirection() {
+            mode = mode === 'usdt-top' ? 'thb-top' : 'usdt-top';
             if (mode === 'usdt-top') {
                 document.getElementById('topCurrency').textContent = 'USDT';
                 document.getElementById('bottomCurrency').textContent = 'THB';
@@ -202,67 +224,29 @@
                 document.getElementById('topCurrency').textContent = 'THB';
                 document.getElementById('bottomCurrency').textContent = 'USDT';
             }
-        }
-
-        function swapDirection() {
-            const topVal = document.getElementById('topInput').value;
-            const bottomVal = document.getElementById('bottomInput').value;
-            mode = mode === 'usdt-top' ? 'thb-top' : 'usdt-top';
-            document.getElementById('topInput').value = bottomVal;
-            document.getElementById('bottomInput').value = topVal;
-            lastEdited = lastEdited === 'top' ? 'bottom' : 'top';
-            updateLabels();
-            recalculate();
+            document.getElementById('topInput').value = '';
+            document.getElementById('bottomInput').value = '';
+            document.getElementById('resultBlock').style.display = 'none';
+            document.getElementById('topInput').focus();
             document.getElementById('swapBtn').classList.toggle('rotated');
         }
 
-        function recalculate() {
-            const rate = getRate();
-            if (!rate) return;
-            const topInput = document.getElementById('topInput');
-            const bottomInput = document.getElementById('bottomInput');
+        // Расчёт — ТОЛЬКО по кнопке
+        async function calculate() {
+            const amount = parseFloat(document.getElementById('topInput').value);
+            if (!amount || amount <= 0) return;
 
-            if (lastEdited === 'top') {
-                const amount = parseFloat(topInput.value);
-                if (!amount || amount <= 0) { bottomInput.value = ''; return; }
-                if (mode === 'usdt-top') {
-                    bottomInput.value = (amount * rate).toFixed(2);
-                } else {
-                    bottomInput.value = (amount / rate).toFixed(2);
-                }
-            } else {
-                const amount = parseFloat(bottomInput.value);
-                if (!amount || amount <= 0) { topInput.value = ''; return; }
-                if (mode === 'usdt-top') {
-                    topInput.value = (amount / rate).toFixed(2);
-                } else {
-                    topInput.value = (amount * rate).toFixed(2);
-                }
-            }
-        }
-
-        // Playwright precise rate
-        async function getPreciseRate() {
-            const topVal = parseFloat(document.getElementById('topInput').value);
-            const bottomVal = parseFloat(document.getElementById('bottomInput').value);
-
-            if (!topVal && !bottomVal) return;
-
-            const btn = document.getElementById('preciseBtn');
+            const btn = document.getElementById('calcBtn');
             btn.disabled = true;
-            btn.innerHTML = '⏳ Calculating<span class="loading-dots"></span>';
+            btn.innerHTML = 'Calculating<span class="loading-dots"></span>';
 
             try {
-                // Определяем USDT и THB суммы
+                // Точный расчёт через Playwright
                 let body = {};
                 if (mode === 'usdt-top') {
-                    if (lastEdited === 'top' && topVal) body.usdt_amount = topVal;
-                    else if (bottomVal) body.thb_amount = bottomVal;
-                    else body.usdt_amount = topVal;
+                    body.usdt_amount = amount;
                 } else {
-                    if (lastEdited === 'top' && topVal) body.thb_amount = topVal;
-                    else if (bottomVal) body.usdt_amount = bottomVal;
-                    else body.thb_amount = topVal;
+                    body.thb_amount = amount;
                 }
 
                 const res = await fetch(`/api/partner/${TOKEN}/precise`, {
@@ -275,27 +259,36 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
-                    updateLabels();
-                    recalculate();
-                    btn.innerHTML = '✅ Done';
-                    setTimeout(() => {
-                        btn.innerHTML = 'Calculate';
-                        btn.disabled = false;
-                    }, 3000);
-                } else {
-                    btn.innerHTML = '❌ ' + (data.error || 'Failed');
-                    setTimeout(() => {
-                        btn.innerHTML = 'Calculate';
-                        btn.disabled = false;
-                    }, 3000);
                 }
+                showResult(amount);
+                btn.innerHTML = 'Calculate';
+                btn.disabled = false;
             } catch (e) {
-                btn.innerHTML = '❌ Network error';
-                setTimeout(() => {
-                    btn.innerHTML = 'Calculate';
-                    btn.disabled = false;
-                }, 3000);
+                showResult(amount);
+                btn.innerHTML = 'Calculate';
+                btn.disabled = false;
             }
+        }
+
+        function showResult(amount) {
+            const rate = getRate();
+            if (!rate) return;
+
+            let result, resultCur, rateTxt;
+            if (mode === 'usdt-top') {
+                result = (amount * rate).toFixed(2);
+                resultCur = 'THB';
+                rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
+            } else {
+                result = (amount / rate).toFixed(2);
+                resultCur = 'USDT';
+                rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
+            }
+
+            document.getElementById('bottomInput').value = formatNumber(result);
+            document.getElementById('resultRate').textContent = rateTxt;
+            document.getElementById('resultAmount').textContent = `${formatNumber(result)} ${resultCur}`;
+            document.getElementById('resultBlock').style.display = 'block';
         }
 
         async function refreshRate() {
@@ -305,23 +298,23 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
-                    updateLabels();
-                    recalculate();
                 }
             } catch (e) {}
         }
 
-        function fmt(n) {
-            return new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+        function formatNumber(n) {
+            return new Intl.NumberFormat('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(parseFloat(n));
         }
 
         document.getElementById('topInput').addEventListener('input', () => {
-            lastEdited = 'top';
-            recalculate();
+            document.getElementById('bottomInput').value = '';
+            document.getElementById('resultBlock').style.display = 'none';
         });
-        document.getElementById('bottomInput').addEventListener('input', () => {
-            lastEdited = 'bottom';
-            recalculate();
+        document.getElementById('topInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') calculate();
         });
 
         init();
