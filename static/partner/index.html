@@ -336,8 +336,13 @@
         // Токен из URL
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
         let currentDirection = 'usdt-to-thb';
-        let currentRate = null;
+        let rateBuy = null;   // USDT→THB (ниже рынка)
+        let rateSell = null;  // THB→USDT (выше рынка)
         let debounceTimer = null;
+
+        function getCurrentRate() {
+            return currentDirection === 'usdt-to-thb' ? rateBuy : rateSell;
+        }
 
         // Инициализация
         async function init() {
@@ -351,8 +356,9 @@
                 if (!data.success) return showError();
 
                 document.getElementById('partnerName').textContent = data.name;
-                currentRate = data.rate;
-                document.getElementById('rateValue').textContent = data.rate?.toFixed(4) || '—';
+                rateBuy = data.rate_buy;
+                rateSell = data.rate_sell;
+                document.getElementById('rateValue').textContent = rateBuy?.toFixed(4) || '—';
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('calcState').style.display = 'block';
@@ -384,11 +390,13 @@
                 document.getElementById('inputCurrency').textContent = 'USDT';
                 document.getElementById('resultLabel').textContent = 'Получаете';
                 document.getElementById('resultCurrency').textContent = 'THB';
+                document.getElementById('rateValue').textContent = rateBuy?.toFixed(4) || '—';
             } else {
                 document.getElementById('inputLabel').textContent = 'Отправляете';
                 document.getElementById('inputCurrency').textContent = 'THB';
                 document.getElementById('resultLabel').textContent = 'Получаете';
                 document.getElementById('resultCurrency').textContent = 'USDT';
+                document.getElementById('rateValue').textContent = rateSell?.toFixed(4) || '—';
             }
 
             // Пересчитать с текущей суммой
@@ -438,9 +446,11 @@
             try {
                 const res = await fetch(`/api/partner/${TOKEN}/info`);
                 const data = await res.json();
-                if (data.success && data.rate) {
-                    currentRate = data.rate;
-                    document.getElementById('rateValue').textContent = data.rate.toFixed(4);
+                if (data.success) {
+                    rateBuy = data.rate_buy;
+                    rateSell = data.rate_sell;
+                    const rate = getCurrentRate();
+                    document.getElementById('rateValue').textContent = rate?.toFixed(4) || '—';
                     // Если есть сумма — пересчитать
                     const amount = parseFloat(document.getElementById('amountInput').value);
                     if (amount > 0) calculate();

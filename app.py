@@ -3416,10 +3416,11 @@ def partner_calculate(token):
         if not binance_rate:
             return jsonify({'success': False, 'error': 'Курс временно недоступен'}), 503
 
-        # Курс партнёра = Binance × (1 − наценка/100)
-        partner_rate = binance_rate * (1 - partner.markup_percent / 100)
-
+        # Наценка зависит от направления:
+        # USDT→THB: курс ниже рынка (клиент получает меньше THB)
+        # THB→USDT: курс выше рынка (клиенту нужно больше THB за 1 USDT → получает меньше USDT)
         if direction == 'usdt-to-thb':
+            partner_rate = binance_rate * (1 - partner.markup_percent / 100)
             result_amount = round(amount * partner_rate, 2)
             return jsonify({
                 'success': True,
@@ -3428,6 +3429,7 @@ def partner_calculate(token):
                 'thb': result_amount
             })
         else:  # thb-to-usdt
+            partner_rate = binance_rate * (1 + partner.markup_percent / 100)
             result_amount = round(amount / partner_rate, 2)
             return jsonify({
                 'success': True,
@@ -3450,12 +3452,12 @@ def partner_info(token):
 
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         binance_rate = rates.get('usdt_thb')
-        partner_rate = round(binance_rate * (1 - partner.markup_percent / 100), 4) if binance_rate else None
 
         return jsonify({
             'success': True,
             'name': partner.name,
-            'rate': partner_rate
+            'rate_buy': round(binance_rate * (1 - partner.markup_percent / 100), 4) if binance_rate else None,
+            'rate_sell': round(binance_rate * (1 + partner.markup_percent / 100), 4) if binance_rate else None,
         })
     finally:
         db.close()
