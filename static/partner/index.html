@@ -55,10 +55,6 @@
         }
         .field-wrapper input:focus { border-color: var(--coral); }
         .field-wrapper input::placeholder { color: var(--navy-300); font-weight: 400; }
-        .field-wrapper input:read-only {
-            background: var(--navy-50); color: var(--navy-700); cursor: default;
-        }
-        .field-wrapper input:read-only:focus { border-color: var(--navy-200); }
         .field-suffix {
             position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
             font-size: 14px; font-weight: 700; color: var(--navy-400);
@@ -161,7 +157,7 @@
             <div class="field-group">
                 <label class="field-label" id="bottomLabel">You receive</label>
                 <div class="field-wrapper">
-                    <input type="text" id="bottomInput" placeholder="—" readonly>
+                    <input type="number" id="bottomInput" placeholder="Enter amount" inputmode="decimal" min="0" step="any">
                     <span class="field-suffix" id="bottomCurrency">THB</span>
                 </div>
             </div>
@@ -186,6 +182,7 @@
         let mode = 'usdt-top';  // 'usdt-top' | 'thb-top'
         let rateBuy = null;
         let rateSell = null;
+        let lastEdited = 'top'; // какое поле редактировали последним
 
         function getRate() { return mode === 'usdt-top' ? rateBuy : rateSell; }
 
@@ -226,14 +223,18 @@
             }
             document.getElementById('topInput').value = '';
             document.getElementById('bottomInput').value = '';
+            document.getElementById('topInput').placeholder = 'Enter amount';
+            document.getElementById('bottomInput').placeholder = 'Enter amount';
             document.getElementById('resultBlock').style.display = 'none';
+            lastEdited = 'top';
             document.getElementById('topInput').focus();
             document.getElementById('swapBtn').classList.toggle('rotated');
         }
 
-        // Расчёт — ТОЛЬКО по кнопке
         async function calculate() {
-            const amount = parseFloat(document.getElementById('topInput').value);
+            const topVal = parseFloat(document.getElementById('topInput').value);
+            const bottomVal = parseFloat(document.getElementById('bottomInput').value);
+            const amount = lastEdited === 'top' ? topVal : bottomVal;
             if (!amount || amount <= 0) return;
 
             const btn = document.getElementById('calcBtn');
@@ -241,12 +242,15 @@
             btn.innerHTML = 'Calculating<span class="loading-dots"></span>';
 
             try {
-                // Точный расчёт через Playwright
+                // Определяем что передать в Playwright
                 let body = {};
-                if (mode === 'usdt-top') {
-                    body.usdt_amount = amount;
+                const isTopUsdt = mode === 'usdt-top';
+                if (lastEdited === 'top') {
+                    if (isTopUsdt) body.usdt_amount = amount;
+                    else body.thb_amount = amount;
                 } else {
-                    body.thb_amount = amount;
+                    if (isTopUsdt) body.thb_amount = amount;
+                    else body.usdt_amount = amount;
                 }
 
                 const res = await fetch(`/api/partner/${TOKEN}/precise`, {
@@ -274,18 +278,32 @@
             const rate = getRate();
             if (!rate) return;
 
-            let result, resultCur, rateTxt;
-            if (mode === 'usdt-top') {
-                result = (amount * rate).toFixed(2);
-                resultCur = 'THB';
-                rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
+            const isTopUsdt = mode === 'usdt-top';
+            let result, resultCur;
+
+            if (lastEdited === 'top') {
+                // Ввели сверху → результат снизу
+                if (isTopUsdt) {
+                    result = (amount * rate).toFixed(2);
+                    resultCur = 'THB';
+                } else {
+                    result = (amount / rate).toFixed(2);
+                    resultCur = 'USDT';
+                }
+                document.getElementById('bottomInput').value = formatNumber(result);
             } else {
-                result = (amount / rate).toFixed(2);
-                resultCur = 'USDT';
-                rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
+                // Ввели снизу → результат сверху
+                if (isTopUsdt) {
+                    result = (amount / rate).toFixed(2);
+                    resultCur = 'USDT';
+                } else {
+                    result = (amount * rate).toFixed(2);
+                    resultCur = 'THB';
+                }
+                document.getElementById('topInput').value = formatNumber(result);
             }
 
-            document.getElementById('bottomInput').value = formatNumber(result);
+            const rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
             document.getElementById('resultRate').textContent = rateTxt;
             document.getElementById('resultAmount').textContent = `${formatNumber(result)} ${resultCur}`;
             document.getElementById('resultBlock').style.display = 'block';
@@ -310,10 +328,21 @@
         }
 
         document.getElementById('topInput').addEventListener('input', () => {
+            lastEdited = 'top';
             document.getElementById('bottomInput').value = '';
+            document.getElementById('bottomInput').placeholder = 'Result after calculating';
+            document.getElementById('resultBlock').style.display = 'none';
+        });
+        document.getElementById('bottomInput').addEventListener('input', () => {
+            lastEdited = 'bottom';
+            document.getElementById('topInput').value = '';
+            document.getElementById('topInput').placeholder = 'Result after calculating';
             document.getElementById('resultBlock').style.display = 'none';
         });
         document.getElementById('topInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') calculate();
+        });
+        document.getElementById('bottomInput').addEventListener('keydown', (e) => {
             if (e.key === 'Enter') calculate();
         });
 
