@@ -35,39 +35,13 @@
             padding: 24px 16px;
         }
 
-        .container {
-            width: 100%;
-            max-width: 440px;
-        }
+        .container { width: 100%; max-width: 440px; }
 
-        .header {
-            text-align: center;
-            margin-bottom: 24px;
-        }
-
-        .header .logo {
-            width: 56px;
-            height: 56px;
-            margin: 0 auto 12px;
-        }
-
-        .header .logo img {
-            width: 100%;
-            height: 100%;
-            border-radius: 12px;
-        }
-
-        .header h1 {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--navy-900);
-        }
-
-        .header .partner-name {
-            font-size: 14px;
-            color: var(--navy-500);
-            margin-top: 4px;
-        }
+        .header { text-align: center; margin-bottom: 24px; }
+        .header .logo { width: 56px; height: 56px; margin: 0 auto 12px; }
+        .header .logo img { width: 100%; height: 100%; border-radius: 12px; }
+        .header h1 { font-size: 20px; font-weight: 700; }
+        .header .partner-name { font-size: 14px; color: var(--navy-500); margin-top: 4px; }
 
         .card {
             background: white;
@@ -75,35 +49,6 @@
             padding: 24px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
             border: 1px solid var(--navy-100);
-        }
-
-        /* Переключатель направления */
-        .direction-toggle {
-            display: flex;
-            background: var(--navy-100);
-            border-radius: 10px;
-            padding: 4px;
-            margin-bottom: 20px;
-        }
-
-        .direction-btn {
-            flex: 1;
-            padding: 10px 12px;
-            border: none;
-            background: transparent;
-            border-radius: 8px;
-            font-family: inherit;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--navy-500);
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .direction-btn.active {
-            background: white;
-            color: var(--navy-900);
-            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
         }
 
         /* Курс */
@@ -114,181 +59,82 @@
             border-radius: 10px;
             margin-bottom: 20px;
         }
-
         .rate-label {
-            font-size: 12px;
-            color: var(--navy-500);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
+            font-size: 12px; color: var(--navy-500);
+            text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;
         }
+        .rate-value { font-size: 22px; font-weight: 700; }
+        .rate-value .currency { font-size: 13px; font-weight: 500; color: var(--navy-400); }
 
-        .rate-value {
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--navy-900);
+        /* Поля ввода */
+        .field-group { margin-bottom: 12px; }
+        .field-label {
+            display: block; font-size: 13px; font-weight: 600;
+            color: var(--navy-500); margin-bottom: 6px;
         }
-
-        .rate-value .currency {
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--navy-400);
-        }
-
-        /* Ввод суммы */
-        .input-group {
-            margin-bottom: 16px;
-        }
-
-        .input-label {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--navy-500);
-            margin-bottom: 6px;
-        }
-
-        .input-wrapper {
-            position: relative;
-        }
-
-        .input-wrapper input {
-            width: 100%;
-            padding: 14px 60px 14px 16px;
-            border: 2px solid var(--navy-200);
-            border-radius: 10px;
-            font-family: inherit;
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--navy-900);
-            background: white;
-            outline: none;
+        .field-wrapper { position: relative; }
+        .field-wrapper input {
+            width: 100%; padding: 14px 60px 14px 16px;
+            border: 2px solid var(--navy-200); border-radius: 10px;
+            font-family: inherit; font-size: 18px; font-weight: 600;
+            color: var(--navy-900); background: white; outline: none;
             transition: border-color 0.2s;
         }
-
-        .input-wrapper input:focus {
-            border-color: var(--coral);
+        .field-wrapper input:focus { border-color: var(--coral); }
+        .field-wrapper input::placeholder { color: var(--navy-300); font-weight: 400; }
+        .field-suffix {
+            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+            font-size: 14px; font-weight: 700; color: var(--navy-400);
         }
 
-        .input-wrapper input::placeholder {
-            color: var(--navy-300);
-            font-weight: 400;
+        /* Кнопка свопа */
+        .swap-row {
+            display: flex; justify-content: center; align-items: center;
+            margin: 4px 0;
+        }
+        .swap-btn {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: var(--navy-100); border: 2px solid white;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            font-size: 18px; transition: all 0.2s; color: var(--navy-500);
+        }
+        .swap-btn:hover { background: var(--coral); color: white; }
+        .swap-btn.rotated { transform: rotate(180deg); }
+
+        /* Инфо под расчётом */
+        .calc-info {
+            text-align: center; font-size: 12px; color: var(--navy-400);
+            margin-top: 12px; min-height: 18px;
         }
 
-        .input-suffix {
-            position: absolute;
-            right: 16px;
-            top: 50%;
-            transform: translateY(-50%);
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--navy-400);
-        }
+        /* Ошибки и загрузка */
+        .error-state { text-align: center; padding: 40px 20px; }
+        .error-state .icon { font-size: 48px; margin-bottom: 12px; }
+        .error-state h2 { font-size: 18px; margin-bottom: 8px; }
+        .error-state p { font-size: 14px; color: var(--navy-500); }
 
-        /* Результат */
-        .result-box {
-            background: var(--navy-900);
-            border-radius: 12px;
-            padding: 20px;
-            text-align: center;
-        }
-
-        .result-label {
-            font-size: 13px;
-            color: var(--navy-400);
-            margin-bottom: 6px;
-        }
-
-        .result-amount {
-            font-size: 32px;
-            font-weight: 700;
-            color: white;
-        }
-
-        .result-amount .currency {
-            font-size: 16px;
-            font-weight: 500;
-            color: var(--navy-400);
-        }
-
-        .result-rate-info {
-            font-size: 12px;
-            color: var(--navy-500);
-            margin-top: 8px;
-        }
-
-        /* Ошибки */
-        .error-state {
-            text-align: center;
-            padding: 40px 20px;
-        }
-
-        .error-state .icon {
-            font-size: 48px;
-            margin-bottom: 12px;
-        }
-
-        .error-state h2 {
-            font-size: 18px;
-            color: var(--navy-900);
-            margin-bottom: 8px;
-        }
-
-        .error-state p {
-            font-size: 14px;
-            color: var(--navy-500);
-        }
-
-        /* Загрузка */
-        .loading {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--navy-500);
-        }
-
+        .loading { text-align: center; padding: 60px 20px; color: var(--navy-500); }
         .spinner {
-            width: 32px;
-            height: 32px;
-            border: 3px solid var(--navy-200);
-            border-top-color: var(--coral);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            margin: 0 auto 12px;
+            width: 32px; height: 32px; border: 3px solid var(--navy-200);
+            border-top-color: var(--coral); border-radius: 50%;
+            animation: spin 0.8s linear infinite; margin: 0 auto 12px;
         }
-
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* Футер */
-        .footer {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 12px;
-            color: var(--navy-400);
-        }
-
-        /* Анимация результата */
-        .result-amount.updating {
-            opacity: 0.4;
-            transition: opacity 0.15s;
-        }
+        .footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--navy-400); }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="logo">
-                <img src="/static/kyc/grusha-logo.png" alt="Grusha">
-            </div>
+            <div class="logo"><img src="/static/kyc/grusha-logo.png" alt="Grusha"></div>
             <h1>Grusha Exchange</h1>
             <div class="partner-name" id="partnerName"></div>
         </div>
 
         <!-- Загрузка -->
         <div class="card" id="loadingState">
-            <div class="loading">
-                <div class="spinner"></div>
-                <div>Загрузка...</div>
-            </div>
+            <div class="loading"><div class="spinner"></div><div>Загрузка...</div></div>
         </div>
 
         <!-- Ошибка -->
@@ -302,75 +148,75 @@
 
         <!-- Калькулятор -->
         <div class="card" id="calcState" style="display:none">
-            <div class="direction-toggle">
-                <button class="direction-btn active" data-dir="usdt-to-thb" onclick="setDirection('usdt-to-thb')">USDT → THB</button>
-                <button class="direction-btn" data-dir="thb-to-usdt" onclick="setDirection('thb-to-usdt')">THB → USDT</button>
-            </div>
-
             <div class="rate-display">
-                <div class="rate-label">Текущий курс</div>
+                <div class="rate-label" id="rateLabel">Курс USDT → THB</div>
                 <div class="rate-value">1 USDT = <span id="rateValue">—</span> <span class="currency">THB</span></div>
             </div>
 
-            <div class="input-group">
-                <label class="input-label" id="inputLabel">Отправляете</label>
-                <div class="input-wrapper">
-                    <input type="number" id="amountInput" placeholder="0" inputmode="decimal" min="0" step="any">
-                    <span class="input-suffix" id="inputCurrency">USDT</span>
+            <!-- Верхнее поле -->
+            <div class="field-group">
+                <label class="field-label" id="topLabel">Отдаёте</label>
+                <div class="field-wrapper">
+                    <input type="number" id="topInput" placeholder="0" inputmode="decimal" min="0" step="any">
+                    <span class="field-suffix" id="topCurrency">USDT</span>
                 </div>
             </div>
 
-            <div class="result-box">
-                <div class="result-label" id="resultLabel">Получаете</div>
-                <div class="result-amount" id="resultAmount">0 <span class="currency" id="resultCurrency">THB</span></div>
-                <div class="result-rate-info" id="rateInfo"></div>
+            <!-- Свопнуть -->
+            <div class="swap-row">
+                <button class="swap-btn" id="swapBtn" onclick="swapDirection()">⇅</button>
             </div>
+
+            <!-- Нижнее поле -->
+            <div class="field-group">
+                <label class="field-label" id="bottomLabel">Получаете</label>
+                <div class="field-wrapper">
+                    <input type="number" id="bottomInput" placeholder="0" inputmode="decimal" min="0" step="any">
+                    <span class="field-suffix" id="bottomCurrency">THB</span>
+                </div>
+            </div>
+
+            <div class="calc-info" id="calcInfo"></div>
         </div>
 
-        <div class="footer">
-            Курсы обновляются в реальном времени
-        </div>
+        <div class="footer">Курсы обновляются автоматически</div>
     </div>
 
     <script>
-        // Токен из URL
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
-        let currentDirection = 'usdt-to-thb';
-        let rateBuy = null;   // USDT→THB (ниже рынка)
-        let rateSell = null;  // THB→USDT (выше рынка)
-        let debounceTimer = null;
 
-        function getCurrentRate() {
-            return currentDirection === 'usdt-to-thb' ? rateBuy : rateSell;
+        // Состояние: какая валюта сверху
+        // 'usdt-top' → сверху USDT, снизу THB (режим USDT→THB, rateBuy)
+        // 'thb-top'  → сверху THB, снизу USDT (режим THB→USDT, rateSell)
+        let mode = 'usdt-top';
+        let rateBuy = null;   // USDT→THB: Binance × (1 - markup)
+        let rateSell = null;  // THB→USDT: Binance × (1 + markup)
+        let lastEdited = 'top'; // какое поле редактировали последним
+
+        function getRate() {
+            return mode === 'usdt-top' ? rateBuy : rateSell;
         }
 
         // Инициализация
         async function init() {
             if (!TOKEN) return showError();
-
             try {
                 const res = await fetch(`/api/partner/${TOKEN}/info`);
                 if (!res.ok) return showError();
-
                 const data = await res.json();
                 if (!data.success) return showError();
 
                 document.getElementById('partnerName').textContent = data.name;
                 rateBuy = data.rate_buy;
                 rateSell = data.rate_sell;
-                document.getElementById('rateValue').textContent = rateBuy?.toFixed(4) || '—';
+                updateRateDisplay();
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('calcState').style.display = 'block';
+                document.getElementById('topInput').focus();
 
-                // Автофокус на инпут
-                document.getElementById('amountInput').focus();
-
-                // Автообновление курса каждые 60 сек
                 setInterval(refreshRate, 60000);
-            } catch (e) {
-                showError();
-            }
+            } catch (e) { showError(); }
         }
 
         function showError() {
@@ -378,70 +224,91 @@
             document.getElementById('errorState').style.display = 'block';
         }
 
-        // Переключение направления
-        function setDirection(dir) {
-            currentDirection = dir;
-            document.querySelectorAll('.direction-btn').forEach(btn => {
-                btn.classList.toggle('active', btn.dataset.dir === dir);
-            });
-
-            if (dir === 'usdt-to-thb') {
-                document.getElementById('inputLabel').textContent = 'Отправляете';
-                document.getElementById('inputCurrency').textContent = 'USDT';
-                document.getElementById('resultLabel').textContent = 'Получаете';
-                document.getElementById('resultCurrency').textContent = 'THB';
-                document.getElementById('rateValue').textContent = rateBuy?.toFixed(4) || '—';
+        function updateRateDisplay() {
+            const rate = getRate();
+            document.getElementById('rateValue').textContent = rate?.toFixed(4) || '—';
+            if (mode === 'usdt-top') {
+                document.getElementById('rateLabel').textContent = 'Курс USDT → THB';
+                document.getElementById('topCurrency').textContent = 'USDT';
+                document.getElementById('bottomCurrency').textContent = 'THB';
             } else {
-                document.getElementById('inputLabel').textContent = 'Отправляете';
-                document.getElementById('inputCurrency').textContent = 'THB';
-                document.getElementById('resultLabel').textContent = 'Получаете';
-                document.getElementById('resultCurrency').textContent = 'USDT';
-                document.getElementById('rateValue').textContent = rateSell?.toFixed(4) || '—';
+                document.getElementById('rateLabel').textContent = 'Курс THB → USDT';
+                document.getElementById('topCurrency').textContent = 'THB';
+                document.getElementById('bottomCurrency').textContent = 'USDT';
             }
-
-            // Пересчитать с текущей суммой
-            calculate();
         }
 
-        // Расчёт
-        async function calculate() {
-            const input = document.getElementById('amountInput');
-            const amount = parseFloat(input.value);
-            const resultEl = document.getElementById('resultAmount');
+        // Своп направления
+        function swapDirection() {
+            const topVal = document.getElementById('topInput').value;
+            const bottomVal = document.getElementById('bottomInput').value;
 
-            if (!amount || amount <= 0) {
-                const cur = currentDirection === 'usdt-to-thb' ? 'THB' : 'USDT';
-                resultEl.innerHTML = `0 <span class="currency">${cur}</span>`;
-                document.getElementById('rateInfo').textContent = '';
-                return;
-            }
+            mode = mode === 'usdt-top' ? 'thb-top' : 'usdt-top';
+            updateRateDisplay();
 
-            resultEl.classList.add('updating');
+            // Значения меняются местами
+            document.getElementById('topInput').value = bottomVal;
+            document.getElementById('bottomInput').value = topVal;
+            lastEdited = lastEdited === 'top' ? 'bottom' : 'top';
 
-            try {
-                const res = await fetch(`/api/partner/${TOKEN}/calculate?amount=${amount}&direction=${currentDirection}`);
-                const data = await res.json();
+            // Пересчитать
+            recalculate();
 
-                if (data.success) {
-                    currentRate = data.rate;
-                    document.getElementById('rateValue').textContent = data.rate.toFixed(4);
+            // Анимация кнопки
+            document.getElementById('swapBtn').classList.toggle('rotated');
+        }
 
-                    if (currentDirection === 'usdt-to-thb') {
-                        resultEl.innerHTML = `${formatNumber(data.thb)} <span class="currency">THB</span>`;
-                        document.getElementById('rateInfo').textContent = `${formatNumber(amount)} USDT × ${data.rate} = ${formatNumber(data.thb)} THB`;
-                    } else {
-                        resultEl.innerHTML = `${formatNumber(data.usdt)} <span class="currency">USDT</span>`;
-                        document.getElementById('rateInfo').textContent = `${formatNumber(amount)} THB ÷ ${data.rate} = ${formatNumber(data.usdt)} USDT`;
-                    }
+        // Пересчёт: из одного поля вычисляем другое
+        function recalculate() {
+            const rate = getRate();
+            if (!rate) return;
+
+            const topInput = document.getElementById('topInput');
+            const bottomInput = document.getElementById('bottomInput');
+            const info = document.getElementById('calcInfo');
+
+            if (lastEdited === 'top') {
+                const amount = parseFloat(topInput.value);
+                if (!amount || amount <= 0) {
+                    bottomInput.value = '';
+                    info.textContent = '';
+                    return;
                 }
-            } catch (e) {
-                // Молча — курс мог быть недоступен
+                // Верхнее поле → считаем нижнее
+                if (mode === 'usdt-top') {
+                    // USDT → THB
+                    const thb = amount * rate;
+                    bottomInput.value = thb.toFixed(2);
+                    info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
+                } else {
+                    // THB → USDT
+                    const usdt = amount / rate;
+                    bottomInput.value = usdt.toFixed(2);
+                    info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
+                }
+            } else {
+                const amount = parseFloat(bottomInput.value);
+                if (!amount || amount <= 0) {
+                    topInput.value = '';
+                    info.textContent = '';
+                    return;
+                }
+                // Нижнее поле → считаем верхнее
+                if (mode === 'usdt-top') {
+                    // Хочу получить X THB → сколько USDT нужно
+                    const usdt = amount / rate;
+                    topInput.value = usdt.toFixed(2);
+                    info.textContent = `${fmt(amount)} THB ÷ ${rate.toFixed(4)} = ${fmt(usdt)} USDT`;
+                } else {
+                    // Хочу получить X USDT → сколько THB нужно
+                    const thb = amount * rate;
+                    topInput.value = thb.toFixed(2);
+                    info.textContent = `${fmt(amount)} USDT × ${rate.toFixed(4)} = ${fmt(thb)} THB`;
+                }
             }
-
-            resultEl.classList.remove('updating');
         }
 
-        // Обновление курса
+        // Обновление курса с сервера
         async function refreshRate() {
             try {
                 const res = await fetch(`/api/partner/${TOKEN}/info`);
@@ -449,27 +316,24 @@
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
-                    const rate = getCurrentRate();
-                    document.getElementById('rateValue').textContent = rate?.toFixed(4) || '—';
-                    // Если есть сумма — пересчитать
-                    const amount = parseFloat(document.getElementById('amountInput').value);
-                    if (amount > 0) calculate();
+                    updateRateDisplay();
+                    recalculate();
                 }
             } catch (e) {}
         }
 
-        // Форматирование числа
-        function formatNumber(n) {
-            return new Intl.NumberFormat('ru-RU', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
-            }).format(n);
+        function fmt(n) {
+            return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
         }
 
-        // Дебаунс ввода
-        document.getElementById('amountInput').addEventListener('input', () => {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(calculate, 300);
+        // Обработчики ввода
+        document.getElementById('topInput').addEventListener('input', () => {
+            lastEdited = 'top';
+            recalculate();
+        });
+        document.getElementById('bottomInput').addEventListener('input', () => {
+            lastEdited = 'bottom';
+            recalculate();
         });
 
         init();
