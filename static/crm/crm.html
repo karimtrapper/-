@@ -2389,7 +2389,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${deal.client_name || '-'}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
-                            <td>${deal.is_custom
+                            <td>${deal.custom_payout_currency
                             ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                             : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
@@ -2538,7 +2538,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${deal.client_name || '-'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
-                            <td>${deal.is_custom
+                            <td>${deal.custom_payout_currency
                                 ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                                 : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
@@ -4763,14 +4763,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="card" style="background: #fef3c7; margin-bottom: 1rem;">
                             <h4 style="margin-bottom: 0.5rem;">${founder.founder_name} - ожидает возмещения</h4>
                             <p style="color: #92400e; margin-bottom: 1rem;">
-                                <strong>Всего THB:</strong> ${formatNumber(founder.deals.reduce((sum, d) => sum + (d.payout_amount_thb || d.custom_payout_amount || 0), 0))} THB
+                                <strong>Всего:</strong> ${formatNumber(founder.deals.reduce((sum, d) => sum + (d.payout_amount_thb || d.custom_payout_amount || 0), 0))}
                                 (${founder.deals.length} сделок)
                             </p>
 
                             <div style="margin-bottom: 1rem;">
                                 ${founder.deals.map(deal => {
                                     const thbAmount = deal.payout_amount_thb || deal.custom_payout_amount || 0;
-                                    const thbLabel = deal.is_custom && deal.custom_payout_currency ? `${formatNumber(thbAmount)} ${deal.custom_payout_currency}` : `${formatNumber(thbAmount)} THB`;
+                                    const thbLabel = deal.custom_payout_currency ? `${formatNumber(thbAmount)} ${deal.custom_payout_currency}` : `${formatNumber(thbAmount)} THB`;
                                     return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbAmount}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
