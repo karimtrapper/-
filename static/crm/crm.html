@@ -670,6 +670,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="verification">Сверка</button>
             <button class="nav-tab" data-section="kyc">KYC</button>
             <button class="nav-tab" data-section="partners">Партнёры</button>
+            <button class="nav-tab" data-section="referrers">Рефереры</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -1583,6 +1584,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
             </div>
         </section>
+
+        <!-- Referrers Section -->
+        <section id="referrers" class="section">
+            <div class="card">
+                <div class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>Рефереры</span>
+                    <button class="btn btn-primary" onclick="openReferrerModal()" style="font-size: 0.9rem;">
+                        + Добавить реферера
+                    </button>
+                </div>
+                <div id="referrersList" style="margin-top: 1rem;">
+                    <div style="color: #999; font-style: italic; padding: 1rem; text-align: center;">
+                        Загрузка...
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <!-- Partner Modal -->
@@ -1604,6 +1622,50 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
                         Процент сверх курса Binance. Например 1.4% — клиент получит курс на 1.4% хуже рынка.
                     </small>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">Сохранить</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Referrer Modal -->
+    <div id="referrerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="referrerModalTitle">Добавить реферера</h3>
+                <button class="modal-close" onclick="closeReferrerModal()">&times;</button>
+            </div>
+            <form id="referrerForm" onsubmit="saveReferrer(event)">
+                <input type="hidden" id="referrerEditId">
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Имя реферера</label>
+                    <input type="text" class="form-control" id="referrerName" placeholder="Имя клиента" required>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Код (необязательно, сгенерируется автоматически)</label>
+                    <input type="text" class="form-control" id="referrerCode" placeholder="GR-KARIM" style="text-transform: uppercase;">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Telegram</label>
+                    <input type="text" class="form-control" id="referrerTelegram" placeholder="@username">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Комиссия (% от прибыли)</label>
+                    <input type="number" class="form-control" id="referrerPercent" value="10" step="1" min="1" max="100" required>
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
+                        Процент от прибыли по каждой сделке приведённого клиента.
+                    </small>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Валюта выплаты</label>
+                    <select class="form-control" id="referrerPayoutCurrency">
+                        <option value="USDT">USDT</option>
+                        <option value="THB">THB (баты)</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Заметки</label>
+                    <textarea class="form-control" id="referrerNotes" rows="2" placeholder="Доп. информация"></textarea>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Сохранить</button>
             </form>
@@ -2049,6 +2111,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'transactions': loadTransactions(); break;
                     case 'managers': loadManagers(); loadWebhookConfig(); break;
                     case 'kyc': loadKYCSection(); break;
+                    case 'partners': loadPartners(); break;
+                    case 'referrers': loadReferrers(); break;
                 }
 
                 // Update bottom nav highlight
@@ -3023,6 +3087,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'managers': loadManagers(); loadWebhookConfig(); break;
                 case 'kyc': loadKYCSection(); break;
                 case 'partners': loadPartners(); break;
+                case 'referrers': loadReferrers(); break;
             }
 
             // Update bottom nav highlight
@@ -6122,6 +6187,162 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (data.success) {
                     showToast(active ? 'Партнёр активирован' : 'Партнёр деактивирован');
                     loadPartners();
+                }
+            } catch (e) {
+                showToast('Ошибка сети', 'error');
+            }
+        }
+
+        // ==================== REFERRERS ====================
+
+        async function loadReferrers() {
+            try {
+                const res = await fetch(`${API_URL}/api/referrers`);
+                const data = await res.json();
+                const list = document.getElementById('referrersList');
+
+                if (!data.success || data.referrers.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет рефереров. Нажмите «+ Добавить реферера»</div>';
+                    return;
+                }
+
+                const baseUrl = window.location.origin;
+                list.innerHTML = data.referrers.map(r => `
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
+                        <div style="flex:1;min-width:0;">
+                            <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span></div>
+                            <div style="font-size:12px;color:#64748b;margin-top:2px;">
+                                Комиссия: ${r.default_percent}% · Выплата: ${r.payout_currency || 'USDT'} · Клиентов: ${r.total_referred_clients || 0} · Сделок: ${r.total_deals || 0}
+                                ${r.telegram ? ' · TG: ' + r.telegram : ''}
+                                ${r.active ? '' : ' · <span style="color:#ef4444;">Неактивен</span>'}
+                            </div>
+                            <div style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
+                                <span style="color:#22c55e;">Заработал: $${(r.total_earned_usdt || 0).toFixed(2)}</span>
+                                <span style="color:#f97316;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
+                                <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:6px;">
+                                <input type="text" readonly value="${baseUrl}/ref/${r.token}"
+                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка на статистику скопирована')">
+                                <input type="text" readonly value="${r.referral_link}"
+                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Реферальная ссылка скопирована')">
+                            </div>
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
+                            <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="editReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}','${r.code}','${r.telegram || ''}',${r.default_percent},'${r.payout_currency || 'USDT'}','${(r.notes || '').replace(/'/g,"\\'").replace(/\n/g,' ')}')">Изм.</button>
+                            <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
+                            ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
+                                onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                console.error('Ошибка загрузки рефереров:', e);
+            }
+        }
+
+        function openReferrerModal() {
+            document.getElementById('referrerEditId').value = '';
+            document.getElementById('referrerName').value = '';
+            document.getElementById('referrerCode').value = '';
+            document.getElementById('referrerTelegram').value = '';
+            document.getElementById('referrerPercent').value = '10';
+            document.getElementById('referrerPayoutCurrency').value = 'USDT';
+            document.getElementById('referrerNotes').value = '';
+            document.getElementById('referrerModalTitle').textContent = 'Добавить реферера';
+            document.getElementById('referrerModal').classList.add('active');
+        }
+
+        function editReferrer(id, name, code, telegram, percent, payoutCurrency, notes) {
+            document.getElementById('referrerEditId').value = id;
+            document.getElementById('referrerName').value = name;
+            document.getElementById('referrerCode').value = code;
+            document.getElementById('referrerTelegram').value = telegram;
+            document.getElementById('referrerPercent').value = percent;
+            document.getElementById('referrerPayoutCurrency').value = payoutCurrency || 'USDT';
+            document.getElementById('referrerNotes').value = notes;
+            document.getElementById('referrerModalTitle').textContent = 'Редактировать реферера';
+            document.getElementById('referrerModal').classList.add('active');
+        }
+
+        function closeReferrerModal() {
+            document.getElementById('referrerModal').classList.remove('active');
+        }
+
+        async function saveReferrer(e) {
+            e.preventDefault();
+            const editId = document.getElementById('referrerEditId').value;
+            const payload = {
+                name: document.getElementById('referrerName').value.trim(),
+                code: document.getElementById('referrerCode').value.trim().toUpperCase(),
+                telegram: document.getElementById('referrerTelegram').value.trim(),
+                default_percent: parseFloat(document.getElementById('referrerPercent').value),
+                payout_currency: document.getElementById('referrerPayoutCurrency').value,
+                notes: document.getElementById('referrerNotes').value.trim(),
+            };
+
+            try {
+                let res;
+                if (editId) {
+                    res = await fetch(`${API_URL}/api/referrers/${editId}`, {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                } else {
+                    res = await fetch(`${API_URL}/api/referrers`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload)
+                    });
+                }
+                const data = await res.json();
+                if (data.success) {
+                    showToast(editId ? 'Реферер обновлён' : 'Реферер создан');
+                    closeReferrerModal();
+                    loadReferrers();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
+                }
+            } catch (e) {
+                showToast('Ошибка сети', 'error');
+            }
+        }
+
+        async function toggleReferrer(id, active) {
+            try {
+                const res = await fetch(`${API_URL}/api/referrers/${id}`, {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({active})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(active ? 'Реферер активирован' : 'Реферер деактивирован');
+                    loadReferrers();
+                }
+            } catch (e) {
+                showToast('Ошибка сети', 'error');
+            }
+        }
+
+        async function payReferrer(id, name, amount) {
+            if (!confirm(`Выплатить $${amount.toFixed(2)} рефереру ${name}?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/referrers/${id}/pay`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Выплачено $${data.amount_usdt.toFixed(2)} (${data.deals_paid} сделок)`);
+                    loadReferrers();
+                } else {
+                    showToast(data.error || 'Ошибка', 'error');
                 }
             } catch (e) {
                 showToast('Ошибка сети', 'error');

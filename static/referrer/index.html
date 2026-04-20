@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grusha Exchange — Реферальная программа</title>
+    <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy-900: #0F172A;
+            --navy-800: #1E293B;
+            --navy-700: #334155;
+            --navy-500: #64748B;
+            --navy-400: #94A3B8;
+            --navy-300: #CBD5E1;
+            --navy-200: #E2E8F0;
+            --navy-100: #F1F5F9;
+            --navy-50: #F8FAFC;
+            --coral: #F97316;
+            --coral-hover: #EA580C;
+            --green: #22C55E;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--navy-50); color: var(--navy-900);
+            min-height: 100vh; display: flex; flex-direction: column;
+            align-items: center; padding: 24px 16px;
+        }
+        .container { width: 100%; max-width: 480px; }
+
+        .header { text-align: center; margin-bottom: 24px; }
+        .header .logo { width: 56px; height: 56px; margin: 0 auto 12px; }
+        .header .logo img { width: 100%; height: 100%; border-radius: 12px; }
+        .header h1 { font-size: 20px; font-weight: 700; }
+        .header .subtitle { font-size: 14px; color: var(--navy-500); margin-top: 4px; }
+
+        .card {
+            background: white; border-radius: 16px; padding: 24px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+            border: 1px solid var(--navy-100);
+            margin-bottom: 16px;
+        }
+        .card-title { font-size: 14px; font-weight: 600; color: var(--navy-500); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+        /* Статистика */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .stat-item { text-align: center; padding: 16px 8px; background: var(--navy-50); border-radius: 12px; }
+        .stat-value { font-size: 24px; font-weight: 700; color: var(--navy-900); }
+        .stat-value.green { color: var(--green); }
+        .stat-value.coral { color: var(--coral); }
+        .stat-label { font-size: 12px; color: var(--navy-500); margin-top: 4px; }
+
+        /* Реферальная ссылка */
+        .ref-link-box {
+            display: flex; align-items: center; gap: 8px;
+            background: var(--navy-50); border-radius: 12px; padding: 12px 16px;
+        }
+        .ref-link-box input {
+            flex: 1; border: none; background: transparent; font-size: 14px;
+            color: var(--navy-900); font-family: inherit; outline: none;
+        }
+        .copy-btn {
+            padding: 8px 16px; background: var(--coral); color: white;
+            border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+            cursor: pointer; white-space: nowrap;
+        }
+        .copy-btn:hover { background: var(--coral-hover); }
+        .copy-btn.copied { background: var(--green); }
+
+        /* Таблица сделок */
+        .deals-table { width: 100%; border-collapse: collapse; }
+        .deals-table th { font-size: 12px; color: var(--navy-500); font-weight: 600; text-align: left; padding: 8px 0; border-bottom: 1px solid var(--navy-200); }
+        .deals-table td { font-size: 14px; padding: 10px 0; border-bottom: 1px solid var(--navy-100); }
+        .deals-table .paid { color: var(--green); }
+        .deals-table .unpaid { color: var(--coral); }
+
+        .empty-state { text-align: center; padding: 32px; color: var(--navy-400); font-size: 14px; }
+
+        .loading { text-align: center; padding: 48px; color: var(--navy-400); }
+        .error { text-align: center; padding: 48px; color: #EF4444; }
+
+        .percent-badge {
+            display: inline-block; padding: 4px 10px; background: var(--navy-100);
+            border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--navy-700);
+        }
+    </style>
+</head>
+<body>
+    <div class="container" id="app">
+        <div class="loading" id="loading">Загрузка...</div>
+    </div>
+
+    <script>
+        const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
+        if (!token) {
+            document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
+        } else {
+            loadStats();
+        }
+
+        async function loadStats() {
+            try {
+                const resp = await fetch(`/api/ref/${token}/stats`);
+                const data = await resp.json();
+
+                if (!data.success) {
+                    document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
+                    return;
+                }
+
+                const d = data;
+                document.getElementById('app').innerHTML = `
+                    <div class="header">
+                        <div class="logo"><img src="/static/kyc/grusha-logo.png" alt="Grusha"></div>
+                        <h1>${d.name}</h1>
+                        <div class="subtitle">Реферальная программа Grusha <span class="percent-badge">${d.default_percent}% · ${d.payout_currency || 'USDT'}</span></div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Ссылка на сайт</div>
+                        <div class="ref-link-box">
+                            <input type="text" id="refLink" value="${d.referral_link}" readonly>
+                            <button class="copy-btn" onclick="copyField('refLink')">Копировать</button>
+                        </div>
+                        <div style="margin-top:12px;">
+                            <div style="font-size:12px;color:var(--navy-500);margin-bottom:6px;font-weight:600;">Ссылка на Telegram-бот</div>
+                            <div class="ref-link-box">
+                                <input type="text" id="botLink" value="${d.bot_link}" readonly>
+                                <button class="copy-btn" onclick="copyField('botLink')">Копировать</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Статистика</div>
+                        <div class="stats-grid">
+                            <div class="stat-item">
+                                <div class="stat-value">${d.total_referred_clients}</div>
+                                <div class="stat-label">Приведено клиентов</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${d.total_deals}</div>
+                                <div class="stat-label">Сделок</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value green">$${d.total_earned_usdt.toFixed(2)}</div>
+                                <div class="stat-label">Заработано</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value coral">$${d.pending_usdt.toFixed(2)}</div>
+                                <div class="stat-label">К выплате</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Последние сделки</div>
+                        ${d.recent_deals.length ? renderDeals(d.recent_deals) : '<div class="empty-state">Пока нет завершённых сделок</div>'}
+                    </div>
+                `;
+            } catch (e) {
+                document.getElementById('app').innerHTML = '<div class="error">Ошибка загрузки данных</div>';
+            }
+        }
+
+        function renderDeals(deals) {
+            let rows = deals.map(d => `
+                <tr>
+                    <td>${d.date || '—'}</td>
+                    <td>$${(d.volume_usdt || 0).toFixed(2)}</td>
+                    <td>$${(d.commission_usdt || 0).toFixed(2)}</td>
+                    <td class="${d.paid ? 'paid' : 'unpaid'}">${d.paid ? 'Выплачено' : 'Ожидает'}</td>
+                </tr>
+            `).join('');
+            return `
+                <table class="deals-table">
+                    <thead><tr><th>Дата</th><th>Объём</th><th>Комиссия</th><th>Статус</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+        }
+
+        function copyField(inputId) {
+            const input = document.getElementById(inputId);
+            input.select();
+            navigator.clipboard.writeText(input.value).then(() => {
+                const btn = input.parentElement.querySelector('.copy-btn');
+                btn.textContent = 'Скопировано';
+                btn.classList.add('copied');
+                setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('copied'); }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

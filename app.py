@@ -41,6 +41,7 @@ PUBLIC_PATHS = [
     '/api/rates', '/api/calculate',           # Калькулятор
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/partner/',                           # Партнёрский калькулятор
+    '/api/ref/',                               # Реферальная статистика
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
 ]
@@ -196,11 +197,15 @@ class Client(Base):
     total_volume_usdt = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     notes = Column(Text)
+    referrer_id = Column(Integer, ForeignKey('referrers.id'), nullable=True)
+    referrer = relationship("Referrer", back_populates="referred_clients", foreign_keys=[referrer_id])
     deals = relationship("Deal", back_populates="client")
-    
+
     def to_dict(self):
         return {'id': self.id, 'name': self.name, 'telegram': self.telegram, 'phone': self.phone,
-                'total_deals': self.total_deals, 'total_volume_usdt': self.total_volume_usdt}
+                'total_deals': self.total_deals, 'total_volume_usdt': self.total_volume_usdt,
+                'referrer_id': self.referrer_id,
+                'referrer_name': self.referrer.name if self.referrer else None}
 
 class Partner(Base):
     """Партнёр (риелтор) — доступ к персональному калькулятору по ссылке"""
@@ -217,6 +222,46 @@ class Partner(Base):
             'id': self.id, 'name': self.name, 'token': self.token,
             'markup_percent': self.markup_percent, 'active': self.active,
             'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class Referrer(Base):
+    """Реферер — B2C клиент, который приводит новых клиентов за комиссию"""
+    __tablename__ = 'referrers'
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('clients.id'), nullable=True)
+    name = Column(String(100), nullable=False)
+    code = Column(String(20), unique=True, nullable=False, index=True)
+    token = Column(String(32), unique=True, nullable=False, index=True)
+    telegram = Column(String(50))
+    default_percent = Column(Float, default=10.0)
+    payout_currency = Column(String(10), default='USDT')  # USDT или THB
+    active = Column(Boolean, default=True)
+    total_referred_clients = Column(Integer, default=0)
+    total_deals = Column(Integer, default=0)
+    total_earned_usdt = Column(Float, default=0)
+    total_paid_usdt = Column(Float, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text)
+
+    referred_clients = relationship("Client", back_populates="referrer", foreign_keys="Client.referrer_id")
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'client_id': self.client_id,
+            'name': self.name, 'code': self.code, 'token': self.token,
+            'telegram': self.telegram, 'default_percent': self.default_percent,
+            'payout_currency': self.payout_currency or 'USDT',
+            'active': self.active,
+            'total_referred_clients': self.total_referred_clients,
+            'total_deals': self.total_deals,
+            'total_earned_usdt': self.total_earned_usdt,
+            'total_paid_usdt': self.total_paid_usdt,
+            'pending_usdt': round((self.total_earned_usdt or 0) - (self.total_paid_usdt or 0), 2),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'notes': self.notes,
+            'referral_link': f'https://grusha.space/?ref={self.code}',
+            'bot_link': f'https://t.me/exgreen_pro_bot?start=ref_{self.code.replace("-", "")}',
         }
 
 
@@ -477,6 +522,8 @@ class Deal(Base):
     profit_usdt = Column(Float)
     profit_percent = Column(Float)
     exchange_rate = Column(Float)
+    referrer_id = Column(Integer, ForeignKey('referrers.id'), nullable=True)
+    referrer_ref = relationship("Referrer", foreign_keys=[referrer_id])
     referrer_name = Column(String(100))
     referrer_percent = Column(Float)
     referrer_fixed_usdt = Column(Float)
@@ -527,9 +574,11 @@ class Deal(Base):
             'profit_usdt': self.profit_usdt,
             'profit_percent': self.profit_percent,
             'net_profit_usdt': self.net_profit_usdt,
+            'referrer_id': self.referrer_id,
             'referrer_name': self.referrer_name,
             'referrer_percent': self.referrer_percent,
             'referrer_payout_usdt': self.referrer_payout_usdt,
+            'referrer_paid': self.referrer_paid,
             'is_custom': self.is_custom,
             'custom_payin_currency': self.custom_payin_currency,
             'custom_payin_amount': self.custom_payin_amount,
@@ -567,6 +616,18 @@ try:
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_balance BOOLEAN DEFAULT FALSE"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
+            except: pass
+        # Реферальная система
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES referrers(id)"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES referrers(id)"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS payout_currency VARCHAR(10) DEFAULT 'USDT'"))
+        else:
+            try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_id INTEGER"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN payout_currency VARCHAR(10) DEFAULT 'USDT'"))
             except: pass
         conn.commit()
     print("✅ Database migration successful")
@@ -1412,6 +1473,19 @@ def create_deal():
             if client:
                 client_name = client.name
 
+        # Авто-заполнение реферера: если у клиента есть привязанный реферер
+        ref_name = data.get('referrer_name')
+        ref_percent = data.get('referrer_percent')
+        ref_id = data.get('referrer_id')
+        if client_id and not ref_name:
+            client_obj = session.query(Client).get(client_id)
+            if client_obj and client_obj.referrer_id:
+                referrer = session.query(Referrer).get(client_obj.referrer_id)
+                if referrer and referrer.active:
+                    ref_id = referrer.id
+                    ref_name = referrer.name
+                    ref_percent = referrer.default_percent
+
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
@@ -1432,8 +1506,9 @@ def create_deal():
             payout_amount_usdt=data.get('payout_amount_usdt'),
             payout_tx_hash=data.get('payout_tx_hash'),
             payout_founder_name=data.get('payout_founder_name'),
-            referrer_name=data.get('referrer_name'),
-            referrer_percent=data.get('referrer_percent'),
+            referrer_id=ref_id,
+            referrer_name=ref_name,
+            referrer_percent=ref_percent,
             profit_usdt=data.get('profit_usdt'),
             profit_percent=data.get('profit_percent'),
             net_profit_usdt=data.get('net_profit_usdt'),
@@ -1510,8 +1585,10 @@ def update_deal(deal_id):
         
         for field in ['manager_name', 'client_name', 'payin_amount_rub', 'payin_amount_usdt',
                       'payin_rate_rub_usdt', 'payin_tx_hash', 'payout_amount_thb', 'payout_amount_usdt',
-                      'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt', 'referrer_name',
-                      'referrer_percent', 'referrer_payout_usdt', 'referrer_fixed_usdt', 'notes', 'client_id',
+                      'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt',
+                      'referrer_id', 'referrer_name',
+                      'referrer_percent', 'referrer_payout_usdt', 'referrer_fixed_usdt',
+                      'referrer_paid', 'notes', 'client_id',
                       'payout_founder_name', 'payout_wallet_id',
                       'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
                       'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate',
@@ -1581,6 +1658,17 @@ def update_deal(deal_id):
 
         session.commit()
         
+        # Обновление агрегатов реферера при завершении сделки
+        if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
+            if deal.referrer_id:
+                referrer = session.query(Referrer).get(deal.referrer_id)
+                if referrer:
+                    referrer.total_deals = (referrer.total_deals or 0) + 1
+                    referrer.total_earned_usdt = round(
+                        (referrer.total_earned_usdt or 0) + (deal.referrer_payout_usdt or 0), 2
+                    )
+                    session.commit()
+
         # Webhook при завершении
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
@@ -3392,6 +3480,267 @@ def _delete_kyc_files(token):
     upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
     if os.path.exists(upload_dir):
         shutil.rmtree(upload_dir, ignore_errors=True)
+
+# ==================== REFERRAL SYSTEM ====================
+
+@app.route('/ref/<token>')
+def referrer_page(token):
+    """Страница статистики реферера (публичная, по токену)"""
+    return send_from_directory('static/referrer', 'index.html')
+
+
+@app.route('/api/ref/<token>/stats', methods=['GET'])
+def referrer_stats(token):
+    """Публичная статистика реферера"""
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        # Последние сделки (без имён клиентов — конфиденциальность)
+        deals = db.query(Deal).filter(
+            Deal.referrer_id == referrer.id,
+            Deal.status == DealStatus.COMPLETED
+        ).order_by(Deal.created_at.desc()).limit(20).all()
+
+        recent_deals = [{
+            'date': d.created_at.strftime('%d.%m.%Y') if d.created_at else None,
+            'volume_usdt': d.payout_amount_usdt,
+            'commission_usdt': d.referrer_payout_usdt,
+            'paid': d.referrer_paid or False,
+        } for d in deals]
+
+        return jsonify({
+            'success': True,
+            'name': referrer.name,
+            'code': referrer.code,
+            'referral_link': f'https://grusha.space/?ref={referrer.code}',
+            'bot_link': f'https://t.me/exgreen_pro_bot?start=ref_{referrer.code.replace("-", "")}',
+            'payout_currency': referrer.payout_currency or 'USDT',
+            'default_percent': referrer.default_percent,
+            'total_referred_clients': referrer.total_referred_clients or 0,
+            'total_deals': referrer.total_deals or 0,
+            'total_earned_usdt': referrer.total_earned_usdt or 0,
+            'total_paid_usdt': referrer.total_paid_usdt or 0,
+            'pending_usdt': round((referrer.total_earned_usdt or 0) - (referrer.total_paid_usdt or 0), 2),
+            'recent_deals': recent_deals,
+        })
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers', methods=['GET'])
+def get_referrers():
+    """Список рефереров (для CRM)"""
+    db = get_session()
+    try:
+        referrers = db.query(Referrer).order_by(Referrer.created_at.desc()).all()
+        return jsonify({'success': True, 'referrers': [r.to_dict() for r in referrers]})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers', methods=['POST'])
+def create_referrer():
+    """Создать реферера"""
+    import secrets
+    data = request.get_json() or {}
+    name = data.get('name', '').strip()
+    code = data.get('code', '').strip().upper()
+    default_percent = data.get('default_percent', 10.0)
+    payout_currency = data.get('payout_currency', 'USDT').upper()
+    if payout_currency not in ('USDT', 'THB'):
+        payout_currency = 'USDT'
+    telegram = data.get('telegram', '').strip()
+
+    if not name:
+        return jsonify({'success': False, 'error': 'Укажите имя'}), 400
+
+    db = get_session()
+    try:
+        # Генерируем код если не задан
+        if not code:
+            # GR-ИМЯ (транслит первых 5 букв)
+            import re
+            slug = re.sub(r'[^A-Za-z0-9]', '', name.upper())[:6]
+            code = f'GR-{slug}' if slug else f'GR-{secrets.token_hex(3).upper()}'
+
+        # Проверяем уникальность кода
+        existing = db.query(Referrer).filter(Referrer.code == code).first()
+        if existing:
+            return jsonify({'success': False, 'error': f'Код {code} уже занят'}), 400
+
+        token = secrets.token_hex(16)  # 32 символа
+        referrer = Referrer(
+            name=name, code=code, token=token,
+            telegram=telegram,
+            default_percent=float(default_percent),
+            payout_currency=payout_currency,
+            client_id=data.get('client_id'),
+        )
+        db.add(referrer)
+        db.commit()
+        return jsonify({'success': True, 'referrer': referrer.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/<int:referrer_id>', methods=['PUT'])
+def update_referrer(referrer_id):
+    """Обновить реферера"""
+    data = request.get_json() or {}
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        if 'name' in data:
+            referrer.name = data['name'].strip()
+        if 'default_percent' in data:
+            referrer.default_percent = float(data['default_percent'])
+        if 'active' in data:
+            referrer.active = bool(data['active'])
+        if 'telegram' in data:
+            referrer.telegram = data['telegram'].strip()
+        if 'payout_currency' in data:
+            pc = data['payout_currency'].upper()
+            if pc in ('USDT', 'THB'):
+                referrer.payout_currency = pc
+        if 'notes' in data:
+            referrer.notes = data['notes']
+        if 'total_paid_usdt' in data:
+            referrer.total_paid_usdt = float(data['total_paid_usdt'])
+
+        db.commit()
+        return jsonify({'success': True, 'referrer': referrer.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/<int:referrer_id>', methods=['DELETE'])
+def delete_referrer(referrer_id):
+    """Деактивировать реферера (не удаляем — мягкое удаление)"""
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        referrer.active = False
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/lookup', methods=['GET'])
+def lookup_referrer():
+    """Найти реферера по коду (для DealCloser и CRM).
+    Нормализует код: GR-ED и GRED находят одного реферера.
+    """
+    import re
+    code = request.args.get('code', '').strip().upper()
+    if not code:
+        return jsonify({'success': False, 'error': 'Укажите код'}), 400
+
+    db = get_session()
+    try:
+        # Точный поиск
+        referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
+        # Нормализованный поиск (без дефисов/подчёркиваний) — для start-параметра TG
+        if not referrer:
+            normalized = re.sub(r'[^A-Z0-9]', '', code)
+            for r in db.query(Referrer).filter(Referrer.active == True).all():
+                if re.sub(r'[^A-Z0-9]', '', r.code) == normalized:
+                    referrer = r
+                    break
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        return jsonify({'success': True, 'referrer': referrer.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/clients/<int:client_id>/set-referrer', methods=['POST'])
+def set_client_referrer(client_id):
+    """Привязать клиента к рефереру по коду"""
+    data = request.get_json() or {}
+    code = data.get('code', '').strip().upper()
+    referrer_id = data.get('referrer_id')
+
+    db = get_session()
+    try:
+        client = db.query(Client).get(client_id)
+        if not client:
+            return jsonify({'success': False, 'error': 'Клиент не найден'}), 404
+
+        if code:
+            import re
+            referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
+            # Нормализованный поиск (GRED → GR-ED)
+            if not referrer:
+                normalized = re.sub(r'[^A-Z0-9]', '', code)
+                for r in db.query(Referrer).filter(Referrer.active == True).all():
+                    if re.sub(r'[^A-Z0-9]', '', r.code) == normalized:
+                        referrer = r
+                        break
+        elif referrer_id:
+            referrer = db.query(Referrer).get(referrer_id)
+        else:
+            return jsonify({'success': False, 'error': 'Укажите code или referrer_id'}), 400
+
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        # Привязываем (первая привязка, lifetime)
+        if client.referrer_id and client.referrer_id != referrer.id:
+            return jsonify({'success': False, 'error': f'Клиент уже привязан к рефереру {client.referrer.name}'}), 400
+
+        if not client.referrer_id:
+            client.referrer_id = referrer.id
+            referrer.total_referred_clients = (referrer.total_referred_clients or 0) + 1
+
+        db.commit()
+        return jsonify({'success': True, 'client': client.to_dict(), 'referrer': referrer.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/<int:referrer_id>/pay', methods=['POST'])
+def pay_referrer(referrer_id):
+    """Отметить выплату рефереру (все неоплаченные сделки)"""
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        # Находим все завершённые неоплаченные сделки
+        unpaid_deals = db.query(Deal).filter(
+            Deal.referrer_id == referrer.id,
+            Deal.status == DealStatus.COMPLETED,
+            Deal.referrer_paid == False,
+            Deal.referrer_payout_usdt > 0,
+        ).all()
+
+        total_paid = 0
+        for deal in unpaid_deals:
+            deal.referrer_paid = True
+            total_paid += deal.referrer_payout_usdt or 0
+
+        referrer.total_paid_usdt = round((referrer.total_paid_usdt or 0) + total_paid, 2)
+        db.commit()
+
+        return jsonify({
+            'success': True,
+            'deals_paid': len(unpaid_deals),
+            'amount_usdt': round(total_paid, 2),
+            'referrer': referrer.to_dict(),
+        })
+    finally:
+        db.close()
+
 
 # ==================== PARTNER CALCULATOR ====================
 
