@@ -3514,6 +3514,11 @@ def referrer_stats(token):
             'paid': d.referrer_paid or False,
         } for d in deals]
 
+        # Считаем из реальных данных (не из кэшированных агрегатов)
+        total_earned = sum(d.referrer_payout_usdt or 0 for d in deals)
+        total_paid = sum((d.referrer_payout_usdt or 0) for d in deals if d.referrer_paid)
+        referred_clients = db.query(Client).filter(Client.referrer_id == referrer.id).count()
+
         return jsonify({
             'success': True,
             'name': referrer.name,
@@ -3523,11 +3528,11 @@ def referrer_stats(token):
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
             'payout_currency': referrer.payout_currency or 'USDT',
             'default_percent': referrer.default_percent,
-            'total_referred_clients': referrer.total_referred_clients or 0,
-            'total_deals': referrer.total_deals or 0,
-            'total_earned_usdt': referrer.total_earned_usdt or 0,
-            'total_paid_usdt': referrer.total_paid_usdt or 0,
-            'pending_usdt': round((referrer.total_earned_usdt or 0) - (referrer.total_paid_usdt or 0), 2),
+            'total_referred_clients': referred_clients,
+            'total_deals': len(deals),
+            'total_earned_usdt': round(total_earned, 2),
+            'total_paid_usdt': round(total_paid, 2),
+            'pending_usdt': round(total_earned - total_paid, 2),
             'recent_deals': recent_deals,
         })
     finally:
