@@ -87,7 +87,8 @@ let state = {
     lastUpdateTimestamp: 0, // Время последнего обновления курсов
     preciseRateTimestamp: 0, // Когда получен точный курс Binance
     preciseRateLocked: false, // Точный курс зафиксирован (не обновлять 5 мин)
-    preciseRateTimer: null // ID таймера обратного отсчёта
+    preciseRateTimer: null, // ID таймера обратного отсчёта
+    _calcVersion: 0 // Счётчик версий расчёта (защита от race condition)
 };
 
 // Проверка авторизации — редирект на логин если не залогинен
@@ -370,14 +371,13 @@ function toggleDiscount() {
         }
     } else {
         wrapper.style.display = 'none';
-    }
-    
-    // СРАЗУ вызываем расчет если сумма введена
-    const amount = getAmount();
-    if (amount > 0) {
-        calculate();
-    } else {
-        hideResults();
+        // Скидка выключена — пересчитываем без маржи
+        const amount = getAmount();
+        if (amount > 0) {
+            calculate();
+        } else {
+            hideResults();
+        }
     }
 }
 
@@ -597,10 +597,13 @@ function getAmount() {
 
 // Основная функция расчета
 async function calculate() {
+    // Защита от race condition: запоминаем версию, проверяем перед отображением
+    const thisCalcVersion = ++state._calcVersion;
+
     const amount = getAmount();
     const resultsSection = document.getElementById('resultsSection');
     const calculateBtn = document.getElementById('calculateBtn');
-    
+
     if (amount <= 0) {
         resultsSection.style.display = 'none';
         return;
@@ -665,11 +668,12 @@ async function calculate() {
             
             if (response.ok) {
                 const result = await response.json();
+                if (thisCalcVersion !== state._calcVersion) return;
                 displayResult(result);
             } else {
                 throw new Error('Calculation API error');
             }
-            
+
         } else if (CONFIG.USE_API && state.method === 'doverka') {
             // Для Doverka сценарии rub-to-thb и thb-to-rub - это direction amount/target для одного сценария
             let effectiveScenario = state.scenario;
@@ -703,21 +707,26 @@ async function calculate() {
             
             if (response.ok) {
                 const result = await response.json();
+                if (thisCalcVersion !== state._calcVersion) return;
                 displayResult(result);
             } else {
                 throw new Error('Calculation API error');
             }
-            
+
         } else {
             // Локальный расчет (фоллбэк)
             const result = calculateLocal(amount);
+            if (thisCalcVersion !== state._calcVersion) return;
             displayResult(result);
         }
         
-        resultsSection.style.display = 'block';
-        
+        if (thisCalcVersion === state._calcVersion) {
+            resultsSection.style.display = 'block';
+        }
+
     } catch (error) {
         console.error('Calculation error:', error);
+        if (thisCalcVersion !== state._calcVersion) return;
         // Фоллбэк на локальный расчет
         const result = calculateLocal(amount);
         displayResult(result);
