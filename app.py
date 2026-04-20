@@ -751,14 +751,14 @@ def sync_deals_to_gsheet(deals):
                 currency_in = 'usdt'
                 amount_in = deal.payin_amount_usdt or 0
                 amount_in_usdt = amount_in
-                payout_thb = deal.payout_amount_thb or 0
-                payout_currency = 'thb'
+                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+                payout_currency = (deal.custom_payout_currency or 'thb').lower()
             else:
                 currency_in = 'rub'
                 amount_in = deal.payin_amount_rub or 0
                 amount_in_usdt = deal.payin_amount_usdt or 0
-                payout_thb = deal.payout_amount_thb or 0
-                payout_currency = 'thb'
+                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+                payout_currency = (deal.custom_payout_currency or 'thb').lower()
 
             # Значения как числа — Google Sheets сам отформатирует
             date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
@@ -899,14 +899,14 @@ def update_deal_in_gsheet(deal):
             currency_in = 'usdt'
             amount_in = deal.payin_amount_usdt or 0
             amount_in_usdt = amount_in
-            payout_thb = deal.payout_amount_thb or 0
-            payout_currency = 'thb'
+            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+            payout_currency = (deal.custom_payout_currency or 'thb').lower()
         else:
             currency_in = 'rub'
             amount_in = deal.payin_amount_rub or 0
             amount_in_usdt = deal.payin_amount_usdt or 0
-            payout_thb = deal.payout_amount_thb or 0
-            payout_currency = 'thb'
+            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+            payout_currency = (deal.custom_payout_currency or 'thb').lower()
 
         date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
         payout_usdt = deal.payout_amount_usdt or 0
@@ -963,8 +963,14 @@ def _send_deal_telegram(deal):
         currency = 'usdt' if pm == 'crypto_direct' else 'rub'
         amount_in = deal.payin_amount_usdt if pm == 'crypto_direct' else (deal.payin_amount_rub or 0)
         amount_in_usdt = deal.payin_amount_usdt or 0
-        payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
-        payout_cur = 'THB'
+        if deal.custom_payout_currency:
+            payout_val = deal.custom_payout_amount or deal.payout_amount_thb or 0
+            payout_cur = deal.custom_payout_currency.upper()
+            if payout_cur == 'USDT':
+                payout_usdt = deal.custom_payout_amount or 0
+        else:
+            payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
+            payout_cur = 'THB'
 
     msg = (
         f"✅ <b>Сделка {deal.id} — {(deal.client.name if deal.client else deal.client_name) or 'без имени'} — {date_str}</b>\n"
