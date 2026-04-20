@@ -6222,12 +6222,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div style="display:flex;gap:8px;margin-top:6px;">
-                                <input type="text" readonly value="${baseUrl}/ref/${r.token}"
-                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
-                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка на статистику скопирована')">
-                                <input type="text" readonly value="${r.referral_link}"
+                                <input type="text" readonly value="${r.referral_link}" title="Сайт"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
-                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Реферальная ссылка скопирована')">
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')">
+                                <input type="text" readonly value="${r.bot_link}" title="Telegram"
+                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#eff6ff;"
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')">
+                            </div>
+                            <div style="display:flex;gap:8px;margin-top:4px;">
+                                <input type="text" readonly value="${baseUrl}/ref/${r.token}" title="Статистика"
+                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
+                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка статистики скопирована')">
+                                <input type="text" readonly value="${r.wa_link ? 'WhatsApp ↗' : ''}" title="WhatsApp"
+                                    style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;cursor:pointer;"
+                                    onclick="navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')">
                             </div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
