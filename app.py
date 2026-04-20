@@ -3541,11 +3541,24 @@ def referrer_stats(token):
 
 @app.route('/api/referrers', methods=['GET'])
 def get_referrers():
-    """Список рефереров (для CRM)"""
+    """Список рефереров (для CRM) — данные из реальных сделок, не из кэша."""
     db = get_session()
     try:
         referrers = db.query(Referrer).order_by(Referrer.created_at.desc()).all()
-        return jsonify({'success': True, 'referrers': [r.to_dict() for r in referrers]})
+        result = []
+        for r in referrers:
+            d = r.to_dict()
+            # Пересчитываем из реальных сделок (кэш может рассинхронизироваться)
+            deals = db.query(Deal).filter(
+                Deal.referrer_id == r.id, Deal.status == DealStatus.COMPLETED
+            ).all()
+            d['total_deals'] = len(deals)
+            d['total_earned_usdt'] = round(sum(dl.referrer_payout_usdt or 0 for dl in deals), 2)
+            d['total_paid_usdt'] = round(sum((dl.referrer_payout_usdt or 0) for dl in deals if dl.referrer_paid), 2)
+            d['pending_usdt'] = round(d['total_earned_usdt'] - d['total_paid_usdt'], 2)
+            d['total_referred_clients'] = db.query(Client).filter(Client.referrer_id == r.id).count()
+            result.append(d)
+        return jsonify({'success': True, 'referrers': result})
     finally:
         db.close()
 
