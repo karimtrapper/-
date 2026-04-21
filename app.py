@@ -1489,9 +1489,11 @@ def create_deal():
             if client_obj and client_obj.referrer_id:
                 referrer = session.query(Referrer).get(client_obj.referrer_id)
                 if referrer and referrer.active:
-                    ref_id = referrer.id
-                    ref_name = referrer.name
-                    ref_percent = referrer.default_percent
+                    # Защита от самореферала: не начислять если клиент = реферер
+                    if not (referrer.client_id and referrer.client_id == client_id):
+                        ref_id = referrer.id
+                        ref_name = referrer.name
+                        ref_percent = referrer.default_percent
 
         deal = Deal(
             created_at=created_at,
@@ -3490,6 +3492,42 @@ def _delete_kyc_files(token):
     if os.path.exists(upload_dir):
         shutil.rmtree(upload_dir, ignore_errors=True)
 
+# ==================== BITRIX CONTACTS SEARCH ====================
+
+BITRIX_PROXY_URL = os.environ.get('BITRIX_PROXY_URL', 'https://bitrix-proxy-production.up.railway.app')
+BITRIX_PROXY_SECRET = os.environ.get('BITRIX_PROXY_SECRET', '')
+
+
+@app.route('/api/bitrix/contacts/search', methods=['GET'])
+def search_bitrix_contacts():
+    """Поиск контактов в Bitrix через прокси (для выбора реферера из CRM)."""
+    query = request.args.get('q', '').strip()
+    if len(query) < 2:
+        return jsonify({'success': True, 'contacts': []})
+
+    import requests as req
+    try:
+        resp = req.post(
+            f'{BITRIX_PROXY_URL}/bx/crm.contact.list',
+            headers={'Content-Type': 'application/json', 'X-Proxy-Secret': BITRIX_PROXY_SECRET},
+            json={
+                'filter': {'%NAME': query},
+                'select': ['ID', 'NAME', 'LAST_NAME'],
+                'order': {'ID': 'DESC'},
+                'start': 0,
+            },
+            timeout=5,
+        )
+        data = resp.json()
+        contacts = [
+            {'id': c['ID'], 'name': f"{c.get('NAME', '')} {c.get('LAST_NAME', '')}".strip()}
+            for c in data.get('result', [])[:20]
+        ]
+        return jsonify({'success': True, 'contacts': contacts})
+    except Exception as e:
+        return jsonify({'success': True, 'contacts': [], 'error': str(e)})
+
+
 # ==================== REFERRAL SYSTEM ====================
 
 @app.route('/ref/<token>')
@@ -3720,6 +3758,10 @@ def set_client_referrer(client_id):
 
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        # Защита от самореферала
+        if referrer.client_id and referrer.client_id == client_id:
+            return jsonify({'success': False, 'error': 'Нельзя быть реферером самому себе'}), 400
 
         # Привязываем (первая привязка, lifetime)
         if client.referrer_id and client.referrer_id != referrer.id:
