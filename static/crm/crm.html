@@ -3245,9 +3245,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     `).join('');
                 }
 
-                document.getElementById('modalTitle').textContent = 'Сделки: ' + referrerName;
-                document.getElementById('modalBody').innerHTML = rows;
-                document.getElementById('dealModal').style.display = 'flex';
+                const modal = document.getElementById('dealModal');
+                modal.querySelector('.modal-title').textContent = 'Сделки: ' + referrerName;
+                document.getElementById('dealModalContent').innerHTML = rows;
+                modal.style.display = 'flex';
             } catch(e) {
                 alert('Ошибка загрузки сделок: ' + e);
             }
