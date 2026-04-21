@@ -1406,6 +1406,9 @@ def get_deals():
         manager = request.args.get('manager')
         if manager:
             query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
+        referrer_id = request.args.get('referrer_id')
+        if referrer_id:
+            query = query.filter(Deal.referrer_id == int(referrer_id))
         date_from = request.args.get('date_from')
         if date_from:
             query = query.filter(Deal.created_at >= datetime.strptime(date_from, '%Y-%m-%d'))

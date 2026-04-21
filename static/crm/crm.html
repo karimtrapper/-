@@ -914,10 +914,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         <div class="form-row"
                             style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
-                            <div class="form-group">
+                            <div class="form-group" style="flex:2;">
                                 <label class="form-label">Партнёр (реферер)</label>
-                                <input type="text" class="form-control" id="customReferrerName"
-                                    placeholder="Имя партнёра" oninput="calcCustomProfit()">
+                                <select class="form-control" id="customReferrerSelect" onchange="onCustomReferrerSelect(this)">
+                                    <option value="">— Без партнёра —</option>
+                                </select>
+                                <input type="hidden" id="customReferrerName">
+                                <input type="hidden" id="customReferrerId">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">% партнёра</label>
@@ -1143,10 +1146,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             получает часть прибыли</p>
 
                         <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Имя партнера</label>
-                                <input type="text" class="form-control" name="referrer_name" placeholder="Имя партнера"
-                                    oninput="calculateProfit()">
+                            <div class="form-group" style="flex:2;">
+                                <label class="form-label">Партнёр</label>
+                                <select class="form-control" id="referrerSelect" onchange="onReferrerSelect(this)">
+                                    <option value="">— Без партнёра —</option>
+                                </select>
+                                <input type="hidden" name="referrer_name">
+                                <input type="hidden" name="referrer_id" id="referrerIdField">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">% от прибыли</label>
@@ -2896,6 +2902,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || 'USDT';
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
+                        if (deal.referrer_id) {
+                            document.getElementById('customReferrerSelect').value = deal.referrer_id;
+                            document.getElementById('customReferrerId').value = deal.referrer_id;
+                        }
                         document.getElementById('customReferrerName').value = deal.referrer_name || '';
                         document.getElementById('customReferrerPercent').value = deal.referrer_percent || '';
                         document.getElementById('customNotes').value = deal.notes || '';
@@ -2925,6 +2935,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
                         }
                         if (deal.payout_amount_thb) document.getElementById('payoutAmountThb').value = deal.payout_amount_thb;
+                        // Предвыбор реферера в дропдауне
+                        if (deal.referrer_id) {
+                            document.getElementById('referrerSelect').value = deal.referrer_id;
+                            document.getElementById('referrerIdField').value = deal.referrer_id;
+                        }
                         if (deal.referrer_name) form.referrer_name.value = deal.referrer_name;
                         if (deal.referrer_percent) form.referrer_percent.value = deal.referrer_percent;
                         if (deal.referrer_fixed_usdt) form.referrer_fixed_usdt.value = deal.referrer_fixed_usdt;
@@ -3149,11 +3164,105 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 loadBankCardsForSelect()
             ]);
 
+            // Загружаем рефереров в оба дропдауна
+            await loadReferrerDropdowns();
+
             // Trigger payin method change to show correct fields
             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
 
             // Апгрейд нативных select → кастомные dropdown
             setTimeout(upgradeAllSelects, 50);
+        }
+
+        // Загрузка рефереров в дропдауны формы сделки
+        let _referrersCache = [];
+        async function loadReferrerDropdowns() {
+            try {
+                const res = await fetch(`${API_URL}/api/referrers`);
+                const data = await res.json();
+                if (!data.success) return;
+                _referrersCache = data.referrers.filter(r => r.active);
+                const opts = '<option value="">— Без партнёра —</option>' +
+                    _referrersCache.map(r => `<option value="${r.id}" data-percent="${r.default_percent}" data-name="${r.name}" data-code="${r.code}">${r.name} (${r.default_percent}%)</option>`).join('');
+                const sel1 = document.getElementById('referrerSelect');
+                const sel2 = document.getElementById('customReferrerSelect');
+                if (sel1) sel1.innerHTML = opts;
+                if (sel2) sel2.innerHTML = opts;
+            } catch(e) { console.error('Ошибка загрузки рефереров:', e); }
+        }
+
+        // Обработчик выбора реферера (обычная форма)
+        function onReferrerSelect(sel) {
+            const form = document.getElementById('createDealForm');
+            const opt = sel.selectedOptions[0];
+            if (sel.value) {
+                form.referrer_name.value = opt.dataset.name;
+                document.getElementById('referrerIdField').value = sel.value;
+                form.referrer_percent.value = opt.dataset.percent;
+            } else {
+                form.referrer_name.value = '';
+                document.getElementById('referrerIdField').value = '';
+                form.referrer_percent.value = '';
+            }
+            calculateProfit();
+        }
+
+        // Обработчик выбора реферера (кастомная форма)
+        function onCustomReferrerSelect(sel) {
+            const opt = sel.selectedOptions[0];
+            if (sel.value) {
+                document.getElementById('customReferrerName').value = opt.dataset.name;
+                document.getElementById('customReferrerId').value = sel.value;
+                document.getElementById('customReferrerPercent').value = opt.dataset.percent;
+            } else {
+                document.getElementById('customReferrerName').value = '';
+                document.getElementById('customReferrerId').value = '';
+                document.getElementById('customReferrerPercent').value = '';
+            }
+            calcCustomProfit();
+        }
+
+        // Просмотр и удаление сделок реферера
+        async function showReferrerDeals(referrerId, referrerName) {
+            try {
+                const res = await fetch(`${API_URL}/api/deals?referrer_id=${referrerId}`);
+                const data = await res.json();
+                const deals = data.deals || data.data || data || [];
+
+                let rows = '';
+                if (deals.length === 0) {
+                    rows = '<div style="text-align:center;color:#999;padding:1rem;">Нет сделок</div>';
+                } else {
+                    rows = deals.map(d => `
+                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+                            <div>
+                                <div style="font-size:13px;font-weight:600;">#${d.id} · ${d.client_name || '—'}</div>
+                                <div style="font-size:11px;color:#64748b;">${d.created_at ? d.created_at.split('T')[0] : '—'} · $${(d.payin_amount_usdt || 0).toFixed(0)} · Комиссия: $${(d.referrer_payout_usdt || 0).toFixed(0)}</div>
+                            </div>
+                            <button onclick="deleteReferrerDeal(${d.id},${referrerId},'${referrerName.replace(/'/g,"\\'")}')"
+                                style="background:#fef2f2;color:#ef4444;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Удалить</button>
+                        </div>
+                    `).join('');
+                }
+
+                document.getElementById('modalTitle').textContent = 'Сделки: ' + referrerName;
+                document.getElementById('modalBody').innerHTML = rows;
+                document.getElementById('dealModal').style.display = 'flex';
+            } catch(e) {
+                alert('Ошибка загрузки сделок: ' + e);
+            }
+        }
+
+        async function deleteReferrerDeal(dealId, referrerId, referrerName) {
+            if (!confirm('Удалить сделку #' + dealId + '? Это необратимо.')) return;
+            try {
+                await fetch(`${API_URL}/api/deals/${dealId}`, { method: 'DELETE' });
+                showToast('Сделка #' + dealId + ' удалена');
+                showReferrerDeals(referrerId, referrerName);
+                loadReferrers();
+            } catch(e) {
+                alert('Ошибка: ' + e);
+            }
         }
 
         // Load incoming transactions for PayIn crypto select
@@ -3823,7 +3932,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         'profit_percent', 'exchange_rate', 'referrer_payout_usdt',
                         'net_profit_usdt', 'referrer_percent', 'referrer_fixed_usdt'].includes(key)) {
                         data[key] = parseFloat(value);
-                    } else if (key === 'client_id' || key === 'cash_batch_id') {
+                    } else if (key === 'client_id' || key === 'cash_batch_id' || key === 'referrer_id') {
                         data[key] = parseInt(value) || null;
                     } else if (key === 'created_at') {
                         // Просто передаем строку даты, чтобы избежать смещения часовых поясов
@@ -6132,7 +6241,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('partnerName').value = '';
             document.getElementById('partnerMarkup').value = '1.4';
             document.getElementById('partnerModalTitle').textContent = 'Добавить партнёра';
-            document.getElementById('partnerModal').classList.add('open');
+            document.getElementById('partnerModal').classList.add('active');
         }
 
         function editPartner(id, name, markup) {
@@ -6140,11 +6249,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('partnerName').value = name;
             document.getElementById('partnerMarkup').value = markup;
             document.getElementById('partnerModalTitle').textContent = 'Редактировать партнёра';
-            document.getElementById('partnerModal').classList.add('open');
+            document.getElementById('partnerModal').classList.add('active');
         }
 
         function closePartnerModal() {
-            document.getElementById('partnerModal').classList.remove('open');
+            document.getElementById('partnerModal').classList.remove('active');
         }
 
         async function savePartner(e) {
@@ -6246,6 +6355,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
                             <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="editReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}','${r.code}','${r.telegram || ''}',${r.default_percent},'${r.payout_currency || 'USDT'}','${(r.notes || '').replace(/'/g,"\\'").replace(/\n/g,' ')}')">Изм.</button>
+                            <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="showReferrerDeals(${r.id},'${r.name.replace(/'/g,"\\'")}')">Сделки</button>
                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
                             ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
