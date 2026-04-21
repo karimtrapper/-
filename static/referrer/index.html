@@ -3,88 +3,183 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grusha Exchange — Реферальная программа</title>
+    <title>Grusha — Партнёрская программа</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --navy-900: #0F172A;
-            --navy-800: #1E293B;
-            --navy-700: #334155;
-            --navy-500: #64748B;
-            --navy-400: #94A3B8;
-            --navy-300: #CBD5E1;
-            --navy-200: #E2E8F0;
-            --navy-100: #F1F5F9;
+            --navy-900: #0F172A; --navy-800: #1E293B; --navy-700: #334155;
+            --navy-600: #475569; --navy-500: #64748B; --navy-400: #94A3B8;
+            --navy-300: #CBD5E1; --navy-200: #E2E8F0; --navy-100: #F1F5F9;
             --navy-50: #F8FAFC;
-            --coral: #F97316;
-            --coral-hover: #EA580C;
-            --green: #22C55E;
+            --coral: #F97316; --coral-dark: #EA580C;
+            --green: #22C55E; --green-dark: #16A34A;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--navy-50); color: var(--navy-900);
-            min-height: 100vh; display: flex; flex-direction: column;
-            align-items: center; padding: 24px 16px;
+            background: var(--navy-900); color: var(--navy-900);
+            min-height: 100vh;
         }
-        .container { width: 100%; max-width: 480px; }
+        .container { width: 100%; max-width: 480px; margin: 0 auto; }
 
-        .header { text-align: center; margin-bottom: 24px; }
-        .header .logo { width: 56px; height: 56px; margin: 0 auto 12px; }
-        .header .logo img { width: 100%; height: 100%; border-radius: 12px; }
-        .header h1 { font-size: 20px; font-weight: 700; }
-        .header .subtitle { font-size: 14px; color: var(--navy-500); margin-top: 4px; }
-
-        .card {
-            background: white; border-radius: 16px; padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid var(--navy-100);
-            margin-bottom: 16px;
+        /* === Hero === */
+        .hero {
+            background: linear-gradient(135deg, #0F172A 0%, #1E293B 30%, #0F172A 60%, #1a1f3a 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 8s ease infinite;
+            padding: 32px 24px 40px;
+            position: relative;
+            overflow: hidden;
+            text-align: center;
         }
-        .card-title { font-size: 14px; font-weight: 600; color: var(--navy-500); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.05em; }
-
-        /* Статистика */
-        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .stat-item { text-align: center; padding: 16px 8px; background: var(--navy-50); border-radius: 12px; }
-        .stat-value { font-size: 24px; font-weight: 700; color: var(--navy-900); }
-        .stat-value.green { color: var(--green); }
-        .stat-value.coral { color: var(--coral); }
-        .stat-label { font-size: 12px; color: var(--navy-500); margin-top: 4px; }
-
-        /* Реферальная ссылка */
-        .ref-link-box {
-            display: flex; align-items: center; gap: 8px;
-            background: var(--navy-50); border-radius: 12px; padding: 12px 16px;
+        .hero::before {
+            content: '';
+            position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
+            background: radial-gradient(circle at 70% 30%, rgba(249,115,22,0.08) 0%, transparent 50%),
+                        radial-gradient(circle at 30% 70%, rgba(34,197,94,0.05) 0%, transparent 50%);
+            animation: gradientShift 12s ease infinite reverse;
         }
-        .ref-link-box input {
-            flex: 1; border: none; background: transparent; font-size: 14px;
-            color: var(--navy-900); font-family: inherit; outline: none;
+        .hero-content { position: relative; z-index: 2; }
+        .hero-fade {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 32px;
+            background: linear-gradient(transparent, var(--navy-50));
         }
-        .copy-btn {
-            padding: 8px 16px; background: var(--coral); color: white;
-            border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
-            cursor: pointer; white-space: nowrap;
+
+        /* Header в hero */
+        .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+        .header-left { display: flex; align-items: center; gap: 10px; }
+        .logo {
+            width: 36px; height: 36px; border-radius: 10px;
+            background: linear-gradient(135deg, var(--green), var(--green-dark));
+            display: flex; align-items: center; justify-content: center;
         }
-        .copy-btn:hover { background: var(--coral-hover); }
-        .copy-btn.copied { background: var(--green); }
-
-        /* Таблица сделок */
-        .deals-table { width: 100%; border-collapse: collapse; }
-        .deals-table th { font-size: 12px; color: var(--navy-500); font-weight: 600; text-align: left; padding: 8px 0; border-bottom: 1px solid var(--navy-200); }
-        .deals-table td { font-size: 14px; padding: 10px 0; border-bottom: 1px solid var(--navy-100); }
-        .deals-table .paid { color: var(--green); }
-        .deals-table .unpaid { color: var(--coral); }
-
-        .empty-state { text-align: center; padding: 32px; color: var(--navy-400); font-size: 14px; }
-
-        .loading { text-align: center; padding: 48px; color: var(--navy-400); }
-        .error { text-align: center; padding: 48px; color: #EF4444; }
-
-        .percent-badge {
-            display: inline-block; padding: 4px 10px; background: var(--navy-100);
-            border-radius: 20px; font-size: 13px; font-weight: 600; color: var(--navy-700);
+        .logo img { width: 24px; height: 24px; }
+        .header-text .brand { color: white; font-size: 14px; font-weight: 600; }
+        .header-text .partner { color: var(--navy-400); font-size: 12px; }
+        .badge {
+            padding: 6px 12px; border-radius: 999px;
+            border: 1px solid rgba(249,115,22,0.3); background: rgba(249,115,22,0.1);
+            font-size: 12px; font-weight: 700; color: var(--coral);
+            animation: badgeShine 3s ease-in-out infinite;
+            background-size: 200% 100%;
         }
+
+        /* Баланс */
+        .balance-label { color: var(--navy-400); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
+        .balance-amount { display: flex; align-items: baseline; justify-content: center; gap: 2px; margin-bottom: 4px; }
+        .balance-amount .sign { color: var(--navy-400); font-size: 24px; font-weight: 300; }
+        .balance-amount .value { color: white; font-size: 48px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+        .balance-amount .cents { color: var(--navy-400); font-size: 24px; font-weight: 300; }
+        .balance-sub { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 12px 0 20px; }
+        .balance-sub .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+        .balance-sub span { color: var(--navy-400); font-size: 12px; }
+
+        /* CTA */
+        .cta-btn {
+            display: block; width: 100%; padding: 14px; border-radius: 14px; border: none;
+            background: linear-gradient(135deg, var(--coral), var(--coral-dark));
+            color: white; font-size: 15px; font-weight: 700; cursor: pointer;
+            font-family: inherit; animation: pulseGlow 3s ease-in-out infinite;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .cta-btn:active { transform: scale(0.97); }
+
+        /* === Светлая часть === */
+        .content { background: var(--navy-50); padding: 20px 16px 40px; }
+
+        /* Stats grid */
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .stat-card {
+            background: white; border-radius: 14px; padding: 14px;
+            border: 1px solid rgba(226,232,240,0.6);
+            box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+            animation: floatUp 0.5s ease-out backwards;
+        }
+        .stat-card:nth-child(1) { animation-delay: 0.1s; }
+        .stat-card:nth-child(2) { animation-delay: 0.15s; }
+        .stat-card:nth-child(3) { animation-delay: 0.2s; }
+        .stat-card:nth-child(4) { animation-delay: 0.25s; }
+        .stat-icon { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; margin-bottom: 8px; }
+        .stat-value { font-size: 22px; font-weight: 700; color: var(--navy-900); }
+        .stat-label { font-size: 11px; color: var(--navy-500); margin-top: 2px; }
+
+        /* Section title */
+        .section-title { font-size: 15px; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+
+        /* Deal cards */
+        .deal-card {
+            background: white; border-radius: 14px; padding: 14px;
+            border: 1px solid rgba(226,232,240,0.6); margin-bottom: 8px;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+            transition: background 0.15s;
+        }
+        .deal-card:active { background: var(--navy-50); }
+        .deal-row { display: flex; align-items: center; justify-content: space-between; }
+        .deal-left { display: flex; align-items: center; gap: 10px; }
+        .deal-avatar {
+            width: 36px; height: 36px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; color: white;
+            font-size: 11px; font-weight: 700; flex-shrink: 0;
+        }
+        .deal-name { font-size: 13px; font-weight: 600; }
+        .deal-date { font-size: 11px; color: var(--navy-400); }
+        .deal-amount { font-size: 13px; font-weight: 700; text-align: right; }
+        .deal-income { font-size: 12px; font-weight: 600; color: var(--green); text-align: right; }
+        .deal-status {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 11px; font-weight: 500; padding: 3px 8px; border-radius: 999px; margin-top: 8px;
+        }
+        .deal-status.paid { background: rgba(34,197,94,0.1); color: var(--green-dark); }
+        .deal-status.pending { background: rgba(249,115,22,0.1); color: var(--coral); }
+        .deal-status .dot { width: 5px; height: 5px; border-radius: 50%; }
+        .deal-status.paid .dot { background: var(--green); }
+        .deal-status.pending .dot { background: var(--coral); }
+
+        /* Условия */
+        .conditions-card {
+            background: white; border-radius: 14px; padding: 16px;
+            border: 1px solid rgba(226,232,240,0.6); margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(15,23,42,0.05);
+        }
+        .cond-row {
+            display: flex; align-items: center; gap: 12px; padding: 10px 0;
+            border-bottom: 1px solid var(--navy-100);
+        }
+        .cond-row:last-child { border-bottom: none; }
+        .cond-icon { width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .cond-label { font-size: 11px; color: var(--navy-400); }
+        .cond-value { font-size: 13px; font-weight: 600; }
+
+        /* Ref links */
+        .ref-card {
+            background: white; border-radius: 14px; padding: 14px;
+            border: 1px solid rgba(226,232,240,0.6); margin-bottom: 8px;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+        }
+        .ref-row { display: flex; align-items: center; gap: 10px; }
+        .ref-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+        .ref-url { flex: 1; min-width: 0; font-size: 12px; color: var(--navy-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'SF Mono', monospace; }
+        .ref-copy {
+            padding: 6px 12px; border-radius: 8px; border: none;
+            background: var(--navy-100); color: var(--navy-700);
+            font-size: 12px; font-weight: 600; cursor: pointer; flex-shrink: 0;
+            font-family: inherit; transition: background 0.15s;
+        }
+        .ref-copy:active { background: var(--navy-200); }
+        .ref-copy.copied { background: var(--green); color: white; }
+
+        /* Misc */
+        .empty-state { text-align: center; padding: 24px; color: var(--navy-400); font-size: 13px; }
+        .loading { text-align: center; padding: 64px 24px; color: var(--navy-400); font-size: 14px; background: var(--navy-900); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .error { text-align: center; padding: 64px 24px; color: #EF4444; font-size: 14px; background: var(--navy-900); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+        /* Animations */
+        @keyframes gradientShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+        @keyframes pulseGlow { 0%,100%{box-shadow:0 0 16px rgba(249,115,22,0.25)} 50%{box-shadow:0 0 28px rgba(249,115,22,0.45)} }
+        @keyframes floatUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+        @keyframes badgeShine { 0%{background-position:-100% 0} 100%{background-position:200% 0} }
     </style>
 </head>
 <body>
@@ -93,112 +188,193 @@
     </div>
 
     <script>
-        const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
-        if (!token) {
-            document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
-        } else {
-            loadStats();
-        }
+    const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
+    if (!token) {
+        document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
+    } else {
+        loadStats();
+    }
 
-        async function loadStats() {
-            try {
-                const resp = await fetch(`/api/ref/${token}/stats`);
-                const data = await resp.json();
-
-                if (!data.success) {
-                    document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
-                    return;
-                }
-
-                const d = data;
-                document.getElementById('app').innerHTML = `
-                    <div class="header">
-                        <div class="logo"><img src="/static/kyc/grusha-logo.png" alt="Grusha"></div>
-                        <h1>${d.name}</h1>
-                        <div class="subtitle">Реферальная программа Grusha <span class="percent-badge">${d.default_percent}% · ${d.payout_currency || 'USDT'}</span></div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">Ссылка на сайт</div>
-                        <div class="ref-link-box">
-                            <input type="text" id="refLink" value="${d.referral_link}" readonly>
-                            <button class="copy-btn" onclick="copyField('refLink')">Копировать</button>
-                        </div>
-                        <div style="margin-top:12px;">
-                            <div style="font-size:12px;color:var(--navy-500);margin-bottom:6px;font-weight:600;">Ссылка на Telegram-бот</div>
-                            <div class="ref-link-box">
-                                <input type="text" id="botLink" value="${d.bot_link}" readonly>
-                                <button class="copy-btn" onclick="copyField('botLink')">Копировать</button>
-                            </div>
-                        </div>
-                        <div style="margin-top:12px;">
-                            <div style="font-size:12px;color:var(--navy-500);margin-bottom:6px;font-weight:600;">Ссылка на WhatsApp</div>
-                            <div class="ref-link-box">
-                                <input type="text" id="waLink" value="${d.wa_link}" readonly>
-                                <button class="copy-btn" onclick="copyField('waLink')">Копировать</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">Статистика</div>
-                        <div class="stats-grid">
-                            <div class="stat-item">
-                                <div class="stat-value">${d.total_referred_clients}</div>
-                                <div class="stat-label">Приведено клиентов</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value">${d.total_deals}</div>
-                                <div class="stat-label">Сделок</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value green">$${d.total_earned_usdt.toFixed(2)}</div>
-                                <div class="stat-label">Заработано</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value coral">$${d.pending_usdt.toFixed(2)}</div>
-                                <div class="stat-label">К выплате</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="card">
-                        <div class="card-title">Последние сделки</div>
-                        ${d.recent_deals.length ? renderDeals(d.recent_deals) : '<div class="empty-state">Пока нет завершённых сделок</div>'}
-                    </div>
-                `;
-            } catch (e) {
-                document.getElementById('app').innerHTML = '<div class="error">Ошибка загрузки данных</div>';
+    async function loadStats() {
+        try {
+            const resp = await fetch(`/api/ref/${token}/stats`);
+            const d = await resp.json();
+            if (!d.success) {
+                document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
+                return;
             }
-        }
 
-        function renderDeals(deals) {
-            let rows = deals.map(d => `
-                <tr>
-                    <td>${d.date || '—'}</td>
-                    <td>$${(d.volume_usdt || 0).toFixed(2)}</td>
-                    <td>$${(d.commission_usdt || 0).toFixed(2)}</td>
-                    <td class="${d.paid ? 'paid' : 'unpaid'}">${d.paid ? 'Выплачено' : 'Ожидает'}</td>
-                </tr>
-            `).join('');
-            return `
-                <table class="deals-table">
-                    <thead><tr><th>Дата</th><th>Объём</th><th>Комиссия</th><th>Статус</th></tr></thead>
-                    <tbody>${rows}</tbody>
-                </table>
-            `;
-        }
+            const [whole, cents] = (d.pending_usdt || 0).toFixed(2).split('.');
+            const avatarColors = [
+                'linear-gradient(135deg,#22C55E,#16A34A)',
+                'linear-gradient(135deg,#3B82F6,#2563EB)',
+                'linear-gradient(135deg,#F59E0B,#D97706)',
+                'linear-gradient(135deg,#8B5CF6,#7C3AED)',
+                'linear-gradient(135deg,#EC4899,#DB2777)',
+            ];
 
-        function copyField(inputId) {
-            const input = document.getElementById(inputId);
-            input.select();
-            navigator.clipboard.writeText(input.value).then(() => {
-                const btn = input.parentElement.querySelector('.copy-btn');
-                btn.textContent = 'Скопировано';
-                btn.classList.add('copied');
-                setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('copied'); }, 2000);
-            });
+            document.getElementById('app').innerHTML = `
+            <!-- HERO -->
+            <div class="hero">
+                <div class="hero-content">
+                    <div class="header">
+                        <div class="header-left">
+                            <div class="logo"><img src="/static/kyc/grusha-logo.png" alt="G" onerror="this.outerHTML='<span style=color:white;font-weight:800;font-size:16px>G</span>'"></div>
+                            <div class="header-text">
+                                <div class="brand">Grusha</div>
+                                <div class="partner">${d.name}</div>
+                            </div>
+                        </div>
+                        <div class="badge">${d.default_percent}% · ${d.payout_currency || 'USDT'}</div>
+                    </div>
+
+                    <div class="balance-label">Доступно к выводу</div>
+                    <div class="balance-amount">
+                        <span class="sign">$</span>
+                        <span class="value">${whole}</span>
+                        <span class="cents">.${cents}</span>
+                    </div>
+                    <div class="balance-sub">
+                        <div class="dot"></div>
+                        <span>По запросу · от $50 · USDT TRC-20</span>
+                    </div>
+                    <button class="cta-btn" onclick="alert('Напишите менеджеру для запроса выплаты')">Запросить выплату</button>
+                </div>
+                <div class="hero-fade"></div>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content">
+                <!-- Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background:rgba(59,130,246,0.1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        </div>
+                        <div class="stat-value">${d.total_referred_clients}</div>
+                        <div class="stat-label">Обращений</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background:rgba(34,197,94,0.1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        </div>
+                        <div class="stat-value">${d.total_deals}</div>
+                        <div class="stat-label">Сделок</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background:rgba(249,115,22,0.1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                        </div>
+                        <div class="stat-value">${d.conversion_rate || 0}%</div>
+                        <div class="stat-label">Конверсия</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background:rgba(139,92,246,0.1)">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div class="stat-value" style="color:var(--green)">$${(d.total_earned_usdt || 0).toFixed(0)}</div>
+                        <div class="stat-label">Заработано</div>
+                    </div>
+                </div>
+
+                <!-- Deals -->
+                <div class="section-title">Последние сделки</div>
+                <div id="deals-list" style="margin-bottom:20px;">
+                    ${d.recent_deals.length ? d.recent_deals.map((deal, i) => `
+                        <div class="deal-card" style="animation:floatUp 0.4s ease-out ${0.3 + i*0.05}s backwards">
+                            <div class="deal-row">
+                                <div class="deal-left">
+                                    <div class="deal-avatar" style="background:${avatarColors[i % avatarColors.length]}">${(deal.client_initials || '??')}</div>
+                                    <div>
+                                        <div class="deal-name">${deal.client_masked || 'Клиент'}</div>
+                                        <div class="deal-date">${deal.date || '—'}</div>
+                                    </div>
+                                </div>
+                                <div>
+                                    <div class="deal-amount">$${(deal.volume_usdt || 0).toFixed(0)}</div>
+                                    <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
+                                </div>
+                            </div>
+                            <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
+                                <span class="dot"></span>
+                                ${deal.paid ? 'Выплачено' : 'К выплате'}
+                            </div>
+                        </div>
+                    `).join('') : '<div class="empty-state">Пока нет завершённых сделок</div>'}
+                </div>
+
+                <!-- Условия -->
+                <div class="section-title">Условия программы</div>
+                <div class="conditions-card" style="margin-bottom:20px;">
+                    <div class="cond-row">
+                        <div class="cond-icon" style="background:rgba(249,115,22,0.1)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
+                        </div>
+                        <div><div class="cond-label">Ваша комиссия</div><div class="cond-value">${d.default_percent}% от прибыли</div></div>
+                    </div>
+                    <div class="cond-row">
+                        <div class="cond-icon" style="background:rgba(59,130,246,0.1)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        </div>
+                        <div><div class="cond-label">Валюта выплат</div><div class="cond-value">${d.payout_currency || 'USDT'} (TRC-20)</div></div>
+                    </div>
+                    <div class="cond-row">
+                        <div class="cond-icon" style="background:rgba(34,197,94,0.1)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        </div>
+                        <div><div class="cond-label">Минимум для вывода</div><div class="cond-value">$50</div></div>
+                    </div>
+                    <div class="cond-row">
+                        <div class="cond-icon" style="background:rgba(139,92,246,0.1)">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </div>
+                        <div><div class="cond-label">Выплата</div><div class="cond-value">По запросу менеджеру</div></div>
+                    </div>
+                </div>
+
+                <!-- Links -->
+                <div class="section-title">Ваши ссылки</div>
+                <div class="ref-card">
+                    <div class="ref-row">
+                        <div class="ref-icon" style="background:var(--navy-800)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                        </div>
+                        <div class="ref-url" id="url-site">${d.referral_link}</div>
+                        <button class="ref-copy" onclick="copyUrl('url-site',this)">Копировать</button>
+                    </div>
+                </div>
+                <div class="ref-card">
+                    <div class="ref-row">
+                        <div class="ref-icon" style="background:#2AABEE">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
+                        </div>
+                        <div class="ref-url" id="url-bot">${d.bot_link}</div>
+                        <button class="ref-copy" onclick="copyUrl('url-bot',this)">Копировать</button>
+                    </div>
+                </div>
+                <div class="ref-card">
+                    <div class="ref-row">
+                        <div class="ref-icon" style="background:#25D366">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
+                        </div>
+                        <div class="ref-url" id="url-wa">${d.wa_link}</div>
+                        <button class="ref-copy" onclick="copyUrl('url-wa',this)">Копировать</button>
+                    </div>
+                </div>
+            </div>`;
+        } catch(e) {
+            document.getElementById('app').innerHTML = '<div class="error">Ошибка загрузки</div>';
         }
+    }
+
+    function copyUrl(elId, btn) {
+        const text = document.getElementById(elId).textContent;
+        navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = 'Скопировано!';
+            btn.classList.add('copied');
+            setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('copied'); }, 2000);
+        });
+    }
     </script>
 </body>
 </html>

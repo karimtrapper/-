@@ -3558,17 +3558,38 @@ def referrer_stats(token):
             Deal.status == DealStatus.COMPLETED
         ).order_by(Deal.created_at.desc()).limit(20).all()
 
-        recent_deals = [{
-            'date': d.created_at.strftime('%d.%m.%Y') if d.created_at else None,
-            'volume_usdt': d.payout_amount_usdt,
-            'commission_usdt': d.referrer_payout_usdt,
-            'paid': d.referrer_paid or False,
-        } for d in deals]
+        recent_deals = []
+        for deal in deals:
+            # Маскируем имя клиента для конфиденциальности
+            client_name = ''
+            if deal.client:
+                client_name = deal.client.name or ''
+            name_parts = client_name.split()
+            masked = name_parts[0][:3] + '***' if name_parts and len(name_parts[0]) > 2 else client_name[:3] + '***'
+            initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
+            recent_deals.append({
+                'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
+                'volume_usdt': deal.payout_amount_usdt,
+                'commission_usdt': deal.referrer_payout_usdt,
+                'paid': deal.referrer_paid or False,
+                'client_masked': masked,
+                'client_initials': initials,
+            })
 
         # Считаем из реальных данных (не из кэшированных агрегатов)
         total_earned = sum(d.referrer_payout_usdt or 0 for d in deals)
         total_paid = sum((d.referrer_payout_usdt or 0) for d in deals if d.referrer_paid)
         referred_clients = db.query(Client).filter(Client.referrer_id == referrer.id).count()
+
+        # Конверсия: клиенты с хотя бы 1 завершённой сделкой / все приведённые
+        clients_with_deals = db.query(Deal.client_id).filter(
+            Deal.referrer_id == referrer.id,
+            Deal.status == DealStatus.COMPLETED
+        ).distinct().count()
+        conversion_rate = round(clients_with_deals / referred_clients * 100, 1) if referred_clients > 0 else 0
+
+        # Средний доход на сделку
+        avg_deal_income = round(total_earned / len(deals), 2) if deals else 0
 
         return jsonify({
             'success': True,
@@ -3580,7 +3601,10 @@ def referrer_stats(token):
             'payout_currency': referrer.payout_currency or 'USDT',
             'default_percent': referrer.default_percent,
             'total_referred_clients': referred_clients,
+            'clients_with_deals': clients_with_deals,
+            'conversion_rate': conversion_rate,
             'total_deals': len(deals),
+            'avg_deal_income': avg_deal_income,
             'total_earned_usdt': round(total_earned, 2),
             'total_paid_usdt': round(total_paid, 2),
             'pending_usdt': round(total_earned - total_paid, 2),
