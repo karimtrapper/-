@@ -3500,29 +3500,36 @@ BITRIX_PROXY_SECRET = os.environ.get('BITRIX_PROXY_SECRET', '')
 
 @app.route('/api/bitrix/contacts/search', methods=['GET'])
 def search_bitrix_contacts():
-    """Поиск контактов в Bitrix через прокси (для выбора реферера из CRM)."""
+    """Поиск контактов из воронки C18 (Grusha) в Bitrix.
+    Ищет по сделкам C18 с похожим именем, возвращает уникальные контакты."""
     query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify({'success': True, 'contacts': []})
 
     import requests as req
+    headers = {'Content-Type': 'application/json', 'X-Proxy-Secret': BITRIX_PROXY_SECRET}
     try:
+        # Ищем сделки C18 по имени клиента (TITLE содержит имя)
         resp = req.post(
-            f'{BITRIX_PROXY_URL}/bx/crm.contact.list',
-            headers={'Content-Type': 'application/json', 'X-Proxy-Secret': BITRIX_PROXY_SECRET},
+            f'{BITRIX_PROXY_URL}/bx/crm.deal.list',
+            headers=headers,
             json={
-                'filter': {'%NAME': query},
-                'select': ['ID', 'NAME', 'LAST_NAME'],
+                'filter': {'CATEGORY_ID': 18, '%TITLE': query},
+                'select': ['ID', 'TITLE', 'CONTACT_ID'],
                 'order': {'ID': 'DESC'},
                 'start': 0,
             },
             timeout=5,
         )
         data = resp.json()
-        contacts = [
-            {'id': c['ID'], 'name': f"{c.get('NAME', '')} {c.get('LAST_NAME', '')}".strip()}
-            for c in data.get('result', [])[:20]
-        ]
+        # Уникальные контакты из сделок C18
+        seen = {}
+        for deal in data.get('result', []):
+            cid = deal.get('CONTACT_ID')
+            title = deal.get('TITLE', '').replace(' - exgreen.pro', '').strip()
+            if cid and cid not in seen:
+                seen[cid] = title
+        contacts = [{'id': cid, 'name': name} for cid, name in list(seen.items())[:20]]
         return jsonify({'success': True, 'contacts': contacts})
     except Exception as e:
         return jsonify({'success': True, 'contacts': [], 'error': str(e)})
