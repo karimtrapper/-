@@ -23,6 +23,16 @@
         }
         .container { width: 100%; max-width: 480px; margin: 0 auto; }
 
+        /* Desktop: центрируем карточку + тень как на мобильном */
+        @media (min-width: 768px) {
+            body { display: flex; justify-content: center; align-items: flex-start; padding-top: 40px; }
+            .container {
+                border-radius: 24px; overflow: hidden;
+                box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+                margin-bottom: 40px;
+            }
+        }
+
         /* === Hero === */
         .hero {
             background: linear-gradient(135deg, #0F172A 0%, #1E293B 30%, #0F172A 60%, #1a1f3a 100%);
@@ -238,7 +248,7 @@
                         <div class="dot"></div>
                         <span>По запросу · от $50 · USDT TRC-20</span>
                     </div>
-                    <button class="cta-btn" onclick="alert('Напишите менеджеру для запроса выплаты')">Запросить выплату</button>
+                    <a href="https://t.me/exgreen_pro_bot" target="_blank" class="cta-btn" style="text-decoration:none;text-align:center;display:block;">Запросить выплату</a>
                 </div>
                 <div class="hero-fade"></div>
             </div>
