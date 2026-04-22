@@ -2640,7 +2640,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     const profitUnknown = deal.payout_source === 'founder_personal' && !deal.is_reimbursed && deal.payout_amount_usdt == null;
                     const isDoverka = deal.payin_method === 'spp_doverka';
-                    const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed';
+                    // Легаси-сделки без doverka_status, но завершённые — считаем подтверждёнными
+                    const doverkaImplicitConfirmed = isDoverka && deal.doverka_status == null && deal.status === 'completed';
+                    const dovekraNotConfirmed = isDoverka && deal.doverka_status !== 'confirmed' && !doverkaImplicitConfirmed;
 
                     document.getElementById('dealModalContent').innerHTML = `
                         <div class="form-row">
@@ -2666,9 +2668,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${isDoverka ? `
                             <div style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
                                 <p style="margin-bottom: 0.5rem;"><strong>Доверка ID:</strong> ${deal.doverka_transaction_id || '-'}</p>
-                                <p style="margin-bottom: 0.5rem;"><strong>Статус Доверки:</strong> 
-                                    <span style="color: ${deal.doverka_status === 'confirmed' ? '#10b981' : '#f59e0b'}; font-weight: 600;">
-                                        ${deal.doverka_status === 'confirmed' ? '✅ Подтверждено' : deal.doverka_status === 'paid' ? '💰 Выплачено' : '⏳ Ожидает выплаты'}
+                                <p style="margin-bottom: 0.5rem;"><strong>Статус Доверки:</strong>
+                                    <span style="color: ${(deal.doverka_status === 'confirmed' || doverkaImplicitConfirmed) ? '#10b981' : '#f59e0b'}; font-weight: 600;">
+                                        ${deal.doverka_status === 'confirmed' ? '✅ Подтверждено' : deal.doverka_status === 'paid' ? '💰 Выплачено' : doverkaImplicitConfirmed ? '✅ Подтверждено (legacy)' : '⏳ Ожидает выплаты'}
                                     </span>
                                 </p>
                                 ${deal.doverka_payout_hash ? `<p><strong>Хэш от Доверки:</strong> <a href="https://tronscan.org/#/transaction/${deal.doverka_payout_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.doverka_payout_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.doverka_payout_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
@@ -3026,6 +3028,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const clientId = document.getElementById('clientSelect').value;
             const clientName = document.querySelector('[name="client_name"]').value;
             const createdAt = document.getElementById('dealDate').value;
+
+            // Валидация (аналог createCustomDeal)
+            if (payinAmount <= 0 || payoutAmount <= 0) {
+                showToast('Укажите суммы Pay-In и Pay-Out', 'error');
+                return;
+            }
+            if (payinCurrency !== 'USDT' && payinRate <= 0) {
+                showToast('Укажите курс Pay-In к USDT', 'error');
+                return;
+            }
+            if (payoutCurrency !== 'USDT' && payoutRate <= 0) {
+                showToast('Укажите курс Pay-Out к USDT', 'error');
+                return;
+            }
 
             // Конвертация
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
