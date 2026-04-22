@@ -1498,6 +1498,18 @@ def create_deal():
                         ref_name = referrer.name
                         ref_percent = referrer.default_percent
 
+        # Умный дефолт needs_reimbursement:
+        # если payout не в THB (USDT/RUB/USD) — возмещение не нужно
+        # (фаундер не тратил наличные THB из кармана)
+        if 'needs_reimbursement' in data:
+            needs_reimb = bool(data.get('needs_reimbursement'))
+        else:
+            payout_is_thb = (
+                bool(data.get('payout_amount_thb'))
+                or data.get('custom_payout_currency') == 'THB'
+            )
+            needs_reimb = payout_is_thb
+
         deal = Deal(
             created_at=created_at,
             manager_name=data.get('manager_name'),
@@ -1524,6 +1536,7 @@ def create_deal():
             profit_usdt=data.get('profit_usdt'),
             profit_percent=data.get('profit_percent'),
             net_profit_usdt=data.get('net_profit_usdt'),
+            needs_reimbursement=needs_reimb,
             is_custom=data.get('is_custom', False),
             custom_payin_currency=data.get('custom_payin_currency'),
             custom_payin_amount=data.get('custom_payin_amount'),
