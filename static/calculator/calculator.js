@@ -605,6 +605,8 @@ async function calculate() {
 
     if (amount <= 0) {
         resultsSection.style.display = 'none';
+        hidePreciseRateStatus();
+        hidePreciseRateFallback();
         return;
     }
 
@@ -618,6 +620,28 @@ async function calculate() {
             card.style.animation = 'none';
             card.offsetHeight; // force reflow
             card.style.animation = '';
+        }
+        return;
+    }
+
+    // Если сценарий требует точный курс Binance (есть THB) — НЕ показываем быстрый результат.
+    // Менеджер не должен увидеть приблизительное число и сообщить его клиенту.
+    // Идём сразу на Playwright, результат отрисуется после получения точного курса.
+    // _skipNextPrecise=true — мы уже во вторичном вызове из getPreciseRate()/fallback, считаем как обычно.
+    if (scenarioNeedsPrecise(state.scenario) && !state._skipNextPrecise) {
+        resultsSection.style.display = 'none';
+        hidePreciseRateFallback();
+        showPreciseRateStatus('⏳ Получаем точный курс Binance... (~8 сек)');
+
+        const originalText = calculateBtn.innerHTML;
+        calculateBtn.disabled = true;
+        calculateBtn.innerHTML = '⏳ Точный курс...';
+
+        try {
+            await getPreciseRate();  // сам вызовет calculate() с _skipNextPrecise=true при успехе
+        } finally {
+            calculateBtn.disabled = false;
+            calculateBtn.innerHTML = originalText;
         }
         return;
     }
@@ -723,15 +747,6 @@ async function calculate() {
             resultsSection.style.display = 'block';
         }
 
-        // После успешного расчёта — автоматически запрашиваем точный курс Binance,
-        // если в сценарии есть THB (rub-to-usdt/usdt-from-rub — только RUB↔USDT, Binance не нужен).
-        // _skipNextPrecise — защита от цикла (calculate() внутри getPreciseRate()).
-        if (thisCalcVersion === state._calcVersion
-            && scenarioNeedsPrecise(state.scenario)
-            && !state._skipNextPrecise) {
-            schedulePreciseRefresh();
-        }
-
     } catch (error) {
         console.error('Calculation error:', error);
         if (thisCalcVersion !== state._calcVersion) return;
@@ -795,15 +810,18 @@ function hidePreciseRateFallback() {
     if (btn) btn.style.display = 'none';
 }
 
-// Fallback: пользователь согласен на быстрый курс — используем текущий state.rates.usdt_thb
-// (он уже обновлён при calculate() из быстрого API). Пересчитываем с ним.
+// Fallback: Playwright недоступен / очередь перегружена — пользователь согласен на быстрый курс.
+// Делаем быстрый расчёт через state.rates.usdt_thb (обновлён при refreshRates).
 async function usePreciseRateFallback() {
     hidePreciseRateFallback();
-    hidePreciseRateStatus();
-    // Быстрый курс уже в state.rates.usdt_thb из calculate() — просто пересчитаем
-    showToast('Используется быстрый курс API (~0.2% погрешность)', 'info', 3000);
-    await calculate();  // перерасчёт, но без schedulePreciseRefresh триггера на успех?
-    // Чтобы не зациклить — выключим авто-precise одним разом
+    showPreciseRateStatus('⚡ Используется быстрый курс API (~0.2% погрешность)');
+    // Убедиться что быстрый курс в state актуален — refreshRates уже должен был его обновить
+    state._skipNextPrecise = true;
+    try {
+        await calculate();
+    } finally {
+        state._skipNextPrecise = false;
+    }
 }
 
 // Флаг активного запроса точного курса — защита от двойного запуска
