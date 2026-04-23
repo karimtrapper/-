@@ -1002,7 +1002,7 @@ def send_deal_completed_webhook(deal):
     send_webhook_async(WEBHOOK_URL, data)
 
 # ==================== CALCULATOR IMPORTS ====================
-from calculator import ExchangeRateProvider, ExchangeCalculator
+from calculator import ExchangeRateProvider, ExchangeCalculator, playwright_queue
 
 # ==================== AUTH ====================
 
@@ -1276,12 +1276,20 @@ def get_precise_rate():
             usdt_amount_for_parsing = round(amount, 2)
             playwright_direction = 'usdt_to_thb'
 
-        # Парсим точный курс
-        playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-            usdt_amount=usdt_amount_for_parsing,
-            thb_amount=thb_amount_for_parsing,
-            direction=playwright_direction
-        ))
+        # Парсим точный курс — через приоритетную очередь (priority=1 → CRM)
+        playwright_result = playwright_queue.submit(
+            lambda: ExchangeRateProvider.get_precise_binance_rate(
+                usdt_amount=usdt_amount_for_parsing,
+                thb_amount=thb_amount_for_parsing,
+                direction=playwright_direction
+            ),
+            priority=1,
+            timeout=60
+        )
+
+        if playwright_result.get('error') == 'queue_timeout':
+            print(f"⚠️ Playwright queue timeout (60s) — отказ клиенту", flush=True)
+            return jsonify({'success': False, 'error': 'queue_timeout'}), 503
 
         if 'error' in playwright_result:
             # Playwright не сработал — фоллбэк на CoinGecko API
@@ -3949,30 +3957,49 @@ def partner_precise_rate(token):
         SAFE_USDT = 50000
         SAFE_THB = 1600000
 
-        # Определяем направление парсинга
+        # Определяем направление парсинга — через приоритетную очередь (priority=0 → партнёр вперёд)
         if usdt_amount:
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                usdt_amount=round(float(usdt_amount), 2),
-                direction='usdt_to_thb'
-            ))
-            # Если упал — ретрай с безопасной суммой
-            if 'error' in playwright_result:
-                print(f"⚠️ Playwright failed for {usdt_amount} USDT, retrying with {SAFE_USDT}", flush=True)
-                playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                    usdt_amount=SAFE_USDT,
+            playwright_result = playwright_queue.submit(
+                lambda: ExchangeRateProvider.get_precise_binance_rate(
+                    usdt_amount=round(float(usdt_amount), 2),
                     direction='usdt_to_thb'
-                ))
+                ),
+                priority=0,
+                timeout=60
+            )
+            # Если упал (не таймаут очереди) — ретрай с безопасной суммой
+            if 'error' in playwright_result and playwright_result.get('error') != 'queue_timeout':
+                print(f"⚠️ Playwright failed for {usdt_amount} USDT, retrying with {SAFE_USDT}", flush=True)
+                playwright_result = playwright_queue.submit(
+                    lambda: ExchangeRateProvider.get_precise_binance_rate(
+                        usdt_amount=SAFE_USDT,
+                        direction='usdt_to_thb'
+                    ),
+                    priority=0,
+                    timeout=60
+                )
         else:
-            playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                thb_amount=round(float(thb_amount)),
-                direction='usdt_to_thb_reverse'
-            ))
-            if 'error' in playwright_result:
-                print(f"⚠️ Playwright failed for {thb_amount} THB, retrying with {SAFE_THB}", flush=True)
-                playwright_result = asyncio.run(ExchangeRateProvider.get_precise_binance_rate(
-                    thb_amount=SAFE_THB,
+            playwright_result = playwright_queue.submit(
+                lambda: ExchangeRateProvider.get_precise_binance_rate(
+                    thb_amount=round(float(thb_amount)),
                     direction='usdt_to_thb_reverse'
-                ))
+                ),
+                priority=0,
+                timeout=60
+            )
+            if 'error' in playwright_result and playwright_result.get('error') != 'queue_timeout':
+                print(f"⚠️ Playwright failed for {thb_amount} THB, retrying with {SAFE_THB}", flush=True)
+                playwright_result = playwright_queue.submit(
+                    lambda: ExchangeRateProvider.get_precise_binance_rate(
+                        thb_amount=SAFE_THB,
+                        direction='usdt_to_thb_reverse'
+                    ),
+                    priority=0,
+                    timeout=60
+                )
+
+        if playwright_result.get('error') == 'queue_timeout':
+            return jsonify({'success': False, 'error': 'queue_timeout'}), 503
 
         if 'error' in playwright_result:
             return jsonify({'success': False, 'error': 'Rate temporarily unavailable'}), 503

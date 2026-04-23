@@ -196,12 +196,21 @@
                     <button class="calculate-btn" id="calculateBtn" onclick="calculate()">
                         🚀 РАССЧИТАТЬ
                     </button>
-                    <button class="precise-rate-btn" id="preciseRateBtn" onclick="getPreciseRate()"
-                            style="margin-top: 10px; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-                                   border: 2px solid #fff; box-shadow: 0 4px 15px rgba(245, 87, 108, 0.4);
-                                   font-weight: 600;">
-                        🎯 Узнать точный курс Binance
+
+                    <!-- Индикатор автозапроса точного курса (показывается во время Playwright) -->
+                    <div id="preciseRateStatus" style="display: none; margin-top: 10px; padding: 10px 14px;
+                         background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
+                         color: #0369a1; font-size: 0.9rem; text-align: center;">
+                        <span id="preciseRateStatusText">⏳ Получаем точный курс Binance...</span>
                         <span id="preciseRateTime" style="font-size: 0.85em; opacity: 0.8; display: none;"></span>
+                    </div>
+
+                    <!-- Fallback-кнопка (появляется если Playwright упал / очередь перегружена) -->
+                    <button id="preciseRateFallbackBtn" onclick="usePreciseRateFallback()"
+                            style="display: none; margin-top: 10px; width: 100%; padding: 10px 14px;
+                                   background: #fef3c7; border: 1px solid #fbbf24; border-radius: 8px;
+                                   color: #92400e; font-size: 0.9rem; font-weight: 600; cursor: pointer;">
+                        ⚡ Binance-парсер недоступен — использовать быстрый курс (~0.2% погрешность)
                     </button>
                 </div>
 

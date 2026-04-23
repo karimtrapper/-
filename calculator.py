@@ -4,7 +4,11 @@ Exchange Calculator Bot - Калькулятор обмена RUB-THB
 """
 
 import aiohttp
+import asyncio
 import os
+import threading
+import time as _time
+from queue import PriorityQueue
 from typing import Dict, Tuple
 from dotenv import load_dotenv
 from decimal import Decimal, ROUND_HALF_UP
@@ -31,6 +35,67 @@ def load_env():
     return False
 
 load_env()
+
+
+class _PlaywrightQueue:
+    """Приоритетная очередь для Playwright-запросов.
+
+    Один worker-поток по очереди прогоняет async-задачи через `asyncio.run`.
+    Параллельные Chromium не запускаются → защита от OOM и падений CRM.
+    Приоритет: 0 = партнёр (важнее), 1 = CRM.
+    """
+
+    def __init__(self):
+        self.queue = PriorityQueue()
+        self._seq = 0
+        self._seq_lock = threading.Lock()
+        self.worker = threading.Thread(target=self._worker, daemon=True)
+        self.worker.start()
+
+    def _next_seq(self) -> int:
+        with self._seq_lock:
+            self._seq += 1
+            return self._seq
+
+    def _worker(self):
+        while True:
+            _prio, _seq, coro_factory, event, holder = self.queue.get()
+            try:
+                holder['result'] = asyncio.run(coro_factory())
+            except Exception as e:
+                holder['error'] = e
+            finally:
+                event.set()
+
+    def submit(self, coro_factory, priority: int = 1, timeout: int = 60) -> dict:
+        """Ставит задачу в очередь и ждёт результат.
+
+        Args:
+            coro_factory: callable → coroutine (чтобы asyncio.run её запустил)
+            priority: 0=партнёр, 1=CRM. Меньше = раньше.
+            timeout: сколько секунд ждать в очереди до отказа.
+
+        Returns:
+            dict — результат get_precise_binance_rate(),
+                   либо {'error': 'queue_timeout'},
+                   либо {'error': '<exception>'}.
+        """
+        event = threading.Event()
+        holder: dict = {}
+        seq = self._next_seq()
+        self.queue.put((priority, seq, coro_factory, event, holder))
+
+        if not event.wait(timeout=timeout):
+            # Задача может быть ещё в очереди — worker её выполнит, но результат мы уже не ждём
+            return {'error': 'queue_timeout'}
+
+        if 'error' in holder:
+            return {'error': str(holder['error'])}
+        return holder['result']
+
+
+# Глобальный инстанс — создаётся при импорте модуля
+playwright_queue = _PlaywrightQueue()
 
 # Функция округления как в Excel
 def excel_round(value, decimals=2):

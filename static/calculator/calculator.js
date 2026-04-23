@@ -328,12 +328,11 @@ function updateScenarioUI() {
     document.getElementById('amount').value = '';
     document.getElementById('resultsSection').style.display = 'none';
 
-    // Скрываем кнопку точного курса для RUB→USDT (Playwright не парсит RUB-USDT)
-    const preciseBtn = document.getElementById('preciseRateBtn');
-    if (preciseBtn) {
-        const hidePrecise = state.scenario === 'rub-to-usdt' || state.scenario === 'usdt-from-rub';
-        preciseBtn.style.display = hidePrecise ? 'none' : '';
-    }
+    // Точный курс автозапускается после «Рассчитать» только если в сценарии есть THB.
+    // Для rub-to-usdt / usdt-from-rub Playwright не нужен — Binance тут не участвует.
+    // Скрываем индикаторы при смене сценария.
+    hidePreciseRateStatus();
+    hidePreciseRateFallback();
 }
 
 // Переключение скидки
@@ -724,6 +723,15 @@ async function calculate() {
             resultsSection.style.display = 'block';
         }
 
+        // После успешного расчёта — автоматически запрашиваем точный курс Binance,
+        // если в сценарии есть THB (rub-to-usdt/usdt-from-rub — только RUB↔USDT, Binance не нужен).
+        // _skipNextPrecise — защита от цикла (calculate() внутри getPreciseRate()).
+        if (thisCalcVersion === state._calcVersion
+            && scenarioNeedsPrecise(state.scenario)
+            && !state._skipNextPrecise) {
+            schedulePreciseRefresh();
+        }
+
     } catch (error) {
         console.error('Calculation error:', error);
         if (thisCalcVersion !== state._calcVersion) return;
@@ -737,39 +745,97 @@ async function calculate() {
     }
 }
 
-// Получить точный курс Binance через Playwright
-// Флаг активного запроса точного курса
+// === Автозапрос точного курса Binance (Playwright) ===
+// Точный курс запрашивается автоматически после «Рассчитать»,
+// если сценарий требует связку USDT↔THB. Кнопка «🎯 Precise» убрана.
+
+function scenarioNeedsPrecise(scenario) {
+    // Playwright нужен только там где есть THB (USDT-THB курс с Binance)
+    return scenario !== 'rub-to-usdt' && scenario !== 'usdt-from-rub';
+}
+
+let _preciseDebounceTimer = null;
+let _preciseAbortController = null;
+let _preciseStatusSlowTimer = null;
+// Параметры последнего запроса — чтобы fallback-кнопка могла посчитать по-быстрому
+let _lastPreciseArgs = null;
+
+function schedulePreciseRefresh() {
+    // Debounce 700 ms — если пользователь жмёт «Рассчитать» подряд, ждём последний
+    if (_preciseDebounceTimer) clearTimeout(_preciseDebounceTimer);
+    _preciseDebounceTimer = setTimeout(() => {
+        _preciseDebounceTimer = null;
+        getPreciseRate();
+    }, 700);
+}
+
+function showPreciseRateStatus(text) {
+    const box = document.getElementById('preciseRateStatus');
+    const txt = document.getElementById('preciseRateStatusText');
+    if (box && txt) {
+        txt.textContent = text;
+        box.style.display = 'block';
+    }
+}
+
+function hidePreciseRateStatus() {
+    const box = document.getElementById('preciseRateStatus');
+    if (box) box.style.display = 'none';
+    const time = document.getElementById('preciseRateTime');
+    if (time) time.style.display = 'none';
+}
+
+function showPreciseRateFallback() {
+    const btn = document.getElementById('preciseRateFallbackBtn');
+    if (btn) btn.style.display = 'block';
+}
+
+function hidePreciseRateFallback() {
+    const btn = document.getElementById('preciseRateFallbackBtn');
+    if (btn) btn.style.display = 'none';
+}
+
+// Fallback: пользователь согласен на быстрый курс — используем текущий state.rates.usdt_thb
+// (он уже обновлён при calculate() из быстрого API). Пересчитываем с ним.
+async function usePreciseRateFallback() {
+    hidePreciseRateFallback();
+    hidePreciseRateStatus();
+    // Быстрый курс уже в state.rates.usdt_thb из calculate() — просто пересчитаем
+    showToast('Используется быстрый курс API (~0.2% погрешность)', 'info', 3000);
+    await calculate();  // перерасчёт, но без schedulePreciseRefresh триггера на успех?
+    // Чтобы не зациклить — выключим авто-precise одним разом
+}
+
+// Флаг активного запроса точного курса — защита от двойного запуска
 let isPreciseRateLoading = false;
 
 async function getPreciseRate() {
     const amount = getAmount();
-    const preciseRateBtn = document.getElementById('preciseRateBtn');
-    const preciseRateTime = document.getElementById('preciseRateTime');
+    if (amount <= 0) return;
 
-    if (amount <= 0) {
-        showToast('Введите сумму для расчета точного курса', 'warning');
-        return;
-    }
+    // Если сценарий не требует Playwright — ничего не делаем
+    if (!scenarioNeedsPrecise(state.scenario)) return;
 
-    // Защита от двойного нажатия
-    if (isPreciseRateLoading) {
-        console.log('⚠️ Запрос точного курса уже выполняется, игнорируем...');
-        return;
+    // Защита от параллельных запросов — отменяем предыдущий
+    if (_preciseAbortController) {
+        try { _preciseAbortController.abort(); } catch (_) {}
     }
+    _preciseAbortController = new AbortController();
 
     isPreciseRateLoading = true;
-    const originalText = preciseRateBtn.innerHTML;
-    preciseRateBtn.disabled = true;
-    preciseRateBtn.innerHTML = '⏳ Загрузка точного курса... (~10 сек)';
-    if (preciseRateTime) {
-        preciseRateTime.style.display = 'none';
-    }
+    hidePreciseRateFallback();
+    showPreciseRateStatus('⏳ Точный курс Binance... (~8 сек)');
+
+    // Через 10 сек сменить текст на "в очереди"
+    if (_preciseStatusSlowTimer) clearTimeout(_preciseStatusSlowTimer);
+    _preciseStatusSlowTimer = setTimeout(() => {
+        showPreciseRateStatus('⏳ В очереди к Binance-парсеру...');
+    }, 10000);
 
     try {
-        // Получаем курс RUB/USDT
         const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
 
-        // Маппинг сценария thb-to-rub → rub-to-thb + target (аналогично calculate())
+        // Маппинг сценария thb-to-rub → rub-to-thb + target (как в calculate())
         let preciseScenario = state.scenario;
         let preciseDirection = state.direction;
         if (state.scenario === 'thb-to-rub') {
@@ -780,56 +846,54 @@ async function getPreciseRate() {
             preciseDirection = 'target';
         }
 
-        console.log(`🎯 Запрос точного расчета: ${preciseScenario}, direction: ${preciseDirection}, сумма ${amount}...`);
+        const body = {
+            scenario: preciseScenario,
+            amount: amount,
+            direction: preciseDirection,
+            method: state.method,
+            rub_usdt: rubUsdt,
+            profit_margin: state.profitMargin
+        };
 
         const response = await fetch(`${CONFIG.API_URL}/rates/precise`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scenario: preciseScenario,
-                amount: amount,
-                direction: preciseDirection,
-                method: state.method,
-                rub_usdt: rubUsdt,
-                profit_margin: state.profitMargin
-            })
+            body: JSON.stringify(body),
+            signal: _preciseAbortController.signal
         });
+
+        // Очередь перегружена или Playwright недоступен — показываем fallback
+        if (response.status === 503) {
+            const errData = await response.json().catch(() => ({}));
+            const isQueueTimeout = errData.error === 'queue_timeout';
+            showPreciseRateStatus(isQueueTimeout
+                ? '⚠️ Binance-парсер перегружен — попробуйте позже'
+                : '⚠️ Binance-парсер временно недоступен');
+            showPreciseRateFallback();
+            return;
+        }
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             const errorMsg = errorData.error || `HTTP ${response.status}`;
-
-            if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
-                throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
-            }
-
             throw new Error(errorMsg);
         }
 
         const result = await response.json();
-
-        if (!result.success) {
-            const errorMsg = result.error || 'Unknown error';
-
-            if (errorMsg.includes('Executable') || errorMsg.includes('playwright install')) {
-                throw new Error('Сервер ещё загружает Playwright (~30 сек). Попробуйте через минуту.');
-            }
-
-            throw new Error(errorMsg);
-        }
+        if (!result.success) throw new Error(result.error || 'Unknown error');
 
         console.log('✅ Точный курс получен:', result);
 
         // Обновляем курс USDT-THB в state и UI
         state.rates.usdt_thb = result.rate_used;
         const usdtThbRateEl = document.getElementById('usdtThbRate');
-        usdtThbRateEl.textContent = `${result.rate_used.toFixed(2)} ฿`;
+        if (usdtThbRateEl) {
+            usdtThbRateEl.textContent = `${result.rate_used.toFixed(2)} ฿`;
+            usdtThbRateEl.style.color = '#ff4444';
+            usdtThbRateEl.style.fontWeight = 'bold';
+        }
 
-        // Подсвечиваем курс красным чтобы показать что это точный курс
-        usdtThbRateEl.style.color = '#ff4444';
-        usdtThbRateEl.style.fontWeight = 'bold';
-
-        // Показываем подпись "Точный курс для X рублей"
+        // Подпись с временем получения точного курса
         const formattedAmount = amount.toLocaleString('ru-RU');
         let currencyLabel = '';
         if (state.scenario === 'rub-to-thb' || state.scenario === 'thb-to-rub') {
@@ -837,26 +901,30 @@ async function getPreciseRate() {
         } else if (state.scenario === 'usdt-to-thb' || state.scenario === 'thb-to-usdt') {
             currencyLabel = state.scenario === 'usdt-to-thb' ? 'USDT' : '฿';
         }
-
-        if (preciseRateTime) {
-            preciseRateTime.textContent = `(точный курс для ${formattedAmount} ${currencyLabel}, ${result.time} сек)`;
-            preciseRateTime.style.display = 'inline';
-            preciseRateTime.style.color = '#ff4444';
-        }
+        showPreciseRateStatus(`✅ Точный курс для ${formattedAmount} ${currencyLabel} (${result.time} сек)`);
 
         // Фиксируем точный курс на 5 минут
         lockPreciseRate();
 
-        // АВТОМАТИЧЕСКИ пересчитываем с новым точным курсом
+        // Пересчитываем с точным курсом — но без повторного авто-precise (чтобы не зациклить)
+        state._skipNextPrecise = true;
         await calculate();
+        state._skipNextPrecise = false;
 
     } catch (error) {
+        if (error.name === 'AbortError') {
+            console.log('⏹ Precise запрос отменён (пришёл новый)');
+            return;
+        }
         console.error('❌ Ошибка получения точного курса:', error);
-        showToast(`Ошибка получения точного курса: ${error.message}. Используется курс API.`, 'error', 5000);
+        showPreciseRateStatus('⚠️ Binance-парсер недоступен');
+        showPreciseRateFallback();
     } finally {
+        if (_preciseStatusSlowTimer) {
+            clearTimeout(_preciseStatusSlowTimer);
+            _preciseStatusSlowTimer = null;
+        }
         isPreciseRateLoading = false;
-        preciseRateBtn.disabled = false;
-        preciseRateBtn.innerHTML = originalText;
     }
 }
 
