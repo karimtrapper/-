@@ -463,6 +463,10 @@ class Wallet(Base):
         }
 
 class WalletOperation(Base):
+    # TODO(CR-05): добавить миграцию с UNIQUE(deal_id, type) WHERE deal_id IS NOT NULL
+    # (partial unique index на Postgres). Пока защищаемся row-level lock'ом на Deal
+    # в update_deal/create_deal — этого достаточно для отсутствия дублей при
+    # последовательной сериализации, но constraint в БД был бы defense-in-depth.
     __tablename__ = 'wallet_operations'
     id = Column(Integer, primary_key=True)
     wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=False)
@@ -1598,7 +1602,10 @@ def create_deal():
 def update_deal(deal_id):
     session = get_session()
     try:
-        deal = session.query(Deal).filter(Deal.id == deal_id).first()
+        # CR-05: блокировка строки сделки. Защищает upsert WalletOperation ниже
+        # (раньше два параллельных PUT могли создать две expense-операции, потому
+        # что оба прошли через `if not existing_op:` до commit'а другого).
+        deal = session.query(Deal).filter(Deal.id == deal_id).with_for_update().first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
@@ -2642,20 +2649,24 @@ def topup_card(card_id):
     session = get_session()
     try:
         data = request.get_json()
-        card = session.query(BankCard).filter(BankCard.id == card_id).first()
+        # CR-05: блокируем строку карты на время транзакции (FOR UPDATE на Postgres,
+        # no-op на SQLite). Защита от двойного пополнения карты в параллельных запросах.
+        card = session.query(BankCard).filter(BankCard.id == card_id).with_for_update().first()
         if not card:
             return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
 
         amount_thb = float(data['amount_thb'])
         source_type = data['source_type'] # 'cash_batch' or 'separate'
-        
+
         cost_usdt = 0
         purchase_rate = 0
         source_batch_id = None
-        
+
         if source_type == 'cash_batch':
             batch_id = int(data['source_batch_id'])
-            batch = session.query(CashBatch).filter(CashBatch.id == batch_id).first()
+            # CR-05: блокировка партии — без неё два параллельных запроса проходят
+            # проверку remaining_thb >= amount и оба декрементируют → баланс в минус.
+            batch = session.query(CashBatch).filter(CashBatch.id == batch_id).with_for_update().first()
             if not batch or batch.remaining_thb < amount_thb:
                 return jsonify({'success': False, 'error': 'Недостаточно средств в партии'}), 400
             
@@ -2946,7 +2957,17 @@ def create_reimbursement():
         session.flush()  # Get the ID
         
         # Update deals
-        deals = session.query(Deal).filter(Deal.id.in_(deal_ids)).all()
+        # CR-05: блокировка строк сделок на время возмещения. Без with_for_update
+        # параллельный create_reimbursement / update_deal по тем же id мог переписать
+        # payout_amount_usdt и привести к двойной выплате/потере.
+        # ORDER BY id для предотвращения deadlock-а при пересекающихся deal_ids.
+        deals = (
+            session.query(Deal)
+            .filter(Deal.id.in_(deal_ids))
+            .order_by(Deal.id)
+            .with_for_update()
+            .all()
+        )
         total_thb = 0
         # Для пропорционального распределения USDT учитываем custom_payout_amount
         total_payout = sum((d.payout_amount_thb or d.custom_payout_amount or 0) for d in deals)
