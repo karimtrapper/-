@@ -1069,13 +1069,31 @@ def auth_me():
 @app.route('/api/auth/setup', methods=['POST'])
 @limiter.limit("3/minute")
 def auth_setup():
-    """Первоначальная настройка — создание админа (только если нет ни одного пользователя)"""
+    """Первоначальная настройка — создание админа (только если нет ни одного пользователя).
+
+    CR-08: защита от race-условия. Раньше два параллельных запроса в окне < 100мс
+    могли оба пройти проверку `existing = first()` и создать двух админов.
+    Защита:
+      1. Postgres advisory lock на время транзакции (no-op на SQLite, где
+         writes сериализуются engine'ом).
+      2. Повторная проверка count() ПОСЛЕ блокировки.
+      3. UNIQUE(username) на admin_users (есть в модели) — defense-in-depth.
+    """
     if os.environ.get('SETUP_ENABLED') != 'true':
         return jsonify({'success': False, 'error': 'Setup отключён'}), 403
     db = get_session()
     try:
-        existing = db.query(AdminUser).first()
-        if existing:
+        # 1) Advisory lock (только на Postgres). Любой setup-запрос ждёт, пока
+        # предыдущий завершится. Произвольный 64-битный ключ.
+        from sqlalchemy import text as _sql_text
+        try:
+            if db.bind and db.bind.dialect.name == 'postgresql':
+                db.execute(_sql_text('SELECT pg_advisory_xact_lock(:k)'), {'k': 7423891234567890})
+        except Exception as e:
+            app.logger.warning(f'auth_setup: advisory lock failed (продолжаем без него): {e}')
+
+        # 2) Проверка под локом — теперь между check и insert никто не вклинится
+        if db.query(AdminUser).count() > 0:
             return jsonify({'success': False, 'error': 'Админ уже создан'}), 403
 
         data = request.get_json() or {}
@@ -1086,8 +1104,10 @@ def auth_setup():
         if not username or not password:
             return jsonify({'success': False, 'error': 'Укажите логин и пароль'}), 400
 
-        if len(password) < 8:
-            return jsonify({'success': False, 'error': 'Пароль минимум 8 символов'}), 400
+        # CR-08: подняли минимальную длину до 12 (раньше — 8). admin/test1234
+        # был как раз на границе; новые пароли — длиннее.
+        if len(password) < 12:
+            return jsonify({'success': False, 'error': 'Пароль минимум 12 символов'}), 400
 
         admin = AdminUser(
             username=username,
@@ -1096,7 +1116,15 @@ def auth_setup():
             role='admin'
         )
         db.add(admin)
-        db.commit()
+        try:
+            db.commit()
+        except Exception as e:
+            # 3) Defense-in-depth: если по какой-то причине гонка прорвалась
+            # сквозь advisory lock (например, lock не сработал) — UNIQUE(username)
+            # отлавливает дубликат на уровне БД.
+            db.rollback()
+            app.logger.warning(f'auth_setup: commit failed (возможно race): {e}')
+            return jsonify({'success': False, 'error': 'Setup race detected'}), 409
 
         flask_session['user_id'] = admin.id
         flask_session['username'] = admin.username
