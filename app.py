@@ -3315,9 +3315,60 @@ def kyc_status(token):
     finally:
         session.close()
 
+# ==================== KYC FILE VALIDATION (CR-04) ====================
+# Допустимые MIME-типы фото KYC. SVG/HTML исключены — они исполняют JS при отдаче.
+KYC_ALLOWED_MIME = {'image/jpeg', 'image/png', 'image/webp'}
+KYC_MAX_FILE_BYTES = 5 * 1024 * 1024   # 5 МБ на файл
+KYC_MAX_LIVENESS_FRAMES = 8            # макс. кадров liveness в одном запросе
+
+
+def _validate_kyc_image(file_storage):
+    """Валидация загружаемого фото: MIME, magic bytes, размер.
+
+    Возвращает (ok: bool, error: str | None, ext: str | None).
+    ext — нормализованное расширение под фактический magic-bytes тип.
+    """
+    if file_storage is None or not file_storage.filename:
+        return False, 'empty_file', None
+
+    mime = (file_storage.mimetype or '').lower()
+    if mime not in KYC_ALLOWED_MIME:
+        return False, f'unsupported_type:{mime}', None
+
+    stream = file_storage.stream
+    head = stream.read(12)
+    stream.seek(0)
+
+    if head.startswith(b'\xff\xd8\xff'):
+        actual_ext = 'jpg'
+    elif head.startswith(b'\x89PNG\r\n\x1a\n'):
+        actual_ext = 'png'
+    elif head[:4] == b'RIFF' and head[8:12] == b'WEBP':
+        actual_ext = 'webp'
+    else:
+        return False, 'invalid_image_magic', None
+
+    # Размер: seek в конец → tell → seek в начало
+    stream.seek(0, 2)
+    size = stream.tell()
+    stream.seek(0)
+    if size <= 0:
+        return False, 'empty_file', None
+    if size > KYC_MAX_FILE_BYTES:
+        return False, 'too_large', None
+
+    return True, None, actual_ext
+
+
 @app.route('/api/kyc/submit', methods=['POST'])
+@limiter.limit("10 per hour")
 def kyc_submit():
-    """Клиент загружает файлы верификации"""
+    """Клиент загружает файлы верификации.
+
+    CR-04: MIME + magic-bytes валидация (whitelist jpeg/png/webp), лимит размера 5МБ,
+    rate-limit 10/час по IP, перенумерация имён файлов (имя клиента не доверяем),
+    лимит количества liveness-кадров.
+    """
     token = request.form.get('token')
     if not token:
         return jsonify({'success': False, 'error': 'missing_token'}), 400
@@ -3338,7 +3389,12 @@ def kyc_submit():
         # Сохраняем документ
         doc = request.files.get('document')
         if doc:
-            doc_filename = f"doc_{secure_filename(doc.filename)}"
+            ok, err, ext = _validate_kyc_image(doc)
+            if not ok:
+                return jsonify({'success': False, 'error': f'document_{err}'}), 400
+            # Имя файла генерируем сами — secure_filename() не защищает от
+            # подделанного расширения, доверяем только magic-bytes.
+            doc_filename = f"doc.{ext}"
             doc_path = os.path.join(upload_dir, doc_filename)
             doc.save(doc_path)
             kyc.doc_path = doc_path
@@ -3346,7 +3402,10 @@ def kyc_submit():
         # Сохраняем селфи
         selfie = request.files.get('selfie')
         if selfie:
-            selfie_filename = f"selfie_{secure_filename(selfie.filename)}"
+            ok, err, ext = _validate_kyc_image(selfie)
+            if not ok:
+                return jsonify({'success': False, 'error': f'selfie_{err}'}), 400
+            selfie_filename = f"selfie.{ext}"
             selfie_path = os.path.join(upload_dir, selfie_filename)
             selfie.save(selfie_path)
             kyc.selfie_path = selfie_path
@@ -3354,9 +3413,14 @@ def kyc_submit():
         # Сохраняем liveness-кадры
         liveness_files = request.files.getlist('liveness')
         if liveness_files:
+            if len(liveness_files) > KYC_MAX_LIVENESS_FRAMES:
+                return jsonify({'success': False, 'error': 'too_many_liveness_frames'}), 400
             liveness_paths = []
             for i, f in enumerate(liveness_files):
-                liveness_filename = f"liveness_{i}.jpg"
+                ok, err, ext = _validate_kyc_image(f)
+                if not ok:
+                    return jsonify({'success': False, 'error': f'liveness_{i}_{err}'}), 400
+                liveness_filename = f"liveness_{i}.{ext}"
                 liveness_path = os.path.join(upload_dir, liveness_filename)
                 f.save(liveness_path)
                 liveness_paths.append(liveness_path)
