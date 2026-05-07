@@ -3205,11 +3205,51 @@ def proxy_create_payment():
     order_id = str(raw.get('order_id') or f'GR-{int(__import__("time").time() * 1000)}')[:64]
     description = str(raw.get('description') or 'Grusha Exchange')[:128]
 
-    # Безопасный payload, отдаваемый и в grushab-2-b.ru, и в Doverka API.
+    # Доп. безопасные поля для grushab-2-b.ru (whitelist значений где можно).
+    ALLOWED_CURRENCIES = {'RUB', 'USD', 'USDT', 'THB', 'EUR'}
+    ALLOWED_MERCHANTS = {'grusha'}
+    currency = str(raw.get('currency') or 'RUB')[:8].upper()
+    if currency not in ALLOWED_CURRENCIES:
+        currency = 'RUB'
+    merchant_id = str(raw.get('merchant_id') or 'grusha')[:32]
+    if merchant_id not in ALLOWED_MERCHANTS:
+        merchant_id = 'grusha'
+
+    def _safe_url(u, max_len=512):
+        """Только https://... URL, обрезаем длину. Пустая строка / не-https → None."""
+        s = str(u or '')[:max_len]
+        return s if s.startswith('https://') else ''
+
+    success_url = _safe_url(raw.get('success_url'))
+    cancel_url = _safe_url(raw.get('cancel_url'))
+    failure_url = _safe_url(raw.get('failure_url'))
+    merchant_image_url = _safe_url(raw.get('merchant_image_url'))
+    merchant_description = str(raw.get('merchant_description') or '')[:128]
+
+    # metadata — dict с примитивами, max 20 ключей, max 256 байт каждый.
+    raw_meta = raw.get('metadata') or {}
+    metadata = {}
+    if isinstance(raw_meta, dict):
+        for k, v in list(raw_meta.items())[:20]:
+            ks = str(k)[:64]
+            if isinstance(v, (int, float, bool)) or v is None:
+                metadata[ks] = v
+            else:
+                metadata[ks] = str(v)[:256]
+
+    # Безопасный payload, отдаваемый в grushab-2-b.ru.
     safe_payload = {
         'amount': amount_val,
+        'currency': currency,
         'order_id': order_id,
+        'merchant_id': merchant_id,
         'description': description,
+        'success_url': success_url,
+        'cancel_url': cancel_url,
+        'failure_url': failure_url,
+        'metadata': metadata,
+        'merchant_image_url': merchant_image_url,
+        'merchant_description': merchant_description,
     }
 
     if provider == 'grusha':
