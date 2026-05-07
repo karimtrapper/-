@@ -3142,16 +3142,39 @@ def doverka_payments_history():
 
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
-    """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API."""
-    data = request.get_json()
-    provider = data.pop('provider', 'grusha')  # 'grusha' или 'doverka'
+    """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API.
+
+    CR-07: whitelist полей. Раньше форвардили произвольный JSON с серверным
+    Doverka API-ключом → авторизованный пользователь мог пробрасывать любые
+    Doverka-поля (callback_url, order_transaction_id чужих транзакций, и т.п.).
+    """
+    raw = request.get_json() or {}
+    provider = str(raw.get('provider') or 'grusha')
+
+    # Strict whitelist + явная типизация и обрезка длин.
+    try:
+        amount_val = float(raw.get('amount') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'message': 'invalid amount'}), 400
+    if amount_val <= 0 or amount_val > 10_000_000:
+        return jsonify({'success': False, 'message': 'amount out of range'}), 400
+
+    order_id = str(raw.get('order_id') or f'GR-{int(__import__("time").time() * 1000)}')[:64]
+    description = str(raw.get('description') or 'Grusha Exchange')[:128]
+
+    # Безопасный payload, отдаваемый и в grushab-2-b.ru, и в Doverka API.
+    safe_payload = {
+        'amount': amount_val,
+        'order_id': order_id,
+        'description': description,
+    }
 
     if provider == 'grusha':
         # Пробуем grushab-2-b.ru (персонализированная страница)
         try:
             response = requests.post(
                 'https://grushab-2-b.ru/api/payments',
-                json=data,
+                json=safe_payload,
                 headers={'Content-Type': 'application/json', 'X-Provider-Name': 'doverkapay'},
                 timeout=8
             )
@@ -3186,9 +3209,9 @@ def proxy_create_payment():
 
             doverka_payload = {
                 'currency_id': proxy_create_payment._currency_id,
-                'amount_rub': data.get('amount'),
-                'order_transaction_id': data.get('order_id', f'GR-{int(__import__("time").time() * 1000)}'),
-                'order_title': data.get('description', 'Grusha Exchange'),
+                'amount_rub': safe_payload['amount'],
+                'order_transaction_id': safe_payload['order_id'],
+                'order_title': safe_payload['description'],
             }
             webhook_url = os.environ.get('DOVERKA_WEBHOOK_URL')
             if webhook_url:
