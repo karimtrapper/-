@@ -1,0 +1,15 @@
+ID	Severity	STRIDE	OWASP	Title	File	Line	Status	Effort
+C1	CRITICAL	Spoofing	A02:2021	SHA-256 password hashing with static salt	app.py	102-105	OPEN	2h
+C2	CRITICAL	Spoofing	A02:2021	Hardcoded secret key fallback	app.py	21	OPEN	15min
+C3	CRITICAL	Tampering	A08:2021	Webhook without HMAC verification	app.py	2693-2703	OPEN	2h
+H1	HIGH	Spoofing	A07:2021	No rate limiting on login	app.py	860	OPEN	1h
+H2	HIGH	EoP	A01:2021	Public admin setup endpoint	app.py	906	OPEN	30min
+H3	HIGH	Tampering	A10:2021	Unvalidated proxy to payment API	app.py	2675	OPEN	1h
+H4	HIGH	InfoDisc	A01:2021	KYC photos accessible without session auth	app.py	2901	OPEN	30min
+M1	MEDIUM	Spoofing	A07:2021	Minimum password length 4 chars	app.py	923	OPEN	5min
+M2	MEDIUM	Spoofing	A07:2021	30-day session lifetime	app.py	880	OPEN	5min
+M3	MEDIUM	InfoDisc	A09:2021	Exception details in API responses	app.py	multiple	OPEN	1h
+M4	MEDIUM	InfoDisc	A05:2021	CORS wildcard allows any origin	app.py	22	OPEN	15min
+M5	MEDIUM	DoS	A05:2021	No file upload size limit	app.py	2814	OPEN	5min
+L1	LOW	EoP	A01:2021	RBAC not implemented	app.py	98	OPEN	4h
+L2	LOW	Repud	A09:2021	No audit log	app.py	-	OPEN	8h

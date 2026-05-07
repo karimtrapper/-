@@ -463,10 +463,8 @@ class Wallet(Base):
         }
 
 class WalletOperation(Base):
-    # TODO(CR-05): добавить миграцию с UNIQUE(deal_id, type) WHERE deal_id IS NOT NULL
-    # (partial unique index на Postgres). Пока защищаемся row-level lock'ом на Deal
-    # в update_deal/create_deal — этого достаточно для отсутствия дублей при
-    # последовательной сериализации, но constraint в БД был бы defense-in-depth.
+    # CR-05: defense-in-depth — partial UNIQUE(deal_id, type) WHERE deal_id IS NOT NULL
+    # создаётся миграцией ниже (uq_wallet_operations_deal_type).
     __tablename__ = 'wallet_operations'
     id = Column(Integer, primary_key=True)
     wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=False)
@@ -634,6 +632,23 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN payout_currency VARCHAR(10) DEFAULT 'USDT'"))
             except: pass
+        # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
+        # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
+        dup_count = conn.execute(text(
+            "SELECT COUNT(*) FROM (SELECT deal_id, type FROM wallet_operations "
+            "WHERE deal_id IS NOT NULL GROUP BY deal_id, type HAVING COUNT(*) > 1) AS d"
+        )).scalar() or 0
+        if dup_count > 0:
+            print(f"⚠️ CR-05 migration skipped: {dup_count} duplicate (deal_id,type) rows. Clean up first.")
+        else:
+            try:
+                conn.execute(text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_wallet_operations_deal_type "
+                    "ON wallet_operations(deal_id, type) WHERE deal_id IS NOT NULL"
+                ))
+                print("✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations")
+            except Exception as e:
+                print(f"⚠️ CR-05 migration failed: {e}")
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
