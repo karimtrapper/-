@@ -3079,14 +3079,29 @@ def manual_sync_gsheet():
 
 @app.route('/api/webhook/config', methods=['GET'])
 def get_webhook_config():
-    return jsonify({'success': True, 'webhook_url': WEBHOOK_URL, 'is_configured': bool(WEBHOOK_URL)})
+    # Возвращаем только факт конфигурации, не сам URL — нечего показывать в UI
+    # компрометированному аккаунту, и нечего экспортировать через XSS.
+    return jsonify({'success': True, 'is_configured': bool(WEBHOOK_URL)})
 
 @app.route('/api/webhook/config', methods=['POST'])
 def set_webhook_config():
-    global WEBHOOK_URL
-    data = request.get_json()
-    WEBHOOK_URL = data.get('webhook_url', '').strip()
-    return jsonify({'success': True, 'webhook_url': WEBHOOK_URL})
+    """CR-06: эндпоинт отключён.
+
+    Раньше любой авторизованный пользователь мог подменить WEBHOOK_URL в глобальной
+    переменной → все будущие выплаты сделок уходили на сторонний URL (SSRF/exfil
+    канал, без валидации схемы и приватных IP, без аудит-лога, переживало между
+    запросами в gunicorn-воркере с недетерминированным состоянием между воркерами).
+
+    Теперь URL задаётся только через CRM_WEBHOOK_URL env var на Railway. Менять —
+    через дашборд Railway, не через API.
+
+    TODO: при необходимости UI-управления — модель SystemSettings + audit log +
+    валидация (https-only, блокировка приватных диапазонов 127/10/172.16/192.168/169.254).
+    """
+    return jsonify({
+        'success': False,
+        'error': 'Endpoint disabled. Set CRM_WEBHOOK_URL via Railway env vars.',
+    }), 403
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
