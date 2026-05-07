@@ -768,10 +768,15 @@
                     }
                     goToStep('stateRejected');
                 }
-                // Подставляем имя клиента в заголовок
+                // Подставляем имя клиента в заголовок (textContent + DOM-узлы — безопасно от XSS)
                 if (data.client_name) {
-                    document.querySelector('.intro-title').innerHTML =
-                        data.client_name + ', подтвердите личность<br>для безопасного обмена';
+                    const titleEl = document.querySelector('.intro-title');
+                    if (titleEl) {
+                        titleEl.textContent = '';
+                        titleEl.appendChild(document.createTextNode(data.client_name + ', подтвердите личность'));
+                        titleEl.appendChild(document.createElement('br'));
+                        titleEl.appendChild(document.createTextNode('для безопасного обмена'));
+                    }
                 }
 
                 // pending или новый — показываем intro
