@@ -537,6 +537,7 @@ class Deal(Base):
     referrer_fixed_usdt = Column(Float)
     referrer_payout_usdt = Column(Float)
     referrer_paid = Column(Boolean, default=False)
+    referrer_paid_at = Column(DateTime, nullable=True)  # когда выплачено партнёру
     # Снапшот модели реферера на момент сделки (изменения настроек не ломают историю)
     referrer_comp_model = Column(String(20))  # 'revshare' | 'markup'
     referrer_markup_percent = Column(Float)
@@ -590,6 +591,7 @@ class Deal(Base):
             'referrer_percent': self.referrer_percent,
             'referrer_payout_usdt': self.referrer_payout_usdt,
             'referrer_paid': self.referrer_paid,
+            'referrer_paid_at': self.referrer_paid_at.isoformat() if self.referrer_paid_at else None,
             'referrer_comp_model': self.referrer_comp_model,
             'referrer_markup_percent': self.referrer_markup_percent,
             'is_custom': self.is_custom,
@@ -641,6 +643,7 @@ try:
             # Снапшот модели на сделке
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_comp_model VARCHAR(20)"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_markup_percent FLOAT"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_paid_at TIMESTAMP"))
         else:
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
             except: pass
@@ -655,6 +658,8 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_comp_model VARCHAR(20)"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_markup_percent FLOAT"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
             except: pass
         # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
         # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
@@ -814,6 +819,10 @@ def sync_deals_to_gsheet(deals):
             payout_usdt = deal.payout_amount_usdt or 0
             tx_hash = deal.payin_tx_hash or ''
 
+            # Чистая прибыль если есть реферер, иначе обычный profit
+            net_profit = (deal.net_profit_usdt
+                          if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
+                          else deal.profit_usdt)
             row = [
                 last_num,                              # A: номер
                 (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
@@ -826,8 +835,8 @@ def sync_deals_to_gsheet(deals):
                 payout_currency,                       # I: валюта выдачи
                 f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
                 '',                                    # K: брокеру
-                '',                                    # L: партнеру
-                f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',  # M: доходность
+                f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # L: партнеру
+                f'${net_profit:,.2f}' if net_profit is not None else '',  # M: чистая доходность
                 payout_method_str,                     # N: способ выдачи
                 payin_method_str if not deal.is_custom else 'кастом',  # O: способ пополнения
                 tx_hash,                               # P: хеш
@@ -962,6 +971,9 @@ def update_deal_in_gsheet(deal):
 
         # Сохраняем номер из колонки A (не перезаписываем)
         existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
+        net_profit = (deal.net_profit_usdt
+                      if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
+                      else deal.profit_usdt)
 
         row = [
             existing_num,
@@ -975,8 +987,8 @@ def update_deal_in_gsheet(deal):
             payout_currency,
             f'${payout_usdt:,.2f}' if payout_usdt else '',
             '',
-            '',
-            f'${deal.profit_usdt:,.2f}' if deal.profit_usdt else '',
+            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
+            f'${net_profit:,.2f}' if net_profit is not None else '',
             payout_method_str,
             payin_method_str if not deal.is_custom else 'кастом',
             deal.payin_tx_hash or '',
@@ -1051,6 +1063,9 @@ def sync_referrer_reward_to_gsheet(deal):
             if r and str(r[0]).strip().isdigit():
                 last_num = int(r[0]); break
 
+        paid_str = (deal.referrer_paid_at.strftime('%d.%m.%Y')
+                    if deal.referrer_paid and deal.referrer_paid_at
+                    else ('да' if deal.referrer_paid else 'нет'))
         row = [
             last_num + 1,
             date_str,
@@ -1062,12 +1077,42 @@ def sync_referrer_reward_to_gsheet(deal):
             f'${volume_usdt:,.2f}' if volume_usdt else '',
             f'${deal.profit_usdt:,.2f}' if deal.profit_usdt is not None else '',
             f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
-            'да' if deal.referrer_paid else 'нет',
+            paid_str,
         ]
         ws.append_row(row, value_input_option='USER_ENTERED')
         print(f'[GSheet] Referrers: added row for deal #{deal.id}')
     except Exception as e:
         print(f'[GSheet] Referrer sync error: {e}')
+
+
+def mark_referrer_rewards_paid_in_gsheet(deal_ids, paid_at):
+    """Обновляет колонку «Выплачено» в листе «рефереры» для указанных сделок."""
+    if not deal_ids:
+        return
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return
+        sh = gc.open_by_key(GSHEET_ID)
+        try:
+            ws = sh.worksheet(GSHEET_REFERRERS_WORKSHEET)
+        except Exception:
+            return
+        all_rows = ws.get_all_values()
+        date_str = paid_at.strftime('%d.%m.%Y') if paid_at else 'да'
+        ids_str = {str(x) for x in deal_ids}
+        # Колонка «Выплачено» = K (11-я, 1-indexed)
+        paid_col_idx = len(GSHEET_REFERRERS_HEADERS)  # 11
+        updates = []
+        for i, row in enumerate(all_rows[1:], start=2):
+            if len(row) >= 3 and str(row[2]).strip() in ids_str:
+                cell = f'{chr(ord("A") + paid_col_idx - 1)}{i}'
+                updates.append({'range': cell, 'values': [[date_str]]})
+        if updates:
+            ws.batch_update(updates, value_input_option='USER_ENTERED')
+            print(f'[GSheet] Referrers: marked {len(updates)} rows paid ({date_str})')
+    except Exception as e:
+        print(f'[GSheet] mark paid sync error: {e}')
 
 
 def delete_referrer_reward_from_gsheet(deal):
@@ -1132,6 +1177,18 @@ def _send_deal_telegram(deal):
         f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
         f"Прибыль: ${profit:,.2f}"
     )
+    # Блок реферера + чистая прибыль
+    if deal.referrer_id and deal.referrer_payout_usdt:
+        if deal.referrer_comp_model == 'markup':
+            ref_label = f"markup +{deal.referrer_markup_percent or 0}%"
+        else:
+            ref_label = f"revshare {deal.referrer_percent or 0}%"
+        net = deal.net_profit_usdt if deal.net_profit_usdt is not None else (profit - (deal.referrer_payout_usdt or 0))
+        msg += (
+            f"\nРеферер: {deal.referrer_name or '-'} · {ref_label}\n"
+            f"Выплата реферу: ${deal.referrer_payout_usdt:,.2f}\n"
+            f"💰 <b>Чистая наша: ${net:,.2f}</b>"
+        )
     send_telegram_notification(msg)
 
 
@@ -4247,13 +4304,24 @@ def pay_referrer(referrer_id):
             Deal.referrer_payout_usdt > 0,
         ).all()
 
+        now = datetime.utcnow()
         total_paid = 0
+        paid_deal_ids = []
         for deal in unpaid_deals:
             deal.referrer_paid = True
+            deal.referrer_paid_at = now
             total_paid += deal.referrer_payout_usdt or 0
+            paid_deal_ids.append(deal.id)
 
         referrer.total_paid_usdt = round((referrer.total_paid_usdt or 0) + total_paid, 2)
         db.commit()
+
+        # Обновляем колонку "Выплачено" в листе «рефереры»
+        if paid_deal_ids:
+            try:
+                mark_referrer_rewards_paid_in_gsheet(paid_deal_ids, now)
+            except Exception as e:
+                print(f'[GSheet] mark paid error: {e}')
 
         return jsonify({
             'success': True,

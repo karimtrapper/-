@@ -2769,8 +2769,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         
                         ${deal.referrer_name ? `
                             <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
-                                <p style="margin: 0;"><strong>Партнёр:</strong> ${deal.referrer_name}</p>
-                                <p style="margin: 0; color: #f59e0b;"><strong>Выплата:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)} (${deal.referrer_percent || 0}%)</p>
+                                <p style="margin: 0;"><strong>Партнёр:</strong> ${deal.referrer_name} · ${
+                                    deal.referrer_comp_model === 'markup'
+                                        ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (deal.referrer_markup_percent || 0) + '%</span>'
+                                        : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (deal.referrer_percent || 0) + '%</span>'
+                                }</p>
+                                <p style="margin: 0; color: #f59e0b;"><strong>Выплата:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}
+                                    ${deal.referrer_paid
+                                        ? '<span style="color:#10b981;margin-left:8px;">✓ выплачено' + (deal.referrer_paid_at ? ' ' + new Date(deal.referrer_paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
+                                        : '<span style="color:#ef4444;margin-left:8px;">● не выплачено</span>'
+                                    }</p>
                             </div>
                         ` : ''}
 
