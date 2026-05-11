@@ -4174,6 +4174,13 @@ def update_referrer(referrer_id):
 
         if 'name' in data:
             referrer.name = data['name'].strip()
+        if 'code' in data:
+            new_code = data['code'].strip().upper()
+            if new_code and new_code != referrer.code:
+                existing = db.query(Referrer).filter(Referrer.code == new_code, Referrer.id != referrer.id).first()
+                if existing:
+                    return jsonify({'success': False, 'error': f'Код {new_code} уже занят'}), 400
+                referrer.code = new_code
         if 'default_percent' in data:
             referrer.default_percent = float(data['default_percent'])
         if 'comp_model' in data:
