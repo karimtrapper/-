@@ -1088,8 +1088,63 @@ function calculateLocal(amount) {
     };
 }
 
+// Применение наценки партнёра (markup) к result: курс ухудшается для клиента
+// на markupPct%. Наш profit_usdt НЕ меняется — markup добавляется поверх нашей прибыли.
+function applyPartnerMarkup(result) {
+    const hasPartner = document.getElementById('hasPartner')?.checked;
+    const model = document.querySelector('input[name="partnerModel"]:checked')?.value || 'revshare';
+    const markupPct = parseFloat(document.getElementById('partnerPercent')?.value) || 0;
+    if (!hasPartner || model !== 'markup' || markupPct <= 0) {
+        result.__partner_markup_applied = false;
+        return result;
+    }
+
+    const m = markupPct / 100;
+    const adj = 1 - m;   // множитель для outgoing (клиент получит меньше)
+    const inv = 1 + m;   // множитель для incoming (клиент заплатит больше)
+
+    // Сохраняем "исходные" значения для отображения дельты
+    result.__base_final_rate = result.final_rate;
+    if (typeof result.thb_received === 'number') result.__base_thb_received = result.thb_received;
+    if (typeof result.usdt_received === 'number') result.__base_usdt_received = result.usdt_received;
+    if (typeof result.rub_to_pay === 'number') result.__base_rub_to_pay = result.rub_to_pay;
+    if (typeof result.thb_to_pay === 'number') result.__base_thb_to_pay = result.thb_to_pay;
+    if (typeof result.usdt_to_pay === 'number') result.__base_usdt_to_pay = result.usdt_to_pay;
+
+    if (result.direction === 'target') {
+        // Клиент должен внести больше на markup%
+        if (typeof result.rub_to_pay === 'number') result.rub_to_pay *= inv;
+        if (typeof result.rub_amount === 'number' && !('rub_to_pay' in result)) result.rub_amount *= inv;
+        if (typeof result.thb_to_pay === 'number') result.thb_to_pay *= inv;
+        if (typeof result.usdt_to_pay === 'number') result.usdt_to_pay *= inv;
+    } else {
+        // Клиент получит меньше на markup%
+        if (typeof result.thb_received === 'number') result.thb_received *= adj;
+        if (typeof result.usdt_received === 'number') result.usdt_received *= adj;
+    }
+
+    // Курс: ухудшается на m% (направление зависит от единицы измерения)
+    if (typeof result.final_rate === 'number') {
+        const s = result.scenario;
+        if (s === 'USDT → THB') {
+            // ฿/USDT — клиент получит меньше ฿ за USDT
+            result.final_rate *= adj;
+        } else {
+            // ₽/฿, ₽/USDT, ฿/USDT (для THB→USDT — больше ฿ за USDT) — курс растёт
+            result.final_rate *= inv;
+        }
+    }
+
+    result.__partner_markup_applied = true;
+    result.__partner_markup_pct = markupPct;
+    return result;
+}
+
 // Отображение результата
 function displayResult(result) {
+    // Применяем markup партнёра (если включено) — курс реально меняется
+    applyPartnerMarkup(result);
+
     // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
     state.lastResult = result;
     
@@ -1363,19 +1418,28 @@ function displayDetailedSteps(result) {
             const partnerPercent = partnerPercentEl ? (parseFloat(partnerPercentEl.value) || 0) : 0;
             const partnerModel = (document.querySelector('input[name="partnerModel"]:checked')?.value) || 'revshare';
 
-            let partnerPayout = 0;
-            if (partnerModel === 'markup') {
-                // markup: reward = % × объём USDT
-                const volume = Math.max(result.incoming_usdt || 0, result.outgoing_usdt || 0, result.payin_amount_usdt || 0);
-                partnerPayout = volume * (partnerPercent / 100);
-            } else {
-                partnerPayout = (result.profit_usdt * partnerPercent / 100);
-            }
-            const netProfit = result.profit_usdt - partnerPayout;
-
             html += `<div class="detail-row partner-row"><span class="detail-label">Модель партнера:</span><span class="detail-value">${partnerModel === 'markup' ? 'Markup +' + partnerPercent.toFixed(2) + '% к курсу' : 'Revshare ' + partnerPercent.toFixed(2) + '% от прибыли'}</span></div>`;
-            html += `<div class="detail-row partner-row"><span class="detail-label">Выплата партнеру:</span><span class="detail-value partner-payout">${formatNumber(partnerPayout)} USDT</span></div>`;
-            html += `<div class="detail-row partner-row"><span class="detail-label">Чистая прибыль:</span><span class="detail-value highlight-final">${formatNumber(netProfit)} USDT</span></div>`;
+
+            if (partnerModel === 'markup' && result.__partner_markup_applied) {
+                // Markup: курс реально ухудшен, наша прибыль не меняется,
+                // partner reward = (то, что клиент заплатил больше / получил меньше) в USDT
+                const volume = Math.max(result.incoming_usdt || 0, result.outgoing_usdt || 0, 0);
+                const partnerPayout = volume * (partnerPercent / 100);
+                const baseRate = result.__base_final_rate;
+                const newRate = result.final_rate;
+                if (typeof baseRate === 'number' && typeof newRate === 'number') {
+                    html += `<div class="detail-row partner-row"><span class="detail-label">Базовый курс:</span><span class="detail-value">${baseRate.toFixed(6)}</span></div>`;
+                    html += `<div class="detail-row partner-row"><span class="detail-label">Курс клиенту (с наценкой):</span><span class="detail-value partner-payout">${newRate.toFixed(6)}</span></div>`;
+                }
+                html += `<div class="detail-row partner-row"><span class="detail-label">Выплата партнеру:</span><span class="detail-value partner-payout">${formatNumber(partnerPayout)} USDT</span></div>`;
+                html += `<div class="detail-row partner-row"><span class="detail-label">Наша прибыль (без изменения):</span><span class="detail-value highlight-final">${formatNumber(result.profit_usdt)} USDT</span></div>`;
+            } else {
+                // Revshare: делим нашу прибыль
+                const partnerPayout = (result.profit_usdt * partnerPercent / 100);
+                const netProfit = result.profit_usdt - partnerPayout;
+                html += `<div class="detail-row partner-row"><span class="detail-label">Выплата партнеру:</span><span class="detail-value partner-payout">${formatNumber(partnerPayout)} USDT</span></div>`;
+                html += `<div class="detail-row partner-row"><span class="detail-label">Чистая прибыль:</span><span class="detail-value highlight-final">${formatNumber(netProfit)} USDT</span></div>`;
+            }
         }
         
         html += `</div>`;
