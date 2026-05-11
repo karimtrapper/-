@@ -266,7 +266,7 @@ class Referrer(Base):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'notes': self.notes,
             'referral_link': f'https://grusha.space/?ref={self.code}',
-            'bot_link': f'https://t.me/exgreen_pro_bot?start=ref__{self.code.replace("-", "")}',
+            'bot_link': f'https://t.me/Grushath_bot?start=ref__{self.code.replace("-", "")}',
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{self.code.replace("-", "")}%29&type=phone_number&app_absent=0',
         }
 
@@ -4149,7 +4149,7 @@ def referrer_stats(token):
             'name': referrer.name,
             'code': referrer.code,
             'referral_link': f'https://grusha.space/?ref={referrer.code}',
-            'bot_link': f'https://t.me/exgreen_pro_bot?start=ref__{referrer.code.replace("-", "")}',
+            'bot_link': f'https://t.me/Grushath_bot?start=ref__{referrer.code.replace("-", "")}',
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
             'payout_currency': referrer.payout_currency or 'USDT',
             'default_percent': referrer.default_percent,

@@ -95,7 +95,7 @@ class TestReferrerModel:
     def test_to_dict_contains_links(self, referrer):
         d = referrer.to_dict()
         assert d['referral_link'] == 'https://grusha.space/?ref=GR-ED'
-        assert d['bot_link'] == 'https://t.me/exgreen_pro_bot?start=ref__GRED'
+        assert d['bot_link'] == 'https://t.me/Grushath_bot?start=ref__GRED'
         assert 'wa_link' in d
         assert 'ref_GRED' in d['wa_link']
 
