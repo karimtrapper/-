@@ -4035,7 +4035,7 @@ def referrer_stats(token):
             initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
             recent_deals.append({
                 'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
-                'volume_usdt': deal.payout_amount_usdt or deal.payin_amount_usdt,
+                'volume_usdt': max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0),
                 'commission_usdt': deal.referrer_payout_usdt,
                 'paid': deal.referrer_paid or False,
                 'client_masked': masked,
