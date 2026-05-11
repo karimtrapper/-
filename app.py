@@ -1846,9 +1846,12 @@ def create_deal():
 
         return jsonify({'success': True, 'deal': deal.to_dict()}), 201
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         session.rollback()
-        app.logger.error(f'Request error: {e}')
-        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+        app.logger.error(f'[create_deal] error: {e}\n{tb}')
+        print(f'[create_deal] error: {e}\n{tb}', flush=True)
+        return jsonify({'success': False, 'error': f'Ошибка обработки запроса: {type(e).__name__}: {e}'}), 400
     finally:
         session.close()
 
@@ -1999,9 +2002,12 @@ def update_deal(deal_id):
 
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
+        import traceback
+        tb = traceback.format_exc()
         session.rollback()
-        app.logger.error(f'Request error: {e}')
-        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+        app.logger.error(f'[update_deal] error: {e}\n{tb}')
+        print(f'[update_deal] error: {e}\n{tb}', flush=True)
+        return jsonify({'success': False, 'error': f'Ошибка обработки запроса: {type(e).__name__}: {e}'}), 400
     finally:
         session.close()
 
