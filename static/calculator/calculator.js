@@ -1361,10 +1361,19 @@ function displayDetailedSteps(result) {
         if (hasPartner && hasPartner.checked && result.profit_usdt !== undefined) {
             const partnerPercentEl = document.getElementById('partnerPercent');
             const partnerPercent = partnerPercentEl ? (parseFloat(partnerPercentEl.value) || 0) : 0;
-            const partnerPayout = (result.profit_usdt * partnerPercent / 100);
+            const partnerModel = (document.querySelector('input[name="partnerModel"]:checked')?.value) || 'revshare';
+
+            let partnerPayout = 0;
+            if (partnerModel === 'markup') {
+                // markup: reward = % × объём USDT
+                const volume = Math.max(result.incoming_usdt || 0, result.outgoing_usdt || 0, result.payin_amount_usdt || 0);
+                partnerPayout = volume * (partnerPercent / 100);
+            } else {
+                partnerPayout = (result.profit_usdt * partnerPercent / 100);
+            }
             const netProfit = result.profit_usdt - partnerPayout;
-            
-            html += `<div class="detail-row partner-row"><span class="detail-label">% партнера:</span><span class="detail-value">${partnerPercent.toFixed(2)}%</span></div>`;
+
+            html += `<div class="detail-row partner-row"><span class="detail-label">Модель партнера:</span><span class="detail-value">${partnerModel === 'markup' ? 'Markup +' + partnerPercent.toFixed(2) + '% к курсу' : 'Revshare ' + partnerPercent.toFixed(2) + '% от прибыли'}</span></div>`;
             html += `<div class="detail-row partner-row"><span class="detail-label">Выплата партнеру:</span><span class="detail-value partner-payout">${formatNumber(partnerPayout)} USDT</span></div>`;
             html += `<div class="detail-row partner-row"><span class="detail-label">Чистая прибыль:</span><span class="detail-value highlight-final">${formatNumber(netProfit)} USDT</span></div>`;
         }
@@ -1414,13 +1423,28 @@ function toggleInfo() {
 function togglePartner() {
     const hasPartner = document.getElementById('hasPartner').checked;
     const wrapper = document.getElementById('partnerPercentWrapper');
-    
+
     if (hasPartner) {
         wrapper.style.display = 'block';
     } else {
         wrapper.style.display = 'none';
     }
-    
+
+    hideResults();
+}
+
+// Переключение модели партнёра (revshare/markup)
+function onPartnerModelChange() {
+    const model = document.querySelector('input[name="partnerModel"]:checked')?.value || 'revshare';
+    const lbl = document.getElementById('partnerPercentLabel');
+    const inp = document.getElementById('partnerPercent');
+    if (model === 'markup') {
+        if (lbl) lbl.textContent = '➕ % к курсу клиента (markup)';
+        if (inp && (parseFloat(inp.value) || 0) >= 5) inp.value = '0.2';
+    } else {
+        if (lbl) lbl.textContent = '🤝 % партнера (от прибыли)';
+        if (inp && (parseFloat(inp.value) || 0) < 1) inp.value = '50';
+    }
     hideResults();
 }
 
@@ -1695,7 +1719,13 @@ function createDealFromCalc() {
     const hasPartner = document.getElementById('hasPartner')?.checked;
     if (hasPartner) {
         const partnerPercent = parseFloat(document.getElementById('partnerPercent')?.value) || 0;
-        dealData.referrer_percent = partnerPercent;
+        const partnerModel = (document.querySelector('input[name="partnerModel"]:checked')?.value) || 'revshare';
+        dealData.referrer_comp_model = partnerModel;
+        if (partnerModel === 'markup') {
+            dealData.referrer_markup_percent = partnerPercent;
+        } else {
+            dealData.referrer_percent = partnerPercent;
+        }
     }
 
     // Открываем CRM с данными в URL

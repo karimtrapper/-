@@ -236,6 +236,9 @@ class Referrer(Base):
     telegram = Column(String(50))
     default_percent = Column(Float, default=10.0)
     payout_currency = Column(String(10), default='USDT')  # USDT или THB
+    # Модель вознаграждения: 'revshare' (% от прибыли) или 'markup' (+% к курсу клиента)
+    comp_model = Column(String(20), default='revshare')
+    markup_percent = Column(Float, default=0.0)
     active = Column(Boolean, default=True)
     total_referred_clients = Column(Integer, default=0)
     total_deals = Column(Integer, default=0)
@@ -252,6 +255,8 @@ class Referrer(Base):
             'name': self.name, 'code': self.code, 'token': self.token,
             'telegram': self.telegram, 'default_percent': self.default_percent,
             'payout_currency': self.payout_currency or 'USDT',
+            'comp_model': self.comp_model or 'revshare',
+            'markup_percent': self.markup_percent or 0.0,
             'active': self.active,
             'total_referred_clients': self.total_referred_clients,
             'total_deals': self.total_deals,
@@ -532,6 +537,9 @@ class Deal(Base):
     referrer_fixed_usdt = Column(Float)
     referrer_payout_usdt = Column(Float)
     referrer_paid = Column(Boolean, default=False)
+    # Снапшот модели реферера на момент сделки (изменения настроек не ломают историю)
+    referrer_comp_model = Column(String(20))  # 'revshare' | 'markup'
+    referrer_markup_percent = Column(Float)
     net_profit_usdt = Column(Float)
     needs_reimbursement = Column(Boolean, default=True)
     is_custom = Column(Boolean, default=False)
@@ -582,6 +590,8 @@ class Deal(Base):
             'referrer_percent': self.referrer_percent,
             'referrer_payout_usdt': self.referrer_payout_usdt,
             'referrer_paid': self.referrer_paid,
+            'referrer_comp_model': self.referrer_comp_model,
+            'referrer_markup_percent': self.referrer_markup_percent,
             'is_custom': self.is_custom,
             'custom_payin_currency': self.custom_payin_currency,
             'custom_payin_amount': self.custom_payin_amount,
@@ -625,12 +635,26 @@ try:
             conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES referrers(id)"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_id INTEGER REFERENCES referrers(id)"))
             conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS payout_currency VARCHAR(10) DEFAULT 'USDT'"))
+            # Две модели вознаграждения реферера: revshare (default) + markup
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS comp_model VARCHAR(20) DEFAULT 'revshare'"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS markup_percent FLOAT DEFAULT 0"))
+            # Снапшот модели на сделке
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_comp_model VARCHAR(20)"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_markup_percent FLOAT"))
         else:
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_id INTEGER"))
             except: pass
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN payout_currency VARCHAR(10) DEFAULT 'USDT'"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN comp_model VARCHAR(20) DEFAULT 'revshare'"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN markup_percent FLOAT DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_comp_model VARCHAR(20)"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_markup_percent FLOAT"))
             except: pass
         # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
         # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
@@ -662,6 +686,12 @@ WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
 # ==================== GOOGLE SHEETS SYNC ====================
 GSHEET_ID = '1aW84o8JmiIOPpCaSyGQuWCmf_h7H6uPWBCloq7_WDOY'
 GSHEET_WORKSHEET = 'общая сделка'
+GSHEET_REFERRERS_WORKSHEET = 'рефереры'
+# Заголовки листа «рефереры» (создаются автоматически, если листа ещё нет)
+GSHEET_REFERRERS_HEADERS = [
+    '№', 'Дата', 'ID сделки', 'Реферер', 'Код', 'Модель', '%',
+    'Объём USDT', 'Profit USDT', 'Reward USDT', 'Выплачено',
+]
 GOOGLE_SA_JSON = os.environ.get('GOOGLE_SA_JSON', '')  # JSON строка service account
 # OAuth user-credentials (для доступа к файлам в закрытых папках Workspace)
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
@@ -956,6 +986,111 @@ def update_deal_in_gsheet(deal):
         print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
+
+
+def _get_or_create_referrers_worksheet(sh):
+    """Возвращает worksheet 'рефереры'. Создаёт с заголовками если нет."""
+    try:
+        return sh.worksheet(GSHEET_REFERRERS_WORKSHEET)
+    except Exception:
+        ws = sh.add_worksheet(title=GSHEET_REFERRERS_WORKSHEET, rows=200, cols=len(GSHEET_REFERRERS_HEADERS))
+        ws.update(values=[GSHEET_REFERRERS_HEADERS], range_name='A1', value_input_option='USER_ENTERED')
+        # Заголовок — жирный
+        try:
+            ws.format(f'A1:{chr(ord("A") + len(GSHEET_REFERRERS_HEADERS) - 1)}1', {
+                'textFormat': {'bold': True},
+                'backgroundColor': {'red': 0.93, 'green': 0.95, 'blue': 1.0},
+            })
+        except Exception:
+            pass
+        print(f'[GSheet] Created sheet "{GSHEET_REFERRERS_WORKSHEET}"')
+        return ws
+
+
+def sync_referrer_reward_to_gsheet(deal):
+    """Добавляет строку выплаты рефереру в лист 'рефереры'."""
+    if not deal.referrer_id or not deal.referrer_payout_usdt:
+        return
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return
+        sh = gc.open_by_key(GSHEET_ID)
+        ws = _get_or_create_referrers_worksheet(sh)
+        all_rows = ws.get_all_values()
+
+        # Идемпотентность: если строка с этой сделкой уже есть — не дублируем
+        for row in all_rows[1:]:  # пропускаем заголовок
+            if len(row) >= 3 and str(row[2]).strip() == str(deal.id):
+                return
+
+        # Найти реферера для кода
+        ref_code = ''
+        try:
+            from sqlalchemy.orm import object_session
+            sess = object_session(deal) or get_session()
+            ref = sess.query(Referrer).get(deal.referrer_id)
+            if ref:
+                ref_code = ref.code or ''
+        except Exception:
+            pass
+
+        date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+        model = deal.referrer_comp_model or 'revshare'
+        if model == 'markup':
+            pct = deal.referrer_markup_percent or 0
+            pct_str = f'+{pct}% к курсу'
+        else:
+            pct = deal.referrer_percent or 0
+            pct_str = f'{pct}% от прибыли'
+        volume_usdt = deal.payout_amount_usdt or deal.payin_amount_usdt or 0
+
+        # Номер строки = последний номер + 1 (по колонке A)
+        last_num = 0
+        for r in reversed(all_rows[1:]):
+            if r and str(r[0]).strip().isdigit():
+                last_num = int(r[0]); break
+
+        row = [
+            last_num + 1,
+            date_str,
+            deal.id,
+            deal.referrer_name or '',
+            ref_code,
+            model,
+            pct_str,
+            f'${volume_usdt:,.2f}' if volume_usdt else '',
+            f'${deal.profit_usdt:,.2f}' if deal.profit_usdt is not None else '',
+            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
+            'да' if deal.referrer_paid else 'нет',
+        ]
+        ws.append_row(row, value_input_option='USER_ENTERED')
+        print(f'[GSheet] Referrers: added row for deal #{deal.id}')
+    except Exception as e:
+        print(f'[GSheet] Referrer sync error: {e}')
+
+
+def delete_referrer_reward_from_gsheet(deal):
+    """Удаляет строку выплаты рефереру по ID сделки."""
+    if not deal.referrer_id:
+        return
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return
+        sh = gc.open_by_key(GSHEET_ID)
+        try:
+            ws = sh.worksheet(GSHEET_REFERRERS_WORKSHEET)
+        except Exception:
+            return
+        all_rows = ws.get_all_values()
+        for i, row in enumerate(all_rows[1:], start=2):  # 2 = 1-indexed после заголовка
+            if len(row) >= 3 and str(row[2]).strip() == str(deal.id):
+                ws.delete_rows(i)
+                print(f'[GSheet] Referrers: deleted row {i} (deal #{deal.id})')
+                return
+    except Exception as e:
+        print(f'[GSheet] Referrer delete error: {e}')
 
 
 def _send_deal_telegram(deal):
@@ -1542,6 +1677,8 @@ def create_deal():
         ref_name = data.get('referrer_name')
         ref_percent = data.get('referrer_percent')
         ref_id = data.get('referrer_id')
+        ref_comp_model = data.get('referrer_comp_model')
+        ref_markup_percent = data.get('referrer_markup_percent')
         if client_id and not ref_name:
             client_obj = session.query(Client).get(client_id)
             if client_obj and client_obj.referrer_id:
@@ -1552,6 +1689,16 @@ def create_deal():
                         ref_id = referrer.id
                         ref_name = referrer.name
                         ref_percent = referrer.default_percent
+                        ref_comp_model = ref_comp_model or referrer.comp_model
+                        if ref_markup_percent is None:
+                            ref_markup_percent = referrer.markup_percent
+        # Если реферер выбран явно (ref_id передан) и снапшот модели не задан — берём из профиля
+        if ref_id and not ref_comp_model:
+            ref_obj = session.query(Referrer).get(ref_id)
+            if ref_obj:
+                ref_comp_model = ref_obj.comp_model or 'revshare'
+                if ref_markup_percent is None:
+                    ref_markup_percent = ref_obj.markup_percent
 
         # Умный дефолт needs_reimbursement:
         # если payout не в THB (USDT/RUB/USD) — возмещение не нужно
@@ -1588,6 +1735,9 @@ def create_deal():
             referrer_id=ref_id,
             referrer_name=ref_name,
             referrer_percent=ref_percent,
+            referrer_payout_usdt=data.get('referrer_payout_usdt'),
+            referrer_comp_model=ref_comp_model,
+            referrer_markup_percent=ref_markup_percent,
             profit_usdt=data.get('profit_usdt'),
             profit_percent=data.get('profit_percent'),
             net_profit_usdt=data.get('net_profit_usdt'),
@@ -1628,6 +1778,10 @@ def create_deal():
                     sync_deals_to_gsheet([deal])
                 except Exception as e:
                     print(f'[GSheet] Sync error on create: {e}')
+                try:
+                    sync_referrer_reward_to_gsheet(deal)
+                except Exception as e:
+                    print(f'[GSheet] Referrer sync error on create: {e}')
                 try:
                     _send_deal_telegram(deal)
                 except Exception as e:
@@ -1671,7 +1825,8 @@ def update_deal(deal_id):
                       'payout_tx_hash', 'profit_usdt', 'profit_percent', 'net_profit_usdt',
                       'referrer_id', 'referrer_name',
                       'referrer_percent', 'referrer_payout_usdt', 'referrer_fixed_usdt',
-                      'referrer_paid', 'notes', 'client_id',
+                      'referrer_paid', 'referrer_comp_model', 'referrer_markup_percent',
+                      'notes', 'client_id',
                       'payout_founder_name', 'payout_wallet_id',
                       'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
                       'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate',
@@ -1735,9 +1890,14 @@ def update_deal(deal_id):
         if deal.payin_amount_usdt and deal.payout_amount_usdt:
             deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
             deal.profit_percent = round((deal.profit_usdt / deal.payout_amount_usdt * 100), 2) if deal.payout_amount_usdt > 0 else 0
-            # Авто-расчёт выплаты рефереру из profit * percent
-            if deal.referrer_percent and not data.get('referrer_payout_usdt'):
-                deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
+            # Авто-расчёт выплаты рефереру (если не задано вручную)
+            if not data.get('referrer_payout_usdt'):
+                if deal.referrer_comp_model == 'markup' and deal.referrer_markup_percent:
+                    # markup: reward = markup% × объём USDT (макс из payin/payout USDT)
+                    volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
+                    deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
+                elif deal.referrer_percent:
+                    deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
             referrer_payout = deal.referrer_payout_usdt or 0
             deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
 
@@ -1764,6 +1924,10 @@ def update_deal(deal_id):
                     sync_deals_to_gsheet([deal])
                 except Exception as e:
                     print(f'[GSheet] Sync error on complete: {e}')
+                try:
+                    sync_referrer_reward_to_gsheet(deal)
+                except Exception as e:
+                    print(f'[GSheet] Referrer sync error on complete: {e}')
                 try:
                     _send_deal_telegram(deal)
                 except Exception as e:
@@ -1799,6 +1963,8 @@ def delete_deal(deal_id):
         was_completed = deal.status == DealStatus.COMPLETED
         deal_client_name = deal.client_name
         deal_created_at = deal.created_at
+        deal_referrer_id = deal.referrer_id
+        deal_id_snapshot = deal.id
 
         # Удаляем связанные операции по кошелькам (Binance списания)
         session.query(WalletOperation).filter(WalletOperation.deal_id == deal_id).delete()
@@ -1823,7 +1989,14 @@ def delete_deal(deal_id):
             stub = _DealStub()
             stub.client_name = deal_client_name
             stub.created_at = deal_created_at
+            stub.id = deal_id_snapshot
+            stub.referrer_id = deal_referrer_id
             delete_deal_from_gsheet(stub)
+            if deal_referrer_id:
+                try:
+                    delete_referrer_reward_from_gsheet(stub)
+                except Exception as e:
+                    print(f'[GSheet] Referrer delete error: {e}')
 
         return jsonify({'success': True})
     except Exception as e:
@@ -3799,11 +3972,16 @@ def referrer_stats(token):
             initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
             recent_deals.append({
                 'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
-                'volume_usdt': deal.payout_amount_usdt,
+                'volume_usdt': deal.payout_amount_usdt or deal.payin_amount_usdt,
                 'commission_usdt': deal.referrer_payout_usdt,
                 'paid': deal.referrer_paid or False,
                 'client_masked': masked,
                 'client_initials': initials,
+                'comp_model': deal.referrer_comp_model or 'revshare',
+                'percent': (deal.referrer_markup_percent
+                            if deal.referrer_comp_model == 'markup'
+                            else deal.referrer_percent),
+                'profit_usdt': deal.profit_usdt,
             })
 
         # Считаем из реальных данных (не из кэшированных агрегатов)
@@ -3830,6 +4008,8 @@ def referrer_stats(token):
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
             'payout_currency': referrer.payout_currency or 'USDT',
             'default_percent': referrer.default_percent,
+            'comp_model': referrer.comp_model or 'revshare',
+            'markup_percent': referrer.markup_percent or 0.0,
             'total_referred_clients': referred_clients,
             'clients_with_deals': clients_with_deals,
             'conversion_rate': conversion_rate,
@@ -3880,6 +4060,10 @@ def create_referrer():
     if payout_currency not in ('USDT', 'THB'):
         payout_currency = 'USDT'
     telegram = data.get('telegram', '').strip()
+    comp_model = (data.get('comp_model') or 'revshare').strip().lower()
+    if comp_model not in ('revshare', 'markup'):
+        comp_model = 'revshare'
+    markup_percent = float(data.get('markup_percent') or 0)
 
     if not name:
         return jsonify({'success': False, 'error': 'Укажите имя'}), 400
@@ -3904,6 +4088,8 @@ def create_referrer():
             telegram=telegram,
             default_percent=float(default_percent),
             payout_currency=payout_currency,
+            comp_model=comp_model,
+            markup_percent=markup_percent,
             client_id=data.get('client_id'),
         )
         db.add(referrer)
@@ -3927,6 +4113,12 @@ def update_referrer(referrer_id):
             referrer.name = data['name'].strip()
         if 'default_percent' in data:
             referrer.default_percent = float(data['default_percent'])
+        if 'comp_model' in data:
+            cm = (data['comp_model'] or 'revshare').strip().lower()
+            if cm in ('revshare', 'markup'):
+                referrer.comp_model = cm
+        if 'markup_percent' in data:
+            referrer.markup_percent = float(data['markup_percent'] or 0)
         if 'active' in data:
             referrer.active = bool(data['active'])
         if 'telegram' in data:

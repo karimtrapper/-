@@ -242,7 +242,9 @@
                                 <div class="partner">${esc(d.name)}</div>
                             </div>
                         </div>
-                        <div class="badge">${esc(d.default_percent)}% · ${esc(d.payout_currency || 'USDT')}</div>
+                        <div class="badge">${d.comp_model === 'markup'
+                            ? '+' + esc(d.markup_percent || 0) + '% к курсу'
+                            : esc(d.default_percent) + '% · ' + esc(d.payout_currency || 'USDT')}</div>
                     </div>
 
                     <div class="balance-label">Доступно к выводу</div>
@@ -342,6 +344,11 @@
                                     <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
                                 </div>
                             </div>
+                            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+                                ${deal.comp_model === 'markup'
+                                    ? 'markup +' + (deal.percent || 0) + '% × объём'
+                                    : (deal.percent || 0) + '% × прибыль' + (deal.profit_usdt ? ' ($' + deal.profit_usdt.toFixed(2) + ')' : '')}
+                            </div>
                             <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
                                 <span class="dot"></span>
                                 ${deal.paid ? 'Выплачено' : 'К выплате'}
@@ -357,7 +364,9 @@
                         <div class="cond-icon" style="background:rgba(249,115,22,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
                         </div>
-                        <div><div class="cond-label">Ваша комиссия</div><div class="cond-value">${esc(d.default_percent)}% от прибыли</div></div>
+                        <div><div class="cond-label">Ваша модель</div><div class="cond-value">${d.comp_model === 'markup'
+                            ? 'Markup +' + esc(d.markup_percent || 0) + '% к курсу клиента'
+                            : 'Revshare ' + esc(d.default_percent) + '% от прибыли'}</div></div>
                     </div>
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(59,130,246,0.1)">

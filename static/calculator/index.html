@@ -247,7 +247,16 @@
                             <span class="checkbox-text">👥 Есть партнер?</span>
                         </label>
                         <div id="partnerPercentWrapper" style="display: none; margin-top: 15px;">
-                            <label class="input-label">🤝 % партнера (от прибыли)</label>
+                            <label class="input-label">Модель вознаграждения</label>
+                            <div style="display:flex;gap:10px;margin-bottom:10px;">
+                                <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;">
+                                    <input type="radio" name="partnerModel" value="revshare" checked onchange="onPartnerModelChange()"> Revshare (% от прибыли)
+                                </label>
+                                <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #e2e8f0;border-radius:8px;">
+                                    <input type="radio" name="partnerModel" value="markup" onchange="onPartnerModelChange()"> Markup (+% к курсу)
+                                </label>
+                            </div>
+                            <label class="input-label" id="partnerPercentLabel">🤝 % партнера (от прибыли)</label>
                             <div class="input-wrapper small">
                                 <input type="text" id="partnerPercent" class="amount-input" value="50" oninput="hideResults()">
                                 <span class="input-currency">%</span>
