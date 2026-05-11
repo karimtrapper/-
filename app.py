@@ -742,6 +742,8 @@ def get_gsheet_client():
 
 def sync_deals_to_gsheet(deals):
     """Добавляет завершённые сделки в Google Sheet 'общая сделка'.
+    Идемпотентно: если строка для сделки уже есть (по client_name + date) —
+    обновляет её через update_deal_in_gsheet (форсированно, без проверки reimbursement).
     Возвращает dict {ok: bool, inserted: int, error: str|None} для диагностики."""
     try:
         gc = get_gsheet_client()
@@ -752,6 +754,27 @@ def sync_deals_to_gsheet(deals):
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
+
+        # Идемпотентность: разделяем сделки на «уже есть» и «новые».
+        # Существующие — апдейтим, новые — append'им.
+        existing_to_update = []
+        deals = list(deals)
+        new_deals = []
+        for d in deals:
+            existing_row_num = find_deal_row_in_gsheet(ws, all_rows, d)
+            if existing_row_num:
+                existing_to_update.append(d)
+            else:
+                new_deals.append(d)
+        # Обновляем существующие
+        for d in existing_to_update:
+            try:
+                _force_update_deal_row_in_gsheet(ws, all_rows, d)
+            except Exception as e:
+                print(f'[GSheet] update existing row error for deal #{getattr(d, "id", "?")}: {e}')
+        if not new_deals:
+            return {'ok': True, 'inserted': 0, 'updated': len(existing_to_update), 'error': None}
+        deals = new_deals
 
         # Находим последнюю строку с данными или заголовком недели
         insert_row = len(all_rows) + 1
@@ -922,6 +945,65 @@ def delete_deal_from_gsheet(deal):
             print(f'[GSheet] Row not found for {deal.client_name}')
     except Exception as e:
         print(f'[GSheet] Delete error: {e}')
+
+
+def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
+    """Обновляет существующую строку сделки в листе «общая сделка»
+    без проверки reimbursement_id. Используется sync_deals_to_gsheet для
+    идемпотентности."""
+    row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
+    if not row_num:
+        return False
+    payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные'}
+    payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
+    payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
+    payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
+
+    if deal.is_custom:
+        currency_in = (deal.custom_payin_currency or '').lower()
+        amount_in = deal.custom_payin_amount or 0
+        amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+        payout_currency = (deal.custom_payout_currency or 'thb').lower()
+    elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
+        currency_in = 'usdt'
+        amount_in = deal.payin_amount_usdt or 0
+        amount_in_usdt = amount_in
+        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+        payout_currency = (deal.custom_payout_currency or 'thb').lower()
+    else:
+        currency_in = 'rub'
+        amount_in = deal.payin_amount_rub or 0
+        amount_in_usdt = deal.payin_amount_usdt or 0
+        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+        payout_currency = (deal.custom_payout_currency or 'thb').lower()
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    payout_usdt = deal.payout_amount_usdt or 0
+    existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
+    net_profit = (deal.net_profit_usdt
+                  if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
+                  else deal.profit_usdt)
+    row = [
+        existing_num,
+        (deal.client.name if deal.client else deal.client_name) or '',
+        '',
+        date_str,
+        f'{amount_in:,.2f}' if amount_in else '',
+        currency_in,
+        f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
+        int(payout_thb) if payout_thb else '',
+        payout_currency,
+        f'${payout_usdt:,.2f}' if payout_usdt else '',
+        '',
+        f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
+        f'${net_profit:,.2f}' if net_profit is not None else '',
+        payout_method_str,
+        payin_method_str if not deal.is_custom else 'кастом',
+        deal.payin_tx_hash or '',
+    ]
+    ws.update(values=[row], range_name=f'A{row_num}:P{row_num}', value_input_option='USER_ENTERED')
+    print(f'[GSheet] Force-updated row {row_num} for deal #{deal.id}')
+    return True
 
 
 def update_deal_in_gsheet(deal):

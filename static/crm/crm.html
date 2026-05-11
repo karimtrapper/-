@@ -4087,10 +4087,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
 
             const formData = new FormData(this);
-            const data = {
-                deal_type: 'pay_in',
-                status: 'pending'
-            };
+            // При редактировании не перетираем статус — оставляем существующий в БД.
+            // При создании новой сделки — pending по умолчанию.
+            const data = (editingDealId !== null)
+                ? { deal_type: 'pay_in' }
+                : { deal_type: 'pay_in', status: 'pending' };
 
             formData.forEach((value, key) => {
                 if (value !== "") {
