@@ -1982,7 +1982,16 @@ def update_deal(deal_id):
         if 'payout_method' in data:
             deal.payout_method = PayOutMethod(data['payout_method']) if data['payout_method'] else None
         if 'payout_source' in data:
+            old_payout_source = deal.payout_source
             deal.payout_source = PayOutSource(data['payout_source']) if data['payout_source'] else None
+            # Если источник сменили на founder_personal и возмещения ещё нет →
+            # сделка ожидает возмещения, переводим в pending (как заявил
+            # пользователь: смена метода выплаты на «карман фаундера» = ждём
+            # возмещения, статус pending). Другие изменения статус не трогают.
+            if (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
+                and old_payout_source != PayOutSource.FOUNDER_PERSONAL
+                and deal.reimbursement_id is None):
+                deal.status = DealStatus.PENDING
 
         # Управление списанием с Binance кошелька при сохранении/завершении
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
