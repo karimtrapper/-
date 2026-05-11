@@ -1156,7 +1156,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </select>
                                 <input type="hidden" name="referrer_name">
                                 <input type="hidden" name="referrer_id" id="referrerIdField">
-                                <input type="hidden" name="referrer_comp_model" id="referrerCompModelField">
+                                <input type="hidden" name="referrer_comp_model" id="referrerCompModelField" value="revshare">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Модель</label>
+                                <div style="display:flex;gap:6px;">
+                                    <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+                                        <input type="radio" name="dealRefModel" value="revshare" checked onchange="onDealRefModelChange()"> Revshare
+                                    </label>
+                                    <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+                                        <input type="radio" name="dealRefModel" value="markup" onchange="onDealRefModelChange()"> Markup
+                                    </label>
+                                </div>
                             </div>
                             <div class="form-group" id="dealRefRevshareWrap">
                                 <label class="form-label">% от прибыли</label>
@@ -1167,6 +1178,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <label class="form-label" style="color:#7c3aed;">% к курсу (markup)</label>
                                 <input type="number" class="form-control" name="referrer_markup_percent" id="referrerMarkupPercentField" placeholder="0.2"
                                     step="0.01" oninput="calculateProfit()">
+                                <small style="color:#94a3b8;font-size:11px;display:block;margin-top:2px;">reward = объём USDT × markup%</small>
                             </div>
                             <div class="form-group" id="dealRefFixedWrap">
                                 <label class="form-label">Или фикс. сумма USDT</label>
@@ -3295,6 +3307,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (revshareWrap) revshareWrap.style.display = model === 'markup' ? 'none' : '';
             if (markupWrap) markupWrap.style.display = model === 'markup' ? '' : 'none';
             if (fixedWrap) fixedWrap.style.display = model === 'markup' ? 'none' : '';
+            // Синхронизируем радио + hidden поле
+            const radio = document.querySelector(`input[name="dealRefModel"][value="${model}"]`);
+            if (radio) radio.checked = true;
+            const hidden = document.getElementById('referrerCompModelField');
+            if (hidden) hidden.value = model;
+        }
+
+        // Ручное переключение модели (radio) в форме сделки
+        function onDealRefModelChange() {
+            const model = document.querySelector('input[name="dealRefModel"]:checked')?.value || 'revshare';
+            updateReferrerFieldsUI(model);
+            calculateProfit();
         }
 
         // Обработчик выбора реферера (кастомная форма)
