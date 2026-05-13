@@ -858,11 +858,12 @@ def sync_deals_to_gsheet(deals):
                 payout_currency,                       # I: валюта выдачи
                 f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
                 '',                                    # K: брокеру
-                f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # L: партнеру
-                f'${net_profit:,.2f}' if net_profit is not None else '',  # M: чистая доходность
-                payout_method_str,                     # N: способ выдачи
-                payin_method_str if not deal.is_custom else 'кастом',  # O: способ пополнения
-                tx_hash,                               # P: хеш
+                deal.referrer_name or '',              # L: реферал (имя)
+                f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнеру
+                f'${net_profit:,.2f}' if net_profit is not None else '',  # N: чистая доходность
+                payout_method_str,                     # O: способ выдачи
+                payin_method_str if not deal.is_custom else 'кастом',  # P: способ пополнения
+                tx_hash,                               # Q: хеш
             ]
             new_rows.append(row)
 
@@ -995,13 +996,14 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
         payout_currency,
         f'${payout_usdt:,.2f}' if payout_usdt else '',
         '',
-        f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
-        f'${net_profit:,.2f}' if net_profit is not None else '',
-        payout_method_str,
-        payin_method_str if not deal.is_custom else 'кастом',
-        deal.payin_tx_hash or '',
+        deal.referrer_name or '',  # L: реферал (имя)
+        f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
+        f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
+        payout_method_str,  # O
+        payin_method_str if not deal.is_custom else 'кастом',  # P
+        deal.payin_tx_hash or '',  # Q
     ]
-    ws.update(values=[row], range_name=f'A{row_num}:P{row_num}', value_input_option='USER_ENTERED')
+    ws.update(values=[row], range_name=f'A{row_num}:Q{row_num}', value_input_option='USER_ENTERED')
     print(f'[GSheet] Force-updated row {row_num} for deal #{deal.id}')
     return True
 
@@ -1069,14 +1071,15 @@ def update_deal_in_gsheet(deal):
             payout_currency,
             f'${payout_usdt:,.2f}' if payout_usdt else '',
             '',
-            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',
-            f'${net_profit:,.2f}' if net_profit is not None else '',
-            payout_method_str,
-            payin_method_str if not deal.is_custom else 'кастом',
-            deal.payin_tx_hash or '',
+            deal.referrer_name or '',  # L: реферал (имя)
+            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
+            f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
+            payout_method_str,  # O
+            payin_method_str if not deal.is_custom else 'кастом',  # P
+            deal.payin_tx_hash or '',  # Q
         ]
 
-        ws.update(values=[row], range_name=f'A{row_num}:P{row_num}', value_input_option='USER_ENTERED')
+        ws.update(values=[row], range_name=f'A{row_num}:Q{row_num}', value_input_option='USER_ENTERED')
         print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
