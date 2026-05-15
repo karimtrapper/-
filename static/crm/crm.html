@@ -2248,6 +2248,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.querySelectorAll('select.form-control').forEach(upgradeSelect);
         }
 
+        // ==================== HTML escape (защита от XSS) ====================
+        function escapeHtml(value) {
+            if (value === null || value === undefined) return '';
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         // ==================== Toast уведомления ====================
         function showToast(message, type = 'success', duration = 3000) {
             let container = document.querySelector('.toast-container');
@@ -6265,7 +6276,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 content.innerHTML = `
                     <div class="kyc-review-header">
-                        <div class="kyc-review-client">${kyc.client_name || 'Клиент #' + (kyc.client_id || kyc.id)}</div>
+                        <div class="kyc-review-client">${escapeHtml(kyc.client_name || 'Клиент #' + (kyc.client_id || kyc.id))}</div>
                         <div class="kyc-review-meta">Загружено: ${createdDate} в ${createdTime}</div>
                     </div>
 
@@ -6415,18 +6426,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const pendingList = document.getElementById('kycPendingList');
 
                 if (pendingData.success && pendingData.kyc_requests.length > 0) {
-                    pendingList.innerHTML = pendingData.kyc_requests.map(k => `
+                    pendingList.innerHTML = pendingData.kyc_requests.map(k => {
+                        const safeName = escapeHtml(k.client_name || 'Клиент #' + k.id);
+                        const safeToken = escapeHtml(k.token);
+                        const safeNameAttr = escapeHtml((k.client_name || '').replace(/'/g, "\\'"));
+                        return `
                         <div style="display:flex;justify-content:space-between;align-items:center;padding:0.75rem 1rem;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:0.5rem;">
                             <div>
-                                <strong>${k.client_name || 'Клиент #' + k.id}</strong>
+                                <strong>${safeName}</strong>
                                 <div style="font-size:0.8rem;color:#999;">${new Date(k.created_at).toLocaleDateString('ru-RU')} — ${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''} ${k.has_doc ? 'Файлы загружены' : 'Ожидание загрузки'}</div>
                             </div>
                             <div style="display:flex;gap:8px;align-items:center;">
-                                ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${k.token}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
-                                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="cancelKYC('${k.token}','${(k.client_name || '').replace(/'/g, "\\'")}')">Отменить</button>
+                                ${k.has_doc ? `<button class="btn btn-primary btn-sm" onclick="openKYCReview('${safeToken}')">Проверить</button>` : '<span style="color:#f59e0b;font-size:0.8rem;">Ждём файлы</span>'}
+                                <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:none;padding:4px 10px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="cancelKYC('${safeToken}','${safeNameAttr}')">Отменить</button>
                             </div>
                         </div>
-                    `).join('');
+                    `;}).join('');
                 } else {
                     pendingList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Нет ожидающих проверок</div>';
                 }
@@ -6440,7 +6455,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     verifiedList.innerHTML = approvedData.kyc_requests.map(k => `
                         <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
                             <div>
-                                <strong>${k.client_name || 'Клиент #' + k.id}</strong>
+                                <strong>${escapeHtml(k.client_name || 'Клиент #' + k.id)}</strong>
                                 <span style="color:#16a34a;margin-left:0.5rem;">✓</span>
                             </div>
                             <div style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</div>
