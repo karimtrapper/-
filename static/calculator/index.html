@@ -81,9 +81,12 @@
             <button class="method-btn" data-method="broker" onclick="switchMethod('broker')">
                 💼 Брокер
             </button>
+            <button class="method-btn" data-method="custom" onclick="switchMethod('custom')">
+                🎨 Кастом
+            </button>
         </div>
 
-        <!-- Кастомный курс (только для брокера) - ПЕРЕНЕСЕНО ВВЕРХ -->
+        <!-- Кастомный курс (только для брокера/кастома) - ПЕРЕНЕСЕНО ВВЕРХ -->
         <div id="customRateSection" class="custom-rate-top" style="display: none;">
             <div class="custom-rate-card">
                 <label class="input-label" id="customRateLabel">💼 УСТАНОВИТЬ КУРС БРОКЕРА RUB-USDT</label>
@@ -92,6 +95,14 @@
                     <span class="input-currency">₽</span>
                 </div>
                 <div id="customRateHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
+            </div>
+            <div class="custom-rate-card" id="customUsdtThbCard" style="display: none; margin-top: 10px;">
+                <label class="input-label">🎨 УСТАНОВИТЬ КУРС THB-USDT</label>
+                <div class="input-wrapper">
+                    <input type="text" id="customUsdtThb" class="amount-input" placeholder="Введите курс THB/USDT" oninput="updateCustomRate(); hideResults()">
+                    <span class="input-currency">฿</span>
+                </div>
+                <div id="customUsdtThbHint" class="custom-rate-hint">⚠️ Введите курс для начала расчёта</div>
             </div>
         </div>
 

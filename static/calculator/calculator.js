@@ -79,7 +79,8 @@ let state = {
     direction: 'amount',  // 'amount' (вношу) или 'target' (хочу получить)
     profitMargin: 4.0,    // чистая прибыль брокера в %
     rates: CONFIG.FALLBACK_RATES,
-    customRubUsdt: null,  // кастомный курс для broker (null = не введён)
+    customRubUsdt: null,  // кастомный курс для broker/custom (null = не введён)
+    customUsdtThb: null,  // кастомный курс THB-USDT для метода 'custom' (null = не введён)
     detailsOpen: false,
     infoOpen: false,
     applyDiscount: false,
@@ -132,18 +133,25 @@ function switchMethod(method) {
     document.getElementById('commissionLevelSection').style.display = 'block';
     
     // Показываем/скрываем элементы UI
-    if (method === 'broker') {
+    if (method === 'broker' || method === 'custom') {
         document.getElementById('customRateSection').style.display = 'block';
         document.getElementById('directionSwitcher').style.display = 'block';
         document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Кастомный)';
 
-        // Очищаем курс — менеджер должен ввести сам
+        // Очищаем курсы — менеджер должен ввести сам
         const customInput = document.getElementById('customRubUsdt');
         customInput.value = '';
         state.customRubUsdt = null;
+        const customThbInput = document.getElementById('customUsdtThb');
+        customThbInput.value = '';
+        state.customUsdtThb = null;
+
+        // Карточка THB-USDT — только для метода 'custom'
+        document.getElementById('customUsdtThbCard').style.display = method === 'custom' ? 'block' : 'none';
+
         updateBrokerRateUI();
-        
-        // Показываем broker сценарии, скрываем doverka
+
+        // Показываем broker сценарии (custom использует те же сценарии), скрываем doverka
         document.querySelectorAll('.scenario-btn').forEach(btn => {
             if (btn.dataset.method === 'broker') {
                 btn.style.display = 'flex';
@@ -151,11 +159,11 @@ function switchMethod(method) {
                 btn.style.display = 'none';
             }
         });
-        
-        // Выбираем первый broker сценарий
+
+        // Выбираем первый сценарий
         state.scenario = 'rub-to-thb';
         updateScenarioUI();
-        
+
     } else {
         document.getElementById('customRateSection').style.display = 'none';
         document.getElementById('directionSwitcher').style.display = 'none';
@@ -190,11 +198,25 @@ function switchScenario(scenario) {
     updateScenarioUI();
     hideResults();
 
-    // Показываем/скрываем поле RUB-USDT в зависимости от сценария
-    if (state.method === 'broker') {
+    // Показываем/скрываем поля кастомных курсов в зависимости от сценария
+    if (state.method === 'broker' || state.method === 'custom') {
         const section = document.getElementById('customRateSection');
-        section.style.display = scenarioNeedsRubRate(scenario) ? 'block' : 'none';
+        const needsRub = scenarioNeedsRubRate(scenario);
+        const needsThb = scenarioNeedsThbRate(scenario);
+        // Скрываем карточку RUB-USDT если сценарий её не требует
+        const rubCard = document.querySelector('#customRateSection .custom-rate-card:first-child');
+        if (rubCard) rubCard.style.display = needsRub ? 'block' : 'none';
+        // Карточка THB-USDT — только для custom и если сценарий её требует
+        document.getElementById('customUsdtThbCard').style.display =
+            (state.method === 'custom' && needsThb) ? 'block' : 'none';
+        // Прячем всю секцию если оба поля не нужны
+        section.style.display = (needsRub || (state.method === 'custom' && needsThb)) ? 'block' : 'none';
     }
+}
+
+// Нужен ли курс THB-USDT (для custom): все сценарии кроме rub-to-usdt
+function scenarioNeedsThbRate(scenario) {
+    return scenario !== 'rub-to-usdt' && scenario !== 'usdt-from-rub';
 }
 
 // Обновление UI сценария
@@ -460,11 +482,21 @@ function updateRatesDisplay() {
     // В режиме брокера скрываем блок примерных расчетов до нажатия "Рассчитать", 
     // чтобы не путать менеджера старыми или оценочными данными
     const estimatedEl = document.getElementById('estimatedRate');
-    const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+    const rubUsdt = (state.method === 'broker' || state.method === 'custom') ? state.customRubUsdt : state.rates.rub_usdt;
 
-    // Показываем USDT-THB
+    // Показываем USDT-THB (в режиме custom — ручной курс)
     const usdtThbEl = document.getElementById('usdtThbRate');
-    if (state.rates.usdt_thb) {
+    if (state.method === 'custom') {
+        if (state.customUsdtThb) {
+            usdtThbEl.textContent = `${state.customUsdtThb.toFixed(4)} ฿`;
+            usdtThbEl.classList.remove('rate-error');
+        } else {
+            usdtThbEl.textContent = '— ฿';
+            usdtThbEl.classList.add('rate-error');
+        }
+        usdtThbEl.style.color = '';
+        usdtThbEl.style.fontWeight = '';
+    } else if (state.rates.usdt_thb) {
         usdtThbEl.textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
         usdtThbEl.classList.remove('rate-error');
         // Сбрасываем красную подсветку точного курса при обновлении
@@ -483,12 +515,13 @@ function updateRatesDisplay() {
     
     // Показываем RUB-USDT
     const rubUsdtEl = document.getElementById('rubUsdtRate');
-    if (state.method === 'broker') {
+    if (state.method === 'broker' || state.method === 'custom') {
         if (state.customRubUsdt && state.customRubUsdt > 0) {
             rubUsdtEl.textContent = `${state.customRubUsdt.toFixed(4)} ₽`;
             rubUsdtEl.classList.remove('rate-error');
-            if (state.rates.usdt_thb) {
-                const estimatedRate = (state.customRubUsdt / state.rates.usdt_thb).toFixed(2);
+            const thbForEst = state.method === 'custom' ? state.customUsdtThb : state.rates.usdt_thb;
+            if (thbForEst) {
+                const estimatedRate = (state.customRubUsdt / thbForEst).toFixed(2);
                 estimatedEl.textContent = `~${estimatedRate} ₽/฿`;
                 estimatedEl.classList.remove('rate-error', 'rate-info-pending');
             }
@@ -522,47 +555,80 @@ function updateRatesDisplay() {
     document.getElementById('updateTime').textContent = now.toLocaleTimeString('ru-RU');
 }
 
-// Обновление UI поля курса брокера (пустое / заполненное)
+// Обновление UI полей кастомных курсов (пустое / заполненное)
 function updateBrokerRateUI() {
-    const card = document.querySelector('.custom-rate-card');
-    const hint = document.getElementById('customRateHint');
-    if (!card || !hint) return;
+    // RUB-USDT card (первая)
+    const rubCard = document.querySelector('#customRateSection .custom-rate-card');
+    const rubHint = document.getElementById('customRateHint');
+    if (rubCard && rubHint) {
+        if (state.customRubUsdt && state.customRubUsdt > 0) {
+            rubCard.classList.remove('rate-empty');
+            rubCard.classList.add('rate-filled');
+            rubHint.classList.add('hidden');
+        } else {
+            rubCard.classList.add('rate-empty');
+            rubCard.classList.remove('rate-filled');
+            rubHint.classList.remove('hidden');
+        }
+    }
 
-    if (state.customRubUsdt && state.customRubUsdt > 0) {
-        card.classList.remove('rate-empty');
-        card.classList.add('rate-filled');
-        hint.classList.add('hidden');
-    } else {
-        card.classList.add('rate-empty');
-        card.classList.remove('rate-filled');
-        hint.classList.remove('hidden');
+    // THB-USDT card (custom)
+    const thbCard = document.getElementById('customUsdtThbCard');
+    const thbHint = document.getElementById('customUsdtThbHint');
+    if (thbCard && thbHint) {
+        if (state.customUsdtThb && state.customUsdtThb > 0) {
+            thbCard.classList.remove('rate-empty');
+            thbCard.classList.add('rate-filled');
+            thbHint.classList.add('hidden');
+        } else {
+            thbCard.classList.add('rate-empty');
+            thbCard.classList.remove('rate-filled');
+            thbHint.classList.remove('hidden');
+        }
     }
 }
 
 // Обновление кастомного курса (вызывается при изменении поля)
 function updateCustomRate() {
-    if (state.method === 'broker') {
-        const raw = document.getElementById('customRubUsdt').value.replace(/\s/g, '');
-        const customRubUsdt = parseFloat(raw) || 0;
+    if (state.method !== 'broker' && state.method !== 'custom') return;
 
-        // Обновляем state (null если пусто)
-        state.customRubUsdt = customRubUsdt > 0 ? customRubUsdt : null;
+    // RUB-USDT
+    const rawRub = document.getElementById('customRubUsdt').value.replace(/\s/g, '');
+    const customRubUsdt = parseFloat(rawRub) || 0;
+    state.customRubUsdt = customRubUsdt > 0 ? customRubUsdt : null;
 
-        // Обновляем UI состояние поля
-        updateBrokerRateUI();
+    // THB-USDT (только для custom)
+    if (state.method === 'custom') {
+        const rawThb = document.getElementById('customUsdtThb').value.replace(/\s/g, '');
+        const customUsdtThb = parseFloat(rawThb) || 0;
+        state.customUsdtThb = customUsdtThb > 0 ? customUsdtThb : null;
+    }
 
-        if (state.customRubUsdt) {
-            // Обновляем отображение курса RUB-USDT с 4 знаками
-            document.getElementById('rubUsdtRate').textContent = `${customRubUsdt.toFixed(4)} ₽`;
+    updateBrokerRateUI();
 
-            // Обновляем примерный курс RUB-THB
-            if (state.rates.usdt_thb) {
-                const estimatedRate = (customRubUsdt / state.rates.usdt_thb).toFixed(2);
-                document.getElementById('estimatedRate').textContent = `~${estimatedRate} ₽/฿`;
-            }
+    // Эффективный курс THB-USDT (custom > rates)
+    const effThb = state.method === 'custom' ? state.customUsdtThb : state.rates.usdt_thb;
+
+    if (state.customRubUsdt) {
+        document.getElementById('rubUsdtRate').textContent = `${customRubUsdt.toFixed(4)} ₽`;
+        if (effThb) {
+            const estimatedRate = (state.customRubUsdt / effThb).toFixed(2);
+            document.getElementById('estimatedRate').textContent = `~${estimatedRate} ₽/฿`;
+        }
+    } else {
+        document.getElementById('rubUsdtRate').textContent = '— ₽';
+        document.getElementById('estimatedRate').textContent = '—';
+    }
+
+    // Отображение THB-USDT для custom
+    if (state.method === 'custom') {
+        const usdtThbEl = document.getElementById('usdtThbRate');
+        if (state.customUsdtThb) {
+            usdtThbEl.textContent = `${state.customUsdtThb.toFixed(4)} ฿`;
+            usdtThbEl.classList.remove('rate-error');
         } else {
-            document.getElementById('rubUsdtRate').textContent = '— ₽';
-            document.getElementById('estimatedRate').textContent = '—';
+            usdtThbEl.textContent = '— ฿';
+            usdtThbEl.classList.add('rate-error');
         }
     }
 }
@@ -610,11 +676,11 @@ async function calculate() {
         return;
     }
 
-    // Блокируем расчёт в режиме брокера без курса (только для RUB-сценариев)
-    if (state.method === 'broker' && !state.customRubUsdt && scenarioNeedsRubRate(state.scenario)) {
+    // Блокируем расчёт в режиме брокера/кастома без курса RUB-USDT (только для RUB-сценариев)
+    if ((state.method === 'broker' || state.method === 'custom') && !state.customRubUsdt && scenarioNeedsRubRate(state.scenario)) {
         const customInput = document.getElementById('customRubUsdt');
         customInput.focus();
-        const card = document.querySelector('.custom-rate-card');
+        const card = document.querySelector('#customRateSection .custom-rate-card');
         if (card) {
             card.classList.add('rate-empty');
             card.style.animation = 'none';
@@ -624,11 +690,25 @@ async function calculate() {
         return;
     }
 
+    // В режиме custom — обязателен курс THB-USDT для сценариев с THB
+    if (state.method === 'custom' && !state.customUsdtThb && scenarioNeedsThbRate(state.scenario)) {
+        const customThbInput = document.getElementById('customUsdtThb');
+        customThbInput.focus();
+        const card = document.getElementById('customUsdtThbCard');
+        if (card) {
+            card.classList.add('rate-empty');
+            card.style.animation = 'none';
+            card.offsetHeight;
+            card.style.animation = '';
+        }
+        return;
+    }
+
     // Если сценарий требует точный курс Binance (есть THB) — НЕ показываем быстрый результат.
     // Менеджер не должен увидеть приблизительное число и сообщить его клиенту.
     // Идём сразу на Playwright, результат отрисуется после получения точного курса.
     // _skipNextPrecise=true — мы уже во вторичном вызове из getPreciseRate()/fallback, считаем как обычно.
-    if (scenarioNeedsPrecise(state.scenario) && !state._skipNextPrecise) {
+    if (state.method !== 'custom' && scenarioNeedsPrecise(state.scenario) && !state._skipNextPrecise) {
         resultsSection.style.display = 'none';
         hidePreciseRateFallback();
         showPreciseRateStatus('⏳ Получаем точный курс Binance... (~8 сек)');
@@ -662,24 +742,27 @@ async function calculate() {
         }
         
         // Проверка наличия курсов перед расчетом
-        const rubUsdt = state.method === 'broker' ? state.customRubUsdt : state.rates.rub_usdt;
+        const rubUsdt = (state.method === 'broker' || state.method === 'custom') ? state.customRubUsdt : state.rates.rub_usdt;
+        const usdtThb = state.method === 'custom' ? state.customUsdtThb : state.rates.usdt_thb;
         const needsRub = scenarioNeedsRubRate(state.scenario);
-        if ((needsRub && !rubUsdt) || !state.rates.usdt_thb) {
+        const needsThb = scenarioNeedsThbRate(state.scenario);
+        if ((needsRub && !rubUsdt) || (needsThb && !usdtThb)) {
             showToast('Курсы валют не получены. Расчет невозможен.', 'error');
             return;
         }
 
         calculateBtn.innerHTML = '⏳ РАСЧЕТ...';
-        
-        if (CONFIG.USE_API && state.method === 'broker') {
-            // Используем API для расчета через брокера
+
+        if (CONFIG.USE_API && (state.method === 'broker' || state.method === 'custom')) {
+            // Используем API для расчёта через брокера (custom — тот же путь, но оба курса ручные)
             const requestData = {
                 method: 'broker',
                 scenario: state.scenario,
                 direction: state.direction,
                 amount: amount,
                 custom_rub_usdt: state.customRubUsdt,
-                custom_usdt_thb: state.rates.usdt_thb,  // Передаём точный курс если был запрошен
+                // Для custom — ручной THB-USDT, для broker — точный курс с Playwright (если был)
+                custom_usdt_thb: state.method === 'custom' ? state.customUsdtThb : state.rates.usdt_thb,
                 profit_margin: state.profitMargin
             };
             
