@@ -163,6 +163,7 @@ function switchMethod(method) {
         // Выбираем первый сценарий
         state.scenario = 'rub-to-thb';
         updateScenarioUI();
+        updateRatesDisplay();
 
     } else {
         document.getElementById('customRateSection').style.display = 'none';
@@ -181,6 +182,7 @@ function switchMethod(method) {
         // Выбираем первый doverka сценарий
         state.scenario = 'rub-to-thb';
         updateScenarioUI();
+        updateRatesDisplay();
     }
     
     hideResults();
