@@ -594,6 +594,7 @@ class Deal(Base):
             'referrer_paid_at': self.referrer_paid_at.isoformat() if self.referrer_paid_at else None,
             'referrer_comp_model': self.referrer_comp_model,
             'referrer_markup_percent': self.referrer_markup_percent,
+            'referrer_fixed_usdt': self.referrer_fixed_usdt,
             'is_custom': self.is_custom,
             'custom_payin_currency': self.custom_payin_currency,
             'custom_payin_amount': self.custom_payin_amount,
