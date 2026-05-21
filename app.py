@@ -1137,6 +1137,9 @@ def sync_referrer_reward_to_gsheet(deal):
         if model == 'markup':
             pct = deal.referrer_markup_percent or 0
             pct_str = f'+{pct}% к курсу'
+        elif model == 'fixed':
+            pct = deal.referrer_fixed_usdt or 0
+            pct_str = f'fixed ${pct}'
         else:
             pct = deal.referrer_percent or 0
             pct_str = f'{pct}% от прибыли'
@@ -1266,6 +1269,8 @@ def _send_deal_telegram(deal):
     if deal.referrer_id and deal.referrer_payout_usdt:
         if deal.referrer_comp_model == 'markup':
             ref_label = f"markup +{deal.referrer_markup_percent or 0}%"
+        elif deal.referrer_comp_model == 'fixed':
+            ref_label = f"fixed ${deal.referrer_fixed_usdt or 0}"
         else:
             ref_label = f"revshare {deal.referrer_percent or 0}%"
         net = deal.net_profit_usdt if deal.net_profit_usdt is not None else (profit - (deal.referrer_payout_usdt or 0))
@@ -2050,6 +2055,9 @@ def update_deal(deal_id):
                     # markup: reward = markup% × объём USDT (макс из payin/payout USDT)
                     volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
                     deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
+                elif deal.referrer_comp_model == 'fixed' and deal.referrer_fixed_usdt:
+                    # fixed: фиксированная выплата USDT
+                    deal.referrer_payout_usdt = round(deal.referrer_fixed_usdt, 2)
                 elif deal.referrer_percent:
                     deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
             referrer_payout = deal.referrer_payout_usdt or 0

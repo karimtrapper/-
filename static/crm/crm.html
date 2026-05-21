@@ -1167,6 +1167,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
                                         <input type="radio" name="dealRefModel" value="markup" onchange="onDealRefModelChange()"> Markup
                                     </label>
+                                    <label style="flex:1;cursor:pointer;display:flex;align-items:center;gap:4px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;">
+                                        <input type="radio" name="dealRefModel" value="fixed" onchange="onDealRefModelChange()"> Fixed
+                                    </label>
                                 </div>
                             </div>
                             <div class="form-group" id="dealRefRevshareWrap">
@@ -1195,10 +1198,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <small id="markupRateHint" style="color:#94a3b8;font-size:11px;display:block;margin-top:2px;">курс от партнёра (выше курса клиенту) → markup% автоматом</small>
                                 </div>
                             </div>
-                            <div class="form-group" id="dealRefFixedWrap">
-                                <label class="form-label">Или фикс. сумма USDT</label>
+                            <div class="form-group" id="dealRefFixedWrap" style="display:none;">
+                                <label class="form-label" style="color:#0ea5e9;">Фикс. сумма USDT</label>
                                 <input type="number" class="form-control" name="referrer_fixed_usdt" placeholder="50"
-                                    step="0.01" oninput="calculateProfit()">
+                                    step="any" oninput="calculateProfit()">
+                                <small style="color:#94a3b8;font-size:11px;display:block;margin-top:2px;">вычитается из чистой прибыли</small>
                             </div>
                         </div>
 
@@ -2798,7 +2802,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <p style="margin: 0;"><strong>Партнёр:</strong> ${deal.referrer_name} · ${
                                     deal.referrer_comp_model === 'markup'
                                         ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (deal.referrer_markup_percent || 0) + '%</span>'
-                                        : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (deal.referrer_percent || 0) + '%</span>'
+                                        : deal.referrer_comp_model === 'fixed'
+                                            ? '<span style="color:#0ea5e9;font-weight:600;">fixed $' + (deal.referrer_fixed_usdt || 0) + '</span>'
+                                            : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (deal.referrer_percent || 0) + '%</span>'
                                 }</p>
                                 <p style="margin: 0; color: #f59e0b;"><strong>Выплата:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}
                                     ${deal.referrer_paid
@@ -3294,7 +3300,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     active.map(r => {
                         const label = r.comp_model === 'markup'
                             ? `${r.name} (markup +${r.markup_percent || 0}%)`
-                            : `${r.name} (${r.default_percent}%)`;
+                            : r.comp_model === 'fixed'
+                                ? `${r.name} (fixed USDT)`
+                                : `${r.name} (${r.default_percent}%)`;
                         return `<option value="${r.id}" data-percent="${r.default_percent}" data-name="${r.name}" data-code="${r.code}" data-model="${r.comp_model || 'revshare'}" data-markup="${r.markup_percent || 0}">${label}</option>`;
                     }).join('');
                 const sel1 = document.getElementById('referrerSelect');
@@ -3318,6 +3326,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (model === 'markup') {
                     form.referrer_percent.value = '';
                     if (markupField) markupField.value = opt.dataset.markup || 0;
+                } else if (model === 'fixed') {
+                    form.referrer_percent.value = '';
+                    if (markupField) markupField.value = '';
+                    // fixed_usdt ввести вручную
                 } else {
                     form.referrer_percent.value = opt.dataset.percent;
                     if (markupField) markupField.value = '';
@@ -3338,9 +3350,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const revshareWrap = document.getElementById('dealRefRevshareWrap');
             const markupWrap = document.getElementById('dealRefMarkupWrap');
             const fixedWrap = document.getElementById('dealRefFixedWrap');
-            if (revshareWrap) revshareWrap.style.display = model === 'markup' ? 'none' : '';
+            if (revshareWrap) revshareWrap.style.display = model === 'revshare' ? '' : 'none';
             if (markupWrap) markupWrap.style.display = model === 'markup' ? '' : 'none';
-            if (fixedWrap) fixedWrap.style.display = model === 'markup' ? 'none' : '';
+            if (fixedWrap) fixedWrap.style.display = model === 'fixed' ? '' : 'none';
             // Синхронизируем радио + hidden поле
             const radio = document.querySelector(`input[name="dealRefModel"][value="${model}"]`);
             if (radio) radio.checked = true;
@@ -4076,10 +4088,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         // markup: reward = markup% × объём USDT
                         const volume = Math.max(payinUsdt, binanceUsdt);
                         referrerPayout = volume * (referrerMarkup / 100);
-                    } else if (referrerPercent > 0 && profit > 0) {
-                        referrerPayout = profit * (referrerPercent / 100);
-                    } else if (referrerFixed > 0) {
+                    } else if (refModel === 'fixed' && referrerFixed > 0) {
                         referrerPayout = referrerFixed;
+                    } else if (refModel === 'revshare' && referrerPercent > 0 && profit > 0) {
+                        referrerPayout = profit * (referrerPercent / 100);
                     }
 
                     const netProfit = profit - referrerPayout;
@@ -4117,10 +4129,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (refModel === 'markup' && referrerMarkup > 0) {
                 const volume = Math.max(payinUsdt, payoutUsdt);
                 referrerPayout = volume * (referrerMarkup / 100);
-            } else if (referrerPercent > 0 && profit > 0) {
-                referrerPayout = profit * (referrerPercent / 100);
-            } else if (referrerFixed > 0) {
+            } else if (refModel === 'fixed' && referrerFixed > 0) {
                 referrerPayout = referrerFixed;
+            } else if (refModel === 'revshare' && referrerPercent > 0 && profit > 0) {
+                referrerPayout = profit * (referrerPercent / 100);
             }
 
             const netProfit = profit - referrerPayout;
