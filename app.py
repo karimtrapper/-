@@ -1802,6 +1802,34 @@ def get_deal(deal_id):
     finally:
         session.close()
 
+def _recalculate_deal_financials(deal, data):
+    """Пересчитывает прибыль, выплату рефереру и чистую прибыль сделки.
+
+    Используется и при создании, и при обновлении: гарантирует, что
+    referrer_payout_usdt и net_profit_usdt всегда согласованы с моделью
+    вознаграждения (revshare / markup / fixed), даже если фронт не передал
+    их явно (например, реферер был привязан автоматически через клиента).
+
+    Если data содержит явный referrer_payout_usdt — он сохраняется как есть.
+    """
+    if not (deal.payin_amount_usdt and deal.payout_amount_usdt):
+        return
+    deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
+    deal.profit_percent = round((deal.profit_usdt / deal.payout_amount_usdt * 100), 2) if deal.payout_amount_usdt > 0 else 0
+    if not data.get('referrer_payout_usdt'):
+        if deal.referrer_comp_model == 'markup' and deal.referrer_markup_percent:
+            # markup: reward = markup% × объём USDT (макс из payin/payout USDT)
+            volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
+            deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
+        elif deal.referrer_comp_model == 'fixed' and deal.referrer_fixed_usdt:
+            # fixed: фиксированная выплата USDT
+            deal.referrer_payout_usdt = round(deal.referrer_fixed_usdt, 2)
+        elif deal.referrer_percent:
+            deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
+    referrer_payout = deal.referrer_payout_usdt or 0
+    deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -1846,6 +1874,7 @@ def create_deal():
         ref_id = data.get('referrer_id')
         ref_comp_model = data.get('referrer_comp_model')
         ref_markup_percent = data.get('referrer_markup_percent')
+        ref_fixed_usdt = data.get('referrer_fixed_usdt')
         if client_id and not ref_name:
             client_obj = session.query(Client).get(client_id)
             if client_obj and client_obj.referrer_id:
@@ -1905,6 +1934,7 @@ def create_deal():
             referrer_payout_usdt=data.get('referrer_payout_usdt'),
             referrer_comp_model=ref_comp_model,
             referrer_markup_percent=ref_markup_percent,
+            referrer_fixed_usdt=ref_fixed_usdt,
             profit_usdt=data.get('profit_usdt'),
             profit_percent=data.get('profit_percent'),
             net_profit_usdt=data.get('net_profit_usdt'),
@@ -1920,6 +1950,10 @@ def create_deal():
         )
         session.add(deal)
         session.flush()
+
+        # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
+        # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
+        _recalculate_deal_financials(deal, data)
 
         # Автоматическое списание с кошелька при создании
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
@@ -2065,23 +2099,8 @@ def update_deal(deal_id):
         if 'status' in data:
             deal.status = DealStatus(data['status'])
 
-        # Автоматический пересчёт прибыли при изменении сумм
-        if deal.payin_amount_usdt and deal.payout_amount_usdt:
-            deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
-            deal.profit_percent = round((deal.profit_usdt / deal.payout_amount_usdt * 100), 2) if deal.payout_amount_usdt > 0 else 0
-            # Авто-расчёт выплаты рефереру (если не задано вручную)
-            if not data.get('referrer_payout_usdt'):
-                if deal.referrer_comp_model == 'markup' and deal.referrer_markup_percent:
-                    # markup: reward = markup% × объём USDT (макс из payin/payout USDT)
-                    volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
-                    deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
-                elif deal.referrer_comp_model == 'fixed' and deal.referrer_fixed_usdt:
-                    # fixed: фиксированная выплата USDT
-                    deal.referrer_payout_usdt = round(deal.referrer_fixed_usdt, 2)
-                elif deal.referrer_percent:
-                    deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
-            referrer_payout = deal.referrer_payout_usdt or 0
-            deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
+        # Автоматический пересчёт прибыли и выплаты рефереру
+        _recalculate_deal_financials(deal, data)
 
         session.commit()
         
