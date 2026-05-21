@@ -917,16 +917,30 @@ def sync_deals_to_gsheet(deals):
 
 
 def find_deal_row_in_gsheet(ws, all_rows, deal):
-    """Находит строку сделки в Google Sheet по клиенту + дате.
+    """Находит строку сделки в Google Sheet.
+    1) По клиенту + дате (точное совпадение).
+    2) Fallback: по дате + сумме USDT (если имя клиента было изменено
+       в CRM, но строка в Sheet с прежним именем).
     Возвращает 1-indexed номер строки или None."""
     deal_date = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     deal_name = (deal.client_name or '').strip().lower()
+    deal_usdt = deal.payin_amount_usdt or 0
+    # Попытка 1: имя + дата
     for i, row in enumerate(all_rows):
         if len(row) >= 4:
             row_name = str(row[1]).strip().lower()
             row_date = str(row[3]).strip()
             if row_name == deal_name and row_date == deal_date:
-                return i + 1  # 1-indexed
+                return i + 1
+    # Попытка 2: дата + сумма USDT (колонка G — формат "$39,241.00")
+    if deal_date and deal_usdt > 0:
+        target_usdt_str = f'${deal_usdt:,.2f}'
+        for i, row in enumerate(all_rows):
+            if len(row) >= 7:
+                row_date = str(row[3]).strip()
+                row_usdt = str(row[6]).strip()
+                if row_date == deal_date and row_usdt == target_usdt_str:
+                    return i + 1
     return None
 
 
