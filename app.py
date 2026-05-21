@@ -932,15 +932,20 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
             row_date = str(row[3]).strip()
             if row_name == deal_name and row_date == deal_date:
                 return i + 1
-    # Попытка 2: дата + сумма USDT (колонка G — формат "$39,241.00")
+    # Попытка 2: дата + сумма USDT (колонка G). Нормализуем: убираем $ и запятые,
+    # сравниваем как float — формат в Sheet может быть как "$39,241.00" так и "39,241.00".
     if deal_date and deal_usdt > 0:
-        target_usdt_str = f'${deal_usdt:,.2f}'
         for i, row in enumerate(all_rows):
             if len(row) >= 7:
                 row_date = str(row[3]).strip()
-                row_usdt = str(row[6]).strip()
-                if row_date == deal_date and row_usdt == target_usdt_str:
-                    return i + 1
+                if row_date != deal_date:
+                    continue
+                raw = str(row[6]).strip().replace('$', '').replace(',', '').replace(' ', '')
+                try:
+                    if abs(float(raw) - deal_usdt) < 0.01:
+                        return i + 1
+                except ValueError:
+                    pass
     return None
 
 
