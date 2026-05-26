@@ -1286,17 +1286,20 @@ def _send_deal_telegram(deal):
         f"Прибыль: ${profit:,.2f}"
     )
     # Блок реферера + чистая прибыль
-    if deal.referrer_id and deal.referrer_payout_usdt:
+    if deal.referrer_id:
         if deal.referrer_comp_model == 'markup':
             ref_label = f"markup +{deal.referrer_markup_percent or 0}%"
+            ref_payout = deal.referrer_payout_usdt or round((max(deal.payin_amount_usdt or 0, payout_usdt)) * ((deal.referrer_markup_percent or 0) / 100), 2)
         elif deal.referrer_comp_model == 'fixed':
             ref_label = f"fixed ${deal.referrer_fixed_usdt or 0}"
+            ref_payout = deal.referrer_payout_usdt or deal.referrer_fixed_usdt or 0
         else:
             ref_label = f"revshare {deal.referrer_percent or 0}%"
-        net = deal.net_profit_usdt if deal.net_profit_usdt is not None else (profit - (deal.referrer_payout_usdt or 0))
+            ref_payout = deal.referrer_payout_usdt or round(profit * (deal.referrer_percent or 0) / 100, 2)
+        net = deal.net_profit_usdt if deal.net_profit_usdt is not None else round(profit - ref_payout, 2)
         msg += (
             f"\nРеферер: {deal.referrer_name or '-'} · {ref_label}\n"
-            f"Выплата реферу: ${deal.referrer_payout_usdt:,.2f}\n"
+            f"К выплате рефереру: ${ref_payout:,.2f}\n"
             f"💰 <b>Чистая наша: ${net:,.2f}</b>"
         )
     send_telegram_notification(msg)
