@@ -680,12 +680,12 @@ try:
                 print("✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations")
             except Exception as e:
                 print(f"⚠️ CR-05 migration failed: {e}")
-        # Добавляем новый метод оплаты sber_wl в PostgreSQL ENUM
+        # Добавляем новый метод оплаты SBER_WL в PostgreSQL ENUM (SQLAlchemy хранит имена, не values)
         if 'postgresql' in DATABASE_URL:
             try:
-                conn.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'sber_wl'"))
+                conn.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_WL'"))
             except Exception as e:
-                print(f"⚠️ sber_wl enum migration: {e}")
+                print(f"⚠️ SBER_WL enum migration: {e}")
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
