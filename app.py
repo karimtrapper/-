@@ -146,6 +146,7 @@ class PayInMethod(str, Enum):
     SPP_DOVERKA = "spp_doverka"
     PARTNERS_CASH = "partners_cash"
     CRYPTO_DIRECT = "crypto_direct"
+    SBER_WL = "sber_wl"
 
 class PayOutMethod(str, Enum):
     OFFICE = "office"
@@ -679,6 +680,12 @@ try:
                 print("✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations")
             except Exception as e:
                 print(f"⚠️ CR-05 migration failed: {e}")
+        # Добавляем новый метод оплаты sber_wl в PostgreSQL ENUM
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'sber_wl'"))
+            except Exception as e:
+                print(f"⚠️ sber_wl enum migration: {e}")
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
@@ -688,6 +695,10 @@ print("✅ Database initialized")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
+
+# ==================== WL BOT ====================
+WL_BOT_URL = os.environ.get('WL_BOT_URL', 'http://wl.grusha.agency')
+WL_BOT_API_KEY = os.environ.get('WL_BOT_API_KEY', '')
 
 # ==================== GOOGLE SHEETS SYNC ====================
 GSHEET_ID = '1aW84o8JmiIOPpCaSyGQuWCmf_h7H6uPWBCloq7_WDOY'
@@ -802,6 +813,7 @@ def sync_deals_to_gsheet(deals):
                 'spp_doverka': 'доверка',
                 'crypto_direct': 'крипта',
                 'partners_cash': 'наличные',
+                'sber_wl': 'сбер WL',
             }
             # Маппинг payout_method → способ выдачи
             payout_map = {
@@ -975,7 +987,7 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
     row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
     if not row_num:
         return False
-    payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные'}
+    payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные', 'sber_wl': 'сбер WL'}
     payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
     payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
     payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
@@ -1045,7 +1057,7 @@ def update_deal_in_gsheet(deal):
             return
 
         # Маппинг
-        payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные'}
+        payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные', 'sber_wl': 'сбер WL'}
         payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
         payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
         payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
@@ -2507,6 +2519,31 @@ def get_used_transaction_hashes(session):
     for op in wallet_ops: used_hashes.add(op[0])
     
     return used_hashes
+
+@app.route('/api/wl-transactions', methods=['GET'])
+def get_wl_transactions():
+    """Прокси к WLExchangeBot API — список PAID транзакций для picker'а в форме."""
+    merchant = request.args.get('merchant', 'grusha')
+    status = request.args.get('status', 'PAID')
+    try:
+        headers = {}
+        if WL_BOT_API_KEY:
+            headers['Authorization'] = f'Bearer {WL_BOT_API_KEY}'
+        resp = requests.get(
+            f'{WL_BOT_URL}/api/wl-transactions',
+            params={'merchant': merchant, 'status': status},
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return jsonify(resp.json())
+    except requests.exceptions.ConnectionError:
+        return jsonify({'error': 'WL Bot недоступен'}), 502
+    except requests.exceptions.Timeout:
+        return jsonify({'error': 'WL Bot timeout'}), 504
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/transactions/incoming', methods=['GET'])
 def get_incoming_transactions():
