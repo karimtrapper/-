@@ -680,18 +680,21 @@ try:
                 print("✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations")
             except Exception as e:
                 print(f"⚠️ CR-05 migration failed: {e}")
-        # Добавляем новый метод оплаты SBER_WL в PostgreSQL ENUM (SQLAlchemy хранит имена, не values)
-        if 'postgresql' in DATABASE_URL:
-            try:
-                conn.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_WL'"))
-            except Exception as e:
-                print(f"⚠️ SBER_WL enum migration: {e}")
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
     print(f"ℹ️ Migration info: {e}")
 
 print("✅ Database initialized")
+
+# ALTER TYPE ADD VALUE нельзя запускать внутри транзакции — отдельный autocommit
+if 'postgresql' in DATABASE_URL:
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac:
+            ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_WL'"))
+        print("✅ SBER_WL enum value added")
+    except Exception as e:
+        print(f"ℹ️ SBER_WL enum: {e}")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
