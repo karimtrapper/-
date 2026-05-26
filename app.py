@@ -2037,6 +2037,11 @@ def update_deal(deal_id):
                       'needs_reimbursement']:
             if field in data:
                 setattr(deal, field, data[field])
+
+        # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
+        if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
+            payout_is_thb = bool(deal.payout_amount_thb) or deal.custom_payout_currency == 'THB'
+            deal.needs_reimbursement = payout_is_thb
         
         # Обновляем Enum поля
         if 'payin_method' in data:
