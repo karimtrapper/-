@@ -2098,17 +2098,23 @@ def update_deal(deal_id):
                 existing_op.tx_hash = deal.payout_tx_hash
                 existing_op.description = f"Сделка #{deal.id} ({deal.client_name or 'без имени'})"
 
-        # Если имя клиента изменилось и есть привязанный клиент - обновляем и его имя
-        # Если имя клиента передано и оно не пустое, и есть привязанный клиент - обновляем имя клиента в базе
+        # Если имя клиента изменилось — НЕ переименовываем глобально Client
+        # (это бы изменило имя во всех его сделках), а перепривязываем эту
+        # конкретную сделку к другому клиенту (find-or-create).
         client_name_val = data.get('client_name')
         if client_name_val and str(client_name_val).strip() != "" and deal.client_id:
-            client = session.query(Client).filter(Client.id == deal.client_id).first()
-            if client:
-                client.name = str(client_name_val)
-                # Синхронизируем client_name во всех сделках этого клиента
-                session.query(Deal).filter(Deal.client_id == deal.client_id).update(
-                    {"client_name": str(client_name_val)}, synchronize_session=False
-                )
+            new_name = str(client_name_val).strip()
+            current_client = session.query(Client).filter(Client.id == deal.client_id).first()
+            if current_client and current_client.name != new_name:
+                existing = session.query(Client).filter(Client.name == new_name).first()
+                if existing:
+                    deal.client_id = existing.id
+                else:
+                    new_client = Client(name=new_name)
+                    session.add(new_client)
+                    session.flush()
+                    deal.client_id = new_client.id
+            deal.client_name = new_name
         
         # Если пришел новый client_id, просто привязываем
         if 'client_id' in data:
