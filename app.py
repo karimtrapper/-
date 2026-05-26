@@ -148,6 +148,21 @@ class PayInMethod(str, Enum):
     CRYPTO_DIRECT = "crypto_direct"
     SBER_WL = "sber_wl"
 
+
+PAYIN_METHOD_LABELS = {
+    'spp_doverka': 'доверка',
+    'crypto_direct': 'крипта',
+    'partners_cash': 'наличные',
+    'sber_wl': 'сбер WL',
+}
+
+PAYOUT_METHOD_LABELS = {
+    'office': 'офис',
+    'courier': 'курьер',
+    'atm': 'банкомат',
+    'transfer': 'перевод',
+}
+
 class PayOutMethod(str, Enum):
     OFFICE = "office"
     COURIER = "courier"
@@ -811,25 +826,10 @@ def sync_deals_to_gsheet(deals):
         for deal in deals:
             last_num += 1
 
-            # Маппинг payin_method → способ пополнения
-            payin_map = {
-                'spp_doverka': 'доверка',
-                'crypto_direct': 'крипта',
-                'partners_cash': 'наличные',
-                'sber_wl': 'сбер WL',
-            }
-            # Маппинг payout_method → способ выдачи
-            payout_map = {
-                'office': 'офис',
-                'courier': 'курьер',
-                'atm': 'банкомат',
-                'transfer': 'перевод',
-            }
-
-            payin_method_str = payin_map.get(
+            payin_method_str = PAYIN_METHOD_LABELS.get(
                 deal.payin_method.value if deal.payin_method else '', ''
             )
-            payout_method_str = payout_map.get(
+            payout_method_str = PAYOUT_METHOD_LABELS.get(
                 deal.payout_method.value if deal.payout_method else '', ''
             )
 
@@ -990,10 +990,8 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
     row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
     if not row_num:
         return False
-    payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные', 'sber_wl': 'сбер WL'}
-    payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
-    payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
-    payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
+    payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
+    payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
 
     if deal.is_custom:
         currency_in = (deal.custom_payin_currency or '').lower()
@@ -1059,11 +1057,8 @@ def update_deal_in_gsheet(deal):
             print(f'[GSheet] Row not found for update: {deal.client_name}')
             return
 
-        # Маппинг
-        payin_map = {'spp_doverka': 'доверка', 'crypto_direct': 'крипта', 'partners_cash': 'наличные', 'sber_wl': 'сбер WL'}
-        payout_map = {'office': 'офис', 'courier': 'курьер', 'atm': 'банкомат', 'transfer': 'перевод'}
-        payin_method_str = payin_map.get(deal.payin_method.value if deal.payin_method else '', '')
-        payout_method_str = payout_map.get(deal.payout_method.value if deal.payout_method else '', '')
+        payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
+        payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
 
         # Кастомные сделки используют custom_* поля
         if deal.is_custom:
