@@ -5226,7 +5226,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbForCheckbox}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
-                                        <span>Сделка #${deal.id} - ${deal.client_name}: <strong>${label}</strong></span>
+                                        <span>Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${deal.client_name}: <strong>${label}</strong></span>
                                     </label>`;
                                 }).join('')}
                             </div>
