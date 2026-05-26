@@ -3407,6 +3407,16 @@ def create_reimbursement():
                 deal.profit_usdt = deal.payin_amount_usdt - deal.payout_amount_usdt
                 deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
 
+                # Пересчёт выплаты реферу если ещё не задана
+                if deal.referrer_id and not deal.referrer_payout_usdt:
+                    if deal.referrer_comp_model == 'markup' and deal.referrer_markup_percent:
+                        volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
+                        deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
+                    elif deal.referrer_comp_model == 'fixed' and deal.referrer_fixed_usdt:
+                        deal.referrer_payout_usdt = round(deal.referrer_fixed_usdt, 2)
+                    elif deal.referrer_percent:
+                        deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
+
                 # Recalculate net profit
                 referrer_payout = deal.referrer_payout_usdt or 0
                 deal.net_profit_usdt = deal.profit_usdt - referrer_payout
