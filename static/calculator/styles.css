@@ -567,6 +567,13 @@ body {
     box-shadow: 0 2px 8px rgba(249,115,22,0.2);
 }
 
+.custom-profit-hint {
+    font-size: 12px;
+    color: var(--text-sec);
+    margin-top: 6px;
+    opacity: 0.75;
+}
+
 /* Partner section */
 .partner-section { margin-top: 14px; }
 .input-wrapper.small { max-width: 200px; }

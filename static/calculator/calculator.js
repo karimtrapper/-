@@ -407,16 +407,70 @@ function toggleDiscount() {
 // Установка маржи (прибыли)
 function setProfitMargin(profit) {
     state.profitMargin = parseFloat(profit);
-    
+
+    // Скрываем кастом-инпут и чистим его (вызов из пресета)
+    const customWrapper = document.getElementById('customProfitWrapper');
+    const customInput = document.getElementById('customProfitInput');
+    if (customWrapper) customWrapper.style.display = 'none';
+    if (customInput) customInput.value = '';
+
     // Обновляем визуальное состояние кнопок
     document.querySelectorAll('.commission-btn').forEach(btn => {
         const btnProfit = parseFloat(btn.dataset.profit);
         btn.classList.toggle('active', btnProfit === state.profitMargin);
     });
-    
+
     console.log(`🎯 Выбрана маржа: ${state.profitMargin}%`);
-    
+
     // СРАЗУ вызываем расчет если сумма введена
+    const amount = getAmount();
+    if (amount > 0) {
+        calculate();
+    } else {
+        hideResults();
+    }
+}
+
+// Переключение «Своё» — раскрытие инпута для произвольного %
+function toggleCustomProfit() {
+    const wrapper = document.getElementById('customProfitWrapper');
+    const input = document.getElementById('customProfitInput');
+    const isOpen = wrapper.style.display !== 'none';
+
+    if (isOpen) {
+        wrapper.style.display = 'none';
+        return;
+    }
+
+    wrapper.style.display = 'block';
+    // Сбрасываем подсветку пресетов и активируем «Своё»
+    document.querySelectorAll('.commission-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.profit === 'custom');
+    });
+    setTimeout(() => input.focus(), 50);
+}
+
+// Обработчик ввода произвольного %
+function onCustomProfitInput(el) {
+    // Нормализация: запятая в точку, только числа
+    let raw = el.value.replace(',', '.').replace(/[^\d.]/g, '');
+    // Один разделитель максимум
+    const parts = raw.split('.');
+    if (parts.length > 2) raw = parts[0] + '.' + parts.slice(1).join('');
+    el.value = raw;
+
+    const val = parseFloat(raw);
+    if (isNaN(val) || val < 0) {
+        hideResults();
+        return;
+    }
+    // Капаем на 99 чтобы избежать деления на 0 в обратных сценариях
+    const capped = Math.min(val, 99);
+    if (capped !== val) el.value = String(capped);
+
+    state.profitMargin = capped;
+    console.log(`🎯 Кастомная маржа: ${state.profitMargin}%`);
+
     const amount = getAmount();
     if (amount > 0) {
         calculate();

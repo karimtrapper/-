@@ -247,6 +247,14 @@
                                 <button class="commission-btn active" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
                                 <button class="commission-btn" data-profit="4.5" onclick="setProfitMargin(4.5)">4.5%</button>
                                 <button class="commission-btn" data-profit="5.0" onclick="setProfitMargin(5.0)">5%</button>
+                                <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">✏️ Своё</button>
+                            </div>
+                            <div id="customProfitWrapper" style="display: none; margin-top: 10px;">
+                                <div class="input-wrapper small">
+                                    <input type="text" inputmode="decimal" id="customProfitInput" class="amount-input" placeholder="Например 10" oninput="onCustomProfitInput(this)">
+                                    <span class="input-currency">%</span>
+                                </div>
+                                <div class="custom-profit-hint">Любое число от 0 до 99</div>
                             </div>
                         </div>
                     </div>
