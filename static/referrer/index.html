@@ -340,7 +340,7 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <div class="deal-amount">$${(deal.volume_usdt || 0).toFixed(0)}</div>
+                                    <div class="deal-amount">${deal.payout_thb ? '฿' + Math.round(deal.payout_thb).toLocaleString('ru-RU') : '$' + (deal.volume_usdt || 0).toFixed(0)}</div>
                                     <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
                                 </div>
                             </div>

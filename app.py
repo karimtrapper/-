@@ -4233,9 +4233,11 @@ def referrer_stats(token):
             name_parts = client_name.split()
             masked = name_parts[0][:3] + '***' if name_parts and len(name_parts[0]) > 2 else client_name[:3] + '***'
             initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
+            payout_thb_value = deal.custom_payout_amount or deal.payout_amount_thb or 0
             recent_deals.append({
                 'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
                 'volume_usdt': max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0),
+                'payout_thb': payout_thb_value,
                 'commission_usdt': deal.referrer_payout_usdt,
                 'paid': deal.referrer_paid or False,
                 'client_masked': masked,
