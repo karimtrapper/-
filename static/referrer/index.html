@@ -220,7 +220,7 @@
             transition: border-color 0.15s, background 0.15s; box-sizing: border-box;
         }
         .modal-input:focus, .modal-textarea:focus {
-            outline: none; border-color: var(--orange); background: white;
+            outline: none; border-color: var(--coral); background: white;
         }
         .modal-textarea { resize: vertical; min-height: 64px; }
         .modal-radio-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -230,7 +230,7 @@
             cursor: pointer; font-size: 14px; font-weight: 600; color: var(--navy-600);
             background: var(--navy-50); transition: all 0.15s;
         }
-        .modal-radio.active { border-color: var(--orange); background: #FFF7ED; color: var(--orange); }
+        .modal-radio.active { border-color: var(--coral); background: #FFF7ED; color: var(--coral); }
         .modal-radio input { display: none; }
         .modal-disclaimer {
             font-size: 12px; color: var(--navy-500); background: var(--navy-50);
@@ -245,7 +245,7 @@
         .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .modal-btn-cancel { background: var(--navy-50); color: var(--navy-600); }
         .modal-btn-submit {
-            background: linear-gradient(135deg, var(--orange), #EA580C); color: white;
+            background: linear-gradient(135deg, var(--coral), #EA580C); color: white;
         }
         .modal-error {
             background: #FEF2F2; color: #DC2626; padding: 10px 12px; border-radius: 10px;
@@ -487,6 +487,19 @@
         document.getElementById('pmNotes').value = '';
         setContactMethod(tg ? 'telegram' : 'telegram');
         hidePayoutError();
+
+        // Подсказки предыдущих кошельков
+        const wallets = statsData.previous_wallets || [];
+        const dl = document.getElementById('pmWalletList');
+        const chips = document.getElementById('pmWalletChips');
+        dl.innerHTML = wallets.map(w => `<option value="${esc(w)}">`).join('');
+        if (wallets.length) {
+            chips.innerHTML = '<div style="font-size:11px;color:var(--navy-500);width:100%;margin-bottom:2px;">Прошлые кошельки:</div>' +
+                wallets.map(w => `<button type="button" onclick="document.getElementById('pmWallet').value='${esc(w)}'" style="background:var(--navy-100);border:1px solid var(--navy-200);border-radius:8px;padding:6px 10px;font-size:11px;font-family:'SF Mono',monospace;color:var(--navy-700);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(w.length > 16 ? w.slice(0,8)+'...'+w.slice(-6) : w)}</button>`).join('');
+        } else {
+            chips.innerHTML = '';
+        }
+
         document.getElementById('payoutFormBox').style.display = 'block';
         document.getElementById('payoutSuccessBox').style.display = 'none';
         document.body.style.overflow = 'hidden';
@@ -564,7 +577,9 @@
                 <form onsubmit="submitPayoutRequest(event)">
                     <div class="modal-field">
                         <label class="modal-label">Кошелёк для выплаты</label>
-                        <input type="text" class="modal-input" id="pmWallet" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" required>
+                        <input type="text" class="modal-input" id="pmWallet" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" list="pmWalletList" required>
+                        <datalist id="pmWalletList"></datalist>
+                        <div id="pmWalletChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                     </div>
 
                     <div class="modal-field">

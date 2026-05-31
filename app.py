@@ -4324,6 +4324,17 @@ def referrer_stats(token):
         # Средний доход на сделку
         avg_deal_income = round(total_earned / len(deals), 2) if deals else 0
 
+        # Ранее использованные кошельки (для автоподсказки в модалке)
+        prev_wallets = []
+        seen = set()
+        for r in db.query(PayoutRequest).filter_by(referrer_id=referrer.id) \
+                                        .order_by(PayoutRequest.created_at.desc()).limit(20).all():
+            if r.wallet and r.wallet not in seen:
+                seen.add(r.wallet)
+                prev_wallets.append(r.wallet)
+            if len(prev_wallets) >= 5:
+                break
+
         return jsonify({
             'success': True,
             'name': referrer.name,
@@ -4345,6 +4356,7 @@ def referrer_stats(token):
             'total_paid_usdt': round(total_paid, 2),
             'pending_usdt': round(total_earned - total_paid, 2),
             'recent_deals': recent_deals,
+            'previous_wallets': prev_wallets,
         })
     finally:
         db.close()
