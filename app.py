@@ -4533,6 +4533,21 @@ def update_payout_request(req_id):
         db.close()
 
 
+@app.route('/api/payout-requests/<int:req_id>', methods=['DELETE'])
+def delete_payout_request(req_id):
+    """Жёсткое удаление заявки (для очистки тестовых данных)."""
+    db = get_session()
+    try:
+        req = db.query(PayoutRequest).get(req_id)
+        if not req:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        db.delete(req)
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 @app.route('/api/ref/<token>/payout-request/<int:req_id>/cancel', methods=['POST'])
 def cancel_payout_request_public(token, req_id):
     """Реферер сам отменяет свою активную заявку. Публичный эндпоинт по токену."""
