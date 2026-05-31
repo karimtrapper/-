@@ -4556,6 +4556,7 @@ def create_referrer():
             comp_model=comp_model,
             markup_percent=markup_percent,
             client_id=data.get('client_id'),
+            is_test=bool(data.get('is_test', False)),
         )
         db.add(referrer)
         db.commit()
