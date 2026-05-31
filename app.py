@@ -256,6 +256,7 @@ class Referrer(Base):
     comp_model = Column(String(20), default='revshare')
     markup_percent = Column(Float, default=0.0)
     active = Column(Boolean, default=True)
+    is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
     total_referred_clients = Column(Integer, default=0)
     total_deals = Column(Integer, default=0)
     total_earned_usdt = Column(Float, default=0)
@@ -718,6 +719,15 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_markup_percent FLOAT"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
+            except: pass
+        # is_test флаг для тестовых рефереров (пропуск TG-нотификаций)
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE"))
+            except Exception as e:
+                print(f"ℹ️ referrers.is_test: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN is_test BOOLEAN DEFAULT 0"))
             except: pass
         # payout_requests: индекс по статусу для быстрого фильтра
         if 'postgresql' in DATABASE_URL:
@@ -4403,23 +4413,26 @@ def create_payout_request(token):
         db.commit()
         db.refresh(req)
 
-        # Уведомление в TG-чат
-        try:
-            contact_label = 'Telegram' if contact_method == 'telegram' else 'WhatsApp'
-            msg = (
-                f"💸 <b>Новая заявка на выплату</b>\n\n"
-                f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
-                f"<b>Сумма:</b> ${pending:.2f} USDT\n"
-                f"<b>Валюта:</b> {referrer.payout_currency or 'USDT'} (TRC-20)\n\n"
-                f"<b>Кошелёк:</b>\n<code>{wallet}</code>\n\n"
-                f"<b>Связь:</b> {contact_label} — {contact_value}"
-            )
-            if notes:
-                msg += f"\n\n<b>Комментарий:</b> {notes}"
-            msg += f"\n\nЗаявка #{req.id} · CRM → Заявки на выплату"
-            send_telegram_notification(msg)
-        except Exception as e:
-            print(f'[PayoutRequest] Telegram notify failed: {e}')
+        # Уведомление в TG-чат (пропускаем для тестовых рефереров)
+        if referrer.is_test:
+            print(f'[PayoutRequest] Skip TG notify: referrer #{referrer.id} is test')
+        else:
+            try:
+                contact_label = 'Telegram' if contact_method == 'telegram' else 'WhatsApp'
+                msg = (
+                    f"💸 <b>Новая заявка на выплату</b>\n\n"
+                    f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
+                    f"<b>Сумма:</b> ${pending:.2f} USDT\n"
+                    f"<b>Валюта:</b> {referrer.payout_currency or 'USDT'} (TRC-20)\n\n"
+                    f"<b>Кошелёк:</b>\n<code>{wallet}</code>\n\n"
+                    f"<b>Связь:</b> {contact_label} — {contact_value}"
+                )
+                if notes:
+                    msg += f"\n\n<b>Комментарий:</b> {notes}"
+                msg += f"\n\nЗаявка #{req.id} · CRM → Заявки на выплату"
+                send_telegram_notification(msg)
+            except Exception as e:
+                print(f'[PayoutRequest] Telegram notify failed: {e}')
 
         return jsonify({'success': True, 'request': req.to_dict()})
     finally:
