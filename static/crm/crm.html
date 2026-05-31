@@ -6746,10 +6746,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
                     const isFinal = r.status === 'paid' || r.status === 'cancelled';
                     const actions = isFinal ? '' : `
-                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
-                            ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
-                            <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
-                            <button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
+                        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <input type="text" id="payout-tx-${r.id}" placeholder="Хеш транзакции TRC-20 (для «Выплачено»)"
+                                       style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;font-family:monospace;">
+                                <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
+                            </div>
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                                ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
+                                <button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
+                            </div>
                         </div>`;
                     return `
                     <div style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
@@ -6782,10 +6788,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const labels = { in_progress: 'взять в работу', paid: 'отметить выплаченной', cancelled: 'отменить' };
             let tx_hash = null;
             if (status === 'paid') {
-                tx_hash = prompt(`Хеш транзакции (TRC-20) для заявки #${id}:`, '');
-                if (tx_hash === null) return;
-                tx_hash = tx_hash.trim();
-                if (!tx_hash) { alert('Нужен хеш транзакции'); return; }
+                const input = document.getElementById(`payout-tx-${id}`);
+                tx_hash = (input?.value || '').trim();
+                if (!tx_hash) {
+                    alert('Введи хеш транзакции в поле над кнопкой');
+                    input?.focus();
+                    return;
+                }
             } else {
                 if (!confirm(`Точно ${labels[status] || 'изменить'} заявку #${id}?`)) return;
             }
