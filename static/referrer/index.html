@@ -190,6 +190,77 @@
         @keyframes floatUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
         @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         @keyframes badgeShine { 0%{background-position:-100% 0} 100%{background-position:200% 0} }
+
+        /* Payout modal */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.6);
+            backdrop-filter: blur(4px); z-index: 100; align-items: flex-end; justify-content: center;
+            padding: 0; animation: fadeIn 0.2s ease;
+        }
+        .modal-overlay.show { display: flex; }
+        @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes slideUp { from { transform: translateY(100%) } to { transform: translateY(0) } }
+        .modal-box {
+            background: white; border-radius: 24px 24px 0 0; width: 100%; max-width: 480px;
+            padding: 24px 20px 28px; max-height: 92vh; overflow-y: auto;
+            animation: slideUp 0.25s ease-out;
+        }
+        @media (min-width: 480px) {
+            .modal-overlay { align-items: center; padding: 20px; }
+            .modal-box { border-radius: 20px; }
+        }
+        .modal-handle { width: 36px; height: 4px; background: #E2E8F0; border-radius: 2px; margin: -8px auto 16px; }
+        .modal-title { font-size: 18px; font-weight: 700; color: var(--navy-900); margin-bottom: 4px; }
+        .modal-sub { font-size: 13px; color: var(--navy-500); margin-bottom: 20px; }
+        .modal-field { margin-bottom: 14px; }
+        .modal-label { font-size: 12px; font-weight: 600; color: var(--navy-600); margin-bottom: 6px; display: block; text-transform: uppercase; letter-spacing: 0.4px; }
+        .modal-input, .modal-textarea {
+            width: 100%; padding: 12px 14px; border: 1.5px solid #E2E8F0; border-radius: 12px;
+            font-size: 14px; color: var(--navy-900); background: var(--navy-50); font-family: inherit;
+            transition: border-color 0.15s, background 0.15s; box-sizing: border-box;
+        }
+        .modal-input:focus, .modal-textarea:focus {
+            outline: none; border-color: var(--orange); background: white;
+        }
+        .modal-textarea { resize: vertical; min-height: 64px; }
+        .modal-radio-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .modal-radio {
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 12px; border: 1.5px solid #E2E8F0; border-radius: 12px;
+            cursor: pointer; font-size: 14px; font-weight: 600; color: var(--navy-600);
+            background: var(--navy-50); transition: all 0.15s;
+        }
+        .modal-radio.active { border-color: var(--orange); background: #FFF7ED; color: var(--orange); }
+        .modal-radio input { display: none; }
+        .modal-disclaimer {
+            font-size: 12px; color: var(--navy-500); background: var(--navy-50);
+            padding: 10px 12px; border-radius: 10px; margin-bottom: 16px; line-height: 1.5;
+        }
+        .modal-actions { display: flex; gap: 8px; margin-top: 8px; }
+        .modal-btn {
+            flex: 1; padding: 14px; border-radius: 12px; border: none; font-size: 15px; font-weight: 700;
+            cursor: pointer; font-family: inherit; transition: opacity 0.15s, transform 0.05s;
+        }
+        .modal-btn:active { transform: scale(0.98); }
+        .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .modal-btn-cancel { background: var(--navy-50); color: var(--navy-600); }
+        .modal-btn-submit {
+            background: linear-gradient(135deg, var(--orange), #EA580C); color: white;
+        }
+        .modal-error {
+            background: #FEF2F2; color: #DC2626; padding: 10px 12px; border-radius: 10px;
+            font-size: 13px; margin-bottom: 12px; display: none;
+        }
+        .modal-error.show { display: block; }
+        .modal-success {
+            text-align: center; padding: 16px 0;
+        }
+        .modal-success .icon {
+            width: 64px; height: 64px; border-radius: 50%; background: #DCFCE7;
+            display: flex; align-items: center; justify-content: center; margin: 0 auto 16px;
+        }
+        .modal-success h3 { font-size: 18px; color: var(--navy-900); margin-bottom: 8px; }
+        .modal-success p { font-size: 14px; color: var(--navy-500); line-height: 1.5; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -205,6 +276,7 @@
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;'
         }[c]));
     }
+    let statsData = null;
     const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
     if (!token) {
         document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
@@ -216,6 +288,7 @@
         try {
             const resp = await fetch(`/api/ref/${token}/stats`);
             const d = await resp.json();
+            statsData = d;
             if (!d.success) {
                 document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
                 return;
@@ -257,7 +330,7 @@
                         <div class="dot"></div>
                         <span>По запросу · от $50 · USDT TRC-20</span>
                     </div>
-                    <a href="https://t.me/Grushath_bot" target="_blank" class="cta-btn" style="text-decoration:none;text-align:center;display:block;">Запросить выплату</a>
+                    <button class="cta-btn" onclick="openPayoutModal()" ${(d.pending_usdt || 0) < 50 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>Запросить выплату</button>
                 </div>
                 <div class="hero-fade"></div>
             </div>
@@ -401,6 +474,145 @@
             setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('copied'); }, 2000);
         });
     }
+
+    // ============== Модалка заявки на выплату ==============
+    function openPayoutModal() {
+        if (!statsData || (statsData.pending_usdt || 0) < 50) return;
+        const tg = statsData.telegram || '';
+        document.getElementById('payoutModal').classList.add('show');
+        document.getElementById('payoutAmount').textContent = '$' + (statsData.pending_usdt || 0).toFixed(2);
+        document.getElementById('payoutCurrency').textContent = (statsData.payout_currency || 'USDT') + ' (TRC-20)';
+        document.getElementById('pmWallet').value = '';
+        document.getElementById('pmContactValue').value = tg;
+        document.getElementById('pmNotes').value = '';
+        setContactMethod(tg ? 'telegram' : 'telegram');
+        hidePayoutError();
+        document.getElementById('payoutFormBox').style.display = 'block';
+        document.getElementById('payoutSuccessBox').style.display = 'none';
+        document.body.style.overflow = 'hidden';
+    }
+    function closePayoutModal() {
+        document.getElementById('payoutModal').classList.remove('show');
+        document.body.style.overflow = '';
+    }
+    function setContactMethod(method) {
+        document.querySelectorAll('.modal-radio').forEach(el => {
+            el.classList.toggle('active', el.dataset.method === method);
+        });
+        const inp = document.getElementById('pmContactValue');
+        inp.placeholder = method === 'telegram' ? '@username или +66...' : '+66 81 234 56 78';
+        inp.dataset.method = method;
+    }
+    function showPayoutError(msg) {
+        const el = document.getElementById('payoutError');
+        el.textContent = msg;
+        el.classList.add('show');
+    }
+    function hidePayoutError() {
+        document.getElementById('payoutError').classList.remove('show');
+    }
+    async function submitPayoutRequest(e) {
+        e.preventDefault();
+        hidePayoutError();
+        const wallet = document.getElementById('pmWallet').value.trim();
+        const method = document.getElementById('pmContactValue').dataset.method || 'telegram';
+        const contact = document.getElementById('pmContactValue').value.trim();
+        const notes = document.getElementById('pmNotes').value.trim();
+
+        if (!wallet) { showPayoutError('Укажите кошелёк для выплаты'); return; }
+        if (!contact) { showPayoutError('Укажите контакт для связи'); return; }
+
+        const btn = document.getElementById('pmSubmit');
+        btn.disabled = true;
+        btn.textContent = 'Отправляем...';
+        try {
+            const resp = await fetch(`/api/ref/${token}/payout-request`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    wallet, contact_method: method, contact_value: contact, notes
+                })
+            });
+            const data = await resp.json();
+            if (!data.success) {
+                showPayoutError(data.error || 'Ошибка отправки');
+                btn.disabled = false;
+                btn.textContent = 'Отправить заявку';
+                return;
+            }
+            document.getElementById('payoutFormBox').style.display = 'none';
+            document.getElementById('payoutSuccessBox').style.display = 'block';
+        } catch (err) {
+            showPayoutError('Сетевая ошибка. Попробуйте ещё раз.');
+            btn.disabled = false;
+            btn.textContent = 'Отправить заявку';
+        }
+    }
     </script>
+
+    <!-- Модалка заявки на выплату -->
+    <div class="modal-overlay" id="payoutModal" onclick="if(event.target===this)closePayoutModal()">
+        <div class="modal-box">
+            <div class="modal-handle"></div>
+
+            <div id="payoutFormBox">
+                <div class="modal-title">Заявка на выплату</div>
+                <div class="modal-sub">Доступно: <b id="payoutAmount">$0.00</b> · <span id="payoutCurrency">USDT (TRC-20)</span></div>
+
+                <div class="modal-error" id="payoutError"></div>
+
+                <form onsubmit="submitPayoutRequest(event)">
+                    <div class="modal-field">
+                        <label class="modal-label">Кошелёк для выплаты</label>
+                        <input type="text" class="modal-input" id="pmWallet" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" required>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Способ связи</label>
+                        <div class="modal-radio-group">
+                            <label class="modal-radio active" data-method="telegram" onclick="setContactMethod('telegram')">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87z"/></svg>
+                                Telegram
+                            </label>
+                            <label class="modal-radio" data-method="whatsapp" onclick="setContactMethod('whatsapp')">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12.05 21.785h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884"/></svg>
+                                WhatsApp
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Контакт</label>
+                        <input type="text" class="modal-input" id="pmContactValue" placeholder="@username или +66..." autocomplete="off" required>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Комментарий (необязательно)</label>
+                        <textarea class="modal-textarea" id="pmNotes" placeholder="Доп. информация для менеджера"></textarea>
+                    </div>
+
+                    <div class="modal-disclaimer">
+                        Свяжемся с вами, если возникнут вопросы по оплате. Выплата USDT TRC-20 на указанный кошелёк.
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()">Отмена</button>
+                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmit">Отправить заявку</button>
+                    </div>
+                </form>
+            </div>
+
+            <div id="payoutSuccessBox" style="display:none;">
+                <div class="modal-success">
+                    <div class="icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <h3>Заявка отправлена</h3>
+                    <p>Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.</p>
+                    <button type="button" class="modal-btn modal-btn-submit" onclick="closePayoutModal()" style="width:100%;">Готово</button>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

@@ -287,6 +287,47 @@ class Referrer(Base):
         }
 
 
+class PayoutRequest(Base):
+    """Заявка реферера на выплату накопленного баланса."""
+    __tablename__ = 'payout_requests'
+    id = Column(Integer, primary_key=True)
+    referrer_id = Column(Integer, ForeignKey('referrers.id'), nullable=False, index=True)
+    # Снапшот суммы к выплате на момент заявки
+    amount_usdt = Column(Float, default=0)
+    wallet = Column(String(200), nullable=False)
+    # 'telegram' | 'whatsapp'
+    contact_method = Column(String(20), nullable=False)
+    # @username, телефон или ник — то, что указал реферер
+    contact_value = Column(String(100), nullable=False)
+    notes = Column(Text)
+    # 'new' | 'in_progress' | 'paid' | 'cancelled'
+    status = Column(String(20), default='new', index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    processed_at = Column(DateTime, nullable=True)
+
+    referrer = relationship("Referrer", foreign_keys=[referrer_id])
+
+    def to_dict(self, with_referrer=False):
+        d = {
+            'id': self.id,
+            'referrer_id': self.referrer_id,
+            'amount_usdt': self.amount_usdt,
+            'wallet': self.wallet,
+            'contact_method': self.contact_method,
+            'contact_value': self.contact_value,
+            'notes': self.notes,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+            'processed_at': self.processed_at.isoformat() if self.processed_at else None,
+        }
+        if with_referrer and self.referrer:
+            d['referrer_name'] = self.referrer.name
+            d['referrer_code'] = self.referrer.code
+        return d
+
+
 class KycStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
@@ -678,6 +719,15 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
             except: pass
+        # payout_requests: индекс по статусу для быстрого фильтра
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text(
+                    "CREATE INDEX IF NOT EXISTS ix_payout_requests_status "
+                    "ON payout_requests(status)"
+                ))
+            except Exception as e:
+                print(f"ℹ️ payout_requests index: {e}")
         # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
         # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
         dup_count = conn.execute(text(
@@ -4272,6 +4322,7 @@ def referrer_stats(token):
             'bot_link': f'https://t.me/Grushath_bot?start=ref__{referrer.code.replace("-", "")}',
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
             'payout_currency': referrer.payout_currency or 'USDT',
+            'telegram': referrer.telegram or '',
             'default_percent': referrer.default_percent,
             'comp_model': referrer.comp_model or 'revshare',
             'markup_percent': referrer.markup_percent or 0.0,
@@ -4285,6 +4336,142 @@ def referrer_stats(token):
             'pending_usdt': round(total_earned - total_paid, 2),
             'recent_deals': recent_deals,
         })
+    finally:
+        db.close()
+
+
+@app.route('/api/ref/<token>/payout-request', methods=['POST'])
+def create_payout_request(token):
+    """Реферер создаёт заявку на выплату. Публичный эндпоинт по токену."""
+    data = request.get_json(silent=True) or {}
+    wallet = (data.get('wallet') or '').strip()
+    contact_method = (data.get('contact_method') or '').strip().lower()
+    contact_value = (data.get('contact_value') or '').strip()
+    notes = (data.get('notes') or '').strip() or None
+
+    if not wallet:
+        return jsonify({'success': False, 'error': 'Укажите кошелёк для выплаты'}), 400
+    if contact_method not in ('telegram', 'whatsapp'):
+        return jsonify({'success': False, 'error': 'Выберите Telegram или WhatsApp'}), 400
+    if not contact_value:
+        return jsonify({'success': False, 'error': 'Укажите контакт для связи'}), 400
+    if len(wallet) > 200 or len(contact_value) > 100 or (notes and len(notes) > 1000):
+        return jsonify({'success': False, 'error': 'Слишком длинные поля'}), 400
+
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        # Считаем pending по реальным сделкам (как в /stats)
+        deals = db.query(Deal).filter(
+            Deal.referrer_id == referrer.id,
+            Deal.status == DealStatus.COMPLETED
+        ).all()
+        total_earned = sum(d.referrer_payout_usdt or 0 for d in deals)
+        total_paid = sum((d.referrer_payout_usdt or 0) for d in deals if d.referrer_paid)
+        pending = round(total_earned - total_paid, 2)
+
+        if pending < 50:
+            return jsonify({
+                'success': False,
+                'error': f'Минимальная сумма для вывода — $50. Доступно: ${pending:.2f}'
+            }), 400
+
+        # Анти-спам: запрет если есть активная заявка (new или in_progress)
+        existing = db.query(PayoutRequest).filter(
+            PayoutRequest.referrer_id == referrer.id,
+            PayoutRequest.status.in_(['new', 'in_progress'])
+        ).first()
+        if existing:
+            return jsonify({
+                'success': False,
+                'error': 'У вас уже есть активная заявка. Дождитесь обработки.'
+            }), 409
+
+        req = PayoutRequest(
+            referrer_id=referrer.id,
+            amount_usdt=pending,
+            wallet=wallet,
+            contact_method=contact_method,
+            contact_value=contact_value,
+            notes=notes,
+            status='new',
+        )
+        db.add(req)
+        db.commit()
+        db.refresh(req)
+
+        # Уведомление в TG-чат
+        try:
+            contact_label = 'Telegram' if contact_method == 'telegram' else 'WhatsApp'
+            msg = (
+                f"💸 <b>Новая заявка на выплату</b>\n\n"
+                f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
+                f"<b>Сумма:</b> ${pending:.2f} USDT\n"
+                f"<b>Валюта:</b> {referrer.payout_currency or 'USDT'} (TRC-20)\n\n"
+                f"<b>Кошелёк:</b>\n<code>{wallet}</code>\n\n"
+                f"<b>Связь:</b> {contact_label} — {contact_value}"
+            )
+            if notes:
+                msg += f"\n\n<b>Комментарий:</b> {notes}"
+            msg += f"\n\nЗаявка #{req.id} · CRM → Заявки на выплату"
+            send_telegram_notification(msg)
+        except Exception as e:
+            print(f'[PayoutRequest] Telegram notify failed: {e}')
+
+        return jsonify({'success': True, 'request': req.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/payout-requests', methods=['GET'])
+def list_payout_requests():
+    """Список заявок на выплату для CRM."""
+    db = get_session()
+    try:
+        status_filter = (request.args.get('status') or '').strip()
+        q = db.query(PayoutRequest).order_by(PayoutRequest.created_at.desc())
+        if status_filter:
+            q = q.filter(PayoutRequest.status == status_filter)
+        items = [r.to_dict(with_referrer=True) for r in q.limit(200).all()]
+        return jsonify({'success': True, 'requests': items})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/<int:referrer_id>/payout-requests', methods=['GET'])
+def referrer_payout_requests(referrer_id):
+    """История заявок конкретного реферера (для карточки в CRM)."""
+    db = get_session()
+    try:
+        q = db.query(PayoutRequest).filter_by(referrer_id=referrer_id) \
+              .order_by(PayoutRequest.created_at.desc()).limit(50).all()
+        return jsonify({'success': True, 'requests': [r.to_dict() for r in q]})
+    finally:
+        db.close()
+
+
+@app.route('/api/payout-requests/<int:req_id>', methods=['PATCH'])
+def update_payout_request(req_id):
+    """Изменить статус заявки (in_progress / paid / cancelled)."""
+    data = request.get_json(silent=True) or {}
+    new_status = (data.get('status') or '').strip().lower()
+    if new_status not in ('new', 'in_progress', 'paid', 'cancelled'):
+        return jsonify({'success': False, 'error': 'Недопустимый статус'}), 400
+
+    db = get_session()
+    try:
+        req = db.query(PayoutRequest).get(req_id)
+        if not req:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        req.status = new_status
+        if new_status in ('paid', 'cancelled'):
+            req.processed_at = datetime.utcnow()
+        db.commit()
+        db.refresh(req)
+        return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
     finally:
         db.close()
 

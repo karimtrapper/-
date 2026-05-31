@@ -671,6 +671,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="kyc">KYC</button>
             <button class="nav-tab" data-section="partners">Партнёры</button>
             <button class="nav-tab" data-section="referrers">Рефереры</button>
+            <button class="nav-tab" data-section="payoutRequests">Заявки на выплату</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -1644,6 +1645,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             </div>
         </section>
 
+        <!-- Payout Requests Section -->
+        <section id="payoutRequests" class="section">
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                    <span>Заявки на выплату</span>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <button class="btn btn-sm btn-light payout-filter-btn active" data-status="" onclick="filterPayoutRequests('')">Все</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="new" onclick="filterPayoutRequests('new')">Новые</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="in_progress" onclick="filterPayoutRequests('in_progress')">В работе</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="paid" onclick="filterPayoutRequests('paid')">Выплачено</button>
+                        <button class="btn btn-sm btn-light payout-filter-btn" data-status="cancelled" onclick="filterPayoutRequests('cancelled')">Отменено</button>
+                    </div>
+                </div>
+                <div id="payoutRequestsList" style="margin-top:1rem;">
+                    <div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Загрузка...</div>
+                </div>
+            </div>
+        </section>
+
         <!-- Referrers Section -->
         <section id="referrers" class="section">
             <div class="card">
@@ -2191,6 +2211,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'kyc': loadKYCSection(); break;
                     case 'partners': loadPartners(); break;
                     case 'referrers': loadReferrers(); break;
+                case 'payoutRequests': loadPayoutRequests(); break;
                 }
 
                 // Update bottom nav highlight
@@ -3232,6 +3253,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'kyc': loadKYCSection(); break;
                 case 'partners': loadPartners(); break;
                 case 'referrers': loadReferrers(); break;
+                case 'payoutRequests': loadPayoutRequests(); break;
             }
 
             // Update bottom nav highlight
@@ -3458,6 +3480,44 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // Просмотр и удаление сделок реферера
+        async function showReferrerPayoutRequests(referrerId, referrerName) {
+            try {
+                const res = await fetch(`${API_URL}/api/referrers/${referrerId}/payout-requests`);
+                const data = await res.json();
+                const items = data.requests || [];
+                let rows;
+                if (items.length === 0) {
+                    rows = '<div style="text-align:center;color:#999;padding:1rem;">Нет заявок на выплату</div>';
+                } else {
+                    rows = items.map(r => {
+                        const meta = (typeof PAYOUT_STATUS_LABELS !== 'undefined' && PAYOUT_STATUS_LABELS[r.status]) || { label: r.status, color: '#64748B', bg: '#F1F5F9' };
+                        const date = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+                        const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
+                        return `
+                            <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+                                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <div style="font-size:13px;">
+                                        <strong>#${r.id}</strong> · ${date}
+                                        <span style="background:${meta.bg};color:${meta.color};padding:1px 6px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;">${meta.label}</span>
+                                    </div>
+                                    <strong style="color:#16A34A;">$${(r.amount_usdt || 0).toFixed(2)}</strong>
+                                </div>
+                                <div style="font-size:12px;color:#64748b;margin-top:4px;">
+                                    ${contactLabel}: ${escapeHtml(r.contact_value)} · Кошелёк: <code style="font-size:11px;">${escapeHtml(r.wallet)}</code>
+                                </div>
+                                ${r.notes ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">«${escapeHtml(r.notes)}»</div>` : ''}
+                            </div>`;
+                    }).join('');
+                }
+                const modal = document.getElementById('dealModal');
+                modal.querySelector('.modal-title').textContent = 'Заявки на выплату: ' + referrerName;
+                document.getElementById('dealModalContent').innerHTML = rows;
+                modal.style.display = 'flex';
+            } catch (e) {
+                alert('Ошибка загрузки заявок: ' + e);
+            }
+        }
+
         async function showReferrerDeals(referrerId, referrerName) {
             try {
                 const res = await fetch(`${API_URL}/api/deals?referrer_id=${referrerId}`);
@@ -6652,6 +6712,86 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== REFERRERS ====================
 
+        // ============== Заявки на выплату ==============
+        let _payoutFilter = '';
+        const PAYOUT_STATUS_LABELS = {
+            new: { label: 'Новая', color: '#F97316', bg: '#FFF7ED' },
+            in_progress: { label: 'В работе', color: '#3B82F6', bg: '#EFF6FF' },
+            paid: { label: 'Выплачено', color: '#16A34A', bg: '#DCFCE7' },
+            cancelled: { label: 'Отменено', color: '#64748B', bg: '#F1F5F9' },
+        };
+
+        function filterPayoutRequests(status) {
+            _payoutFilter = status;
+            document.querySelectorAll('.payout-filter-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.status === status);
+            });
+            loadPayoutRequests();
+        }
+
+        async function loadPayoutRequests() {
+            const list = document.getElementById('payoutRequestsList');
+            try {
+                const url = `${API_URL}/api/payout-requests` + (_payoutFilter ? `?status=${_payoutFilter}` : '');
+                const res = await fetch(url);
+                const data = await res.json();
+                if (!data.success || !data.requests || data.requests.length === 0) {
+                    list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Заявок нет</div>';
+                    return;
+                }
+                list.innerHTML = data.requests.map(r => {
+                    const meta = PAYOUT_STATUS_LABELS[r.status] || { label: r.status, color: '#64748B', bg: '#F1F5F9' };
+                    const date = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+                    const contactIcon = r.contact_method === 'whatsapp' ? '💬' : '✈️';
+                    const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
+                    const isFinal = r.status === 'paid' || r.status === 'cancelled';
+                    const actions = isFinal ? '' : `
+                        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+                            ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
+                            <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
+                            <button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
+                        </div>`;
+                    return `
+                    <div style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                            <div style="flex:1;min-width:0;">
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                                    <strong style="font-size:15px;">${escapeHtml(r.referrer_name || '—')}</strong>
+                                    <span style="color:#94A3B8;font-size:12px;">${escapeHtml(r.referrer_code || '')}</span>
+                                    <span style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
+                                </div>
+                                <div style="font-size:12px;color:#64748B;">#${r.id} · ${date}</div>
+                            </div>
+                            <div style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>
+                        </div>
+                        <div style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
+                            <div><span style="color:#94A3B8;">Кошелёк:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
+                            <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
+                            ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
+                        </div>
+                        ${actions}
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<div style="color:#DC2626;padding:1rem;text-align:center;">Ошибка загрузки</div>';
+            }
+        }
+
+        async function setPayoutStatus(id, status) {
+            const labels = { in_progress: 'взять в работу', paid: 'отметить выплаченной', cancelled: 'отменить' };
+            if (!confirm(`Точно ${labels[status] || 'изменить'} заявку #${id}?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/payout-requests/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+                const data = await res.json();
+                if (!data.success) { alert(data.error || 'Ошибка'); return; }
+                loadPayoutRequests();
+            } catch (e) { alert('Сетевая ошибка'); }
+        }
+
         async function loadReferrers() {
             try {
                 const res = await fetch(`${API_URL}/api/referrers`);
@@ -6705,6 +6845,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 onclick="editReferrer(${r.id})">Изм.</button>
                             <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="showReferrerDeals(${r.id},'${r.name.replace(/'/g,"\\'")}')">Сделки</button>
+                            <button class="btn btn-sm" style="background:#fff7ed;color:#ea580c;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                                onclick="showReferrerPayoutRequests(${r.id},'${r.name.replace(/'/g,"\\'")}')">Заявки</button>
                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
                             ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
