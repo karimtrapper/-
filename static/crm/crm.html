@@ -6768,6 +6768,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div><span style="color:#94A3B8;">Кошелёк:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
                             <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
                             ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
+                            ${r.tx_hash ? `<div><span style="color:#94A3B8;">TX:</span> <code style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}
                         </div>
                         ${actions}
                     </div>`;
@@ -6779,12 +6780,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function setPayoutStatus(id, status) {
             const labels = { in_progress: 'взять в работу', paid: 'отметить выплаченной', cancelled: 'отменить' };
-            if (!confirm(`Точно ${labels[status] || 'изменить'} заявку #${id}?`)) return;
+            let tx_hash = null;
+            if (status === 'paid') {
+                tx_hash = prompt(`Хеш транзакции (TRC-20) для заявки #${id}:`, '');
+                if (tx_hash === null) return;
+                tx_hash = tx_hash.trim();
+                if (!tx_hash) { alert('Нужен хеш транзакции'); return; }
+            } else {
+                if (!confirm(`Точно ${labels[status] || 'изменить'} заявку #${id}?`)) return;
+            }
             try {
+                const body = { status };
+                if (tx_hash) body.tx_hash = tx_hash;
                 const res = await fetch(`${API_URL}/api/payout-requests/${id}`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ status })
+                    body: JSON.stringify(body)
                 });
                 const data = await res.json();
                 if (!data.success) { alert(data.error || 'Ошибка'); return; }

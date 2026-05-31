@@ -261,6 +261,58 @@
         }
         .modal-success h3 { font-size: 18px; color: var(--navy-900); margin-bottom: 8px; }
         .modal-success p { font-size: 14px; color: var(--navy-500); line-height: 1.5; margin-bottom: 20px; }
+
+        /* Баннеры */
+        .banner {
+            display: flex; gap: 12px; align-items: flex-start;
+            padding: 14px; border-radius: 14px; margin-bottom: 12px;
+            font-size: 13px; line-height: 1.45;
+        }
+        .banner-icon { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+        .banner-body { flex: 1; min-width: 0; }
+        .banner-title { font-weight: 700; margin-bottom: 2px; }
+        .banner-action { display: inline-block; margin-top: 8px; padding: 6px 12px; border-radius: 8px; border: none; font-size: 12px; font-weight: 600; cursor: pointer; font-family: inherit; }
+        .banner-info { background: #FFF7ED; color: #9A3412; border: 1px solid #FED7AA; }
+        .banner-info .banner-icon { background: #FED7AA; color: #C2410C; }
+        .banner-info .banner-action { background: #C2410C; color: white; }
+        .banner-success { background: #F0FDF4; color: #14532D; border: 1px solid #BBF7D0; }
+        .banner-success .banner-icon { background: #BBF7D0; color: #16A34A; }
+        .banner-progress { background: #EFF6FF; color: #1E3A8A; border: 1px solid #BFDBFE; }
+        .banner-progress .banner-icon { background: #BFDBFE; color: #2563EB; }
+
+        /* Карточки заявок */
+        .payout-card {
+            background: white; border-radius: 14px; padding: 14px;
+            border: 1px solid rgba(226,232,240,0.6); margin-bottom: 8px;
+            box-shadow: 0 1px 2px rgba(15,23,42,0.04);
+        }
+        .payout-status {
+            display: inline-flex; align-items: center; gap: 4px;
+            font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 999px;
+        }
+        .payout-status.new { background: rgba(249,115,22,0.1); color: var(--coral); }
+        .payout-status.in_progress { background: rgba(59,130,246,0.1); color: #2563EB; }
+        .payout-status.paid { background: rgba(34,197,94,0.1); color: var(--green-dark); }
+        .payout-status.cancelled { background: rgba(100,116,139,0.1); color: var(--navy-500); }
+        .tx-link {
+            display: inline-block; margin-top: 6px; font-family: 'SF Mono', monospace;
+            font-size: 11px; color: var(--green-dark); background: #F0FDF4;
+            padding: 4px 8px; border-radius: 6px; word-break: break-all;
+            text-decoration: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+
+        /* Пагинация */
+        .pager {
+            display: flex; justify-content: center; gap: 6px; margin-top: 8px;
+        }
+        .pager button {
+            background: white; border: 1px solid var(--navy-200); border-radius: 8px;
+            padding: 6px 12px; font-size: 12px; font-weight: 600; color: var(--navy-700);
+            cursor: pointer; font-family: inherit; transition: all 0.15s;
+        }
+        .pager button:hover:not(:disabled) { background: var(--navy-50); }
+        .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
+        .pager button.active { background: var(--coral); color: white; border-color: var(--coral); }
     </style>
 </head>
 <body>
@@ -294,7 +346,11 @@
                 return;
             }
 
-            const [whole, cents] = (d.pending_usdt || 0).toFixed(2).split('.');
+            const availableAmt = (typeof d.available_for_withdraw === 'number' ? d.available_for_withdraw : (d.pending_usdt || 0));
+            const [whole, cents] = availableAmt.toFixed(2).split('.');
+            const activeReq = d.active_request;
+            const recentPaid = d.recent_paid_request;
+            const canRequest = !activeReq && availableAmt >= 50;
             const avatarColors = [
                 'linear-gradient(135deg,#22C55E,#16A34A)',
                 'linear-gradient(135deg,#3B82F6,#2563EB)',
@@ -328,15 +384,37 @@
                     </div>
                     <div class="balance-sub">
                         <div class="dot"></div>
-                        <span>По запросу · от $50 · USDT TRC-20</span>
+                        <span>${activeReq ? 'Заявка #' + activeReq.id + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $50 · USDT TRC-20'}</span>
                     </div>
-                    <button class="cta-btn" onclick="openPayoutModal()" ${(d.pending_usdt || 0) < 50 ? 'disabled style="opacity:0.5;cursor:not-allowed;"' : ''}>Запросить выплату</button>
+                    <button class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>${activeReq ? 'Заявка уже отправлена' : 'Запросить выплату'}</button>
                 </div>
                 <div class="hero-fade"></div>
             </div>
 
             <!-- CONTENT -->
             <div class="content">
+                ${recentPaid ? `
+                <div class="banner banner-success">
+                    <div class="banner-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </div>
+                    <div class="banner-body">
+                        <div class="banner-title">Выплата $${(recentPaid.amount_usdt||0).toFixed(2)} отправлена</div>
+                        <div>Заявка #${recentPaid.id} · ${recentPaid.processed_at ? new Date(recentPaid.processed_at).toLocaleDateString('ru-RU') : ''}</div>
+                        ${recentPaid.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(recentPaid.tx_hash)}" target="_blank">TX: ${esc(recentPaid.tx_hash)}</a>` : ''}
+                    </div>
+                </div>` : ''}
+                ${activeReq ? `
+                <div class="banner ${activeReq.status === 'in_progress' ? 'banner-progress' : 'banner-info'}">
+                    <div class="banner-icon">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </div>
+                    <div class="banner-body">
+                        <div class="banner-title">Заявка на $${(activeReq.amount_usdt||0).toFixed(2)} ${activeReq.status === 'in_progress' ? '— в работе' : '— на рассмотрении'}</div>
+                        <div>${activeReq.status === 'in_progress' ? 'Менеджер обрабатывает выплату. После отправки получите хеш транзакции.' : 'Менеджер свяжется с вами в ближайшее время.'}</div>
+                        ${activeReq.status === 'new' ? `<button class="banner-action" onclick="cancelActiveRequest(${activeReq.id})">Отменить заявку</button>` : ''}
+                    </div>
+                </div>` : ''}
                 <!-- Stats -->
                 <div class="stats-grid">
                     <div class="stat-card">
@@ -399,36 +477,17 @@
                     </div>
                 </div>
 
-                <!-- Deals -->
-                <div class="section-title" style="margin-top:12px;">Последние сделки</div>
-                <div id="deals-list" style="margin-bottom:20px;">
-                    ${d.recent_deals.length ? d.recent_deals.map((deal, i) => `
-                        <div class="deal-card" style="animation:floatUp 0.4s ease-out ${0.3 + i*0.05}s backwards">
-                            <div class="deal-row">
-                                <div class="deal-left">
-                                    <div class="deal-avatar" style="background:${avatarColors[i % avatarColors.length]}">${esc(deal.client_initials || '??')}</div>
-                                    <div>
-                                        <div class="deal-name">${esc(deal.client_masked || 'Клиент')}</div>
-                                        <div class="deal-date">${esc(deal.date || '—')}</div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <div class="deal-amount">${deal.payout_thb ? '฿' + Math.round(deal.payout_thb).toLocaleString('ru-RU') : '$' + (deal.volume_usdt || 0).toFixed(0)}</div>
-                                    <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
-                                </div>
-                            </div>
-                            <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-                                ${deal.comp_model === 'markup'
-                                    ? 'markup +' + (deal.percent || 0) + '% × объём'
-                                    : (deal.percent || 0) + '% × прибыль' + (deal.profit_usdt ? ' ($' + deal.profit_usdt.toFixed(2) + ')' : '')}
-                            </div>
-                            <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
-                                <span class="dot"></span>
-                                ${deal.paid ? 'Выплачено' : 'К выплате'}
-                            </div>
-                        </div>
-                    `).join('') : '<div class="empty-state">Пока нет завершённых сделок</div>'}
-                </div>
+                <!-- Заявки на выплату -->
+                ${(d.payout_requests && d.payout_requests.length) ? `
+                <div class="section-title" style="margin-top:12px;">Заявки на выплату</div>
+                <div id="payouts-list" style="margin-bottom:20px;"></div>
+                <div id="payouts-pager" class="pager" style="margin-bottom:20px;"></div>
+                ` : ''}
+
+                <!-- Сделки -->
+                <div class="section-title" style="margin-top:12px;">Сделки</div>
+                <div id="deals-list" style="margin-bottom:12px;"></div>
+                <div id="deals-pager" class="pager" style="margin-bottom:20px;"></div>
 
                 <!-- Условия -->
                 <div class="section-title">Условия программы</div>
@@ -461,9 +520,108 @@
                     </div>
                 </div>
             </div>`;
+            renderDeals(1);
+            renderPayouts(1);
         } catch(e) {
             document.getElementById('app').innerHTML = '<div class="error">Ошибка загрузки</div>';
         }
+    }
+
+    // ============== Пагинация сделок и заявок ==============
+    const PAGE_SIZE = 5;
+
+    function renderPager(elId, total, current, onPage) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const pages = Math.ceil(total / PAGE_SIZE);
+        if (pages <= 1) { el.innerHTML = ''; return; }
+        const win = 5;
+        let start = Math.max(1, current - 2);
+        let end = Math.min(pages, start + win - 1);
+        start = Math.max(1, end - win + 1);
+        let html = `<button ${current === 1 ? 'disabled' : ''} onclick="${onPage}(${current - 1})">‹</button>`;
+        for (let i = start; i <= end; i++) {
+            html += `<button class="${i === current ? 'active' : ''}" onclick="${onPage}(${i})">${i}</button>`;
+        }
+        html += `<button ${current === pages ? 'disabled' : ''} onclick="${onPage}(${current + 1})">›</button>`;
+        el.innerHTML = html;
+    }
+
+    function renderDeals(page) {
+        const list = document.getElementById('deals-list');
+        if (!list || !statsData) return;
+        const all = statsData.recent_deals || [];
+        if (!all.length) { list.innerHTML = '<div class="empty-state">Пока нет завершённых сделок</div>'; return; }
+        const start = (page - 1) * PAGE_SIZE;
+        const items = all.slice(start, start + PAGE_SIZE);
+        const avatarColors = [
+            'linear-gradient(135deg,#22C55E,#16A34A)',
+            'linear-gradient(135deg,#3B82F6,#2563EB)',
+            'linear-gradient(135deg,#F59E0B,#D97706)',
+            'linear-gradient(135deg,#8B5CF6,#7C3AED)',
+            'linear-gradient(135deg,#EC4899,#DB2777)',
+        ];
+        list.innerHTML = items.map((deal, i) => `
+            <div class="deal-card">
+                <div class="deal-row">
+                    <div class="deal-left">
+                        <div class="deal-avatar" style="background:${avatarColors[(start + i) % avatarColors.length]}">${esc(deal.client_initials || '??')}</div>
+                        <div>
+                            <div class="deal-name">${esc(deal.client_masked || 'Клиент')}</div>
+                            <div class="deal-date">${esc(deal.date || '—')}</div>
+                        </div>
+                    </div>
+                    <div>
+                        <div class="deal-amount">${deal.payout_thb ? '฿' + Math.round(deal.payout_thb).toLocaleString('ru-RU') : '$' + (deal.volume_usdt || 0).toFixed(0)}</div>
+                        <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
+                    </div>
+                </div>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+                    ${deal.comp_model === 'markup'
+                        ? 'markup +' + (deal.percent || 0) + '% × объём'
+                        : (deal.percent || 0) + '% × прибыль' + (deal.profit_usdt ? ' ($' + deal.profit_usdt.toFixed(2) + ')' : '')}
+                </div>
+                <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
+                    <span class="dot"></span>
+                    ${deal.paid ? 'Выплачено' : 'К выплате'}
+                </div>
+            </div>
+        `).join('');
+        renderPager('deals-pager', all.length, page, 'renderDeals');
+    }
+
+    function renderPayouts(page) {
+        const list = document.getElementById('payouts-list');
+        if (!list || !statsData) return;
+        const all = statsData.payout_requests || [];
+        if (!all.length) { list.innerHTML = ''; return; }
+        const STATUS_RU = { new: 'На рассмотрении', in_progress: 'В работе', paid: 'Выплачено', cancelled: 'Отменено' };
+        const start = (page - 1) * PAGE_SIZE;
+        const items = all.slice(start, start + PAGE_SIZE);
+        list.innerHTML = items.map(r => {
+            const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+            return `
+                <div class="payout-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <div style="font-size:13px;font-weight:600;color:var(--navy-900);">$${(r.amount_usdt||0).toFixed(2)}</div>
+                        <span class="payout-status ${r.status}">${STATUS_RU[r.status] || r.status}</span>
+                    </div>
+                    <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${r.id} · ${date}</div>
+                    ${r.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(r.tx_hash)}" target="_blank">TX: ${esc(r.tx_hash)}</a>` : ''}
+                </div>
+            `;
+        }).join('');
+        renderPager('payouts-pager', all.length, page, 'renderPayouts');
+    }
+
+    async function cancelActiveRequest(reqId) {
+        if (!confirm('Отменить заявку?')) return;
+        try {
+            const resp = await fetch(`/api/ref/${token}/payout-request/${reqId}/cancel`, { method: 'POST' });
+            const data = await resp.json();
+            if (!data.success) { alert(data.error || 'Не удалось отменить'); return; }
+            loadStats();
+        } catch (e) { alert('Сетевая ошибка'); }
     }
 
     function copyUrl(elId, btn) {

@@ -303,6 +303,7 @@ class PayoutRequest(Base):
     notes = Column(Text)
     # 'new' | 'in_progress' | 'paid' | 'cancelled'
     status = Column(String(20), default='new', index=True)
+    tx_hash = Column(String(120))  # Хеш транзакции при статусе 'paid'
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
@@ -319,6 +320,7 @@ class PayoutRequest(Base):
             'contact_value': self.contact_value,
             'notes': self.notes,
             'status': self.status,
+            'tx_hash': self.tx_hash,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,
@@ -729,15 +731,19 @@ try:
         else:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN is_test BOOLEAN DEFAULT 0"))
             except: pass
-        # payout_requests: индекс по статусу для быстрого фильтра
+        # payout_requests: индекс по статусу + колонка tx_hash
         if 'postgresql' in DATABASE_URL:
             try:
                 conn.execute(text(
                     "CREATE INDEX IF NOT EXISTS ix_payout_requests_status "
                     "ON payout_requests(status)"
                 ))
+                conn.execute(text("ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS tx_hash VARCHAR(120)"))
             except Exception as e:
-                print(f"ℹ️ payout_requests index: {e}")
+                print(f"ℹ️ payout_requests migration: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE payout_requests ADD COLUMN tx_hash VARCHAR(120)"))
+            except: pass
         # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
         # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
         dup_count = conn.execute(text(
@@ -4278,11 +4284,11 @@ def referrer_stats(token):
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
-        # Последние сделки (без имён клиентов — конфиденциальность)
+        # Все завершённые сделки (без имён клиентов — конфиденциальность). Пагинация на фронте.
         deals = db.query(Deal).filter(
             Deal.referrer_id == referrer.id,
             Deal.status == DealStatus.COMPLETED
-        ).order_by(Deal.created_at.desc()).limit(20).all()
+        ).order_by(Deal.created_at.desc()).limit(200).all()
 
         recent_deals = []
         for deal in deals:
@@ -4324,11 +4330,28 @@ def referrer_stats(token):
         # Средний доход на сделку
         avg_deal_income = round(total_earned / len(deals), 2) if deals else 0
 
+        # История заявок на выплату (все, с tx_hash для отображения)
+        all_payout_requests = db.query(PayoutRequest).filter_by(referrer_id=referrer.id) \
+                                                     .order_by(PayoutRequest.created_at.desc()).limit(50).all()
+        payout_requests_list = [r.to_dict() for r in all_payout_requests]
+
+        # Активная заявка (new / in_progress) — блокирует CTA
+        active_request = next((r for r in payout_requests_list if r['status'] in ('new', 'in_progress')), None)
+        active_amount = active_request['amount_usdt'] if active_request else 0
+        available_for_withdraw = round(max(0, (total_earned - total_paid) - active_amount), 2)
+
+        # Недавно выплаченная (за 7 дней) — баннер "деньги пришли"
+        recent_paid = None
+        cutoff = datetime.utcnow() - timedelta(days=7)
+        for r in all_payout_requests:
+            if r.status == 'paid' and r.processed_at and r.processed_at >= cutoff:
+                recent_paid = r.to_dict()
+                break
+
         # Ранее использованные кошельки (для автоподсказки в модалке)
         prev_wallets = []
         seen = set()
-        for r in db.query(PayoutRequest).filter_by(referrer_id=referrer.id) \
-                                        .order_by(PayoutRequest.created_at.desc()).limit(20).all():
+        for r in all_payout_requests:
             if r.wallet and r.wallet not in seen:
                 seen.add(r.wallet)
                 prev_wallets.append(r.wallet)
@@ -4355,6 +4378,10 @@ def referrer_stats(token):
             'total_earned_usdt': round(total_earned, 2),
             'total_paid_usdt': round(total_paid, 2),
             'pending_usdt': round(total_earned - total_paid, 2),
+            'available_for_withdraw': available_for_withdraw,
+            'active_request': active_request,
+            'recent_paid_request': recent_paid,
+            'payout_requests': payout_requests_list,
             'recent_deals': recent_deals,
             'previous_wallets': prev_wallets,
         })
@@ -4480,11 +4507,14 @@ def referrer_payout_requests(referrer_id):
 
 @app.route('/api/payout-requests/<int:req_id>', methods=['PATCH'])
 def update_payout_request(req_id):
-    """Изменить статус заявки (in_progress / paid / cancelled)."""
+    """Изменить статус заявки (in_progress / paid / cancelled). При paid обязателен tx_hash."""
     data = request.get_json(silent=True) or {}
     new_status = (data.get('status') or '').strip().lower()
+    tx_hash = (data.get('tx_hash') or '').strip() or None
     if new_status not in ('new', 'in_progress', 'paid', 'cancelled'):
         return jsonify({'success': False, 'error': 'Недопустимый статус'}), 400
+    if new_status == 'paid' and not tx_hash:
+        return jsonify({'success': False, 'error': 'Для статуса paid обязателен tx_hash'}), 400
 
     db = get_session()
     try:
@@ -4492,11 +4522,37 @@ def update_payout_request(req_id):
         if not req:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
         req.status = new_status
+        if tx_hash:
+            req.tx_hash = tx_hash
         if new_status in ('paid', 'cancelled'):
             req.processed_at = datetime.utcnow()
         db.commit()
         db.refresh(req)
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
+    finally:
+        db.close()
+
+
+@app.route('/api/ref/<token>/payout-request/<int:req_id>/cancel', methods=['POST'])
+def cancel_payout_request_public(token, req_id):
+    """Реферер сам отменяет свою активную заявку. Публичный эндпоинт по токену."""
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        req = db.query(PayoutRequest).filter_by(id=req_id, referrer_id=referrer.id).first()
+        if not req:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if req.status not in ('new', 'in_progress'):
+            return jsonify({'success': False, 'error': 'Заявку уже нельзя отменить'}), 400
+        # in_progress отменять нельзя — менеджер уже в работе
+        if req.status == 'in_progress':
+            return jsonify({'success': False, 'error': 'Заявка уже в работе, обратитесь к менеджеру'}), 400
+        req.status = 'cancelled'
+        req.processed_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True})
     finally:
         db.close()
 
