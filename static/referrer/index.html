@@ -330,6 +330,24 @@
     }
     let statsData = null;
     const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
+
+    // Маскируем внутренний инкрементный ID, чтобы партнёр не видел #1/#2
+    // и не понимал, что он один из первых. Детерминированно: тот же id → тот же номер.
+    function maskId(id) {
+        const n = Number(id) || 0;
+        return 10472 + n * 37 + ((n * 11) % 53);
+    }
+
+    function togglePayouts() {
+        const sec = document.getElementById('payouts-section');
+        const body = document.getElementById('payouts-body');
+        const ch = document.getElementById('payouts-chevron');
+        if (!sec || !body) return;
+        const expanded = sec.dataset.expanded === '1';
+        sec.dataset.expanded = expanded ? '0' : '1';
+        body.style.display = expanded ? 'none' : 'block';
+        if (ch) ch.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
+    }
     if (!token) {
         document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
     } else {
@@ -384,7 +402,7 @@
                     </div>
                     <div class="balance-sub">
                         <div class="dot"></div>
-                        <span>${activeReq ? 'Заявка #' + activeReq.id + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $50 · USDT TRC-20'}</span>
+                        <span>${activeReq ? 'Заявка #' + maskId(activeReq.id) + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $50 · USDT TRC-20'}</span>
                     </div>
                     <button class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>${activeReq ? 'Заявка уже отправлена' : 'Запросить выплату'}</button>
                 </div>
@@ -477,15 +495,22 @@
                     </div>
                 </div>
 
-                <!-- Заявки на выплату -->
+                <!-- Заявки на выплату (свёрнуто по умолчанию) -->
                 ${(d.payout_requests && d.payout_requests.length) ? `
-                <div class="section-title" style="margin-top:12px;">Заявки на выплату</div>
-                <div id="payouts-list" style="margin-bottom:20px;"></div>
-                <div id="payouts-pager" class="pager" style="margin-bottom:20px;"></div>
+                <div id="payouts-section" data-expanded="${d.active_request ? '1' : '0'}" style="margin-top:12px;margin-bottom:20px;">
+                    <div class="section-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none;" onclick="togglePayouts()">
+                        <span>Мои запросы на выплату <span style="color:var(--navy-500);font-weight:500;">(${d.payout_requests.length})</span></span>
+                        <span id="payouts-chevron" style="font-size:12px;color:var(--navy-500);transition:transform .15s;${d.active_request ? 'transform:rotate(90deg);' : ''}">▸</span>
+                    </div>
+                    <div id="payouts-body" style="display:${d.active_request ? 'block' : 'none'};margin-top:10px;">
+                        <div id="payouts-list"></div>
+                        <div id="payouts-pager" class="pager"></div>
+                    </div>
+                </div>
                 ` : ''}
 
                 <!-- Сделки -->
-                <div class="section-title" style="margin-top:12px;">Сделки</div>
+                <div class="section-title" style="margin-top:12px;">Последние сделки</div>
                 <div id="deals-list" style="margin-bottom:12px;"></div>
                 <div id="deals-pager" class="pager" style="margin-bottom:20px;"></div>
 
@@ -606,7 +631,7 @@
                         <div style="font-size:13px;font-weight:600;color:var(--navy-900);">$${(r.amount_usdt||0).toFixed(2)}</div>
                         <span class="payout-status ${r.status}">${STATUS_RU[r.status] || r.status}</span>
                     </div>
-                    <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${r.id} · ${date}</div>
+                    <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${maskId(r.id)} · ${date}</div>
                     ${r.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(r.tx_hash)}" target="_blank">TX: ${esc(r.tx_hash)}</a>` : ''}
                 </div>
             `;
