@@ -4537,6 +4537,64 @@ def list_payout_requests():
         db.close()
 
 
+@app.route('/api/payout-requests', methods=['POST'])
+def create_payout_request_manual():
+    """Вручную внести запись о выплате (старую/внешнюю) — только CRM (авторизация).
+
+    НЕ трогает сделки и баланс — это запись в историю выплат реферера.
+    Поддерживает явную дату paid_date (ISO).
+    """
+    data = request.get_json(silent=True) or {}
+    referrer_id = data.get('referrer_id')
+    try:
+        amount = round(float(data.get('amount_usdt') or 0), 2)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Некорректная сумма'}), 400
+    wallet = (data.get('wallet') or '').strip()
+    tx_hash = (data.get('tx_hash') or '').strip() or None
+    status = (data.get('status') or 'paid').strip().lower()
+    contact_method = (data.get('contact_method') or 'telegram').strip().lower()
+    contact_value = (data.get('contact_value') or '—').strip() or '—'
+    notes = (data.get('notes') or '').strip() or None
+
+    if not referrer_id or amount <= 0 or not wallet:
+        return jsonify({'success': False, 'error': 'Нужны referrer_id, amount_usdt и wallet'}), 400
+    if status not in ('new', 'in_progress', 'paid', 'cancelled'):
+        return jsonify({'success': False, 'error': 'Недопустимый статус'}), 400
+    if contact_method not in ('telegram', 'whatsapp'):
+        contact_method = 'telegram'
+
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        dt = None
+        raw_date = (data.get('paid_date') or '').strip()
+        if raw_date:
+            try:
+                dt = datetime.fromisoformat(raw_date.replace('Z', '+00:00')).replace(tzinfo=None)
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Некорректная дата (нужен ISO)'}), 400
+
+        req = PayoutRequest(
+            referrer_id=referrer_id, amount_usdt=amount, wallet=wallet,
+            contact_method=contact_method, contact_value=contact_value,
+            notes=notes, status=status, tx_hash=tx_hash,
+        )
+        if dt:
+            req.created_at = dt
+        if status in ('paid', 'cancelled'):
+            req.processed_at = dt or datetime.utcnow()
+        db.add(req)
+        db.commit()
+        db.refresh(req)
+        return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
+    finally:
+        db.close()
+
+
 @app.route('/api/referrers/<int:referrer_id>/payout-requests', methods=['GET'])
 def referrer_payout_requests(referrer_id):
     """История заявок конкретного реферера (для карточки в CRM)."""
@@ -4568,10 +4626,23 @@ def update_payout_request(req_id):
         req.status = new_status
         if tx_hash:
             req.tx_hash = tx_hash
+        now = datetime.utcnow()
+        paid_deal_ids = []
         if new_status in ('paid', 'cancelled'):
-            req.processed_at = datetime.utcnow()
+            req.processed_at = now
+        # paid → помечаем сделки реферера выплаченными, иначе «Доступно к выводу»
+        # не уменьшится и партнёр сможет запросить ту же сумму повторно
+        if new_status == 'paid':
+            referrer = db.query(Referrer).get(req.referrer_id)
+            if referrer:
+                paid_deal_ids, _ = _mark_referrer_deals_paid(db, referrer, now)
         db.commit()
         db.refresh(req)
+        if paid_deal_ids:
+            try:
+                mark_referrer_rewards_paid_in_gsheet(paid_deal_ids, now)
+            except Exception as e:
+                print(f'[GSheet] mark paid error: {e}')
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
     finally:
         db.close()
@@ -4830,6 +4901,29 @@ def set_client_referrer(client_id):
         db.close()
 
 
+def _mark_referrer_deals_paid(db, referrer, now):
+    """Помечает все завершённые неоплаченные сделки реферера выплаченными.
+
+    НЕ коммитит — это делает вызывающий. Идемпотентна: уже оплаченные сделки
+    не трогает. Возвращает (paid_deal_ids, total_paid).
+    """
+    unpaid_deals = db.query(Deal).filter(
+        Deal.referrer_id == referrer.id,
+        Deal.status == DealStatus.COMPLETED,
+        Deal.referrer_paid == False,
+        Deal.referrer_payout_usdt > 0,
+    ).all()
+    total_paid = 0
+    paid_deal_ids = []
+    for deal in unpaid_deals:
+        deal.referrer_paid = True
+        deal.referrer_paid_at = now
+        total_paid += deal.referrer_payout_usdt or 0
+        paid_deal_ids.append(deal.id)
+    referrer.total_paid_usdt = round((referrer.total_paid_usdt or 0) + total_paid, 2)
+    return paid_deal_ids, round(total_paid, 2)
+
+
 @app.route('/api/referrers/<int:referrer_id>/pay', methods=['POST'])
 def pay_referrer(referrer_id):
     """Отметить выплату рефереру (все неоплаченные сделки)"""
@@ -4839,24 +4933,8 @@ def pay_referrer(referrer_id):
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
-        # Находим все завершённые неоплаченные сделки
-        unpaid_deals = db.query(Deal).filter(
-            Deal.referrer_id == referrer.id,
-            Deal.status == DealStatus.COMPLETED,
-            Deal.referrer_paid == False,
-            Deal.referrer_payout_usdt > 0,
-        ).all()
-
         now = datetime.utcnow()
-        total_paid = 0
-        paid_deal_ids = []
-        for deal in unpaid_deals:
-            deal.referrer_paid = True
-            deal.referrer_paid_at = now
-            total_paid += deal.referrer_payout_usdt or 0
-            paid_deal_ids.append(deal.id)
-
-        referrer.total_paid_usdt = round((referrer.total_paid_usdt or 0) + total_paid, 2)
+        paid_deal_ids, total_paid = _mark_referrer_deals_paid(db, referrer, now)
         db.commit()
 
         # Обновляем колонку "Выплачено" в листе «рефереры»
@@ -4868,8 +4946,8 @@ def pay_referrer(referrer_id):
 
         return jsonify({
             'success': True,
-            'deals_paid': len(unpaid_deals),
-            'amount_usdt': round(total_paid, 2),
+            'deals_paid': len(paid_deal_ids),
+            'amount_usdt': total_paid,
             'referrer': referrer.to_dict(),
         })
     finally:
