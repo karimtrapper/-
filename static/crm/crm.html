@@ -2444,11 +2444,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                         <div class="stat-card success">
                             <div class="stat-value">$${p.profit_usdt ?? 0}</div>
-                            <div class="stat-label">Прибыль ${pl}</div>
+                            <div class="stat-label">Чистая прибыль ${pl}</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
                             <div class="stat-label">Объём ${pl}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">$${formatNumber(p.cost_usdt ?? 0)}</div>
+                            <div class="stat-label">Себестоимость ${pl}</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${p.referrer_deals_count ?? 0}</div>
+                            <div class="stat-label">Сделок с рефералами ${pl}</div>
+                        </div>
+                        <div class="stat-card warning">
+                            <div class="stat-value">$${formatNumber(p.referrer_payout_usdt ?? 0)}</div>
+                            <div class="stat-label">Выплачено рефералам ${pl}</div>
                         </div>
                         <div class="stat-card ${(p.avg_margin ?? 0) > 0 ? '' : 'warning'}">
                             <div class="stat-value">${p.avg_margin ?? 0}%</div>

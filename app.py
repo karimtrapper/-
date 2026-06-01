@@ -3346,6 +3346,11 @@ def get_dashboard():
         period_avg_check = round(sum(d.payin_amount_usdt for d in period_with_payin) / len(period_with_payin), 2) if period_with_payin else 0
         period_profit = round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in period_deals), 2)
         period_volume = round(sum(d.payin_amount_usdt or 0 for d in period_deals), 2)
+        # Себестоимость = что мы потратили на покупку валюты для сделок (payout_amount_usdt)
+        period_cost = round(sum(d.payout_amount_usdt or 0 for d in period_deals), 2)
+        # Сделки с реферралами и сумма выплат реферралам
+        period_referrer_deals = [d for d in period_deals if d.referrer_id]
+        period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
 
         # График: прибыль и объём по дням за выбранный период
         month_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
@@ -3399,8 +3404,11 @@ def get_dashboard():
                     'deals_count': len(period_deals),
                     'profit_usdt': period_profit,
                     'volume_usdt': period_volume,
+                    'cost_usdt': period_cost,
                     'avg_margin': period_avg_margin,
-                    'avg_check': period_avg_check
+                    'avg_check': period_avg_check,
+                    'referrer_deals_count': len(period_referrer_deals),
+                    'referrer_payout_usdt': period_referrer_payout,
                 },
                 'attention': {
                     'pending_deals': len(pending_deals),
