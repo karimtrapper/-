@@ -3309,6 +3309,41 @@ def delete_card_topup(card_id, topup_id):
     finally:
         session.close()
 
+def _deal_usdt_volume_cost(deal):
+    """USDT-эквивалент (объём по pay-in, себестоимость по pay-out) сделки.
+
+    Стандартные сделки → payin/payout_amount_usdt. Кастомные без этих полей
+    (валюта в custom_*) → конвертируем по сохранённому курсу:
+      RUB/THB — курс хранится как «валюта за 1 USD» → делим;
+      EUR     — курс хранится как «USD за 1 EUR» → умножаем;
+      USD/USDT — 1:1.
+    Так кастомные сделки (RUB→EUR, USD→USDT и т.п.) попадают в объём.
+    """
+    def to_usdt(amount, currency, rate):
+        a = float(amount or 0)
+        if not a:
+            return 0.0
+        cur = (currency or '').upper()
+        r = float(rate or 0)
+        if cur in ('USD', 'USDT'):
+            return a
+        if cur in ('RUB', 'THB'):
+            return a / r if r else 0.0
+        if cur == 'EUR':
+            return a * r if r else a
+        # неизвестная валюта: эвристика по величине курса
+        return a / r if r > 5 else (a * r if r else 0.0)
+
+    payin = float(deal.payin_amount_usdt or 0)
+    payout = float(deal.payout_amount_usdt or 0)
+    if deal.is_custom:
+        if not payin:
+            payin = to_usdt(deal.custom_payin_amount, deal.custom_payin_currency, deal.custom_payin_rate)
+        if not payout:
+            payout = to_usdt(deal.custom_payout_amount, deal.custom_payout_currency, deal.custom_payout_rate)
+    return payin, payout
+
+
 @app.route('/api/analytics/dashboard', methods=['GET'])
 def get_dashboard():
     session = get_session()
@@ -3338,22 +3373,29 @@ def get_dashboard():
             Deal.reimbursement_id == None
         ).all()
 
-        # Метрики за выбранный период (chart_start)
-        period_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
+        # Метрики за период. Только завершённые сделки (completed/verified) —
+        # pending не учитываем в прибыли/объёме (прибыль ещё не реализована).
+        ACTIVE_STATUSES = [DealStatus.COMPLETED, DealStatus.VERIFIED]
+        period_deals = session.query(Deal).filter(
+            Deal.created_at >= chart_start,
+            Deal.status.in_(ACTIVE_STATUSES),
+        ).all()
+        # USDT-эквивалент объёма/себестоимости каждой сделки (учитывает кастомные)
+        usdt = {d.id: _deal_usdt_volume_cost(d) for d in period_deals}
         period_with_margin = [d for d in period_deals if d.profit_percent and d.profit_percent > 0]
         period_avg_margin = round(sum(d.profit_percent for d in period_with_margin) / len(period_with_margin), 1) if period_with_margin else 0
-        period_with_payin = [d for d in period_deals if d.payin_amount_usdt and d.payin_amount_usdt > 0]
-        period_avg_check = round(sum(d.payin_amount_usdt for d in period_with_payin) / len(period_with_payin), 2) if period_with_payin else 0
+        period_with_payin = [d for d in period_deals if usdt[d.id][0] > 0]
+        period_avg_check = round(sum(usdt[d.id][0] for d in period_with_payin) / len(period_with_payin), 2) if period_with_payin else 0
         period_profit = round(sum(d.net_profit_usdt or d.profit_usdt or 0 for d in period_deals), 2)
-        period_volume = round(sum(d.payin_amount_usdt or 0 for d in period_deals), 2)
-        # Себестоимость = что мы потратили на покупку валюты для сделок (payout_amount_usdt)
-        period_cost = round(sum(d.payout_amount_usdt or 0 for d in period_deals), 2)
+        period_volume = round(sum(usdt[d.id][0] for d in period_deals), 2)
+        # Себестоимость = что мы потратили на покупку валюты для сделок (payout в USDT)
+        period_cost = round(sum(usdt[d.id][1] for d in period_deals), 2)
         # Сделки с реферралами и сумма выплат реферралам
         period_referrer_deals = [d for d in period_deals if d.referrer_id]
         period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
 
-        # График: прибыль и объём по дням за выбранный период
-        month_deals = session.query(Deal).filter(Deal.created_at >= chart_start).all()
+        # График: прибыль и объём по дням (те же завершённые сделки периода)
+        month_deals = period_deals
         daily_data = {}
         for d in month_deals:
             day_key = d.created_at.strftime('%d.%m') if d.created_at else None
@@ -3362,7 +3404,7 @@ def get_dashboard():
             if day_key not in daily_data:
                 daily_data[day_key] = {'profit': 0, 'volume': 0, 'count': 0}
             daily_data[day_key]['profit'] += d.net_profit_usdt or d.profit_usdt or 0
-            daily_data[day_key]['volume'] += d.payin_amount_usdt or 0
+            daily_data[day_key]['volume'] += usdt[d.id][0]
             daily_data[day_key]['count'] += 1
 
         # Сортируем по дате
@@ -3386,7 +3428,7 @@ def get_dashboard():
             if method not in method_stats:
                 method_stats[method] = {'count': 0, 'volume': 0}
             method_stats[method]['count'] += 1
-            method_stats[method]['volume'] += d.payin_amount_usdt or 0
+            method_stats[method]['volume'] += usdt[d.id][0]
 
         # New vs Old buyers за выбранный период
         period_client_ids = {d.client_id for d in period_deals if d.client_id}
