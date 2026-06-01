@@ -3658,10 +3658,18 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
-def send_telegram_notification(text):
+def send_telegram_notification(text, thread_id=None):
+    """Отправляет сообщение ботом в чат.
+
+    thread_id: id топика. Если не передан — берётся из env TELEGRAM_THREAD_ID
+    (топик «Сделки», 2108 по умолчанию). Явный аргумент имеет приоритет —
+    так заявки на выплату уходят в отдельный топик «Задачи».
+    """
     token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip()
-    thread_id = os.environ.get('TELEGRAM_THREAD_ID', '2108').strip()
+    if thread_id is None:
+        thread_id = os.environ.get('TELEGRAM_THREAD_ID', '2108')
+    thread_id = str(thread_id).strip()
     if not token or not chat_id:
         print(f'[Telegram] Skip: token={bool(token)} chat_id={bool(chat_id)}')
         return False
@@ -4498,8 +4506,14 @@ def create_payout_request(token):
                 )
                 if notes:
                     msg += f"\n\n<b>Комментарий:</b> {notes}"
-                msg += f"\n\nЗаявка #{req.id} · CRM → Заявки на выплату"
-                send_telegram_notification(msg)
+                crm_url = 'https://proud-renewal-production-e9b8.up.railway.app/crm'
+                msg += (
+                    f"\n\nЗаявка #{req.id} · "
+                    f"<a href=\"{crm_url}\">CRM → Заявки на выплату</a>"
+                )
+                # Заявки на выплату — в топик «Задачи» (а не «Сделки»)
+                tasks_thread = os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112')
+                send_telegram_notification(msg, thread_id=tasks_thread)
             except Exception as e:
                 print(f'[PayoutRequest] Telegram notify failed: {e}')
 
