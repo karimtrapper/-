@@ -4330,6 +4330,17 @@ def referrer_stats(token):
         # Средний доход на сделку
         avg_deal_income = round(total_earned / len(deals), 2) if deals else 0
 
+        # Метрики за последние 30 дней — отдельный блок «За 30 дней» в кабинете
+        cutoff_30d = datetime.utcnow() - timedelta(days=30)
+        deals_30d = [d for d in deals if d.created_at and d.created_at >= cutoff_30d]
+        volume_30d_usdt = round(
+            sum(max(d.payin_amount_usdt or 0, d.payout_amount_usdt or 0) for d in deals_30d), 2
+        )
+        clients_30d = db.query(Client).filter(
+            Client.referrer_id == referrer.id,
+            Client.created_at >= cutoff_30d,
+        ).count()
+
         # История заявок на выплату (все, с tx_hash для отображения)
         all_payout_requests = db.query(PayoutRequest).filter_by(referrer_id=referrer.id) \
                                                      .order_by(PayoutRequest.created_at.desc()).limit(50).all()
@@ -4347,6 +4358,13 @@ def referrer_stats(token):
             if r.status == 'paid' and r.processed_at and r.processed_at >= cutoff:
                 recent_paid = r.to_dict()
                 break
+
+        # Сумма USDT, фактически отправленная реферреру за 30д (для блока «За 30 дней»)
+        paid_to_referrer_30d_usdt = round(sum(
+            r.amount_usdt or 0
+            for r in all_payout_requests
+            if r.status == 'paid' and r.processed_at and r.processed_at >= cutoff_30d
+        ), 2)
 
         # Ранее использованные кошельки (для автоподсказки в модалке)
         prev_wallets = []
@@ -4379,6 +4397,10 @@ def referrer_stats(token):
             'total_paid_usdt': round(total_paid, 2),
             'pending_usdt': round(total_earned - total_paid, 2),
             'available_for_withdraw': available_for_withdraw,
+            'volume_30d_usdt': volume_30d_usdt,
+            'deals_30d': len(deals_30d),
+            'clients_30d': clients_30d,
+            'paid_to_referrer_30d_usdt': paid_to_referrer_30d_usdt,
             'active_request': active_request,
             'recent_paid_request': recent_paid,
             'payout_requests': payout_requests_list,
