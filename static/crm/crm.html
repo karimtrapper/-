@@ -639,6 +639,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     .modal-overlay { align-items: center; }
     .modal-content { border-radius: var(--r-lg); max-width: 600px; }
 }
+    .ca-preset { padding: 6px 12px; border: 2px solid #86efac; border-radius: 8px; background: white;
+                 font-size: 12px; font-weight: 600; color: #166534; cursor: pointer; }
+    .ca-preset.active { background: #166534; color: white; border-color: #166534; }
     </style>
 </head>
 
@@ -915,27 +918,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
-                        <div class="form-row"
-                            style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
-                            <div class="form-group" style="flex:2;">
-                                <label class="form-label">Партнёр (реферер)</label>
-                                <select class="form-control" id="customReferrerSelect" onchange="onCustomReferrerSelect(this)">
-                                    <option value="">— Без партнёра —</option>
-                                </select>
-                                <input type="hidden" id="customReferrerName">
-                                <input type="hidden" id="customReferrerId">
+                        <div style="margin-top: 1rem; padding: 0.75rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+                                <strong style="color:#166534;">👥 Агенты сделки</strong>
+                                <div style="display:flex;gap:6px;">
+                                    <button type="button" id="caPreCascade" onclick="customAgentsPreset('cascade')" class="ca-preset">⬇️ Каскадом</button>
+                                    <button type="button" id="caPreFlat" onclick="customAgentsPreset('flat')" class="ca-preset">🟰 В долю</button>
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label" id="customReferrerPercentLabel">% партнёра</label>
-                                <input type="number" class="form-control" id="customReferrerPercent" placeholder="0"
-                                    step="0.1" min="0" max="100" oninput="calcCustomProfit()">
-                                <input type="hidden" id="customReferrerCompModel">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Выплата партнёру</label>
-                                <input type="text" class="form-control" id="customReferrerPayout" readonly
-                                    style="background: #fef3c7;">
-                            </div>
+                            <div id="agentsBlockCustom"></div>
+                            <button type="button" onclick="customAgentsAdd()" style="width:100%;padding:9px;border:2px dashed #86efac;border-radius:8px;background:white;color:#166534;font-weight:600;cursor:pointer;margin-top:4px;">＋ Добавить агента</button>
+                            <div id="agentsBlockCustomNet" style="margin-top:10px;font-size:13px;color:#166534;font-weight:600;"></div>
                         </div>
 
                         <div class="form-row"
@@ -3025,12 +3018,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || 'USDT';
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
-                        if (deal.referrer_id) {
-                            document.getElementById('customReferrerSelect').value = deal.referrer_id;
-                            document.getElementById('customReferrerId').value = deal.referrer_id;
-                        }
-                        document.getElementById('customReferrerName').value = deal.referrer_name || '';
-                        document.getElementById('customReferrerPercent').value = deal.referrer_percent || '';
+                        // Мультиагенты: грузим из deal.agents
+                        customAgentsLoad(deal.agents || []);
                         document.getElementById('customNotes').value = deal.notes || '';
 
                         // Пересчитываем
@@ -3149,12 +3138,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const payoutMethod = document.getElementById('customPayoutMethod').value;
             const notes = document.getElementById('customNotes').value;
 
-            const referrerName = document.getElementById('customReferrerName').value.trim();
-            const referrerIdVal = document.getElementById('customReferrerId').value;
-            const referrerCompModel = document.getElementById('customReferrerCompModel')?.value || 'revshare';
-            const referrerVisibleVal = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
-            const referrerPercent = referrerCompModel === 'markup' ? 0 : referrerVisibleVal;
-            const referrerMarkupPct = referrerCompModel === 'markup' ? referrerVisibleVal : 0;
+            const agents = customAgentsSerialize();
 
             const managerName = document.getElementById('managerSelect').value;
             const clientId = document.getElementById('clientSelect').value;
@@ -3179,14 +3163,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
             const profit = payinUsdt - payoutUsdt;
-            let referrerPayout = 0;
-            if (referrerCompModel === 'markup' && referrerMarkupPct > 0) {
-                const volume = Math.max(payinUsdt, payoutUsdt);
-                referrerPayout = volume * (referrerMarkupPct / 100);
-            } else if (referrerPercent > 0 && profit > 0) {
-                referrerPayout = profit * (referrerPercent / 100);
-            }
-            const netProfit = profit - referrerPayout;
+            const netProfit = customAgentsRecalc();
 
             const data = {
                 is_custom: true,
@@ -3205,12 +3182,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 custom_payout_currency: payoutCurrency,
                 custom_payout_amount: payoutAmount,
                 custom_payout_rate: payoutCurrency !== 'USDT' ? payoutRate : null,
-                referrer_id: referrerIdVal ? parseInt(referrerIdVal) : null,
-                referrer_name: referrerName || null,
-                referrer_percent: referrerPercent || null,
-                referrer_comp_model: referrerName ? referrerCompModel : null,
-                referrer_markup_percent: referrerMarkupPct || null,
-                referrer_payout_usdt: referrerPayout > 0 ? referrerPayout : null,
+                agents: agents,
                 profit_usdt: profit,
                 profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
                 net_profit_usdt: netProfit,
@@ -3936,6 +3908,144 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (isCustom) calcCustomProfit();
         }
 
+        // ===== Виджет мультиагентов (кастомная сделка) =====
+        let customAgents = [];
+        let customAgentsMode = 'cascade';   // 'cascade' | 'flat'
+
+        function _customFormProfitVolume() {
+            const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
+            const payinCurrency = document.getElementById('customPayinCurrency').value;
+            const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
+            const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
+            const payoutCurrency = document.getElementById('customPayoutCurrency').value;
+            const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
+            const payinUsdt = payinCurrency === 'USDT' ? payinAmount : (payinRate > 0 ? payinAmount / payinRate : 0);
+            const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : (payoutRate > 0 ? payoutAmount / payoutRate : 0);
+            return { profit: payinUsdt - payoutUsdt, volume: Math.max(payinUsdt, payoutUsdt) };
+        }
+
+        // Каскад (зеркало backend compute_agent_cascade): на одном tier все от одной базы
+        function _agentsCascade(profit, volume, agents) {
+            const byTier = {};
+            agents.forEach(a => { (byTier[a.tier || 1] = byTier[a.tier || 1] || []).push(a); });
+            let base = profit;
+            Object.keys(byTier).map(Number).sort((x, y) => x - y).forEach(t => {
+                let tot = 0;
+                byTier[t].forEach(a => {
+                    const m = a.comp_model || 'revshare';
+                    let pay = m === 'markup' ? volume * ((+a.percent || 0) / 100)
+                            : m === 'fixed' ? (+a.fixed_usdt || 0)
+                            : base * ((+a.percent || 0) / 100);
+                    pay = Math.round(pay * 100) / 100;
+                    a._payout = pay; a._base = Math.round(base * 100) / 100;
+                    tot += pay;
+                });
+                base -= tot;
+            });
+            return Math.round(base * 100) / 100;
+        }
+
+        function customAgentsPreset(mode) {
+            customAgentsMode = mode;
+            if (mode === 'cascade') customAgents.forEach((a, i) => a.tier = i + 1);
+            else customAgents.forEach(a => a.tier = 1);
+            renderCustomAgents();
+            calcCustomProfit();
+        }
+
+        function customAgentsAdd() {
+            const nextTier = customAgentsMode === 'flat' ? 1 : (customAgents.reduce((m, a) => Math.max(m, a.tier || 1), 0) + 1);
+            customAgents.push({ referrer_id: null, name: '', tier: nextTier, comp_model: 'revshare', percent: 10, fixed_usdt: 0 });
+            renderCustomAgents();
+            calcCustomProfit();
+        }
+        function customAgentsRemove(i) { customAgents.splice(i, 1); renderCustomAgents(); calcCustomProfit(); }
+        function customAgentsTier(i, d) { customAgents[i].tier = Math.max(1, (customAgents[i].tier || 1) + d); customAgentsMode = null; renderCustomAgents(); calcCustomProfit(); }
+        function customAgentsField(i, k, v) {
+            if (k === 'percent' || k === 'fixed_usdt') v = parseFloat(v) || 0;
+            customAgents[i][k] = v;
+            if (k === 'referrer_id') {
+                const r = (_referrersCache || []).find(x => String(x.id) === String(v));
+                if (r) {
+                    customAgents[i].name = r.name;
+                    customAgents[i].comp_model = r.comp_model || 'revshare';
+                    customAgents[i].percent = r.comp_model === 'markup' ? (r.markup_percent || 0) : (r.default_percent || 0);
+                }
+            }
+            if (k === 'comp_model') renderCustomAgents();
+            calcCustomProfit();
+        }
+
+        function renderCustomAgents() {
+            const box = document.getElementById('agentsBlockCustom');
+            if (!box) return;
+            const refs = (_referrersCache || []).filter(r => r.active);
+            box.innerHTML = customAgents.map((a, i) => {
+                const opts = '<option value="">— выбрать агента —</option>' + refs.map(r =>
+                    `<option value="${r.id}" ${String(r.id) === String(a.referrer_id) ? 'selected' : ''}>${r.name}</option>`).join('');
+                const valField = a.comp_model === 'fixed'
+                    ? `<input type="number" class="form-control" value="${a.fixed_usdt || 0}" oninput="customAgentsField(${i},'fixed_usdt',this.value)" placeholder="$" style="width:90px;">`
+                    : `<input type="number" class="form-control" value="${a.percent || 0}" oninput="customAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`;
+                return `
+                <div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;">
+                            <button type="button" onclick="customAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>
+                            Ур.${a.tier || 1}
+                            <button type="button" onclick="customAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button>
+                        </span>
+                        <select class="form-control" onchange="customAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select>
+                        <button type="button" onclick="customAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <select class="form-control" onchange="customAgentsField(${i},'comp_model',this.value)" style="flex:1;">
+                            <option value="revshare" ${a.comp_model === 'revshare' ? 'selected' : ''}>revshare (% от прибыли)</option>
+                            <option value="markup" ${a.comp_model === 'markup' ? 'selected' : ''}>markup (+% к курсу)</option>
+                            <option value="fixed" ${a.comp_model === 'fixed' ? 'selected' : ''}>fixed ($ сумма)</option>
+                        </select>
+                        ${valField}
+                        <span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="caPay${i}">$0</span>
+                    </div>
+                </div>`;
+            }).join('');
+            document.getElementById('caPreCascade')?.classList.toggle('active', customAgentsMode === 'cascade');
+            document.getElementById('caPreFlat')?.classList.toggle('active', customAgentsMode === 'flat');
+        }
+
+        function customAgentsRecalc() {
+            const { profit, volume } = _customFormProfitVolume();
+            const net = _agentsCascade(profit, volume, customAgents);
+            customAgents.forEach((a, i) => { const el = document.getElementById('caPay' + i); if (el) el.textContent = '$' + (a._payout || 0).toFixed(2); });
+            const total = customAgents.reduce((s, a) => s + (a._payout || 0), 0);
+            const netEl = document.getElementById('agentsBlockCustomNet');
+            if (netEl) netEl.innerHTML = customAgents.length
+                ? `Агентам всего: <b>$${total.toFixed(2)}</b> · Чистая наша: <b>$${net.toFixed(2)}</b>`
+                : '';
+            return net;
+        }
+
+        function customAgentsSerialize() {
+            return customAgents.filter(a => a.referrer_id || a.name).map(a => ({
+                referrer_id: a.referrer_id ? parseInt(a.referrer_id) : null,
+                name: a.name || null, tier: a.tier || 1,
+                comp_model: a.comp_model || 'revshare',
+                percent: a.comp_model === 'fixed' ? 0 : (+a.percent || 0),
+                fixed_usdt: a.comp_model === 'fixed' ? (+a.fixed_usdt || 0) : 0,
+            }));
+        }
+
+        function customAgentsLoad(arr) {
+            customAgents = (arr || []).map(a => ({
+                referrer_id: a.referrer_id || null, name: a.name || '', tier: a.tier || 1,
+                comp_model: a.comp_model || 'revshare',
+                percent: a.percent || 0, fixed_usdt: a.fixed_usdt || 0,
+            }));
+            customAgentsMode = customAgents.length && customAgents.every(a => (a.tier || 1) === 1) ? 'flat'
+                             : (customAgents.length ? 'cascade' : 'cascade');
+            renderCustomAgents();
+            calcCustomProfit();
+        }
+
         function calcCustomProfit() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
@@ -3972,32 +4082,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const profit = payinUsdt - payoutUsdt;
             const profitEl = document.getElementById('customProfitUsdt');
             const netProfitEl = document.getElementById('customNetProfit');
-            const referrerPayoutEl = document.getElementById('customReferrerPayout');
 
-            // Партнёр: одно видимое поле "%", интерпретация по модели
-            const refModel = document.getElementById('customReferrerCompModel')?.value || 'revshare';
-            const refPercentVisible = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
-            let referrerPayout = 0;
-            if (refModel === 'markup' && refPercentVisible > 0) {
-                const volume = Math.max(payinUsdt, payoutUsdt);
-                referrerPayout = volume * (refPercentVisible / 100);
-            } else if (refPercentVisible > 0 && profit > 0) {
-                referrerPayout = profit * (refPercentVisible / 100);
-            }
-            const netProfit = profit - referrerPayout;
+            // Выплаты агентам и чистая прибыль — через виджет мультиагентов (каскад)
+            const netProfit = customAgentsRecalc();
 
             if (payinUsdt > 0 && payoutUsdt > 0) {
                 profitEl.value = '$' + profit.toFixed(2);
                 profitEl.style.color = profit >= 0 ? '#10b981' : '#ef4444';
-
-                referrerPayoutEl.value = referrerPayout > 0 ? '$' + referrerPayout.toFixed(2) : '-';
-
                 netProfitEl.value = '$' + netProfit.toFixed(2);
                 netProfitEl.style.color = netProfit >= 0 ? '#10b981' : '#ef4444';
             } else {
                 profitEl.value = '';
                 netProfitEl.value = '';
-                referrerPayoutEl.value = '';
             }
         }
 
@@ -4014,14 +4110,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const notes = document.getElementById('customNotes').value;
             const customDate = document.getElementById('customDealDate').value;
 
-            // Партнёр
-            const referrerName = document.getElementById('customReferrerName').value.trim();
-            const referrerIdVal = document.getElementById('customReferrerId').value;
-            const referrerCompModel = document.getElementById('customReferrerCompModel')?.value || 'revshare';
-            const referrerVisibleVal = parseFloat(document.getElementById('customReferrerPercent').value) || 0;
-            // В markup-модели visible-поле = markup_percent; в revshare — referrer_percent
-            const referrerPercent = referrerCompModel === 'markup' ? 0 : referrerVisibleVal;
-            const referrerMarkupPct = referrerCompModel === 'markup' ? referrerVisibleVal : 0;
+            // Агенты (мультиагенты, каскад)
+            const agents = customAgentsSerialize();
 
             // Валидация
             if (payinAmount <= 0 || payoutAmount <= 0) {
@@ -4043,14 +4133,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
             const profit = payinUsdt - payoutUsdt;
-            let referrerPayout = 0;
-            if (referrerCompModel === 'markup' && referrerMarkupPct > 0) {
-                const volume = Math.max(payinUsdt, payoutUsdt);
-                referrerPayout = volume * (referrerMarkupPct / 100);
-            } else if (referrerPercent > 0 && profit > 0) {
-                referrerPayout = profit * (referrerPercent / 100);
-            }
-            const netProfit = profit - referrerPayout;
+            const netProfit = customAgentsRecalc();   // чистая после всех агентов
 
             // Получаем данные менеджера и клиента из формы
             const managerName = document.getElementById('managerSelect').value;
@@ -4090,13 +4173,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 custom_payout_amount: payoutAmount,
                 custom_payout_rate: payoutCurrency !== 'USDT' ? payoutRate : null,
 
-                // Партнёр
-                referrer_id: referrerIdVal ? parseInt(referrerIdVal) : null,
-                referrer_name: referrerName || null,
-                referrer_percent: referrerPercent || null,
-                referrer_comp_model: referrerName ? referrerCompModel : null,
-                referrer_markup_percent: referrerMarkupPct || null,
-                referrer_payout_usdt: referrerPayout > 0 ? referrerPayout : null,
+                // Агенты (бэкенд посчитает выплаты каскадом и net)
+                agents: agents,
 
                 // Прибыль
                 profit_usdt: profit,
@@ -4117,8 +4195,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 if (result.success) {
                     let msg = `Кастомная сделка создана!\n\nPayIn: $${payinUsdt.toFixed(2)}\nPayOut: $${payoutUsdt.toFixed(2)}\nВаловая прибыль: $${profit.toFixed(2)}`;
-                    if (referrerName && referrerPercent > 0) {
-                        msg += `\n\nПартнёр: ${referrerName} (${referrerPercent}%)\nВыплата партнёру: $${referrerPayout.toFixed(2)}`;
+                    if (agents.length) {
+                        msg += '\n\n' + agents.map(a => `Ур.${a.tier} ${a.name || '-'} → $${(a._payout || 0).toFixed(2)}`).join('\n');
                     }
                     msg += `\n\nЧистая прибыль: $${netProfit.toFixed(2)}`;
                     showToast(msg);
@@ -4128,8 +4206,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('customPayoutAmount').value = '';
                     document.getElementById('customPayinRate').value = '';
                     document.getElementById('customPayoutRate').value = '';
-                    document.getElementById('customReferrerName').value = '';
-                    document.getElementById('customReferrerPercent').value = '';
+                    customAgents = [];
+                    renderCustomAgents();
                     document.getElementById('customNotes').value = '';
                     calcCustomProfit();
 

@@ -614,7 +614,9 @@ class Deal(Base):
     transactions = relationship("Transaction", back_populates="deal")
     cash_allocations = relationship("CashAllocation", back_populates="deal")
     card_allocations = relationship("CardAllocation", back_populates="deal")
-    
+    agents = relationship("DealAgent", backref="deal", cascade="all, delete-orphan",
+                          order_by="DealAgent.tier")
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -666,7 +668,8 @@ class Deal(Base):
             'reimbursement_id': self.reimbursement_id,
             'reimbursement': self.reimbursement.to_dict() if self.reimbursement else None,
             'needs_reimbursement': self.needs_reimbursement if self.needs_reimbursement is not None else True,
-            'is_reimbursed': self.reimbursement_id is not None or not (self.needs_reimbursement if self.needs_reimbursement is not None else True)
+            'is_reimbursed': self.reimbursement_id is not None or not (self.needs_reimbursement if self.needs_reimbursement is not None else True),
+            'agents': [a.to_dict() for a in sorted(self.agents, key=lambda x: (x.tier or 1, x.id or 0))] if self.agents else []
         }
 
 
@@ -1462,8 +1465,25 @@ def _send_deal_telegram(deal):
         f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
         f"Прибыль: ${profit:,.2f}"
     )
-    # Блок реферера + чистая прибыль
-    if deal.referrer_id:
+    # Блок агентов (мультиагенты) + чистая прибыль
+    agents = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
+    if agents:
+        msg += "\n— Агенты —"
+        for a in agents:
+            if a.comp_model == 'markup':
+                lbl = f"markup +{a.percent or 0}%"
+            elif a.comp_model == 'fixed':
+                lbl = f"fixed ${a.fixed_usdt or 0:,.2f}"
+            else:
+                lbl = f"revshare {a.percent or 0}%"
+            msg += f"\n• Ур.{a.tier or 1} {a.name or '-'} · {lbl} → ${a.payout_usdt or 0:,.2f}"
+        total_agents = sum(a.payout_usdt or 0 for a in agents)
+        net = deal.net_profit_usdt if deal.net_profit_usdt is not None else round(profit - total_agents, 2)
+        msg += (
+            f"\nВыплаты агентам: ${total_agents:,.2f}\n"
+            f"💰 <b>Чистая наша: ${net:,.2f}</b>"
+        )
+    elif deal.referrer_id:
         if deal.referrer_comp_model == 'markup':
             ref_label = f"markup +{deal.referrer_markup_percent or 0}%"
             ref_payout = deal.referrer_payout_usdt or round((max(deal.payin_amount_usdt or 0, payout_usdt)) * ((deal.referrer_markup_percent or 0) / 100), 2)
@@ -2010,6 +2030,69 @@ def _recalculate_deal_financials(deal, data):
     deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
 
 
+def _apply_deal_agents(session, deal, agents_data):
+    """Сохраняет агентов сделки (мультиагенты) и пересчитывает выплаты каскадом.
+
+    agents_data — список dict: {referrer_id, name, tier, comp_model, percent, fixed_usdt}.
+    Обновляет deal.net_profit_usdt, deal.referrer_payout_usdt (СУММА всех агентов)
+    и кэш ур.1 (referrer_id/name/percent/comp_model) для legacy-отображений.
+    Статус paid сохраняется по совпадению referrer_id+tier.
+    """
+    # запоминаем кто уже выплачен (чтобы не сбросить при пересохранении)
+    prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at) for r in deal.agents}
+    deal.agents.clear()  # delete-orphan удалит старые строки на flush
+    if not agents_data:
+        deal.referrer_payout_usdt = None
+        deal.net_profit_usdt = round(deal.profit_usdt or 0, 2)
+        return
+    volume = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
+    computed, net = compute_agent_cascade(deal.profit_usdt or 0, volume,
+                                          [dict(a) for a in agents_data])
+    total = 0.0
+    for a in computed:
+        tier = int(a.get('tier') or 1)
+        rid = a.get('referrer_id') or None
+        paid, paid_at = prev_paid.get((rid, tier), (False, None))
+        deal.agents.append(DealAgent(
+            referrer_id=rid, name=a.get('name'), tier=tier,
+            comp_model=(a.get('comp_model') or 'revshare'),
+            percent=float(a.get('percent') or 0), fixed_usdt=float(a.get('fixed_usdt') or 0),
+            payout_usdt=a.get('_payout'), base_usdt=a.get('_base'),
+            paid=paid, paid_at=paid_at,
+        ))
+        total += a.get('_payout') or 0
+    deal.net_profit_usdt = net
+    deal.referrer_payout_usdt = round(total, 2) if total else None
+    # кэш агента ур.1 для старых отображений/выгрузок
+    primary = min(computed, key=lambda x: int(x.get('tier') or 1))
+    pm = (primary.get('comp_model') or 'revshare')
+    deal.referrer_id = primary.get('referrer_id') or None
+    deal.referrer_name = primary.get('name')
+    deal.referrer_comp_model = pm
+    deal.referrer_percent = float(primary.get('percent') or 0) if pm != 'markup' else None
+    deal.referrer_markup_percent = float(primary.get('percent') or 0) if pm == 'markup' else None
+
+
+def _mirror_legacy_agent(session, deal):
+    """Зеркалит ОДИНОЧНОГО реферала сделки в одну строку deal_agents (ур.1) БЕЗ пересчёта:
+    payout берётся из deal.referrer_payout_usdt как есть (учитывает ручной override).
+    Нужен, чтобы кабинет единообразно читал deal_agents и для legacy-сделок без массива agents.
+    Сохраняет статус paid; если реферала нет — удаляет строки."""
+    prev = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at) for r in deal.agents}
+    deal.agents.clear()
+    if not (deal.referrer_id or deal.referrer_payout_usdt):
+        return
+    model = deal.referrer_comp_model or 'revshare'
+    pct = (deal.referrer_markup_percent if model == 'markup' else deal.referrer_percent) or 0
+    paid, paid_at = prev.get((deal.referrer_id, 1), (deal.referrer_paid or False, deal.referrer_paid_at))
+    deal.agents.append(DealAgent(
+        referrer_id=deal.referrer_id, name=deal.referrer_name, tier=1,
+        comp_model=model, percent=pct, fixed_usdt=deal.referrer_fixed_usdt or 0,
+        payout_usdt=deal.referrer_payout_usdt, base_usdt=deal.profit_usdt,
+        paid=paid, paid_at=paid_at,
+    ))
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -2134,6 +2217,13 @@ def create_deal():
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
         _recalculate_deal_financials(deal, data)
+
+        # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
+        # одиночного реферала (без пересчёта) для единого источника кабинета
+        if data.get('agents'):
+            _apply_deal_agents(session, deal, data['agents'])
+        else:
+            _mirror_legacy_agent(session, deal)
 
         # Автоматическое списание с кошелька при создании
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
@@ -2293,8 +2383,18 @@ def update_deal(deal_id):
         # Автоматический пересчёт прибыли и выплаты рефереру
         _recalculate_deal_financials(deal, data)
 
+        # Мультиагенты: явный массив agents → каскадный пересчёт (пустой = убрать всех);
+        # без массива → зеркалим одиночного реферала (сохраняя ручной payout)
+        if 'agents' in data:
+            if data.get('agents'):
+                _apply_deal_agents(session, deal, data['agents'])
+            else:
+                deal.agents.clear()
+        else:
+            _mirror_legacy_agent(session, deal)
+
         session.commit()
-        
+
         # Обновление агрегатов реферера при завершении сделки
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             if deal.referrer_id:
@@ -4443,14 +4543,18 @@ def referrer_stats(token):
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
-        # Все завершённые сделки (без имён клиентов — конфиденциальность). Пагинация на фронте.
+        # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
+        agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
+        agent_by_deal = {r.deal_id: r for r in agent_rows}
+        deal_ids = list(agent_by_deal.keys())
         deals = db.query(Deal).filter(
-            Deal.referrer_id == referrer.id,
+            Deal.id.in_(deal_ids),
             Deal.status == DealStatus.COMPLETED
-        ).order_by(Deal.created_at.desc()).limit(200).all()
+        ).order_by(Deal.created_at.desc()).limit(200).all() if deal_ids else []
 
         recent_deals = []
         for deal in deals:
+            ag = agent_by_deal.get(deal.id)
             # Маскируем имя клиента для конфиденциальности
             client_name = ''
             if deal.client:
@@ -4479,27 +4583,25 @@ def referrer_stats(token):
                 'payout_amount': payout_amount,
                 'payout_currency': payout_cur,
                 'payout_thb': payout_amount if payout_cur == 'thb' else 0,  # legacy
-                'commission_usdt': deal.referrer_payout_usdt,
-                'paid': deal.referrer_paid or False,
+                # Выплата/модель/процент — из строки ЭТОГО агента (не из кэша сделки).
+                # profit_usdt = база агента (для ур.2+ это остаток — каскад агенту не виден).
+                'commission_usdt': ag.payout_usdt if ag else None,
+                'paid': (ag.paid if ag else False) or False,
                 'client_masked': masked,
                 'client_initials': initials,
-                'comp_model': deal.referrer_comp_model or 'revshare',
-                'percent': (deal.referrer_markup_percent
-                            if deal.referrer_comp_model == 'markup'
-                            else deal.referrer_percent),
-                'profit_usdt': deal.profit_usdt,
+                'comp_model': (ag.comp_model if ag else None) or 'revshare',
+                'percent': ag.percent if ag else None,
+                'profit_usdt': ag.base_usdt if ag else deal.profit_usdt,
             })
 
-        # Считаем из реальных данных (не из кэшированных агрегатов)
-        total_earned = sum(d.referrer_payout_usdt or 0 for d in deals)
-        total_paid = sum((d.referrer_payout_usdt or 0) for d in deals if d.referrer_paid)
+        # Считаем из строк агента (его доля по каждой сделке), а не из кэша сделки
+        completed_rows = [agent_by_deal[d.id] for d in deals if agent_by_deal.get(d.id)]
+        total_earned = sum(r.payout_usdt or 0 for r in completed_rows)
+        total_paid = sum((r.payout_usdt or 0) for r in completed_rows if r.paid)
         referred_clients = db.query(Client).filter(Client.referrer_id == referrer.id).count()
 
-        # Конверсия: клиенты с хотя бы 1 завершённой сделкой / все приведённые
-        clients_with_deals = db.query(Deal.client_id).filter(
-            Deal.referrer_id == referrer.id,
-            Deal.status == DealStatus.COMPLETED
-        ).distinct().count()
+        # Конверсия: клиенты с хотя бы 1 завершённой сделкой (где агент участвует) / все приведённые
+        clients_with_deals = len({d.client_id for d in deals if d.client_id})
         conversion_rate = round(clients_with_deals / referred_clients * 100, 1) if referred_clients > 0 else 0
 
         # Средний доход на сделку
@@ -5066,19 +5168,26 @@ def _mark_referrer_deals_paid(db, referrer, now):
     НЕ коммитит — это делает вызывающий. Идемпотентна: уже оплаченные сделки
     не трогает. Возвращает (paid_deal_ids, total_paid).
     """
-    unpaid_deals = db.query(Deal).filter(
-        Deal.referrer_id == referrer.id,
+    # Мультиагенты: платим по строкам агента (любой уровень), а не по кэшу сделки
+    rows = db.query(DealAgent).join(Deal, DealAgent.deal_id == Deal.id).filter(
+        DealAgent.referrer_id == referrer.id,
+        DealAgent.paid == False,
         Deal.status == DealStatus.COMPLETED,
-        Deal.referrer_paid == False,
-        Deal.referrer_payout_usdt > 0,
     ).all()
     total_paid = 0
     paid_deal_ids = []
-    for deal in unpaid_deals:
-        deal.referrer_paid = True
-        deal.referrer_paid_at = now
-        total_paid += deal.referrer_payout_usdt or 0
-        paid_deal_ids.append(deal.id)
+    for r in rows:
+        if not r.payout_usdt:
+            continue
+        r.paid = True
+        r.paid_at = now
+        total_paid += r.payout_usdt or 0
+        paid_deal_ids.append(r.deal_id)
+        # синхрон legacy-флага на сделке, если реферал — основной (ур.1)
+        deal = db.query(Deal).get(r.deal_id)
+        if deal and deal.referrer_id == referrer.id:
+            deal.referrer_paid = True
+            deal.referrer_paid_at = now
     referrer.total_paid_usdt = round((referrer.total_paid_usdt or 0) + total_paid, 2)
     return paid_deal_ids, round(total_paid, 2)
 

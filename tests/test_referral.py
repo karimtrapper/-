@@ -13,7 +13,7 @@ import secrets
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
-from app import app, get_session, Referrer, Client, Deal, DealType, DealStatus, AdminUser
+from app import app, get_session, Referrer, Client, Deal, DealType, DealStatus, AdminUser, DealAgent
 
 import bcrypt
 
@@ -25,6 +25,7 @@ def clean_db():
     """Чистим таблицы перед каждым тестом."""
     session = get_session()
     try:
+        session.query(DealAgent).delete()
         session.query(Deal).delete()
         session.query(Client).delete()
         session.query(Referrer).delete()
@@ -34,6 +35,7 @@ def clean_db():
     yield
     session = get_session()
     try:
+        session.query(DealAgent).delete()
         session.query(Deal).delete()
         session.query(Client).delete()
         session.query(Referrer).delete()
@@ -407,6 +409,42 @@ class TestPayReferrer:
         assert resp.json['deals_paid'] == 2
         # profit1 = 15 * 10% = 1.5, profit2 = 30 * 10% = 3.0
         assert resp.json['amount_usdt'] == 4.5
+
+
+class TestMultiAgentAPI:
+    """Мультиагенты через реальный API создания сделки (каскад)."""
+
+    def test_create_deal_with_cascade_agents(self, tc, db):
+        # Два агента-реферала
+        a1 = Referrer(name='Иван', code='GR-IVAN', token=secrets.token_hex(8), default_percent=20)
+        a2 = Referrer(name='Николай', code='GR-NIK2', token=secrets.token_hex(8), default_percent=50)
+        c = Client(name='Maksim Multi')
+        db.add_all([a1, a2, c]); db.commit()
+        a1_id, a2_id, cid = a1.id, a2.id, c.id
+
+        resp = tc.post('/api/deals', json={
+            'client_id': cid, 'deal_type': 'pay_in', 'is_custom': True,
+            'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 58409.06, 'payout_amount_usdt': 55615.91,
+            'payout_method': 'transfer',
+            'profit_usdt': 2793.15,
+            'agents': [
+                {'referrer_id': a1_id, 'name': 'Иван', 'tier': 1, 'comp_model': 'revshare', 'percent': 20},
+                {'referrer_id': a2_id, 'name': 'Николай', 'tier': 2, 'comp_model': 'revshare', 'percent': 50},
+            ],
+        })
+        assert resp.status_code in (200, 201)
+        deal = resp.json['deal']
+        agents = sorted(deal['agents'], key=lambda x: x['tier'])
+        assert len(agents) == 2
+        assert agents[0]['payout_usdt'] == 558.63          # 20% × 2793.15
+        assert agents[1]['payout_usdt'] == 1117.26         # 50% × (2793.15 − 558.63)
+        assert agents[1]['base_usdt'] == 2234.52
+        assert deal['net_profit_usdt'] == 1117.26
+        # Кэш ур.1 = первый агент
+        assert deal['referrer_id'] == a1_id
+        # Суммарная выплата агентам в кэше
+        assert deal['referrer_payout_usdt'] == 1675.89     # 558.63 + 1117.26
 
 
 # ── Публичный Stats API ──────────────────────────────────────────────────
