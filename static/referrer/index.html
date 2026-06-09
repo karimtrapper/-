@@ -610,9 +610,10 @@
     function dealAmount(deal) {
         const cur = (deal.payout_currency || '').toLowerCase();
         const amt = deal.payout_amount || 0;
-        if (amt && cur === 'thb') return '฿' + Math.round(amt).toLocaleString('ru-RU');
-        if (amt && cur === 'usdt') return '$' + Math.round(amt).toLocaleString('ru-RU');
-        return '$' + (deal.volume_usdt || 0).toFixed(0);
+        if (!amt) return '$' + (deal.volume_usdt || 0).toFixed(0);
+        const sym = { thb: '฿', usd: '$', usdt: '$', rub: '₽' }[cur] || '';
+        const num = Math.round(amt).toLocaleString('ru-RU');
+        return sym ? sym + num : num + ' ' + cur.toUpperCase();
     }
 
     function renderDeals(page) {

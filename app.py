@@ -4359,10 +4359,10 @@ def referrer_stats(token):
             initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
             # Сумма и валюта выдачи: custom-сделки могут быть в USDT, а не в THB.
             # Раньше custom_payout_amount всегда показывался как ฿ → USD-сделки рисовались батами.
-            cpc = (deal.custom_payout_currency or '').lower()
+            cpc = (deal.custom_payout_currency or '').lower()  # 'usd' | 'usdt' | 'thb' | 'rub'
             if deal.custom_payout_amount:
                 payout_amount = deal.custom_payout_amount
-                payout_cur = cpc if cpc in ('thb', 'usdt') else 'thb'
+                payout_cur = cpc or 'thb'
             elif deal.payout_amount_thb:
                 payout_amount = deal.payout_amount_thb
                 payout_cur = 'thb'
