@@ -669,6 +669,74 @@ class Deal(Base):
             'is_reimbursed': self.reimbursement_id is not None or not (self.needs_reimbursement if self.needs_reimbursement is not None else True)
         }
 
+
+class DealAgent(Base):
+    """Участие одного агента в сделке. N строк на сделку — мультиагенты (каскад / «в долю»).
+
+    tier — уровень: одинаковый tier у нескольких = делят от ОДНОЙ базы («в долю»),
+    разные tier = каскад (каждый следующий считает от остатка предыдущего).
+    """
+    __tablename__ = 'deal_agents'
+    id = Column(Integer, primary_key=True)
+    deal_id = Column(Integer, ForeignKey('deals.id', ondelete='CASCADE'), nullable=False, index=True)
+    referrer_id = Column(Integer, ForeignKey('referrers.id'), nullable=True)
+    name = Column(String(100))                            # снапшот имени агента
+    tier = Column(Integer, default=1)                     # уровень 1,2,3…
+    comp_model = Column(String(20), default='revshare')   # revshare | markup | fixed
+    percent = Column(Float, default=0.0)                  # % (revshare/markup)
+    fixed_usdt = Column(Float, default=0.0)               # сумма $ (fixed)
+    payout_usdt = Column(Float)                           # посчитанная выплата
+    base_usdt = Column(Float)                             # база расчёта (для аудита)
+    paid = Column(Boolean, default=False)
+    paid_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'deal_id': self.deal_id, 'referrer_id': self.referrer_id,
+            'name': self.name, 'tier': self.tier or 1,
+            'comp_model': self.comp_model or 'revshare',
+            'percent': self.percent or 0.0, 'fixed_usdt': self.fixed_usdt or 0.0,
+            'payout_usdt': self.payout_usdt, 'base_usdt': self.base_usdt,
+            'paid': self.paid or False,
+            'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+        }
+
+
+def compute_agent_cascade(profit_usdt, volume_usdt, agents):
+    """Считает выплаты агентам каскадом по уровням.
+
+    agents — список dict с ключами comp_model, percent, fixed_usdt, tier.
+    На одном уровне (tier) все берут от ОДНОЙ базы; база уменьшается на сумму
+    выплат уровня перед переходом на следующий. Возвращает (agents_out, net_profit),
+    где у каждого агента проставлены '_payout' и '_base'.
+    """
+    profit = profit_usdt or 0
+    volume = volume_usdt or 0
+    by_tier = {}
+    for a in agents:
+        by_tier.setdefault(int(a.get('tier') or 1), []).append(a)
+    base = profit
+    out = []
+    for t in sorted(by_tier):
+        tier_total = 0.0
+        for a in by_tier[t]:
+            model = (a.get('comp_model') or 'revshare').lower()
+            if model == 'markup':
+                pay = volume * (float(a.get('percent') or 0) / 100)
+            elif model == 'fixed':
+                pay = float(a.get('fixed_usdt') or 0)
+            else:  # revshare
+                pay = base * (float(a.get('percent') or 0) / 100)
+            pay = round(pay, 2)
+            a['_payout'] = pay
+            a['_base'] = round(base, 2)
+            tier_total += pay
+            out.append(a)
+        base -= tier_total
+    return out, round(base, 2)
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -722,6 +790,39 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
             except: pass
+        # Бэкфилл мультиагентов: старый одиночный реферал → строка deal_agents (ур.1).
+        # Идемпотентно (NOT EXISTS) — безопасно выполнять при каждом старте.
+        try:
+            if 'postgresql' in DATABASE_URL:
+                conn.execute(text("""
+                    INSERT INTO deal_agents (deal_id, referrer_id, name, tier, comp_model,
+                                             percent, fixed_usdt, payout_usdt, base_usdt, paid, paid_at, created_at)
+                    SELECT d.id, d.referrer_id, d.referrer_name, 1,
+                           COALESCE(d.referrer_comp_model, 'revshare'),
+                           COALESCE(d.referrer_percent, 0), COALESCE(d.referrer_fixed_usdt, 0),
+                           d.referrer_payout_usdt, d.profit_usdt,
+                           COALESCE(d.referrer_paid, false), d.referrer_paid_at,
+                           COALESCE(d.created_at, now())
+                    FROM deals d
+                    WHERE (d.referrer_id IS NOT NULL OR d.referrer_payout_usdt IS NOT NULL)
+                      AND NOT EXISTS (SELECT 1 FROM deal_agents da WHERE da.deal_id = d.id)
+                """))
+            else:
+                conn.execute(text("""
+                    INSERT INTO deal_agents (deal_id, referrer_id, name, tier, comp_model,
+                                             percent, fixed_usdt, payout_usdt, base_usdt, paid, paid_at, created_at)
+                    SELECT d.id, d.referrer_id, d.referrer_name, 1,
+                           COALESCE(d.referrer_comp_model, 'revshare'),
+                           COALESCE(d.referrer_percent, 0), COALESCE(d.referrer_fixed_usdt, 0),
+                           d.referrer_payout_usdt, d.profit_usdt,
+                           COALESCE(d.referrer_paid, 0), d.referrer_paid_at,
+                           COALESCE(d.created_at, CURRENT_TIMESTAMP)
+                    FROM deals d
+                    WHERE (d.referrer_id IS NOT NULL OR d.referrer_payout_usdt IS NOT NULL)
+                      AND NOT EXISTS (SELECT 1 FROM deal_agents da WHERE da.deal_id = d.id)
+                """))
+        except Exception as e:
+            print(f"ℹ️ backfill deal_agents: {e}", flush=True)
         # is_test флаг для тестовых рефереров (пропуск TG-нотификаций)
         if 'postgresql' in DATABASE_URL:
             try:
