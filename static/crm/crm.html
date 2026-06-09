@@ -881,11 +881,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group" id="customPayinRateGroup">
                                 <label class="form-label">Курс к USDT</label>
                                 <input type="number" class="form-control" id="customPayinRate" placeholder="92.5"
-                                    step="0.0001" oninput="calcCustomProfit()">
+                                    step="0.0001" oninput="onCustomRateInput('payin')">
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">= USDT</label>
-                                <input type="text" class="form-control" id="customPayinUsdt" readonly
+                            <div class="form-group" id="customPayinUsdtGroup">
+                                <label class="form-label">= USDT <span style="font-weight:400;color:#64748b;">(можно ввести)</span></label>
+                                <input type="number" class="form-control" id="customPayinUsdt" placeholder="≈ USDT"
+                                    step="0.01" oninput="onCustomUsdtInput('payin')"
                                     style="background: #e0f2fe; font-weight: 600;">
                             </div>
                         </div>
@@ -909,11 +910,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group" id="customPayoutRateGroup">
                                 <label class="form-label">Курс к USDT</label>
                                 <input type="number" class="form-control" id="customPayoutRate" placeholder="35.5"
-                                    step="0.0001" oninput="calcCustomProfit()">
+                                    step="0.0001" oninput="onCustomRateInput('payout')">
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">= USDT</label>
-                                <input type="text" class="form-control" id="customPayoutUsdt" readonly
+                            <div class="form-group" id="customPayoutUsdtGroup">
+                                <label class="form-label">= USDT <span style="font-weight:400;color:#64748b;">(можно ввести)</span></label>
+                                <input type="number" class="form-control" id="customPayoutUsdt" placeholder="≈ USDT"
+                                    step="0.01" oninput="onCustomUsdtInput('payout')"
                                     style="background: #fee2e2; font-weight: 600;">
                             </div>
                         </div>
@@ -3018,6 +3020,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutCurrency').value = deal.custom_payout_currency || 'USDT';
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
+                        customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
                         // Мультиагенты: грузим из deal.agents
                         customAgentsLoad(deal.agents || []);
                         document.getElementById('customNotes').value = deal.notes || '';
@@ -3159,9 +3162,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Конвертация
-            const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
-            const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
+            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе сумма/курс
+            const payinUsdt = payinCurrency === 'USDT' ? payinAmount
+                : (parseFloat(document.getElementById('customPayinUsdt').value) || (payinRate > 0 ? payinAmount / payinRate : 0));
+            const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount
+                : (parseFloat(document.getElementById('customPayoutUsdt').value) || (payoutRate > 0 ? payoutAmount / payoutRate : 0));
             const profit = payinUsdt - payoutUsdt;
             const netProfit = customAgentsRecalc();
 
@@ -4046,37 +4051,47 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             calcCustomProfit();
         }
 
+        // Что считаем производным: 'rate' (ввели курс → считаем USDT) или 'usdt' (ввели USDT → считаем курс)
+        let customUsdtMode = { payin: 'rate', payout: 'rate' };
+        function onCustomRateInput(side) { customUsdtMode[side] = 'rate'; calcCustomProfit(); }
+        function onCustomUsdtInput(side) { customUsdtMode[side] = 'usdt'; calcCustomProfit(); }
+
+        // Считает USDT для одной стороны, синхронизируя парное поле (курс↔USDT)
+        function _sideUsdt(side) {
+            const amount = parseFloat(document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Amount').value) || 0;
+            const currency = document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Currency').value;
+            const rateEl = document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Rate');
+            const usdtEl = document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Usdt');
+            if (currency === 'USDT') { usdtEl.value = amount > 0 ? amount.toFixed(2) : ''; return amount; }
+            if (customUsdtMode[side] === 'usdt') {
+                // Ввели USDT → курс = сумма / USDT
+                const usdt = parseFloat(usdtEl.value) || 0;
+                rateEl.value = (usdt > 0 && amount > 0) ? (amount / usdt).toFixed(4) : '';
+                return usdt;
+            } else {
+                // Ввели курс → USDT = сумма / курс
+                const rate = parseFloat(rateEl.value) || 0;
+                const usdt = rate > 0 ? amount / rate : 0;
+                usdtEl.value = usdt > 0 ? usdt.toFixed(2) : '';
+                return usdt;
+            }
+        }
+
         function calcCustomProfit() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
-            const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
-
             const payoutAmount = parseFloat(document.getElementById('customPayoutAmount').value) || 0;
             const payoutCurrency = document.getElementById('customPayoutCurrency').value;
-            const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
 
             // Показать/скрыть поле курса для USDT
             document.getElementById('customPayinRateGroup').style.display = payinCurrency === 'USDT' ? 'none' : 'block';
             document.getElementById('customPayoutRateGroup').style.display = payoutCurrency === 'USDT' ? 'none' : 'block';
+            document.getElementById('customPayinUsdtGroup').style.display = payinCurrency === 'USDT' ? 'none' : 'block';
+            document.getElementById('customPayoutUsdtGroup').style.display = payoutCurrency === 'USDT' ? 'none' : 'block';
 
-            // Конвертация в USDT
-            let payinUsdt = 0;
-            if (payinCurrency === 'USDT') {
-                payinUsdt = payinAmount;
-            } else if (payinRate > 0) {
-                payinUsdt = payinAmount / payinRate;
-            }
-
-            let payoutUsdt = 0;
-            if (payoutCurrency === 'USDT') {
-                payoutUsdt = payoutAmount;
-            } else if (payoutRate > 0) {
-                payoutUsdt = payoutAmount / payoutRate;
-            }
-
-            // Отображение
-            document.getElementById('customPayinUsdt').value = payinUsdt > 0 ? '$' + payinUsdt.toFixed(2) : '';
-            document.getElementById('customPayoutUsdt').value = payoutUsdt > 0 ? '$' + payoutUsdt.toFixed(2) : '';
+            // Конвертация в USDT (синхронизирует курс↔USDT по режиму ввода)
+            const payinUsdt = _sideUsdt('payin');
+            const payoutUsdt = _sideUsdt('payout');
 
             // Прибыль
             const profit = payinUsdt - payoutUsdt;
@@ -4129,9 +4144,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Конвертация
-            const payinUsdt = payinCurrency === 'USDT' ? payinAmount : payinAmount / payinRate;
-            const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount : payoutAmount / payoutRate;
+            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе сумма/курс
+            const payinUsdt = payinCurrency === 'USDT' ? payinAmount
+                : (parseFloat(document.getElementById('customPayinUsdt').value) || (payinRate > 0 ? payinAmount / payinRate : 0));
+            const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount
+                : (parseFloat(document.getElementById('customPayoutUsdt').value) || (payoutRate > 0 ? payoutAmount / payoutRate : 0));
             const profit = payinUsdt - payoutUsdt;
             const netProfit = customAgentsRecalc();   // чистая после всех агентов
 
