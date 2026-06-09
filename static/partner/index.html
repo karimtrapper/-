@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grusha Exchange — Calculator</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* === Navy theme — same tokens as main calculator === */
         :root {
             --navy-900: #0F172A;
             --navy-800: #1E293B;
@@ -19,93 +20,105 @@
             --navy-50: #F8FAFC;
             --coral: #F97316;
             --coral-hover: #EA580C;
-            --green: #22C55E;
+            --r: 12px; --r-sm: 8px; --r-lg: 16px;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             background: var(--navy-50); color: var(--navy-900);
-            min-height: 100vh; display: flex; flex-direction: column;
-            align-items: center; padding: 24px 16px;
+            min-height: 100vh; line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
+            padding: 24px 16px;
         }
-        .container { width: 100%; max-width: 440px; }
+        .container { width: 100%; max-width: 440px; margin: 0 auto; }
 
-        .header { text-align: center; margin-bottom: 24px; }
-        .header .logo { width: 56px; height: 56px; margin: 0 auto 12px; }
+        /* === Header === */
+        .header { text-align: center; margin-bottom: 16px; }
+        .header .logo { width: 56px; height: 56px; margin: 0 auto 10px; }
         .header .logo img { width: 100%; height: 100%; border-radius: 12px; }
-        .header h1 { font-size: 20px; font-weight: 700; }
-        .header .partner-name { font-size: 14px; color: var(--navy-500); margin-top: 4px; }
+        .header h1 { font-size: 20px; font-weight: 800; color: var(--navy-800); letter-spacing: -0.3px; }
+        .header .partner-name { font-size: 13px; color: var(--navy-500); margin-top: 4px; font-weight: 500; }
 
-        .card {
-            background: white; border-radius: 16px; padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
-            border: 1px solid var(--navy-100);
+        /* === Card === */
+        .calculator-card {
+            background: white; border: 1px solid var(--navy-100);
+            border-radius: var(--r-lg); padding: 16px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
 
-        /* Fields */
-        .field-group { margin-bottom: 12px; }
-        .field-label { display: block; font-size: 13px; font-weight: 600; color: var(--navy-500); margin-bottom: 6px; }
-        .field-wrapper { position: relative; }
-        .field-wrapper input {
-            width: 100%; padding: 14px 60px 14px 16px;
-            border: 2px solid var(--navy-200); border-radius: 10px;
-            font-family: inherit; font-size: 18px; font-weight: 600;
-            color: var(--navy-900); background: white; outline: none;
-            transition: border-color 0.2s;
+        /* === Direction switcher === */
+        .direction-switcher {
+            background: var(--navy-50); padding: 12px;
+            border-radius: var(--r); margin-bottom: 16px;
         }
-        .field-wrapper input:focus { border-color: var(--coral); }
-        .field-wrapper input::placeholder { color: var(--navy-300); font-weight: 400; }
-        .field-suffix {
-            position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-            font-size: 14px; font-weight: 700; color: var(--navy-400);
+        .direction-header { font-size: 13px; font-weight: 700; color: var(--navy-900); margin-bottom: 8px; }
+        .direction-buttons { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        .direction-btn {
+            padding: 10px 12px; background: white; border: 2px solid var(--navy-200);
+            border-radius: var(--r-sm); font-size: 13px; font-weight: 600;
+            color: var(--navy-500); cursor: pointer; transition: all 0.2s;
+            font-family: inherit; text-align: center;
+        }
+        .direction-btn:hover { border-color: var(--navy-800); }
+        .direction-btn.active { background: var(--navy-800); color: white; border-color: var(--navy-800); }
+
+        /* === Input === */
+        .input-label { display: block; font-size: 13px; font-weight: 600; color: var(--navy-900); margin-bottom: 8px; }
+        .input-wrapper { position: relative; margin-bottom: 12px; }
+        .amount-input {
+            width: 100%; padding: 14px 48px 14px 14px;
+            font-size: 20px; font-weight: 700;
+            border: 2px solid var(--navy-200); border-radius: var(--r);
+            outline: none; transition: all 0.2s; font-family: inherit;
+            color: var(--navy-900); background: white; min-height: 48px;
+        }
+        .amount-input:focus { border-color: var(--coral); box-shadow: 0 0 0 3px rgba(249,115,22,0.12); }
+        .amount-input::placeholder { color: var(--navy-300); font-weight: 400; }
+        .input-currency {
+            position: absolute; right: 14px; top: 50%; transform: translateY(-50%);
+            font-size: 20px; font-weight: 600; color: var(--navy-400); pointer-events: none;
         }
 
-        /* Swap */
-        .swap-row { display: flex; justify-content: center; align-items: center; margin: 4px 0; }
-        .swap-btn {
-            width: 40px; height: 40px; border-radius: 50%;
-            background: var(--navy-100); border: 2px solid white;
-            cursor: pointer; display: flex; align-items: center; justify-content: center;
-            font-size: 18px; transition: all 0.2s; color: var(--navy-500);
+        /* === Calculate button === */
+        .calculate-btn {
+            width: 100%; padding: 14px; background: var(--coral); color: white;
+            border: none; border-radius: var(--r); font-size: 16px; font-weight: 700;
+            cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 12px rgba(249,115,22,0.25);
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            min-height: 48px; font-family: inherit;
         }
-        .swap-btn:hover { background: var(--coral); color: white; }
-        .swap-btn.rotated { transform: rotate(180deg); }
+        .calculate-btn:hover { background: var(--coral-hover); }
+        .calculate-btn:active { transform: translateY(1px); }
+        .calculate-btn:disabled { opacity: 0.6; cursor: wait; }
+        .loading-dots::after { content: ''; animation: dots 1.5s steps(4, end) infinite; }
+        @keyframes dots { 0%,20%{content:'';} 40%{content:'.';} 60%{content:'..';} 80%,100%{content:'...';} }
 
-        /* Calculate button */
-        .calc-btn {
-            display: block; width: 100%; margin-top: 16px;
-            padding: 14px; border: none; border-radius: 10px;
-            background: var(--coral); color: white;
-            font-family: inherit; font-size: 16px; font-weight: 700;
+        /* === Results === */
+        .results-section { margin-top: 20px; animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(-10px);} to{opacity:1;transform:translateY(0);} }
+        .result-main {
+            background: var(--navy-800); padding: 24px; border-radius: var(--r);
+            text-align: center; color: white; margin-bottom: 12px;
+        }
+        .result-label { font-size: 13px; opacity: 0.8; margin-bottom: 4px; font-weight: 500; }
+        .result-value { font-size: 36px; font-weight: 800; margin-bottom: 4px; letter-spacing: -1px; }
+        .result-rate { font-size: 15px; opacity: 0.9; }
+
+        /* === Copy block === */
+        .copy-block {
+            background: var(--navy-800); border: 1px solid var(--navy-700);
+            border-radius: var(--r); padding: 16px; position: relative;
+        }
+        .copy-text { font-size: 15px; line-height: 1.7; color: var(--navy-200); white-space: pre-line; }
+        .copy-btn {
+            position: absolute; top: 12px; right: 12px;
+            background: #4F46E5; border: none; border-radius: 8px;
+            padding: 6px 14px; color: white; font-size: 13px; font-weight: 600;
             cursor: pointer; transition: background 0.2s;
         }
-        .calc-btn:hover { background: var(--coral-hover); }
-        .calc-btn:disabled { opacity: 0.6; cursor: wait; }
-        .loading-dots::after {
-            content: ''; animation: dots 1.5s steps(4, end) infinite;
-        }
-        @keyframes dots {
-            0%, 20% { content: ''; }
-            40% { content: '.'; }
-            60% { content: '..'; }
-            80%, 100% { content: '...'; }
-        }
+        .copy-btn:hover { background: #4338CA; }
 
-        /* Result block */
-        .result-block {
-            margin-top: 20px; padding: 20px;
-            background: var(--navy-900); border-radius: 12px;
-            text-align: center;
-        }
-        .result-rate {
-            font-size: 16px; font-weight: 600; color: var(--navy-400);
-            margin-bottom: 8px;
-        }
-        .result-amount {
-            font-size: 28px; font-weight: 700; color: white;
-        }
-
-        /* Error/loading states */
+        /* === States === */
         .error-state { text-align: center; padding: 40px 20px; }
         .error-state .icon { font-size: 48px; margin-bottom: 12px; }
         .error-state h2 { font-size: 18px; margin-bottom: 8px; }
@@ -118,7 +131,7 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        .footer { text-align: center; margin-top: 24px; font-size: 12px; color: var(--navy-400); }
+        .footer { text-align: center; margin-top: 20px; font-size: 12px; color: var(--navy-400); }
     </style>
 </head>
 <body>
@@ -129,11 +142,11 @@
             <div class="partner-name" id="partnerName"></div>
         </div>
 
-        <div class="card" id="loadingState">
+        <div class="calculator-card" id="loadingState">
             <div class="loading"><div class="spinner"></div><div>Loading...</div></div>
         </div>
 
-        <div class="card" id="errorState" style="display:none">
+        <div class="calculator-card" id="errorState" style="display:none">
             <div class="error-state">
                 <div class="icon">🔗</div>
                 <h2>Invalid link</h2>
@@ -141,35 +154,41 @@
             </div>
         </div>
 
-        <div class="card" id="calcState" style="display:none">
-            <div class="field-group">
-                <label class="field-label" id="topLabel">You send</label>
-                <div class="field-wrapper">
-                    <input type="number" id="topInput" placeholder="Enter amount" inputmode="decimal" min="0" step="any">
-                    <span class="field-suffix" id="topCurrency">USDT</span>
+        <div class="calculator-card" id="calcState" style="display:none">
+            <!-- Type of operation (USDT-THB pair direction) -->
+            <div class="direction-switcher">
+                <div class="direction-header">🎯 Type of operation</div>
+                <div class="direction-buttons">
+                    <button class="direction-btn active" data-dir="usdt-thb" onclick="setDirection('usdt-thb')">
+                        💵 USDT → THB
+                    </button>
+                    <button class="direction-btn" data-dir="thb-usdt" onclick="setDirection('thb-usdt')">
+                        💎 THB → USDT
+                    </button>
                 </div>
             </div>
 
-            <div class="swap-row">
-                <button class="swap-btn" id="swapBtn" onclick="swapDirection()">⇅</button>
+            <label class="input-label" id="inputLabel">Amount in USDT</label>
+            <div class="input-wrapper">
+                <input type="text" id="amount" class="amount-input" placeholder="e.g. 1000" inputmode="decimal"
+                       oninput="hideResults()" onkeydown="if(event.key==='Enter') calculate()">
+                <span class="input-currency" id="inputCurrency">USDT</span>
             </div>
 
-            <div class="field-group">
-                <label class="field-label" id="bottomLabel">You receive</label>
-                <div class="field-wrapper">
-                    <input type="number" id="bottomInput" placeholder="Enter amount" inputmode="decimal" min="0" step="any">
-                    <span class="field-suffix" id="bottomCurrency">THB</span>
+            <button class="calculate-btn" id="calcBtn" onclick="calculate()">🚀 Calculate</button>
+
+            <!-- Results -->
+            <div class="results-section" id="resultsSection" style="display:none">
+                <div class="result-main">
+                    <div class="result-label">Client receives:</div>
+                    <div class="result-value" id="resultValue">0 ฿</div>
+                    <div class="result-rate" id="resultRate"></div>
                 </div>
-            </div>
 
-            <button class="calc-btn" id="calcBtn" onclick="calculate()">
-                Calculate
-            </button>
-
-            <!-- Результат — появляется после расчёта -->
-            <div class="result-block" id="resultBlock" style="display:none">
-                <div class="result-rate" id="resultRate"></div>
-                <div class="result-amount" id="resultAmount"></div>
+                <div class="copy-block">
+                    <div class="copy-text" id="copyText"></div>
+                    <button class="copy-btn" onclick="copyResult()" id="copyBtn">📋 Copy</button>
+                </div>
             </div>
         </div>
 
@@ -179,12 +198,12 @@
     <script>
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
 
-        let mode = 'usdt-top';  // 'usdt-top' | 'thb-top'
-        let rateBuy = null;
-        let rateSell = null;
-        let lastEdited = 'top'; // какое поле редактировали последним
+        let direction = 'usdt-thb';   // 'usdt-thb' | 'thb-usdt'
+        let rateBuy = null;           // USDT → THB (multiply)
+        let rateSell = null;          // THB → USDT (divide)
+        let lastResult = '';          // текст для копирования
 
-        function getRate() { return mode === 'usdt-top' ? rateBuy : rateSell; }
+        function getRate() { return direction === 'usdt-thb' ? rateBuy : rateSell; }
 
         async function init() {
             if (!TOKEN) return showError();
@@ -200,9 +219,8 @@
 
                 document.getElementById('loadingState').style.display = 'none';
                 document.getElementById('calcState').style.display = 'block';
-                document.getElementById('topInput').focus();
+                document.getElementById('amount').focus();
 
-                // Обновляем курс в фоне каждые 60 сек
                 setInterval(refreshRate, 60000);
             } catch (e) { showError(); }
         }
@@ -212,29 +230,26 @@
             document.getElementById('errorState').style.display = 'block';
         }
 
-        function swapDirection() {
-            mode = mode === 'usdt-top' ? 'thb-top' : 'usdt-top';
-            if (mode === 'usdt-top') {
-                document.getElementById('topCurrency').textContent = 'USDT';
-                document.getElementById('bottomCurrency').textContent = 'THB';
-            } else {
-                document.getElementById('topCurrency').textContent = 'THB';
-                document.getElementById('bottomCurrency').textContent = 'USDT';
-            }
-            document.getElementById('topInput').value = '';
-            document.getElementById('bottomInput').value = '';
-            document.getElementById('topInput').placeholder = 'Enter amount';
-            document.getElementById('bottomInput').placeholder = 'Enter amount';
-            document.getElementById('resultBlock').style.display = 'none';
-            lastEdited = 'top';
-            document.getElementById('topInput').focus();
-            document.getElementById('swapBtn').classList.toggle('rotated');
+        function setDirection(dir) {
+            if (dir === direction) return;
+            direction = dir;
+            document.querySelectorAll('.direction-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.dir === dir);
+            });
+            const isUsdt = dir === 'usdt-thb';
+            document.getElementById('inputLabel').textContent = isUsdt ? 'Amount in USDT' : 'Amount in THB';
+            document.getElementById('inputCurrency').textContent = isUsdt ? 'USDT' : 'THB';
+            document.getElementById('amount').value = '';
+            document.getElementById('amount').focus();
+            hideResults();
+        }
+
+        function hideResults() {
+            document.getElementById('resultsSection').style.display = 'none';
         }
 
         async function calculate() {
-            const topVal = parseFloat(document.getElementById('topInput').value);
-            const bottomVal = parseFloat(document.getElementById('bottomInput').value);
-            const amount = lastEdited === 'top' ? topVal : bottomVal;
+            const amount = parseFloat(document.getElementById('amount').value.replace(/\s/g, ''));
             if (!amount || amount <= 0) return;
 
             const btn = document.getElementById('calcBtn');
@@ -242,109 +257,74 @@
             btn.innerHTML = 'Calculating<span class="loading-dots"></span>';
 
             try {
-                // Определяем что передать в Playwright
-                let body = {};
-                const isTopUsdt = mode === 'usdt-top';
-                if (lastEdited === 'top') {
-                    if (isTopUsdt) body.usdt_amount = amount;
-                    else body.thb_amount = amount;
-                } else {
-                    if (isTopUsdt) body.thb_amount = amount;
-                    else body.usdt_amount = amount;
-                }
-
+                const body = direction === 'usdt-thb' ? { usdt_amount: amount } : { thb_amount: amount };
                 const res = await fetch(`/api/partner/${TOKEN}/precise`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
                 });
                 const data = await res.json();
-
                 if (data.success) {
                     rateBuy = data.rate_buy;
                     rateSell = data.rate_sell;
                 }
-                showResult(amount);
-                btn.innerHTML = 'Calculate';
-                btn.disabled = false;
-            } catch (e) {
-                showResult(amount);
-                btn.innerHTML = 'Calculate';
-                btn.disabled = false;
-            }
+            } catch (e) { /* fallback на текущий курс */ }
+
+            showResult(amount);
+            btn.innerHTML = '🚀 Calculate';
+            btn.disabled = false;
         }
 
         function showResult(amount) {
             const rate = getRate();
             if (!rate) return;
 
-            const isTopUsdt = mode === 'usdt-top';
-            let result, resultCur;
-
-            if (lastEdited === 'top') {
-                // Ввели сверху → результат снизу
-                if (isTopUsdt) {
-                    result = (amount * rate).toFixed(2);
-                    resultCur = 'THB';
-                } else {
-                    result = (amount / rate).toFixed(2);
-                    resultCur = 'USDT';
-                }
-                document.getElementById('bottomInput').value = formatNumber(result);
+            let result, srcCur, dstCur;
+            if (direction === 'usdt-thb') {
+                result = (amount * rate);
+                srcCur = 'USDT'; dstCur = 'THB';
             } else {
-                // Ввели снизу → результат сверху
-                if (isTopUsdt) {
-                    result = (amount / rate).toFixed(2);
-                    resultCur = 'USDT';
-                } else {
-                    result = (amount * rate).toFixed(2);
-                    resultCur = 'THB';
-                }
-                document.getElementById('topInput').value = formatNumber(result);
+                result = (amount / rate);
+                srcCur = 'THB'; dstCur = 'USDT';
             }
 
-            const rateTxt = `1 USDT = ${rate.toFixed(4)} THB`;
-            document.getElementById('resultRate').textContent = rateTxt;
-            document.getElementById('resultAmount').textContent = `${formatNumber(result)} ${resultCur}`;
-            document.getElementById('resultBlock').style.display = 'block';
+            const resultFmt = formatNumber(result);
+            const symbol = dstCur === 'THB' ? '฿' : 'USDT';
+            document.getElementById('resultValue').textContent = `${resultFmt} ${symbol}`;
+            document.getElementById('resultRate').textContent = `Rate: 1 USDT = ${rate.toFixed(4)} THB`;
+
+            lastResult =
+                `Grusha Exchange\n` +
+                `You send: ${formatNumber(amount)} ${srcCur}\n` +
+                `You receive: ${resultFmt} ${dstCur}\n` +
+                `Rate: 1 USDT = ${rate.toFixed(4)} THB`;
+            document.getElementById('copyText').textContent = lastResult;
+
+            document.getElementById('resultsSection').style.display = 'block';
+        }
+
+        function copyResult() {
+            navigator.clipboard.writeText(lastResult).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const prev = btn.innerHTML;
+                btn.innerHTML = '✓ Copied';
+                setTimeout(() => { btn.innerHTML = prev; }, 1500);
+            });
         }
 
         async function refreshRate() {
             try {
                 const res = await fetch(`/api/partner/${TOKEN}/info`);
                 const data = await res.json();
-                if (data.success) {
-                    rateBuy = data.rate_buy;
-                    rateSell = data.rate_sell;
-                }
+                if (data.success) { rateBuy = data.rate_buy; rateSell = data.rate_sell; }
             } catch (e) {}
         }
 
         function formatNumber(n) {
             return new Intl.NumberFormat('en-US', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2
+                minimumFractionDigits: 2, maximumFractionDigits: 2
             }).format(parseFloat(n));
         }
-
-        document.getElementById('topInput').addEventListener('input', () => {
-            lastEdited = 'top';
-            document.getElementById('bottomInput').value = '';
-            document.getElementById('bottomInput').placeholder = 'Result after calculating';
-            document.getElementById('resultBlock').style.display = 'none';
-        });
-        document.getElementById('bottomInput').addEventListener('input', () => {
-            lastEdited = 'bottom';
-            document.getElementById('topInput').value = '';
-            document.getElementById('topInput').placeholder = 'Result after calculating';
-            document.getElementById('resultBlock').style.display = 'none';
-        });
-        document.getElementById('topInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') calculate();
-        });
-        document.getElementById('bottomInput').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') calculate();
-        });
 
         init();
     </script>
