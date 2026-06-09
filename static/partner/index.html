@@ -155,9 +155,9 @@
         </div>
 
         <div class="calculator-card" id="calcState" style="display:none">
-            <!-- Type of operation (USDT-THB pair direction) -->
+            <!-- Currency direction (USDT-THB pair) -->
             <div class="direction-switcher">
-                <div class="direction-header">🎯 Type of operation</div>
+                <div class="direction-header">🔁 Direction</div>
                 <div class="direction-buttons">
                     <button class="direction-btn active" data-dir="usdt-thb" onclick="setDirection('usdt-thb')">
                         💵 USDT → THB
@@ -168,7 +168,20 @@
                 </div>
             </div>
 
-            <label class="input-label" id="inputLabel">Amount in USDT</label>
+            <!-- Operation: deposit a sum or target an amount to receive -->
+            <div class="direction-switcher">
+                <div class="direction-header">🎯 Type of operation</div>
+                <div class="direction-buttons">
+                    <button class="direction-btn active" data-op="send" onclick="setOperation('send')">
+                        💰 I send
+                    </button>
+                    <button class="direction-btn" data-op="receive" onclick="setOperation('receive')">
+                        🎁 I want to receive
+                    </button>
+                </div>
+            </div>
+
+            <label class="input-label" id="inputLabel">Amount you send (USDT)</label>
             <div class="input-wrapper">
                 <input type="text" id="amount" class="amount-input" placeholder="e.g. 1000" inputmode="decimal"
                        oninput="hideResults()" onkeydown="if(event.key==='Enter') calculate()">
@@ -180,7 +193,7 @@
             <!-- Results -->
             <div class="results-section" id="resultsSection" style="display:none">
                 <div class="result-main">
-                    <div class="result-label">Client receives:</div>
+                    <div class="result-label" id="resultLabel">Client receives:</div>
                     <div class="result-value" id="resultValue">0 ฿</div>
                     <div class="result-rate" id="resultRate"></div>
                 </div>
@@ -199,11 +212,40 @@
         const TOKEN = window.location.pathname.split('/partner/')[1]?.split('/')[0];
 
         let direction = 'usdt-thb';   // 'usdt-thb' | 'thb-usdt'
-        let rateBuy = null;           // USDT → THB (multiply)
-        let rateSell = null;          // THB → USDT (divide)
+        let operation = 'send';       // 'send' (вношу сумму) | 'receive' (хочу получить)
+        let rateBuy = null;           // USDT → THB (наш курс продажи бат за USDT)
+        let rateSell = null;          // THB → USDT (наш курс покупки бат)
         let lastResult = '';          // текст для копирования
 
         function getRate() { return direction === 'usdt-thb' ? rateBuy : rateSell; }
+
+        // Что в инпуте / что в результате при текущей паре направлений и операции
+        function uiConfig() {
+            const isUsdtThb = direction === 'usdt-thb';
+            if (operation === 'send') {
+                // Вношу сумму в исходной валюте → клиент получает в целевой
+                return {
+                    inputCur:  isUsdtThb ? 'USDT' : 'THB',
+                    outputCur: isUsdtThb ? 'THB'  : 'USDT',
+                    inputLabel:  `Amount you send (${isUsdtThb ? 'USDT' : 'THB'})`,
+                    resultLabel: 'Client receives:'
+                };
+            }
+            // receive: хочу получить сумму в целевой валюте → сколько надо внести
+            return {
+                inputCur:  isUsdtThb ? 'THB'  : 'USDT',
+                outputCur: isUsdtThb ? 'USDT' : 'THB',
+                inputLabel:  `Amount you want to receive (${isUsdtThb ? 'THB' : 'USDT'})`,
+                resultLabel: 'You need to send:'
+            };
+        }
+
+        function applyUI() {
+            const c = uiConfig();
+            document.getElementById('inputLabel').textContent = c.inputLabel;
+            document.getElementById('inputCurrency').textContent = c.inputCur;
+            document.getElementById('resultLabel').textContent = c.resultLabel;
+        }
 
         async function init() {
             if (!TOKEN) return showError();
@@ -233,12 +275,22 @@
         function setDirection(dir) {
             if (dir === direction) return;
             direction = dir;
-            document.querySelectorAll('.direction-btn').forEach(b => {
+            document.querySelectorAll('.direction-btn[data-dir]').forEach(b => {
                 b.classList.toggle('active', b.dataset.dir === dir);
             });
-            const isUsdt = dir === 'usdt-thb';
-            document.getElementById('inputLabel').textContent = isUsdt ? 'Amount in USDT' : 'Amount in THB';
-            document.getElementById('inputCurrency').textContent = isUsdt ? 'USDT' : 'THB';
+            applyUI();
+            document.getElementById('amount').value = '';
+            document.getElementById('amount').focus();
+            hideResults();
+        }
+
+        function setOperation(op) {
+            if (op === operation) return;
+            operation = op;
+            document.querySelectorAll('.direction-btn[data-op]').forEach(b => {
+                b.classList.toggle('active', b.dataset.op === op);
+            });
+            applyUI();
             document.getElementById('amount').value = '';
             document.getElementById('amount').focus();
             hideResults();
@@ -257,7 +309,9 @@
             btn.innerHTML = 'Calculating<span class="loading-dots"></span>';
 
             try {
-                const body = direction === 'usdt-thb' ? { usdt_amount: amount } : { thb_amount: amount };
+                // Точный курс Binance считаем по сумме в её валюте (USDT или THB)
+                const inputCur = uiConfig().inputCur;
+                const body = inputCur === 'USDT' ? { usdt_amount: amount } : { thb_amount: amount };
                 const res = await fetch(`/api/partner/${TOKEN}/precise`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -279,24 +333,37 @@
             const rate = getRate();
             if (!rate) return;
 
-            let result, srcCur, dstCur;
-            if (direction === 'usdt-thb') {
-                result = (amount * rate);
-                srcCur = 'USDT'; dstCur = 'THB';
+            const isUsdtThb = direction === 'usdt-thb';
+            const c = uiConfig();
+
+            // Расчёт результата
+            let result;
+            if (operation === 'send') {
+                // input в исходной валюте → output в целевой
+                result = isUsdtThb ? amount * rate : amount / rate;
             } else {
-                result = (amount / rate);
-                srcCur = 'THB'; dstCur = 'USDT';
+                // input — желаемое к получению → сколько надо внести
+                result = isUsdtThb ? amount / rate : amount * rate;
             }
 
             const resultFmt = formatNumber(result);
-            const symbol = dstCur === 'THB' ? '฿' : 'USDT';
-            document.getElementById('resultValue').textContent = `${resultFmt} ${symbol}`;
+            const symbol = (cur) => cur === 'THB' ? '฿' : 'USDT';
+            document.getElementById('resultValue').textContent = `${resultFmt} ${symbol(c.outputCur)}`;
             document.getElementById('resultRate').textContent = `Rate: 1 USDT = ${rate.toFixed(4)} THB`;
 
+            // Блок для копирования — всегда в порядке send → receive
+            let sendAmt, sendCur, recvAmt, recvCur;
+            if (operation === 'send') {
+                sendAmt = formatNumber(amount); sendCur = c.inputCur;
+                recvAmt = resultFmt;            recvCur = c.outputCur;
+            } else {
+                sendAmt = resultFmt;            sendCur = c.outputCur;
+                recvAmt = formatNumber(amount); recvCur = c.inputCur;
+            }
             lastResult =
                 `Grusha Exchange\n` +
-                `You send: ${formatNumber(amount)} ${srcCur}\n` +
-                `You receive: ${resultFmt} ${dstCur}\n` +
+                `You send: ${sendAmt} ${sendCur}\n` +
+                `You receive: ${recvAmt} ${recvCur}\n` +
                 `Rate: 1 USDT = ${rate.toFixed(4)} THB`;
             document.getElementById('copyText').textContent = lastResult;
 
