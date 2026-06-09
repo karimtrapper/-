@@ -606,6 +606,15 @@
         el.innerHTML = html;
     }
 
+    // Сумма сделки в её реальной валюте: USDT-сделки показываем как $, THB — как ฿
+    function dealAmount(deal) {
+        const cur = (deal.payout_currency || '').toLowerCase();
+        const amt = deal.payout_amount || 0;
+        if (amt && cur === 'thb') return '฿' + Math.round(amt).toLocaleString('ru-RU');
+        if (amt && cur === 'usdt') return '$' + Math.round(amt).toLocaleString('ru-RU');
+        return '$' + (deal.volume_usdt || 0).toFixed(0);
+    }
+
     function renderDeals(page) {
         const list = document.getElementById('deals-list');
         if (!list || !statsData) return;
@@ -631,7 +640,7 @@
                         </div>
                     </div>
                     <div>
-                        <div class="deal-amount">${deal.payout_thb ? '฿' + Math.round(deal.payout_thb).toLocaleString('ru-RU') : '$' + (deal.volume_usdt || 0).toFixed(0)}</div>
+                        <div class="deal-amount">${dealAmount(deal)}</div>
                         <div class="deal-income">+$${(deal.commission_usdt || 0).toFixed(0)}</div>
                     </div>
                 </div>

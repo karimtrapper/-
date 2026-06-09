@@ -4357,11 +4357,27 @@ def referrer_stats(token):
             name_parts = client_name.split()
             masked = name_parts[0][:3] + '***' if name_parts and len(name_parts[0]) > 2 else client_name[:3] + '***'
             initials = ''.join(p[0].upper() for p in name_parts[:2] if p) or '??'
-            payout_thb_value = deal.custom_payout_amount or deal.payout_amount_thb or 0
+            # Сумма и валюта выдачи: custom-сделки могут быть в USDT, а не в THB.
+            # Раньше custom_payout_amount всегда показывался как ฿ → USD-сделки рисовались батами.
+            cpc = (deal.custom_payout_currency or '').lower()
+            if deal.custom_payout_amount:
+                payout_amount = deal.custom_payout_amount
+                payout_cur = cpc if cpc in ('thb', 'usdt') else 'thb'
+            elif deal.payout_amount_thb:
+                payout_amount = deal.payout_amount_thb
+                payout_cur = 'thb'
+            elif deal.payout_amount_usdt:
+                payout_amount = deal.payout_amount_usdt
+                payout_cur = 'usdt'
+            else:
+                payout_amount = 0
+                payout_cur = 'thb'
             recent_deals.append({
                 'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
                 'volume_usdt': max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0),
-                'payout_thb': payout_thb_value,
+                'payout_amount': payout_amount,
+                'payout_currency': payout_cur,
+                'payout_thb': payout_amount if payout_cur == 'thb' else 0,  # legacy
                 'commission_usdt': deal.referrer_payout_usdt,
                 'paid': deal.referrer_paid or False,
                 'client_masked': masked,
