@@ -2093,6 +2093,33 @@ def _mirror_legacy_agent(session, deal):
     ))
 
 
+def _refresh_deal_agents(session, deal):
+    """Единый источник истины: пересчитывает выплаты агентам от ТЕКУЩЕЙ прибыли
+    сделки и синхронизирует deal_agents + net_profit_usdt + referrer_payout_usdt.
+
+    Источник агентов — существующие строки deal.agents (мультиагенты) либо
+    legacy-реферер сделки. Прогоняет всё через тот же каскад, что create/update,
+    поэтому net и строки агентов НЕ МОГУТ разойтись. Статус paid сохраняется.
+
+    Использовать там, где прибыль сделки меняется без нового массива agents с
+    фронта (например, при возмещении, когда payout_amount_usdt появляется позже).
+    """
+    existing = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
+    if existing:
+        agents_data = [{'referrer_id': r.referrer_id, 'name': r.name, 'tier': r.tier,
+                        'comp_model': r.comp_model, 'percent': r.percent,
+                        'fixed_usdt': r.fixed_usdt} for r in existing]
+    elif deal.referrer_id or deal.referrer_payout_usdt:
+        model = deal.referrer_comp_model or 'revshare'
+        pct = (deal.referrer_markup_percent if model == 'markup' else deal.referrer_percent) or 0
+        agents_data = [{'referrer_id': deal.referrer_id, 'name': deal.referrer_name, 'tier': 1,
+                        'comp_model': model, 'percent': pct,
+                        'fixed_usdt': deal.referrer_fixed_usdt or 0}]
+    else:
+        agents_data = []
+    _apply_deal_agents(session, deal, agents_data)
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -3765,22 +3792,14 @@ def create_reimbursement():
             
             # Recalculate profit now that we know payout USDT
             if deal.payin_amount_usdt and deal.payout_amount_usdt:
-                deal.profit_usdt = deal.payin_amount_usdt - deal.payout_amount_usdt
+                deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
                 deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
 
-                # Пересчёт выплаты реферу если ещё не задана
-                if deal.referrer_id and not deal.referrer_payout_usdt:
-                    if deal.referrer_comp_model == 'markup' and deal.referrer_markup_percent:
-                        volume_usdt = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
-                        deal.referrer_payout_usdt = round(volume_usdt * (deal.referrer_markup_percent / 100), 2)
-                    elif deal.referrer_comp_model == 'fixed' and deal.referrer_fixed_usdt:
-                        deal.referrer_payout_usdt = round(deal.referrer_fixed_usdt, 2)
-                    elif deal.referrer_percent:
-                        deal.referrer_payout_usdt = round(deal.profit_usdt * deal.referrer_percent / 100, 2)
-
-                # Recalculate net profit
-                referrer_payout = deal.referrer_payout_usdt or 0
-                deal.net_profit_usdt = deal.profit_usdt - referrer_payout
+                # Пересчёт выплат агентам + net от новой прибыли И синхронизация
+                # строк deal_agents (источник Telegram-уведомления). Раньше тут
+                # пересчитывался только legacy-реферер, а строки deal_agents
+                # оставались со стартовым payout=0 → уведомление расходилось с net.
+                _refresh_deal_agents(session, deal)
 
             # Возмещение = автозавершение сделки. Прибыль посчитана, деньги
             # фаундеру вернули — pending на этом этапе уже некорректен.

@@ -518,3 +518,48 @@ class TestPublicStats:
         with app.test_client() as pub:
             stats = pub.get(f'/api/ref/{referrer.token}/stats').json
             assert stats['total_referred_clients'] == 2
+
+
+# ── Регрессия: возмещение синхронизирует deal_agents с net (кейс 367) ──────
+
+class TestReimbursementRefreshesAgents:
+    """Сделка с THB-выплатой через личные фаундера: payout_usdt появляется
+    только при возмещении. Строки deal_agents (источник TG-уведомления) должны
+    пересчитываться вместе с net, иначе уведомление показывает payout=$0 при
+    ненулевой выплате агенту (баг сделки 367)."""
+
+    def test_agent_payout_matches_net_after_reimbursement(self, tc, db):
+        # реферер 20% revshare, привязан к клиенту
+        r = Referrer(name='Диана', code='GR-DIANA', token=secrets.token_hex(16),
+                     default_percent=20.0, comp_model='revshare', payout_currency='USDT')
+        db.add(r); db.commit()
+        c = Client(name='Сергей', referrer_id=r.id)
+        db.add(c); db.commit()
+
+        # сделка THB через личные фаундера: payout USDT ещё неизвестен → 0
+        resp = tc.post('/api/deals', json={
+            'client_id': c.id, 'deal_type': 'pay_in',
+            'payin_method': 'partners_cash', 'payin_amount_usdt': 5245,
+            'payout_method': 'transfer', 'payout_source': 'founder_personal',
+            'payout_amount_thb': 165000, 'status': 'pending',
+        })
+        deal_id = resp.json['deal']['id']
+        # на этом этапе выплата агенту ещё 0 (прибыль неизвестна)
+        agent0 = db.query(DealAgent).filter(DealAgent.deal_id == deal_id).first()
+        assert (agent0.payout_usdt or 0) == 0
+
+        # возмещение: фаундеру вернули $5048 → прибыль $197, агенту 20% = $39.40
+        resp = tc.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [deal_id], 'amount_usdt': 5048,
+            'tx_hash': 'e7272240619d2faaebaa',
+        })
+        assert resp.json['success'] is True
+
+        db.expire_all()
+        deal = db.query(Deal).get(deal_id)
+        agent = db.query(DealAgent).filter(DealAgent.deal_id == deal_id).first()
+        # ключевая инварианта: строка агента и net считаны из ОДНОГО расчёта
+        assert deal.profit_usdt == 197.0
+        assert agent.payout_usdt == 39.40
+        assert deal.net_profit_usdt == 157.60
+        assert round(deal.profit_usdt - agent.payout_usdt, 2) == deal.net_profit_usdt
