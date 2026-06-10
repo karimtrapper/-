@@ -4731,13 +4731,24 @@ def create_payout_request(token):
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
-        # Считаем pending по реальным сделкам (как в /stats)
-        deals = db.query(Deal).filter(
-            Deal.referrer_id == referrer.id,
-            Deal.status == DealStatus.COMPLETED
-        ).all()
-        total_earned = sum(d.referrer_payout_usdt or 0 for d in deals)
-        total_paid = sum((d.referrer_payout_usdt or 0) for d in deals if d.referrer_paid)
+        # Считаем pending из строк агента (мультиагентная модель), ТОЧНО как в /stats.
+        # Раньше тут было Deal.referrer_payout_usdt (легаси-кэш на сделке) — у рефереров
+        # с мультиагентными сделками оно = 0/None, поэтому кабинет показывал доступный
+        # баланс, а оформление вывода отвечало «Доступно: $0.00» и резало запрос.
+        agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
+        agent_by_deal = {r.deal_id: r for r in agent_rows}
+        if agent_by_deal:
+            completed_ids = {
+                row.id for row in db.query(Deal.id).filter(
+                    Deal.id.in_(list(agent_by_deal.keys())),
+                    Deal.status == DealStatus.COMPLETED,
+                ).all()
+            }
+            rows = [agent_by_deal[did] for did in completed_ids]
+            total_earned = sum(r.payout_usdt or 0 for r in rows)
+            total_paid = sum((r.payout_usdt or 0) for r in rows if r.paid)
+        else:
+            total_earned = total_paid = 0
         pending = round(total_earned - total_paid, 2)
 
         if pending < 50:
