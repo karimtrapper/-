@@ -976,12 +976,17 @@ def sync_deals_to_gsheet(deals):
             return {'ok': True, 'inserted': 0, 'updated': len(existing_to_update), 'error': None}
         deals = new_deals
 
-        # Находим последнюю строку с данными или заголовком недели
+        # Находим последнюю строку данных: пронумерованную сделку, строку-итог
+        # «ИТОГ <месяц>» или заголовок недели. Новые сделки вставляются ПОСЛЕ неё.
+        # Важно учитывать строку «ИТОГ <месяц>»: иначе сделки нового месяца садятся
+        # ВЫШЕ уже закрытого итога предыдущего месяца (баг: июньские сделки оказались
+        # над «ИТОГ МАЙ 2026» → визуально «июня нет»). Теперь они уходят под итог.
         insert_row = len(all_rows) + 1
         for i in range(len(all_rows) - 1, -1, -1):
             row = all_rows[i]
-            if (row[0] and str(row[0]).strip().isdigit()) or \
-               (row[1] and 'неделя' in str(row[1]).lower()):
+            a = str(row[0]).strip() if row[0] else ''
+            b = str(row[1]).strip().lower() if len(row) > 1 and row[1] else ''
+            if a.isdigit() or a.upper().startswith('ИТОГ') or 'неделя' in b:
                 insert_row = i + 2  # после этой строки (1-indexed + 1)
                 break
 
