@@ -2052,12 +2052,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
               const d=byReq[key]=byReq[key]||{cnt:0,sum:0,mine:false,merchant:(r?r.merchant:t.m),isReq:!!r};
               d.cnt++; d.sum+=t.client||0; if(mine.has(t.wl))d.mine=true; });
             const totalPaid=items.filter(t=>t.st==='closed').reduce((s,t)=>s+(t.client||0),0);
-            const profit=items.reduce((s,t)=>s+(t.margin||0),0);
-            const remaining=(b.got||0)-totalPaid;
+            const grossProfit=items.reduce((s,t)=>s+(t.margin||0),0);
+            const sumDop=(b.dop||[]).reduce((s,t)=>s+(t.usdt||0),0);  // доп.расходы прихода (недвижка/предоплата)
+            const profit=grossProfit-sumDop;                          // прибыль после доп.расходов
+            const remaining=(b.got||0)-totalPaid-sumDop;
             const mr=Object.entries(byReq).map(([k,d])=>`<div class="row"><span>${d.isReq?`📤 ${k}`:'💰 не выводился (на балансе)'} <span class="rx-muted">· ${d.merchant} · ${d.cnt} сд</span>${d.mine?' <b style="color:#1E40AF">← ЭТОТ</b>':''}</span><span class="num">$ ${rxFmt(d.sum)}</span></div>`).join('');
+            const dopRows=(b.dop||[]).map(t=>`<div class="row"><span style="color:#92400E">🏠 ${t['назн']||t.nazn||'Доп оплата'} <span class="rx-muted">· расход (не за сделку)</span></span><span class="num" style="color:#92400E">− $ ${rxFmt(t.usdt)}</span></div>`).join('');
             full=`<div class="row" style="margin-top:2px"><span>📥 Получено по приходу</span><span class="num"><b>$ ${rxFmt(b.got)}</b></span></div>
-              <div class="rx-muted" style="font-size:11px;margin-top:3px">куда ушло (по выводам):</div>${mr}
-              <div class="row" style="margin-top:2px"><span style="color:var(--green-dark)">💰 прибыль прихода</span><span class="num" style="color:var(--green-dark)">$ ${rxFmt(profit)}</span></div>
+              <div class="rx-muted" style="font-size:11px;margin-top:3px">куда ушло (по выводам):</div>${mr}${dopRows}
+              <div class="row" style="margin-top:2px"><span style="color:${profit>=0?'var(--green-dark)':'#DC2626'}">💰 прибыль прихода${sumDop?' <span class="rx-muted" style="font-size:11px">после доп.расходов</span>':''}</span><span class="num" style="color:${profit>=0?'var(--green-dark)':'#DC2626'}">$ ${rxFmt(profit)}</span></div>
               <div class="row"><span>🏦 остаток на TronScan</span><span class="num">$ ${rxFmt(remaining)}</span></div>`;
           }
           return `<div class="rx-dist" style="margin-bottom:8px">
