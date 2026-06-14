@@ -1947,9 +1947,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         .then(r=>r.json()).then(j=>{
           if(!j.ok){ alert('Ошибка'); return; }
           document.getElementById('rxniGot').value=j.total; rxRecalcInflow();
-          const br=document.getElementById('rxniBr'), w=document.getElementById('rxniW');
+          const br=document.getElementById('rxniBr'), w=document.getElementById('rxniW'), dt=document.getElementById('rxniD');
           if(j.wallet && !w.value) w.value=j.wallet;
           if(j.broker && !br.value) br.value=j.broker;
+          if(j.date && !dt.value) dt.value=j.date;
           const ok=j.items.filter(x=>x.ok).length, bad=j.items.length-ok;
           info.innerHTML=`✅ ${ok} тр. на $ ${rxFmt(j.total)}`+(j.broker?` · брокер: <b>${j.broker}</b>`:'')+(bad?` · <span style="color:#DC2626">${bad} не найдено</span>`:'');
         }).catch(e=>{ info.textContent='Ошибка сети'; })

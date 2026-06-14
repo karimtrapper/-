@@ -1109,7 +1109,7 @@ def reestr_tx_sum():
     raw = data.get('hashes') or []
     if isinstance(raw, str):
         raw = [h.strip() for h in raw.replace(',', '\n').split('\n') if h.strip()]
-    items, total, to_addr = [], 0.0, None
+    items, total, to_addr, dates = [], 0.0, None, []
     for h in raw:
         try:
             r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
@@ -1119,11 +1119,24 @@ def reestr_tx_sum():
             amt = float(tr.get('amount_str', 0)) / 1_000_000 if tr else 0.0
             if tr.get('to_address') and not to_addr:
                 to_addr = tr.get('to_address')
+            # дата транзакции из TronScan → BKK (UTC+7), как в реестре
+            ts = info.get('timestamp')
+            dstr = None
+            if ts:
+                d = datetime.utcfromtimestamp(int(ts) / 1000) + timedelta(hours=7)
+                dates.append(d)
+                dstr = d.strftime('%d.%m %H:%M')
             items.append({'hash': h, 'amount': round(amt, 6), 'ok': amt > 0,
-                          'to': tr.get('to_address'), 'from': tr.get('from_address')})
+                          'to': tr.get('to_address'), 'from': tr.get('from_address'), 'date': dstr})
             total += amt
         except Exception as e:
             items.append({'hash': h, 'amount': 0, 'ok': False, 'error': str(e)})
+    # дата/период прихода: одна дата или диапазон
+    date_str = ''
+    if dates:
+        ds = sorted(dates)
+        a, b = ds[0].strftime('%d.%m'), ds[-1].strftime('%d.%m')
+        date_str = a if a == b else f'{a}–{b}'
     # определяем брокера по кошельку получения (мэтч с таблицей «Приходы от брокера»)
     broker, wallet = '', to_addr or ''
     if to_addr:
@@ -1137,7 +1150,7 @@ def reestr_tx_sum():
         finally:
             session.close()
     return jsonify({'ok': True, 'total': round(total, 6), 'items': items,
-                    'wallet': wallet, 'broker': broker})
+                    'wallet': wallet, 'broker': broker, 'date': date_str})
 
 
 # --- онлайн-синк реестра из WL-бота ---
