@@ -970,7 +970,7 @@ def get_reestr_all():
                 wl = it.get('wl')
                 if wl and not str(wl).startswith('#'):
                     margin_by_wl[wl] = (it.get('margin'), it.get('mPct', ''))
-                    inflow_by_wl[wl] = {'n': b.get('n'), 'h': h0}
+                    inflow_by_wl[wl] = {'n': b.get('n'), 'h': h0, 'w': b.get('w', ''), 'br': b.get('br', '')}
         covered_wls = set(margin_by_wl.keys())
         for d in out['deals']:
             cov = d['wl'] in covered_wls
