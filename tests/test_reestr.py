@@ -226,3 +226,26 @@ def test_post_and_delete_inflow(client, clean_snapshots):
     assert client.delete(f'/api/reestr/inflows/{iid}').get_json()['ok']
     assert client.get('/api/reestr/all').get_json()['brokers'] == []
     s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
+
+
+def test_dop_persists_and_deletes(client, clean_snapshots):
+    """Доп.расход на приходе: POST сохраняет (виден в /all после перезагрузки), DELETE убирает."""
+    _set_view('deals', [{'wl': 'WL-1', 'usdt': 1000, 'merchant': 'A', 'status': 'closed'}])
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
+    iid = client.post('/api/reestr/inflows', json={'broker': 'X', 'received': 1100, 'deals': ['WL-1']}).get_json()['id']
+
+    # доп.расход (недвижка) — не за транзакцию
+    jd = client.post(f'/api/reestr/inflows/{iid}/dop', json={'назн': 'Недвижка Максиму', 'usdt': 500}).get_json()
+    assert jd['ok']
+    dop_id = jd['id']
+    # сохранился: виден в /all (а не пропал после обновления)
+    b = client.get('/api/reestr/all').get_json()['brokers'][0]
+    assert len(b['dop']) == 1 and b['dop'][0]['usdt'] == 500 and b['dop'][0]['назн'] == 'Недвижка Максиму'
+
+    # 0 и отрицательные суммы отвергаются
+    assert client.post(f'/api/reestr/inflows/{iid}/dop', json={'usdt': 0}).status_code == 400
+
+    # удаление доп.расхода
+    assert client.delete(f'/api/reestr/inflows/{iid}/dop/{dop_id}').get_json()['ok']
+    assert client.get('/api/reestr/all').get_json()['brokers'][0]['dop'] == []
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()

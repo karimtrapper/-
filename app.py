@@ -764,6 +764,7 @@ class ReestrInflow(Base):
     delta = Column(Float)                 # received − expected (наша маржа/корректировка)
     period = Column(String(60))
     composition = Column(Text)            # JSON: [{wl,m,rub,client,margin,mPct,st}]
+    dop = Column(Text)                    # JSON: [{id,назн,usdt}] — доп.расходы (недвижка/предоплата), вычитаются из прихода
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -892,6 +893,13 @@ try:
                 print("✅ CR-05 migration applied: UNIQUE(deal_id, type) on wallet_operations")
             except Exception as e:
                 print(f"⚠️ CR-05 migration failed: {e}")
+        # Доп.расходы на приходе реестра (недвижка/предоплата)
+        if 'postgresql' in DATABASE_URL:
+            try: conn.execute(text("ALTER TABLE reestr_inflows ADD COLUMN IF NOT EXISTS dop TEXT"))
+            except Exception as e: print(f"ℹ️ reestr_inflows.dop: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE reestr_inflows ADD COLUMN dop TEXT"))
+            except: pass
         conn.commit()
     print("✅ Database migration successful")
 except Exception as e:
@@ -958,7 +966,7 @@ def get_reestr_all():
                 'n': '#' + str(inf.id), 'd': inf.period or (inf.created_at.strftime('%d.%m') if inf.created_at else ''),
                 'br': inf.broker or '', 'w': inf.wallet or '', 'h': inf.txhashes or '—',
                 'got': inf.received_usdt or 0, 'delta': f"{(inf.delta or 0):.2f}", 'st': 'received',
-                'items': comp, 'dop': [], 'dealsText': ', '.join(c.get('wl', '') for c in comp),
+                'items': comp, 'dop': json.loads(inf.dop or '[]'), 'dealsText': ', '.join(c.get('wl', '') for c in comp),
                 'k': '', 'manual': True,
             })
         out['brokers'] = brokers
@@ -1083,6 +1091,46 @@ def patch_reestr_inflow(inflow_id):
             inf.wallet = (data['wallet'] or '').strip()
         if 'period' in data:
             inf.period = (data['period'] or '').strip()
+        session.commit()
+        return jsonify({'ok': True})
+    finally:
+        session.close()
+
+
+@app.route('/api/reestr/inflows/<int:inflow_id>/dop', methods=['POST'])
+def add_reestr_dop(inflow_id):
+    """Доп.расход на приходе (недвижка/предоплата — не за транзакцию): {назн, usdt}.
+    Вычитается из остатка прихода и из нашей прибыли при рендере."""
+    data = request.get_json(force=True, silent=True) or {}
+    naz = (data.get('назн') or data.get('nazn') or 'Доп оплата').strip()
+    usdt = float(data.get('usdt') or 0)
+    if usdt <= 0:
+        return jsonify({'ok': False, 'error': 'сумма должна быть > 0'}), 400
+    session = get_session()
+    try:
+        inf = session.get(ReestrInflow, inflow_id)
+        if not inf:
+            return jsonify({'ok': False, 'error': 'приход не найден'}), 404
+        items = json.loads(inf.dop or '[]')
+        new_id = (max((d.get('id', 0) for d in items), default=0) + 1)
+        items.append({'id': new_id, 'назн': naz, 'usdt': round(usdt, 2)})
+        inf.dop = json.dumps(items, ensure_ascii=False)
+        session.commit()
+        return jsonify({'ok': True, 'id': new_id})
+    finally:
+        session.close()
+
+
+@app.route('/api/reestr/inflows/<int:inflow_id>/dop/<int:dop_id>', methods=['DELETE'])
+def delete_reestr_dop(inflow_id, dop_id):
+    """Удалить доп.расход с прихода."""
+    session = get_session()
+    try:
+        inf = session.get(ReestrInflow, inflow_id)
+        if not inf:
+            return jsonify({'ok': False, 'error': 'приход не найден'}), 404
+        items = [d for d in json.loads(inf.dop or '[]') if d.get('id') != dop_id]
+        inf.dop = json.dumps(items, ensure_ascii=False)
         session.commit()
         return jsonify({'ok': True})
     finally:
