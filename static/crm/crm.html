@@ -1966,7 +1966,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       if(!checked.length){ box.innerHTML='Отметь сделки (или весь день) — покажу сумму к выплате и разницу.'; return; }
       if(!raw || got<=0){ box.innerHTML=`К выплате (Σ ${checked.length} сд.) <b>$ ${rxFmt(exp)}</b> · <span class="rx-muted">впиши, сколько реально прислал брокер — посчитаю разницу</span>`; return; }
       const delta=got-exp, sign=delta>=0?'+':'−';
-      box.innerHTML=`Получено <b>$ ${rxFmt(got)}</b> · к выплате (Σ ${checked.length} сд.) <b>$ ${rxFmt(exp)}</b> · Разница <b style="color:${delta>=0?'var(--green-dark)':'#DC2626'}">${sign} $ ${rxFmt(Math.abs(delta))}</b> ${delta>=0?'(наш плюс — раскидаю в маржу пропорционально)':'(пришло меньше ожидаемого — вычту пропорционально)'}`;
+      box.innerHTML=`Получено <b>$ ${rxFmt(got)}</b> · к выплате (Σ ${checked.length} сд.) <b>$ ${rxFmt(exp)}</b> · Разница <b style="color:${delta>=0?'var(--green-dark)':'#DC2626'}">${sign} $ ${rxFmt(Math.abs(delta))}</b>`;
     }
     function rxSaveInflow(){
       const deals=[...document.querySelectorAll('.rxni-dc:checked')].map(c=>c.value);
