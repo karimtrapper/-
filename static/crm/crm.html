@@ -1936,6 +1936,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           const diff=(j.total||0)-(x.got||0);
           if(Math.abs(diff)<0.01) out.innerHTML=`<span style="color:var(--green-dark)">✅ совпало (TronScan $ ${rxFmt(j.total)})</span>`;
           else out.innerHTML=`<span style="color:#DC2626">⚠️ расхождение $ ${rxFmt(Math.abs(diff))} — TronScan $ ${rxFmt(j.total)} ≠ таблица $ ${rxFmt(x.got)}</span>`;
+          // дотягиваем дату/брокера/кошелёк из TronScan в существующий приход
+          if(x.manual){
+            const patch={};
+            if(j.date) patch.period=j.date;
+            if(j.broker && !x.br) patch.broker=j.broker;
+            if(j.wallet && !x.w) patch.wallet=j.wallet;
+            if(Object.keys(patch).length){
+              fetch('/api/reestr/inflows/'+(x.n||'').replace('#',''),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(patch)})
+                .then(()=>{ out.innerHTML+=' · 🔄 дата/брокер обновлены'; setTimeout(rxLoad,900); });
+            }
+          }
         }).catch(e=>{ out.textContent='ошибка сети'; });
     }
     function rxFetchTxSum(){
