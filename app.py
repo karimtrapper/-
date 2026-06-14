@@ -965,8 +965,11 @@ def sync_reestr_from_wl():
     session = get_session()
     try:
         counts = {}
-        for view in ('merchants', 'deals', 'requests'):
+        for view in ('merchants', 'deals', 'requests', 'brokers'):
             arr = data.get(view, [])
+            # пустой brokers (лист недоступен) не затираем — оставляем прошлый снапшот/seed
+            if view == 'brokers' and not arr:
+                continue
             _reestr_upsert(session, view, arr)
             counts[view] = len(arr)
         session.commit()
