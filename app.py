@@ -968,25 +968,44 @@ def get_reestr_all():
         out['brokers'] = brokers
         covered_wls = set(margin_by_wl.keys())
         for d in out['deals']:
-            d['covered'] = d['wl'] in covered_wls
+            cov = d['wl'] in covered_wls
+            d['covered'] = cov
             mm = margin_by_wl.get(d['wl'])
-            if mm:
+            # маржа известна только после прихода (разница раскидана); иначе «ждём»
+            if cov and mm:
                 d['margin'], d['mPct'], d['mKnown'] = mm[0], mm[1], True
+            else:
+                d['margin'], d['mPct'], d['mKnown'] = None, '', False
+            # статус по покрытию: выплачено без прихода = аванс; с приходом = закрыто
+            base = d.get('status')
+            if base == 'closed':
+                d['status'] = 'closed' if cov else 'advance'
+            elif base == 'paid':
+                d['status'] = 'covered' if cov else 'paid'
+            # 'requested' и пр. — без изменения (ещё не выплачено)
         for r in out['requests']:
             cov = 0
             txs = r.get('txs', [])
             for t in txs:
+                c = t['wl'] in covered_wls
                 mm = margin_by_wl.get(t['wl'])
-                if mm:
+                if c and mm:
                     t['margin'], t['mPct'], t['mKnown'] = mm[0], mm[1], True
+                else:
+                    t['margin'], t['mPct'], t['mKnown'] = None, '', False
                 src = inflow_by_wl.get(t['wl'])
                 if src:
                     t['broker'] = src
                     cov += 1
-            if txs and cov == len(txs):
-                r['reco'] = f"✅ Сверка: {cov}/{len(txs)} сделок обеспечены приходами · суммы бьются"
+            n = len(txs)
+            all_cov = bool(n) and cov == n
+            if all_cov:
+                r['reco'] = f"✅ Сверка: {cov}/{n} сделок обеспечены приходами · суммы бьются"
             elif cov:
-                r['reco'] = f"⚠️ Обеспечено {cov}/{len(txs)} · остальные ждут прихода"
+                r['reco'] = f"⚠️ Обеспечено {cov}/{n} · остальные ждут прихода"
+            # выплаченная заявка без полного покрытия = аванс (брокер ещё должен)
+            if r.get('status') == 'closed' and not all_cov:
+                r['status'] = 'advance'
         return jsonify(out)
     finally:
         session.close()

@@ -162,6 +162,23 @@ def test_inflow_composition_negative_delta():
     assert items[0]['margin'] == pytest.approx(-50)
 
 
+def test_uncovered_paid_is_advance(client, clean_snapshots):
+    """Выплаченная сделка без прихода → статус 'advance' + маржа 'ждём'.
+    После прихода → 'closed' + маржа посчитана."""
+    _set_view('deals', [{'wl': 'WL-9', 'usdt': 1000, 'merchant': 'A', 'status': 'closed'}])
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
+
+    d = client.get('/api/reestr/all').get_json()['deals'][0]
+    assert d['status'] == 'advance' and d['covered'] is False and d['mKnown'] is False
+
+    j = client.post('/api/reestr/inflows', json={'broker': 'X', 'received': 1100, 'deals': ['WL-9']}).get_json()
+    assert j['ok']
+    d = client.get('/api/reestr/all').get_json()['deals'][0]
+    assert d['status'] == 'closed' and d['covered'] is True
+    assert d['margin'] == pytest.approx(100)  # вся разница на одну сделку
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
+
+
 def test_post_and_delete_inflow(client, clean_snapshots):
     """POST заводит приход (считает разницу, пишет в brokers /all), DELETE убирает."""
     _set_view('deals', [
