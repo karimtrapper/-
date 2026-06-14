@@ -1711,7 +1711,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <div class="card" style="padding:0;overflow:hidden;">
               <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700">Запросы на вывод · от мерчантов</div>
               <div class="rx-scroll"><table>
-                <thead><tr><th>Bitrix</th><th>Мерчант</th><th style="text-align:right">Σ USDT</th><th>Кошелёк</th><th style="text-align:right">Сделок</th><th>Статус</th></tr></thead>
+                <thead><tr><th>Bitrix</th><th>Мерчант</th><th style="text-align:right">Σ USDT</th><th>Запрошен</th><th>Оплачено</th><th>Кошелёк</th><th style="text-align:right">Сделок</th><th>Статус</th></tr></thead>
                 <tbody id="rx-requests-body"></tbody>
               </table></div>
             </div>
@@ -2068,9 +2068,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         const payout=`<div class="rx-box" style="margin-bottom:10px"><b>💸 Куда выплачено мерчанту:</b> <span class="num">${x.wallet||'—'}</span>${x.payTx?` · <a class="rx-tx" href="${rxTron(x.payTx)}" target="_blank">${x.payTx.slice(0,12)}… ↗</a>`:' <span class="rx-muted">(вывод в Bitrix)</span>'}</div>`;
         tb.insertAdjacentHTML('beforeend',`
           <tr class="rx-row" onclick="document.getElementById('rxr${i}').style.display=document.getElementById('rxr${i}').style.display==='none'?'':'none'">
-            <td class="num" style="font-weight:600">${x.bitrix_deal||x.id||'—'}</td><td>${x.merchant}</td><td class="num" style="text-align:right">${rxFmt(x.usdt)}</td><td class="num rx-muted">${x.wallet||''}</td><td class="num" style="text-align:right">${txs.length}</td><td>${rxBadge(x.status)}</td>
+            <td class="num" style="font-weight:600">${x.bitrix_deal||x.id||'—'}</td><td>${x.merchant}</td><td class="num" style="text-align:right">${rxFmt(x.usdt)}</td><td class="num rx-muted">${x.created||'—'}</td><td class="num rx-muted">${x.completed||(x.status==='requested'?'<span style="color:#1E40AF">ждёт</span>':'—')}</td><td class="num rx-muted">${x.wallet||''}</td><td class="num" style="text-align:right">${txs.length}</td><td>${rxBadge(x.status)}</td>
           </tr>
-          <tr id="rxr${i}" class="rx-prov" style="display:none"><td colspan="6" style="padding:14px">
+          <tr id="rxr${i}" class="rx-prov" style="display:none"><td colspan="8" style="padding:14px">
             ${reco}<div style="font-size:12px;color:#1E40AF;margin-bottom:8px">${x.age||''}</div>
             ${summary}${inflowsBlock}${payout}
             <div class="rx-scroll"><table><thead><tr><th>WL</th><th style="text-align:right">₽</th><th style="text-align:right">USDT</th><th style="text-align:right">Маржа $</th><th>Оплата Сбер</th><th>Приход брокера</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table></div>
