@@ -675,6 +675,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="partners">Партнёры</button>
             <button class="nav-tab" data-section="referrers">Рефереры</button>
             <button class="nav-tab" data-section="payoutRequests">Заявки на выплату</button>
+            <button class="nav-tab" data-section="exchangers">Обменники</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -1630,7 +1631,326 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
             </div>
         </section>
+
+        <!-- ===== Обменники (реестр WL) ===== -->
+        <section id="exchangers" class="section">
+          <style>
+            #exchangers .num{font-variant-numeric:tabular-nums;font-family:ui-monospace,"SF Mono",Menlo,monospace;}
+            #exchangers .rx-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}
+            #exchangers .rx-card{background:var(--bg);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;box-shadow:0 1px 3px rgba(0,0,0,.04);}
+            #exchangers .rx-card .lbl{font-size:12px;color:var(--text-sec);margin-bottom:4px;}
+            #exchangers .rx-card .val{font-size:20px;font-weight:800;}
+            #exchangers .rx-card .sub{font-size:11px;color:var(--text-muted);margin-top:2px;}
+            #exchangers .rx-subtabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:14px;align-items:center;}
+            #exchangers .rx-subtab{background:none;border:none;color:var(--text-sec);padding:8px 14px;border-radius:var(--r-sm);font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;}
+            #exchangers .rx-subtab:hover{background:var(--navy-100);color:var(--text);}
+            #exchangers .rx-subtab.active{background:var(--navy-800);color:#fff;}
+            #exchangers .rx-pill{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;white-space:nowrap;}
+            #exchangers a.rx-tx{color:var(--coral);text-decoration:none;}
+            #exchangers a.rx-tx:hover{text-decoration:underline;}
+            #exchangers .rx-prov{background:var(--navy-50);}
+            #exchangers .rx-dist{background:var(--navy-50);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;margin-bottom:12px;}
+            #exchangers .rx-dist .row{display:flex;justify-content:space-between;gap:8px;padding:2px 0;}
+            #exchangers .rx-box{background:var(--navy-50);border:1px dashed var(--border);border-radius:var(--r-sm);padding:12px;}
+            #exchangers .rx-inp{background:#fff;border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;color:var(--text);font-size:13px;}
+            #exchangers .rx-muted{color:var(--text-sec);}
+            #exchangers .rx-row:hover{background:var(--navy-50);cursor:pointer;}
+            @media(max-width:640px){#exchangers .rx-cards{grid-template-columns:repeat(2,1fr);} #exchangers .rx-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;} #exchangers .rx-scroll table{min-width:680px;}}
+          </style>
+
+          <div class="rx-cards" id="rxSummary"></div>
+
+          <div class="rx-subtabs">
+            <button class="rx-subtab active" data-rx="postup" onclick="rxSubtab('postup')">Поступления</button>
+            <button class="rx-subtab" data-rx="brokers" onclick="rxSubtab('brokers')">Конвертация от брокеров</button>
+            <button class="rx-subtab" data-rx="requests" onclick="rxSubtab('requests')">Запросы</button>
+            <button class="rx-subtab" data-rx="merchants" onclick="rxSubtab('merchants')">Мерчанты</button>
+            <button class="rx-subtab" data-rx="wallets" onclick="rxSubtab('wallets')">Кошельки</button>
+            <button class="btn btn-secondary btn-sm" style="margin-left:auto" onclick="rxLoad(true)" id="rxSyncBtn">🔄 Обновить из бота</button>
+          </div>
+
+          <!-- Поступления -->
+          <div id="rx-postup" class="rx-view">
+            <div class="card" style="padding:0;overflow:hidden;">
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border);background:var(--navy-50);">
+                <select id="rxFltMer" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все мерчанты</option></select>
+                <select id="rxFltStt" class="rx-inp" onchange="rxApplyFilter()"><option value="">Все статусы</option><option value="paid">💰 Оплачено</option><option value="requested">📤 В заявке</option><option value="closed">✅ Закрыто</option><option value="advance">⚠️ Аванс</option></select>
+                <select id="rxFltSort" class="rx-inp" onchange="rxApplyFilter()"><option value="new">↓ новые</option><option value="old">↑ старые</option></select>
+                <input id="rxFltSf" class="rx-inp num" style="width:90px" placeholder="USDT от" oninput="rxApplyFilter()">
+                <input id="rxFltSt" class="rx-inp num" style="width:90px" placeholder="USDT до" oninput="rxApplyFilter()">
+                <button class="btn btn-secondary btn-sm" onclick="rxResetFilter()">Сброс</button>
+                <span id="rxFltCnt" class="rx-muted" style="font-size:12px;margin-left:auto"></span>
+              </div>
+              <div class="rx-scroll"><table>
+                <thead><tr><th>WL</th><th>Дата</th><th>Мерчант</th><th style="text-align:right">Сумма ₽</th><th style="text-align:right">USDT</th><th style="text-align:right">Маржа $</th><th>Статус</th></tr></thead>
+                <tbody id="rx-deals-body"></tbody>
+              </table></div>
+            </div>
+          </div>
+
+          <!-- Конвертация -->
+          <div id="rx-brokers" class="rx-view" style="display:none">
+            <div class="card" style="padding:0;overflow:hidden;">
+              <div style="display:flex;gap:8px;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border);">
+                <div style="font-weight:700">Приходы USDT от брокеров</div>
+                <div style="display:flex;gap:8px;">
+                  <button id="rxMergeBtn" class="btn btn-secondary btn-sm" style="display:none" onclick="rxMergeInflows()">🔗 Объединить выбранные</button>
+                  <button class="btn btn-primary btn-sm" onclick="rxAddInflowForm()">+ Добавить приход</button>
+                </div>
+              </div>
+              <div class="rx-scroll"><table>
+                <thead><tr><th>№</th><th>Дата</th><th>Брокер</th><th>Кошелёк</th><th>TxHash</th><th style="text-align:right">Σ USDT</th><th style="text-align:right">Сделок</th><th>Статус</th></tr></thead>
+                <tbody id="rx-brokers-body"></tbody>
+              </table></div>
+            </div>
+            <div class="rx-muted" style="font-size:12px;margin-top:8px">Приходы ловятся авто из TRON. Клик по строке → за какие сделки и распределение по TronScan. Недвижка карвится отдельно.</div>
+          </div>
+
+          <!-- Запросы -->
+          <div id="rx-requests" class="rx-view" style="display:none">
+            <div class="card" style="padding:0;overflow:hidden;">
+              <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700">Запросы на вывод · от мерчантов</div>
+              <div class="rx-scroll"><table>
+                <thead><tr><th>Bitrix</th><th>Мерчант</th><th style="text-align:right">Σ USDT</th><th>Кошелёк</th><th style="text-align:right">Сделок</th><th>Статус</th></tr></thead>
+                <tbody id="rx-requests-body"></tbody>
+              </table></div>
+            </div>
+          </div>
+
+          <!-- Мерчанты -->
+          <div id="rx-merchants" class="rx-view" style="display:none">
+            <div class="rx-cards" id="rx-merchants-body" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))"></div>
+          </div>
+
+          <!-- Кошельки -->
+          <div id="rx-wallets" class="rx-view" style="display:none">
+            <div class="card" style="padding:0;overflow:hidden;">
+              <div style="padding:12px 14px;border-bottom:1px solid var(--border);font-weight:700">Кошельки (TRON)</div>
+              <div class="rx-scroll"><table>
+                <thead><tr><th>Адрес</th><th>Назначение</th><th>Тип</th><th style="text-align:right">Баланс</th><th>Посл. операция</th><th>Статус</th></tr></thead>
+                <tbody id="rx-wallets-body"></tbody>
+              </table></div>
+            </div>
+          </div>
+        </section>
     </div>
+
+    <script>
+    // ==================== РЕЕСТР ОБМЕННИКОВ (вкладка «Обменники») ====================
+    let rxData = {deals:[], brokers:[], requests:[], merchants:[], wallets:[]};
+
+    const rxFmt = n => (n==null||isNaN(n))?'0,00':Number(n).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const rxPct = (m,u) => (u&&u>0)?((m/u*100).toFixed(2)+'%'):'0%';
+    const rxTron = h => 'https://tronscan.org/#/transaction/'+h;
+    const rxTronAddr = a => 'https://tronscan.org/#/address/'+a;
+
+    const RX_ST = {
+      created:{t:'🆕 Создана',bg:'#EFF6FF',c:'#1E40AF'},
+      paid:{t:'💰 Оплачено',bg:'#F1F5F9',c:'#475569'},
+      covered:{t:'📥 Обеспечено',bg:'#D1FAE5',c:'#065F46'},
+      received:{t:'📥 Получен',bg:'#D1FAE5',c:'#065F46'},
+      requested:{t:'📤 В заявке',bg:'#EFF6FF',c:'#1E40AF'},
+      closed:{t:'✅ Закрыто',bg:'#D1FAE5',c:'#065F46'},
+      advance:{t:'⚠️ Аванс',bg:'#FEF2F2',c:'#991B1B'},
+      expired:{t:'⌛ Истекла',bg:'#F1F5F9',c:'#64748B'},
+      awaiting:{t:'⏳ Ожидается',bg:'#F1F5F9',c:'#475569'},
+      merged:{t:'↪ Объединён',bg:'#EFF6FF',c:'#1E40AF'},
+      realty:{t:'🏠 Недвижка',bg:'#FEF3C7',c:'#92400E'},
+      rejected:{t:'❌ Отклонён',bg:'#FEF2F2',c:'#991B1B'},
+    };
+    const rxBadge = s => { const x=RX_ST[s]||{t:s||'—',bg:'#F1F5F9',c:'#64748B'}; return `<span class="rx-pill" style="background:${x.bg};color:${x.c}">${x.t}</span>`; };
+
+    async function rxLoad(force){
+      const btn=document.getElementById('rxSyncBtn');
+      try{
+        if(force){ if(btn){btn.disabled=true;btn.textContent='⏳ Синхронизация…';}
+          const r=await fetch('/api/reestr/sync',{method:'POST'});
+          const j=await r.json(); if(!j.ok) alert('Синк: '+(j.error||'ошибка'));
+        }
+        const resp=await fetch('/api/reestr/all');
+        rxData=await resp.json();
+        ['deals','brokers','requests','merchants','wallets'].forEach(k=>{ if(!Array.isArray(rxData[k])) rxData[k]=[]; });
+        rxFillMerchantFilter(); rxRenderDeals(rxData.deals); rxRenderBrokers(); rxRenderRequests(); rxRenderMerchants(); rxRenderWallets(); rxRenderSummary();
+      }catch(e){ console.error(e); }
+      finally{ if(btn){btn.disabled=false;btn.textContent='🔄 Обновить из бота';} }
+    }
+
+    function rxRenderSummary(){
+      const paid=rxData.deals.reduce((s,d)=>s+(d.usdt||0),0);
+      const owe=rxData.merchants.reduce((s,m)=>s+(m.owe||0),0);
+      const margin=rxData.deals.filter(d=>d.mKnown!==false).reduce((s,d)=>s+(d.margin||0),0);
+      document.getElementById('rxSummary').innerHTML=`
+        <div class="rx-card"><div class="lbl">Оплачено всего</div><div class="val num">${rxFmt(paid)}</div><div class="sub">${rxData.deals.length} сделок</div></div>
+        <div class="rx-card"><div class="lbl">Кошельки</div><div class="val" style="color:var(--green-dark)">${rxData.wallets.length}</div><div class="sub">из TRON</div></div>
+        <div class="rx-card"><div class="lbl">Должны мерчантам</div><div class="val num" style="color:var(--amber)">${rxFmt(owe)}</div><div class="sub">в заявках + накоплено</div></div>
+        <div class="rx-card"><div class="lbl">Маржа</div><div class="val num" style="color:var(--green-dark)">+ ${rxFmt(margin)}</div><div class="sub">по известным</div></div>`;
+    }
+
+    function rxSubtab(name){
+      document.querySelectorAll('#exchangers .rx-subtab').forEach(b=>b.classList.toggle('active', b.dataset.rx===name));
+      document.querySelectorAll('#exchangers .rx-view').forEach(v=>v.style.display='none');
+      document.getElementById('rx-'+name).style.display='';
+    }
+
+    function rxFillMerchantFilter(){
+      const sel=document.getElementById('rxFltMer'); if(!sel) return;
+      const cur=sel.value; const names=[...new Set(rxData.deals.map(d=>d.merchant))].sort();
+      sel.innerHTML='<option value="">Все мерчанты</option>'+names.map(n=>`<option${n===cur?' selected':''}>${n}</option>`).join('');
+    }
+    const rxDateKey = d => { const m=(d||'').match(/(\d{2})\.(\d{2})/); return m?(m[2]+m[1]):'0000'; };
+    function rxApplyFilter(){
+      const mer=document.getElementById('rxFltMer').value, stt=document.getElementById('rxFltStt').value;
+      const sf=parseFloat(document.getElementById('rxFltSf').value)||null, st=parseFloat(document.getElementById('rxFltSt').value)||null;
+      const sort=document.getElementById('rxFltSort').value;
+      let list=rxData.deals.filter(d=>(!mer||d.merchant===mer)&&(!stt||d.status===stt)&&(sf==null||d.usdt>=sf)&&(st==null||d.usdt<=st));
+      list=list.slice().sort((a,b)=> sort==='old'? rxDateKey(a.dt).localeCompare(rxDateKey(b.dt)) : rxDateKey(b.dt).localeCompare(rxDateKey(a.dt)));
+      rxRenderDeals(list);
+    }
+    function rxResetFilter(){ ['rxFltMer','rxFltStt','rxFltSf','rxFltSt'].forEach(id=>document.getElementById(id).value=''); document.getElementById('rxFltSort').value='new'; rxRenderDeals(rxData.deals); }
+
+    function rxRenderDeals(list){
+      const tb=document.getElementById('rx-deals-body');
+      tb.innerHTML=list.map(d=>`<tr><td class="num" style="font-weight:600">${d.wl}</td><td class="num rx-muted">${d.dt||''}</td><td>${d.merchant}</td>
+        <td class="num" style="text-align:right">${rxFmt(d.rub)}</td><td class="num" style="text-align:right">${rxFmt(d.usdt)}</td>
+        <td class="num" style="text-align:right">${d.mKnown===false?'<span class="rx-muted">— ждём</span>':`<span style="color:var(--green-dark)">$ ${rxFmt(d.margin)}${d.mPct?` <span class="rx-muted">(${d.mPct})</span>`:''}</span>`}</td>
+        <td>${rxBadge(d.status)}</td></tr>`).join('');
+      const cnt=document.getElementById('rxFltCnt'); if(cnt) cnt.textContent=`${list.length} из ${rxData.deals.length}`;
+    }
+
+    function rxRenderBrokers(){
+      const tb=document.getElementById('rx-brokers-body'); tb.innerHTML='';
+      rxData.brokers.forEach((x,i)=>{
+        const items=x.items||[], dop=x.dop||[];
+        const sumClient=items.reduce((s,t)=>s+(t.client||0),0), sumMargin=items.reduce((s,t)=>s+(t.margin||0),0);
+        const sumDop=dop.reduce((s,t)=>s+(t.usdt||0),0), calc=sumClient+sumMargin+sumDop;
+        // распределение TronScan: closed=выплачено, иначе ждёт
+        const dist={}; items.forEach(t=>{ const d=dist[t.m]=dist[t.m]||{po:0,wt:0,wlp:[],wlw:[]}; if(t.st==='closed'){d.po+=t.client;d.wlp.push(t.wl);}else{d.wt+=t.client;d.wlw.push(t.wl);} });
+        const totalPaid=items.filter(t=>t.st==='closed').reduce((s,t)=>s+t.client,0);
+        const totalWait=items.filter(t=>t.st!=='closed').reduce((s,t)=>s+t.client,0);
+        const remaining=(x.got||0)-totalPaid, dDelta=remaining-totalWait-sumMargin;
+        const paidRows=Object.entries(dist).filter(([m,d])=>d.po>0).map(([m,d])=>`<div class="row"><span>${m} <span class="rx-muted" style="font-size:12px">· ${d.wlp.length} сд.</span></span><span class="num">− $ ${rxFmt(d.po)} <span style="color:var(--green-dark)">✅</span></span></div>`).join('');
+        const waitRows=Object.entries(dist).filter(([m,d])=>d.wt>0).map(([m,d])=>`<div class="row"><span>${m} <span class="rx-muted" style="font-size:12px">· ${d.wlw.length} сд.</span></span><span class="num">$ ${rxFmt(d.wt)} <span style="color:#1E40AF">📥 ждёт</span></span></div>`).join('');
+        const itemRows=items.map(t=>`<tr><td class="num" style="font-weight:600">${t.wl}</td><td>${t.m}</td><td class="num" style="text-align:right">${rxFmt(t.rub)}</td><td class="num" style="text-align:right">${rxFmt(t.client)}</td><td class="num" style="text-align:right;color:var(--green-dark)">$ ${rxFmt(t.margin)} <span class="rx-muted">(${rxPct(t.margin,t.client)})</span></td><td>${rxBadge(t.st)}</td></tr>`).join('');
+        const dopRows=dop.map(t=>`<tr style="background:#FFFBEB"><td>🏠 ${t['назн']||t.nazn||'Доп'}</td><td class="rx-muted">${t.from||'—'}</td><td class="rx-muted" colspan="2" style="text-align:right">${t.c||''}</td><td class="num" style="text-align:right;color:#92400E">$ ${rxFmt(t.usdt)}</td><td></td></tr>`).join('');
+        const dist_html=items.length?`<div class="rx-dist"><div style="font-size:12px;color:#1E40AF;margin-bottom:6px">🔗 Распределение этого прихода (TronScan ${(x.h||'').slice(0,10)}…) — куда ушли USDT:</div>
+            <div class="num" style="font-size:14px">
+              <div class="row"><span>📥 Получено по TronScan</span><span style="font-weight:700">$ ${rxFmt(x.got)}</span></div>
+              ${paidRows?`<div class="rx-muted" style="font-size:12px;margin-top:6px">Выплачено мерчантам:</div>${paidRows}<div class="row" style="border-top:1px solid var(--border);padding-top:4px"><span class="rx-muted">Итого выплачено</span><span>− $ ${rxFmt(totalPaid)}</span></div>`:''}
+              ${waitRows?`<div class="rx-muted" style="font-size:12px;margin-top:6px">Ждёт вывода (на кошельке):</div>${waitRows}`:''}
+              <div class="row" style="margin-top:4px"><span style="color:var(--green-dark)">💰 Наша прибыль (маржа)</span><span style="color:var(--green-dark)">$ ${rxFmt(sumMargin)} (${rxPct(sumMargin,sumClient)})</span></div>
+              <div class="row" style="margin-top:4px;padding-top:6px;border-top:1px dashed var(--border)"><span style="font-weight:700">🏦 Остаток на TronScan</span><span style="font-weight:700">$ ${rxFmt(remaining)} <span class="rx-muted" style="font-size:12px">= ждёт $ ${rxFmt(totalWait)} + прибыль $ ${rxFmt(sumMargin)}${Math.abs(dDelta)>=0.01?` + Δ ${rxFmt(dDelta)}`:''}</span></span></div>
+            </div></div>`:'';
+        const body=items.length?`<div class="rx-scroll"><table style="margin-bottom:10px"><thead><tr><th>WL</th><th>Мерчант</th><th style="text-align:right">₽</th><th style="text-align:right">USDT клиенту</th><th style="text-align:right">Маржа $</th><th>Статус</th></tr></thead><tbody id="rx-btb${i}">${itemRows}${dopRows}</tbody></table></div>
+            <div class="num" style="font-size:13px;margin-bottom:10px">К выплате: <b>$ ${rxFmt(sumClient)}</b> · Маржа: <b style="color:var(--green-dark)">$ ${rxFmt(sumMargin)}</b>${sumDop?` · Доп: <b style="color:#92400E">$ ${rxFmt(sumDop)}</b>`:''} · Пришло: <b>$ ${rxFmt(x.got)}</b> <span class="rx-muted">· Δ ${rxFmt((x.got||0)-calc)}</span></div>${dist_html}`
+          :`<div class="num" style="font-size:13px;margin-bottom:10px">Сделки: <b>${x.dealsText||'—'}</b> · Σ <b>$ ${rxFmt(x.got)}</b>${x.k?` · <span class="rx-muted">${x.k}</span>`:''}</div>`;
+        const w=x.w||'—', wShort=w.length>16?(w.slice(0,6)+'…'+w.slice(-6)):w;
+        const hShort=(x.h&&x.h!=='—')?(x.h.slice(0,10)+'…'):'—';
+        tb.insertAdjacentHTML('beforeend',`
+          <tr class="rx-row" onclick="document.getElementById('rxb${i}').style.display=document.getElementById('rxb${i}').style.display==='none'?'':'none'">
+            <td class="num" style="font-weight:600"><input type="checkbox" class="rx-bchk" data-got="${x.got||0}" data-h="${x.h||''}" onclick="event.stopPropagation();rxUpdMergeBtn()" style="margin-right:6px;vertical-align:middle">${x.n}</td>
+            <td class="num rx-muted">${x.d||''}</td><td>${x.br||''}</td><td class="num rx-muted">${wShort}</td>
+            <td class="num">${(x.h&&x.h!=='—')?`<a class="rx-tx" href="${rxTron(x.h)}" target="_blank" onclick="event.stopPropagation()">${hShort} ↗</a>`:'—'}</td>
+            <td class="num" style="text-align:right">${rxFmt(x.got)}</td><td class="num" style="text-align:right">${items.length}</td><td>${rxBadge(x.st)}</td>
+          </tr>
+          <tr id="rxb${i}" class="rx-prov" style="display:none"><td colspan="8" style="padding:14px">
+            <div class="rx-muted" style="font-size:12px;margin-bottom:8px">📥 Получено: <b style="color:var(--text)">${x.d||''}</b> · приход ${x.n} (${x.br||''}) — за что пришло:</div>
+            ${body}
+            <div class="rx-box"><div class="rx-muted" style="font-size:12px;margin-bottom:8px">➕ Добавить доп оплату (недвижка/предоплата — вычтется из прихода)</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+                <input id="rxdn${i}" class="rx-inp" style="width:200px" placeholder="Назначение" onclick="event.stopPropagation()">
+                <input id="rxds${i}" class="rx-inp num" style="width:120px" placeholder="Сумма USDT" onclick="event.stopPropagation()">
+                <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();rxAddDop(${i})">Добавить</button>
+              </div></div>
+          </td></tr>`);
+      });
+    }
+    function rxAddDop(i){
+      const naz=(document.getElementById('rxdn'+i).value||'Доп оплата').trim();
+      const sum=parseFloat(document.getElementById('rxds'+i).value||'0')||0;
+      document.getElementById('rx-btb'+i).insertAdjacentHTML('beforeend',`<tr style="background:#FFFBEB"><td>🏠 ${naz}</td><td class="rx-muted">вручную</td><td class="rx-muted" colspan="2" style="text-align:right">—</td><td class="num" style="text-align:right;color:#92400E">$ ${rxFmt(sum)}</td><td></td></tr>`);
+      document.getElementById('rxdn'+i).value='';document.getElementById('rxds'+i).value='';
+    }
+    function rxGoInflow(n){ rxSubtab('brokers'); const idx=rxData.brokers.findIndex(b=>b.n===n); if(idx<0)return; const el=document.getElementById('rxb'+idx); if(el){el.style.display='';el.scrollIntoView({behavior:'smooth',block:'center'});} }
+
+    function rxUpdMergeBtn(){ const n=document.querySelectorAll('#exchangers .rx-bchk:checked').length; const b=document.getElementById('rxMergeBtn'); if(n>=2){b.style.display='';b.textContent=`🔗 Объединить выбранные (${n})`;}else b.style.display='none'; }
+    function rxMergeInflows(){
+      const ch=[...document.querySelectorAll('#exchangers .rx-bchk:checked')]; if(ch.length<2)return;
+      const target=ch[0].closest('tr'); let sum=0,hashes=[];
+      ch.forEach(c=>{ sum+=parseFloat(c.dataset.got||'0')||0; const h=(c.dataset.h||'').split(',')[0].trim(); if(h&&h!=='—')hashes.push(h.slice(0,10)+'…'); });
+      const tn=target.querySelector('td').textContent.trim(); const tds=target.querySelectorAll('td');
+      tds[4].innerHTML=hashes.join(' + ')+` <span class="rx-pill" style="background:#EFF6FF;color:#1E40AF">🔗 ${ch.length} этапа</span>`; tds[5].textContent=rxFmt(sum);
+      ch.slice(1).forEach(c=>{ const row=c.closest('tr'); const ex=row.nextElementSibling; if(ex&&ex.classList.contains('rx-prov'))ex.style.display='none'; row.classList.remove('rx-row'); row.onclick=null; row.innerHTML=`<td colspan="8" class="rx-muted" style="padding:8px 12px">↪ объединён в приход ${tn} (один перевод в ${ch.length} этапа)</td>`; });
+      target.querySelector('.rx-bchk').checked=false; rxUpdMergeBtn();
+    }
+    function rxAddInflowForm(){
+      if(document.getElementById('rxNewInflow'))return;
+      document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr id="rxNewInflow" style="background:var(--navy-50)"><td colspan="8" style="padding:14px">
+        <div style="color:#1E40AF;font-weight:600;margin-bottom:8px">➕ Новый приход от брокера</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+          <input id="rxniBr" class="rx-inp" style="width:220px" placeholder="Брокер">
+          <input id="rxniW" class="rx-inp num" style="width:260px" placeholder="Кошелёк приёма">
+          <input id="rxniD" class="rx-inp" style="width:200px" placeholder="Дата / период">
+        </div>
+        <div class="rx-muted" style="font-size:12px;margin-bottom:6px">Транзакции. <b style="color:#1E40AF">2 этапа</b> → добавьте каждый перевод:</div>
+        <div id="rxniStages"></div>
+        <button class="btn btn-secondary btn-sm" style="margin:4px 0 8px" onclick="rxAddTxStage()">+ ещё этап (2-й перевод)</button>
+        <div class="num" style="margin-bottom:10px">Итого: <b id="rxniTotal">$ 0,00</b></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="rxSaveInflow()">Сохранить</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('rxNewInflow').remove()">Отмена</button></div>
+      </td></tr>`);
+      rxAddTxStage();
+    }
+    function rxAddTxStage(){ const n=document.querySelectorAll('#rxniStages .rxnis').length+1;
+      document.getElementById('rxniStages').insertAdjacentHTML('beforeend',`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;align-items:center"><span class="rx-muted" style="width:54px;font-size:12px">этап ${n}</span><input class="rx-inp num rxnih" style="width:300px" placeholder="TxHash"><input class="rx-inp num rxnis" style="width:130px" placeholder="USDT" oninput="rxRecalcInflow()"><input class="rx-inp rxnidt" style="width:110px" placeholder="📅 дата"></div>`); }
+    function rxRecalcInflow(){ let s=0; document.querySelectorAll('#rxniStages .rxnis').forEach(i=>s+=parseFloat(i.value||'0')||0); document.getElementById('rxniTotal').textContent='$ '+rxFmt(s); }
+    function rxSaveInflow(){
+      const br=(document.getElementById('rxniBr').value||'Брокер').trim(), w=(document.getElementById('rxniW').value||'—').trim(), d=(document.getElementById('rxniD').value||'сейчас').trim();
+      const hs=[...document.querySelectorAll('#rxniStages .rxnih')].map(i=>i.value.trim()).filter(Boolean);
+      let tot=0; document.querySelectorAll('#rxniStages .rxnis').forEach(i=>tot+=parseFloat(i.value||'0')||0);
+      document.getElementById('rxNewInflow').remove();
+      const hShort=hs.length?hs.map(h=>h.slice(0,10)+'…').join(' + '):'—', stages=hs.length>1?` <span class="rx-pill" style="background:#EFF6FF;color:#1E40AF">🔗 ${hs.length} этапа</span>`:'';
+      const wShort=w.length>16?(w.slice(0,6)+'…'+w.slice(-6)):w;
+      document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr class="rx-row" style="background:var(--navy-50)"><td class="num" style="font-weight:600"><input type="checkbox" class="rx-bchk" data-got="${tot}" data-h="${hs.join(', ')}" onclick="event.stopPropagation();rxUpdMergeBtn()" style="margin-right:6px;vertical-align:middle">new</td><td class="num rx-muted">${d}</td><td>${br}</td><td class="num rx-muted">${wShort}</td><td class="num">${hs.length?`<a class="rx-tx" href="${rxTron(hs[0])}" target="_blank" onclick="event.stopPropagation()">${hShort} ↗</a>`:'—'}${stages}</td><td class="num" style="text-align:right">${rxFmt(tot)}</td><td class="num" style="text-align:right">0</td><td><span class="rx-pill" style="background:#D1FAE5;color:#065F46">📥 получен · разметить</span></td></tr>`);
+    }
+
+    function rxRenderRequests(){
+      const tb=document.getElementById('rx-requests-body'); tb.innerHTML='';
+      rxData.requests.forEach((x,i)=>{
+        const txs=x.txs||[];
+        const rows=txs.map(t=>`<tr><td class="num" style="font-weight:600">${t.wl}</td><td class="num" style="text-align:right">${rxFmt(t.rub)}</td><td class="num" style="text-align:right">${rxFmt(t.usdt)}</td><td class="num" style="text-align:right">${t.mKnown===false?'<span class="rx-muted">— ждём</span>':(t.margin!=null?`<span style="color:var(--green-dark)">$ ${rxFmt(t.margin)}</span>`:'—')}</td><td class="num rx-muted">${t.sber||''}</td><td>${rxBadge(t.st||x.status)}</td></tr>`).join('');
+        const reco=x.reco?`<div style="margin-bottom:10px;padding:10px;border-radius:var(--r-sm);background:${x.status==='closed'?'#F0FDF4;color:#065F46':'#EFF6FF;color:#1E40AF'}">${x.reco}</div>`:'';
+        tb.insertAdjacentHTML('beforeend',`
+          <tr class="rx-row" onclick="document.getElementById('rxr${i}').style.display=document.getElementById('rxr${i}').style.display==='none'?'':'none'">
+            <td class="num" style="font-weight:600">${x.bitrix_deal||x.id||'—'}</td><td>${x.merchant}</td><td class="num" style="text-align:right">${rxFmt(x.usdt)}</td><td class="num rx-muted">${x.wallet||''}</td><td class="num" style="text-align:right">${txs.length}</td><td>${rxBadge(x.status)}</td>
+          </tr>
+          <tr id="rxr${i}" class="rx-prov" style="display:none"><td colspan="6" style="padding:14px">
+            ${reco}<div style="font-size:12px;color:#1E40AF;margin-bottom:8px">${x.age||''}</div>
+            <div class="rx-scroll"><table><thead><tr><th>WL</th><th style="text-align:right">₽</th><th style="text-align:right">USDT</th><th style="text-align:right">Маржа $</th><th>Оплата Сбер</th><th>Статус</th></tr></thead><tbody>${rows}</tbody></table></div>
+          </td></tr>`);
+      });
+    }
+
+    function rxRenderMerchants(){
+      document.getElementById('rx-merchants-body').innerHTML=rxData.merchants.map(m=>`
+        <div class="rx-card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div style="font-weight:700;font-size:16px">${m.name}</div>
+            <span class="rx-pill" style="background:${m.owe>0?'#FEF3C7':'#D1FAE5'};color:${m.owe>0?'#92400E':'#065F46'}">должны ${rxFmt(m.owe)}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center">
+            <div><div class="num" style="font-size:17px;font-weight:700">${rxFmt(m.free)}</div><div class="rx-muted" style="font-size:11px">накоплено</div></div>
+            <div><div class="num" style="font-size:17px;font-weight:700;color:#1E40AF">${rxFmt(m.req)}</div><div class="rx-muted" style="font-size:11px">в заявке</div></div>
+            <div><div class="num" style="font-size:17px;font-weight:700;color:var(--text-sec)">${rxFmt(m.paid)}</div><div class="rx-muted" style="font-size:11px">выплачено</div></div>
+          </div>
+        </div>`).join('');
+    }
+
+    function rxRenderWallets(){
+      document.getElementById('rx-wallets-body').innerHTML=rxData.wallets.map(w=>`<tr>
+        <td class="num"><a class="rx-tx" href="${rxTronAddr(w.addr)}" target="_blank">${(w.addr||'').slice(0,10)}…${(w.addr||'').slice(-6)} ↗</a></td>
+        <td>${w.use||''}</td><td class="rx-muted">${w.link||''}</td><td class="num" style="text-align:right;font-weight:600">${rxFmt(w.bal)}</td>
+        <td class="num rx-muted">${w.last||''}</td><td><span class="rx-pill" style="background:#D1FAE5;color:#065F46">✅ активный</span></td></tr>`).join('');
+    }
+    </script>
 
     <!-- Partner Modal -->
     <div id="partnerModal" class="modal">
@@ -2162,6 +2482,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'partners': loadPartners(); break;
                     case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
+                    case 'exchangers': rxLoad(); break;
                 }
 
                 // Update bottom nav highlight
@@ -3186,6 +3507,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'partners': loadPartners(); break;
                 case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
+                    case 'exchangers': rxLoad(); break;
             }
 
             // Update bottom nav highlight
@@ -7096,6 +7418,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="more-panel-item" onclick="showSection('managers'); closeMorePanel();"><span class="icon">👥</span><span>Менеджеры</span></button>
             <button class="more-panel-item" onclick="showSection('verification'); closeMorePanel();"><span class="icon">✅</span><span>Сверка</span></button>
             <button class="more-panel-item" onclick="showSection('partners'); closeMorePanel();"><span class="icon">🤝</span><span>Партнёры</span></button>
+            <button class="more-panel-item" onclick="showSection('exchangers'); closeMorePanel();"><span class="icon">🔁</span><span>Обменники</span></button>
             <button class="more-panel-item" onclick="window.location.href='/'; closeMorePanel();"><span class="icon">🚪</span><span>Выйти</span></button>
         </div>
     </div>

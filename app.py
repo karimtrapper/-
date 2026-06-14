@@ -740,6 +740,16 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents):
     return out, round(base, 2)
 
 
+class ReestrSnapshot(Base):
+    """Снапшот данных реестра обменников (WL-бот). Фаза 1 — засев из reestr_seed.json,
+    Фаза 2 — фоновый синк перезаписывает payload. Просмотры читают только отсюда → без лага."""
+    __tablename__ = 'reestr_snapshots'
+    id = Column(Integer, primary_key=True)
+    view = Column(String(40), unique=True, nullable=False)  # deals|brokers|requests|merchants|wallets
+    payload = Column(Text, nullable=False)                  # JSON-массив
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -872,6 +882,23 @@ except Exception as e:
 
 print("✅ Database initialized")
 
+# Засев реестра обменников из reestr_seed.json (только если таблица пуста).
+# Фаза 1: снапшот демо/реальных данных. Фаза 2: фоновый синк перезапишет.
+try:
+    _rs = get_session()
+    if _rs.query(ReestrSnapshot).count() == 0:
+        _seed_path = os.path.join(os.path.dirname(__file__), 'reestr_seed.json')
+        if os.path.exists(_seed_path):
+            with open(_seed_path, 'r', encoding='utf-8') as _f:
+                _seed = json.load(_f)
+            for _view, _arr in _seed.items():
+                _rs.add(ReestrSnapshot(view=_view, payload=json.dumps(_arr, ensure_ascii=False)))
+            _rs.commit()
+            print(f"✅ Reestr seeded: {', '.join(f'{k}={len(v)}' for k,v in _seed.items())}")
+    _rs.close()
+except Exception as e:
+    print(f"ℹ️ Reestr seed: {e}", flush=True)
+
 # ALTER TYPE ADD VALUE нельзя запускать внутри транзакции — отдельный autocommit
 if 'postgresql' in DATABASE_URL:
     try:
@@ -887,6 +914,94 @@ WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
 # ==================== WL BOT ====================
 WL_BOT_URL = os.environ.get('WL_BOT_URL', 'http://wl.grusha.agency')
 WL_BOT_API_KEY = os.environ.get('WL_BOT_API_KEY', '')
+
+
+# ==================== РЕЕСТР ОБМЕННИКОВ ====================
+@app.route('/api/reestr/all', methods=['GET'])
+def get_reestr_all():
+    """Все данные реестра одним чтением из Postgres CalcCRM (без внешних вызовов → без лага).
+    Фронт-вкладка «Обменники» рендерит из этого ответа все под-вкладки."""
+    session = get_session()
+    try:
+        out = {'deals': [], 'brokers': [], 'requests': [], 'merchants': [], 'wallets': [], 'updated_at': None}
+        for snap in session.query(ReestrSnapshot).all():
+            try:
+                out[snap.view] = json.loads(snap.payload)
+            except Exception:
+                out[snap.view] = []
+            if snap.updated_at and (out['updated_at'] is None or snap.updated_at.isoformat() > out['updated_at']):
+                out['updated_at'] = snap.updated_at.isoformat()
+        return jsonify(out)
+    finally:
+        session.close()
+
+
+# --- онлайн-синк реестра из WL-бота ---
+_reestr_sync_lock = threading.Lock()
+REESTR_SYNC_INTERVAL = int(os.environ.get('REESTR_SYNC_INTERVAL', '300'))  # сек
+
+
+def _reestr_upsert(session, view, arr):
+    """Перезаписывает один view снапшота (idempotent)."""
+    payload = json.dumps(arr, ensure_ascii=False)
+    snap = session.query(ReestrSnapshot).filter_by(view=view).first()
+    if snap:
+        snap.payload = payload
+        snap.updated_at = datetime.utcnow()
+    else:
+        session.add(ReestrSnapshot(view=view, payload=payload, updated_at=datetime.utcnow()))
+
+
+def sync_reestr_from_wl():
+    """Онлайн-синк: тянет снапшот из WL-бота → пишет в reestr_snapshots (deals/requests/merchants).
+    brokers/wallets НЕ трогает (они из seed/Google Sheet). Бросает requests-исключение при сетевой ошибке.
+    Просмотры реестра всегда читают из БД CalcCRM → синк не влияет на скорость UI (без лага)."""
+    headers = {}
+    if WL_BOT_API_KEY:
+        headers['Authorization'] = f'Bearer {WL_BOT_API_KEY}'
+    resp = requests.get(f'{WL_BOT_URL}/api/reestr/snapshot', headers=headers, timeout=15)
+    resp.raise_for_status()
+    data = resp.json()
+    session = get_session()
+    try:
+        counts = {}
+        for view in ('merchants', 'deals', 'requests'):
+            arr = data.get(view, [])
+            _reestr_upsert(session, view, arr)
+            counts[view] = len(arr)
+        session.commit()
+        return counts
+    finally:
+        session.close()
+
+
+@app.route('/api/reestr/sync', methods=['POST'])
+def post_reestr_sync():
+    """Ручной форс-синк (кнопка «🔄 Обновить»). Сериализован локом."""
+    with _reestr_sync_lock:
+        try:
+            counts = sync_reestr_from_wl()
+            return jsonify({'ok': True, 'synced': counts})
+        except requests.exceptions.RequestException as e:
+            return jsonify({'ok': False, 'error': f'WL Bot недоступен: {e}'}), 502
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+def _reestr_sync_loop():
+    """Фоновый рефрешер: раз в REESTR_SYNC_INTERVAL тянет онлайн-данные. Ошибки глушит
+    (старый снапшот остаётся, UI не падает). Не запускает Chromium → не конфликтует с Playwright по RAM."""
+    while True:
+        time.sleep(REESTR_SYNC_INTERVAL)
+        try:
+            with _reestr_sync_lock:
+                sync_reestr_from_wl()
+        except Exception as e:
+            print(f"ℹ️ reestr sync loop: {e}", flush=True)
+
+
+if os.environ.get('REESTR_SYNC_ENABLED', '1') == '1' and WL_BOT_URL:
+    threading.Thread(target=_reestr_sync_loop, daemon=True, name='reestr-sync').start()
 
 # ==================== GOOGLE SHEETS SYNC ====================
 GSHEET_ID = '1aW84o8JmiIOPpCaSyGQuWCmf_h7H6uPWBCloq7_WDOY'
