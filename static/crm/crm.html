@@ -1853,7 +1853,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <td class="num" style="text-align:right">${rxFmt(x.got)}</td><td class="num" style="text-align:right">${items.length}</td><td>${rxBadge(x.st)}</td>
           </tr>
           <tr id="rxb${i}" class="rx-prov" style="display:none"><td colspan="8" style="padding:14px">
-            <div class="rx-muted" style="font-size:12px;margin-bottom:8px">📥 Получено: <b style="color:var(--text)">${x.d||''}</b> · приход ${x.n} (${x.br||''}) — за что пришло:</div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+              <div class="rx-muted" style="font-size:12px">📥 Получено: <b style="color:var(--text)">${x.d||''}</b> · приход ${x.n} (${x.br||''}) — за что пришло:</div>
+              ${x.manual?`<button class="btn btn-secondary btn-sm" style="color:#DC2626" onclick="event.stopPropagation();rxDeleteInflow('${x.n}')">🗑 Удалить приход</button>`:''}
+            </div>
             ${body}
             <div class="rx-box"><div class="rx-muted" style="font-size:12px;margin-bottom:8px">➕ Добавить доп оплату (недвижка/предоплата — вычтется из прихода)</div>
               <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
@@ -1882,35 +1885,53 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       ch.slice(1).forEach(c=>{ const row=c.closest('tr'); const ex=row.nextElementSibling; if(ex&&ex.classList.contains('rx-prov'))ex.style.display='none'; row.classList.remove('rx-row'); row.onclick=null; row.innerHTML=`<td colspan="8" class="rx-muted" style="padding:8px 12px">↪ объединён в приход ${tn} (один перевод в ${ch.length} этапа)</td>`; });
       target.querySelector('.rx-bchk').checked=false; rxUpdMergeBtn();
     }
+    // Поштучный ввод прихода (закрытие дня): сумма + хеши + выбор сделок → разница раскидывается
     function rxAddInflowForm(){
       if(document.getElementById('rxNewInflow'))return;
-      document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr id="rxNewInflow" style="background:var(--navy-50)"><td colspan="8" style="padding:14px">
-        <div style="color:#1E40AF;font-weight:600;margin-bottom:8px">➕ Новый приход от брокера</div>
+      // необеспеченные сделки (ещё не привязаны к приходу), свежие сверху
+      const pool=rxData.deals.filter(d=>!d.covered).slice().sort((a,b)=>rxDateKey(b.dt).localeCompare(rxDateKey(a.dt)));
+      const dealRows=pool.map(d=>`<label class="rxni-deal" style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--border-light);cursor:pointer">
+        <input type="checkbox" class="rxni-dc" data-usdt="${d.usdt}" value="${d.wl}" onchange="rxRecalcInflow()">
+        <span class="num" style="font-weight:600;width:78px">${d.wl}</span><span style="flex:1">${d.merchant}</span>
+        <span class="num rx-muted">${d.dt||''}</span><span class="num" style="width:90px;text-align:right">${rxFmt(d.usdt)}</span></label>`).join('')
+        || '<div class="rx-muted" style="padding:8px">Нет необеспеченных сделок</div>';
+      document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr id="rxNewInflow" style="background:var(--navy-50)"><td colspan="9" style="padding:14px">
+        <div style="color:#1E40AF;font-weight:700;margin-bottom:10px">➕ Новый приход (закрытие дня)</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-          <input id="rxniBr" class="rx-inp" style="width:220px" placeholder="Брокер">
-          <input id="rxniW" class="rx-inp num" style="width:260px" placeholder="Кошелёк приёма">
-          <input id="rxniD" class="rx-inp" style="width:200px" placeholder="Дата / период">
+          <input id="rxniBr" class="rx-inp" style="width:200px" placeholder="Брокер">
+          <input id="rxniW" class="rx-inp num" style="width:240px" placeholder="Кошелёк приёма">
+          <input id="rxniD" class="rx-inp" style="width:170px" placeholder="Дата / период">
+          <input id="rxniGot" class="rx-inp num" style="width:200px" placeholder="Сколько прислал брокер (USDT)" oninput="rxRecalcInflow()">
         </div>
-        <div class="rx-muted" style="font-size:12px;margin-bottom:6px">Транзакции. <b style="color:#1E40AF">2 этапа</b> → добавьте каждый перевод:</div>
-        <div id="rxniStages"></div>
-        <button class="btn btn-secondary btn-sm" style="margin:4px 0 8px" onclick="rxAddTxStage()">+ ещё этап (2-й перевод)</button>
-        <div class="num" style="margin-bottom:10px">Итого: <b id="rxniTotal">$ 0,00</b></div>
-        <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="rxSaveInflow()">Сохранить</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('rxNewInflow').remove()">Отмена</button></div>
+        <div class="rx-muted" style="font-size:12px;margin-bottom:4px">TxHash(и) — каждый перевод с новой строки / через запятую:</div>
+        <textarea id="rxniHashes" class="rx-inp num" style="width:100%;height:48px;margin-bottom:10px" placeholder="хеш1, хеш2…"></textarea>
+        <div class="rx-muted" style="font-size:12px;margin-bottom:4px">Сделки, которые покрыл приход (отметь):</div>
+        <div style="max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px">${dealRows}</div>
+        <div class="rx-dist" style="margin-bottom:10px"><div class="num" id="rxniReco" style="font-size:14px">Выбери сделки и впиши сумму прихода — покажу разницу.</div></div>
+        <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="rxSaveInflow()">✅ Подтвердить и сохранить</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('rxNewInflow').remove()">Отмена</button></div>
       </td></tr>`);
-      rxAddTxStage();
+      document.getElementById('rxNewInflow').scrollIntoView({behavior:'smooth',block:'start'});
     }
-    function rxAddTxStage(){ const n=document.querySelectorAll('#rxniStages .rxnis').length+1;
-      document.getElementById('rxniStages').insertAdjacentHTML('beforeend',`<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px;align-items:center"><span class="rx-muted" style="width:54px;font-size:12px">этап ${n}</span><input class="rx-inp num rxnih" style="width:300px" placeholder="TxHash"><input class="rx-inp num rxnis" style="width:130px" placeholder="USDT" oninput="rxRecalcInflow()"><input class="rx-inp rxnidt" style="width:110px" placeholder="📅 дата"></div>`); }
-    function rxRecalcInflow(){ let s=0; document.querySelectorAll('#rxniStages .rxnis').forEach(i=>s+=parseFloat(i.value||'0')||0); document.getElementById('rxniTotal').textContent='$ '+rxFmt(s); }
+    function rxRecalcInflow(){
+      const got=parseFloat(document.getElementById('rxniGot').value||'0')||0;
+      const checked=[...document.querySelectorAll('.rxni-dc:checked')];
+      const exp=checked.reduce((s,c)=>s+(parseFloat(c.dataset.usdt)||0),0);
+      const delta=got-exp;
+      const sign=delta>=0?'+':'−';
+      document.getElementById('rxniReco').innerHTML=`Получено <b>$ ${rxFmt(got)}</b> · к выплате (Σ ${checked.length} сд.) <b>$ ${rxFmt(exp)}</b> · Разница <b style="color:${delta>=0?'var(--green-dark)':'#DC2626'}">${sign} $ ${rxFmt(Math.abs(delta))}</b> ${delta>=0?'(наш плюс — раскидаю в маржу пропорционально)':'(пришло меньше — вычту пропорционально)'}`;
+    }
     function rxSaveInflow(){
-      const br=(document.getElementById('rxniBr').value||'Брокер').trim(), w=(document.getElementById('rxniW').value||'—').trim(), d=(document.getElementById('rxniD').value||'сейчас').trim();
-      const hs=[...document.querySelectorAll('#rxniStages .rxnih')].map(i=>i.value.trim()).filter(Boolean);
-      let tot=0; document.querySelectorAll('#rxniStages .rxnis').forEach(i=>tot+=parseFloat(i.value||'0')||0);
-      document.getElementById('rxNewInflow').remove();
-      const hShort=hs.length?hs.map(h=>h.slice(0,10)+'…').join(' + '):'—', stages=hs.length>1?` <span class="rx-pill" style="background:#EFF6FF;color:#1E40AF">🔗 ${hs.length} этапа</span>`:'';
-      const wShort=w.length>16?(w.slice(0,6)+'…'+w.slice(-6)):w;
-      document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr class="rx-row" style="background:var(--navy-50)"><td class="num" style="font-weight:600"><input type="checkbox" class="rx-bchk" data-got="${tot}" data-h="${hs.join(', ')}" onclick="event.stopPropagation();rxUpdMergeBtn()" style="margin-right:6px;vertical-align:middle">new</td><td class="num rx-muted">${d}</td><td>${br}</td><td class="num rx-muted">${wShort}</td><td class="num">${hs.length?`<a class="rx-tx" href="${rxTron(hs[0])}" target="_blank" onclick="event.stopPropagation()">${hShort} ↗</a>`:'—'}${stages}</td><td class="num" style="text-align:right">${rxFmt(tot)}</td><td class="num" style="text-align:right">0</td><td><span class="rx-pill" style="background:#D1FAE5;color:#065F46">📥 получен · разметить</span></td></tr>`);
+      const deals=[...document.querySelectorAll('.rxni-dc:checked')].map(c=>c.value);
+      if(!deals.length){ alert('Отметь хотя бы одну сделку'); return; }
+      const body={broker:(document.getElementById('rxniBr').value||'').trim(), wallet:(document.getElementById('rxniW').value||'').trim(),
+        period:(document.getElementById('rxniD').value||'').trim(), received:parseFloat(document.getElementById('rxniGot').value||'0')||0,
+        txhashes:(document.getElementById('rxniHashes').value||'').trim(), deals};
+      fetch('/api/reestr/inflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+        .then(r=>r.json()).then(j=>{ if(!j.ok){alert('Ошибка: '+(j.error||'')); return;} rxLoad(); })
+        .catch(e=>alert('Ошибка сети: '+e));
     }
+    function rxDeleteInflow(id){ if(!confirm('Удалить приход '+id+'? Сделки снова станут необеспеченными.'))return;
+      fetch('/api/reestr/inflows/'+id.replace('#',''),{method:'DELETE'}).then(r=>r.json()).then(()=>rxLoad()); }
 
     function rxRenderRequests(){
       const tb=document.getElementById('rx-requests-body'); tb.innerHTML='';

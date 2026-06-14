@@ -16,7 +16,8 @@ import pytest
 import requests
 
 import app as appmod
-from app import app as flask_app, get_session, ReestrSnapshot, _reestr_upsert, sync_reestr_from_wl
+from app import (app as flask_app, get_session, ReestrSnapshot, ReestrInflow,
+                _reestr_upsert, sync_reestr_from_wl, _reestr_inflow_composition)
 
 
 @pytest.fixture
@@ -66,7 +67,9 @@ def test_reestr_all_reads_snapshot(client, clean_snapshots):
     _set_view('merchants', [{'name': 'EX1', 'free': 9.8}])
     resp = client.get('/api/reestr/all')
     data = resp.get_json()
-    assert data['deals'] == [{'wl': 'WL-0001', 'usdt': 9.8}]
+    assert len(data['deals']) == 1
+    assert data['deals'][0]['wl'] == 'WL-0001' and data['deals'][0]['usdt'] == 9.8
+    assert data['deals'][0]['covered'] is False  # нет ручного прихода → не обеспечено
     assert data['merchants'][0]['name'] == 'EX1'
     assert data['updated_at'] is not None
 
@@ -130,3 +133,61 @@ def test_sync_endpoint_502_when_wl_down(client, monkeypatch, clean_snapshots):
     resp = client.post('/api/reestr/sync')
     assert resp.status_code == 502
     assert resp.get_json()['ok'] is False
+
+
+# --- ручные приходы: разница раскидывается пропорционально ---
+
+def test_inflow_composition_proportional():
+    """Разница (received − Σ) делится пропорционально сумме сделки."""
+    deals_by_wl = {
+        'WL-001': {'wl': 'WL-001', 'usdt': 3000, 'merchant': 'A', 'status': 'closed'},
+        'WL-002': {'wl': 'WL-002', 'usdt': 5000, 'merchant': 'A', 'status': 'closed'},
+        'WL-003': {'wl': 'WL-003', 'usdt': 1800, 'merchant': 'B', 'status': 'paid'},
+    }
+    items, expected, delta = _reestr_inflow_composition(10000, ['WL-001', 'WL-002', 'WL-003'], deals_by_wl)
+    assert expected == 9800
+    assert delta == 200
+    m = {it['wl']: it['margin'] for it in items}
+    assert m['WL-001'] == pytest.approx(61.22, abs=0.01)   # 3000/9800*200
+    assert m['WL-002'] == pytest.approx(102.04, abs=0.01)
+    assert m['WL-003'] == pytest.approx(36.73, abs=0.01)
+    assert sum(m.values()) == pytest.approx(200, abs=0.05)  # вся разница разнесена
+
+
+def test_inflow_composition_negative_delta():
+    """Пришло меньше ожидаемого → разница минусовая, маржа отрицательная."""
+    deals_by_wl = {'WL-1': {'wl': 'WL-1', 'usdt': 1000, 'merchant': 'A', 'status': 'closed'}}
+    items, expected, delta = _reestr_inflow_composition(950, ['WL-1'], deals_by_wl)
+    assert expected == 1000 and delta == -50
+    assert items[0]['margin'] == pytest.approx(-50)
+
+
+def test_post_and_delete_inflow(client, clean_snapshots):
+    """POST заводит приход (считает разницу, пишет в brokers /all), DELETE убирает."""
+    _set_view('deals', [
+        {'wl': 'WL-001', 'usdt': 3000, 'merchant': 'A', 'status': 'closed'},
+        {'wl': 'WL-002', 'usdt': 5000, 'merchant': 'A', 'status': 'closed'},
+    ])
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
+
+    resp = client.post('/api/reestr/inflows', json={
+        'broker': 'TruidX', 'wallet': 'Tw', 'received': 8100,
+        'txhashes': ['hashA'], 'deals': ['WL-001', 'WL-002'],
+    })
+    j = resp.get_json()
+    assert j['ok'] and j['expected'] == 8000 and j['delta'] == 100
+
+    allr = client.get('/api/reestr/all').get_json()
+    assert len(allr['brokers']) == 1
+    b = allr['brokers'][0]
+    assert b['br'] == 'TruidX' and b['got'] == 8100 and b['manual'] is True
+    # маржа переопределена в сделках
+    dm = {d['wl']: d['margin'] for d in allr['deals']}
+    assert dm['WL-001'] == pytest.approx(37.5)   # 3000/8000*100
+    assert dm['WL-002'] == pytest.approx(62.5)
+
+    # удаление
+    iid = j['id']
+    assert client.delete(f'/api/reestr/inflows/{iid}').get_json()['ok']
+    assert client.get('/api/reestr/all').get_json()['brokers'] == []
+    s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()

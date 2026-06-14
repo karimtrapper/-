@@ -750,6 +750,23 @@ class ReestrSnapshot(Base):
     updated_at = Column(DateTime, default=datetime.utcnow)
 
 
+class ReestrInflow(Base):
+    """Приход брокера, заведённый вручную поштучно (закрытие дня).
+    Маржа = разница (получено − Σ к выплате по покрытым сделкам), разнесённая
+    пропорционально по сделкам. composition хранит снимок состава на момент ввода."""
+    __tablename__ = 'reestr_inflows'
+    id = Column(Integer, primary_key=True)
+    broker = Column(String(100))
+    wallet = Column(String(120))
+    txhashes = Column(Text)               # хеши через запятую
+    received_usdt = Column(Float)         # сколько реально прислал брокер
+    expected_usdt = Column(Float)         # Σ к выплате по покрытым сделкам
+    delta = Column(Float)                 # received − expected (наша маржа/корректировка)
+    period = Column(String(60))
+    composition = Column(Text)            # JSON: [{wl,m,rub,client,margin,mPct,st}]
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -931,7 +948,110 @@ def get_reestr_all():
                 out[snap.view] = []
             if snap.updated_at and (out['updated_at'] is None or snap.updated_at.isoformat() > out['updated_at']):
                 out['updated_at'] = snap.updated_at.isoformat()
+
+        # Приходы = заведённые вручную поштучно (перекрывают авто-снапшот brokers).
+        # Маржа из их разницы переопределяет маржу сделок/заявок; помечаем «обеспечено».
+        margin_by_wl, inflow_by_wl, brokers = {}, {}, []
+        for inf in session.query(ReestrInflow).order_by(ReestrInflow.created_at.desc()).all():
+            comp = json.loads(inf.composition or '[]')
+            short_h = (inf.txhashes or '').split(',')[0].strip()
+            brokers.append({
+                'n': '#' + str(inf.id), 'd': inf.period or (inf.created_at.strftime('%d.%m') if inf.created_at else ''),
+                'br': inf.broker or '', 'w': inf.wallet or '', 'h': inf.txhashes or '—',
+                'got': inf.received_usdt or 0, 'delta': f"{(inf.delta or 0):.2f}", 'st': 'received',
+                'items': comp, 'dop': [], 'dealsText': ', '.join(c.get('wl', '') for c in comp),
+                'k': '', 'manual': True,
+            })
+            for c in comp:
+                margin_by_wl[c['wl']] = (c.get('margin'), c.get('mPct', ''))
+                inflow_by_wl[c['wl']] = {'n': '#' + str(inf.id), 'h': short_h}
+        out['brokers'] = brokers
+        covered_wls = set(margin_by_wl.keys())
+        for d in out['deals']:
+            d['covered'] = d['wl'] in covered_wls
+            mm = margin_by_wl.get(d['wl'])
+            if mm:
+                d['margin'], d['mPct'], d['mKnown'] = mm[0], mm[1], True
+        for r in out['requests']:
+            cov = 0
+            txs = r.get('txs', [])
+            for t in txs:
+                mm = margin_by_wl.get(t['wl'])
+                if mm:
+                    t['margin'], t['mPct'], t['mKnown'] = mm[0], mm[1], True
+                src = inflow_by_wl.get(t['wl'])
+                if src:
+                    t['broker'] = src
+                    cov += 1
+            if txs and cov == len(txs):
+                r['reco'] = f"✅ Сверка: {cov}/{len(txs)} сделок обеспечены приходами · суммы бьются"
+            elif cov:
+                r['reco'] = f"⚠️ Обеспечено {cov}/{len(txs)} · остальные ждут прихода"
         return jsonify(out)
+    finally:
+        session.close()
+
+
+def _reestr_inflow_composition(received, deal_wls, deals_by_wl):
+    """Состав прихода + пропорциональное распределение разницы по сделкам.
+    margin сделки = доля_сделки × (received − Σ к выплате). Возвращает (items, expected, delta)."""
+    picked = [deals_by_wl[w] for w in deal_wls if w in deals_by_wl]
+    expected = sum(float(d.get('usdt') or 0) for d in picked)
+    delta = float(received or 0) - expected
+    items = []
+    for d in picked:
+        usdt = float(d.get('usdt') or 0)
+        share = (usdt / expected * delta) if expected else 0.0
+        items.append({
+            'wl': d['wl'], 'm': d.get('merchant', ''), 'rub': d.get('rub', 0),
+            'client': usdt, 'margin': round(share, 2),
+            'mPct': (f"{share / usdt * 100:.2f}%" if usdt else ''),
+            'st': d.get('status', 'closed'),
+        })
+    return items, round(expected, 2), round(delta, 2)
+
+
+@app.route('/api/reestr/inflows', methods=['POST'])
+def post_reestr_inflow():
+    """Завести приход вручную: {broker, wallet, period, received, txhashes[], deals:[wl..]}.
+    Считает разницу (received − Σ к выплате) и разносит её пропорционально → маржа сделок."""
+    data = request.get_json(force=True, silent=True) or {}
+    received = float(data.get('received') or 0)
+    deal_wls = data.get('deals') or []
+    txhashes = data.get('txhashes') or []
+    if isinstance(txhashes, str):
+        txhashes = [h.strip() for h in txhashes.replace(',', '\n').split('\n') if h.strip()]
+    if not deal_wls:
+        return jsonify({'ok': False, 'error': 'не выбраны сделки'}), 400
+    session = get_session()
+    try:
+        snap = session.query(ReestrSnapshot).filter_by(view='deals').first()
+        deals = json.loads(snap.payload) if snap else []
+        by_wl = {d['wl']: d for d in deals}
+        items, expected, delta = _reestr_inflow_composition(received, deal_wls, by_wl)
+        inf = ReestrInflow(
+            broker=data.get('broker', ''), wallet=data.get('wallet', ''),
+            txhashes=', '.join(txhashes), received_usdt=received,
+            expected_usdt=expected, delta=delta, period=data.get('period', ''),
+            composition=json.dumps(items, ensure_ascii=False),
+        )
+        session.add(inf)
+        session.commit()
+        return jsonify({'ok': True, 'id': inf.id, 'expected': expected, 'delta': delta})
+    finally:
+        session.close()
+
+
+@app.route('/api/reestr/inflows/<int:inflow_id>', methods=['DELETE'])
+def delete_reestr_inflow(inflow_id):
+    """Удалить ручной приход (сделки снова станут необеспеченными)."""
+    session = get_session()
+    try:
+        inf = session.get(ReestrInflow, inflow_id)
+        if inf:
+            session.delete(inf)
+            session.commit()
+        return jsonify({'ok': True})
     finally:
         session.close()
 
