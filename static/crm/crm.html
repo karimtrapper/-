@@ -2002,12 +2002,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         txs.forEach(t=>{ if(t.broker){ const k=t.broker.n; (grp[k]=grp[k]||{n:k,h:t.broker.h,w:t.broker.w||'',br:t.broker.br||'',cnt:0,usdt:0,margin:0,wls:[]});
           grp[k].cnt++; grp[k].usdt+=t.usdt||0; grp[k].margin+=(t.margin||0); grp[k].wls.push(t.wl); }});
         const gk=Object.keys(grp);
-        const inflowRows=Object.values(grp).map(g=>`<div class="rx-dist" style="margin-bottom:6px">
-          <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
-            <span><b>${g.br||'Приход'} ${g.n}</b> · кошелёк <span class="num rx-muted">${g.w?(g.w.slice(0,8)+'…'+g.w.slice(-6)):'—'}</span> · <a class="rx-tx" href="${rxTron(g.h)}" target="_blank" onclick="event.stopPropagation()">${(g.h||'').slice(0,10)}… ↗</a> · <span class="rx-tx" style="cursor:pointer" onclick="event.stopPropagation();rxGoInflow('${g.n}')">открыть →</span></span>
-            <span class="num">${g.cnt} сд · пришло за них <b>$ ${rxFmt(g.usdt+g.margin)}</b> <span class="rx-muted">(к выплате $ ${rxFmt(g.usdt)} + доход <span style="color:var(--green-dark)">$ ${rxFmt(g.margin)}</span>)</span></span>
-          </div>
-          <div class="rx-muted" style="font-size:11px">${g.wls.join(', ')}</div></div>`).join('');
+        // по каждому приходу — ПОЛНАЯ раскладка (все мерчанты/сделки прихода + прибыль + остаток),
+        // с пометкой «← этот вывод», чтобы оунеру была видна вся логика, а не просто TronScan
+        const inflowRows=Object.values(grp).map(g=>{
+          const b=(rxData.brokers||[]).find(bb=>bb.n===g.n);
+          const mine=new Set(g.wls);
+          let full='';
+          if(b){
+            const items=b.items||[], md={};
+            items.forEach(t=>{ const d=md[t.m]=md[t.m]||{sum:0,cnt:0,mine:false}; d.sum+=t.client||0; d.cnt++; if(mine.has(t.wl))d.mine=true; });
+            const totalPaid=items.filter(t=>t.st==='closed').reduce((s,t)=>s+(t.client||0),0);
+            const profit=items.reduce((s,t)=>s+(t.margin||0),0);
+            const remaining=(b.got||0)-totalPaid;
+            const mr=Object.entries(md).map(([m,d])=>`<div class="row"><span>${m} <span class="rx-muted">· ${d.cnt} сд</span>${d.mine?' <b style="color:#1E40AF">← этот вывод</b>':''}</span><span class="num">$ ${rxFmt(d.sum)}</span></div>`).join('');
+            full=`<div class="row" style="margin-top:2px"><span>📥 Получено по приходу</span><span class="num"><b>$ ${rxFmt(b.got)}</b></span></div>
+              <div class="rx-muted" style="font-size:11px;margin-top:3px">куда ушло (все сделки прихода):</div>${mr}
+              <div class="row" style="margin-top:2px"><span style="color:var(--green-dark)">💰 прибыль прихода</span><span class="num" style="color:var(--green-dark)">$ ${rxFmt(profit)}</span></div>
+              <div class="row"><span>🏦 остаток на TronScan</span><span class="num">$ ${rxFmt(remaining)}</span></div>`;
+          }
+          return `<div class="rx-dist" style="margin-bottom:8px">
+            <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px">
+              <span><b>${g.br||'Приход'} ${g.n}</b> · <a class="rx-tx" href="${rxTron(g.h)}" target="_blank" onclick="event.stopPropagation()">${(g.h||'').slice(0,10)}…↗</a> · <span class="rx-tx" style="cursor:pointer" onclick="event.stopPropagation();rxGoInflow('${g.n}')">открыть →</span></span>
+              <span class="num">▸ за ЭТОТ вывод отсюда: <b>$ ${rxFmt(g.usdt+g.margin)}</b> <span class="rx-muted">(${g.cnt} сд: ${g.wls.join(', ')})</span></span>
+            </div>${full}</div>`;
+        }).join('');
         // итог по выводу: получено за сделки (от брокеров) − выплачено мерчанту = наш доход
         const covTxs=txs.filter(t=>t.broker);
         const recvForDeals=covTxs.reduce((s,t)=>s+(t.usdt||0)+(t.margin||0),0);
