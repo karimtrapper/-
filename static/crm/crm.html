@@ -1738,6 +1738,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     <script>
     // ==================== РЕЕСТР ОБМЕННИКОВ (вкладка «Обменники») ====================
     let rxData = {deals:[], brokers:[], requests:[], merchants:[], wallets:[]};
+    let rxWlReq = {};  // WL → {deal, merchant} — в какой вывод (запрос) ушла сделка
 
     const rxFmt = n => (n==null||isNaN(n))?'0,00':Number(n).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2});
     const rxPct = (m,u) => (u&&u>0)?((m/u*100).toFixed(2)+'%'):'0%';
@@ -1770,6 +1771,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         const resp=await fetch('/api/reestr/all');
         rxData=await resp.json();
         ['deals','brokers','requests','merchants','wallets'].forEach(k=>{ if(!Array.isArray(rxData[k])) rxData[k]=[]; });
+        rxWlReq={}; (rxData.requests||[]).forEach(r=>{ (r.txs||[]).forEach(t=>{ rxWlReq[t.wl]={deal:r.bitrix_deal||r.id, merchant:r.merchant}; }); });
         rxFillMerchantFilter(); rxRenderDeals(rxData.deals); rxRenderBrokers(); rxRenderRequests(); rxRenderMerchants(); rxRenderWallets(); rxRenderSummary();
       }catch(e){ console.error(e); }
       finally{ if(btn){btn.disabled=false;btn.textContent='🔄 Обновить из бота';} }
@@ -2009,14 +2011,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
           const mine=new Set(g.wls);
           let full='';
           if(b){
-            const items=b.items||[], md={};
-            items.forEach(t=>{ const d=md[t.m]=md[t.m]||{sum:0,cnt:0,mine:false}; d.sum+=t.client||0; d.cnt++; if(mine.has(t.wl))d.mine=true; });
+            const items=b.items||[];
+            // группируем сделки прихода ПО ВЫВОДАМ (разные запросы) + «не выводился»
+            const byReq={};
+            items.forEach(t=>{ const r=rxWlReq[t.wl];
+              const key=r?('вывод '+r.deal):'нет вывода';
+              const d=byReq[key]=byReq[key]||{cnt:0,sum:0,mine:false,merchant:(r?r.merchant:t.m),isReq:!!r};
+              d.cnt++; d.sum+=t.client||0; if(mine.has(t.wl))d.mine=true; });
             const totalPaid=items.filter(t=>t.st==='closed').reduce((s,t)=>s+(t.client||0),0);
             const profit=items.reduce((s,t)=>s+(t.margin||0),0);
             const remaining=(b.got||0)-totalPaid;
-            const mr=Object.entries(md).map(([m,d])=>`<div class="row"><span>${m} <span class="rx-muted">· ${d.cnt} сд</span>${d.mine?' <b style="color:#1E40AF">← этот вывод</b>':''}</span><span class="num">$ ${rxFmt(d.sum)}</span></div>`).join('');
+            const mr=Object.entries(byReq).map(([k,d])=>`<div class="row"><span>${d.isReq?`📤 ${k}`:'💰 не выводился (на балансе)'} <span class="rx-muted">· ${d.merchant} · ${d.cnt} сд</span>${d.mine?' <b style="color:#1E40AF">← ЭТОТ</b>':''}</span><span class="num">$ ${rxFmt(d.sum)}</span></div>`).join('');
             full=`<div class="row" style="margin-top:2px"><span>📥 Получено по приходу</span><span class="num"><b>$ ${rxFmt(b.got)}</b></span></div>
-              <div class="rx-muted" style="font-size:11px;margin-top:3px">куда ушло (все сделки прихода):</div>${mr}
+              <div class="rx-muted" style="font-size:11px;margin-top:3px">куда ушло (по выводам):</div>${mr}
               <div class="row" style="margin-top:2px"><span style="color:var(--green-dark)">💰 прибыль прихода</span><span class="num" style="color:var(--green-dark)">$ ${rxFmt(profit)}</span></div>
               <div class="row"><span>🏦 остаток на TronScan</span><span class="num">$ ${rxFmt(remaining)}</span></div>`;
           }
