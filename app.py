@@ -949,23 +949,32 @@ def get_reestr_all():
             if snap.updated_at and (out['updated_at'] is None or snap.updated_at.isoformat() > out['updated_at']):
                 out['updated_at'] = snap.updated_at.isoformat()
 
-        # Приходы = заведённые вручную поштучно (перекрывают авто-снапшот brokers).
-        # Маржа из их разницы переопределяет маржу сделок/заявок; помечаем «обеспечено».
-        margin_by_wl, inflow_by_wl, brokers = {}, {}, []
+        # Приходы: из таблицы «Приходы от брокера» (синк, реальная маржа) + ручные поверх.
+        # Маржа берётся из таблицы (col «Наша маржа $»), покрытие → статус сделок.
+        table_brokers = out.get('brokers') or []
+        for b in table_brokers:
+            b['fromTable'] = True
+        manual_brokers = []
         for inf in session.query(ReestrInflow).order_by(ReestrInflow.created_at.desc()).all():
             comp = json.loads(inf.composition or '[]')
-            short_h = (inf.txhashes or '').split(',')[0].strip()
-            brokers.append({
+            manual_brokers.append({
                 'n': '#' + str(inf.id), 'd': inf.period or (inf.created_at.strftime('%d.%m') if inf.created_at else ''),
                 'br': inf.broker or '', 'w': inf.wallet or '', 'h': inf.txhashes or '—',
                 'got': inf.received_usdt or 0, 'delta': f"{(inf.delta or 0):.2f}", 'st': 'received',
                 'items': comp, 'dop': [], 'dealsText': ', '.join(c.get('wl', '') for c in comp),
                 'k': '', 'manual': True,
             })
-            for c in comp:
-                margin_by_wl[c['wl']] = (c.get('margin'), c.get('mPct', ''))
-                inflow_by_wl[c['wl']] = {'n': '#' + str(inf.id), 'h': short_h}
+        brokers = manual_brokers + table_brokers
         out['brokers'] = brokers
+        # маржа/покрытие из ВСЕХ приходов (таблица + ручные)
+        margin_by_wl, inflow_by_wl = {}, {}
+        for b in brokers:
+            h0 = (b.get('h') or '').split(',')[0].strip()
+            for it in (b.get('items') or []):
+                wl = it.get('wl')
+                if wl and not str(wl).startswith('#'):
+                    margin_by_wl[wl] = (it.get('margin'), it.get('mPct', ''))
+                    inflow_by_wl[wl] = {'n': b.get('n'), 'h': h0}
         covered_wls = set(margin_by_wl.keys())
         for d in out['deals']:
             cov = d['wl'] in covered_wls

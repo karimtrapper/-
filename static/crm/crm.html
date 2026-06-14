@@ -1853,9 +1853,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <td class="num" style="text-align:right">${rxFmt(x.got)}</td><td class="num" style="text-align:right">${items.length}</td><td>${rxBadge(x.st)}</td>
           </tr>
           <tr id="rxb${i}" class="rx-prov" style="display:none"><td colspan="8" style="padding:14px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div class="rx-muted" style="font-size:12px">📥 Получено: <b style="color:var(--text)">${x.d||''}</b> · приход ${x.n} (${x.br||''}) — за что пришло:</div>
-              ${x.manual?`<button class="btn btn-secondary btn-sm" style="color:#DC2626" onclick="event.stopPropagation();rxDeleteInflow('${x.n}')">🗑 Удалить приход</button>`:''}
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+              <div class="rx-muted" style="font-size:12px">📥 В таблице: <b style="color:var(--text)">$ ${rxFmt(x.got)}</b> · приход ${x.n} (${x.br||''}) ${x.d||''}</div>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span id="rxv${i}" class="num" style="font-size:12px"></span>
+                ${(x.h&&x.h!=='—')?`<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();rxVerifyInflow(${i})">🔍 Сверить с TronScan</button>`:''}
+                ${x.manual?`<button class="btn btn-secondary btn-sm" style="color:#DC2626" onclick="event.stopPropagation();rxDeleteInflow('${x.n}')">🗑 Удалить</button>`:''}
+              </div>
             </div>
             ${body}
             <div class="rx-box"><div class="rx-muted" style="font-size:12px;margin-bottom:8px">➕ Добавить доп оплату (недвижка/предоплата — вычтется из прихода)</div>
@@ -1919,6 +1923,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="rxSaveInflow()">✅ Подтвердить и сохранить</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('rxNewInflow').remove()">Отмена</button></div>
       </td></tr>`);
       document.getElementById('rxNewInflow').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    function rxVerifyInflow(i){
+      const x=rxData.brokers[i], out=document.getElementById('rxv'+i);
+      if(!x||!x.h||x.h==='—'){ if(out)out.textContent='нет хеша'; return; }
+      out.textContent='⏳ TronScan…';
+      fetch('/api/reestr/tx-sum',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({hashes:x.h})})
+        .then(r=>r.json()).then(j=>{
+          const diff=(j.total||0)-(x.got||0);
+          if(Math.abs(diff)<0.01) out.innerHTML=`<span style="color:var(--green-dark)">✅ совпало (TronScan $ ${rxFmt(j.total)})</span>`;
+          else out.innerHTML=`<span style="color:#DC2626">⚠️ расхождение $ ${rxFmt(Math.abs(diff))} — TronScan $ ${rxFmt(j.total)} ≠ таблица $ ${rxFmt(x.got)}</span>`;
+        }).catch(e=>{ out.textContent='ошибка сети'; });
     }
     function rxFetchTxSum(){
       const hashes=(document.getElementById('rxniHashes').value||'').trim();
