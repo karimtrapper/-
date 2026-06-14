@@ -1703,7 +1703,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <tbody id="rx-brokers-body"></tbody>
               </table></div>
             </div>
-            <div class="rx-muted" style="font-size:12px;margin-top:8px">Приходы ловятся авто из TRON. Клик по строке → за какие сделки и распределение по TronScan. Недвижка карвится отдельно.</div>
+            <div class="rx-muted" style="font-size:12px;margin-top:8px">Приходы заводишь вручную, по одному («+ Добавить приход»): сумма + хеши + выбор сделок → разница раскидывается в маржу. Клик по строке → состав и распределение по TronScan.</div>
           </div>
 
           <!-- Запросы -->
@@ -1888,13 +1888,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     // Поштучный ввод прихода (закрытие дня): сумма + хеши + выбор сделок → разница раскидывается
     function rxAddInflowForm(){
       if(document.getElementById('rxNewInflow'))return;
-      // необеспеченные сделки (ещё не привязаны к приходу), свежие сверху
-      const pool=rxData.deals.filter(d=>!d.covered).slice().sort((a,b)=>rxDateKey(b.dt).localeCompare(rxDateKey(a.dt)));
-      const dealRows=pool.map(d=>`<label class="rxni-deal" style="display:flex;gap:8px;align-items:center;padding:5px 8px;border-bottom:1px solid var(--border-light);cursor:pointer">
-        <input type="checkbox" class="rxni-dc" data-usdt="${d.usdt}" value="${d.wl}" onchange="rxRecalcInflow()">
-        <span class="num" style="font-weight:600;width:78px">${d.wl}</span><span style="flex:1">${d.merchant}</span>
-        <span class="num rx-muted">${d.dt||''}</span><span class="num" style="width:90px;text-align:right">${rxFmt(d.usdt)}</span></label>`).join('')
-        || '<div class="rx-muted" style="padding:8px">Нет необеспеченных сделок</div>';
+      // необеспеченные сделки сгруппированы ПО ДНЯМ (закрытие дня), свежие дни сверху
+      const pool=rxData.deals.filter(d=>!d.covered);
+      const byDay={};
+      pool.forEach(d=>{ const day=(d.dt||'').slice(0,5)||'—'; (byDay[day]=byDay[day]||[]).push(d); });
+      const days=Object.keys(byDay).sort((a,b)=>rxDateKey(b).localeCompare(rxDateKey(a)));
+      const dealRows=days.map(day=>{
+        const ds=byDay[day], sum=ds.reduce((s,x)=>s+(x.usdt||0),0);
+        const inner=ds.map(d=>`<label class="rxni-deal" style="display:flex;gap:8px;align-items:center;padding:4px 8px 4px 28px;border-bottom:1px solid var(--border-light);cursor:pointer">
+          <input type="checkbox" class="rxni-dc" data-usdt="${d.usdt}" data-day="${day}" value="${d.wl}" onchange="rxRecalcInflow()">
+          <span class="num" style="font-weight:600;width:78px">${d.wl}</span><span style="flex:1">${d.merchant}</span>
+          <span class="num rx-muted">${d.dt||''}</span><span class="num" style="width:90px;text-align:right">${rxFmt(d.usdt)}</span></label>`).join('');
+        return `<div class="rxni-day"><label style="display:flex;gap:8px;align-items:center;font-weight:700;background:var(--navy-100);padding:7px 8px;cursor:pointer;position:sticky;top:0">
+          <input type="checkbox" class="rxni-day-cb" onchange="rxToggleDay('${day}',this.checked)"> 📅 закрытие дня ${day} · ${ds.length} сд. · Σ <span class="num">${rxFmt(sum)}</span></label>${inner}</div>`;
+      }).join('') || '<div class="rx-muted" style="padding:8px">Нет необеспеченных сделок</div>';
       document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr id="rxNewInflow" style="background:var(--navy-50)"><td colspan="9" style="padding:14px">
         <div style="color:#1E40AF;font-weight:700;margin-bottom:10px">➕ Новый приход (закрытие дня)</div>
         <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
@@ -1911,6 +1918,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="rxSaveInflow()">✅ Подтвердить и сохранить</button><button class="btn btn-secondary btn-sm" onclick="document.getElementById('rxNewInflow').remove()">Отмена</button></div>
       </td></tr>`);
       document.getElementById('rxNewInflow').scrollIntoView({behavior:'smooth',block:'start'});
+    }
+    function rxToggleDay(day, on){
+      document.querySelectorAll('.rxni-dc[data-day="'+day+'"]').forEach(c=>c.checked=on);
+      rxRecalcInflow();
     }
     function rxRecalcInflow(){
       const got=parseFloat(document.getElementById('rxniGot').value||'0')||0;
