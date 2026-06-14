@@ -1075,6 +1075,28 @@ def delete_reestr_inflow(inflow_id):
         session.close()
 
 
+@app.route('/api/reestr/tx-sum', methods=['POST'])
+def reestr_tx_sum():
+    """Сумма USDT по списку TxHash из TronScan (1 хеш → его сумма; 2+ → сумма транзакций).
+    Используется формой прихода для авто-подстановки «сколько прислал брокер»."""
+    data = request.get_json(force=True, silent=True) or {}
+    raw = data.get('hashes') or []
+    if isinstance(raw, str):
+        raw = [h.strip() for h in raw.replace(',', '\n').split('\n') if h.strip()]
+    items, total = [], 0.0
+    for h in raw:
+        try:
+            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
+            info = r.json() if r.status_code == 200 else {}
+            trc = info.get('trc20TransferInfo') or []
+            amt = float(trc[0].get('amount_str', 0)) / 1_000_000 if trc else 0.0
+            items.append({'hash': h, 'amount': round(amt, 6), 'ok': amt > 0})
+            total += amt
+        except Exception as e:
+            items.append({'hash': h, 'amount': 0, 'ok': False, 'error': str(e)})
+    return jsonify({'ok': True, 'total': round(total, 6), 'items': items})
+
+
 # --- онлайн-синк реестра из WL-бота ---
 _reestr_sync_lock = threading.Lock()
 REESTR_SYNC_INTERVAL = int(os.environ.get('REESTR_SYNC_INTERVAL', '300'))  # сек

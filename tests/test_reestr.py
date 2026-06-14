@@ -162,6 +162,25 @@ def test_inflow_composition_negative_delta():
     assert items[0]['margin'] == pytest.approx(-50)
 
 
+def test_tx_sum_sums_hashes(client, monkeypatch):
+    """tx-sum: суммирует USDT по нескольким хешам из TronScan (мок)."""
+    amounts = {'h1': '1000000000', 'h2': '500000000'}  # 1000 + 500 USDT (в 1e6)
+
+    class _R:
+        def __init__(self, h): self.status_code = 200; self._h = h
+        def json(self): return {'trc20TransferInfo': [{'amount_str': amounts[self._h]}]}
+
+    def _get(url, *a, **k):
+        h = url.split('hash=')[1]
+        return _R(h)
+    monkeypatch.setattr(requests, 'get', _get)
+
+    resp = client.post('/api/reestr/tx-sum', json={'hashes': ['h1', 'h2']})
+    j = resp.get_json()
+    assert j['ok'] and j['total'] == pytest.approx(1500)
+    assert len(j['items']) == 2 and all(it['ok'] for it in j['items'])
+
+
 def test_uncovered_paid_is_advance(client, clean_snapshots):
     """Выплаченная сделка без прихода → статус 'advance' + маржа 'ждём'.
     После прихода → 'closed' + маржа посчитана."""
