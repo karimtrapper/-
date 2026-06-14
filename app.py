@@ -1080,6 +1080,27 @@ def delete_reestr_inflow(inflow_id):
         session.close()
 
 
+@app.route('/api/reestr/inflows/<int:inflow_id>', methods=['PATCH'])
+def patch_reestr_inflow(inflow_id):
+    """Переименовать брокера / поправить кошелёк / период у ручного прихода."""
+    data = request.get_json(force=True, silent=True) or {}
+    session = get_session()
+    try:
+        inf = session.get(ReestrInflow, inflow_id)
+        if not inf:
+            return jsonify({'ok': False, 'error': 'не найдено'}), 404
+        if 'broker' in data:
+            inf.broker = (data['broker'] or '').strip()
+        if 'wallet' in data:
+            inf.wallet = (data['wallet'] or '').strip()
+        if 'period' in data:
+            inf.period = (data['period'] or '').strip()
+        session.commit()
+        return jsonify({'ok': True})
+    finally:
+        session.close()
+
+
 @app.route('/api/reestr/tx-sum', methods=['POST'])
 def reestr_tx_sum():
     """Сумма USDT по списку TxHash из TronScan (1 хеш → его сумма; 2+ → сумма транзакций).

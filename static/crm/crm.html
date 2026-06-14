@@ -1858,6 +1858,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
               <div style="display:flex;gap:8px;align-items:center">
                 <span id="rxv${i}" class="num" style="font-size:12px"></span>
                 ${(x.h&&x.h!=='—')?`<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();rxVerifyInflow(${i})">🔍 Сверить с TronScan</button>`:''}
+                ${x.manual?`<button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();rxEditInflow(${i})">✏️ Брокер</button>`:''}
                 ${x.manual?`<button class="btn btn-secondary btn-sm" style="color:#DC2626" onclick="event.stopPropagation();rxDeleteInflow('${x.n}')">🗑 Удалить</button>`:''}
               </div>
             </div>
@@ -1976,6 +1977,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       fetch('/api/reestr/inflows',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
         .then(r=>r.json()).then(j=>{ if(!j.ok){alert('Ошибка: '+(j.error||'')); return;} rxLoad(); })
         .catch(e=>alert('Ошибка сети: '+e));
+    }
+    function rxEditInflow(i){
+      const x=rxData.brokers[i]; if(!x) return;
+      const br=prompt('Брокер:', x.br||''); if(br===null) return;
+      const w=prompt('Кошелёк приёма (необязательно):', x.w||''); if(w===null) return;
+      fetch('/api/reestr/inflows/'+(x.n||'').replace('#',''),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({broker:br,wallet:w})})
+        .then(r=>r.json()).then(j=>{ if(j.ok) rxLoad(); else alert('Ошибка'); });
     }
     function rxDeleteInflow(id){ if(!confirm('Удалить приход '+id+'? Сделки снова станут необеспеченными.'))return;
       fetch('/api/reestr/inflows/'+id.replace('#',''),{method:'DELETE'}).then(r=>r.json()).then(()=>rxLoad()); }
