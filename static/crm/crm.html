@@ -1903,18 +1903,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       // необеспеченные сделки сгруппированы ПО ДНЯМ (закрытие дня), свежие дни сверху
       const pool=rxData.deals.filter(d=>!d.covered);
       const byDay={};
-      // группируем по батчу закрытия дня (closed_at), как «Итог» в таблице; fallback — дата оплаты
-      pool.forEach(d=>{ const day=((d.closed||d.dt||'').slice(0,5))||'—'; (byDay[day]=byDay[day]||[]).push(d); });
-      const days=Object.keys(byDay).sort((a,b)=>rxDateKey(b).localeCompare(rxDateKey(a)));
+      // группируем по №прихода из таблицы (батч «Итог»); fallback — дата закрытия/оплаты
+      pool.forEach(d=>{ const key=d.batch||((d.closed||d.dt||'').slice(0,5))||'—'; (byDay[key]=byDay[key]||[]).push(d); });
+      const dateOf=g=>(((g[0]&&(g[0].closed||g[0].dt))||'').slice(0,5));
+      const days=Object.keys(byDay).sort((a,b)=>rxDateKey(dateOf(byDay[b])).localeCompare(rxDateKey(dateOf(byDay[a]))));
       const amt=d=>(d.client!=null?d.client:d.usdt);  // «отдали клиенту» из таблицы (col21), fallback бот
       const dealRows=days.map(day=>{
         const ds=byDay[day], sum=ds.reduce((s,x)=>s+amt(x),0);
+        const label=day.startsWith('#')?`приход ${day} · закрытие ${dateOf(ds)}`:`закрытие дня ${day}`;
         const inner=ds.map(d=>`<label class="rxni-deal" style="display:flex;gap:8px;align-items:center;padding:4px 8px 4px 28px;border-bottom:1px solid var(--border-light);cursor:pointer">
           <input type="checkbox" class="rxni-dc" data-usdt="${amt(d)}" data-day="${day}" value="${d.wl}" onchange="rxRecalcInflow()">
           <span class="num" style="font-weight:600;width:78px">${d.wl}</span><span style="flex:1">${d.merchant}</span>
           <span class="num rx-muted">${d.dt||''}</span><span class="num" style="width:90px;text-align:right">${rxFmt(amt(d))}</span></label>`).join('');
         return `<div class="rxni-day"><label style="display:flex;gap:8px;align-items:center;font-weight:700;background:var(--navy-100);padding:7px 8px;cursor:pointer;position:sticky;top:0">
-          <input type="checkbox" class="rxni-day-cb" onchange="rxToggleDay('${day}',this.checked)"> 📅 закрытие дня ${day} · ${ds.length} сд. · Σ <span class="num">${rxFmt(sum)}</span></label>${inner}</div>`;
+          <input type="checkbox" class="rxni-day-cb" onchange="rxToggleDay('${day}',this.checked)"> 📅 ${label} · ${ds.length} сд. · Σ <span class="num">${rxFmt(sum)}</span></label>${inner}</div>`;
       }).join('') || '<div class="rx-muted" style="padding:8px">Нет необеспеченных сделок</div>';
       document.getElementById('rx-brokers-body').insertAdjacentHTML('afterbegin',`<tr id="rxNewInflow" style="background:var(--navy-50)"><td colspan="9" style="padding:14px">
         <div style="color:#1E40AF;font-weight:700;margin-bottom:10px">➕ Новый приход (закрытие дня)</div>
