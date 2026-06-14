@@ -962,26 +962,20 @@ def get_reestr_all():
                 'k': '', 'manual': True,
             })
         out['brokers'] = brokers
-        # маржа/покрытие из ВСЕХ приходов (таблица + ручные)
-        margin_by_wl, inflow_by_wl = {}, {}
+        # покрытие из приходов (какой приход обеспечил сделку). Маржа/финансы — НЕ отсюда,
+        # а из синка (таблица «Иструмент карим»). Приход влияет только на СТАТУС + сверку.
+        inflow_by_wl = {}
         for b in brokers:
             h0 = (b.get('h') or '').split(',')[0].strip()
             for it in (b.get('items') or []):
                 wl = it.get('wl')
                 if wl and not str(wl).startswith('#'):
-                    margin_by_wl[wl] = (it.get('margin'), it.get('mPct', ''))
                     inflow_by_wl[wl] = {'n': b.get('n'), 'h': h0, 'w': b.get('w', ''), 'br': b.get('br', '')}
-        covered_wls = set(margin_by_wl.keys())
+        covered_wls = set(inflow_by_wl.keys())
         for d in out['deals']:
             cov = d['wl'] in covered_wls
             d['covered'] = cov
-            mm = margin_by_wl.get(d['wl'])
-            # маржа известна только после прихода (разница раскидана); иначе «ждём»
-            if cov and mm:
-                d['margin'], d['mPct'], d['mKnown'] = mm[0], mm[1], True
-            else:
-                d['margin'], d['mPct'], d['mKnown'] = None, '', False
-            # статус по покрытию: выплачено без прихода = аванс; с приходом = закрыто
+            # маржа/получили/отдали — остаются из синка (таблица). Статус — по покрытию.
             base = d.get('status')
             if base == 'closed':
                 d['status'] = 'closed' if cov else 'advance'
@@ -992,12 +986,6 @@ def get_reestr_all():
             cov = 0
             txs = r.get('txs', [])
             for t in txs:
-                c = t['wl'] in covered_wls
-                mm = margin_by_wl.get(t['wl'])
-                if c and mm:
-                    t['margin'], t['mPct'], t['mKnown'] = mm[0], mm[1], True
-                else:
-                    t['margin'], t['mPct'], t['mKnown'] = None, '', False
                 src = inflow_by_wl.get(t['wl'])
                 if src:
                     t['broker'] = src

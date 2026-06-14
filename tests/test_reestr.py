@@ -188,13 +188,13 @@ def test_uncovered_paid_is_advance(client, clean_snapshots):
     s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
 
     d = client.get('/api/reestr/all').get_json()['deals'][0]
-    assert d['status'] == 'advance' and d['covered'] is False and d['mKnown'] is False
+    assert d['status'] == 'advance' and d['covered'] is False  # выплачено, прихода нет
 
     j = client.post('/api/reestr/inflows', json={'broker': 'X', 'received': 1100, 'deals': ['WL-9']}).get_json()
     assert j['ok']
     d = client.get('/api/reestr/all').get_json()['deals'][0]
+    # приход покрыл сделку → статус Закрыто (маржа берётся из таблицы/синка, не из прихода)
     assert d['status'] == 'closed' and d['covered'] is True
-    assert d['margin'] == pytest.approx(100)  # вся разница на одну сделку
     s = get_session(); s.query(ReestrInflow).delete(); s.commit(); s.close()
 
 
@@ -217,10 +217,9 @@ def test_post_and_delete_inflow(client, clean_snapshots):
     assert len(allr['brokers']) == 1
     b = allr['brokers'][0]
     assert b['br'] == 'TruidX' and b['got'] == 8100 and b['manual'] is True
-    # маржа переопределена в сделках
-    dm = {d['wl']: d['margin'] for d in allr['deals']}
-    assert dm['WL-001'] == pytest.approx(37.5)   # 3000/8000*100
-    assert dm['WL-002'] == pytest.approx(62.5)
+    # приход покрыл сделки → covered (маржа берётся из таблицы, не из прихода)
+    dc = {d['wl']: d['covered'] for d in allr['deals']}
+    assert dc['WL-001'] is True and dc['WL-002'] is True
 
     # удаление
     iid = j['id']
