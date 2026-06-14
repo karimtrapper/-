@@ -1088,18 +1088,35 @@ def reestr_tx_sum():
     raw = data.get('hashes') or []
     if isinstance(raw, str):
         raw = [h.strip() for h in raw.replace(',', '\n').split('\n') if h.strip()]
-    items, total = [], 0.0
+    items, total, to_addr = [], 0.0, None
     for h in raw:
         try:
             r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
             info = r.json() if r.status_code == 200 else {}
             trc = info.get('trc20TransferInfo') or []
-            amt = float(trc[0].get('amount_str', 0)) / 1_000_000 if trc else 0.0
-            items.append({'hash': h, 'amount': round(amt, 6), 'ok': amt > 0})
+            tr = trc[0] if trc else {}
+            amt = float(tr.get('amount_str', 0)) / 1_000_000 if tr else 0.0
+            if tr.get('to_address') and not to_addr:
+                to_addr = tr.get('to_address')
+            items.append({'hash': h, 'amount': round(amt, 6), 'ok': amt > 0,
+                          'to': tr.get('to_address'), 'from': tr.get('from_address')})
             total += amt
         except Exception as e:
             items.append({'hash': h, 'amount': 0, 'ok': False, 'error': str(e)})
-    return jsonify({'ok': True, 'total': round(total, 6), 'items': items})
+    # определяем брокера по кошельку получения (мэтч с таблицей «Приходы от брокера»)
+    broker, wallet = '', to_addr or ''
+    if to_addr:
+        session = get_session()
+        try:
+            snap = session.query(ReestrSnapshot).filter_by(view='brokers').first()
+            for b in (json.loads(snap.payload) if snap else []):
+                if (b.get('w') or '') == to_addr:
+                    broker = b.get('br', '')
+                    break
+        finally:
+            session.close()
+    return jsonify({'ok': True, 'total': round(total, 6), 'items': items,
+                    'wallet': wallet, 'broker': broker})
 
 
 # --- онлайн-синк реестра из WL-бота ---
