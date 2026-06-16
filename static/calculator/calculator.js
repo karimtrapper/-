@@ -1,6 +1,8 @@
 // Конфигурация
 // Используем ваш основной API сервер
-const API_URL = 'https://proud-renewal-production-e9b8.up.railway.app/api';
+// Same-origin: API живёт в том же Flask-приложении, что отдаёт эту страницу.
+// Абсолютный URL ломался при смене домена Railway → 404 → фоллбэк на заглушку (курс 2.8).
+const API_URL = '/api';
 
 // Toast-уведомления вместо системных alert/confirm
 function showToast(message, type = 'info', duration = 3000) {
