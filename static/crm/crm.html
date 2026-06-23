@@ -898,6 +898,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
+                        <!-- Подбор входящей транзакции (заполняет всю сумму) -->
+                        <div class="form-row" id="customPayinPicker" style="display:none;">
+                            <div class="form-group" style="flex:2;">
+                                <label class="form-label" id="customPickerLabel">Выбрать из входящих</label>
+                                <select class="form-control" id="customPayinTxSelect" onchange="selectCustomPayinTx(this)">
+                                    <option value="">-- Загрузка... --</option>
+                                </select>
+                                <div id="customPayinPickerInfo" style="font-size:12px;color:#6b7280;margin-top:4px;"></div>
+                            </div>
+                        </div>
+
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Pay-Out: Сумма</label>
@@ -954,7 +965,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
-                                <select class="form-control" id="customPayinMethod">
+                                <select class="form-control" id="customPayinMethod" onchange="onCustomPayinMethodChange()">
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="spp_doverka">СБП / Доверка</option>
                                     <option value="sber_wl">Сбер (WL Bot)</option>
@@ -4383,7 +4394,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (el) el.required = !isCustom;
             });
 
-            if (isCustom) calcCustomProfit();
+            if (isCustom) { calcCustomProfit(); onCustomPayinMethodChange(); }
         }
 
         // ===== Виджет мультиагентов (кастомная сделка) =====
@@ -4609,6 +4620,101 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 profitEl.value = '';
                 netProfitEl.value = '';
             }
+        }
+
+        // Подбор входящей транзакции в кастомной сделке: WL Сбер или крипта → заполняет всю сумму
+        async function onCustomPayinMethodChange() {
+            const method = document.getElementById('customPayinMethod').value;
+            const picker = document.getElementById('customPayinPicker');
+            const label = document.getElementById('customPickerLabel');
+            const select = document.getElementById('customPayinTxSelect');
+            document.getElementById('customPayinPickerInfo').textContent = '';
+            if (method === 'sber_wl') {
+                picker.style.display = 'flex';
+                label.textContent = 'Выбрать Сбер-транзакцию (WL Bot)';
+                await loadCustomWlTransactions();
+            } else if (method === 'crypto_direct') {
+                picker.style.display = 'flex';
+                label.textContent = 'Выбрать входящую крипто-транзакцию';
+                await loadCustomCryptoTransactions();
+            } else {
+                picker.style.display = 'none';
+                select.innerHTML = '';
+            }
+        }
+
+        // Загрузка WL Сбер транзакций (мерчант grusha) в кастомный пикер
+        async function loadCustomWlTransactions() {
+            const select = document.getElementById('customPayinTxSelect');
+            select.innerHTML = '<option value="">Загрузка...</option>';
+            try {
+                const resp = await fetch(`${API_URL}/api/wl-transactions?merchant=grusha`);
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    select.innerHTML = `<option value="">Ошибка: ${err.error || resp.status}</option>`;
+                    return;
+                }
+                const txs = await resp.json();
+                if (!txs.length) { select.innerHTML = '<option value="">Нет транзакций</option>'; return; }
+                select.innerHTML = '<option value="">-- Выберите транзакцию --</option>';
+                txs.forEach(tx => {
+                    const opt = document.createElement('option');
+                    opt.value = JSON.stringify({ kind: 'wl', amount_rub: tx.amount_rub, amount_usdt: tx.amount_usdt, final_rate: tx.final_rate, display_name: tx.display_name });
+                    const dateStr = tx.paid_at ? tx.paid_at.substring(0, 10) : '';
+                    opt.textContent = `${tx.display_name} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ · ${dateStr}`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                select.innerHTML = `<option value="">Ошибка: ${e.message}</option>`;
+            }
+        }
+
+        // Загрузка входящих крипто-транзакций в кастомный пикер
+        async function loadCustomCryptoTransactions() {
+            const select = document.getElementById('customPayinTxSelect');
+            select.innerHTML = '<option value="">Загрузка...</option>';
+            try {
+                const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
+                const endDate = document.getElementById('txEndDate')?.value || '';
+                let url = `${API_URL}/api/transactions/incoming?start_date=${startDate}`;
+                if (endDate) url += `&end_date=${endDate}`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                const avail = (data.success && data.available) ? data.available : [];
+                if (!avail.length) { select.innerHTML = '<option value="">Нет входящих транзакций</option>'; return; }
+                select.innerHTML = '<option value="">-- Выберите транзакцию --</option>';
+                avail.slice(0, 100).forEach(tx => {
+                    const opt = document.createElement('option');
+                    opt.value = JSON.stringify({ kind: 'crypto', amount_usdt: tx.amount_usdt, tx_hash: tx.tx_hash });
+                    opt.textContent = `+$${Number(tx.amount_usdt).toFixed(2)} · ${(tx.from_address || '').substring(0, 10)}… · ${formatDate(tx.timestamp)}`;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                select.innerHTML = `<option value="">Ошибка: ${e.message}</option>`;
+            }
+        }
+
+        // Выбор транзакции из кастомного пикера → заполняем поля Pay-In
+        function selectCustomPayinTx(select) {
+            if (!select.value) return;
+            const tx = JSON.parse(select.value);
+            const info = document.getElementById('customPayinPickerInfo');
+            if (tx.kind === 'wl') {
+                document.getElementById('customPayinCurrency').value = 'RUB';
+                document.getElementById('customPayinAmount').value = tx.amount_rub;
+                document.getElementById('customPayinRate').value = parseFloat(tx.final_rate).toFixed(4);
+                document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
+                customUsdtMode.payin = 'usdt';  // используем точный клиентский USDT
+                info.textContent = `${tx.display_name} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ → $${parseFloat(tx.amount_usdt).toFixed(2)} · курс ${parseFloat(tx.final_rate).toFixed(2)}`;
+            } else if (tx.kind === 'crypto') {
+                document.getElementById('customPayinCurrency').value = 'USDT';
+                document.getElementById('customPayinAmount').value = parseFloat(tx.amount_usdt).toFixed(2);
+                document.getElementById('customPayinUsdt').value = parseFloat(tx.amount_usdt).toFixed(2);
+                document.getElementById('customPayinTxHash').value = tx.tx_hash;
+                customUsdtMode.payin = 'usdt';
+                info.textContent = `+$${parseFloat(tx.amount_usdt).toFixed(2)} · ${tx.tx_hash.substring(0, 14)}…`;
+            }
+            calcCustomProfit();
         }
 
         async function createCustomDeal() {
