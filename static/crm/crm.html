@@ -776,6 +776,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <input type="text" class="form-control" id="filterManager" placeholder="Имя менеджера">
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Реферер</label>
+                        <select class="form-control" id="filterReferrer">
+                            <option value="">Все</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Дата от</label>
                         <input type="date" class="form-control" id="filterDateFrom">
                     </div>
@@ -945,6 +951,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <label class="form-label">Чистая прибыль</label>
                                 <input type="text" class="form-control" id="customNetProfit" readonly
                                     style="font-weight: 600; font-size: 1.1rem;">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Метод Pay-In</label>
+                                <select class="form-control" id="customPayinMethod">
+                                    <option value="crypto_direct">Крипта напрямую</option>
+                                    <option value="spp_doverka">СБП / Доверка</option>
+                                    <option value="sber_wl">Сбер (WL Bot)</option>
+                                    <option value="partners_cash">Партнёры (наличные)</option>
+                                </select>
+                            </div>
+                            <div class="form-group" id="customPayinTxHashGroup">
+                                <label class="form-label">Хэш транзакции <span style="font-weight:400;color:#64748b;">(если есть)</span></label>
+                                <input type="text" class="form-control" id="customPayinTxHash"
+                                    placeholder="TxHash...">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Метод выдачи</label>
@@ -3068,17 +3088,37 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (currentPage < 1) currentPage = 1;
             loadDeals();
         }
+        let referrerFilterLoaded = false;
+        async function loadReferrerFilter() {
+            if (referrerFilterLoaded) return;
+            try {
+                const res = await fetch(`${API_URL}/api/referrers`);
+                const data = await res.json();
+                if (data.success) {
+                    const sel = document.getElementById('filterReferrer');
+                    const cur = sel.value;
+                    sel.innerHTML = '<option value="">Все</option>' +
+                        data.referrers.map(r => `<option value="${r.id}">${r.name}${r.code ? ' (' + r.code + ')' : ''}</option>`).join('');
+                    sel.value = cur;
+                    referrerFilterLoaded = true;
+                }
+            } catch (e) { console.error('Error loading referrer filter:', e); }
+        }
+
         async function loadDeals(resetPage) {
+            loadReferrerFilter();
             if (resetPage) currentPage = 1;
             const params = new URLSearchParams();
 
             const status = document.getElementById('filterStatus').value;
             const manager = document.getElementById('filterManager').value;
+            const referrer = document.getElementById('filterReferrer').value;
             const dateFrom = document.getElementById('filterDateFrom').value;
             const dateTo = document.getElementById('filterDateTo').value;
 
             if (status) params.append('status', status);
             if (manager) params.append('manager', manager);
+            if (referrer) params.append('referrer_id', referrer);
             if (dateFrom) params.append('date_from', dateFrom);
             if (dateTo) params.append('date_to', dateTo);
             params.append('page', currentPage);
@@ -4581,6 +4621,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const payoutRate = parseFloat(document.getElementById('customPayoutRate').value) || 0;
 
             const payoutMethod = document.getElementById('customPayoutMethod').value;
+            const payinMethod = document.getElementById('customPayinMethod').value;
+            const payinTxHash = document.getElementById('customPayinTxHash').value.trim();
             const notes = document.getElementById('customNotes').value;
             const customDate = document.getElementById('customDealDate').value;
 
@@ -4630,7 +4672,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 is_custom: true,
 
                 // Pay-In
-                payin_method: 'crypto_direct',  // Базовый метод для совместимости
+                payin_method: payinMethod,
+                payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
 
                 // Кастомные данные Pay-In
