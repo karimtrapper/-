@@ -1945,7 +1945,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
       if(document.getElementById('rxNewInflow'))return;
       // необеспеченные сделки (день ещё НЕ закрыт) сгруппированы по дням, свежие сверху.
       // День закрывается в момент подтверждения прихода (когда ясно, за какие сделки пришёл USDT).
-      const pool=rxData.deals.filter(d=>!d.covered);
+      // только сделки, реально занесённые в таблицу «Иструмент карим» (mKnown=true).
+      // PAID-сделки из БД бота, ещё не сведённые через /close_day, не показываем —
+      // приход закрывает то, что уже в таблице.
+      const pool=rxData.deals.filter(d=>!d.covered && d.mKnown===true);
       const byDay={};
       // группируем по дню «Итог DD.MM» из таблицы (d.batch); fallback — дата
       pool.forEach(d=>{ const key=d.batch||((d.closed||d.dt||'').slice(0,5))||'—'; (byDay[key]=byDay[key]||[]).push(d); });
