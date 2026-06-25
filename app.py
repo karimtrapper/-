@@ -5363,13 +5363,21 @@ def get_referrers():
         result = []
         for r in referrers:
             d = r.to_dict()
-            # Пересчитываем из реальных сделок (кэш может рассинхронизироваться)
-            deals = db.query(Deal).filter(
-                Deal.referrer_id == r.id, Deal.status == DealStatus.COMPLETED
-            ).all()
-            d['total_deals'] = len(deals)
-            d['total_earned_usdt'] = round(sum(dl.referrer_payout_usdt or 0 for dl in deals), 2)
-            d['total_paid_usdt'] = round(sum((dl.referrer_payout_usdt or 0) for dl in deals if dl.referrer_paid), 2)
+            # Доля ИМЕННО этого реферала по каждой сделке — из deal_agents (как в ЛК и при выплате),
+            # а НЕ deal.referrer_payout_usdt: та содержит сумму выплат ВСЕХ агентов сделки,
+            # из-за чего основному рефералу приписывались доли остальных (4511 vs реальные 1514).
+            agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == r.id).all()
+            agent_by_deal = {ar.deal_id: ar for ar in agent_rows}
+            completed_ids = {
+                did for (did,) in db.query(Deal.id).filter(
+                    Deal.id.in_(list(agent_by_deal.keys())),
+                    Deal.status == DealStatus.COMPLETED,
+                ).all()
+            } if agent_by_deal else set()
+            rows = [agent_by_deal[did] for did in completed_ids]
+            d['total_deals'] = len(rows)
+            d['total_earned_usdt'] = round(sum(ar.payout_usdt or 0 for ar in rows), 2)
+            d['total_paid_usdt'] = round(sum((ar.payout_usdt or 0) for ar in rows if ar.paid), 2)
             d['pending_usdt'] = round(d['total_earned_usdt'] - d['total_paid_usdt'], 2)
             d['total_referred_clients'] = db.query(Client).filter(Client.referrer_id == r.id).count()
             result.append(d)
