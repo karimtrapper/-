@@ -2639,20 +2639,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     <script>
         const API_URL = '';  // Same origin
         let currentUsdtThbRate = null; // Актуальный курс USDT-THB от API
+        let currentUsdtThbRateAt = 0;  // время последнего успешного обновления (ms)
+        let _rateWarnShownAt = 0;      // троттлинг предупреждения о неактуальном курсе
 
-        // Загружаем актуальный курс при старте
+        // Загружаем актуальный курс. Вызывается при старте, периодически и перед
+        // расчётом сделки — иначе вкладка, открытая весь день, считала по утреннему
+        // курсу, а при сбое /api/rates молча подставлялся хардкод 31.50.
         async function loadCurrentRate() {
             try {
                 const resp = await fetch(`${API_URL}/api/rates`);
                 const data = await resp.json();
                 if (data.usdt_thb) {
                     currentUsdtThbRate = data.usdt_thb;
+                    currentUsdtThbRateAt = Date.now();
                 }
             } catch (e) {
                 console.error('Не удалось загрузить курс:', e);
             }
         }
         loadCurrentRate();
+        // Авто-обновление курса каждые 2 минуты, пока CRM открыт
+        setInterval(loadCurrentRate, 120000);
 
         // ==================== Auth ====================
         async function logout() {
@@ -2982,7 +2989,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <tr onclick="showDealDetails(${deal.id})" style="cursor: pointer;">
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
-                            <td>${deal.client_name || '-'}</td>
+                            <td>${escapeHtml(deal.client_name) || '-'}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
                             <td>${deal.custom_payout_currency
                             ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
@@ -3149,8 +3156,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <tr>
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
-                            <td>${deal.manager_name || '-'}</td>
-                            <td>${deal.client_name || '-'}</td>
+                            <td>${escapeHtml(deal.manager_name) || '-'}</td>
+                            <td>${escapeHtml(deal.client_name) || '-'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
                             <td>${deal.custom_payout_currency
@@ -3266,7 +3273,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
                             <p><strong>Сумма USDT:</strong> $${deal.payin_amount_usdt || '-'}</p>
                         `}
-                        ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${deal.payin_partner_name}</p>` : ''}
+                        ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${escapeHtml(deal.payin_partner_name)}</p>` : ''}
                         ${deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : ''}
                         
                         ${isDoverka ? `
@@ -3317,7 +3324,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <p><strong>Стоимость USDT:</strong> ${deal.payout_amount_usdt != null ? '$' + deal.payout_amount_usdt.toFixed(2) : '<span style="color: #f59e0b;">Ожидает возмещения</span>'}</p>
                             ${deal.cash_batch_rate ? `<p><strong>Курс:</strong> ${deal.cash_batch_rate}</p>` : ''}
                             ${deal.payout_tx_hash ? `<p><strong>Хэш Pay-Out:</strong> <a href="https://tronscan.org/#/transaction/${deal.payout_tx_hash}" target="_blank" style="background: #fee2e2; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #b91c1c;">${deal.payout_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payout_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span></p>` : ''}
-                            ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${deal.payout_founder_name}</p>` : ''}
+                            ${deal.payout_founder_name ? `<p><strong>Фаундер:</strong> ${escapeHtml(deal.payout_founder_name)}</p>` : ''}
                             ${deal.reimbursement_id ? `
                                 <div style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
                                     <strong>Возмещение:</strong> #${deal.reimbursement_id} ✅
@@ -3336,9 +3343,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         }
                         </p>
                         
-                        ${deal.referrer_name ? `
+                        ${(deal.agents && deal.agents.length) ? `
                             <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
-                                <p style="margin: 0;"><strong>Партнёр:</strong> ${deal.referrer_name} · ${
+                                ${(() => {
+                                    const multiTier = new Set(deal.agents.map(a => a.tier || 1)).size > 1;
+                                    return deal.agents.map(a => {
+                                        const model = a.comp_model === 'markup'
+                                            ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (a.percent || 0) + '%</span>'
+                                            : a.comp_model === 'fixed'
+                                                ? '<span style="color:#0ea5e9;font-weight:600;">fixed $' + (a.fixed_usdt || 0) + '</span>'
+                                                : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (a.percent || 0) + '%</span>';
+                                        const paid = a.paid
+                                            ? '<span style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
+                                            : '<span style="color:#ef4444;margin-left:6px;">● не выплачено</span>';
+                                        const tier = multiTier ? ` <span style="color:#9ca3af;font-size:0.8rem;">ур.${a.tier || 1}</span>` : '';
+                                        return `<p style="margin: 0 0 4px;"><strong>Партнёр:</strong> ${escapeHtml(a.name || '—')}${tier} · ${model}
+                                                <span style="color: #f59e0b;font-weight:600;"> · -$${(a.payout_usdt || 0).toFixed(2)}</span>${paid}</p>`;
+                                    }).join('');
+                                })()}
+                                ${deal.agents.length > 1 ? `<p style="margin: 4px 0 0; color: #92400e; font-size: 0.85rem;"><strong>Итого партнёрам:</strong> -$${(deal.referrer_payout_usdt || 0).toFixed(2)}</p>` : ''}
+                            </div>
+                        ` : (deal.referrer_name ? `
+                            <div style="background: #fffbeb; padding: 0.5rem; border-radius: 6px; border: 1px solid #fef3c7; margin: 0.5rem 0;">
+                                <p style="margin: 0;"><strong>Партнёр:</strong> ${escapeHtml(deal.referrer_name)} · ${
                                     deal.referrer_comp_model === 'markup'
                                         ? '<span style="color:#7c3aed;font-weight:600;">markup +' + (deal.referrer_markup_percent || 0) + '%</span>'
                                         : deal.referrer_comp_model === 'fixed'
@@ -3351,7 +3378,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                         : '<span style="color:#ef4444;margin-left:8px;">● не выплачено</span>'
                                     }</p>
                             </div>
-                        ` : ''}
+                        ` : '')}
 
                         <p><strong>Чистая прибыль:</strong> 
                             ${profitUnknown
@@ -3360,7 +3387,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         }
                         </p>
                         
-                        ${deal.notes ? `<hr style="margin: 1rem 0;"><p><strong>Заметки:</strong> ${deal.notes}</p>` : ''}
+                        ${deal.notes ? `<hr style="margin: 1rem 0;"><p><strong>Заметки:</strong> ${escapeHtml(deal.notes)}</p>` : ''}
                         
                         <hr style="margin: 1rem 0;">
                         <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -3648,11 +3675,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе сумма/курс
+            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе по курсу
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount
-                : (parseFloat(document.getElementById('customPayinUsdt').value) || (payinRate > 0 ? payinAmount / payinRate : 0));
+                : (parseFloat(document.getElementById('customPayinUsdt').value) || customToUsdt(payinAmount, payinCurrency, payinRate));
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount
-                : (parseFloat(document.getElementById('customPayoutUsdt').value) || (payoutRate > 0 ? payoutAmount / payoutRate : 0));
+                : (parseFloat(document.getElementById('customPayoutUsdt').value) || customToUsdt(payoutAmount, payoutCurrency, payoutRate));
             const profit = payinUsdt - payoutUsdt;
             const netProfit = customAgentsRecalc();
 
@@ -4569,6 +4596,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function onCustomRateInput(side) { customUsdtMode[side] = 'rate'; calcCustomProfit(); }
         function onCustomUsdtInput(side) { customUsdtMode[side] = 'usdt'; calcCustomProfit(); }
 
+        // Конвертация суммы в USDT — зеркалит backend to_usdt (app.py _deal_usdt_volume_cost).
+        // RUB/THB: курс хранится как «валюта за 1 USD» → делим.
+        // EUR: курс хранится как «USD за 1 EUR» (напр. 1.1783) → умножаем.
+        // USD/USDT: 1:1. Иначе фронт и бэк считали объём EUR-сделок по-разному.
+        function customToUsdt(amount, currency, rate) {
+            const a = parseFloat(amount) || 0;
+            const r = parseFloat(rate) || 0;
+            const cur = (currency || '').toUpperCase();
+            if (!a) return 0;
+            if (cur === 'USD' || cur === 'USDT') return a;
+            if (cur === 'EUR') return r ? a * r : 0;
+            return r ? a / r : 0;
+        }
+        // Обратная конвертация: курс из суммы и введённого USDT (та же конвенция).
+        function customRateFromUsdt(amount, currency, usdt) {
+            const a = parseFloat(amount) || 0;
+            const u = parseFloat(usdt) || 0;
+            const cur = (currency || '').toUpperCase();
+            if (!a || !u) return '';
+            if (cur === 'EUR') return (u / a).toFixed(4);
+            return (a / u).toFixed(4);
+        }
+
         // Считает USDT для одной стороны, синхронизируя парное поле (курс↔USDT)
         function _sideUsdt(side) {
             const amount = parseFloat(document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Amount').value) || 0;
@@ -4577,14 +4627,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const usdtEl = document.getElementById('custom' + (side === 'payin' ? 'Payin' : 'Payout') + 'Usdt');
             if (currency === 'USDT') { usdtEl.value = amount > 0 ? amount.toFixed(2) : ''; return amount; }
             if (customUsdtMode[side] === 'usdt') {
-                // Ввели USDT → курс = сумма / USDT
+                // Ввели USDT → выводим курс (конвенция как в customToUsdt)
                 const usdt = parseFloat(usdtEl.value) || 0;
-                rateEl.value = (usdt > 0 && amount > 0) ? (amount / usdt).toFixed(4) : '';
+                rateEl.value = customRateFromUsdt(amount, currency, usdt);
                 return usdt;
             } else {
-                // Ввели курс → USDT = сумма / курс
+                // Ввели курс → USDT по единой конвенции (RUB/THB делим, EUR умножаем)
                 const rate = parseFloat(rateEl.value) || 0;
-                const usdt = rate > 0 ? amount / rate : 0;
+                const usdt = customToUsdt(amount, currency, rate);
                 usdtEl.value = usdt > 0 ? usdt.toFixed(2) : '';
                 return usdt;
             }
@@ -4720,7 +4770,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             calcCustomProfit();
         }
 
+        let _customDealSubmitting = false;
         async function createCustomDeal() {
+            // Защита от дублей: повторный вызов (двойной клик) игнорируется до ответа.
+            if (_customDealSubmitting) return;
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
             const payinRate = parseFloat(document.getElementById('customPayinRate').value) || 0;
@@ -4754,11 +4807,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе сумма/курс
+            // Конвертация: берём USDT из поля (учитывает ручной ввод USDT), иначе по курсу
             const payinUsdt = payinCurrency === 'USDT' ? payinAmount
-                : (parseFloat(document.getElementById('customPayinUsdt').value) || (payinRate > 0 ? payinAmount / payinRate : 0));
+                : (parseFloat(document.getElementById('customPayinUsdt').value) || customToUsdt(payinAmount, payinCurrency, payinRate));
             const payoutUsdt = payoutCurrency === 'USDT' ? payoutAmount
-                : (parseFloat(document.getElementById('customPayoutUsdt').value) || (payoutRate > 0 ? payoutAmount / payoutRate : 0));
+                : (parseFloat(document.getElementById('customPayoutUsdt').value) || customToUsdt(payoutAmount, payoutCurrency, payoutRate));
             const profit = payinUsdt - payoutUsdt;
             const netProfit = customAgentsRecalc();   // чистая после всех агентов
 
@@ -4804,15 +4857,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Агенты (бэкенд посчитает выплаты каскадом и net)
                 agents: agents,
 
-                // Прибыль
+                // Прибыль (процент от выдачи — как считает бэкенд _recalculate_deal_financials,
+                // иначе тост показывал один %, а в БД/таблицу писался другой)
                 profit_usdt: profit,
-                profit_percent: payinUsdt > 0 ? (profit / payinUsdt * 100) : 0,
+                profit_percent: payoutUsdt > 0 ? (profit / payoutUsdt * 100) : 0,
                 net_profit_usdt: netProfit,
 
                 // Заметки
                 notes: notes || null
             };
 
+            _customDealSubmitting = true;
             try {
                 const response = await fetch(`${API_URL}/api/deals`, {
                     method: 'POST',
@@ -4846,6 +4901,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error creating custom deal:', error);
                 showToast('Ошибка при создании сделки', 'error');
+            } finally {
+                _customDealSubmitting = false;
             }
         }
 
@@ -4887,8 +4944,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Определяем курс в зависимости от источника
-            const fallbackRate = currentUsdtThbRate || 31.50; // Актуальный курс от API
+            // Определяем курс в зависимости от источника.
+            // Если живой курс не загружен или устарел (>10 мин) — предупреждаем
+            // менеджера и подтягиваем свежий, вместо тихого хардкода.
+            const rateStale = !currentUsdtThbRate || (Date.now() - currentUsdtThbRateAt > 600000);
+            if (rateStale) {
+                loadCurrentRate();  // фоновое обновление
+                if (Date.now() - _rateWarnShownAt > 30000) {
+                    _rateWarnShownAt = Date.now();
+                    showToast('Курс USDT-THB не загружен/устарел — расчёт приблизительный, обновляю', 'error', 4000);
+                }
+            }
+            const fallbackRate = currentUsdtThbRate || 31.50; // запасной курс, если API недоступен
             let avgRate = fallbackRate;
 
             if (payoutSource === 'cash_batch' && cashBatchesData.length > 0) {
@@ -4998,6 +5065,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Мультиагенты стандартной формы
             data.agents = stdAgentsSerialize();
 
+            // Защита от дублей: блокируем кнопку на время запроса (двойной клик
+            // при лаге сети создавал две сделки → двойное списание с кошелька).
+            const submitBtn = this.querySelector('button[type="submit"]');
+            if (submitBtn) submitBtn.disabled = true;
+
             try {
                 // Проверяем режим редактирования
                 const isEditMode = editingDealId !== null;
@@ -5035,6 +5107,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error creating/updating deal:', error);
                 showToast('Ошибка при сохранении сделки', 'error');
+            } finally {
+                if (submitBtn) submitBtn.disabled = false;
             }
         });
 
@@ -5961,7 +6035,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbForCheckbox}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
-                                        <span>Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${deal.client_name}: <strong>${label}</strong></span>
+                                        <span>Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong></span>
                                     </label>`;
                                 }).join('')}
                             </div>
@@ -6235,7 +6309,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ? data.deals.map(deal => `
                             <div class="batch-card" style="border-left: 4px solid #f59e0b; padding: 1rem;">
                                 <div class="batch-info">
-                                    <h4>Сделка #${deal.id} - ${deal.client_name || 'Без клиента'}</h4>
+                                    <h4>Сделка #${deal.id} - ${escapeHtml(deal.client_name) || 'Без клиента'}</h4>
                                     <p>
                                         <strong>ID Доверки:</strong> ${deal.doverka_transaction_id || '-'}<br>
                                         <strong>Сумма:</strong> ${formatNumber(deal.payin_amount_rub)} ₽ → ${deal.payin_amount_usdt} USDT<br>
