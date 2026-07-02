@@ -667,7 +667,7 @@
                 </div>
                 <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
                     <span class="dot"></span>
-                    ${deal.paid ? 'Выплачено' : 'К выплате'}
+                    ${deal.paid ? 'Выплачено' + (deal.paid_note ? ' · ' + esc(deal.paid_note) : '') : 'К выплате'}
                 </div>
             </div>
         `).join('');

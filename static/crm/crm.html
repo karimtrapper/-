@@ -3396,7 +3396,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                                 ? '<span style="color:#0ea5e9;font-weight:600;">fixed $' + (a.fixed_usdt || 0) + '</span>'
                                                 : '<span style="color:#0ea5e9;font-weight:600;">revshare ' + (a.percent || 0) + '%</span>';
                                         const paid = a.paid
-                                            ? '<span style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + '</span>'
+                                            ? '<span style="color:#10b981;margin-left:6px;">✓ выплачено' + (a.paid_at ? ' ' + new Date(a.paid_at).toLocaleDateString('ru-RU') : '') + (a.paid_note ? ' · ' + escapeHtml(a.paid_note) : '') + '</span>'
                                             : '<span style="color:#ef4444;margin-left:6px;">● не выплачено</span>';
                                         const tier = multiTier ? ` <span style="color:#9ca3af;font-size:0.8rem;">ур.${a.tier || 1}</span>` : '';
                                         return `<p style="margin: 0 0 4px;"><strong>Партнёр:</strong> ${escapeHtml(a.name || '—')}${tier} · ${model}
@@ -7928,16 +7928,64 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        async function payReferrer(id, name, amount) {
-            if (!confirm(`Выплатить $${amount.toFixed(2)} рефереру ${name}?`)) return;
+        // Выборочная выплата рефереру: чекбоксы по сделкам + комментарий
+        // (хэш транзакции или «Оплачено по SCB» — виден рефералу в кабинете).
+        let _payModalDeals = [];
+        async function payReferrer(id, name) {
+            try {
+                const res = await fetch(`${API_URL}/api/referrers/${id}/unpaid`);
+                const data = await res.json();
+                _payModalDeals = data.deals || [];
+            } catch (e) { _payModalDeals = []; }
+            if (!_payModalDeals.length) { showToast('Нет неоплаченных сделок', 'error'); return; }
+
+            const rows = _payModalDeals.map(d => `
+                <label style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;cursor:pointer;font-size:13px;gap:8px;">
+                    <span style="display:flex;align-items:center;gap:8px;">
+                        <input type="checkbox" class="payDealCb" value="${d.deal_id}" checked onchange="payModalRecalc()">
+                        <span>#${d.deal_id} · ${escapeHtml(d.client_name || '—')} · ${d.date}</span>
+                    </span>
+                    <b style="color:#16a34a;white-space:nowrap;">$${(d.payout_usdt || 0).toFixed(2)}</b>
+                </label>`).join('');
+
+            const modal = document.getElementById('dealModal');
+            modal.querySelector('.modal-title').textContent = 'Выплата: ' + name;
+            document.getElementById('dealModalContent').innerHTML = `
+                <div style="max-height:320px;overflow-y:auto;">${rows}</div>
+                <div class="form-group" style="margin-top:10px;">
+                    <label class="form-label">Комментарий к выплате (хэш или способ оплаты)</label>
+                    <input type="text" class="form-control" id="payNoteInput" placeholder="Напр.: Оплачено по SCB / хэш транзакции">
+                </div>
+                <div id="payModalTotal" style="font-weight:700;margin:10px 0;color:#16a34a;"></div>
+                <button class="btn btn-success" onclick="payReferrerSelected(${id}, '${name.replace(/'/g, "\\'")}')">Выплатить выбранные</button>
+            `;
+            modal.style.display = 'flex';
+            payModalRecalc();
+        }
+
+        function payModalRecalc() {
+            const ids = [...document.querySelectorAll('.payDealCb:checked')].map(cb => +cb.value);
+            const total = _payModalDeals.filter(d => ids.includes(d.deal_id)).reduce((s, d) => s + (d.payout_usdt || 0), 0);
+            const el = document.getElementById('payModalTotal');
+            if (el) el.textContent = `Итого к выплате: $${total.toFixed(2)} (${ids.length} сделок)`;
+        }
+
+        async function payReferrerSelected(id, name) {
+            const deal_ids = [...document.querySelectorAll('.payDealCb:checked')].map(cb => +cb.value);
+            if (!deal_ids.length) { showToast('Выберите сделки', 'error'); return; }
+            const note = (document.getElementById('payNoteInput')?.value || '').trim();
+            const total = _payModalDeals.filter(d => deal_ids.includes(d.deal_id)).reduce((s, d) => s + (d.payout_usdt || 0), 0);
+            if (!confirm(`Выплатить $${total.toFixed(2)} рефереру ${name} (${deal_ids.length} сделок)${note ? '\nКомментарий: ' + note : ''}?`)) return;
             try {
                 const res = await fetch(`${API_URL}/api/referrers/${id}/pay`, {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'}
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ deal_ids, note })
                 });
                 const data = await res.json();
                 if (data.success) {
                     showToast(`Выплачено $${data.amount_usdt.toFixed(2)} (${data.deals_paid} сделок)`);
+                    document.getElementById('dealModal').style.display = 'none';
                     loadReferrers();
                 } else {
                     showToast(data.error || 'Ошибка', 'error');

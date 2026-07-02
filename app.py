@@ -717,6 +717,7 @@ class DealAgent(Base):
     base_usdt = Column(Float)                             # база расчёта (для аудита)
     paid = Column(Boolean, default=False)
     paid_at = Column(DateTime, nullable=True)
+    paid_note = Column(String(255), nullable=True)        # чем выплачено: хэш / «по SCB» и т.п.
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
@@ -728,6 +729,7 @@ class DealAgent(Base):
             'payout_usdt': self.payout_usdt, 'base_usdt': self.base_usdt,
             'paid': self.paid or False,
             'paid_at': self.paid_at.isoformat() if self.paid_at else None,
+            'paid_note': self.paid_note,
         }
 
 
@@ -993,8 +995,11 @@ try:
     with engine.connect() as conn:
         if 'postgresql' in DATABASE_URL:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_parts TEXT"))
+            conn.execute(text("ALTER TABLE deal_agents ADD COLUMN IF NOT EXISTS paid_note VARCHAR(255)"))
         else:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_parts TEXT"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deal_agents ADD COLUMN paid_note VARCHAR(255)"))
             except: pass
         conn.commit()
 except Exception as e:
@@ -2536,7 +2541,7 @@ def _apply_deal_agents(session, deal, agents_data):
     Статус paid сохраняется по совпадению referrer_id+tier.
     """
     # запоминаем кто уже выплачен (чтобы не сбросить при пересохранении)
-    prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at) for r in deal.agents}
+    prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()  # delete-orphan удалит старые строки на flush
     if not agents_data:
         deal.referrer_payout_usdt = None
@@ -2549,13 +2554,13 @@ def _apply_deal_agents(session, deal, agents_data):
     for a in computed:
         tier = int(a.get('tier') or 1)
         rid = a.get('referrer_id') or None
-        paid, paid_at = prev_paid.get((rid, tier), (False, None))
+        paid, paid_at, paid_note = prev_paid.get((rid, tier), (False, None, None))
         deal.agents.append(DealAgent(
             referrer_id=rid, name=a.get('name'), tier=tier,
             comp_model=(a.get('comp_model') or 'revshare'),
             percent=float(a.get('percent') or 0), fixed_usdt=float(a.get('fixed_usdt') or 0),
             payout_usdt=a.get('_payout'), base_usdt=a.get('_base'),
-            paid=paid, paid_at=paid_at,
+            paid=paid, paid_at=paid_at, paid_note=paid_note,
         ))
         total += a.get('_payout') or 0
     deal.net_profit_usdt = net
@@ -2575,18 +2580,18 @@ def _mirror_legacy_agent(session, deal):
     payout берётся из deal.referrer_payout_usdt как есть (учитывает ручной override).
     Нужен, чтобы кабинет единообразно читал deal_agents и для legacy-сделок без массива agents.
     Сохраняет статус paid; если реферала нет — удаляет строки."""
-    prev = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at) for r in deal.agents}
+    prev = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()
     if not (deal.referrer_id or deal.referrer_payout_usdt):
         return
     model = deal.referrer_comp_model or 'revshare'
     pct = (deal.referrer_markup_percent if model == 'markup' else deal.referrer_percent) or 0
-    paid, paid_at = prev.get((deal.referrer_id, 1), (deal.referrer_paid or False, deal.referrer_paid_at))
+    paid, paid_at, paid_note = prev.get((deal.referrer_id, 1), (deal.referrer_paid or False, deal.referrer_paid_at, None))
     deal.agents.append(DealAgent(
         referrer_id=deal.referrer_id, name=deal.referrer_name, tier=1,
         comp_model=model, percent=pct, fixed_usdt=deal.referrer_fixed_usdt or 0,
         payout_usdt=deal.referrer_payout_usdt, base_usdt=deal.profit_usdt,
-        paid=paid, paid_at=paid_at,
+        paid=paid, paid_at=paid_at, paid_note=paid_note,
     ))
 
 
@@ -5256,6 +5261,7 @@ def referrer_stats(token):
                 # profit_usdt = база агента (для ур.2+ это остаток — каскад агенту не виден).
                 'commission_usdt': round(sum(r.payout_usdt or 0 for r in deal_rows), 2) if deal_rows else None,
                 'paid': all(r.paid for r in deal_rows) if deal_rows else False,
+                'paid_note': next((r.paid_note for r in deal_rows if r.paid_note), None),
                 'client_masked': masked,
                 'client_initials': initials,
                 'comp_model': (ag.comp_model if ag else None) or 'revshare',
@@ -5856,18 +5862,24 @@ def set_client_referrer(client_id):
         db.close()
 
 
-def _mark_referrer_deals_paid(db, referrer, now):
-    """Помечает все завершённые неоплаченные сделки реферера выплаченными.
+def _mark_referrer_deals_paid(db, referrer, now, deal_ids=None, note=None):
+    """Помечает завершённые неоплаченные сделки реферера выплаченными.
 
+    deal_ids — выборочная выплата (None = все неоплаченные, как раньше).
+    note — чем выплачено (хэш транзакции / «Оплачено по SCB» и т.п.), пишется
+    в DealAgent.paid_note и виден рефералу в кабинете вместо хэша.
     НЕ коммитит — это делает вызывающий. Идемпотентна: уже оплаченные сделки
     не трогает. Возвращает (paid_deal_ids, total_paid).
     """
     # Мультиагенты: платим по строкам агента (любой уровень), а не по кэшу сделки
-    rows = db.query(DealAgent).join(Deal, DealAgent.deal_id == Deal.id).filter(
+    q = db.query(DealAgent).join(Deal, DealAgent.deal_id == Deal.id).filter(
         DealAgent.referrer_id == referrer.id,
         DealAgent.paid == False,
         Deal.status == DealStatus.COMPLETED,
-    ).all()
+    )
+    if deal_ids:
+        q = q.filter(DealAgent.deal_id.in_([int(d) for d in deal_ids]))
+    rows = q.all()
     total_paid = 0
     paid_deal_ids = []
     for r in rows:
@@ -5875,6 +5887,8 @@ def _mark_referrer_deals_paid(db, referrer, now):
             continue
         r.paid = True
         r.paid_at = now
+        if note:
+            r.paid_note = str(note)[:255]
         total_paid += r.payout_usdt or 0
         if r.deal_id not in paid_deal_ids:  # у реферала может быть 2 строки в сделке (markup+revshare)
             paid_deal_ids.append(r.deal_id)
@@ -5887,17 +5901,47 @@ def _mark_referrer_deals_paid(db, referrer, now):
     return paid_deal_ids, round(total_paid, 2)
 
 
+@app.route('/api/referrers/<int:referrer_id>/unpaid', methods=['GET'])
+def referrer_unpaid_deals(referrer_id):
+    """Неоплаченные строки реферера по завершённым сделкам — для модалки выборочной выплаты."""
+    db = get_session()
+    try:
+        rows = db.query(DealAgent, Deal).join(Deal, DealAgent.deal_id == Deal.id).filter(
+            DealAgent.referrer_id == referrer_id,
+            DealAgent.paid == False,
+            Deal.status == DealStatus.COMPLETED,
+        ).order_by(Deal.created_at.asc()).all()
+        # Группируем по сделке (у реферала может быть 2 строки: markup+revshare)
+        by_deal = {}
+        for ag, deal in rows:
+            e = by_deal.setdefault(deal.id, {
+                'deal_id': deal.id,
+                'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else '',
+                'client_name': deal.client_name or (deal.client.name if deal.client else ''),
+                'payout_usdt': 0.0,
+            })
+            e['payout_usdt'] = round(e['payout_usdt'] + (ag.payout_usdt or 0), 2)
+        return jsonify({'success': True, 'deals': list(by_deal.values())})
+    finally:
+        db.close()
+
+
 @app.route('/api/referrers/<int:referrer_id>/pay', methods=['POST'])
 def pay_referrer(referrer_id):
-    """Отметить выплату рефереру (все неоплаченные сделки)"""
+    """Отметить выплату рефереру. Body (опционально): {deal_ids: [...], note: '...'} —
+    выборочная выплата по сделкам + комментарий (хэш / «Оплачено по SCB»)."""
     db = get_session()
     try:
         referrer = db.query(Referrer).get(referrer_id)
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
+        body = request.get_json(silent=True) or {}
+        deal_ids = body.get('deal_ids') or None
+        note = (body.get('note') or '').strip() or None
+
         now = datetime.utcnow()
-        paid_deal_ids, total_paid = _mark_referrer_deals_paid(db, referrer, now)
+        paid_deal_ids, total_paid = _mark_referrer_deals_paid(db, referrer, now, deal_ids=deal_ids, note=note)
         db.commit()
 
         # Обновляем колонку "Выплачено" в листе «рефереры»
