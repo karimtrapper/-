@@ -47,6 +47,7 @@ PUBLIC_PATHS = [
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
     '/api/webhook/doverka',                    # Вебхук Doverka (защищён HMAC-подписью)
+    '/api/sber-incomes/ingest',                # Пуш приходов Сбера с VPS (защищён X-Api-Key)
 ]
 
 @app.before_request
@@ -165,6 +166,7 @@ class PayInMethod(str, Enum):
     PARTNERS_CASH = "partners_cash"
     CRYPTO_DIRECT = "crypto_direct"
     SBER_WL = "sber_wl"
+    SBER_REQS = "sber_reqs"
 
 
 PAYIN_METHOD_LABELS = {
@@ -172,6 +174,7 @@ PAYIN_METHOD_LABELS = {
     'crypto_direct': 'крипта',
     'partners_cash': 'наличные',
     'sber_wl': 'сбер WL',
+    'sber_reqs': 'сбер реквизиты',
 }
 
 PAYOUT_METHOD_LABELS = {
@@ -621,6 +624,9 @@ class Deal(Base):
     referrer_markup_percent = Column(Float)
     net_profit_usdt = Column(Float)
     needs_reimbursement = Column(Boolean, default=True)
+    # Части прихода (метод sber_reqs, оплата частями): JSON-список
+    # [{uuid|null, amount_rub, payer, date, note}]. uuid → приход из пула sber_incomes.
+    payin_parts = Column(Text, nullable=True)
     is_custom = Column(Boolean, default=False)
     custom_payin_currency = Column(String(10))
     custom_payin_amount = Column(Float)
@@ -652,6 +658,7 @@ class Deal(Base):
             'payin_tx_hash': self.payin_tx_hash,
             'payin_tx_verified': self.payin_tx_verified,
             'payin_partner_name': self.payin_partner_name,
+            'payin_parts': json.loads(self.payin_parts) if self.payin_parts else None,
             'doverka_transaction_id': self.doverka_transaction_id,
             'doverka_status': self.doverka_status.value if self.doverka_status else None,
             'doverka_payout_hash': self.doverka_payout_hash,
@@ -784,6 +791,35 @@ class ReestrInflow(Base):
     composition = Column(Text)            # JSON: [{wl,m,rub,client,margin,mPct,st}]
     dop = Column(Text)                    # JSON: [{id,назн,usdt}] — доп.расходы (недвижка/предоплата), вычитаются из прихода
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class SberIncome(Base):
+    """Приход на счёт Сбера (реквизиты). Пушится SberNotifier'ом с VPS
+    (POST /api/sber-incomes/ingest, идемпотентный upsert по uuid выписки).
+    Пул с защитой от двойного учёта: claimed_deal_id — в какой сделке сумма
+    забрана; забранные приходы исчезают из доступных в пикере."""
+    __tablename__ = 'sber_incomes'
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(64), unique=True, nullable=False, index=True)
+    operation_date = Column(String(40))     # ISO-дата операции из выписки Сбера
+    amount_rub = Column(Float, nullable=False)
+    payer = Column(String(255))             # плательщик (rurTransfer.payerName)
+    purpose = Column(Text)                  # назначение платежа
+    doc_number = Column(String(40))
+    claimed_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True, index=True)
+    claimed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'uuid': self.uuid,
+            'operation_date': self.operation_date,
+            'amount_rub': self.amount_rub,
+            'payer': self.payer, 'purpose': self.purpose,
+            'doc_number': self.doc_number,
+            'claimed_deal_id': self.claimed_deal_id,
+            'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None,
+        }
 
 
 # Создание таблиц
@@ -947,9 +983,22 @@ if 'postgresql' in DATABASE_URL:
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac:
             ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_WL'"))
-        print("✅ SBER_WL enum value added")
+            ac.execute(text("ALTER TYPE payinmethod ADD VALUE IF NOT EXISTS 'SBER_REQS'"))
+        print("✅ SBER_WL/SBER_REQS enum values added")
     except Exception as e:
         print(f"ℹ️ SBER_WL enum: {e}")
+
+# Части прихода (sber_reqs): JSON-список частичных оплат на сделке
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_parts TEXT"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_parts TEXT"))
+            except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payin_parts migration: {e}")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
@@ -2568,6 +2617,83 @@ def _refresh_deal_agents(session, deal):
     _apply_deal_agents(session, deal, agents_data)
 
 
+# ==================== ПРИХОДЫ СБЕРА (реквизиты) ====================
+
+@app.route('/api/sber-incomes/ingest', methods=['POST'])
+def ingest_sber_incomes():
+    """Приём приходов Сбера от SberNotifier (VPS). Идемпотентный upsert по uuid.
+    Авторизация — X-Api-Key (env SBER_INGEST_KEY), путь в PUBLIC_PATHS."""
+    key = os.environ.get('SBER_INGEST_KEY', '')
+    if not key or request.headers.get('X-Api-Key') != key:
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    data = request.get_json(silent=True) or {}
+    incomes = data.get('incomes') or []
+    if not isinstance(incomes, list) or len(incomes) > 500:
+        return jsonify({'success': False, 'error': 'bad payload'}), 400
+    db = get_session()
+    try:
+        created = 0
+        for inc in incomes:
+            uid = str(inc.get('uuid') or '').strip()
+            amount = inc.get('amount_rub')
+            if not uid or not amount:
+                continue
+            existing = db.query(SberIncome).filter(SberIncome.uuid == uid).first()
+            if existing:
+                continue  # приход неизменяем — обновлять нечего
+            db.add(SberIncome(
+                uuid=uid[:64],
+                operation_date=str(inc.get('operation_date') or '')[:40],
+                amount_rub=float(amount),
+                payer=str(inc.get('payer') or '')[:255],
+                purpose=str(inc.get('purpose') or '')[:1000],
+                doc_number=str(inc.get('doc_number') or '')[:40],
+            ))
+            created += 1
+        db.commit()
+        return jsonify({'success': True, 'created': created, 'received': len(incomes)})
+    finally:
+        db.close()
+
+
+@app.route('/api/sber-incomes', methods=['GET'])
+def list_sber_incomes():
+    """Пул приходов Сбера для пикера в форме сделки.
+    По умолчанию — только незабранные; ?all=1 — все (с меткой сделки)."""
+    db = get_session()
+    try:
+        q = db.query(SberIncome).order_by(SberIncome.operation_date.desc(), SberIncome.id.desc())
+        if request.args.get('all') != '1':
+            q = q.filter(SberIncome.claimed_deal_id.is_(None))
+        return jsonify({'success': True, 'incomes': [i.to_dict() for i in q.limit(300).all()]})
+    finally:
+        db.close()
+
+
+def _sync_sber_claims(session, deal, parts):
+    """Синхронизирует забор приходов из пула под части сделки (payin_parts).
+
+    parts — список dict {uuid|null, amount_rub, ...}; части без uuid (ручной ввод)
+    пул не трогают. Освобождает приходы, убранные из сделки; забирает новые.
+    Бросает ValueError, если приход уже забран другой сделкой (двойной учёт).
+    """
+    new_uuids = {str(p['uuid']) for p in (parts or []) if p.get('uuid')}
+    # освободить убранные
+    for inc in session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal.id).all():
+        if inc.uuid not in new_uuids:
+            inc.claimed_deal_id = None
+            inc.claimed_at = None
+    # забрать новые (с блокировкой строки от гонки двух сделок)
+    for uid in new_uuids:
+        inc = session.query(SberIncome).filter(SberIncome.uuid == uid).with_for_update().first()
+        if not inc:
+            continue  # ручная часть с чужим uuid — просто не трогаем пул
+        if inc.claimed_deal_id and inc.claimed_deal_id != deal.id:
+            raise ValueError(f'Приход {inc.amount_rub:.0f} ₽ ({inc.payer or uid[:8]}) уже забран в сделке #{inc.claimed_deal_id}')
+        inc.claimed_deal_id = deal.id
+        inc.claimed_at = datetime.utcnow()
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -2687,10 +2813,15 @@ def create_deal():
             custom_payout_currency=data.get('custom_payout_currency'),
             custom_payout_amount=data.get('custom_payout_amount'),
             custom_payout_rate=data.get('custom_payout_rate'),
+            payin_parts=json.dumps(data['payin_parts'], ensure_ascii=False) if data.get('payin_parts') else None,
             notes=data.get('notes')
         )
         session.add(deal)
         session.flush()
+
+        # Забор приходов Сбера из пула под части сделки (sber_reqs)
+        if data.get('payin_parts'):
+            _sync_sber_claims(session, deal, data['payin_parts'])
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
@@ -2785,6 +2916,12 @@ def update_deal(deal_id):
                       'needs_reimbursement']:
             if field in data:
                 setattr(deal, field, data[field])
+
+        # Части прихода Сбера (sber_reqs): JSON + синхронизация пула
+        if 'payin_parts' in data:
+            parts = data.get('payin_parts') or []
+            deal.payin_parts = json.dumps(parts, ensure_ascii=False) if parts else None
+            _sync_sber_claims(session, deal, parts)
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
@@ -2941,6 +3078,10 @@ def delete_deal(deal_id):
 
         # Удаляем связанные операции по кошелькам (Binance списания)
         session.query(WalletOperation).filter(WalletOperation.deal_id == deal_id).delete()
+
+        # Освобождаем забранные приходы Сбера (иначе FK claimed_deal_id заблокирует удаление)
+        session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).update(
+            {'claimed_deal_id': None, 'claimed_at': None})
 
         session.delete(deal)
         session.flush()
