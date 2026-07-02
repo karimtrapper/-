@@ -616,6 +616,23 @@
         return sym ? sym + num : num + ' ' + cur.toUpperCase();
     }
 
+    // Подпись модели вознаграждения. У реферала может быть НЕСКОЛЬКО компонент
+    // в одной сделке (напр. «+0.5% × объём» сверху + «30% × прибыль» от остатка) —
+    // тогда components содержит все строки, соединяем через « + ».
+    function compLabel(deal) {
+        const one = (m, pct, base) =>
+            m === 'markup' ? 'markup +' + (pct || 0) + '% × объём' + (deal.volume_usdt ? ' ($' + deal.volume_usdt.toFixed(0) + ')' : '')
+            : m === 'fixed' ? 'фикс'
+            : (pct || 0) + '% × прибыль' + (base != null ? ' ($' + base.toFixed(2) + ')' : '');
+        const comps = deal.components || [];
+        if (comps.length > 1) {
+            return comps.map(c => one(c.comp_model, c.percent, c.base_usdt) + ' = $' + (c.payout_usdt || 0).toFixed(2)).join(' + ');
+        }
+        return deal.comp_model === 'fixed'
+            ? 'фикс $' + (deal.commission_usdt || 0).toFixed(2)
+            : one(deal.comp_model, deal.percent, deal.profit_usdt);
+    }
+
     function renderDeals(page) {
         const list = document.getElementById('deals-list');
         if (!list || !statsData) return;
@@ -646,11 +663,7 @@
                     </div>
                 </div>
                 <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
-                    ${deal.comp_model === 'markup'
-                        ? 'markup +' + (deal.percent || 0) + '% × объём' + (deal.volume_usdt ? ' ($' + deal.volume_usdt.toFixed(0) + ')' : '')
-                        : deal.comp_model === 'fixed'
-                        ? 'фикс $' + (deal.commission_usdt || 0).toFixed(2)
-                        : (deal.percent || 0) + '% × прибыль' + (deal.profit_usdt ? ' ($' + deal.profit_usdt.toFixed(2) + ')' : '')}
+                    ${compLabel(deal)}
                 </div>
                 <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
                     <span class="dot"></span>

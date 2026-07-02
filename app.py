@@ -23,7 +23,9 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__, static_folder='static')
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)  # Railway proxy
 app.secret_key = os.environ['SECRET_KEY']  # Без fallback — crash если не задан
-cors_origins = os.environ.get('CORS_ORIGINS', 'https://proud-renewal-production-e9b8.up.railway.app').split(',')
+# Дефолт — актуальный прод-домен (старый proud-renewal-… умер 16.06.2026).
+# На проде переопределяется через env CORS_ORIGINS.
+cors_origins = os.environ.get('CORS_ORIGINS', 'https://grusha.up.railway.app').split(',')
 CORS(app, origins=cors_origins, supports_credentials=True)
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB макс размер загрузки
 app.permanent_session_lifetime = timedelta(days=30)  # Сессия 30 дней
@@ -44,6 +46,7 @@ PUBLIC_PATHS = [
     '/api/ref/',                               # Реферальная статистика
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
+    '/api/webhook/doverka',                    # Вебхук Doverka (защищён HMAC-подписью)
 ]
 
 @app.before_request
@@ -88,6 +91,21 @@ Session = scoped_session(SessionLocal)
 
 def get_session():
     return Session()
+
+
+def parse_float(value, default=0.0):
+    """Безопасный парсинг числа из формы: '', None, пробелы и запятая-разделитель
+    (RU-локаль) больше не роняют ручку в 500 через ValueError."""
+    if value is None:
+        return default
+    if isinstance(value, str):
+        value = value.strip().replace(' ', '').replace(',', '.')
+        if not value:
+            return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 # ==================== TRONSCAN CACHE ====================
 TRONSCAN_CACHE = {
@@ -1145,6 +1163,9 @@ def reestr_tx_sum():
     raw = data.get('hashes') or []
     if isinstance(raw, str):
         raw = [h.strip() for h in raw.replace(',', '\n').split('\n') if h.strip()]
+    # Лимит: каждый хеш — синхронный запрос к TronScan с timeout=10с. Без лимита
+    # POST со 100+ хешами блокирует воркер на ~1000с (DoS одним запросом).
+    raw = raw[:20]
     items, total, to_addr, dates = [], 0.0, None, []
     for h in raw:
         try:
@@ -1188,6 +1209,12 @@ def reestr_tx_sum():
     return jsonify({'ok': True, 'total': round(total, 6), 'items': items,
                     'wallet': wallet, 'broker': broker, 'date': date_str})
 
+
+# Сериализует ВСЕ обращения к листу «общая сделка»: read (get_all_values) и
+# mutate (insert/update/delete) должны идти атомарно, иначе два параллельных
+# завершения сделки (вебхук + ручное) читают один снапшот и дублируют/затирают
+# строки. Gunicorn запущен в 1 воркер (см. Procfile) → threading.Lock достаточно.
+_gsheet_lock = threading.RLock()
 
 # --- онлайн-синк реестра из WL-бота ---
 _reestr_sync_lock = threading.Lock()
@@ -1312,9 +1339,15 @@ def get_gsheet_client():
 
 
 def sync_deals_to_gsheet(deals):
+    """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    with _gsheet_lock:
+        return _sync_deals_to_gsheet_impl(deals)
+
+
+def _sync_deals_to_gsheet_impl(deals):
     """Добавляет завершённые сделки в Google Sheet 'общая сделка'.
-    Идемпотентно: если строка для сделки уже есть (по client_name + date) —
-    обновляет её через update_deal_in_gsheet (форсированно, без проверки reimbursement).
+    Идемпотентно: если строка для сделки уже есть (по deal.id в колонке R,
+    иначе по client_name + date) — обновляет её через _force_update_deal_row_in_gsheet.
     Возвращает dict {ok: bool, inserted: int, error: str|None} для диагностики."""
     try:
         gc = get_gsheet_client()
@@ -1426,6 +1459,7 @@ def sync_deals_to_gsheet(deals):
                 payout_method_str,                     # O: способ выдачи
                 payin_method_str if not deal.is_custom else 'кастом',  # P: способ пополнения
                 tx_hash,                               # Q: хеш
+                str(deal.id) if deal.id else '',       # R: служебный deal.id (идемпотентность)
             ]
             new_rows.append(row)
 
@@ -1479,13 +1513,22 @@ def sync_deals_to_gsheet(deals):
 
 def find_deal_row_in_gsheet(ws, all_rows, deal):
     """Находит строку сделки в Google Sheet.
-    1) По клиенту + дате (точное совпадение).
+    0) По deal.id в служебной колонке R (надёжно, без коллизий) — для сделок,
+       записанных после внедрения id-колонки.
+    1) По клиенту + дате (точное совпадение) — легаси-строки без id.
     2) Fallback: по дате + сумме USDT (если имя клиента было изменено
        в CRM, но строка в Sheet с прежним именем).
     Возвращает 1-indexed номер строки или None."""
     deal_date = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     deal_name = (deal.client_name or '').strip().lower()
     deal_usdt = deal.payin_amount_usdt or 0
+    # Попытка 0: по deal.id в колонке R (индекс 17). Уникальный ключ — два
+    # обмена одного клиента в один день больше не схлопываются в одну строку.
+    deal_id_str = str(deal.id) if getattr(deal, 'id', None) else ''
+    if deal_id_str:
+        for i, row in enumerate(all_rows):
+            if len(row) >= 18 and str(row[17]).strip() == deal_id_str:
+                return i + 1
     # Попытка 1: имя + дата
     for i, row in enumerate(all_rows):
         if len(row) >= 4:
@@ -1511,6 +1554,12 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
 
 
 def delete_deal_from_gsheet(deal):
+    """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    with _gsheet_lock:
+        return _delete_deal_from_gsheet_impl(deal)
+
+
+def _delete_deal_from_gsheet_impl(deal):
     """Удаляет строку сделки из Google Sheet"""
     try:
         gc = get_gsheet_client()
@@ -1581,13 +1630,20 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
         payout_method_str,  # O
         payin_method_str if not deal.is_custom else 'кастом',  # P
         deal.payin_tx_hash or '',  # Q
+        str(deal.id) if deal.id else '',  # R: служебный deal.id (проставляем и легаси-строкам)
     ]
-    ws.update(values=[row], range_name=f'A{row_num}:Q{row_num}', value_input_option='USER_ENTERED')
+    ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
     print(f'[GSheet] Force-updated row {row_num} for deal #{deal.id}')
     return True
 
 
 def update_deal_in_gsheet(deal):
+    """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    with _gsheet_lock:
+        return _update_deal_in_gsheet_impl(deal)
+
+
+def _update_deal_in_gsheet_impl(deal):
     """Обновляет строку сделки в Google Sheet (только если возмещена)"""
     if deal.reimbursement_id is None:
         return
@@ -1653,9 +1709,10 @@ def update_deal_in_gsheet(deal):
             payout_method_str,  # O
             payin_method_str if not deal.is_custom else 'кастом',  # P
             deal.payin_tx_hash or '',  # Q
+            str(deal.id) if deal.id else '',  # R: служебный deal.id
         ]
 
-        ws.update(values=[row], range_name=f'A{row_num}:Q{row_num}', value_input_option='USER_ENTERED')
+        ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
         print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
@@ -2282,6 +2339,15 @@ def calculate():
             rates['usdt_thb'] = float(custom_usdt_thb)
             print(f"🎯 Использую точный курс USDT-THB: {rates['usdt_thb']:.4f}", flush=True)
 
+        # Мягкая деградация: если биржа недоступна, курс = None → не роняем расчёт
+        # в 500, а честно отвечаем 503. USDT-THB нужен всем сценариям.
+        if rates.get('usdt_thb') is None:
+            return jsonify({'error': 'Курс USDT-THB временно недоступен, попробуйте позже'}), 503
+        # RUB-USDT нужен только стандартному калькулятору в RUB-сценариях
+        # (брокер использует custom_rub_usdt с дефолтом).
+        if method != 'broker' and scenario in ('rub-to-thb', 'rub-to-usdt') and rates.get('rub_usdt') is None:
+            return jsonify({'error': 'Курс RUB-USDT временно недоступен, попробуйте позже'}), 503
+
         if method == 'broker':
             from broker_detailed import BrokerCalculatorDetailed
             custom_rub_usdt_raw = data.get('custom_rub_usdt')
@@ -2315,6 +2381,12 @@ def calculate():
             else:
                 return jsonify({'error': 'Invalid scenario'}), 400
         
+        # Floor-guard: при слишком малой сумме выдача уходит в 0/минус, а
+        # safe_rate возвращает 0 или курс становится отрицательным. Не отдаём
+        # менеджеру бессмысленный расчёт — возвращаем понятную ошибку.
+        if result.get('final_rate', 0) <= 0:
+            return jsonify({'error': 'Сумма слишком мала для расчёта'}), 400
+
         # CalcCRM — внутренний инструмент за авторизацией, отдаём всю кухню
         # (profit_usdt, комиссии, incoming/outgoing, bonus_usdt, курсы).
         # Фильтр PUBLIC_FIELDS применяем только в api_server.py на VPS.
@@ -2521,7 +2593,10 @@ def create_deal():
         client_name = data.get('client_name')
         
         if not client_id and client_name:
-            existing_client = session.query(Client).filter(Client.name == client_name).first()
+            # Нормализуем имя: trim + регистронезависимый поиск, иначе «Иван»,
+            # «иван » и «ИВАН» создавали 3 разных клиента и размазывали статистику.
+            client_name = client_name.strip()
+            existing_client = session.query(Client).filter(Client.name.ilike(client_name)).first()
             if not existing_client:
                 new_client = Client(name=client_name)
                 session.add(new_client)
@@ -2766,7 +2841,7 @@ def update_deal(deal_id):
             new_name = str(client_name_val).strip()
             current_client = session.query(Client).filter(Client.id == deal.client_id).first()
             if current_client and current_client.name != new_name:
-                existing = session.query(Client).filter(Client.name == new_name).first()
+                existing = session.query(Client).filter(Client.name.ilike(new_name)).first()
                 if existing:
                     deal.client_id = existing.id
                 else:
@@ -2929,8 +3004,8 @@ def create_cash_batch():
     session = get_session()
     try:
         data = request.get_json()
-        amount_thb = float(data['amount_thb'])
-        cost_usdt = float(data['cost_usdt'])
+        amount_thb = parse_float(data.get('amount_thb'))
+        cost_usdt = parse_float(data.get('cost_usdt'))
 
         # Валидация: сумма должна быть больше нуля
         if amount_thb <= 0 or cost_usdt <= 0:
@@ -3358,10 +3433,10 @@ def get_incoming_transactions():
         # Сортируем все транзакции по времени
         all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
         
-        # Обновляем кэш
+        # Обновляем кэш. Атомарно (одним присваиванием sub-dict), иначе читатель
+        # мог увидеть новые data со старым timestamp (окно рассинхрона).
         if not wallet_filter: # Кэшируем только общий список
-            TRONSCAN_CACHE['incoming']['data'] = all_incoming
-            TRONSCAN_CACHE['incoming']['timestamp'] = current_time
+            TRONSCAN_CACHE['incoming'] = {'data': all_incoming, 'timestamp': current_time}
         
         used_hashes = get_used_transaction_hashes(session)
         
@@ -3527,10 +3602,9 @@ def get_outgoing_transactions():
             deduped.append(tx)
         all_outgoing = deduped
 
-        # Обновляем кэш (полный набор, без limit-фильтра)
+        # Обновляем кэш (полный набор, без limit-фильтра). Атомарно — см. incoming.
         if not wallet_filter and not result_limit:
-            TRONSCAN_CACHE['outgoing']['data'] = all_outgoing
-            TRONSCAN_CACHE['outgoing']['timestamp'] = current_time
+            TRONSCAN_CACHE['outgoing'] = {'data': all_outgoing, 'timestamp': current_time}
 
         final_limit = result_limit or 1000
         return jsonify({
@@ -3642,7 +3716,7 @@ def create_wallet_operation(wallet_id):
         op = WalletOperation(
             wallet_id=wallet_id,
             type=data['type'],  # 'income' or 'expense'
-            amount=float(data['amount']),
+            amount=parse_float(data.get('amount')),
             description=data.get('description'),
             tx_hash=data.get('tx_hash')
         )
@@ -3794,7 +3868,7 @@ def topup_card(card_id):
         if not card:
             return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
 
-        amount_thb = float(data['amount_thb'])
+        amount_thb = parse_float(data.get('amount_thb'))
         source_type = data['source_type'] # 'cash_batch' or 'separate'
 
         cost_usdt = 0
@@ -3819,7 +3893,7 @@ def topup_card(card_id):
                 batch.status = CashBatchStatus.DEPLETED
         else:
             # Отдельная закупка
-            cost_usdt = float(data['cost_usdt'])
+            cost_usdt = parse_float(data.get('cost_usdt'))
             purchase_rate = amount_thb / cost_usdt
             
         topup = CardTopup(
@@ -4199,6 +4273,14 @@ def create_reimbursement():
         except Exception as tg_err:
             print(f'[Telegram] Error on reimbursement: {tg_err}')
 
+        # Webhook в DealCloser/Bitrix — как в update_deal при завершении. Без него
+        # возмещённые сделки не долетали до внешних систем (несогласованность путей).
+        for deal in deals:
+            try:
+                send_deal_completed_webhook(deal)
+            except Exception as wh_err:
+                print(f'[Webhook] Error on reimbursement: {wh_err}')
+
         return jsonify({
             'success': True,
             'reimbursement': reimbursement.to_dict(),
@@ -4492,6 +4574,20 @@ def doverka_currencies():
 @app.route('/api/webhook/doverka', methods=['POST'])
 def doverka_webhook():
     try:
+        # Публичный эндпоинт → обязательна проверка HMAC-подписи, иначе любой мог
+        # бы слать фейковые «оплата получена» в рабочий чат.
+        import hmac as _hmac, hashlib as _hashlib
+        secret = os.environ.get('DOVERKA_WEBHOOK_SECRET', '')
+        if not secret:
+            app.logger.error('Webhook Doverka: DOVERKA_WEBHOOK_SECRET не задан — отклоняю')
+            return jsonify({'error': 'webhook not configured'}), 503
+        raw = request.get_data()
+        signature = request.headers.get('X-Signature', '')
+        expected = _hmac.new(secret.encode(), raw, _hashlib.sha256).hexdigest()
+        if not _hmac.compare_digest(signature, expected):
+            app.logger.warning('Webhook Doverka: неверная подпись')
+            return jsonify({'error': 'invalid signature'}), 401
+
         data = request.get_json()
         if data.get('status') == 'PAID':
             metadata = data.get('metadata', {})
@@ -4517,11 +4613,14 @@ def confirm_doverka(deal_id):
         deal.doverka_status = DoverkaStatus.CONFIRMED
         deal.doverka_payout_hash = payout_hash
         deal.doverka_confirmed_at = datetime.utcnow()
-        
+
         # Если сделка была в ожидании, переводим в завершенные
+        old_status = deal.status
+        just_completed = False
         if deal.status == DealStatus.PENDING:
             deal.status = DealStatus.COMPLETED
-            
+            just_completed = True
+
         # Автоматическое списание с кошелька при подтверждении (если выбрано)
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
             # Ищем существующую операцию
@@ -4542,7 +4641,25 @@ def confirm_doverka(deal_id):
                 session.add(op)
 
         session.commit()
-        
+
+        # Согласованность с update_deal: при переходе в COMPLETED шлём
+        # webhook (DealCloser/Bitrix) + GSheet + Telegram, иначе сделки,
+        # завершённые через подтверждение Doverka, никуда не долетали.
+        if just_completed:
+            try:
+                send_deal_completed_webhook(deal)
+            except Exception as wh_err:
+                print(f'[Webhook] Error on doverka confirm: {wh_err}')
+            if deal.profit_usdt is not None and deal.reimbursement_id is None:
+                try:
+                    sync_deals_to_gsheet([deal])
+                except Exception as gs_err:
+                    print(f'[GSheet] Error on doverka confirm: {gs_err}')
+                try:
+                    _send_deal_telegram(deal)
+                except Exception as tg_err:
+                    print(f'[Telegram] Error on doverka confirm: {tg_err}')
+
         return jsonify({'success': True, 'deal': deal.to_dict()})
     except Exception as e:
         session.rollback()
@@ -4680,6 +4797,10 @@ def kyc_submit():
         if kyc.status == KycStatus.APPROVED:
             return jsonify({'success': False, 'error': 'already_verified'}), 400
 
+        # Пересабмит: чистим прежние файлы, иначе старые кадры (doc.png,
+        # лишние liveness_*) остаются сиротами с PII, не попав в новый liveness_paths.
+        _delete_kyc_files(token)
+
         # Создаём папку для этого запроса
         upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
         os.makedirs(upload_dir, exist_ok=True)
@@ -4734,6 +4855,9 @@ def kyc_submit():
         return jsonify({'success': True, 'status': 'pending'})
     except Exception as e:
         session.rollback()
+        # БД откатилась → частично сохранённые файлы (напр. паспорт) стали бы
+        # недостижимыми сиротами с PII. Удаляем их.
+        _delete_kyc_files(token)
         app.logger.error(f'Server error: {e}')
         return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
@@ -4939,9 +5063,15 @@ def referrer_stats(token):
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
+        # Один реферал может иметь НЕСКОЛЬКО строк в одной сделке (напр. markup 0.5% с верха
+        # + revshare 30% от остатка) — группируем списком, а не одной строкой на сделку.
         agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
-        agent_by_deal = {r.deal_id: r for r in agent_rows}
-        deal_ids = list(agent_by_deal.keys())
+        rows_by_deal = {}
+        for r in agent_rows:
+            rows_by_deal.setdefault(r.deal_id, []).append(r)
+        for rows in rows_by_deal.values():
+            rows.sort(key=lambda x: (x.tier or 1, x.id or 0))
+        deal_ids = list(rows_by_deal.keys())
         deals = db.query(Deal).filter(
             Deal.id.in_(deal_ids),
             Deal.status == DealStatus.COMPLETED
@@ -4949,7 +5079,8 @@ def referrer_stats(token):
 
         recent_deals = []
         for deal in deals:
-            ag = agent_by_deal.get(deal.id)
+            deal_rows = rows_by_deal.get(deal.id) or []
+            ag = deal_rows[0] if deal_rows else None
             # Маскируем имя клиента для конфиденциальности
             client_name = ''
             if deal.client:
@@ -4978,19 +5109,27 @@ def referrer_stats(token):
                 'payout_amount': payout_amount,
                 'payout_currency': payout_cur,
                 'payout_thb': payout_amount if payout_cur == 'thb' else 0,  # legacy
-                # Выплата/модель/процент — из строки ЭТОГО агента (не из кэша сделки).
+                # Выплата/модель/процент — из строк ЭТОГО агента (не из кэша сделки).
+                # commission = СУММА всех его строк в сделке; components — разбивка
+                # (markup+revshare), фронт рисует «0.5% × объём + 30% × прибыль».
                 # profit_usdt = база агента (для ур.2+ это остаток — каскад агенту не виден).
-                'commission_usdt': ag.payout_usdt if ag else None,
-                'paid': (ag.paid if ag else False) or False,
+                'commission_usdt': round(sum(r.payout_usdt or 0 for r in deal_rows), 2) if deal_rows else None,
+                'paid': all(r.paid for r in deal_rows) if deal_rows else False,
                 'client_masked': masked,
                 'client_initials': initials,
                 'comp_model': (ag.comp_model if ag else None) or 'revshare',
                 'percent': ag.percent if ag else None,
                 'profit_usdt': ag.base_usdt if ag else deal.profit_usdt,
+                'components': [{
+                    'comp_model': r.comp_model or 'revshare',
+                    'percent': r.percent or 0,
+                    'payout_usdt': r.payout_usdt or 0,
+                    'base_usdt': r.base_usdt,
+                } for r in deal_rows],
             })
 
         # Считаем из строк агента (его доля по каждой сделке), а не из кэша сделки
-        completed_rows = [agent_by_deal[d.id] for d in deals if agent_by_deal.get(d.id)]
+        completed_rows = [r for d in deals for r in (rows_by_deal.get(d.id) or [])]
         total_earned = sum(r.payout_usdt or 0 for r in completed_rows)
         total_paid = sum((r.payout_usdt or 0) for r in completed_rows if r.paid)
         referred_clients = db.query(Client).filter(Client.referrer_id == referrer.id).count()
@@ -5111,16 +5250,16 @@ def create_payout_request(token):
         # Раньше тут было Deal.referrer_payout_usdt (легаси-кэш на сделке) — у рефереров
         # с мультиагентными сделками оно = 0/None, поэтому кабинет показывал доступный
         # баланс, а оформление вывода отвечало «Доступно: $0.00» и резало запрос.
+        # Несколько строк одного реферала в сделке (markup+revshare) — суммируем ВСЕ
         agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
-        agent_by_deal = {r.deal_id: r for r in agent_rows}
-        if agent_by_deal:
+        if agent_rows:
             completed_ids = {
                 row.id for row in db.query(Deal.id).filter(
-                    Deal.id.in_(list(agent_by_deal.keys())),
+                    Deal.id.in_(list({r.deal_id for r in agent_rows})),
                     Deal.status == DealStatus.COMPLETED,
                 ).all()
             }
-            rows = [agent_by_deal[did] for did in completed_ids]
+            rows = [r for r in agent_rows if r.deal_id in completed_ids]
             total_earned = sum(r.payout_usdt or 0 for r in rows)
             total_paid = sum((r.payout_usdt or 0) for r in rows if r.paid)
         else:
@@ -5366,16 +5505,16 @@ def get_referrers():
             # Доля ИМЕННО этого реферала по каждой сделке — из deal_agents (как в ЛК и при выплате),
             # а НЕ deal.referrer_payout_usdt: та содержит сумму выплат ВСЕХ агентов сделки,
             # из-за чего основному рефералу приписывались доли остальных (4511 vs реальные 1514).
+            # Реферал может иметь несколько строк в одной сделке (markup+revshare) — суммируем все
             agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == r.id).all()
-            agent_by_deal = {ar.deal_id: ar for ar in agent_rows}
             completed_ids = {
                 did for (did,) in db.query(Deal.id).filter(
-                    Deal.id.in_(list(agent_by_deal.keys())),
+                    Deal.id.in_(list({ar.deal_id for ar in agent_rows})),
                     Deal.status == DealStatus.COMPLETED,
                 ).all()
-            } if agent_by_deal else set()
-            rows = [agent_by_deal[did] for did in completed_ids]
-            d['total_deals'] = len(rows)
+            } if agent_rows else set()
+            rows = [ar for ar in agent_rows if ar.deal_id in completed_ids]
+            d['total_deals'] = len(completed_ids)
             d['total_earned_usdt'] = round(sum(ar.payout_usdt or 0 for ar in rows), 2)
             d['total_paid_usdt'] = round(sum((ar.payout_usdt or 0) for ar in rows if ar.paid), 2)
             d['pending_usdt'] = round(d['total_earned_usdt'] - d['total_paid_usdt'], 2)
@@ -5458,7 +5597,7 @@ def update_referrer(referrer_id):
                     return jsonify({'success': False, 'error': f'Код {new_code} уже занят'}), 400
                 referrer.code = new_code
         if 'default_percent' in data:
-            referrer.default_percent = float(data['default_percent'])
+            referrer.default_percent = parse_float(data.get('default_percent'))
         if 'comp_model' in data:
             cm = (data['comp_model'] or 'revshare').strip().lower()
             if cm in ('revshare', 'markup'):
@@ -5476,7 +5615,7 @@ def update_referrer(referrer_id):
         if 'notes' in data:
             referrer.notes = data['notes']
         if 'total_paid_usdt' in data:
-            referrer.total_paid_usdt = float(data['total_paid_usdt'])
+            referrer.total_paid_usdt = parse_float(data.get('total_paid_usdt'))
 
         db.commit()
         return jsonify({'success': True, 'referrer': referrer.to_dict()})
@@ -5596,7 +5735,8 @@ def _mark_referrer_deals_paid(db, referrer, now):
         r.paid = True
         r.paid_at = now
         total_paid += r.payout_usdt or 0
-        paid_deal_ids.append(r.deal_id)
+        if r.deal_id not in paid_deal_ids:  # у реферала может быть 2 строки в сделке (markup+revshare)
+            paid_deal_ids.append(r.deal_id)
         # синхрон legacy-флага на сделке, если реферал — основной (ур.1)
         deal = db.query(Deal).get(r.deal_id)
         if deal and deal.referrer_id == referrer.id:
@@ -5834,7 +5974,7 @@ def update_partner(partner_id):
         if 'name' in data:
             partner.name = data['name'].strip()
         if 'markup_percent' in data:
-            partner.markup_percent = float(data['markup_percent'])
+            partner.markup_percent = parse_float(data.get('markup_percent'))
         if 'active' in data:
             partner.active = bool(data['active'])
 
@@ -5916,4 +6056,7 @@ if __name__ == '__main__':
     print(f"📍 http://localhost:{port}")
     print(f"📍 http://localhost:{port}/crm")
     print(f"💾 Database: {'PostgreSQL' if 'postgresql' in DATABASE_URL else 'SQLite'}")
-    app.run(debug=True, host='0.0.0.0', port=port)
+    # debug только по явному флагу env: иначе Werkzeug-дебаггер на 0.0.0.0
+    # отдаёт трейсбеки и позволяет исполнять код (RCE) при прямом запуске.
+    debug_mode = os.environ.get('FLASK_DEBUG', '').lower() == 'true'
+    app.run(debug=debug_mode, host='0.0.0.0', port=port)
