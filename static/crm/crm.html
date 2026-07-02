@@ -3300,6 +3300,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         
                         <h4 style="color: #10b981; margin-bottom: 0.5rem;">Pay-In</h4>
                         ${deal.is_custom ? `
+                            ${deal.payin_method ? `<p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>` : ''}
                             <p><strong>Валюта:</strong> ${deal.custom_payin_currency}</p>
                             <p><strong>Сумма:</strong> ${formatNumber(deal.custom_payin_amount)} ${deal.custom_payin_currency}</p>
                             ${deal.custom_payin_rate ? `<p><strong>Курс к USDT:</strong> ${deal.custom_payin_rate}</p>` : ''}
