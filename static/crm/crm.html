@@ -803,6 +803,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <th>Дата</th>
                                 <th>Менеджер</th>
                                 <th>Клиент</th>
+                                <th>Партнёр</th>
                                 <th>Метод Pay-In</th>
                                 <th>Сумма USDT</th>
                                 <th>Pay-Out THB</th>
@@ -3158,6 +3159,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.manager_name) || '-'}</td>
                             <td>${escapeHtml(deal.client_name) || '-'}</td>
+                            <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
                             <td>${deal.custom_payout_currency
