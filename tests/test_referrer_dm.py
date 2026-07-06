@@ -68,3 +68,45 @@ def test_cancel_payout_helper():
     req = s.query(PayoutRequest).get(req_id)
     assert _cancel_payout(s, req) is False
     s.close()
+
+
+def test_webhook_bad_secret():
+    with app.test_client() as c:
+        r = c.post('/api/tg/lk-webhook', json={}, headers={'X-Telegram-Bot-Api-Secret-Token': 'wrong'})
+    assert r.status_code == 403
+
+
+def test_webhook_cancel_by_owner(monkeypatch):
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    rid, _ = _mk_ref(telegram_user_id=42)
+    s = get_session()
+    req = PayoutRequest(referrer_id=rid, amount_usdt=50, wallet='x',
+                        contact_method='telegram', contact_value='@e', status='new')
+    s.add(req); s.commit(); req_id = req.id; s.close()
+    update = {'callback_query': {'id': 'cq1', 'from': {'id': 42}, 'data': f'cancel:{req_id}',
+              'message': {'message_id': 5, 'chat': {'id': 42}}}}
+    with app.test_client() as c:
+        r = c.post('/api/tg/lk-webhook', json=update,
+                   headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+    assert r.status_code == 200
+    s = get_session()
+    assert s.query(PayoutRequest).get(req_id).status == 'cancelled'
+    s.close()
+
+
+def test_webhook_cancel_wrong_user(monkeypatch):
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    rid, _ = _mk_ref(telegram_user_id=42)
+    s = get_session()
+    req = PayoutRequest(referrer_id=rid, amount_usdt=50, wallet='x',
+                        contact_method='telegram', contact_value='@e', status='new')
+    s.add(req); s.commit(); req_id = req.id; s.close()
+    update = {'callback_query': {'id': 'cq2', 'from': {'id': 999}, 'data': f'cancel:{req_id}',
+              'message': {'message_id': 5, 'chat': {'id': 999}}}}
+    with app.test_client() as c:
+        r = c.post('/api/tg/lk-webhook', json=update,
+                   headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+    assert r.status_code == 200
+    s = get_session()
+    assert s.query(PayoutRequest).get(req_id).status == 'new'
+    s.close()

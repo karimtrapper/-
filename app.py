@@ -45,6 +45,7 @@ PUBLIC_PATHS = [
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/partner/',                           # Партнёрский калькулятор
     '/api/ref/',                               # Реферальная статистика
+    '/api/tg/',                                # Webhook бота-логина (защищён secret_token)
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
     '/api/webhook/doverka',                    # Вебхук Doverka (защищён HMAC-подписью)
@@ -4693,6 +4694,67 @@ def _cancel_payout(db, req):
     req.processed_at = datetime.utcnow()
     db.commit()
     return True
+
+
+def _tg_answer_callback(token, cq_id, text):
+    """Ответ на callback_query (всплывающий тост в Telegram)."""
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                      json={'callback_query_id': cq_id, 'text': text}, timeout=10)
+    except Exception as e:
+        print(f'[LKBot] answerCallback error: {e}')
+
+
+def _tg_edit_message(token, cq, new_text):
+    """Правка исходного сообщения с кнопкой (убираем клавиатуру, меняем текст)."""
+    msg = cq.get('message') or {}
+    chat = (msg.get('chat') or {}).get('id')
+    mid = msg.get('message_id')
+    if not chat or not mid:
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/editMessageText",
+                      json={'chat_id': chat, 'message_id': mid, 'text': new_text,
+                            'parse_mode': 'HTML'}, timeout=10)
+    except Exception as e:
+        print(f'[LKBot] editMessage error: {e}')
+
+
+@app.route('/api/tg/lk-webhook', methods=['POST'])
+def lk_bot_webhook():
+    """Webhook @grusha_lk_bot: обработка inline-кнопки отмены заявки."""
+    secret = os.environ.get('REF_LK_WEBHOOK_SECRET', '')
+    if not secret or request.headers.get('X-Telegram-Bot-Api-Secret-Token') != secret:
+        return jsonify({'ok': False}), 403
+    update = request.get_json(silent=True) or {}
+    cq = update.get('callback_query')
+    if not cq:
+        return jsonify({'ok': True})
+    token = get_login_bot_token()
+    data = cq.get('data') or ''
+    from_id = (cq.get('from') or {}).get('id')
+    if data.startswith('cancel:'):
+        try:
+            req_id = int(data.split(':', 1)[1])
+        except ValueError:
+            return jsonify({'ok': True})
+        db = get_session()
+        try:
+            req = db.query(PayoutRequest).get(req_id)
+            referrer = db.query(Referrer).get(req.referrer_id) if req else None
+            # Авторизация: колбэк только от владельца заявки
+            if (not req or not referrer or not referrer.telegram_user_id
+                    or int(referrer.telegram_user_id) != int(from_id or 0)):
+                _tg_answer_callback(token, cq.get('id'), 'Нет доступа')
+                return jsonify({'ok': True})
+            if _cancel_payout(db, req):
+                _tg_answer_callback(token, cq.get('id'), 'Заявка отменена')
+                _tg_edit_message(token, cq, '❌ Заявка на выплату отменена')
+            else:
+                _tg_answer_callback(token, cq.get('id'), 'Заявка уже обработана')
+        finally:
+            db.close()
+    return jsonify({'ok': True})
 
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
