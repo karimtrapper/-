@@ -2875,6 +2875,7 @@ def create_deal():
         skip_sync = data.get('skip_sync', False)
         if deal.status == DealStatus.COMPLETED and not skip_sync:
             send_deal_completed_webhook(deal)
+            notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
             if deal.profit_usdt is not None:
                 try:
@@ -3047,6 +3048,7 @@ def update_deal(deal_id):
         # Webhook при завершении
         if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
             send_deal_completed_webhook(deal)
+            notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram только если сделка ещё НЕ была возмещена
             # (возмещение уже отправило уведомления при create_reimbursement)
             if deal.profit_usdt is not None and deal.reimbursement_id is None:
@@ -4694,6 +4696,26 @@ def _cancel_payout(db, req):
     req.processed_at = datetime.utcnow()
     db.commit()
     return True
+
+
+def notify_agents_new_deal(db, deal):
+    """DM каждому реферер-агенту завершённой сделки: начислено + кнопка «Вывести».
+    Мульти-агент: каждому шлём его сумму. Пропуск агентов без привязки TG или без начисления."""
+    try:
+        for ag in (deal.agents or []):
+            if not ag.referrer_id or not (ag.payout_usdt or 0):
+                continue
+            referrer = db.query(Referrer).get(ag.referrer_id)
+            if not referrer or not referrer.telegram_user_id:
+                continue
+            available, _ = _referrer_balance(db, referrer)
+            msg = (f"🎉 <b>Новая сделка!</b>\n\n"
+                   f"Начислено к выводу: <b>${ag.payout_usdt:.2f}</b>\n"
+                   f"Всего доступно: <b>${available:.2f}</b>")
+            url = f"https://grusha.up.railway.app/ref/{referrer.token}"
+            send_referrer_dm(referrer, msg, buttons=[[{'text': '💸 Вывести', 'url': url}]])
+    except Exception as e:
+        print(f'[ReferrerDM] new deal notify error: {e}')
 
 
 def _tg_answer_callback(token, cq_id, text):
