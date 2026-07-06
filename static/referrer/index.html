@@ -411,18 +411,20 @@
         }
     };
 
-    // Сброс кэшированной сессии Telegram-виджета → повторный вход с вводом номера
+    // Сброс кэшированной сессии Telegram-виджета. Повторный popup нельзя открыть
+    // из таймера (браузер блокирует без клика) — после сброса просим нажать кнопку снова.
     function switchTgAccount(botId) {
         const w = window.open(
             'https://oauth.telegram.org/auth/logOut?bot_id=' + encodeURIComponent(botId) +
             '&origin=' + encodeURIComponent(location.origin),
-            'tg_logout', 'width=360,height=120');
+            'tg_logout', 'width=420,height=260');
         setTimeout(function () {
             try { if (w) w.close(); } catch (e) {}
-            window.Telegram.Login.auth(
-                { bot_id: botId, request_access: 'write' },
-                function (user) { if (user) onTgAuth(user); }
-            );
+            const err = document.getElementById('tg-login-error');
+            if (err) err.innerHTML = '<span style="color:#16A34A;">✅ Кэш Telegram сброшен.</span> ' +
+                'Нажмите <b>«Войти через Telegram»</b> — теперь спросит номер.';
+            const mainBtn = document.getElementById('tg-login-btn');
+            if (mainBtn) mainBtn.style.boxShadow = '0 0 0 3px rgba(34,197,94,0.4)';
         }, 1500);
     }
 

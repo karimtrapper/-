@@ -305,15 +305,22 @@
                     } catch (e) { errEl.textContent = 'Ошибка сети'; errEl.classList.add('visible'); }
                 });
             }
-            // Сброс кэшированной сессии Telegram-виджета → повторный вход с вводом номера
+            // Сброс кэшированной сессии Telegram-виджета. Повторный popup нельзя
+            // открыть из таймера (браузер блокирует без клика) — поэтому после
+            // сброса просим нажать основную кнопку ещё раз.
             function switchTgAccount() {
                 const w = window.open(
                     'https://oauth.telegram.org/auth/logOut?bot_id=' + encodeURIComponent(cfg.bot_id) +
                     '&origin=' + encodeURIComponent(location.origin),
-                    'tg_logout', 'width=360,height=120');
+                    'tg_logout', 'width=420,height=260');
+                const errEl = document.getElementById('loginError');
                 setTimeout(function () {
                     try { if (w) w.close(); } catch (e) {}
-                    doTgAuth();  // теперь Telegram спросит номер заново
+                    errEl.innerHTML = '<span style="color:#166534;">✅ Кэш Telegram сброшен.</span> ' +
+                        'Нажмите <b>«Войти через Telegram»</b> — теперь спросит номер.';
+                    errEl.classList.add('visible');
+                    const mainBtn = document.getElementById('tgLoginBtn');
+                    if (mainBtn) { mainBtn.style.boxShadow = '0 0 0 3px rgba(249,115,22,0.45)'; }
                 }, 1500);
             }
             const btn = document.getElementById('tgLoginBtn');
