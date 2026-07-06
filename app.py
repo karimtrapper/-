@@ -4595,6 +4595,12 @@ def get_bot_username():
         return None
     return _login_bot_username_cache
 
+
+def get_login_bot_id():
+    """Числовой bot_id (префикс токена) для popup-авторизации Telegram.Login.auth."""
+    tok = get_login_bot_token()
+    return tok.split(':')[0] if tok and ':' in tok else None
+
 def verify_telegram_auth(data: dict, bot_token: str, max_age_sec: int = 86400) -> bool:
     """Проверка подписи Telegram Login Widget (HMAC-SHA256) и свежести auth_date."""
     if not bot_token or not data.get('hash'):
@@ -5488,6 +5494,7 @@ def referrer_stats(token):
         if not ref_session_authorized(referrer, token):
             return jsonify({'success': False, 'auth_required': True,
                             'bot_username': get_bot_username(),
+                            'bot_id': get_login_bot_id(),
                             'referrer_name': referrer.name}), 401
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
