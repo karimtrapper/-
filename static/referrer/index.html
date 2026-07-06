@@ -396,15 +396,35 @@
             });
             const d = await resp.json();
             if (d.success) { location.reload(); return; }
-            // Виджет Telegram кэширует аккаунт браузера — подсказываем, как сменить
+            // Виджет Telegram кэширует аккаунт браузера — даём кнопку реального сброса
             document.getElementById('tg-login-error').innerHTML =
                 esc(d.error || 'Не удалось войти') +
-                '<div style="margin-top:6px;color:#94A3B8;font-size:12px;">Не тот Telegram-аккаунт? ' +
-                'В окне входа нажмите <b>edit</b> у номера, либо откройте ссылку в режиме инкогнито.</div>';
+                '<div style="margin-top:10px;"><button type="button" id="tg-switch-btn" ' +
+                'style="background:var(--navy-800);color:#fff;border:none;border-radius:8px;padding:9px 14px;' +
+                'font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">' +
+                '🔄 Войти с другого Telegram</button></div>';
+            document.getElementById('tg-switch-btn').addEventListener('click', function () {
+                switchTgAccount(window._tgBotId);
+            });
         } catch (e) {
             document.getElementById('tg-login-error').textContent = 'Ошибка сети';
         }
     };
+
+    // Сброс кэшированной сессии Telegram-виджета → повторный вход с вводом номера
+    function switchTgAccount(botId) {
+        const w = window.open(
+            'https://oauth.telegram.org/auth/logOut?bot_id=' + encodeURIComponent(botId) +
+            '&origin=' + encodeURIComponent(location.origin),
+            'tg_logout', 'width=360,height=120');
+        setTimeout(function () {
+            try { if (w) w.close(); } catch (e) {}
+            window.Telegram.Login.auth(
+                { bot_id: botId, request_access: 'write' },
+                function (user) { if (user) onTgAuth(user); }
+            );
+        }, 1500);
+    }
 
     function renderTelegramLogin(botUsername, referrerName, botId) {
         const app = document.getElementById('app');
@@ -417,6 +437,7 @@
               </div></div>`;
             return;
         }
+        window._tgBotId = botId;  // для кнопки «Войти с другого Telegram»
         const nameLine = referrerName
             ? `<div class="login-refname">${esc(referrerName)}</div>` : '';
         app.innerHTML = `

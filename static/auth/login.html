@@ -281,14 +281,8 @@
                 s.async = true; s.src = 'https://telegram.org/js/telegram-widget.js?22';
                 document.head.appendChild(s);
             }
-            const btn = document.getElementById('tgLoginBtn');
-            if (btn) btn.addEventListener('click', function () {
+            function doTgAuth() {
                 const errEl = document.getElementById('loginError');
-                errEl.classList.remove('visible');
-                if (!cfg.bot_id || !(window.Telegram && window.Telegram.Login)) {
-                    errEl.textContent = 'Загрузка Telegram… нажмите ещё раз';
-                    errEl.classList.add('visible'); return;
-                }
                 window.Telegram.Login.auth({ bot_id: cfg.bot_id, request_access: 'write' }, async function (user) {
                     if (!user) return;
                     try {
@@ -299,15 +293,38 @@
                         const d = await resp.json();
                         if (d.success) { window.location.href = '/crm'; }
                         else {
-                            // Виджет Telegram кэширует аккаунт браузера — подсказываем, как сменить
+                            // Виджет Telegram кэширует аккаунт браузера — даём кнопку реального сброса
                             errEl.innerHTML = (d.error || 'Доступ запрещён') +
-                                '<div style="margin-top:8px;font-weight:400;color:#7f1d1d;">Вошли не с того Telegram-аккаунта? ' +
-                                'В окне входа Telegram нажмите <b>edit</b> у номера и введите другой, ' +
-                                'либо очистите cookies для telegram.org (или откройте в режиме инкогнито).</div>';
+                                '<div style="margin-top:10px;"><button type="button" id="tgSwitchBtn" ' +
+                                'style="background:#1E293B;color:#fff;border:none;border-radius:8px;padding:9px 14px;' +
+                                'font-family:inherit;font-size:13px;font-weight:600;cursor:pointer;">' +
+                                '🔄 Войти с другого Telegram</button></div>';
                             errEl.classList.add('visible');
+                            document.getElementById('tgSwitchBtn').addEventListener('click', switchTgAccount);
                         }
                     } catch (e) { errEl.textContent = 'Ошибка сети'; errEl.classList.add('visible'); }
                 });
+            }
+            // Сброс кэшированной сессии Telegram-виджета → повторный вход с вводом номера
+            function switchTgAccount() {
+                const w = window.open(
+                    'https://oauth.telegram.org/auth/logOut?bot_id=' + encodeURIComponent(cfg.bot_id) +
+                    '&origin=' + encodeURIComponent(location.origin),
+                    'tg_logout', 'width=360,height=120');
+                setTimeout(function () {
+                    try { if (w) w.close(); } catch (e) {}
+                    doTgAuth();  // теперь Telegram спросит номер заново
+                }, 1500);
+            }
+            const btn = document.getElementById('tgLoginBtn');
+            if (btn) btn.addEventListener('click', function () {
+                const errEl = document.getElementById('loginError');
+                errEl.classList.remove('visible');
+                if (!cfg.bot_id || !(window.Telegram && window.Telegram.Login)) {
+                    errEl.textContent = 'Загрузка Telegram… нажмите ещё раз';
+                    errEl.classList.add('visible'); return;
+                }
+                doTgAuth();
             });
             const tgl = document.getElementById('pwToggle');
             if (tgl) tgl.addEventListener('click', function (e) {
