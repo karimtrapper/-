@@ -313,6 +313,37 @@
         .pager button:hover:not(:disabled) { background: var(--navy-50); }
         .pager button:disabled { opacity: 0.4; cursor: not-allowed; }
         .pager button.active { background: var(--coral); color: white; border-color: var(--coral); }
+
+        /* Экран входа через Telegram */
+        .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .login-card {
+            width: 100%; max-width: 380px; background: rgba(30,41,59,0.55);
+            border: 1px solid rgba(255,255,255,0.08); border-radius: 22px;
+            padding: 38px 28px 30px; text-align: center; backdrop-filter: blur(14px);
+            box-shadow: 0 24px 70px rgba(0,0,0,0.45); animation: loginIn 0.4s ease;
+        }
+        @keyframes loginIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+        .login-logo {
+            width: 66px; height: 66px; margin: 0 auto 18px; border-radius: 19px;
+            background: linear-gradient(135deg, var(--green), var(--green-dark));
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 10px 28px rgba(34,197,94,0.32);
+        }
+        .login-logo img { width: 38px; height: 38px; }
+        .login-welcome { font-size: 23px; font-weight: 700; color: #fff; margin-bottom: 8px; letter-spacing: -0.02em; }
+        .login-refname {
+            display: inline-block; margin: 2px 0 16px; padding: 6px 16px;
+            background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.32);
+            border-radius: 999px; color: var(--green); font-size: 14px; font-weight: 600; max-width: 100%;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .login-sub { color: var(--navy-300); font-size: 14px; line-height: 1.55; margin-bottom: 26px; }
+        .login-widget-box { display: flex; justify-content: center; min-height: 48px; }
+        .login-hint {
+            margin-top: 20px; color: var(--navy-500); font-size: 12px; line-height: 1.5;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .login-error { color: #f87171; font-size: 13px; margin-top: 12px; min-height: 16px; }
     </style>
 </head>
 <body>
@@ -371,25 +402,37 @@
         }
     };
 
-    function renderTelegramLogin(botUsername) {
+    function renderTelegramLogin(botUsername, referrerName) {
         const app = document.getElementById('app');
+        const nameBadge = referrerName
+            ? `<div class="login-refname">${esc(referrerName)}</div>` : '';
         if (!botUsername) {
-            app.innerHTML = '<div class="error">Вход через Telegram временно недоступен</div>';
+            app.innerHTML = `
+              <div class="login-wrap"><div class="login-card">
+                <div class="login-logo"><img src="/static/kyc/grusha-logo.png" alt="Grusha"></div>
+                <div class="login-welcome">Вход временно недоступен</div>
+                <p class="login-sub">Авторизация через Telegram сейчас не работает.<br>Попробуйте позже.</p>
+              </div></div>`;
             return;
         }
         app.innerHTML = `
-          <div style="max-width:420px;margin:80px auto;text-align:center;padding:24px;">
-            <h2 style="font-size:20px;margin-bottom:8px;">Вход в кабинет</h2>
-            <p style="color:#64748b;font-size:14px;margin-bottom:24px;">
-              Подтвердите, что это ваш кабинет — войдите через Telegram.</p>
-            <div id="tg-login-widget"></div>
-            <div id="tg-login-error" style="color:#ef4444;font-size:13px;margin-top:14px;"></div>
+          <div class="login-wrap">
+            <div class="login-card">
+              <div class="login-logo"><img src="/static/kyc/grusha-logo.png" alt="Grusha"></div>
+              <div class="login-welcome">Добро пожаловать!</div>
+              ${nameBadge}
+              <p class="login-sub">Это ваш партнёрский кабинет.<br>Для продолжения авторизуйтесь через Telegram.</p>
+              <div class="login-widget-box" id="tg-login-widget"></div>
+              <div class="login-hint">🔒 Telegram передаёт только имя и аватар — это безопасно</div>
+              <div class="login-error" id="tg-login-error"></div>
+            </div>
           </div>`;
         const s = document.createElement('script');
         s.async = true;
         s.src = 'https://telegram.org/js/telegram-widget.js?22';
         s.setAttribute('data-telegram-login', botUsername);
         s.setAttribute('data-size', 'large');
+        s.setAttribute('data-radius', '10');
         s.setAttribute('data-onauth', 'onTgAuth(user)');
         s.setAttribute('data-request-access', 'write');
         document.getElementById('tg-login-widget').appendChild(s);
@@ -401,7 +444,7 @@
             const d = await resp.json();
             statsData = d;
             if (resp.status === 401 && d.auth_required) {
-                renderTelegramLogin(d.bot_username);
+                renderTelegramLogin(d.bot_username, d.referrer_name);
                 return;
             }
             if (!d.success) {
