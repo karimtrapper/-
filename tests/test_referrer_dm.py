@@ -159,3 +159,61 @@ def test_new_deal_notify_skips_agent_without_tg(monkeypatch):
     s.query(DealAgent).filter_by(deal_id=did).delete()
     s.query(Deal).filter_by(id=did).delete(); s.commit(); s.close()
     assert captured == []
+
+
+def test_paid_marks_only_snapshot_deals(monkeypatch):
+    """Критикал-фикс: «Выплачено» помечает только сделки, вошедшие в заявку.
+    Сделка, закрытая ПОСЛЕ создания заявки, остаётся неоплаченной."""
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    from app import Deal, DealAgent, DealType, DealStatus, AdminUser
+    rid, token = _mk_ref(telegram_user_id=None)  # link-режим — заявка без TG-входа
+
+    s = get_session()
+    # Сделка №1 на $50 — ДО заявки
+    d1 = Deal(deal_type=DealType('pay_in'), status=DealStatus.COMPLETED, profit_usdt=100)
+    d1.agents.append(DealAgent(referrer_id=rid, name='Ed', tier=1,
+                               comp_model='fixed', payout_usdt=50, paid=False))
+    s.add(d1); s.commit(); d1_id = d1.id
+    s.close()
+
+    # Реферер создаёт заявку (снапшот = сделка №1)
+    with app.test_client() as c:
+        r = c.post(f'/api/ref/{token}/payout-request',
+                   json={'wallet': 'w', 'contact_method': 'telegram', 'contact_value': '@e'})
+        assert r.status_code == 200, r.get_json()
+        req_id = r.get_json()['request']['id']
+
+    # Сделка №2 на $30 — ПОСЛЕ заявки
+    s = get_session()
+    d2 = Deal(deal_type=DealType('pay_in'), status=DealStatus.COMPLETED, profit_usdt=60)
+    d2.agents.append(DealAgent(referrer_id=rid, name='Ed', tier=1,
+                               comp_model='fixed', payout_usdt=30, paid=False))
+    s.add(d2); s.commit(); d2_id = d2.id
+    # реальный админ для PATCH (check_auth ревалидирует по БД)
+    a = s.query(AdminUser).first()
+    if not a:
+        a = AdminUser(username='snap_admin', display_name='S',
+                      password_hash=AdminUser.hash_password('x'))
+        s.add(a); s.commit()
+    aid = a.id
+    s.close()
+
+    # Админ помечает заявку выплаченной
+    with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = aid
+        r = c.patch(f'/api/payout-requests/{req_id}', json={'status': 'paid', 'tx_hash': '0xabc'})
+        assert r.status_code == 200, r.get_json()
+
+    # Проверка: №1 оплачена, №2 — НЕТ (осталась к выводу)
+    s = get_session()
+    ag1 = s.query(DealAgent).filter_by(deal_id=d1_id, referrer_id=rid).first()
+    ag2 = s.query(DealAgent).filter_by(deal_id=d2_id, referrer_id=rid).first()
+    paid1, paid2 = bool(ag1.paid), bool(ag2.paid)
+    # уборка своих сделок
+    s.query(DealAgent).filter(DealAgent.deal_id.in_([d1_id, d2_id])).delete(synchronize_session=False)
+    s.query(Deal).filter(Deal.id.in_([d1_id, d2_id])).delete(synchronize_session=False)
+    s.commit(); s.close()
+
+    assert paid1 is True, 'сделка из заявки должна быть помечена оплаченной'
+    assert paid2 is False, 'сделка, закрытая после заявки, НЕ должна помечаться оплаченной'
