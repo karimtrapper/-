@@ -13,6 +13,7 @@ import asyncio
 import time
 import json
 import hashlib
+import hmac
 import bcrypt
 import logging
 import gspread
@@ -4566,6 +4567,47 @@ def send_telegram_notification(text, thread_id=None):
     except Exception as e:
         print(f'[Telegram] Error: {e}')
         return False
+
+# ── Вход реферера через Telegram Login Widget ──────────────────────────────
+_login_bot_username_cache = None
+
+def get_login_bot_token():
+    """Токен бота для виджета входа. REF_LOGIN_BOT_TOKEN или фолбэк на нотификатор."""
+    return (os.environ.get('REF_LOGIN_BOT_TOKEN')
+            or os.environ.get('TELEGRAM_BOT_TOKEN') or '').strip()
+
+def get_bot_username():
+    """Username бота-логина без @ (getMe, кэш в памяти). None если токена нет."""
+    global _login_bot_username_cache
+    if _login_bot_username_cache is not None:
+        return _login_bot_username_cache
+    token = get_login_bot_token()
+    if not token:
+        return None
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+        _login_bot_username_cache = r.json()['result']['username']
+    except Exception as e:
+        print(f'[LoginBot] getMe error: {e}')
+        return None
+    return _login_bot_username_cache
+
+def verify_telegram_auth(data: dict, bot_token: str, max_age_sec: int = 86400) -> bool:
+    """Проверка подписи Telegram Login Widget (HMAC-SHA256) и свежести auth_date."""
+    if not bot_token or not data.get('hash'):
+        return False
+    received_hash = data['hash']
+    secret = hashlib.sha256(bot_token.encode()).digest()
+    check = '\n'.join(f'{k}={data[k]}' for k in sorted(data) if k != 'hash')
+    calc = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calc, str(received_hash)):
+        return False
+    try:
+        if (time.time() - int(data.get('auth_date', 0))) > max_age_sec:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return True
 
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():

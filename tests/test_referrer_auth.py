@@ -41,3 +41,34 @@ def test_referrer_defaults_to_link_mode():
     d = _mk_referrer()
     assert d['auth_mode'] == 'link'
     assert d['telegram_user_id'] is None
+
+
+def _signed(data: dict, token='111:TEST_TOKEN'):
+    """Собрать валидную подпись Telegram для data."""
+    secret = hashlib.sha256(token.encode()).digest()
+    check = '\n'.join(f'{k}={data[k]}' for k in sorted(data) if k != 'hash')
+    data = dict(data)
+    data['hash'] = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    return data
+
+
+def test_verify_ok():
+    d = _signed({'id': 42, 'first_name': 'Ed', 'auth_date': int(time.time())})
+    assert verify_telegram_auth(d, '111:TEST_TOKEN') is True
+
+
+def test_verify_bad_hash():
+    d = _signed({'id': 42, 'first_name': 'Ed', 'auth_date': int(time.time())})
+    d['hash'] = 'deadbeef'
+    assert verify_telegram_auth(d, '111:TEST_TOKEN') is False
+
+
+def test_verify_expired():
+    d = _signed({'id': 42, 'first_name': 'Ed', 'auth_date': int(time.time()) - 90000})
+    assert verify_telegram_auth(d, '111:TEST_TOKEN', max_age_sec=86400) is False
+
+
+def test_verify_tampered_field():
+    d = _signed({'id': 42, 'first_name': 'Ed', 'auth_date': int(time.time())})
+    d['id'] = 999  # подменили после подписи
+    assert verify_telegram_auth(d, '111:TEST_TOKEN') is False
