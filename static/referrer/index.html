@@ -12,13 +12,13 @@
             --navy-600: #475569; --navy-500: #64748B; --navy-400: #94A3B8;
             --navy-300: #CBD5E1; --navy-200: #E2E8F0; --navy-100: #F1F5F9;
             --navy-50: #F8FAFC;
-            --coral: #F97316; --coral-dark: #EA580C;
-            --green: #22C55E; --green-dark: #16A34A;
+            --coral: #F97316; --coral-dark: #EA580C; --coral-light: #FFF7ED;
+            --green: #22C55E; --green-dark: #16A34A; --green-light: #F0FDF4;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Inter', -apple-system, sans-serif;
-            background: var(--navy-900); color: var(--navy-900);
+            background: var(--navy-50); color: var(--navy-900);
             min-height: 100vh;
         }
         .container { width: 100%; max-width: 480px; margin: 0 auto; }
@@ -28,16 +28,15 @@
             body { display: flex; justify-content: center; align-items: flex-start; padding-top: 40px; }
             .container {
                 border-radius: 24px; overflow: hidden;
-                box-shadow: 0 25px 60px rgba(0,0,0,0.4);
+                box-shadow: 0 20px 50px rgba(15,23,42,0.12);
+                border: 1px solid var(--navy-100);
                 margin-bottom: 40px;
             }
         }
 
         /* === Hero === */
         .hero {
-            background: linear-gradient(135deg, #0F172A 0%, #1E293B 30%, #0F172A 60%, #1a1f3a 100%);
-            background-size: 400% 400%;
-            animation: gradientShift 8s ease infinite;
+            background: #fff;
             padding: 32px 24px 40px;
             position: relative;
             overflow: hidden;
@@ -45,10 +44,9 @@
         }
         .hero::before {
             content: '';
-            position: absolute; top: -50%; left: -50%; width: 200%; height: 200%;
-            background: radial-gradient(circle at 70% 30%, rgba(249,115,22,0.08) 0%, transparent 50%),
-                        radial-gradient(circle at 30% 70%, rgba(34,197,94,0.05) 0%, transparent 50%);
-            animation: gradientShift 12s ease infinite reverse;
+            position: absolute; inset: 0;
+            background: radial-gradient(circle at 85% 0%, rgba(249,115,22,0.07) 0%, transparent 42%),
+                        radial-gradient(circle at 10% 100%, rgba(34,197,94,0.05) 0%, transparent 42%);
         }
         .hero-content { position: relative; z-index: 2; }
         .hero-fade {
@@ -65,8 +63,8 @@
             display: flex; align-items: center; justify-content: center;
         }
         .logo img { width: 24px; height: 24px; }
-        .header-text .brand { color: white; font-size: 14px; font-weight: 600; }
-        .header-text .partner { color: var(--navy-400); font-size: 12px; }
+        .header-text .brand { color: var(--navy-900); font-size: 14px; font-weight: 600; }
+        .header-text .partner { color: var(--navy-500); font-size: 12px; }
         .badge {
             padding: 6px 12px; border-radius: 999px;
             border: 1px solid rgba(249,115,22,0.3); background: rgba(249,115,22,0.1);
@@ -76,14 +74,14 @@
         }
 
         /* Баланс */
-        .balance-label { color: var(--navy-400); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
+        .balance-label { color: var(--navy-500); font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
         .balance-amount { display: flex; align-items: baseline; justify-content: center; gap: 2px; margin-bottom: 4px; }
         .balance-amount .sign { color: var(--navy-400); font-size: 24px; font-weight: 300; }
-        .balance-amount .value { color: white; font-size: 48px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
+        .balance-amount .value { color: var(--navy-900); font-size: 48px; font-weight: 800; letter-spacing: -2px; line-height: 1; }
         .balance-amount .cents { color: var(--navy-400); font-size: 24px; font-weight: 300; }
         .balance-sub { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 12px 0 20px; }
         .balance-sub .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
-        .balance-sub span { color: var(--navy-400); font-size: 12px; }
+        .balance-sub span { color: var(--navy-500); font-size: 12px; }
 
         /* CTA */
         .cta-btn {
@@ -181,8 +179,8 @@
 
         /* Misc */
         .empty-state { text-align: center; padding: 24px; color: var(--navy-400); font-size: 13px; }
-        .loading { text-align: center; padding: 64px 24px; color: var(--navy-400); font-size: 14px; background: var(--navy-900); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .error { text-align: center; padding: 64px 24px; color: #EF4444; font-size: 14px; background: var(--navy-900); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .loading { text-align: center; padding: 64px 24px; color: var(--navy-500); font-size: 14px; background: var(--navy-50); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .error { text-align: center; padding: 64px 24px; color: #EF4444; font-size: 14px; background: var(--navy-50); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
 
         /* Animations */
         @keyframes gradientShift { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
@@ -317,10 +315,10 @@
         /* Экран входа через Telegram */
         .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
         .login-card {
-            width: 100%; max-width: 380px; background: rgba(30,41,59,0.55);
-            border: 1px solid rgba(255,255,255,0.08); border-radius: 22px;
-            padding: 38px 28px 30px; text-align: center; backdrop-filter: blur(14px);
-            box-shadow: 0 24px 70px rgba(0,0,0,0.45); animation: loginIn 0.4s ease;
+            width: 100%; max-width: 380px; background: #fff;
+            border: 1px solid var(--navy-200); border-radius: 20px;
+            padding: 38px 28px 30px; text-align: center;
+            box-shadow: 0 12px 40px rgba(15,23,42,0.10); animation: loginIn 0.4s ease;
         }
         @keyframes loginIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
         .login-logo {
@@ -330,14 +328,14 @@
             box-shadow: 0 10px 28px rgba(34,197,94,0.32);
         }
         .login-logo img { width: 38px; height: 38px; }
-        .login-welcome { font-size: 23px; font-weight: 700; color: #fff; margin-bottom: 8px; letter-spacing: -0.02em; }
+        .login-welcome { font-size: 23px; font-weight: 700; color: var(--navy-900); margin-bottom: 8px; letter-spacing: -0.02em; }
         .login-refname {
             display: inline-block; margin: 2px 0 16px; padding: 6px 16px;
-            background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.32);
-            border-radius: 999px; color: var(--green); font-size: 14px; font-weight: 600; max-width: 100%;
+            background: var(--green-light); border: 1px solid rgba(34,197,94,0.35);
+            border-radius: 999px; color: var(--green-dark); font-size: 14px; font-weight: 600; max-width: 100%;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
-        .login-sub { color: var(--navy-300); font-size: 14px; line-height: 1.55; margin-bottom: 26px; }
+        .login-sub { color: var(--navy-500); font-size: 14px; line-height: 1.55; margin-bottom: 26px; }
         .login-widget-box { display: flex; justify-content: center; min-height: 48px; }
         .login-hint {
             margin-top: 20px; color: var(--navy-500); font-size: 12px; line-height: 1.5;
