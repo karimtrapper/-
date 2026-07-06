@@ -5366,6 +5366,29 @@ def referrer_tg_login(token):
     auth = dict(flask_session.get('ref_auth') or {})
     auth[token] = int(data['id'])
     flask_session['ref_auth'] = auth
+
+    # Сводка в личку после входа
+    try:
+        db2 = get_session()
+        try:
+            ref2 = db2.query(Referrer).get(referrer.id)
+            available, total_paid = _referrer_balance(db2, ref2)
+            active = db2.query(PayoutRequest).filter(
+                PayoutRequest.referrer_id == ref2.id,
+                PayoutRequest.status.in_(['new', 'in_progress'])).first()
+            msg = (f"👋 <b>Вы вошли в кабинет</b>\n\n"
+                   f"💰 Доступно к выводу: <b>${available:.2f}</b>\n"
+                   f"✅ Всего выплачено: ${total_paid:.2f}")
+            buttons = None
+            if active:
+                msg += f"\n\n📋 Активная заявка #{active.id} на ${active.amount_usdt:.2f} — на обработке."
+                buttons = _cancel_button(active.id)
+            send_referrer_dm(ref2, msg, buttons=buttons)
+        finally:
+            db2.close()
+    except Exception as e:
+        print(f'[ReferrerDM] login summary error: {e}')
+
     return jsonify({'success': True})
 
 
@@ -5646,6 +5669,16 @@ def create_payout_request(token):
                 send_telegram_notification(msg, thread_id=tasks_thread)
             except Exception as e:
                 print(f'[PayoutRequest] Telegram notify failed: {e}')
+
+        # DM рефереру: подтверждение + кнопка отмены
+        try:
+            msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
+                   f"Сумма: <b>${pending:.2f}</b>\n"
+                   f"Кошелёк: <code>{wallet}</code>\n\n"
+                   f"Заявка #{req.id} принята в обработку.")
+            send_referrer_dm(referrer, msg, buttons=_cancel_button(req.id))
+        except Exception as e:
+            print(f'[ReferrerDM] create notify error: {e}')
 
         return jsonify({'success': True, 'request': req.to_dict()})
     finally:
