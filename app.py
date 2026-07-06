@@ -4639,6 +4639,14 @@ def apply_referrer_tg_binding(referrer, tg_id, tg_username):
         s.close()
     return True, None
 
+def ref_session_authorized(referrer, token) -> bool:
+    """True если реферер в link-режиме ИЛИ в сессии есть валидная привязка по токену."""
+    if (referrer.auth_mode or 'link') != 'telegram':
+        return True
+    auth = flask_session.get('ref_auth') or {}
+    bound = auth.get(token)
+    return bool(bound and referrer.telegram_user_id and int(bound) == int(referrer.telegram_user_id))
+
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
     """Прокси для получения истории платежей Доверки"""
@@ -5287,6 +5295,33 @@ def referrer_page(token):
     return send_from_directory('static/referrer', 'index.html')
 
 
+@app.route('/api/ref/<token>/tg-login', methods=['POST'])
+def referrer_tg_login(token):
+    """Вход реферера в кабинет через Telegram Login Widget."""
+    data = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
+    finally:
+        db.close()
+    if not referrer:
+        return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+    bot_token = get_login_bot_token()
+    if not verify_telegram_auth(data, bot_token):
+        return jsonify({'success': False, 'error': 'Подпись Telegram недействительна или устарела'}), 403
+
+    ok, err = apply_referrer_tg_binding(referrer, data.get('id'), data.get('username'))
+    if not ok:
+        return jsonify({'success': False, 'error': err}), 403
+
+    flask_session.permanent = True
+    auth = dict(flask_session.get('ref_auth') or {})
+    auth[token] = int(data['id'])
+    flask_session['ref_auth'] = auth
+    return jsonify({'success': True})
+
+
 @app.route('/api/ref/<token>/stats', methods=['GET'])
 def referrer_stats(token):
     """Публичная статистика реферера"""
@@ -5295,6 +5330,10 @@ def referrer_stats(token):
         referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'bot_username': get_bot_username()}), 401
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
         # Один реферал может иметь НЕСКОЛЬКО строк в одной сделке (напр. markup 0.5% с верха

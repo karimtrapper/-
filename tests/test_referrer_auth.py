@@ -112,3 +112,48 @@ def test_prebound_id_must_match():
     r = _get_referrer('t4')
     ok, err = apply_referrer_tg_binding(r, tg_id=999, tg_username='ed_test')
     assert ok is False and err
+
+
+def test_stats_link_mode_open():
+    _mk_referrer(auth_mode='link', token='s1')
+    with app.test_client() as c:
+        r = c.get('/api/ref/s1/stats')
+    assert r.status_code == 200 and r.get_json()['success'] is True
+
+
+def test_stats_telegram_mode_requires_auth():
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='s2')
+    with app.test_client() as c:
+        r = c.get('/api/ref/s2/stats')
+    assert r.status_code == 401
+    assert r.get_json().get('auth_required') is True
+
+
+def test_tg_login_grants_access():
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='s3')
+    with app.test_client() as c:
+        payload = _signed({'id': 42, 'first_name': 'Ed', 'username': 'ed_test',
+                           'auth_date': int(time.time())})
+        r = c.post('/api/ref/s3/tg-login', json=payload)
+        assert r.status_code == 200 and r.get_json()['success'] is True
+        r2 = c.get('/api/ref/s3/stats')
+        assert r2.status_code == 200 and r2.get_json()['success'] is True
+
+
+def test_tg_login_wrong_account_rejected():
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='s4')
+    with app.test_client() as c:
+        payload = _signed({'id': 42, 'first_name': 'X', 'username': 'intruder',
+                           'auth_date': int(time.time())})
+        r = c.post('/api/ref/s4/tg-login', json=payload)
+        assert r.status_code == 403
+
+
+def test_tg_login_bad_signature_rejected():
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='s5')
+    with app.test_client() as c:
+        payload = _signed({'id': 42, 'first_name': 'Ed', 'username': 'ed_test',
+                           'auth_date': int(time.time())})
+        payload['hash'] = 'deadbeef'
+        r = c.post('/api/ref/s5/tg-login', json=payload)
+        assert r.status_code == 403
