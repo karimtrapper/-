@@ -2061,6 +2061,51 @@ def login_page():
         return redirect('/crm')
     return send_from_directory('static/auth', 'login.html')
 
+
+def _match_admin_by_tg(db, tg_id, tg_username):
+    """Находит админа по привязанному id, иначе по @username (trust-on-first-login → бинд id)."""
+    tg_id = int(tg_id)
+    admin = db.query(AdminUser).filter(AdminUser.telegram_user_id == tg_id).first()
+    if admin:
+        return admin
+    uname = (tg_username or '').lstrip('@').strip().lower()
+    if not uname:
+        return None
+    for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None)).all():
+        if (a.telegram or '').lstrip('@').strip().lower() == uname:
+            a.telegram_user_id = tg_id
+            db.commit()
+            return a
+    return None
+
+
+@app.route('/api/auth/tg-config', methods=['GET'])
+def auth_tg_config():
+    """Публичный: bot_id/username для виджета входа на /login."""
+    return jsonify({'bot_id': get_login_bot_id(), 'bot_username': get_bot_username()})
+
+
+@app.route('/api/auth/tg-login', methods=['POST'])
+@limiter.limit("10/minute")
+def auth_tg_login():
+    """Passwordless вход админа через Telegram Login Widget."""
+    data = request.get_json(silent=True) or {}
+    if not verify_telegram_auth(data, get_login_bot_token()):
+        return jsonify({'success': False, 'error': 'Подпись Telegram недействительна или устарела'}), 403
+    db = get_session()
+    try:
+        admin = _match_admin_by_tg(db, data.get('id'), data.get('username'))
+        if not admin:
+            return jsonify({'success': False, 'error': 'Этот Telegram не в списке администраторов'}), 403
+        flask_session['user_id'] = admin.id
+        flask_session['username'] = admin.username
+        flask_session['display_name'] = admin.display_name or admin.username
+        flask_session.permanent = True
+        return jsonify({'success': True, 'user': admin.display_name or admin.username})
+    finally:
+        db.close()
+
+
 @app.route('/api/auth/login', methods=['POST'])
 @limiter.limit("5/minute")
 def auth_login():

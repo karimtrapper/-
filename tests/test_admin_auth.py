@@ -49,3 +49,36 @@ def test_admin_to_dict_has_tg_fields():
     aid = _mk_admin(telegram='@kareem', telegram_user_id=None)
     s = get_session(); a = s.query(AdminUser).get(aid); d = a.to_dict(); s.close()
     assert d['telegram'] == '@kareem' and d['bound'] is False
+
+
+def test_tg_login_matches_by_username_and_binds():
+    _mk_admin(telegram='@kareem', telegram_user_id=None)
+    with app.test_client() as c:
+        payload = _signed({'id': 555, 'first_name': 'K', 'username': 'kareem', 'auth_date': int(time.time())})
+        r = c.post('/api/auth/tg-login', json=payload)
+        assert r.status_code == 200 and r.get_json()['success'] is True
+        r2 = c.get('/api/auth/me')
+        assert r2.status_code == 200
+
+
+def test_tg_login_not_whitelisted_rejected():
+    _mk_admin(telegram='@someone', telegram_user_id=None)
+    with app.test_client() as c:
+        payload = _signed({'id': 555, 'first_name': 'X', 'username': 'intruder', 'auth_date': int(time.time())})
+        r = c.post('/api/auth/tg-login', json=payload)
+        assert r.status_code == 403
+
+
+def test_tg_login_bad_signature():
+    _mk_admin(telegram='@kareem')
+    with app.test_client() as c:
+        payload = _signed({'id': 555, 'first_name': 'K', 'username': 'kareem', 'auth_date': int(time.time())})
+        payload['hash'] = 'bad'
+        r = c.post('/api/auth/tg-login', json=payload)
+        assert r.status_code == 403
+
+
+def test_tg_config_public():
+    with app.test_client() as c:
+        r = c.get('/api/auth/tg-config')
+        assert r.status_code == 200 and 'bot_id' in r.get_json()
