@@ -45,6 +45,7 @@ PUBLIC_PATHS = [
     '/api/kyc/status/', '/api/kyc/submit',    # KYC для клиентов
     '/api/partner/',                           # Партнёрский калькулятор
     '/api/ref/',                               # Реферальная статистика
+    '/api/tg/',                                # Webhook бота-логина (защищён secret_token)
     '/api/health',                             # Health check
     '/api/auth/',                              # Авторизация
     '/api/webhook/doverka',                    # Вебхук Doverka (защищён HMAC-подписью)
@@ -4647,6 +4648,114 @@ def ref_session_authorized(referrer, token) -> bool:
     bound = auth.get(token)
     return bool(bound and referrer.telegram_user_id and int(bound) == int(referrer.telegram_user_id))
 
+
+def _referrer_balance(db, referrer):
+    """(доступно_к_выводу, всего_выплачено) по строкам агента на завершённых сделках."""
+    agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
+    if not agent_rows:
+        return 0.0, 0.0
+    completed_ids = {row.id for row in db.query(Deal.id).filter(
+        Deal.id.in_(list({r.deal_id for r in agent_rows})),
+        Deal.status == DealStatus.COMPLETED).all()}
+    rows = [r for r in agent_rows if r.deal_id in completed_ids]
+    earned = sum(r.payout_usdt or 0 for r in rows)
+    paid = sum((r.payout_usdt or 0) for r in rows if r.paid)
+    return round(earned - paid, 2), round(paid, 2)
+
+
+def _cancel_button(req_id):
+    """Inline-клавиатура с кнопкой отмены заявки."""
+    return [[{'text': '❌ Отменить заявку', 'callback_data': f'cancel:{req_id}'}]]
+
+
+def send_referrer_dm(referrer, text, buttons=None):
+    """DM рефереру через @grusha_lk_bot. Пропуск если нет токена/привязки TG."""
+    token = get_login_bot_token()
+    if not token or not referrer.telegram_user_id:
+        return False
+    payload = {'chat_id': int(referrer.telegram_user_id), 'text': text,
+               'parse_mode': 'HTML', 'disable_web_page_preview': True}
+    if buttons:
+        payload['reply_markup'] = json.dumps({'inline_keyboard': buttons})
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json=payload, timeout=10)
+        return r.status_code == 200
+    except Exception as e:
+        print(f'[ReferrerDM] error: {e}')
+        return False
+
+
+def _cancel_payout(db, req):
+    """Отмена заявки: статус→cancelled + processed_at. True если реально отменили."""
+    if req.status not in ('new', 'in_progress'):
+        return False
+    req.status = 'cancelled'
+    req.processed_at = datetime.utcnow()
+    db.commit()
+    return True
+
+
+def _tg_answer_callback(token, cq_id, text):
+    """Ответ на callback_query (всплывающий тост в Telegram)."""
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                      json={'callback_query_id': cq_id, 'text': text}, timeout=10)
+    except Exception as e:
+        print(f'[LKBot] answerCallback error: {e}')
+
+
+def _tg_edit_message(token, cq, new_text):
+    """Правка исходного сообщения с кнопкой (убираем клавиатуру, меняем текст)."""
+    msg = cq.get('message') or {}
+    chat = (msg.get('chat') or {}).get('id')
+    mid = msg.get('message_id')
+    if not chat or not mid:
+        return
+    try:
+        requests.post(f"https://api.telegram.org/bot{token}/editMessageText",
+                      json={'chat_id': chat, 'message_id': mid, 'text': new_text,
+                            'parse_mode': 'HTML'}, timeout=10)
+    except Exception as e:
+        print(f'[LKBot] editMessage error: {e}')
+
+
+@app.route('/api/tg/lk-webhook', methods=['POST'])
+def lk_bot_webhook():
+    """Webhook @grusha_lk_bot: обработка inline-кнопки отмены заявки."""
+    secret = os.environ.get('REF_LK_WEBHOOK_SECRET', '')
+    if not secret or request.headers.get('X-Telegram-Bot-Api-Secret-Token') != secret:
+        return jsonify({'ok': False}), 403
+    update = request.get_json(silent=True) or {}
+    cq = update.get('callback_query')
+    if not cq:
+        return jsonify({'ok': True})
+    token = get_login_bot_token()
+    data = cq.get('data') or ''
+    from_id = (cq.get('from') or {}).get('id')
+    if data.startswith('cancel:'):
+        try:
+            req_id = int(data.split(':', 1)[1])
+        except ValueError:
+            return jsonify({'ok': True})
+        db = get_session()
+        try:
+            req = db.query(PayoutRequest).get(req_id)
+            referrer = db.query(Referrer).get(req.referrer_id) if req else None
+            # Авторизация: колбэк только от владельца заявки
+            if (not req or not referrer or not referrer.telegram_user_id
+                    or int(referrer.telegram_user_id) != int(from_id or 0)):
+                _tg_answer_callback(token, cq.get('id'), 'Нет доступа')
+                return jsonify({'ok': True})
+            if _cancel_payout(db, req):
+                _tg_answer_callback(token, cq.get('id'), 'Заявка отменена')
+                _tg_edit_message(token, cq, '❌ Заявка на выплату отменена')
+            else:
+                _tg_answer_callback(token, cq.get('id'), 'Заявка уже обработана')
+        finally:
+            db.close()
+    return jsonify({'ok': True})
+
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
     """Прокси для получения истории платежей Доверки"""
@@ -5319,6 +5428,29 @@ def referrer_tg_login(token):
     auth = dict(flask_session.get('ref_auth') or {})
     auth[token] = int(data['id'])
     flask_session['ref_auth'] = auth
+
+    # Сводка в личку после входа
+    try:
+        db2 = get_session()
+        try:
+            ref2 = db2.query(Referrer).get(referrer.id)
+            available, total_paid = _referrer_balance(db2, ref2)
+            active = db2.query(PayoutRequest).filter(
+                PayoutRequest.referrer_id == ref2.id,
+                PayoutRequest.status.in_(['new', 'in_progress'])).first()
+            msg = (f"👋 <b>Вы вошли в кабинет</b>\n\n"
+                   f"💰 Доступно к выводу: <b>${available:.2f}</b>\n"
+                   f"✅ Всего выплачено: ${total_paid:.2f}")
+            buttons = None
+            if active:
+                msg += f"\n\n📋 Активная заявка #{active.id} на ${active.amount_usdt:.2f} — на обработке."
+                buttons = _cancel_button(active.id)
+            send_referrer_dm(ref2, msg, buttons=buttons)
+        finally:
+            db2.close()
+    except Exception as e:
+        print(f'[ReferrerDM] login summary error: {e}')
+
     return jsonify({'success': True})
 
 
@@ -5589,7 +5721,7 @@ def create_payout_request(token):
                 )
                 if notes:
                     msg += f"\n\n<b>Комментарий:</b> {notes}"
-                crm_url = 'https://proud-renewal-production-e9b8.up.railway.app/crm'
+                crm_url = 'https://grusha.up.railway.app/crm'
                 msg += (
                     f"\n\nЗаявка #{req.id} · "
                     f"<a href=\"{crm_url}\">CRM → Заявки на выплату</a>"
@@ -5599,6 +5731,16 @@ def create_payout_request(token):
                 send_telegram_notification(msg, thread_id=tasks_thread)
             except Exception as e:
                 print(f'[PayoutRequest] Telegram notify failed: {e}')
+
+        # DM рефереру: подтверждение + кнопка отмены
+        try:
+            msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
+                   f"Сумма: <b>${pending:.2f}</b>\n"
+                   f"Кошелёк: <code>{wallet}</code>\n\n"
+                   f"Заявка #{req.id} принята в обработку.")
+            send_referrer_dm(referrer, msg, buttons=_cancel_button(req.id))
+        except Exception as e:
+            print(f'[ReferrerDM] create notify error: {e}')
 
         return jsonify({'success': True, 'request': req.to_dict()})
     finally:
@@ -5726,6 +5868,16 @@ def update_payout_request(req_id):
                 mark_referrer_rewards_paid_in_gsheet(paid_deal_ids, now)
             except Exception as e:
                 print(f'[GSheet] mark paid error: {e}')
+        # DM рефереру: выплата отправлена
+        if new_status == 'paid':
+            try:
+                referrer2 = db.query(Referrer).get(req.referrer_id)
+                if referrer2:
+                    tx = f"\nTx: <code>{req.tx_hash}</code>" if req.tx_hash else ""
+                    send_referrer_dm(referrer2,
+                        f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>${req.amount_usdt:.2f}</b>{tx}")
+            except Exception as e:
+                print(f'[ReferrerDM] paid notify error: {e}')
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
     finally:
         db.close()
