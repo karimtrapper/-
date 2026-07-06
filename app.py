@@ -5487,7 +5487,8 @@ def referrer_stats(token):
 
         if not ref_session_authorized(referrer, token):
             return jsonify({'success': False, 'auth_required': True,
-                            'bot_username': get_bot_username()}), 401
+                            'bot_username': get_bot_username(),
+                            'referrer_name': referrer.name}), 401
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
         # Один реферал может иметь НЕСКОЛЬКО строк в одной сделке (напр. markup 0.5% с верха
