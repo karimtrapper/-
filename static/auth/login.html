@@ -298,7 +298,14 @@
                         });
                         const d = await resp.json();
                         if (d.success) { window.location.href = '/crm'; }
-                        else { errEl.textContent = d.error || 'Доступ запрещён'; errEl.classList.add('visible'); }
+                        else {
+                            // Виджет Telegram кэширует аккаунт браузера — подсказываем, как сменить
+                            errEl.innerHTML = (d.error || 'Доступ запрещён') +
+                                '<div style="margin-top:8px;font-weight:400;color:#7f1d1d;">Вошли не с того Telegram-аккаунта? ' +
+                                'В окне входа Telegram нажмите <b>edit</b> у номера и введите другой, ' +
+                                'либо очистите cookies для telegram.org (или откройте в режиме инкогнито).</div>';
+                            errEl.classList.add('visible');
+                        }
                     } catch (e) { errEl.textContent = 'Ошибка сети'; errEl.classList.add('visible'); }
                 });
             });
