@@ -676,6 +676,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="partners">Партнёры</button>
             <button class="nav-tab" data-section="referrers">Рефереры</button>
             <button class="nav-tab" data-section="payoutRequests">Заявки на выплату</button>
+            <button class="nav-tab" data-section="admins">🔐 Админы</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -1561,6 +1562,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div id="managersList">
                     <!-- Managers list -->
                 </div>
+            </div>
+        </section>
+
+        <!-- Admins Section -->
+        <section id="admins" class="section">
+            <div class="card">
+                <div class="card-title">Администраторы (вход через Telegram)</div>
+                <p style="color:#64748b;font-size:13px;margin-bottom:1rem;">
+                    Кто в списке — тот входит в CRM через Telegram по своему @username.
+                    Привязка к аккаунту происходит при первом входе.
+                </p>
+                <form id="addAdminForm" style="margin-bottom:1.5rem;">
+                    <div class="form-row">
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Имя</label>
+                            <input type="text" class="form-control" id="adminName" placeholder="Валера" required>
+                        </div>
+                        <div class="form-group" style="flex:2;">
+                            <label class="form-label">Telegram</label>
+                            <input type="text" class="form-control" id="adminTelegram" placeholder="@username" required>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:flex-end;">
+                            <button type="submit" class="btn btn-primary">Добавить</button>
+                        </div>
+                    </div>
+                </form>
+                <div id="adminsList"></div>
             </div>
         </section>
 
@@ -2736,6 +2764,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'partners': loadPartners(); break;
                     case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
+                case 'admins': loadAdmins(); break;
                     case 'exchangers': rxLoad(); break;
                 }
 
@@ -3794,6 +3823,55 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Create Deal ====================
 
+        // ==================== Админы (Telegram-вход) ====================
+        async function loadAdmins() {
+            const box = document.getElementById('adminsList');
+            if (!box) return;
+            try {
+                const res = await fetch(`${API_URL}/api/admins`);
+                const data = await res.json();
+                if (!data.success) { box.innerHTML = '<p style="color:#94a3b8">Ошибка загрузки</p>'; return; }
+                box.innerHTML = data.admins.map(a => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;">
+                        <div>
+                            <div style="font-weight:600;">${a.display_name}</div>
+                            <div style="font-size:12px;color:#64748b;">${a.telegram || '—'} ${a.bound ? '· 🟢 привязан' : '· ⚪ ждёт входа'}</div>
+                        </div>
+                        <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
+                    </div>`).join('') || '<p style="color:#94a3b8">Пока нет админов</p>';
+            } catch (e) { box.innerHTML = '<p style="color:#94a3b8">Ошибка сети</p>'; }
+        }
+
+        async function deleteAdmin(id, name) {
+            if (!confirm(`Удалить админа «${name}»?`)) return;
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, { method: 'DELETE' });
+                const d = await res.json();
+                if (d.success) { showToast('Админ удалён'); loadAdmins(); }
+                else showToast(d.error || 'Ошибка', 'error');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        (function initAddAdminForm() {
+            const form = document.getElementById('addAdminForm');
+            if (!form) return;
+            form.addEventListener('submit', async function (e) {
+                e.preventDefault();
+                const payload = {
+                    display_name: document.getElementById('adminName').value.trim(),
+                    telegram: document.getElementById('adminTelegram').value.trim(),
+                };
+                try {
+                    const res = await fetch(`${API_URL}/api/admins`, {
+                        method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
+                    });
+                    const d = await res.json();
+                    if (d.success) { showToast('Админ добавлен'); form.reset(); loadAdmins(); }
+                    else showToast(d.error || 'Ошибка', 'error');
+                } catch (e) { showToast('Ошибка сети', 'error'); }
+            });
+        })();
+
         // Программное переключение секции
         function showSection(sectionName) {
             localStorage.setItem('crm_section', sectionName);
@@ -3819,6 +3897,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'partners': loadPartners(); break;
                 case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
+                case 'admins': loadAdmins(); break;
                     case 'exchangers': rxLoad(); break;
             }
 
