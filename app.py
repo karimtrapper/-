@@ -355,6 +355,10 @@ class PayoutRequest(Base):
     # 'new' | 'in_progress' | 'paid' | 'cancelled'
     status = Column(String(20), default='new', index=True)
     tx_hash = Column(String(120))  # Хеш транзакции при статусе 'paid'
+    # JSON-список deal_id, зафиксированных при создании заявки.
+    # При статусе paid помечаются оплаченными ТОЛЬКО эти сделки — сделки,
+    # закрытые после создания заявки, остаются к выводу (не сгорают).
+    deal_ids = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
@@ -972,6 +976,15 @@ try:
             try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram VARCHAR(50)"))
             except: pass
             try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram_user_id BIGINT"))
+            except: pass
+        # payout_requests: снапшот сделок заявки (paid помечает только их)
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS deal_ids TEXT"))
+            except Exception as e:
+                print(f"ℹ️ payout_requests.deal_ids: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE payout_requests ADD COLUMN deal_ids TEXT"))
             except: pass
         # payout_requests: индекс по статусу + колонка tx_hash
         if 'postgresql' in DATABASE_URL:
@@ -5877,6 +5890,10 @@ def create_payout_request(token):
                 'error': 'У вас уже есть активная заявка. Дождитесь обработки.'
             }), 409
 
+        # Снапшот сделок заявки: paid пометит оплаченными ТОЛЬКО их —
+        # сделки, закрытые после создания заявки, не сгорают
+        unpaid_deal_ids = sorted({r.deal_id for r in rows if not r.paid and (r.payout_usdt or 0)}) if agent_rows else []
+
         req = PayoutRequest(
             referrer_id=referrer.id,
             amount_usdt=pending,
@@ -5885,6 +5902,7 @@ def create_payout_request(token):
             contact_value=contact_value,
             notes=notes,
             status='new',
+            deal_ids=json.dumps(unpaid_deal_ids),
         )
         db.add(req)
         db.commit()
@@ -6041,11 +6059,19 @@ def update_payout_request(req_id):
         if new_status in ('paid', 'cancelled'):
             req.processed_at = now
         # paid → помечаем сделки реферера выплаченными, иначе «Доступно к выводу»
-        # не уменьшится и партнёр сможет запросить ту же сумму повторно
+        # не уменьшится и партнёр сможет запросить ту же сумму повторно.
+        # Только сделки из снапшота заявки (deal_ids) — закрытые после заявки не сгорают.
+        # Легаси-заявки без снапшота — старое поведение (все неоплаченные).
         if new_status == 'paid':
             referrer = db.query(Referrer).get(req.referrer_id)
             if referrer:
-                paid_deal_ids, _ = _mark_referrer_deals_paid(db, referrer, now)
+                snap_ids = None
+                if req.deal_ids:
+                    try:
+                        snap_ids = json.loads(req.deal_ids) or None
+                    except (ValueError, TypeError):
+                        snap_ids = None
+                paid_deal_ids, _ = _mark_referrer_deals_paid(db, referrer, now, deal_ids=snap_ids)
         db.commit()
         db.refresh(req)
         if paid_deal_ids:
