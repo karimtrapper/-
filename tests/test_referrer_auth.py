@@ -72,3 +72,43 @@ def test_verify_tampered_field():
     d = _signed({'id': 42, 'first_name': 'Ed', 'auth_date': int(time.time())})
     d['id'] = 999  # подменили после подписи
     assert verify_telegram_auth(d, '111:TEST_TOKEN') is False
+
+
+def _get_referrer(rid_or_token):
+    s = get_session()
+    try:
+        return s.query(Referrer).filter(Referrer.token == rid_or_token).first()
+    finally:
+        s.close()
+
+
+def test_bind_by_username_match():
+    d = _mk_referrer(telegram='@ed_test', token='t1')
+    r = _get_referrer('t1')
+    ok, err = apply_referrer_tg_binding(r, tg_id=42, tg_username='ed_test')
+    assert ok is True and err is None
+    assert _get_referrer('t1').telegram_user_id == 42
+
+
+def test_bind_by_username_mismatch():
+    _mk_referrer(telegram='@ed_test', token='t2')
+    r = _get_referrer('t2')
+    ok, err = apply_referrer_tg_binding(r, tg_id=42, tg_username='someone_else')
+    assert ok is False and err
+
+
+def test_bind_empty_username_trusts_first():
+    _mk_referrer(telegram='', token='t3')
+    r = _get_referrer('t3')
+    ok, err = apply_referrer_tg_binding(r, tg_id=77, tg_username=None)
+    assert ok is True
+    assert _get_referrer('t3').telegram_user_id == 77
+
+
+def test_prebound_id_must_match():
+    _mk_referrer(telegram='@ed_test', token='t4', telegram_user_id=42)
+    r = _get_referrer('t4')
+    assert apply_referrer_tg_binding(r, tg_id=42, tg_username='ed_test')[0] is True
+    r = _get_referrer('t4')
+    ok, err = apply_referrer_tg_binding(r, tg_id=999, tg_username='ed_test')
+    assert ok is False and err

@@ -4609,6 +4609,36 @@ def verify_telegram_auth(data: dict, bot_token: str, max_age_sec: int = 86400) -
         return False
     return True
 
+def apply_referrer_tg_binding(referrer, tg_id, tg_username):
+    """
+    Привязка TG-аккаунта к рефереру (trust-on-first-login). Коммитит id при первом входе.
+    Возвращает (ok: bool, error: str|None).
+    - есть telegram_user_id → пришедший id обязан совпасть;
+    - иначе задан referrer.telegram (@username) → сверка username, совпал → биндим id;
+    - иначе → биндим первый вошедший id.
+    """
+    tg_id = int(tg_id)
+    if referrer.telegram_user_id:
+        if int(referrer.telegram_user_id) != tg_id:
+            return False, 'Этот Telegram-аккаунт не привязан к кабинету'
+        return True, None
+
+    expected = (referrer.telegram or '').lstrip('@').strip().lower()
+    if expected:
+        got = (tg_username or '').lstrip('@').strip().lower()
+        if got != expected:
+            return False, 'Ваш Telegram не совпадает с указанным для этого реферера'
+
+    # Биндим id (совпал username, либо username не задан → первый вошедший)
+    s = get_session()
+    try:
+        r = s.query(Referrer).get(referrer.id)
+        r.telegram_user_id = tg_id
+        s.commit()
+    finally:
+        s.close()
+    return True, None
+
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
     """Прокси для получения истории платежей Доверки"""
