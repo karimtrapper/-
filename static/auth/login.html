@@ -296,37 +296,20 @@
                     } catch (e) { errEl.textContent = 'Ошибка сети'; errEl.classList.add('visible'); }
                 });
             }
-            // Официальная смена аккаунта: встроенный iframe-виджет Telegram при
-            // закэшированной сессии показывает «Log in as <Имя> ▾» — в меню ▾ есть
-            // «Log in as another account». Рендерим его прямо в блоке ошибки.
+            // Смена закэшированного TG-аккаунта: cookies oauth.telegram.org нам
+            // недоступны (чужой домен), у embed-виджета logout выпилен — поэтому
+            // честная пошаговая инструкция: удалить cookies telegram.org.
             function showTgSwitchWidget(errEl, errText) {
                 errEl.innerHTML = (errText || 'Доступ запрещён') +
-                    '<div style="margin-top:8px;font-weight:400;color:#7f1d1d;">Вошли не с того аккаунта? ' +
-                    'Нажмите стрелку <b>▾</b> на кнопке ниже → <b>Log in as another account</b>:</div>' +
-                    '<div id="tgSwitchWidget" style="margin-top:10px;display:flex;justify-content:center;"></div>';
+                    '<div style="margin-top:10px;font-weight:400;color:#7f1d1d;text-align:left;line-height:1.6;">' +
+                    'Браузер запомнил другой Telegram-аккаунт. Как сменить:<br>' +
+                    '1. Откройте <b>chrome://settings/siteData</b> (скопируйте в адресную строку)<br>' +
+                    '2. В поиске наберите <b>telegram</b> → удалите <b>oauth.telegram.org</b><br>' +
+                    '3. Вернитесь сюда, обновите страницу и войдите — Telegram спросит номер' +
+                    '<div style="margin-top:8px;color:#9a3412;">Либо: в Telegram того аккаунта → Settings → ' +
+                    'Devices → grusha.up.railway.app → <b>Terminate</b>.</div></div>';
                 errEl.classList.add('visible');
-                const s = document.createElement('script');
-                s.async = true;
-                s.src = 'https://telegram.org/js/telegram-widget.js?22';
-                s.setAttribute('data-telegram-login', cfg.bot_username || '');
-                s.setAttribute('data-size', 'medium');
-                s.setAttribute('data-onauth', 'onTgSwitchAuth(user)');
-                s.setAttribute('data-request-access', 'write');
-                document.getElementById('tgSwitchWidget').appendChild(s);
             }
-            // Колбэк embed-виджета смены аккаунта — тот же вход
-            window.onTgSwitchAuth = async function (user) {
-                const errEl = document.getElementById('loginError');
-                try {
-                    const resp = await fetch('/api/auth/tg-login', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify(user)
-                    });
-                    const d = await resp.json();
-                    if (d.success) { window.location.href = '/crm'; }
-                    else { showTgSwitchWidget(errEl, d.error); }
-                } catch (e) { errEl.textContent = 'Ошибка сети'; errEl.classList.add('visible'); }
-            };
             const btn = document.getElementById('tgLoginBtn');
             if (btn) btn.addEventListener('click', function () {
                 const errEl = document.getElementById('loginError');
