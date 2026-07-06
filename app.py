@@ -4647,6 +4647,53 @@ def ref_session_authorized(referrer, token) -> bool:
     bound = auth.get(token)
     return bool(bound and referrer.telegram_user_id and int(bound) == int(referrer.telegram_user_id))
 
+
+def _referrer_balance(db, referrer):
+    """(доступно_к_выводу, всего_выплачено) по строкам агента на завершённых сделках."""
+    agent_rows = db.query(DealAgent).filter(DealAgent.referrer_id == referrer.id).all()
+    if not agent_rows:
+        return 0.0, 0.0
+    completed_ids = {row.id for row in db.query(Deal.id).filter(
+        Deal.id.in_(list({r.deal_id for r in agent_rows})),
+        Deal.status == DealStatus.COMPLETED).all()}
+    rows = [r for r in agent_rows if r.deal_id in completed_ids]
+    earned = sum(r.payout_usdt or 0 for r in rows)
+    paid = sum((r.payout_usdt or 0) for r in rows if r.paid)
+    return round(earned - paid, 2), round(paid, 2)
+
+
+def _cancel_button(req_id):
+    """Inline-клавиатура с кнопкой отмены заявки."""
+    return [[{'text': '❌ Отменить заявку', 'callback_data': f'cancel:{req_id}'}]]
+
+
+def send_referrer_dm(referrer, text, buttons=None):
+    """DM рефереру через @grusha_lk_bot. Пропуск если нет токена/привязки TG."""
+    token = get_login_bot_token()
+    if not token or not referrer.telegram_user_id:
+        return False
+    payload = {'chat_id': int(referrer.telegram_user_id), 'text': text,
+               'parse_mode': 'HTML', 'disable_web_page_preview': True}
+    if buttons:
+        payload['reply_markup'] = json.dumps({'inline_keyboard': buttons})
+    try:
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                          json=payload, timeout=10)
+        return r.status_code == 200
+    except Exception as e:
+        print(f'[ReferrerDM] error: {e}')
+        return False
+
+
+def _cancel_payout(db, req):
+    """Отмена заявки: статус→cancelled + processed_at. True если реально отменили."""
+    if req.status not in ('new', 'in_progress'):
+        return False
+    req.status = 'cancelled'
+    req.processed_at = datetime.utcnow()
+    db.commit()
+    return True
+
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
     """Прокси для получения истории платежей Доверки"""
