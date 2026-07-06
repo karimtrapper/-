@@ -2269,6 +2269,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Вход в кабинет</label>
+                    <select class="form-control" id="referrerAuthMode">
+                        <option value="link">По ссылке (открыт всем с ссылкой)</option>
+                        <option value="telegram">Через Telegram (только свой аккаунт)</option>
+                    </select>
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
+                        «Через Telegram» — при первом входе кабинет привяжется к TG-аккаунту реферера (по @username).
+                    </small>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Заметки</label>
                     <textarea class="form-control" id="referrerNotes" rows="2" placeholder="Доп. информация"></textarea>
                 </div>
@@ -7843,6 +7853,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('referrerPercent').value = '10';
             document.getElementById('referrerMarkupPercent').value = '0.2';
             document.getElementById('referrerPayoutCurrency').value = 'USDT';
+            document.getElementById('referrerAuthMode').value = 'link';
             document.getElementById('referrerNotes').value = '';
             onReferrerModelChange();
             document.getElementById('referrerModalTitle').textContent = 'Добавить реферера';
@@ -7860,6 +7871,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('referrerPercent').value = r.default_percent;
             document.getElementById('referrerMarkupPercent').value = r.markup_percent || 0;
             document.getElementById('referrerPayoutCurrency').value = r.payout_currency || 'USDT';
+            document.getElementById('referrerAuthMode').value = r.auth_mode || 'link';
             document.getElementById('referrerNotes').value = r.notes || '';
             onReferrerModelChange();
             document.getElementById('referrerModalTitle').textContent = 'Редактировать реферера';
@@ -7882,6 +7894,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 comp_model: document.getElementById('referrerCompModel').value || 'revshare',
                 markup_percent: parseFloat(document.getElementById('referrerMarkupPercent').value) || 0,
                 notes: document.getElementById('referrerNotes').value.trim(),
+                auth_mode: document.getElementById('referrerAuthMode').value || 'link',
             };
 
             try {

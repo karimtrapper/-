@@ -13,6 +13,7 @@ import asyncio
 import time
 import json
 import hashlib
+import hmac
 import bcrypt
 import logging
 import gspread
@@ -117,7 +118,7 @@ TRONSCAN_CACHE = {
 CACHE_TTL = 300 # 5 минут
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from enum import Enum
@@ -278,6 +279,8 @@ class Referrer(Base):
     markup_percent = Column(Float, default=0.0)
     active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
+    auth_mode = Column(String(20), default='link')       # 'link' | 'telegram'
+    telegram_user_id = Column(BigInteger)                  # привязанный TG id (>2^31)
     total_referred_clients = Column(Integer, default=0)
     total_deals = Column(Integer, default=0)
     total_earned_usdt = Column(Float, default=0)
@@ -296,6 +299,8 @@ class Referrer(Base):
             'comp_model': self.comp_model or 'revshare',
             'markup_percent': self.markup_percent or 0.0,
             'active': self.active,
+            'auth_mode': self.auth_mode or 'link',
+            'telegram_user_id': self.telegram_user_id,
             'total_referred_clients': self.total_referred_clients,
             'total_deals': self.total_deals,
             'total_earned_usdt': self.total_earned_usdt,
@@ -918,6 +923,18 @@ try:
                 print(f"ℹ️ referrers.is_test: {e}")
         else:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN is_test BOOLEAN DEFAULT 0"))
+            except: pass
+        # Вход в кабинет: режим + привязанный TG id
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS auth_mode VARCHAR(20) DEFAULT 'link'"))
+                conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT"))
+            except Exception as e:
+                print(f"ℹ️ referrers.auth_mode: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN auth_mode VARCHAR(20) DEFAULT 'link'"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN telegram_user_id BIGINT"))
             except: pass
         # payout_requests: индекс по статусу + колонка tx_hash
         if 'postgresql' in DATABASE_URL:
@@ -4551,6 +4568,85 @@ def send_telegram_notification(text, thread_id=None):
         print(f'[Telegram] Error: {e}')
         return False
 
+# ── Вход реферера через Telegram Login Widget ──────────────────────────────
+_login_bot_username_cache = None
+
+def get_login_bot_token():
+    """Токен бота для виджета входа. REF_LOGIN_BOT_TOKEN или фолбэк на нотификатор."""
+    return (os.environ.get('REF_LOGIN_BOT_TOKEN')
+            or os.environ.get('TELEGRAM_BOT_TOKEN') or '').strip()
+
+def get_bot_username():
+    """Username бота-логина без @ (getMe, кэш в памяти). None если токена нет."""
+    global _login_bot_username_cache
+    if _login_bot_username_cache is not None:
+        return _login_bot_username_cache
+    token = get_login_bot_token()
+    if not token:
+        return None
+    try:
+        r = requests.get(f"https://api.telegram.org/bot{token}/getMe", timeout=10)
+        _login_bot_username_cache = r.json()['result']['username']
+    except Exception as e:
+        print(f'[LoginBot] getMe error: {e}')
+        return None
+    return _login_bot_username_cache
+
+def verify_telegram_auth(data: dict, bot_token: str, max_age_sec: int = 86400) -> bool:
+    """Проверка подписи Telegram Login Widget (HMAC-SHA256) и свежести auth_date."""
+    if not bot_token or not data.get('hash'):
+        return False
+    received_hash = data['hash']
+    secret = hashlib.sha256(bot_token.encode()).digest()
+    check = '\n'.join(f'{k}={data[k]}' for k in sorted(data) if k != 'hash')
+    calc = hmac.new(secret, check.encode(), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calc, str(received_hash)):
+        return False
+    try:
+        if (time.time() - int(data.get('auth_date', 0))) > max_age_sec:
+            return False
+    except (TypeError, ValueError):
+        return False
+    return True
+
+def apply_referrer_tg_binding(referrer, tg_id, tg_username):
+    """
+    Привязка TG-аккаунта к рефереру (trust-on-first-login). Коммитит id при первом входе.
+    Возвращает (ok: bool, error: str|None).
+    - есть telegram_user_id → пришедший id обязан совпасть;
+    - иначе задан referrer.telegram (@username) → сверка username, совпал → биндим id;
+    - иначе → биндим первый вошедший id.
+    """
+    tg_id = int(tg_id)
+    if referrer.telegram_user_id:
+        if int(referrer.telegram_user_id) != tg_id:
+            return False, 'Этот Telegram-аккаунт не привязан к кабинету'
+        return True, None
+
+    expected = (referrer.telegram or '').lstrip('@').strip().lower()
+    if expected:
+        got = (tg_username or '').lstrip('@').strip().lower()
+        if got != expected:
+            return False, 'Ваш Telegram не совпадает с указанным для этого реферера'
+
+    # Биндим id (совпал username, либо username не задан → первый вошедший)
+    s = get_session()
+    try:
+        r = s.query(Referrer).get(referrer.id)
+        r.telegram_user_id = tg_id
+        s.commit()
+    finally:
+        s.close()
+    return True, None
+
+def ref_session_authorized(referrer, token) -> bool:
+    """True если реферер в link-режиме ИЛИ в сессии есть валидная привязка по токену."""
+    if (referrer.auth_mode or 'link') != 'telegram':
+        return True
+    auth = flask_session.get('ref_auth') or {}
+    bound = auth.get(token)
+    return bool(bound and referrer.telegram_user_id and int(bound) == int(referrer.telegram_user_id))
+
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
     """Прокси для получения истории платежей Доверки"""
@@ -5199,6 +5295,33 @@ def referrer_page(token):
     return send_from_directory('static/referrer', 'index.html')
 
 
+@app.route('/api/ref/<token>/tg-login', methods=['POST'])
+def referrer_tg_login(token):
+    """Вход реферера в кабинет через Telegram Login Widget."""
+    data = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
+    finally:
+        db.close()
+    if not referrer:
+        return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+    bot_token = get_login_bot_token()
+    if not verify_telegram_auth(data, bot_token):
+        return jsonify({'success': False, 'error': 'Подпись Telegram недействительна или устарела'}), 403
+
+    ok, err = apply_referrer_tg_binding(referrer, data.get('id'), data.get('username'))
+    if not ok:
+        return jsonify({'success': False, 'error': err}), 403
+
+    flask_session.permanent = True
+    auth = dict(flask_session.get('ref_auth') or {})
+    auth[token] = int(data['id'])
+    flask_session['ref_auth'] = auth
+    return jsonify({'success': True})
+
+
 @app.route('/api/ref/<token>/stats', methods=['GET'])
 def referrer_stats(token):
     """Публичная статистика реферера"""
@@ -5207,6 +5330,10 @@ def referrer_stats(token):
         referrer = db.query(Referrer).filter(Referrer.token == token, Referrer.active == True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'bot_username': get_bot_username()}), 401
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
         # Один реферал может иметь НЕСКОЛЬКО строк в одной сделке (напр. markup 0.5% с верха
@@ -5392,6 +5519,9 @@ def create_payout_request(token):
         referrer = db.query(Referrer).filter_by(token=token, active=True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'error': 'Требуется вход через Telegram'}), 401
 
         # Считаем pending из строк агента (мультиагентная модель), ТОЧНО как в /stats.
         # Раньше тут было Deal.referrer_payout_usdt (легаси-кэш на сделке) — у рефереров
@@ -5624,6 +5754,9 @@ def cancel_payout_request_public(token, req_id):
         referrer = db.query(Referrer).filter_by(token=token, active=True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'error': 'Требуется вход через Telegram'}), 401
         req = db.query(PayoutRequest).filter_by(id=req_id, referrer_id=referrer.id).first()
         if not req:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
@@ -5716,6 +5849,7 @@ def create_referrer():
             markup_percent=markup_percent,
             client_id=data.get('client_id'),
             is_test=bool(data.get('is_test', False)),
+            auth_mode=('telegram' if (data.get('auth_mode') == 'telegram') else 'link'),
         )
         db.add(referrer)
         db.commit()
@@ -5763,6 +5897,8 @@ def update_referrer(referrer_id):
             referrer.notes = data['notes']
         if 'total_paid_usdt' in data:
             referrer.total_paid_usdt = parse_float(data.get('total_paid_usdt'))
+        if 'auth_mode' in data:
+            referrer.auth_mode = 'telegram' if data['auth_mode'] == 'telegram' else 'link'
 
         db.commit()
         return jsonify({'success': True, 'referrer': referrer.to_dict()})
