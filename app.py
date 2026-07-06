@@ -5519,6 +5519,9 @@ def create_payout_request(token):
         referrer = db.query(Referrer).filter_by(token=token, active=True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'error': 'Требуется вход через Telegram'}), 401
 
         # Считаем pending из строк агента (мультиагентная модель), ТОЧНО как в /stats.
         # Раньше тут было Deal.referrer_payout_usdt (легаси-кэш на сделке) — у рефереров
@@ -5751,6 +5754,9 @@ def cancel_payout_request_public(token, req_id):
         referrer = db.query(Referrer).filter_by(token=token, active=True).first()
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'error': 'Требуется вход через Telegram'}), 401
         req = db.query(PayoutRequest).filter_by(id=req_id, referrer_id=referrer.id).first()
         if not req:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404

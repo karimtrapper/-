@@ -157,3 +157,11 @@ def test_tg_login_bad_signature_rejected():
         payload['hash'] = 'deadbeef'
         r = c.post('/api/ref/s5/tg-login', json=payload)
         assert r.status_code == 403
+
+
+def test_payout_request_blocked_without_tg_auth():
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='p1')
+    with app.test_client() as c:
+        r = c.post('/api/ref/p1/payout-request',
+                   json={'wallet': 'x', 'contact_method': 'telegram', 'contact_value': '@ed_test'})
+    assert r.status_code == 401
