@@ -110,3 +110,52 @@ def test_webhook_cancel_wrong_user(monkeypatch):
     s = get_session()
     assert s.query(PayoutRequest).get(req_id).status == 'new'
     s.close()
+
+
+def test_new_deal_notify_sends_dm_with_button(monkeypatch):
+    """При завершённой сделке реферер-агент получает DM с суммой и кнопкой «Вывести»."""
+    import json as _json
+    from app import Deal, DealAgent, DealType, DealStatus, notify_agents_new_deal
+    captured = []
+    monkeypatch.setattr('app.requests.post',
+                        lambda url, **k: captured.append(k.get('json')) or type('R', (), {'status_code': 200})())
+    rid, token = _mk_ref(telegram_user_id=42)
+    s = get_session()
+    deal = Deal(deal_type=DealType('pay_in'), status=DealStatus.COMPLETED, profit_usdt=100)
+    deal.agents.append(DealAgent(referrer_id=rid, name='Ed', tier=1,
+                                 comp_model='fixed', payout_usdt=50, paid=False))
+    s.add(deal); s.commit()
+    notify_agents_new_deal(s, deal)
+    did = deal.id
+    s.close()
+    # очистка своей сделки, чтобы не влиять на другие тесты
+    s = get_session()
+    s.query(DealAgent).filter_by(deal_id=did).delete()
+    s.query(Deal).filter_by(id=did).delete(); s.commit(); s.close()
+
+    assert captured, 'DM не отправлен'
+    j = captured[0]
+    assert j['chat_id'] == 42
+    assert '$50.00' in j['text']
+    kb = _json.loads(j['reply_markup'])['inline_keyboard']
+    assert kb[0][0]['url'].endswith('/ref/' + token)
+
+
+def test_new_deal_notify_skips_agent_without_tg(monkeypatch):
+    """Агент без привязки TG не получает DM."""
+    from app import Deal, DealAgent, DealType, DealStatus, notify_agents_new_deal
+    captured = []
+    monkeypatch.setattr('app.requests.post',
+                        lambda url, **k: captured.append(1) or type('R', (), {'status_code': 200})())
+    rid, _ = _mk_ref(telegram_user_id=None)
+    s = get_session()
+    deal = Deal(deal_type=DealType('pay_in'), status=DealStatus.COMPLETED, profit_usdt=100)
+    deal.agents.append(DealAgent(referrer_id=rid, name='Ed', tier=1,
+                                 comp_model='fixed', payout_usdt=50, paid=False))
+    s.add(deal); s.commit(); did = deal.id
+    notify_agents_new_deal(s, deal)
+    s.close()
+    s = get_session()
+    s.query(DealAgent).filter_by(deal_id=did).delete()
+    s.query(Deal).filter_by(id=did).delete(); s.commit(); s.close()
+    assert captured == []
