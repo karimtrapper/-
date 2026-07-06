@@ -5413,10 +5413,10 @@ def create_payout_request(token):
             total_earned = total_paid = 0
         pending = round(total_earned - total_paid, 2)
 
-        if pending < 50:
+        if pending < 20:
             return jsonify({
                 'success': False,
-                'error': f'Минимальная сумма для вывода — $50. Доступно: ${pending:.2f}'
+                'error': f'Минимальная сумма для вывода — $20. Доступно: ${pending:.2f}'
             }), 400
 
         # Анти-спам: запрет если есть активная заявка (new или in_progress)

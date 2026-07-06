@@ -368,7 +368,7 @@
             const [whole, cents] = availableAmt.toFixed(2).split('.');
             const activeReq = d.active_request;
             const recentPaid = d.recent_paid_request;
-            const canRequest = !activeReq && availableAmt >= 50;
+            const canRequest = !activeReq && availableAmt >= 20;
             const avatarColors = [
                 'linear-gradient(135deg,#22C55E,#16A34A)',
                 'linear-gradient(135deg,#3B82F6,#2563EB)',
@@ -569,7 +569,7 @@
                         <div class="cond-icon" style="background:rgba(34,197,94,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         </div>
-                        <div><div class="cond-label">Минимум для вывода</div><div class="cond-value">$50</div></div>
+                        <div><div class="cond-label">Минимум для вывода</div><div class="cond-value">$20</div></div>
                     </div>
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(139,92,246,0.1)">
@@ -719,7 +719,7 @@
 
     // ============== Модалка заявки на выплату ==============
     function openPayoutModal() {
-        if (!statsData || (statsData.pending_usdt || 0) < 50) return;
+        if (!statsData || (statsData.pending_usdt || 0) < 20) return;
         const tg = statsData.telegram || '';
         document.getElementById('payoutModal').classList.add('show');
         document.getElementById('payoutAmount').textContent = '$' + (statsData.pending_usdt || 0).toFixed(2);
