@@ -135,6 +135,8 @@ class AdminUser(Base):
     display_name = Column(String(100))
     role = Column(String(20), default='admin')  # admin / manager (на будущее)
     created_at = Column(DateTime, default=datetime.utcnow)
+    telegram = Column(String(50))            # @username из whitelist
+    telegram_user_id = Column(BigInteger)     # привязанный TG id (trust-on-first-login)
 
     @staticmethod
     def hash_password(password):
@@ -157,6 +159,14 @@ class AdminUser(Base):
             self.password_hash = self.hash_password(password)
             return True
         return False
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'username': self.username,
+            'display_name': self.display_name or self.username,
+            'telegram': self.telegram, 'bound': bool(self.telegram_user_id),
+            'role': self.role or 'admin',
+        }
 
 
 class DealType(str, Enum):
@@ -936,6 +946,18 @@ try:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN auth_mode VARCHAR(20) DEFAULT 'link'"))
             except: pass
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN telegram_user_id BIGINT"))
+            except: pass
+        # Admin: Telegram-вход
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS telegram VARCHAR(50)"))
+                conn.execute(text("ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT"))
+            except Exception as e:
+                print(f"ℹ️ admin_users.telegram: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram VARCHAR(50)"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram_user_id BIGINT"))
             except: pass
         # payout_requests: индекс по статусу + колонка tx_hash
         if 'postgresql' in DATABASE_URL:
