@@ -2106,6 +2106,80 @@ def auth_tg_login():
         db.close()
 
 
+@app.route('/api/admins', methods=['GET'])
+def list_admins():
+    """Список админов (whitelist Telegram-входа)"""
+    db = get_session()
+    try:
+        return jsonify({'success': True, 'admins': [a.to_dict() for a in db.query(AdminUser).order_by(AdminUser.id).all()]})
+    finally:
+        db.close()
+
+
+@app.route('/api/admins', methods=['POST'])
+def create_admin():
+    """Добавление нового админа в whitelist (пароль случайный — вход только через Telegram)"""
+    import secrets, re
+    data = request.get_json() or {}
+    display_name = (data.get('display_name') or '').strip()
+    telegram = (data.get('telegram') or '').strip()
+    if not display_name:
+        return jsonify({'success': False, 'error': 'Укажите имя'}), 400
+    if not telegram:
+        return jsonify({'success': False, 'error': 'Укажите Telegram (@username)'}), 400
+    db = get_session()
+    try:
+        base = re.sub(r'[^A-Za-z0-9_]', '', telegram.lstrip('@')) or f'admin{secrets.token_hex(2)}'
+        username = base; i = 1
+        while db.query(AdminUser).filter_by(username=username).first():
+            i += 1; username = f'{base}{i}'
+        admin = AdminUser(
+            username=username, display_name=display_name,
+            password_hash=AdminUser.hash_password(secrets.token_hex(16)),  # случайный — пароль-вход отключён
+            telegram=telegram,
+        )
+        db.add(admin); db.commit()
+        return jsonify({'success': True, 'admin': admin.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/admins/<int:admin_id>', methods=['PUT'])
+def update_admin(admin_id):
+    """Правка имени/telegram админа. Смена telegram сбрасывает привязку id — перепривязка при следующем входе."""
+    data = request.get_json() or {}
+    db = get_session()
+    try:
+        admin = db.query(AdminUser).get(admin_id)
+        if not admin:
+            return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        if 'display_name' in data:
+            admin.display_name = (data['display_name'] or '').strip()
+        if 'telegram' in data:
+            admin.telegram = (data['telegram'] or '').strip()
+            admin.telegram_user_id = None  # смена username → перепривязка при следующем входе
+        db.commit()
+        return jsonify({'success': True, 'admin': admin.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/admins/<int:admin_id>', methods=['DELETE'])
+def delete_admin(admin_id):
+    """Удаление админа из whitelist. Нельзя удалить последнего — иначе никто не сможет войти."""
+    db = get_session()
+    try:
+        if db.query(AdminUser).count() <= 1:
+            return jsonify({'success': False, 'error': 'Нельзя удалить последнего админа'}), 400
+        admin = db.query(AdminUser).get(admin_id)
+        if not admin:
+            return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        db.delete(admin); db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 @app.route('/api/auth/login', methods=['POST'])
 @limiter.limit("5/minute")
 def auth_login():

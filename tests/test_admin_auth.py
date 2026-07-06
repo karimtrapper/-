@@ -82,3 +82,31 @@ def test_tg_config_public():
     with app.test_client() as c:
         r = c.get('/api/auth/tg-config')
         assert r.status_code == 200 and 'bot_id' in r.get_json()
+
+
+def _login(c):
+    with c.session_transaction() as sess:
+        sess['user_id'] = 1
+
+
+def test_create_admin_with_telegram():
+    with app.test_client() as c:
+        _login(c)
+        r = c.post('/api/admins', json={'display_name': 'Валера', 'telegram': '@valera'})
+        assert r.status_code == 200
+        assert r.get_json()['admin']['telegram'] == '@valera'
+
+
+def test_create_admin_requires_telegram():
+    with app.test_client() as c:
+        _login(c)
+        r = c.post('/api/admins', json={'display_name': 'Ноль'})
+        assert r.status_code == 400
+
+
+def test_delete_last_admin_blocked():
+    aid = _mk_admin(telegram='@solo')
+    with app.test_client() as c:
+        _login(c)
+        r = c.delete(f'/api/admins/{aid}')
+    assert r.status_code == 400
