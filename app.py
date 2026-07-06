@@ -117,7 +117,7 @@ TRONSCAN_CACHE = {
 CACHE_TTL = 300 # 5 минут
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from enum import Enum
@@ -278,6 +278,8 @@ class Referrer(Base):
     markup_percent = Column(Float, default=0.0)
     active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
+    auth_mode = Column(String(20), default='link')       # 'link' | 'telegram'
+    telegram_user_id = Column(BigInteger)                  # привязанный TG id (>2^31)
     total_referred_clients = Column(Integer, default=0)
     total_deals = Column(Integer, default=0)
     total_earned_usdt = Column(Float, default=0)
@@ -296,6 +298,8 @@ class Referrer(Base):
             'comp_model': self.comp_model or 'revshare',
             'markup_percent': self.markup_percent or 0.0,
             'active': self.active,
+            'auth_mode': self.auth_mode or 'link',
+            'telegram_user_id': self.telegram_user_id,
             'total_referred_clients': self.total_referred_clients,
             'total_deals': self.total_deals,
             'total_earned_usdt': self.total_earned_usdt,
@@ -918,6 +922,18 @@ try:
                 print(f"ℹ️ referrers.is_test: {e}")
         else:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN is_test BOOLEAN DEFAULT 0"))
+            except: pass
+        # Вход в кабинет: режим + привязанный TG id
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS auth_mode VARCHAR(20) DEFAULT 'link'"))
+                conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS telegram_user_id BIGINT"))
+            except Exception as e:
+                print(f"ℹ️ referrers.auth_mode: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN auth_mode VARCHAR(20) DEFAULT 'link'"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN telegram_user_id BIGINT"))
             except: pass
         # payout_requests: индекс по статусу + колонка tx_hash
         if 'postgresql' in DATABASE_URL:
