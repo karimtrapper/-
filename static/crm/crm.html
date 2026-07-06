@@ -3837,9 +3837,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div style="font-weight:600;">${a.display_name}</div>
                             <div style="font-size:12px;color:#64748b;">${a.telegram || '—'} ${a.bound ? '· 🟢 привязан' : '· ⚪ ждёт входа'}</div>
                         </div>
-                        <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
+                        <div style="display:flex;gap:6px;">
+                            <button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite('${(a.display_name||'').replace(/'/g,"\\'")}', '${(a.telegram||'').replace(/'/g,"\\'")}')">📋 Приглашение</button>
+                            <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
+                        </div>
                     </div>`).join('') || '<p style="color:#94a3b8">Пока нет админов</p>';
             } catch (e) { box.innerHTML = '<p style="color:#94a3b8">Ошибка сети</p>'; }
+        }
+
+        // Готовый текст-приглашение для нового админа (копируется в буфер)
+        function copyAdminInvite(name, telegram) {
+            const text = `${name ? name + ', привет' : 'Привет'}! Тебе выдан доступ в CRM Grusha.\n\n` +
+                `1. Открой https://grusha.up.railway.app/login\n` +
+                `2. Нажми «Войти через Telegram»\n` +
+                `3. Подтверди вход со своего аккаунта ${telegram || ''}\n\n` +
+                `Пароль не нужен — вход только через Telegram. Доступ привяжется к твоему аккаунту при первом входе.`;
+            navigator.clipboard.writeText(text).then(
+                () => showToast('Приглашение скопировано — отправь его в Telegram'),
+                () => { prompt('Скопируй вручную:', text); }
+            );
         }
 
         async function deleteAdmin(id, name) {
@@ -3866,7 +3882,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
                     });
                     const d = await res.json();
-                    if (d.success) { showToast('Админ добавлен'); form.reset(); loadAdmins(); }
+                    if (d.success) {
+                        form.reset(); loadAdmins();
+                        // сразу копируем приглашение — осталось только отправить
+                        copyAdminInvite(d.admin.display_name, d.admin.telegram);
+                    }
                     else showToast(d.error || 'Ошибка', 'error');
                 } catch (e) { showToast('Ошибка сети', 'error'); }
             });
