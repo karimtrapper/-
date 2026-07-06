@@ -17,12 +17,15 @@
 
 ## Бот виджета
 
-**@dealsgrusha_bot** — тот, что уже в `TELEGRAM_BOT_TOKEN` (нотификатор CalcCRM,
-шлёт заявки в группу). Его токен подписывает Login Widget.
+**@grusha_lk_bot** — отдельный бот только для входа в кабинет (изоляция от
+нотификатора). Его токен лежит в Railway env `REF_LOGIN_BOT_TOKEN` (записан
+2026-07-06). Он подписывает Login Widget.
+
+Код читает `REF_LOGIN_BOT_TOKEN`; если не задан — фолбэк на `TELEGRAM_BOT_TOKEN`
+(чтобы не падать). Username берётся через `getMe` (кэш в памяти).
 
 **Ручной шаг (юзер):** один раз в @BotFather → `/setdomain` →
-`grusha.up.railway.app` у @dealsgrusha_bot. Без этого виджет не отрендерится.
-Username бота код берёт сам через `getMe` (кэш в памяти).
+`grusha.up.railway.app` у @grusha_lk_bot. Без этого виджет не отрендерится.
 
 ## Модель данных
 
@@ -36,9 +39,10 @@ Username бота код берёт сам через `getMe` (кэш в пам�
 
 ## Backend
 
-### Хелпер `get_bot_username()`
-`getMe` по `TELEGRAM_BOT_TOKEN`, результат кэшируется в модульной переменной.
-Возвращает username без `@`. При отсутствии токена → `None`.
+### Хелпер `get_login_bot_token()` / `get_bot_username()`
+Токен: `REF_LOGIN_BOT_TOKEN` или фолбэк `TELEGRAM_BOT_TOKEN`.
+`get_bot_username()` — `getMe` по этому токену, результат кэшируется в модульной
+переменной. Возвращает username без `@`. При отсутствии токена → `None`.
 
 ### `GET /api/ref/<token>/stats` (правка)
 Если `referrer.auth_mode == 'telegram'` и в `session['ref_auth']` нет валидной
@@ -106,7 +110,7 @@ Unit (без сети, HMAC считаем локально валидным к�
 
 ## E2E (вручную на проде, после деплоя)
 
-1. Юзер: `/setdomain grusha.up.railway.app` у @dealsgrusha_bot.
+1. Юзер: `/setdomain grusha.up.railway.app` у @grusha_lk_bot.
 2. Юзер в CRM создаёт тестового реферера: `auth_mode=telegram`, Telegram=свой @username.
 3. Открывает `/ref/<token>` → видит виджет → жмёт → попадает в кабинет.
 4. Проверка отказа: заходит другим TG-аккаунтом → `403`.
