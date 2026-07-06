@@ -396,8 +396,11 @@
             });
             const d = await resp.json();
             if (d.success) { location.reload(); return; }
-            document.getElementById('tg-login-error').textContent =
-                d.error || 'Не удалось войти';
+            // Виджет Telegram кэширует аккаунт браузера — подсказываем, как сменить
+            document.getElementById('tg-login-error').innerHTML =
+                esc(d.error || 'Не удалось войти') +
+                '<div style="margin-top:6px;color:#94A3B8;font-size:12px;">Не тот Telegram-аккаунт? ' +
+                'В окне входа нажмите <b>edit</b> у номера, либо откройте ссылку в режиме инкогнито.</div>';
         } catch (e) {
             document.getElementById('tg-login-error').textContent = 'Ошибка сети';
         }
