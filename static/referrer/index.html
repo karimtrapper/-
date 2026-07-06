@@ -354,11 +354,56 @@
         loadStats();
     }
 
+    // Экран входа через Telegram (для рефереров с auth_mode='telegram')
+    window.onTgAuth = async function (user) {
+        try {
+            const resp = await fetch(`/api/ref/${token}/tg-login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(user),
+            });
+            const d = await resp.json();
+            if (d.success) { location.reload(); return; }
+            document.getElementById('tg-login-error').textContent =
+                d.error || 'Не удалось войти';
+        } catch (e) {
+            document.getElementById('tg-login-error').textContent = 'Ошибка сети';
+        }
+    };
+
+    function renderTelegramLogin(botUsername) {
+        const app = document.getElementById('app');
+        if (!botUsername) {
+            app.innerHTML = '<div class="error">Вход через Telegram временно недоступен</div>';
+            return;
+        }
+        app.innerHTML = `
+          <div style="max-width:420px;margin:80px auto;text-align:center;padding:24px;">
+            <h2 style="font-size:20px;margin-bottom:8px;">Вход в кабинет</h2>
+            <p style="color:#64748b;font-size:14px;margin-bottom:24px;">
+              Подтвердите, что это ваш кабинет — войдите через Telegram.</p>
+            <div id="tg-login-widget"></div>
+            <div id="tg-login-error" style="color:#ef4444;font-size:13px;margin-top:14px;"></div>
+          </div>`;
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://telegram.org/js/telegram-widget.js?22';
+        s.setAttribute('data-telegram-login', botUsername);
+        s.setAttribute('data-size', 'large');
+        s.setAttribute('data-onauth', 'onTgAuth(user)');
+        s.setAttribute('data-request-access', 'write');
+        document.getElementById('tg-login-widget').appendChild(s);
+    }
+
     async function loadStats() {
         try {
             const resp = await fetch(`/api/ref/${token}/stats`);
             const d = await resp.json();
             statsData = d;
+            if (resp.status === 401 && d.auth_required) {
+                renderTelegramLogin(d.bot_username);
+                return;
+            }
             if (!d.success) {
                 document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
                 return;
