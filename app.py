@@ -67,7 +67,21 @@ def check_auth():
             return None
 
     # Проверяем сессию
-    if not flask_session.get('user_id'):
+    uid = flask_session.get('user_id')
+    if not uid:
+        if path.startswith('/api/'):
+            return jsonify({'success': False, 'error': 'unauthorized'}), 401
+        return redirect('/login')
+
+    # Серверная ревалидация: сессия жива только пока админ существует в БД.
+    # Удаление админа из whitelist → мгновенный разлог (cookie сам по себе не даёт доступ).
+    db = get_session()
+    try:
+        still_admin = db.query(AdminUser.id).filter(AdminUser.id == uid).first() is not None
+    finally:
+        db.close()
+    if not still_admin:
+        flask_session.clear()
         if path.startswith('/api/'):
             return jsonify({'success': False, 'error': 'unauthorized'}), 401
         return redirect('/login')

@@ -85,8 +85,20 @@ def test_tg_config_public():
 
 
 def _login(c):
+    """Логинит тест-клиент как реально существующий админ (создаёт, если список пуст).
+    Нужен реальный id: check_auth теперь ревалидирует сессию по БД."""
+    s = get_session()
+    try:
+        a = s.query(AdminUser).first()
+        if not a:
+            a = AdminUser(username='sess_admin', display_name='S',
+                          password_hash=AdminUser.hash_password('x'), telegram='@sess')
+            s.add(a); s.commit()
+        aid = a.id
+    finally:
+        s.close()
     with c.session_transaction() as sess:
-        sess['user_id'] = 1
+        sess['user_id'] = aid
 
 
 def test_create_admin_with_telegram():
@@ -110,3 +122,17 @@ def test_delete_last_admin_blocked():
         _login(c)
         r = c.delete(f'/api/admins/{aid}')
     assert r.status_code == 400
+
+
+def test_deleted_admin_session_revoked():
+    """Сессия удалённого админа (несуществующий user_id) не даёт доступа к защищённым API."""
+    aid = _mk_admin(telegram='@live')
+    with app.test_client() as c:
+        # валидный админ → доступ есть
+        with c.session_transaction() as sess:
+            sess['user_id'] = aid
+        assert c.get('/api/admins').status_code == 200
+        # тот же клиент, но user_id указывает на несуществующего админа → разлог
+        with c.session_transaction() as sess:
+            sess['user_id'] = 999999
+        assert c.get('/api/admins').status_code == 401

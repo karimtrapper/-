@@ -17,16 +17,27 @@ import requests
 
 import app as appmod
 from app import (app as flask_app, get_session, ReestrSnapshot, ReestrInflow,
-                _reestr_upsert, sync_reestr_from_wl, _reestr_inflow_composition)
+                _reestr_upsert, sync_reestr_from_wl, _reestr_inflow_composition, AdminUser)
 
 
 @pytest.fixture
 def client():
     """Авторизованный test client (эндпоинты /api/* за session-аутентификацией)."""
     flask_app.config['TESTING'] = True
+    # check_auth ревалидирует сессию по БД → нужен реально существующий админ
+    s = get_session()
+    try:
+        a = s.query(AdminUser).first()
+        if not a:
+            a = AdminUser(username='test_admin', display_name='Test Admin',
+                          password_hash=AdminUser.hash_password('x'))
+            s.add(a); s.commit()
+        aid = a.id
+    finally:
+        s.close()
     with flask_app.test_client() as c:
         with c.session_transaction() as sess:
-            sess['user_id'] = 1
+            sess['user_id'] = aid
             sess['username'] = 'admin'
             sess['display_name'] = 'Test Admin'
         yield c

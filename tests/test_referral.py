@@ -76,9 +76,20 @@ def client_with_referrer(db, referrer):
 def tc():
     """Flask test client с авторизацией."""
     app.config['TESTING'] = True
+    # check_auth ревалидирует сессию по БД → нужен реально существующий админ
+    s = get_session()
+    try:
+        a = s.query(AdminUser).first()
+        if not a:
+            a = AdminUser(username='test_admin', display_name='T',
+                          password_hash=AdminUser.hash_password('x'))
+            s.add(a); s.commit()
+        aid = a.id
+    finally:
+        s.close()
     with app.test_client() as client:
         with client.session_transaction() as sess:
-            sess['user_id'] = 1
+            sess['user_id'] = aid
         yield client
 
 
