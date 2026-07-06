@@ -488,7 +488,7 @@
                     </div>
                     <div class="balance-sub">
                         <div class="dot"></div>
-                        <span>${activeReq ? 'Заявка #' + maskId(activeReq.id) + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $50 · USDT TRC-20'}</span>
+                        <span>${activeReq ? 'Заявка #' + maskId(activeReq.id) + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $20 · USDT TRC-20'}</span>
                     </div>
                     <button class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>${activeReq ? 'Заявка уже отправлена' : 'Запросить выплату'}</button>
                 </div>
