@@ -165,3 +165,22 @@ def test_payout_request_blocked_without_tg_auth():
         r = c.post('/api/ref/p1/payout-request',
                    json={'wallet': 'x', 'contact_method': 'telegram', 'contact_value': '@ed_test'})
     assert r.status_code == 401
+
+
+def test_create_referrer_with_telegram_mode():
+    with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = 1  # CRUD-ручки рефереров требуют админ-сессию
+        r = c.post('/api/referrers', json={'name': 'Zed', 'auth_mode': 'telegram', 'telegram': '@zed'})
+        assert r.status_code == 200
+        assert r.get_json()['referrer']['auth_mode'] == 'telegram'
+
+
+def test_update_referrer_auth_mode_validated():
+    rid = _mk_referrer(token='u1')['id']
+    with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = 1
+        c.put(f'/api/referrers/{rid}', json={'auth_mode': 'garbage'})
+        r = c.get('/api/ref/u1/stats')  # мусор → остался link → открыт
+    assert r.status_code == 200

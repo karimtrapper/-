@@ -5849,6 +5849,7 @@ def create_referrer():
             markup_percent=markup_percent,
             client_id=data.get('client_id'),
             is_test=bool(data.get('is_test', False)),
+            auth_mode=('telegram' if (data.get('auth_mode') == 'telegram') else 'link'),
         )
         db.add(referrer)
         db.commit()
@@ -5896,6 +5897,8 @@ def update_referrer(referrer_id):
             referrer.notes = data['notes']
         if 'total_paid_usdt' in data:
             referrer.total_paid_usdt = parse_float(data.get('total_paid_usdt'))
+        if 'auth_mode' in data:
+            referrer.auth_mode = 'telegram' if data['auth_mode'] == 'telegram' else 'link'
 
         db.commit()
         return jsonify({'success': True, 'referrer': referrer.to_dict()})
