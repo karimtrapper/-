@@ -5659,7 +5659,7 @@ def create_payout_request(token):
                 )
                 if notes:
                     msg += f"\n\n<b>Комментарий:</b> {notes}"
-                crm_url = 'https://proud-renewal-production-e9b8.up.railway.app/crm'
+                crm_url = 'https://grusha.up.railway.app/crm'
                 msg += (
                     f"\n\nЗаявка #{req.id} · "
                     f"<a href=\"{crm_url}\">CRM → Заявки на выплату</a>"
@@ -5806,6 +5806,16 @@ def update_payout_request(req_id):
                 mark_referrer_rewards_paid_in_gsheet(paid_deal_ids, now)
             except Exception as e:
                 print(f'[GSheet] mark paid error: {e}')
+        # DM рефереру: выплата отправлена
+        if new_status == 'paid':
+            try:
+                referrer2 = db.query(Referrer).get(req.referrer_id)
+                if referrer2:
+                    tx = f"\nTx: <code>{req.tx_hash}</code>" if req.tx_hash else ""
+                    send_referrer_dm(referrer2,
+                        f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>${req.amount_usdt:.2f}</b>{tx}")
+            except Exception as e:
+                print(f'[ReferrerDM] paid notify error: {e}')
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
     finally:
         db.close()
