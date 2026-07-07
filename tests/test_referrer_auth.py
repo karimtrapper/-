@@ -184,3 +184,63 @@ def test_update_referrer_auth_mode_validated():
         c.put(f'/api/referrers/{rid}', json={'auth_mode': 'garbage'})
         r = c.get('/api/ref/u1/stats')  # мусор → остался link → открыт
     assert r.status_code == 200
+
+
+def test_referrer_bot_login_flow(monkeypatch):
+    """Вход реферера через бота: tg-start → webhook /start → tg-poll выдаёт ref_auth."""
+    import app as app_module
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='bt1')
+    with app.test_client() as c:
+        r = c.post('/api/ref/bt1/tg-start')
+        assert r.status_code == 200, r.get_json()
+        nonce = r.get_json()['nonce']
+        assert c.get(f'/api/ref/bt1/tg-poll?nonce={nonce}').get_json()['status'] == 'pending'
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 42},
+                           'from': {'id': 42, 'username': 'ed_test'}}}
+        assert c.post('/api/tg/lk-webhook', json=upd,
+                      headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'}).status_code == 200
+        d = c.get(f'/api/ref/bt1/tg-poll?nonce={nonce}').get_json()
+        assert d['status'] == 'ok', d
+        # сессия выдана → stats открыт
+        assert c.get('/api/ref/bt1/stats').status_code == 200
+        # nonce одноразовый
+        assert c.get(f'/api/ref/bt1/tg-poll?nonce={nonce}').status_code == 404
+
+
+def test_referrer_bot_login_wrong_account(monkeypatch):
+    """Чужой аккаунт (username не совпал) → denied, stats закрыт."""
+    import app as app_module
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='bt2')
+    with app.test_client() as c:
+        nonce = c.post('/api/ref/bt2/tg-start').get_json()['nonce']
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 999},
+                           'from': {'id': 999, 'username': 'intruder'}}}
+        c.post('/api/tg/lk-webhook', json=upd,
+               headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+        assert c.get(f'/api/ref/bt2/tg-poll?nonce={nonce}').get_json()['status'] == 'denied'
+        assert c.get('/api/ref/bt2/stats').status_code == 401
+
+
+def test_referrer_logout(monkeypatch):
+    """Выход из кабинета: после logout stats снова требует вход."""
+    import app as app_module
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='bt3')
+    with app.test_client() as c:
+        nonce = c.post('/api/ref/bt3/tg-start').get_json()['nonce']
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 42},
+                           'from': {'id': 42, 'username': 'ed_test'}}}
+        c.post('/api/tg/lk-webhook', json=upd,
+               headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+        c.get(f'/api/ref/bt3/tg-poll?nonce={nonce}')
+        assert c.get('/api/ref/bt3/stats').status_code == 200
+        assert c.post('/api/ref/bt3/logout').status_code == 200
+        assert c.get('/api/ref/bt3/stats').status_code == 401

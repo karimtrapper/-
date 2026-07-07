@@ -346,8 +346,10 @@ class LoginNonce(Base):
     Обходит кэш-сессию oauth.telegram.org полностью."""
     __tablename__ = 'login_nonces'
     nonce = Column(String(64), primary_key=True)
-    admin_id = Column(Integer)                       # заполняется webhook'ом при матче
-    denied = Column(Boolean, default=False)          # аккаунт не в whitelist
+    admin_id = Column(Integer)                       # заполняется webhook'ом при матче (админ-вход)
+    referrer_id = Column(Integer)                    # nonce для входа в кабинет реферера
+    tg_id = Column(BigInteger)                       # подтвердивший TG id (для ref_auth сессии)
+    denied = Column(Boolean, default=False)          # аккаунт не прошёл проверку
     used = Column(Boolean, default=False)            # сессия уже выдана
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -989,6 +991,18 @@ try:
             try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram VARCHAR(50)"))
             except: pass
             try: conn.execute(text("ALTER TABLE admin_users ADD COLUMN telegram_user_id BIGINT"))
+            except: pass
+        # login_nonces: вход через бота для рефереров (nonce привязан к кабинету)
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE login_nonces ADD COLUMN IF NOT EXISTS referrer_id INTEGER"))
+                conn.execute(text("ALTER TABLE login_nonces ADD COLUMN IF NOT EXISTS tg_id BIGINT"))
+            except Exception as e:
+                print(f"ℹ️ login_nonces.referrer_id: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE login_nonces ADD COLUMN referrer_id INTEGER"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE login_nonces ADD COLUMN tg_id BIGINT"))
             except: pass
         # payout_requests: снапшот сделок заявки (paid помечает только их)
         if 'postgresql' in DATABASE_URL:
@@ -5008,10 +5022,26 @@ def lk_bot_webhook():
         db = get_session()
         try:
             ln = db.query(LoginNonce).get(nonce)
-            fresh = ln and not ln.used and not ln.admin_id and (
+            fresh = ln and not ln.used and not ln.admin_id and not ln.tg_id and (
                 (datetime.utcnow() - (ln.created_at or datetime.utcnow())).total_seconds() <= LOGIN_NONCE_TTL_SEC)
             if not fresh:
                 reply = '⏰ Код входа устарел. Вернитесь на страницу входа и нажмите кнопку ещё раз.'
+            elif ln.referrer_id:
+                # Вход в кабинет реферера: те же правила привязки, что и у виджета
+                referrer = db.query(Referrer).filter_by(id=ln.referrer_id, active=True).first()
+                ok, err = (apply_referrer_tg_binding(referrer, frm.get('id'), frm.get('username'))
+                           if referrer else (False, 'Кабинет не найден'))
+                # apply_referrer_tg_binding закрывает scoped-сессию → ln отцепился; перечитываем
+                ln = db.query(LoginNonce).get(nonce)
+                if ok:
+                    ln.tg_id = int(frm.get('id'))
+                    db.commit()
+                    reply = ('✅ Вход подтверждён!\n'
+                             'Вернитесь в браузер — кабинет откроется автоматически.')
+                else:
+                    ln.denied = True
+                    db.commit()
+                    reply = f'❌ {err or "Этот Telegram-аккаунт не подходит для этого кабинета."}'
             else:
                 admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
                 if admin:
@@ -5735,11 +5765,18 @@ def referrer_tg_login(token):
     auth[token] = int(data['id'])
     flask_session['ref_auth'] = auth
 
-    # Сводка в личку после входа
+    _send_referrer_login_summary(referrer.id)
+    return jsonify({'success': True})
+
+
+def _send_referrer_login_summary(referrer_id):
+    """Сводка в личку после входа в кабинет (баланс + активная заявка)."""
     try:
         db2 = get_session()
         try:
-            ref2 = db2.query(Referrer).get(referrer.id)
+            ref2 = db2.query(Referrer).get(referrer_id)
+            if not ref2:
+                return
             available, total_paid = _referrer_balance(db2, ref2)
             active = db2.query(PayoutRequest).filter(
                 PayoutRequest.referrer_id == ref2.id,
@@ -5757,6 +5794,71 @@ def referrer_tg_login(token):
     except Exception as e:
         print(f'[ReferrerDM] login summary error: {e}')
 
+
+@app.route('/api/ref/<token>/tg-start', methods=['POST'])
+@limiter.limit("10/minute")
+def referrer_tg_start(token):
+    """Вход реферера через бота: nonce + deep-link (аккаунт выбирается в приложении)."""
+    import secrets as _secrets
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        nonce = _secrets.token_urlsafe(24)
+        cutoff = datetime.utcnow() - timedelta(seconds=LOGIN_NONCE_TTL_SEC * 2)
+        db.query(LoginNonce).filter(LoginNonce.created_at < cutoff).delete()
+        db.add(LoginNonce(nonce=nonce, referrer_id=referrer.id))
+        db.commit()
+    finally:
+        db.close()
+    bot = get_bot_username()
+    if not bot:
+        return jsonify({'success': False, 'error': 'Бот недоступен'}), 503
+    return jsonify({'success': True, 'nonce': nonce,
+                    'link': f'https://t.me/{bot}?start=login_{nonce}'})
+
+
+@app.route('/api/ref/<token>/tg-poll', methods=['GET'])
+@limiter.limit("60/minute")
+def referrer_tg_poll(token):
+    """Поллинг браузером: бот подтвердил вход реферера? Выдаёт ref_auth-сессию один раз."""
+    nonce = (request.args.get('nonce') or '').strip()
+    if not nonce:
+        return jsonify({'success': False, 'error': 'nonce required'}), 400
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        ln = db.query(LoginNonce).get(nonce)
+        if not referrer or not ln or ln.used or ln.referrer_id != referrer.id:
+            return jsonify({'success': False, 'status': 'invalid'}), 404
+        if (datetime.utcnow() - (ln.created_at or datetime.utcnow())).total_seconds() > LOGIN_NONCE_TTL_SEC:
+            return jsonify({'success': False, 'status': 'expired'})
+        if ln.denied:
+            return jsonify({'success': False, 'status': 'denied',
+                            'error': 'Ваш Telegram не совпадает с указанным для этого кабинета'})
+        if not ln.tg_id:
+            return jsonify({'success': False, 'status': 'pending'})
+        ln.used = True
+        db.commit()
+        rid, bound_tg = referrer.id, int(ln.tg_id)
+    finally:
+        db.close()
+    flask_session.permanent = True
+    auth = dict(flask_session.get('ref_auth') or {})
+    auth[token] = bound_tg
+    flask_session['ref_auth'] = auth
+    _send_referrer_login_summary(rid)
+    return jsonify({'success': True, 'status': 'ok'})
+
+
+@app.route('/api/ref/<token>/logout', methods=['POST'])
+def referrer_logout(token):
+    """Выход из кабинета реферера: убирает привязку токена из сессии."""
+    auth = dict(flask_session.get('ref_auth') or {})
+    if token in auth:
+        del auth[token]
+        flask_session['ref_auth'] = auth
     return jsonify({'success': True})
 
 
@@ -5910,6 +6012,7 @@ def referrer_stats(token):
             'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
             'payout_currency': referrer.payout_currency or 'USDT',
             'telegram': referrer.telegram or '',
+            'auth_mode': referrer.auth_mode or 'link',
             'default_percent': referrer.default_percent,
             'comp_model': referrer.comp_model or 'revshare',
             'markup_percent': referrer.markup_percent or 0.0,

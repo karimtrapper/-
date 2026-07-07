@@ -386,32 +386,48 @@
         loadStats();
     }
 
-    // Экран входа через Telegram (для рефереров с auth_mode='telegram')
-    window.onTgAuth = async function (user) {
-        try {
-            const resp = await fetch(`/api/ref/${token}/tg-login`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(user),
-            });
-            const d = await resp.json();
-            if (d.success) { location.reload(); return; }
-            showTgSwitchWidget(d.error);
-        } catch (e) {
-            document.getElementById('tg-login-error').textContent = 'Ошибка сети';
-        }
-    };
+    // Экран входа: только через приложение Telegram (бот-флоу, без widget-кэша).
+    // tg-start → deep-link t.me → юзер сам выбирает аккаунт в телеге → поллинг tg-poll.
+    let botPollTimer = null;
+    async function startBotLogin() {
+        const st = document.getElementById('tg-login-error');
+        if (botPollTimer) { clearInterval(botPollTimer); botPollTimer = null; }
+        st.textContent = 'Создаю код входа…';
+        let start;
+        try { start = await (await fetch(`/api/ref/${token}/tg-start`, { method: 'POST' })).json(); }
+        catch (e) { st.textContent = 'Ошибка сети'; return; }
+        if (!start.success) { st.textContent = start.error || 'Ошибка'; return; }
+        window.open(start.link, '_blank');  // клик = user gesture, не блокируется
+        st.innerHTML = '⏳ Открылся Telegram — выберите нужный аккаунт и нажмите <b>Start</b>.<br>' +
+            '<a href="' + start.link + '" target="_blank" style="color:var(--green-dark);">Открыть бота ещё раз</a>';
+        const deadline = Date.now() + 5 * 60 * 1000;
+        botPollTimer = setInterval(async function () {
+            if (Date.now() > deadline) {
+                clearInterval(botPollTimer); botPollTimer = null;
+                st.textContent = 'Время истекло. Нажмите кнопку ещё раз.';
+                return;
+            }
+            try {
+                const d = await (await fetch(`/api/ref/${token}/tg-poll?nonce=` + encodeURIComponent(start.nonce))).json();
+                if (d.status === 'ok') {
+                    clearInterval(botPollTimer); botPollTimer = null;
+                    st.textContent = '✅ Вход подтверждён…';
+                    location.reload();
+                } else if (d.status === 'denied') {
+                    clearInterval(botPollTimer); botPollTimer = null;
+                    st.textContent = '❌ ' + (d.error || 'Этот аккаунт не подходит для кабинета');
+                } else if (d.status === 'expired' || d.status === 'invalid') {
+                    clearInterval(botPollTimer); botPollTimer = null;
+                    st.textContent = 'Код устарел. Нажмите кнопку ещё раз.';
+                }
+            } catch (e) { /* сеть мигнула — продолжаем поллить */ }
+        }, 2000);
+    }
 
-    // Смена закэшированного TG-аккаунта: cookies oauth.telegram.org нам недоступны
-    // (чужой домен), у embed-виджета logout выпилен — честная инструкция.
-    function showTgSwitchWidget(errText) {
-        const err = document.getElementById('tg-login-error');
-        if (!err) return;
-        err.innerHTML = esc(errText || 'Не удалось войти') +
-            '<div style="margin-top:8px;color:#64748B;font-size:12px;text-align:left;line-height:1.6;">' +
-            'Браузер запомнил другой Telegram-аккаунт. Как сменить:<br>' +
-            '• проще всего — откройте эту ссылку в <b>режиме инкогнито</b> и войдите там;<br>' +
-            '• или удалите cookies сайта <b>telegram.org</b> в настройках браузера и обновите страницу.</div>';
+    // Выход из кабинета
+    async function refLogout() {
+        try { await fetch(`/api/ref/${token}/logout`, { method: 'POST' }); } catch (e) {}
+        location.reload();
     }
 
     function renderTelegramLogin(botUsername, referrerName, botId) {
@@ -425,8 +441,6 @@
               </div></div>`;
             return;
         }
-        window._tgBotId = botId;  // для повторного входа
-        window._tgBotUsername = botUsername;  // для embed-виджета смены аккаунта
         const nameLine = referrerName
             ? `<div class="login-refname">${esc(referrerName)}</div>` : '';
         app.innerHTML = `
@@ -435,34 +449,16 @@
               <img class="login-logo-img" src="/static/kyc/grusha-logo.png" alt="Grusha">
               <div class="login-welcome">Добро пожаловать!</div>
               ${nameLine}
-              <p class="login-sub">Партнёрский кабинет Grusha.<br>Войдите через Telegram, чтобы продолжить.</p>
+              <p class="login-sub">Партнёрский кабинет Grusha.<br>Подтвердите вход в приложении Telegram.</p>
               <button class="login-btn" id="tg-login-btn">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
                 Войти через Telegram
               </button>
-              <div class="login-hint">🔒 Telegram передаёт только имя и аватар — это безопасно</div>
+              <div class="login-hint">📱 Откроется Telegram — выберите аккаунт и нажмите Start</div>
               <div class="login-error" id="tg-login-error"></div>
             </div>
           </div>`;
-        // Грузим Telegram JS API для popup-авторизации кастомной кнопкой
-        if (!(window.Telegram && window.Telegram.Login)) {
-            const s = document.createElement('script');
-            s.async = true;
-            s.src = 'https://telegram.org/js/telegram-widget.js?22';
-            document.head.appendChild(s);
-        }
-        document.getElementById('tg-login-btn').addEventListener('click', function () {
-            const err = document.getElementById('tg-login-error');
-            err.textContent = '';
-            if (!(window.Telegram && window.Telegram.Login)) {
-                err.textContent = 'Загрузка Telegram… нажмите ещё раз через секунду';
-                return;
-            }
-            window.Telegram.Login.auth(
-                { bot_id: botId, request_access: 'write' },
-                function (user) { if (user) onTgAuth(user); else err.textContent = 'Вход отменён'; }
-            );
-        });
+        document.getElementById('tg-login-btn').addEventListener('click', startBotLogin);
     }
 
     async function loadStats() {
@@ -504,9 +500,15 @@
                                 <div class="partner">${esc(d.name)}</div>
                             </div>
                         </div>
-                        <div class="badge">${d.comp_model === 'markup'
-                            ? '+' + esc(d.markup_percent || 0) + '% к курсу'
-                            : esc(d.default_percent) + '% · ' + esc(d.payout_currency || 'USDT')}</div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="badge">${d.comp_model === 'markup'
+                                ? '+' + esc(d.markup_percent || 0) + '% к курсу'
+                                : esc(d.default_percent) + '% · ' + esc(d.payout_currency || 'USDT')}</div>
+                            ${d.auth_mode === 'telegram' ? `<button onclick="refLogout()" title="Выйти из кабинета"
+                                style="border:1px solid var(--navy-200);background:#fff;color:var(--navy-500);
+                                border-radius:999px;padding:6px 10px;font-size:12px;font-weight:600;
+                                cursor:pointer;font-family:inherit;">Выйти</button>` : ''}
+                        </div>
                     </div>
 
                     <div class="balance-label">Доступно к выводу</div>
