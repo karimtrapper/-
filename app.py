@@ -4450,9 +4450,19 @@ def get_dashboard():
         today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         week_ago = today - timedelta(days=7)
 
-        # Период для графиков
+        # Период для графиков: пресет или произвольный диапазон date_from/date_to
         period = request.args.get('period', '30d')
-        if period == 'today':
+        date_from = request.args.get('date_from')
+        date_to = request.args.get('date_to')
+        chart_end = today + timedelta(days=1)  # эксклюзивная граница
+        if date_from:
+            try:
+                chart_start = datetime.strptime(date_from, '%Y-%m-%d')
+                if date_to:
+                    chart_end = datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1)
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+        elif period == 'today':
             chart_start = today
         elif period == 'week':
             chart_start = week_ago
@@ -4462,6 +4472,9 @@ def get_dashboard():
             chart_start = datetime(2024, 1, 1)
         else:  # 30d
             chart_start = today - timedelta(days=30)
+
+        # Фильтр по рефереру: all (по умолчанию), none (без реферала), <id>
+        referrer_filter = request.args.get('referrer_id', '')
 
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
         pending_deals = session.query(Deal).filter(Deal.status == DealStatus.PENDING).all()
@@ -4475,10 +4488,19 @@ def get_dashboard():
         # Метрики за период. Только завершённые сделки (completed/verified) —
         # pending не учитываем в прибыли/объёме (прибыль ещё не реализована).
         ACTIVE_STATUSES = [DealStatus.COMPLETED, DealStatus.VERIFIED]
-        period_deals = session.query(Deal).filter(
+        deals_q = session.query(Deal).filter(
             Deal.created_at >= chart_start,
+            Deal.created_at < chart_end,
             Deal.status.in_(ACTIVE_STATUSES),
-        ).all()
+        )
+        if referrer_filter == 'none':
+            deals_q = deals_q.filter(Deal.referrer_id == None)
+        elif referrer_filter and referrer_filter != 'all':
+            try:
+                deals_q = deals_q.filter(Deal.referrer_id == int(referrer_filter))
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid referrer_id'}), 400
+        period_deals = deals_q.all()
         # USDT-эквивалент объёма/себестоимости каждой сделки (учитывает кастомные)
         usdt = {d.id: _deal_usdt_volume_cost(d) for d in period_deals}
         period_with_margin = [d for d in period_deals if d.profit_percent and d.profit_percent > 0]
@@ -4506,11 +4528,12 @@ def get_dashboard():
             daily_data[day_key]['volume'] += usdt[d.id][0]
             daily_data[day_key]['count'] += 1
 
-        # Сортируем по дате
+        # Сортируем по дате (до конца диапазона, но не дальше сегодня)
         chart_days = []
-        num_days = (today - chart_start).days
-        for i in range(num_days, -1, -1):
-            day = today - timedelta(days=i)
+        last_day = min(today, chart_end - timedelta(days=1))
+        num_days = max((last_day - chart_start).days, 0)
+        for i in range(num_days + 1):
+            day = chart_start + timedelta(days=i)
             key = day.strftime('%d.%m')
             entry = daily_data.get(key, {'profit': 0, 'volume': 0, 'count': 0})
             chart_days.append({
@@ -4538,6 +4561,12 @@ def get_dashboard():
                 new_buyers += 1
         old_buyers = len(period_client_ids) - new_buyers
 
+        # Юнит-экономика по Красинскому: CM = B × APC × (AvP − COGS)
+        buyers_total = len(period_client_ids)
+        unit_apc = round(len(period_deals) / buyers_total, 2) if buyers_total else 0
+        unit_profit_per_deal = round(period_profit / len(period_deals), 2) if period_deals else 0
+        unit_arpc = round(period_profit / buyers_total, 2) if buyers_total else 0
+
         return jsonify({
             'success': True,
             'dashboard': {
@@ -4550,6 +4579,14 @@ def get_dashboard():
                     'avg_check': period_avg_check,
                     'referrer_deals_count': len(period_referrer_deals),
                     'referrer_payout_usdt': period_referrer_payout,
+                },
+                'unit_economics': {
+                    'buyers': buyers_total,
+                    'apc': unit_apc,
+                    'avp': period_avg_check,
+                    'profit_per_deal': unit_profit_per_deal,
+                    'arpc': unit_arpc,
+                    'cm': period_profit,
                 },
                 'attention': {
                     'pending_deals': len(pending_deals),

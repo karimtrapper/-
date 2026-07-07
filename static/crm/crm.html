@@ -688,16 +688,35 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <div id="attentionAlerts" style="margin-bottom:16px"></div>
 
             <!-- Переключатель периода -->
-            <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap" id="periodSelector">
+            <div style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;align-items:center" id="periodSelector">
                 <button class="period-btn" data-period="today" onclick="switchDashPeriod('today')">Сегодня</button>
                 <button class="period-btn" data-period="week" onclick="switchDashPeriod('week')">Неделя</button>
                 <button class="period-btn active" data-period="30d" onclick="switchDashPeriod('30d')">30 дней</button>
-                <button class="period-btn" data-period="month" onclick="switchDashPeriod('month')">Месяц</button>
                 <button class="period-btn" data-period="all" onclick="switchDashPeriod('all')">Всё время</button>
+                <select id="dashMonth" class="period-btn" style="appearance:auto" onchange="switchDashMonth(this.value)">
+                    <option value="">Месяц…</option>
+                </select>
+                <span style="display:inline-flex;gap:4px;align-items:center">
+                    <input type="date" id="dashFrom" class="period-btn" style="padding:6px 8px">
+                    <span style="color:#999">—</span>
+                    <input type="date" id="dashTo" class="period-btn" style="padding:6px 8px">
+                    <button class="period-btn" id="dashRangeBtn" data-period="custom" onclick="applyDashRange()">Показать</button>
+                </span>
+                <select id="dashReferrer" class="period-btn" style="appearance:auto;margin-left:auto" onchange="loadDashboard()">
+                    <option value="">Все рефереры</option>
+                    <option value="none">Без реферала</option>
+                </select>
             </div>
 
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
+
+            <!-- Юнит-экономика (Красинский) -->
+            <div class="card" style="padding:20px;margin-bottom:16px">
+                <div class="card-title" style="margin-bottom:12px" id="unitEconTitle">Юнит-экономика</div>
+                <div class="stats-grid" id="unitEconGrid" style="margin-bottom:8px"></div>
+                <div id="unitEconFormula" style="font-size:12px;color:#666"></div>
+            </div>
 
             <!-- Графики -->
             <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-bottom:16px">
@@ -2976,16 +2995,58 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // ==================== Dashboard ====================
+        const MONTH_NAMES = ['январь','февраль','март','апрель','май','июнь','июль','август','сентябрь','октябрь','ноябрь','декабрь'];
+
+        // Наполняем дропдаун месяцев (последние 18) и список рефереров
+        function initDashMonths() {
+            const sel = document.getElementById('dashMonth');
+            if (sel.options.length > 1) return;
+            const now = new Date();
+            for (let i = 0; i < 18; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                sel.insertAdjacentHTML('beforeend', `<option value="${val}">${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}</option>`);
+            }
+        }
+        let dashReferrersLoaded = false;
+        async function loadDashReferrers() {
+            if (dashReferrersLoaded) return;
+            try {
+                const res = await fetch(`${API_URL}/api/referrers`);
+                const data = await res.json();
+                if (data.success) {
+                    const sel = document.getElementById('dashReferrer');
+                    sel.insertAdjacentHTML('beforeend',
+                        data.referrers.map(r => `<option value="${r.id}">${escapeHtml(r.name)}${r.code ? ' (' + escapeHtml(r.code) + ')' : ''}</option>`).join(''));
+                    dashReferrersLoaded = true;
+                }
+            } catch (e) { console.error('Error loading dash referrers:', e); }
+        }
+
         async function loadDashboard() {
             switchBalanceSubTab('binance'); // Инициализируем балансы при загрузке
+            initDashMonths();
+            loadDashReferrers();
             try {
-                const response = await fetch(`${API_URL}/api/analytics/dashboard?period=${currentPeriod}`);
+                const params = new URLSearchParams();
+                let pl;
+                if (dashRange) {
+                    params.append('date_from', dashRange.from);
+                    params.append('date_to', dashRange.to);
+                    pl = dashRange.label;
+                } else {
+                    params.append('period', currentPeriod);
+                    const periodLabels = {today:'сегодня', week:'за неделю', '30d':'за 30 дней', month:'за месяц', all:'за всё время'};
+                    pl = periodLabels[currentPeriod] || '';
+                }
+                const refSel = document.getElementById('dashReferrer').value;
+                if (refSel) params.append('referrer_id', refSel);
+
+                const response = await fetch(`${API_URL}/api/analytics/dashboard?${params}`);
                 const data = await response.json();
 
                 if (data.success) {
                     const d = data.dashboard;
-                    const periodLabels = {today:'сегодня', week:'за неделю', '30d':'за 30 дней', month:'за месяц', all:'за всё время'};
-                    const pl = periodLabels[currentPeriod] || '';
 
                     const p = d.period || {};
                     const pendingDeals = d.attention?.pending_deals ?? 0;
@@ -3033,6 +3094,38 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="stat-label">Не возмещено</div>
                         </div>
                     `;
+
+                    // Юнит-экономика по Красинскому: CM = B × APC × (AvP − COGS)
+                    const ue = d.unit_economics || {};
+                    document.getElementById('unitEconTitle').textContent = `Юнит-экономика ${pl} (Красинский)`;
+                    document.getElementById('unitEconGrid').innerHTML = `
+                        <div class="stat-card">
+                            <div class="stat-value">${ue.buyers ?? 0}</div>
+                            <div class="stat-label">B — покупателей</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${ue.apc ?? 0}</div>
+                            <div class="stat-label">APC — сделок на клиента</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">$${formatNumber(ue.avp ?? 0)}</div>
+                            <div class="stat-label">AvP — средний чек</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">$${formatNumber(ue.profit_per_deal ?? 0)}</div>
+                            <div class="stat-label">AvP−COGS — прибыль со сделки</div>
+                        </div>
+                        <div class="stat-card info">
+                            <div class="stat-value">$${formatNumber(ue.arpc ?? 0)}</div>
+                            <div class="stat-label">ARPC — прибыль на клиента</div>
+                        </div>
+                        <div class="stat-card success">
+                            <div class="stat-value">$${formatNumber(ue.cm ?? 0)}</div>
+                            <div class="stat-label">CM — маржинальная прибыль</div>
+                        </div>
+                    `;
+                    document.getElementById('unitEconFormula').textContent =
+                        `CM = B × APC × (AvP − COGS) = ${ue.buyers ?? 0} × ${ue.apc ?? 0} × $${formatNumber(ue.profit_per_deal ?? 0)} ≈ $${formatNumber(ue.cm ?? 0)}`;
 
                     // Обновляем заголовки графиков
                     document.getElementById('profitChartTitle').textContent = `Прибыль ${pl} ($)`;
@@ -3083,10 +3176,45 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         let chartInstances = {};
         const METHOD_NAMES = {'spp_doverka': 'СБП/Доверка', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'Сбер WL', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
+        let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
+
+        function _setActivePeriodBtn(period) {
+            document.querySelectorAll('#periodSelector .period-btn[data-period]').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+        }
 
         function switchDashPeriod(period) {
             currentPeriod = period;
-            document.querySelectorAll('.period-btn').forEach(b => b.classList.toggle('active', b.dataset.period === period));
+            dashRange = null;
+            document.getElementById('dashMonth').value = '';
+            document.getElementById('dashFrom').value = '';
+            document.getElementById('dashTo').value = '';
+            _setActivePeriodBtn(period);
+            loadDashboard();
+        }
+
+        function switchDashMonth(val) {
+            if (!val) { switchDashPeriod('30d'); return; }
+            const [y, m] = val.split('-').map(Number);
+            const lastDay = new Date(y, m, 0).getDate();
+            dashRange = {
+                from: `${val}-01`,
+                to: `${val}-${String(lastDay).padStart(2, '0')}`,
+                label: `за ${MONTH_NAMES[m - 1]} ${y}`
+            };
+            document.getElementById('dashFrom').value = '';
+            document.getElementById('dashTo').value = '';
+            _setActivePeriodBtn(null);
+            loadDashboard();
+        }
+
+        function applyDashRange() {
+            const from = document.getElementById('dashFrom').value;
+            const to = document.getElementById('dashTo').value;
+            if (!from || !to) { showToast('Укажите обе даты', 'error'); return; }
+            if (from > to) { showToast('Дата «от» позже даты «до»', 'error'); return; }
+            dashRange = { from, to, label: 'за период' };
+            document.getElementById('dashMonth').value = '';
+            _setActivePeriodBtn('custom');
             loadDashboard();
         }
 
