@@ -5042,6 +5042,17 @@ def lk_bot_webhook():
                     ln.denied = True
                     db.commit()
                     reply = f'❌ {err or "Этот Telegram-аккаунт не подходит для этого кабинета."}'
+                    # Security-уведомление владельцу кабинета о чужой попытке входа
+                    try:
+                        if referrer and referrer.telegram_user_id:
+                            who = ('@' + frm['username']) if frm.get('username') else (frm.get('first_name') or 'неизвестный аккаунт')
+                            send_referrer_dm(referrer,
+                                f"⚠️ <b>Попытка входа в ваш кабинет</b>\n\n"
+                                f"По вашей ссылке пытались войти с другого Telegram-аккаунта "
+                                f"({who}) — вход отклонён.\n\n"
+                                f"Если это были вы — войдите со своего привязанного аккаунта.")
+                    except Exception as e:
+                        print(f'[LKBot] attempt notify error: {e}')
             else:
                 admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
                 if admin:

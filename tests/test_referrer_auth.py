@@ -244,3 +244,24 @@ def test_referrer_logout(monkeypatch):
         assert c.get('/api/ref/bt3/stats').status_code == 200
         assert c.post('/api/ref/bt3/logout').status_code == 200
         assert c.get('/api/ref/bt3/stats').status_code == 401
+
+
+def test_referrer_owner_notified_on_foreign_attempt(monkeypatch):
+    """Чужая попытка входа в привязанный кабинет → владельцу уходит DM-предупреждение."""
+    import app as app_module
+    captured = []
+    monkeypatch.setattr('app.requests.post',
+                        lambda url, **k: captured.append(k.get('json')) or type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_referrer(auth_mode='telegram', telegram='@ed_test', token='bt4', telegram_user_id=42)
+    with app.test_client() as c:
+        nonce = c.post('/api/ref/bt4/tg-start').get_json()['nonce']
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 999},
+                           'from': {'id': 999, 'username': 'intruder', 'first_name': 'X'}}}
+        c.post('/api/tg/lk-webhook', json=upd,
+               headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+    owner_msgs = [m for m in captured if m and m.get('chat_id') == 42]
+    assert owner_msgs, 'владелец не получил предупреждение'
+    assert 'Попытка входа' in owner_msgs[-1]['text']
+    assert '@intruder' in owner_msgs[-1]['text']
