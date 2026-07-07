@@ -136,3 +136,50 @@ def test_deleted_admin_session_revoked():
         with c.session_transaction() as sess:
             sess['user_id'] = 999999
         assert c.get('/api/admins').status_code == 401
+
+
+def test_bot_login_flow(monkeypatch):
+    """Вход через бота: tg-start → webhook /start login_<nonce> → tg-poll выдаёт сессию."""
+    import app as app_module
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_admin(telegram='@kareem', telegram_user_id=None)
+    with app.test_client() as c:
+        r = c.post('/api/auth/tg-start')
+        assert r.status_code == 200, r.get_json()
+        j = r.get_json()
+        nonce = j['nonce']
+        assert f'login_{nonce}' in j['link']
+        # до подтверждения — pending
+        assert c.get(f'/api/auth/tg-poll?nonce={nonce}').get_json()['status'] == 'pending'
+        # webhook: юзер нажал Start с whitelisted-аккаунта
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 555},
+                           'from': {'id': 555, 'username': 'kareem'}}}
+        rw = c.post('/api/tg/lk-webhook', json=upd,
+                    headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+        assert rw.status_code == 200
+        # поллинг → сессия
+        d = c.get(f'/api/auth/tg-poll?nonce={nonce}').get_json()
+        assert d['status'] == 'ok', d
+        assert c.get('/api/auth/me').status_code == 200
+        # nonce одноразовый
+        assert c.get(f'/api/auth/tg-poll?nonce={nonce}').status_code == 404
+
+
+def test_bot_login_denied_for_stranger(monkeypatch):
+    """Не-whitelisted аккаунт получает denied, сессия не выдаётся."""
+    import app as app_module
+    monkeypatch.setattr('app.requests.post', lambda *a, **k: type('R', (), {'status_code': 200})())
+    monkeypatch.setattr(app_module, '_login_bot_username_cache', 'testbot')
+    os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
+    _mk_admin(telegram='@kareem', telegram_user_id=None)
+    with app.test_client() as c:
+        nonce = c.post('/api/auth/tg-start').get_json()['nonce']
+        upd = {'message': {'text': f'/start login_{nonce}', 'chat': {'id': 999},
+                           'from': {'id': 999, 'username': 'intruder'}}}
+        c.post('/api/tg/lk-webhook', json=upd,
+               headers={'X-Telegram-Bot-Api-Secret-Token': 'whsecret'})
+        d = c.get(f'/api/auth/tg-poll?nonce={nonce}').get_json()
+        assert d['status'] == 'denied'
+        assert c.get('/api/auth/me').status_code == 401
