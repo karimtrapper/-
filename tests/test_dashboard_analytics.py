@@ -161,6 +161,13 @@ class TestReferrerFilter:
         assert p['deals_count'] == 1
         assert p['profit_usdt'] == 30
 
+    def test_any_referrer(self, tc, two_referrers):
+        """«Только рефералы» — сделки с любым реферером."""
+        p = get_dash(tc, period='30d', referrer_id='any').get_json()['dashboard']['period']
+        assert p['deals_count'] == 2
+        assert p['profit_usdt'] == 160
+        assert p['referrer_payout_usdt'] == 80
+
     def test_invalid_referrer_returns_400(self, tc, two_referrers):
         assert get_dash(tc, period='30d', referrer_id='abc').status_code == 400
 

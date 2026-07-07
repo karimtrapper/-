@@ -4495,6 +4495,8 @@ def get_dashboard():
         )
         if referrer_filter == 'none':
             deals_q = deals_q.filter(Deal.referrer_id == None)
+        elif referrer_filter == 'any':
+            deals_q = deals_q.filter(Deal.referrer_id != None)
         elif referrer_filter and referrer_filter != 'all':
             try:
                 deals_q = deals_q.filter(Deal.referrer_id == int(referrer_filter))
