@@ -4567,7 +4567,39 @@ def get_dashboard():
         buyers_total = len(period_client_ids)
         unit_apc = round(len(period_deals) / buyers_total, 2) if buyers_total else 0
         unit_profit_per_deal = round(period_profit / len(period_deals), 2) if period_deals else 0
+        unit_cogs_per_deal = round(period_cost / len(period_deals), 2) if period_deals else 0
         unit_arpc = round(period_profit / buyers_total, 2) if buyers_total else 0
+
+        # Разбивка по рефererам (для режима «Только рефералы»)
+        ref_agg = {}
+        for d in period_referrer_deals:
+            e = ref_agg.setdefault(d.referrer_id, {
+                'referrer_id': d.referrer_id,
+                'name': d.referrer_name or (d.referrer_ref.name if d.referrer_ref else f'#{d.referrer_id}'),
+                'deals': 0, 'volume_usdt': 0.0, 'profit_usdt': 0.0,
+                'net_usdt': 0.0, 'payout_usdt': 0.0, 'clients': set(),
+            })
+            e['deals'] += 1
+            e['volume_usdt'] += usdt[d.id][0]
+            # gross = маржа сделки до выплаты рефереру, net = после (net_profit_usdt)
+            e['profit_usdt'] += d.profit_usdt or 0
+            e['net_usdt'] += d.net_profit_usdt if d.net_profit_usdt is not None else (d.profit_usdt or 0)
+            e['payout_usdt'] += d.referrer_payout_usdt or 0
+            if d.client_id:
+                e['clients'].add(d.client_id)
+        referrer_breakdown = []
+        for e in sorted(ref_agg.values(), key=lambda x: x['profit_usdt'], reverse=True):
+            referrer_breakdown.append({
+                'referrer_id': e['referrer_id'],
+                'name': e['name'],
+                'deals': e['deals'],
+                'clients': len(e['clients']),
+                'volume_usdt': round(e['volume_usdt'], 2),
+                'profit_usdt': round(e['profit_usdt'], 2),
+                'payout_usdt': round(e['payout_usdt'], 2),
+                'net_usdt': round(e['net_usdt'], 2),
+                'avg_check': round(e['volume_usdt'] / e['deals'], 2) if e['deals'] else 0,
+            })
 
         return jsonify({
             'success': True,
@@ -4583,13 +4615,25 @@ def get_dashboard():
                     'referrer_payout_usdt': period_referrer_payout,
                 },
                 'unit_economics': {
+                    # Воронка: UA и C1 появятся, когда подтянем лиды из Bitrix
+                    # (WON+LOSE диалоги за период через DealCloser/bitrix-proxy).
+                    # Тогда c1 = buyers/ua, arpu = arpc × c1.
+                    'ua': None,
+                    'c1': None,
                     'buyers': buyers_total,
+                    'orders': len(period_deals),
                     'apc': unit_apc,
                     'avp': period_avg_check,
+                    'cogs_per_deal': unit_cogs_per_deal,
                     'profit_per_deal': unit_profit_per_deal,
                     'arpc': unit_arpc,
+                    # Маркетинга пока нет (органика) — CPA явный ноль, не «нет данных»
+                    'cpa': 0.0,
+                    'arpu': None,
                     'cm': period_profit,
+                    'revenue': period_volume,
                 },
+                'referrer_breakdown': referrer_breakdown,
                 'attention': {
                     'pending_deals': len(pending_deals),
                     'unreimbursed_founders': len(unreimbursed),

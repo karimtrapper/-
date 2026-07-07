@@ -185,12 +185,47 @@ class TestUnitEconomics:
         make_deal(db, client_id=c2.id, profit=30, payin=300)
         ue = get_dash(tc, period='30d').get_json()['dashboard']['unit_economics']
         assert ue['buyers'] == 2
+        assert ue['orders'] == 3
         assert ue['apc'] == 1.5
         assert ue['cm'] == 180
         assert ue['arpc'] == 90
         assert ue['profit_per_deal'] == 60
         assert ue['avp'] == 600  # (1000+500+300)/3
+        assert ue['cogs_per_deal'] == 540  # (900+450+270)/3
+        assert ue['revenue'] == 1800
+        # архитектурные placeholder'ы: UA/C1/ARPU появятся с данными Bitrix, CPA=0 (органика)
+        assert ue['ua'] is None and ue['c1'] is None and ue['arpu'] is None
+        assert ue['cpa'] == 0.0
 
     def test_empty_period_zeros(self, tc):
         ue = get_dash(tc, period='today').get_json()['dashboard']['unit_economics']
-        assert ue == {'buyers': 0, 'apc': 0, 'avp': 0, 'profit_per_deal': 0, 'arpc': 0, 'cm': 0}
+        assert ue['buyers'] == 0 and ue['orders'] == 0 and ue['apc'] == 0
+        assert ue['avp'] == 0 and ue['profit_per_deal'] == 0 and ue['arpc'] == 0 and ue['cm'] == 0
+
+
+# ── Разбивка по рефererам ─────────────────────────────────────────────────
+
+class TestReferrerBreakdown:
+
+    def test_breakdown_per_referrer(self, db, tc):
+        r1 = Referrer(name='Eduard', code='GR-ED2', token='tb1')
+        r2 = Referrer(name='Malik', code='GR-ML2', token='tb2')
+        db.add_all([r1, r2]); db.commit()
+        c1 = Client(name='A'); db.add(c1); db.commit()
+        d1 = make_deal(db, client_id=c1.id, referrer=r1, profit=100, payin=1000)
+        d1.net_profit_usdt = 50.0  # gross 100, рефереру 50
+        d2 = make_deal(db, referrer=r1, profit=60, payin=500)
+        d2.net_profit_usdt = 30.0
+        make_deal(db, referrer=r2, profit=30, payin=300)
+        make_deal(db, profit=10)  # без реферала — не попадает
+        db.commit()
+        bd = get_dash(tc, period='30d', referrer_id='any').get_json()['dashboard']['referrer_breakdown']
+        assert len(bd) == 2
+        assert bd[0]['name'] == 'Eduard'  # сортировка по gross-прибыли
+        assert bd[0]['deals'] == 2
+        assert bd[0]['clients'] == 1
+        assert bd[0]['volume_usdt'] == 1500
+        assert bd[0]['profit_usdt'] == 160          # gross
+        assert bd[0]['payout_usdt'] == 80           # 50+30 (make_deal ставит profit/2)
+        assert bd[0]['net_usdt'] == 80              # 50 (net d1) + 30 (net d2)
+        assert bd[1]['name'] == 'Malik'

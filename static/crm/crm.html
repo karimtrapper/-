@@ -140,6 +140,19 @@ body {
 .period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:all .2s }
 .period-btn.active { background:#FF6B35;color:#fff;border-color:#FF6B35 }
 .period-btn:hover:not(.active) { border-color:#FF6B35;color:#FF6B35 }
+/* Таблица юнит-экономики в формате шаблона Красинского */
+.unit-econ-table { border-collapse:collapse;width:100%;font-size:13px;min-width:900px }
+.unit-econ-table th, .unit-econ-table td { border:1px solid #e5e7eb;padding:8px 10px;text-align:center }
+.unit-econ-table .ue-group { font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:#555;font-weight:600 }
+.unit-econ-table .ue-group.funnel { background:#eef4fb }
+.unit-econ-table .ue-group.payer { background:#eefbf1 }
+.unit-econ-table .ue-group.user { background:#fdf6e7 }
+.unit-econ-table .ue-group.fin { background:#f6eefb }
+.unit-econ-table .ue-name { font-weight:700;color:#333;background:#fafafa }
+.unit-econ-table .ue-sub { display:block;font-weight:400;font-size:10px;color:#888;margin-top:2px;white-space:normal }
+.unit-econ-table .ue-val { font-size:15px;font-weight:700;color:#222 }
+.unit-econ-table .ue-val.na { color:#bbb;font-weight:400 }
+.unit-econ-table .ue-val.good { color:#16a34a }
 .crm-nav-inner { display: flex; gap: 4px; min-width: max-content; padding: 8px 0; }
 .nav-tabs { display: flex; gap: 4px; padding: 8px 0; }
 .nav-logo { display: none; }
@@ -703,7 +716,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <button class="period-btn" id="dashRangeBtn" data-period="custom" onclick="applyDashRange()">Показать</button>
                 </span>
                 <select id="dashReferrer" class="period-btn" style="appearance:auto;margin-left:auto" onchange="loadDashboard()">
-                    <option value="">Все рефереры</option>
+                    <option value="">Все клиенты</option>
                     <option value="any">Только рефералы</option>
                     <option value="none">Без реферала</option>
                 </select>
@@ -712,11 +725,35 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
 
-            <!-- Юнит-экономика (Красинский) -->
+            <!-- Юнит-экономика (Красинский, формат шаблона Product Heroes) -->
             <div class="card" style="padding:20px;margin-bottom:16px">
                 <div class="card-title" style="margin-bottom:12px" id="unitEconTitle">Юнит-экономика</div>
-                <div class="stats-grid" id="unitEconGrid" style="margin-bottom:8px"></div>
-                <div id="unitEconFormula" style="font-size:12px;color:#666"></div>
+                <div class="table-container" style="overflow-x:auto">
+                    <table class="unit-econ-table" id="unitEconTable"></table>
+                </div>
+                <div id="unitEconFormula" style="font-size:12px;color:#666;margin-top:10px"></div>
+            </div>
+
+            <!-- Разбивка по рефererам (видна в режиме «Только рефералы») -->
+            <div class="card" id="refBreakdownCard" style="padding:20px;margin-bottom:16px;display:none">
+                <div class="card-title" style="margin-bottom:12px" id="refBreakdownTitle">По рефералам</div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Реферер</th>
+                                <th>Сделок</th>
+                                <th>Клиентов</th>
+                                <th>Объём</th>
+                                <th>Ср. чек</th>
+                                <th>Прибыль</th>
+                                <th>Выплачено рефереру</th>
+                                <th>Нам осталось</th>
+                            </tr>
+                        </thead>
+                        <tbody id="refBreakdownBody"></tbody>
+                    </table>
+                </div>
             </div>
 
             <!-- Графики -->
@@ -3096,37 +3133,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     `;
 
-                    // Юнит-экономика по Красинскому: CM = B × APC × (AvP − COGS)
+                    // Юнит-экономика — таблица в формате шаблона Красинского (когорты v5)
                     const ue = d.unit_economics || {};
-                    document.getElementById('unitEconTitle').textContent = `Юнит-экономика ${pl} (Красинский)`;
-                    document.getElementById('unitEconGrid').innerHTML = `
-                        <div class="stat-card">
-                            <div class="stat-value">${ue.buyers ?? 0}</div>
-                            <div class="stat-label">B — покупателей</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">${ue.apc ?? 0}</div>
-                            <div class="stat-label">APC — сделок на клиента</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">$${formatNumber(ue.avp ?? 0)}</div>
-                            <div class="stat-label">AvP — средний чек</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-value">$${formatNumber(ue.profit_per_deal ?? 0)}</div>
-                            <div class="stat-label">AvP−COGS — прибыль со сделки</div>
-                        </div>
-                        <div class="stat-card info">
-                            <div class="stat-value">$${formatNumber(ue.arpc ?? 0)}</div>
-                            <div class="stat-label">ARPC — прибыль на клиента</div>
-                        </div>
-                        <div class="stat-card success">
-                            <div class="stat-value">$${formatNumber(ue.cm ?? 0)}</div>
-                            <div class="stat-label">CM — маржинальная прибыль</div>
-                        </div>
-                    `;
+                    document.getElementById('unitEconTitle').textContent = `Юнит-экономика ${pl} (шаблон Красинского)`;
+                    renderUnitEconTable(ue);
                     document.getElementById('unitEconFormula').textContent =
-                        `CM = B × APC × (AvP − COGS) = ${ue.buyers ?? 0} × ${ue.apc ?? 0} × $${formatNumber(ue.profit_per_deal ?? 0)} ≈ $${formatNumber(ue.cm ?? 0)}`;
+                        `CM = B × APC × (AvP − COGS) = ${ue.buyers ?? 0} × ${ue.apc ?? 0} × $${formatNumber(ue.profit_per_deal ?? 0)} ≈ $${formatNumber(ue.cm ?? 0)}. UA, C1, CPA, ARPU появятся, когда начнём считать трафик и расходы на привлечение.`;
+
+                    // Разбивка по рефererам — в режиме «Только рефералы»
+                    renderRefBreakdown(d.referrer_breakdown || [], pl);
 
                     // Обновляем заголовки графиков
                     document.getElementById('profitChartTitle').textContent = `Прибыль ${pl} ($)`;
@@ -3171,6 +3186,74 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error loading dashboard:', error);
             }
+        }
+
+        // Таблица юнит-экономики в формате шаблона Красинского:
+        // воронка продаж → доход на 1 платящего → на 1 привлечённого → финансы
+        function renderUnitEconTable(ue) {
+            const na = '<span class="ue-val na">—</span>';
+            const num = (v, pre = '', cls = '') => v == null ? na : `<span class="ue-val ${cls}">${pre}${formatNumber(v)}</span>`;
+            document.getElementById('unitEconTable').innerHTML = `
+                <thead>
+                    <tr>
+                        <th class="ue-group funnel" colspan="4">Воронка продаж</th>
+                        <th class="ue-group payer" colspan="5">Доход на 1 платящего</th>
+                        <th class="ue-group user" colspan="2">На 1 привлечённого</th>
+                        <th class="ue-group fin" colspan="2">Финансы</th>
+                    </tr>
+                    <tr>
+                        <th class="ue-name">UA<span class="ue-sub">поток пользователей</span></th>
+                        <th class="ue-name">C1<span class="ue-sub">конверсия в покупателя</span></th>
+                        <th class="ue-name">B<span class="ue-sub">число платящих</span></th>
+                        <th class="ue-name">Orders<span class="ue-sub">число сделок</span></th>
+                        <th class="ue-name">AvP<span class="ue-sub">средний чек</span></th>
+                        <th class="ue-name">COGS<span class="ue-sub">себестоимость сделки</span></th>
+                        <th class="ue-name">AvP−COGS<span class="ue-sub">маржа со сделки</span></th>
+                        <th class="ue-name">APC<span class="ue-sub">сделок на платящего</span></th>
+                        <th class="ue-name">ARPPU<span class="ue-sub">маржа на платящего</span></th>
+                        <th class="ue-name">CPA<span class="ue-sub">стоимость привлечения</span></th>
+                        <th class="ue-name">ARPU<span class="ue-sub">маржа на привлечённого</span></th>
+                        <th class="ue-name">Revenue<span class="ue-sub">объём</span></th>
+                        <th class="ue-name">CM<span class="ue-sub">маржинальная прибыль</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>${num(ue.ua)}</td>
+                        <td>${ue.c1 == null ? na : `<span class="ue-val">${ue.c1}%</span>`}</td>
+                        <td>${num(ue.buyers)}</td>
+                        <td>${num(ue.orders)}</td>
+                        <td>${num(ue.avp, '$')}</td>
+                        <td>${num(ue.cogs_per_deal, '$')}</td>
+                        <td>${num(ue.profit_per_deal, '$')}</td>
+                        <td>${num(ue.apc)}</td>
+                        <td>${num(ue.arpc, '$')}</td>
+                        <td>${num(ue.cpa, '$')}</td>
+                        <td>${num(ue.arpu, '$')}</td>
+                        <td>${num(ue.revenue, '$')}</td>
+                        <td>${num(ue.cm, '$', 'good')}</td>
+                    </tr>
+                </tbody>`;
+        }
+
+        // Таблица «По рефералам» — показывается только в режиме «Только рефералы»
+        function renderRefBreakdown(rows, pl) {
+            const card = document.getElementById('refBreakdownCard');
+            const isAnyMode = document.getElementById('dashReferrer').value === 'any';
+            if (!isAnyMode || !rows.length) { card.style.display = 'none'; return; }
+            card.style.display = '';
+            document.getElementById('refBreakdownTitle').textContent = `По рефералам ${pl}`;
+            document.getElementById('refBreakdownBody').innerHTML = rows.map(r => `
+                <tr>
+                    <td style="font-weight:600">${escapeHtml(r.name)}</td>
+                    <td>${r.deals}</td>
+                    <td>${r.clients}</td>
+                    <td>$${formatNumber(r.volume_usdt)}</td>
+                    <td>$${formatNumber(r.avg_check)}</td>
+                    <td style="color:#16a34a;font-weight:600">$${formatNumber(r.profit_usdt)}</td>
+                    <td style="color:#f59e0b">$${formatNumber(r.payout_usdt)}</td>
+                    <td style="font-weight:600">$${formatNumber(r.net_usdt)}</td>
+                </tr>`).join('');
         }
 
         // ==================== Charts ====================
