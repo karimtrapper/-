@@ -339,6 +339,19 @@ class Referrer(Base):
         }
 
 
+class LoginNonce(Base):
+    """Одноразовый код входа через бота (@grusha_lk_bot /start login_<nonce>).
+    Браузер генерит nonce → юзер открывает бота в приложении Telegram (сам выбирает
+    аккаунт) → webhook матчит whitelist и пишет admin_id → браузер поллит и получает сессию.
+    Обходит кэш-сессию oauth.telegram.org полностью."""
+    __tablename__ = 'login_nonces'
+    nonce = Column(String(64), primary_key=True)
+    admin_id = Column(Integer)                       # заполняется webhook'ом при матче
+    denied = Column(Boolean, default=False)          # аккаунт не в whitelist
+    used = Column(Boolean, default=False)            # сессия уже выдана
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class PayoutRequest(Base):
     """Заявка реферера на выплату накопленного баланса."""
     __tablename__ = 'payout_requests'
@@ -2129,6 +2142,66 @@ def auth_tg_login():
         flask_session['display_name'] = admin.display_name or admin.username
         flask_session.permanent = True
         return jsonify({'success': True, 'user': admin.display_name or admin.username})
+    finally:
+        db.close()
+
+
+LOGIN_NONCE_TTL_SEC = 300  # 5 минут на подтверждение входа через бота
+
+
+@app.route('/api/auth/tg-start', methods=['POST'])
+@limiter.limit("10/minute")
+def auth_tg_start():
+    """Вход через бота: генерит одноразовый nonce и deep-link на @grusha_lk_bot.
+    Юзер открывает бота в приложении Telegram (сам выбирает аккаунт) и жмёт Start."""
+    import secrets as _secrets
+    nonce = _secrets.token_urlsafe(24)
+    db = get_session()
+    try:
+        # Чистим протухшие, чтобы таблица не росла
+        cutoff = datetime.utcnow() - timedelta(seconds=LOGIN_NONCE_TTL_SEC * 2)
+        db.query(LoginNonce).filter(LoginNonce.created_at < cutoff).delete()
+        db.add(LoginNonce(nonce=nonce))
+        db.commit()
+    finally:
+        db.close()
+    bot = get_bot_username()
+    if not bot:
+        return jsonify({'success': False, 'error': 'Бот недоступен'}), 503
+    return jsonify({'success': True, 'nonce': nonce,
+                    'link': f'https://t.me/{bot}?start=login_{nonce}'})
+
+
+@app.route('/api/auth/tg-poll', methods=['GET'])
+@limiter.limit("60/minute")
+def auth_tg_poll():
+    """Поллинг браузером: бот подтвердил вход? Выдаёт сессию один раз."""
+    nonce = (request.args.get('nonce') or '').strip()
+    if not nonce:
+        return jsonify({'success': False, 'error': 'nonce required'}), 400
+    db = get_session()
+    try:
+        ln = db.query(LoginNonce).get(nonce)
+        if not ln or ln.used:
+            return jsonify({'success': False, 'status': 'invalid'}), 404
+        if (datetime.utcnow() - (ln.created_at or datetime.utcnow())).total_seconds() > LOGIN_NONCE_TTL_SEC:
+            return jsonify({'success': False, 'status': 'expired'})
+        if ln.denied:
+            return jsonify({'success': False, 'status': 'denied',
+                            'error': 'Этот Telegram не в списке администраторов'})
+        if not ln.admin_id:
+            return jsonify({'success': False, 'status': 'pending'})
+        admin = db.query(AdminUser).get(ln.admin_id)
+        if not admin:
+            return jsonify({'success': False, 'status': 'denied'})
+        ln.used = True
+        db.commit()
+        flask_session['user_id'] = admin.id
+        flask_session['username'] = admin.username
+        flask_session['display_name'] = admin.display_name or admin.username
+        flask_session.permanent = True
+        return jsonify({'success': True, 'status': 'ok',
+                        'user': admin.display_name or admin.username})
     finally:
         db.close()
 
@@ -4918,11 +4991,48 @@ def _tg_edit_message(token, cq, new_text):
 
 @app.route('/api/tg/lk-webhook', methods=['POST'])
 def lk_bot_webhook():
-    """Webhook @grusha_lk_bot: обработка inline-кнопки отмены заявки."""
+    """Webhook @grusha_lk_bot: inline-отмена заявки + вход через бота (/start login_)."""
     secret = os.environ.get('REF_LK_WEBHOOK_SECRET', '')
     if not secret or request.headers.get('X-Telegram-Bot-Api-Secret-Token') != secret:
         return jsonify({'ok': False}), 403
     update = request.get_json(silent=True) or {}
+
+    # Вход через бота: /start login_<nonce> — юзер выбрал аккаунт в приложении Telegram
+    msg = update.get('message') or {}
+    text = (msg.get('text') or '').strip()
+    if text.startswith('/start login_'):
+        nonce = text[len('/start login_'):].strip()
+        frm = msg.get('from') or {}
+        chat_id = (msg.get('chat') or {}).get('id')
+        token = get_login_bot_token()
+        db = get_session()
+        try:
+            ln = db.query(LoginNonce).get(nonce)
+            fresh = ln and not ln.used and not ln.admin_id and (
+                (datetime.utcnow() - (ln.created_at or datetime.utcnow())).total_seconds() <= LOGIN_NONCE_TTL_SEC)
+            if not fresh:
+                reply = '⏰ Код входа устарел. Вернитесь на страницу входа и нажмите кнопку ещё раз.'
+            else:
+                admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
+                if admin:
+                    ln.admin_id = admin.id
+                    db.commit()
+                    reply = (f'✅ Вход подтверждён, {admin.display_name or admin.username}!\n'
+                             f'Вернитесь в браузер — CRM откроется автоматически.')
+                else:
+                    ln.denied = True
+                    db.commit()
+                    reply = '❌ Этот Telegram-аккаунт не в списке администраторов CRM.'
+        finally:
+            db.close()
+        if chat_id and token:
+            try:
+                requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                              json={'chat_id': chat_id, 'text': reply}, timeout=10)
+            except Exception as e:
+                print(f'[LKBot] login reply error: {e}')
+        return jsonify({'ok': True})
+
     cq = update.get('callback_query')
     if not cq:
         return jsonify({'ok': True})

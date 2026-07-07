@@ -156,6 +156,10 @@
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
                 Войти через Telegram
             </button>
+            <button class="btn-login" id="tgBotLoginBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;margin-top:10px;background:#fff;color:#1E293B;border:1.5px solid #E2E8F0;">
+                📱 Через приложение Telegram
+            </button>
+            <div id="botLoginStatus" style="display:none;margin-top:12px;font-size:13px;color:#475569;text-align:center;line-height:1.5;"></div>
             <div style="text-align:center;margin-top:16px;">
                 <a href="#" id="pwToggle" style="font-size:12px;color:#94A3B8;text-decoration:none;">Вход по паролю</a>
             </div>
@@ -325,6 +329,48 @@
                 e.preventDefault();
                 const f = document.getElementById('pwForm');
                 f.style.display = f.style.display === 'none' ? 'block' : 'none';
+            });
+
+            // Вход через бота: обходит кэш-сессию виджета — аккаунт выбирается
+            // в самом приложении Telegram. tg-start → t.me deep-link → поллинг tg-poll.
+            let botPollTimer = null;
+            const botBtn = document.getElementById('tgBotLoginBtn');
+            if (botBtn) botBtn.addEventListener('click', async function () {
+                const st = document.getElementById('botLoginStatus');
+                const errEl = document.getElementById('loginError');
+                errEl.classList.remove('visible');
+                if (botPollTimer) { clearInterval(botPollTimer); botPollTimer = null; }
+                st.style.display = 'block';
+                st.textContent = 'Создаю код входа…';
+                let start;
+                try { start = await (await fetch('/api/auth/tg-start', { method: 'POST' })).json(); }
+                catch (e) { st.textContent = 'Ошибка сети'; return; }
+                if (!start.success) { st.textContent = start.error || 'Ошибка'; return; }
+                window.open(start.link, '_blank');  // клик = user gesture, не блокируется
+                st.innerHTML = '⏳ Открылся Telegram — выберите нужный аккаунт и нажмите <b>Start</b>.<br>' +
+                    'Жду подтверждения… <a href="' + start.link + '" target="_blank">Открыть бота ещё раз</a>';
+                const deadline = Date.now() + 5 * 60 * 1000;
+                botPollTimer = setInterval(async function () {
+                    if (Date.now() > deadline) {
+                        clearInterval(botPollTimer); botPollTimer = null;
+                        st.textContent = 'Время истекло. Нажмите кнопку ещё раз.';
+                        return;
+                    }
+                    try {
+                        const d = await (await fetch('/api/auth/tg-poll?nonce=' + encodeURIComponent(start.nonce))).json();
+                        if (d.status === 'ok') {
+                            clearInterval(botPollTimer); botPollTimer = null;
+                            st.textContent = '✅ Вход подтверждён, открываю CRM…';
+                            window.location.href = '/crm';
+                        } else if (d.status === 'denied') {
+                            clearInterval(botPollTimer); botPollTimer = null;
+                            st.textContent = '❌ ' + (d.error || 'Этот аккаунт не в списке администраторов');
+                        } else if (d.status === 'expired' || d.status === 'invalid') {
+                            clearInterval(botPollTimer); botPollTimer = null;
+                            st.textContent = 'Код устарел. Нажмите кнопку ещё раз.';
+                        }
+                    } catch (e) { /* сеть мигнула — продолжаем поллить */ }
+                }, 2000);
             });
         })();
     </script>
