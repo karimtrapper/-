@@ -14,6 +14,7 @@ import time
 import json
 import hashlib
 import hmac
+import secrets
 import bcrypt
 import logging
 import gspread
@@ -65,6 +66,12 @@ def check_auth():
     for pub in PUBLIC_PATHS:
         if path.startswith(pub):
             return None
+
+    # Сервисный доступ для ботов (DealCloser, SberNotifier) — непротухающий API-ключ.
+    # Иммунитет к ротации человеческого пароля админа: ключ живёт в env, не в БД.
+    svc_key = os.environ.get('SERVICE_API_KEY', '')
+    if svc_key and secrets.compare_digest(request.headers.get('X-Api-Key', ''), svc_key):
+        return None
 
     # Проверяем сессию
     uid = flask_session.get('user_id')
