@@ -1258,10 +1258,6 @@ function applyPartnerMarkup(result) {
         if (typeof result.rub_amount === 'number' && !('rub_to_pay' in result)) result.rub_amount *= inv;
         if (typeof result.thb_to_pay === 'number') result.thb_to_pay *= inv;
         if (typeof result.usdt_to_pay === 'number') result.usdt_to_pay *= inv;
-        // Бэкенд возвращает сумму к внесению как usdt_amount (USDT→THB target)
-        // и thb_amount (THB→USDT target) — их тоже пересчитываем на markup
-        if (typeof result.usdt_amount === 'number') result.usdt_amount *= inv;
-        if (typeof result.thb_amount === 'number' && !('thb_to_pay' in result)) result.thb_amount *= inv;
     } else {
         // Клиент получит меньше на markup%
         if (typeof result.thb_received === 'number') result.thb_received *= adj;

@@ -15,6 +15,13 @@ def excel_round(value, decimals=2):
         places = Decimal(10) ** -decimals
         return float(d.quantize(places, rounding=ROUND_HALF_UP))
 
+
+def safe_rate(numerator, denominator, decimals=6):
+    """Итоговый курс с защитой от деления на ноль (см. calculator.safe_rate)."""
+    if not denominator:
+        return 0.0
+    return excel_round(numerator / denominator, decimals)
+
 class BrokerCalculatorDetailed:
     """Калькулятор брокера с детальными результатами и динамической прибылью"""
     
@@ -87,7 +94,7 @@ class BrokerCalculatorDetailed:
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_comm)
         rub_amount = excel_round(usdt_amount * rub_usdt_rate_sell, 2)
         
-        final_rate = excel_round(rub_amount / thb_target, 6)
+        final_rate = safe_rate(rub_amount, thb_target, 6)
         
         # Прибыльность
         incoming_usdt = excel_round(usdt_amount * (1 + self.rub_comm), 2)
@@ -112,6 +119,7 @@ class BrokerCalculatorDetailed:
             'rub_usdt_commission': excel_round(self.rub_comm * 100, 2),
             'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 2),
             'rub_amount': rub_amount,
+            'rub_to_pay': rub_amount,  # алиас суммы к внесению для markup партнёра (не трогать промежуточный usdt_amount)
             'final_rate': final_rate,
             'commission_level': self.commission_name,
             'profit_percent': self.target_profit,
@@ -140,7 +148,7 @@ class BrokerCalculatorDetailed:
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
-        final_rate = excel_round(rub_amount / thb_to_receive, 6)
+        final_rate = safe_rate(rub_amount, thb_to_receive, 6)
         
         incoming_usdt = excel_round(usdt_amount * (1 + self.usdt_comm), 2)
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -183,7 +191,7 @@ class BrokerCalculatorDetailed:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 + self.thb_usdt_comm)
         thb_amount = excel_round(usdt_before_commission * usdt_thb_rate_sell, 2)
         
-        final_rate = excel_round(thb_amount / usdt_target, 6)
+        final_rate = safe_rate(thb_amount, usdt_target, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_target
@@ -202,6 +210,7 @@ class BrokerCalculatorDetailed:
             'thb_usdt_commission': excel_round(self.thb_usdt_comm * 100, 2),
             'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
             'thb_amount': thb_amount,
+            'thb_to_pay': thb_amount,  # алиас суммы к внесению для markup партнёра
             'final_rate': final_rate,
             'commission_level': self.commission_name,
             'profit_percent': self.target_profit,
@@ -222,7 +231,7 @@ class BrokerCalculatorDetailed:
         withdrawal_commission = 1
         usdt_to_receive = excel_round(usdt_before_commission - withdrawal_commission, 2)
         
-        final_rate = excel_round(thb_amount / usdt_to_receive, 6)
+        final_rate = safe_rate(thb_amount, usdt_to_receive, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_to_receive
@@ -262,7 +271,7 @@ class BrokerCalculatorDetailed:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - self.usdt_thb_direct)
         usdt_amount = excel_round(thb_to_exchange / usdt_thb_rate_sell, 2)
         
-        final_rate = excel_round(thb_target / usdt_amount, 6)
+        final_rate = safe_rate(thb_target, usdt_amount, 6)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -282,6 +291,7 @@ class BrokerCalculatorDetailed:
             'usdt_thb_commission': excel_round(self.usdt_thb_direct * 100, 2),
             'usdt_thb_rate_sell': excel_round(usdt_thb_rate_sell, 2),
             'usdt_amount': usdt_amount,
+            'usdt_to_pay': usdt_amount,  # алиас суммы к внесению для markup партнёра
             'final_rate': final_rate,
             'commission_level': self.commission_name,
             'profit_percent': self.target_profit,
@@ -303,7 +313,7 @@ class BrokerCalculatorDetailed:
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
-        final_rate = excel_round(thb_to_receive / usdt_amount, 6)
+        final_rate = safe_rate(thb_to_receive, usdt_amount, 6)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -344,7 +354,7 @@ class BrokerCalculatorDetailed:
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + self.rub_usdt_direct)
         rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
 
-        final_rate = excel_round(rub_amount / usdt_target, 6)
+        final_rate = safe_rate(rub_amount, usdt_target, 6)
 
         incoming_usdt = excel_round(rub_amount / self.rub_usdt_rate, 2)
         outgoing_usdt = usdt_before_commission
@@ -363,6 +373,7 @@ class BrokerCalculatorDetailed:
             'rub_usdt_commission': excel_round(self.rub_usdt_direct * 100, 2),
             'rub_usdt_rate_sell': excel_round(rub_usdt_rate_sell, 4),
             'rub_amount': rub_amount,
+            'rub_to_pay': rub_amount,  # алиас суммы к внесению для markup партнёра
             'final_rate': final_rate,
             'commission_level': self.commission_name,
             'profit_percent': self.target_profit,
@@ -385,7 +396,7 @@ class BrokerCalculatorDetailed:
         withdrawal_commission = 1
         usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
 
-        final_rate = excel_round(rub_amount / usdt_received, 6)
+        final_rate = safe_rate(rub_amount, usdt_received, 6)
 
         incoming_usdt = excel_round(rub_amount / self.rub_usdt_rate, 2)
         outgoing_usdt = usdt_before_commission
