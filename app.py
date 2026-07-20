@@ -234,6 +234,7 @@ class DealStatus(str, Enum):
     COMPLETED = "completed"
     VERIFIED = "verified"
     CANCELLED = "cancelled"
+    LOSE = "lose"  # несостоявшаяся сделка (из DealCloser) — только для конверсии, не деньги
 
 class CashBatchStatus(str, Enum):
     ACTIVE = "active"
@@ -683,6 +684,10 @@ class Deal(Base):
     # Части прихода (метод sber_reqs, оплата частями): JSON-список
     # [{uuid|null, amount_rub, payer, date, note}]. uuid → приход из пула sber_incomes.
     payin_parts = Column(Text, nullable=True)
+    # LOSE-сделки и revive-логика (конверсия по Красинскому)
+    lose_reason = Column(String(300), nullable=True)         # причина отказа из LLM-анализа DealCloser
+    bitrix_deal_id = Column(Integer, nullable=True, index=True)  # id сделки Bitrix (дедуп + трейсинг)
+    revived_by_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)  # WON, забравший этот LOSE
     is_custom = Column(Boolean, default=False)
     custom_payin_currency = Column(String(10))
     custom_payin_amount = Column(Float)
@@ -746,6 +751,9 @@ class Deal(Base):
             'custom_payout_amount': self.custom_payout_amount,
             'custom_payout_rate': self.custom_payout_rate,
             'notes': self.notes,
+            'lose_reason': self.lose_reason,
+            'bitrix_deal_id': self.bitrix_deal_id,
+            'revived_by_deal_id': self.revived_by_deal_id,
             'reimbursement_id': self.reimbursement_id,
             'reimbursement': self.reimbursement.to_dict() if self.reimbursement else None,
             'needs_reimbursement': self.needs_reimbursement if self.needs_reimbursement is not None else True,
@@ -1090,6 +1098,30 @@ if 'postgresql' in DATABASE_URL:
         print("✅ SBER_WL/SBER_REQS enum values added")
     except Exception as e:
         print(f"ℹ️ SBER_WL enum: {e}")
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac:
+            ac.execute(text("ALTER TYPE dealstatus ADD VALUE IF NOT EXISTS 'LOSE'"))
+        print("✅ LOSE enum value added")
+    except Exception as e:
+        print(f"ℹ️ LOSE enum: {e}")
+
+# LOSE-сделки: причина, id Bitrix, revive-привязка к WON
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS lose_reason VARCHAR(300)"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS bitrix_deal_id INTEGER"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS revived_by_deal_id INTEGER REFERENCES deals(id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_deals_bitrix_deal_id ON deals (bitrix_deal_id)"))
+        else:
+            for ddl in ("ALTER TABLE deals ADD COLUMN lose_reason VARCHAR(300)",
+                        "ALTER TABLE deals ADD COLUMN bitrix_deal_id INTEGER",
+                        "ALTER TABLE deals ADD COLUMN revived_by_deal_id INTEGER REFERENCES deals(id)"):
+                try: conn.execute(text(ddl))
+                except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ lose fields migration: {e}")
 
 # Части прихода (sber_reqs): JSON-список частичных оплат на сделке
 try:
@@ -2742,6 +2774,9 @@ def get_deals():
         status = request.args.get('status')
         if status:
             query = query.filter(Deal.status == DealStatus(status))
+        elif request.args.get('include_lose') != '1':
+            # LOSE — аналитические записи, в основном списке сделок не показываем
+            query = query.filter(Deal.status != DealStatus.LOSE)
         manager = request.args.get('manager')
         if manager:
             query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
@@ -2999,20 +3034,34 @@ def create_deal():
         else:
             created_at = datetime.now()
         
+        # LOSE-сделка (из DealCloser): только конверсия, не деньги.
+        # Идемпотентность по bitrix_deal_id — retry/double-tap бота не плодит дубли.
+        is_lose = data.get('status') == DealStatus.LOSE.value
+        if is_lose and data.get('bitrix_deal_id'):
+            existing_lose = session.query(Deal).filter(
+                Deal.status == DealStatus.LOSE,
+                Deal.bitrix_deal_id == int(data['bitrix_deal_id']),
+            ).first()
+            if existing_lose:
+                return jsonify({'success': True, 'deal': existing_lose.to_dict(), 'duplicate': True}), 200
+
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
         client_id = data.get('client_id')
         client_name = data.get('client_name')
-        
+
         if not client_id and client_name:
             # Нормализуем имя: trim + регистронезависимый поиск, иначе «Иван»,
             # «иван » и «ИВАН» создавали 3 разных клиента и размазывали статистику.
             client_name = client_name.strip()
             existing_client = session.query(Client).filter(Client.name.ilike(client_name)).first()
             if not existing_client:
-                new_client = Client(name=client_name)
-                session.add(new_client)
-                session.flush()
-                client_id = new_client.id
+                # Для LOSE клиента НЕ создаём (замусорит базу непокупателями),
+                # матчинг revive идёт по client_name.
+                if not is_lose:
+                    new_client = Client(name=client_name)
+                    session.add(new_client)
+                    session.flush()
+                    client_id = new_client.id
             else:
                 client_id = existing_client.id
         elif client_id and not client_name:
@@ -3027,7 +3076,7 @@ def create_deal():
         ref_comp_model = data.get('referrer_comp_model')
         ref_markup_percent = data.get('referrer_markup_percent')
         ref_fixed_usdt = data.get('referrer_fixed_usdt')
-        if client_id and not ref_name:
+        if client_id and not ref_name and not is_lose:
             client_obj = session.query(Client).get(client_id)
             if client_obj and client_obj.referrer_id:
                 referrer = session.query(Referrer).get(client_obj.referrer_id)
@@ -3099,6 +3148,8 @@ def create_deal():
             custom_payout_amount=data.get('custom_payout_amount'),
             custom_payout_rate=data.get('custom_payout_rate'),
             payin_parts=json.dumps(data['payin_parts'], ensure_ascii=False) if data.get('payin_parts') else None,
+            lose_reason=(data.get('lose_reason') or None),
+            bitrix_deal_id=int(data['bitrix_deal_id']) if data.get('bitrix_deal_id') else None,
             notes=data.get('notes')
         )
         session.add(deal)
@@ -3110,14 +3161,16 @@ def create_deal():
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
-        _recalculate_deal_financials(deal, data)
+        # Для LOSE финансов нет — пропускаем и пересчёт, и агентов.
+        if not is_lose:
+            _recalculate_deal_financials(deal, data)
 
-        # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
-        # одиночного реферала (без пересчёта) для единого источника кабинета
-        if data.get('agents'):
-            _apply_deal_agents(session, deal, data['agents'])
-        else:
-            _mirror_legacy_agent(session, deal)
+            # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
+            # одиночного реферала (без пересчёта) для единого источника кабинета
+            if data.get('agents'):
+                _apply_deal_agents(session, deal, data['agents'])
+            else:
+                _mirror_legacy_agent(session, deal)
 
         # Автоматическое списание с кошелька при создании
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
@@ -3280,6 +3333,9 @@ def update_deal(deal_id):
         
         if 'status' in data:
             deal.status = DealStatus(data['status'])
+            # LOSE, вручную переведённый в реальную сделку, выходит из revive-привязки
+            if deal.status != DealStatus.LOSE and deal.revived_by_deal_id:
+                deal.revived_by_deal_id = None
 
         # Автоматический пересчёт прибыли и выплаты рефереру
         _recalculate_deal_financials(deal, data)
@@ -3379,6 +3435,10 @@ def delete_deal(deal_id):
         session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).update(
             {'claimed_deal_id': None, 'claimed_at': None})
 
+        # Отвязываем LOSE, привязанные к этой WON (иначе FK revived_by_deal_id заблокирует удаление)
+        session.query(Deal).filter(Deal.revived_by_deal_id == deal_id).update(
+            {'revived_by_deal_id': None})
+
         session.delete(deal)
         session.flush()
 
@@ -3414,6 +3474,222 @@ def delete_deal(deal_id):
         # Error logged internally
         app.logger.error(f'Request error: {e}')
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+    finally:
+        session.close()
+
+# ==================== CRM API - LOSE / REVIVE / CONVERSION ====================
+
+@app.route('/api/deals/lose-candidates', methods=['GET'])
+def get_lose_candidates():
+    """Непривязанные LOSE-сделки клиента — кандидаты на revive при закрытии WON.
+
+    Матчинг: точное имя без регистра (Deal.client_name) + client_id, если клиент найден.
+    """
+    client_name = (request.args.get('client_name') or '').strip()
+    if not client_name:
+        return jsonify({'success': False, 'error': 'client_name обязателен'}), 400
+    session = get_session()
+    try:
+        # Матчим в Python: SQL ilike/lower не понижают кириллицу в SQLite,
+        # а LOSE-таблица маленькая — тянем все непривязанные и фильтруем.
+        name_cf = client_name.casefold()
+        client = session.query(Client).filter(Client.name.ilike(client_name)).first()
+        all_unrevived = session.query(Deal).filter(
+            Deal.status == DealStatus.LOSE,
+            Deal.revived_by_deal_id == None,
+        ).order_by(Deal.created_at.desc()).all()
+        candidates = [d for d in all_unrevived if (
+            (d.client_name and d.client_name.strip().casefold() == name_cf)
+            or (client and d.client_id == client.id)
+        )][:20]
+        return jsonify({'success': True, 'candidates': [{
+            'id': d.id,
+            'created_at': d.created_at.isoformat() if d.created_at else None,
+            'lose_reason': d.lose_reason,
+            'payin_amount_rub': d.payin_amount_rub,
+            'payin_amount_usdt': d.payin_amount_usdt,
+            'bitrix_deal_id': d.bitrix_deal_id,
+        } for d in candidates]})
+    finally:
+        session.close()
+
+
+@app.route('/api/deals/<int:won_id>/revive', methods=['POST'])
+def revive_loses(won_id):
+    """Привязать LOSE-сделки к выигрышной: клиент «ожил» и дошёл до сделки.
+
+    LOSE выходят из знаменателя конверсии, становясь касаниями WON-эпизода.
+    """
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        lose_ids = data.get('lose_ids') or []
+        if not lose_ids:
+            return jsonify({'success': False, 'error': 'lose_ids обязателен'}), 400
+        won = session.query(Deal).filter(Deal.id == won_id).first()
+        if not won:
+            return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+        if won.status in (DealStatus.LOSE, DealStatus.CANCELLED):
+            return jsonify({'success': False, 'error': 'Нельзя привязать LOSE к lose/cancelled сделке'}), 400
+        revived = []
+        for lid in lose_ids:
+            lose = session.query(Deal).filter(Deal.id == int(lid)).first()
+            if not lose or lose.status != DealStatus.LOSE:
+                return jsonify({'success': False, 'error': f'#{lid} не LOSE-сделка'}), 400
+            if lose.revived_by_deal_id and lose.revived_by_deal_id != won_id:
+                return jsonify({'success': False, 'error': f'#{lid} уже привязана к #{lose.revived_by_deal_id}'}), 400
+            lose.revived_by_deal_id = won_id
+            revived.append(lose.id)
+        session.commit()
+        return jsonify({'success': True, 'revived': revived})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/deals/<int:won_id>/unrevive', methods=['POST'])
+def unrevive_loses(won_id):
+    """Откатить ошибочную revive-привязку. Пустой lose_ids = отвязать все."""
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        lose_ids = data.get('lose_ids') or []
+        q = session.query(Deal).filter(Deal.revived_by_deal_id == won_id)
+        if lose_ids:
+            q = q.filter(Deal.id.in_([int(i) for i in lose_ids]))
+        count = q.update({'revived_by_deal_id': None}, synchronize_session=False)
+        session.commit()
+        return jsonify({'success': True, 'unrevived': count})
+    except Exception as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+@app.route('/api/analytics/conversion', methods=['GET'])
+def analytics_conversion():
+    """Конверсия по Красинскому: CR = купившие эпизоды / все эпизоды.
+
+    Эпизод = обращение клиента. WON-эпизод = completed/verified сделка + её
+    revive-привязанные LOSE (касания). Проигранный эпизод = каждый непривязанный
+    LOSE. Когорта — месяц ПЕРВОГО касания эпизода. Новый/повторный: была ли у
+    клиента победа до первого касания. CR новых — главная метрика.
+    """
+    session = get_session()
+    try:
+        months = max(1, min(int(request.args.get('months', 12)), 36))
+        now = datetime.now()
+        # Начало окна — первое число (now - months + 1)-го месяца
+        start_year = now.year + (now.month - months) // 12
+        start_month = (now.month - months) % 12 + 1
+        window_start = datetime(start_year, start_month, 1)
+
+        won_statuses = (DealStatus.COMPLETED, DealStatus.VERIFIED)
+        # Тянем все сделки: когорта первого касания и repeat-детект смотрят
+        # в прошлое за пределы окна. Объём таблицы малый (сотни строк).
+        all_deals = session.query(Deal).filter(
+            Deal.status.in_(list(won_statuses) + [DealStatus.LOSE])
+        ).all()
+
+        def identity(d):
+            """Идентичность клиента: client_id либо имя без регистра."""
+            if d.client_id:
+                return f'c{d.client_id}'
+            if d.client_name and d.client_name.strip():
+                return f'n{d.client_name.strip().lower()}'
+            return f'd{d.id}'  # аноним — каждый сам себе клиент
+
+        wins = [d for d in all_deals if d.status in won_statuses and d.created_at]
+        loses = [d for d in all_deals if d.status == DealStatus.LOSE and d.created_at]
+        loses_by_win = {}
+        for l in loses:
+            if l.revived_by_deal_id:
+                loses_by_win.setdefault(l.revived_by_deal_id, []).append(l)
+
+        # Даты побед по клиенту — для repeat-детекта
+        win_dates = {}
+        for w in wins:
+            win_dates.setdefault(identity(w), []).append(w.created_at)
+
+        episodes = []
+        for w in wins:
+            linked = loses_by_win.get(w.id, [])
+            first_touch = min([w.created_at] + [l.created_at for l in linked])
+            episodes.append({'ident': identity(w), 'first_touch': first_touch,
+                             'won': True, 'touches': 1 + len(linked)})
+        for l in loses:
+            if not l.revived_by_deal_id:
+                episodes.append({'ident': identity(l), 'first_touch': l.created_at,
+                                 'won': False, 'touches': 1})
+
+        for ep in episodes:
+            # Повторный = была победа СТРОГО раньше первого касания эпизода
+            ep['repeat'] = any(d < ep['first_touch'] for d in win_dates.get(ep['ident'], []))
+
+        # Средняя прибыль completed в окне — оценка потерь в деньгах
+        window_profits = [w.profit_usdt for w in wins
+                          if w.created_at >= window_start and w.profit_usdt is not None]
+        avg_profit = round(sum(window_profits) / len(window_profits), 2) if window_profits else 0
+
+        monthly = {}
+        for ep in episodes:
+            if ep['first_touch'] < window_start:
+                continue
+            key = ep['first_touch'].strftime('%Y-%m')
+            m = monthly.setdefault(key, {
+                'month': key, 'new_total': 0, 'new_won': 0, 'repeat_total': 0,
+                'repeat_won': 0, 'lost_episodes': 0, 'touches_sum': 0, 'touches_won': 0,
+            })
+            kind = 'repeat' if ep['repeat'] else 'new'
+            m[f'{kind}_total'] += 1
+            if ep['won']:
+                m[f'{kind}_won'] += 1
+                m['touches_sum'] += ep['touches']
+                m['touches_won'] += 1
+            else:
+                m['lost_episodes'] += 1
+
+        rows = []
+        for key in sorted(monthly.keys()):
+            m = monthly[key]
+            m['new_cr'] = round(m['new_won'] / m['new_total'] * 100, 1) if m['new_total'] else None
+            m['repeat_cr'] = round(m['repeat_won'] / m['repeat_total'] * 100, 1) if m['repeat_total'] else None
+            m['avg_touches_to_won'] = round(m['touches_sum'] / m['touches_won'], 2) if m['touches_won'] else None
+            m['lost_profit_est_usdt'] = round(m['lost_episodes'] * avg_profit, 2)
+            del m['touches_sum'], m['touches_won']
+            rows.append(m)
+
+        in_window = [ep for ep in episodes if ep['first_touch'] >= window_start]
+
+        def _totals(subset):
+            total = len(subset)
+            won = sum(1 for e in subset if e['won'])
+            return {'total': total, 'won': won,
+                    'cr': round(won / total * 100, 1) if total else None}
+
+        lost_count = sum(1 for e in in_window if not e['won'])
+        totals = {
+            'new': _totals([e for e in in_window if not e['repeat']]),
+            'repeat': _totals([e for e in in_window if e['repeat']]),
+            'lost_episodes': lost_count,
+            'avg_profit_usdt': avg_profit,
+            'lost_profit_est_usdt': round(lost_count * avg_profit, 2),
+        }
+
+        lose_list = [{
+            'id': l.id,
+            'client_name': l.client_name,
+            'created_at': l.created_at.isoformat() if l.created_at else None,
+            'lose_reason': l.lose_reason,
+            'revived_by_deal_id': l.revived_by_deal_id,
+        } for l in sorted(loses, key=lambda x: x.created_at, reverse=True)
+            if l.created_at >= window_start]
+
+        return jsonify({'success': True, 'months': rows, 'totals': totals,
+                        'lose_list': lose_list})
     finally:
         session.close()
 

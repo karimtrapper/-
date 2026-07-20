@@ -272,6 +272,7 @@ tr:hover { background: var(--navy-50); }
 .badge-completed { background: #D1FAE5; color: var(--green-darker); }
 .badge-verified { background: var(--blue-light); color: #1E40AF; }
 .badge-cancelled { background: var(--red-light); color: #991B1B; }
+.badge-lose { background: var(--red-light); color: #991B1B; }
 .badge-success { background: #D1FAE5; color: var(--green-darker); }
 .badge-danger { background: var(--red-light); color: #991B1B; }
 
@@ -732,6 +733,42 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <table class="unit-econ-table" id="unitEconTable"></table>
                 </div>
                 <div id="unitEconFormula" style="font-size:12px;color:#666;margin-top:10px"></div>
+            </div>
+
+            <!-- Конверсия (Красинский: эпизоды, новые/повторные, revive) -->
+            <div class="card" style="padding:20px;margin-bottom:16px">
+                <div class="card-title" style="margin-bottom:12px">Конверсия (12 мес, когорта первого касания)</div>
+                <div id="convTotals" style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:12px"></div>
+                <div class="table-container" style="overflow-x:auto">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Месяц</th>
+                                <th>Новые</th>
+                                <th>CR новых</th>
+                                <th>Повторные</th>
+                                <th>CR повторных</th>
+                                <th>Касаний до WON</th>
+                                <th>Потеряно (LOSE)</th>
+                                <th>≈ Упущено, $</th>
+                            </tr>
+                        </thead>
+                        <tbody id="convBody"></tbody>
+                    </table>
+                </div>
+                <details style="margin-top:10px">
+                    <summary style="cursor:pointer;font-size:13px;color:#666">Список LOSE с причинами</summary>
+                    <div class="table-container" style="overflow-x:auto;margin-top:8px">
+                        <table>
+                            <thead><tr><th>#</th><th>Дата</th><th>Клиент</th><th>Причина</th><th>Статус</th></tr></thead>
+                            <tbody id="convLoseBody"></tbody>
+                        </table>
+                    </div>
+                </details>
+                <div style="font-size:12px;color:#666;margin-top:10px">
+                    Эпизод = обращение клиента. LOSE, привязанный к победе (revive), — касание на пути к сделке, из знаменателя CR уходит.
+                    «Упущено» = проигранные эпизоды × средняя прибыль сделки.
+                </div>
             </div>
 
             <!-- Разбивка по рефererам (видна в режиме «Только рефералы») -->
@@ -3161,6 +3198,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (d.charts) renderCharts(d.charts);
                 }
 
+                // Конверсия — отдельный эндпоинт, не блокируем остальной дашборд
+                loadConversion();
+
                 // Load recent deals
                 const dealsResponse = await fetch(`${API_URL}/api/deals?limit=5`);
                 const dealsData = await dealsResponse.json();
@@ -3185,6 +3225,60 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             } catch (error) {
                 console.error('Error loading dashboard:', error);
+            }
+        }
+
+        // Конверсия по Красинскому: эпизоды, новые/повторные, revive
+        async function loadConversion() {
+            try {
+                const resp = await fetch(`${API_URL}/api/analytics/conversion?months=12`);
+                const data = await resp.json();
+                if (!data.success) return;
+
+                const t = data.totals || {};
+                const fmtCr = (c) => c == null ? '—' : c + '%';
+                document.getElementById('convTotals').innerHTML = `
+                    <div style="text-align:center">
+                        <div style="font-size:28px;font-weight:700;color:#22c55e">${fmtCr(t.new?.cr)}</div>
+                        <div style="font-size:12px;color:#666">CR новых (${t.new?.won ?? 0}/${t.new?.total ?? 0})</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div style="font-size:28px;font-weight:700;color:#3b82f6">${fmtCr(t.repeat?.cr)}</div>
+                        <div style="font-size:12px;color:#666">CR повторных (${t.repeat?.won ?? 0}/${t.repeat?.total ?? 0})</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div style="font-size:28px;font-weight:700;color:#ef4444">${t.lost_episodes ?? 0}</div>
+                        <div style="font-size:12px;color:#666">Проиграно эпизодов</div>
+                    </div>
+                    <div style="text-align:center">
+                        <div style="font-size:28px;font-weight:700;color:#f59e0b">$${formatNumber(t.lost_profit_est_usdt ?? 0)}</div>
+                        <div style="font-size:12px;color:#666">≈ Упущенная прибыль</div>
+                    </div>`;
+
+                document.getElementById('convBody').innerHTML = (data.months || []).slice().reverse().map(m => `
+                    <tr>
+                        <td>${m.month}</td>
+                        <td>${m.new_won}/${m.new_total}</td>
+                        <td style="font-weight:600;color:#22c55e">${fmtCr(m.new_cr)}</td>
+                        <td>${m.repeat_won}/${m.repeat_total}</td>
+                        <td style="color:#3b82f6">${fmtCr(m.repeat_cr)}</td>
+                        <td>${m.avg_touches_to_won ?? '—'}</td>
+                        <td style="color:#ef4444">${m.lost_episodes}</td>
+                        <td style="color:#f59e0b">$${formatNumber(m.lost_profit_est_usdt ?? 0)}</td>
+                    </tr>`).join('') || '<tr><td colspan="8" style="color:#999">Нет данных — LOSE начнут копиться после релиза DealCloser</td></tr>';
+
+                document.getElementById('convLoseBody').innerHTML = (data.lose_list || []).map(l => `
+                    <tr>
+                        <td>#${l.id}</td>
+                        <td>${formatDate(l.created_at)}</td>
+                        <td>${escapeHtml(l.client_name) || '-'}</td>
+                        <td>${escapeHtml(l.lose_reason) || '-'}</td>
+                        <td>${l.revived_by_deal_id
+                            ? `<span class="badge badge-completed">🔄 ожил → #${l.revived_by_deal_id}</span>`
+                            : '<span class="badge badge-cancelled">потерян</span>'}</td>
+                    </tr>`).join('') || '<tr><td colspan="5" style="color:#999">Пусто</td></tr>';
+            } catch (e) {
+                console.error('Error loading conversion:', e);
             }
         }
 
@@ -7260,7 +7354,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 'pending': 'Ожидает',
                 'completed': 'Завершена',
                 'verified': 'Проверена',
-                'cancelled': 'Отменена'
+                'cancelled': 'Отменена',
+                'lose': 'LOSE'
             };
             return labels[status] || status;
         }
