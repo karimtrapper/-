@@ -3290,7 +3290,16 @@ def update_deal(deal_id):
             if data.get('agents'):
                 _apply_deal_agents(session, deal, data['agents'])
             else:
-                deal.agents.clear()
+                # Явное удаление всех агентов из формы. Чистим и мультиагентов,
+                # и легаси-реферера (referrer_name/id и снапшоты) — иначе партнёр
+                # остаётся в referrer_name и продолжает светиться в списке сделок,
+                # хотя в форме его убрали (кейс #429 GR-KARIM).
+                _apply_deal_agents(session, deal, [])
+                deal.referrer_id = None
+                deal.referrer_name = None
+                deal.referrer_percent = None
+                deal.referrer_markup_percent = None
+                deal.referrer_comp_model = None
         else:
             _mirror_legacy_agent(session, deal)
 
