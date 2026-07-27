@@ -7,6 +7,7 @@ from flask import Flask, jsonify, request, send_from_directory, redirect, sessio
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
+import sys
 import requests
 import threading
 import asyncio
@@ -2765,11 +2766,13 @@ def calculate():
 
 @app.route('/api/deals', methods=['GET'])
 def get_deals():
-    from sqlalchemy.orm import joinedload
+    from sqlalchemy.orm import joinedload, selectinload
     session = get_session()
     try:
+        # selectinload(agents): to_dict сериализует agents — без предзагрузки
+        # каждая сделка страницы делала отдельный SELECT (N+1, +50 запросов)
         query = session.query(Deal).options(
-            joinedload(Deal.client), joinedload(Deal.reimbursement)
+            joinedload(Deal.client), joinedload(Deal.reimbursement), selectinload(Deal.agents)
         ).order_by(Deal.created_at.desc(), Deal.id.desc())
         status = request.args.get('status')
         if status:
@@ -4007,6 +4010,102 @@ def get_wl_transactions():
         return jsonify({'error': str(e)}), 500
 
 
+USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+_TRONSCAN_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+}
+
+
+def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
+    """Обход TronScan по кошелькам: TRC20-USDT переводы (входящие помечены is_incoming).
+
+    Вынесено из эндпоинта, чтобы фоновый прогрев кэша (_tronscan_warm_loop)
+    использовал ту же логику. Медленно (~10 сек на 3 кошелька) из-за анти-429 пауз.
+    Возвращает (транзакции по времени ↓, проверенные адреса, ошибки).
+    """
+    all_incoming = []
+    wallets_checked = []
+    wallets_errors = []
+
+    for wallet_idx, wallet in enumerate(wallets):
+        wallet_tx_count = 0
+        wallets_checked.append(wallet.address)
+
+        # Пауза между кошельками чтобы не словить 429 от TronScan
+        if wallet_idx > 0:
+            time.sleep(1.5)
+
+        try:
+            for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
+                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                params = {
+                    'relatedAddress': wallet.address,
+                    'contract_address': USDT_TRC20_CONTRACT,
+                    'limit': 50,
+                    'start': page * 50,
+                    't': int(time.time())
+                }
+
+                # Retry при 429 (rate limit)
+                for attempt in range(3):
+                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if response.status_code == 429:
+                        wait_time = 2 * (attempt + 1)
+                        print(f"[DEBUG] TronScan 429 for {wallet.address[:10]}..., waiting {wait_time}s (attempt {attempt+1})")
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                if response.status_code == 200:
+                    data = response.json()
+                    transfers = data.get('token_transfers', [])
+                    if not transfers:
+                        break
+
+                    reached_start_ts = False
+                    for tx in transfers:
+                        tx_ts = tx.get('block_ts', 0)
+
+                        # Фильтр по дате (если задан)
+                        if start_ts and tx_ts < start_ts:
+                            reached_start_ts = True
+                            continue
+                        if end_ts and tx_ts > end_ts:
+                            continue
+
+                        amount = float(tx.get('quant', 0)) / 1_000_000
+
+                        all_incoming.append({
+                            'tx_hash': tx.get('transaction_id'),
+                            'from_address': tx.get('from_address'),
+                            'to_address': tx.get('to_address'),
+                            'amount_usdt': amount,
+                            'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
+                            'confirmed': tx.get('confirmed', False),
+                            'is_incoming': tx.get('to_address', '').lower() == wallet.address.lower()
+                        })
+                        wallet_tx_count += 1
+
+                    if reached_start_ts:
+                        break
+                    # Пауза между страницами
+                    time.sleep(1)
+                else:
+                    error_msg = f"HTTP {response.status_code}"
+                    wallets_errors.append({'address': wallet.address, 'error': error_msg})
+                    print(f"[DEBUG] TronScan HTTP error for {wallet.address}: {error_msg}")
+                    break
+        except Exception as e:
+            wallets_errors.append({'address': wallet.address, 'error': str(e)})
+            print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
+
+        print(f"[DEBUG] Wallet {wallet.address[:10]}... fetched {wallet_tx_count} transfers")
+
+    # Сортируем все транзакции по времени
+    all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
+    return all_incoming, wallets_checked, wallets_errors
+
+
 @app.route('/api/transactions/incoming', methods=['GET'])
 def get_incoming_transactions():
     """Получить входящие USDT транзакции по всем кошелькам"""
@@ -4060,92 +4159,9 @@ def get_incoming_transactions():
                 'cache_time': TRONSCAN_CACHE['incoming']['timestamp']
             })
 
-        all_incoming = []
-        wallets_checked = []
-        wallets_errors = []
+        all_incoming, wallets_checked, wallets_errors = _tronscan_fetch_incoming(
+            wallets, start_ts=start_ts, end_ts=end_ts)
 
-        usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-
-        for wallet_idx, wallet in enumerate(wallets):
-            wallet_tx_count = 0
-            wallets_checked.append(wallet.address)
-
-            # Пауза между кошельками чтобы не словить 429 от TronScan
-            if wallet_idx > 0:
-                time.sleep(1.5)
-
-            try:
-                for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
-                    url = f'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                    params = {
-                        'relatedAddress': wallet.address,
-                        'contract_address': usdt_contract,
-                        'limit': 50,
-                        'start': page * 50,
-                        't': int(time.time())
-                    }
-
-                    # Retry при 429 (rate limit)
-                    for attempt in range(3):
-                        response = requests.get(url, params=params, headers=headers, timeout=10)
-                        if response.status_code == 429:
-                            wait_time = 2 * (attempt + 1)
-                            print(f"[DEBUG] TronScan 429 for {wallet.address[:10]}..., waiting {wait_time}s (attempt {attempt+1})")
-                            time.sleep(wait_time)
-                            continue
-                        break
-
-                    if response.status_code == 200:
-                        data = response.json()
-                        transfers = data.get('token_transfers', [])
-                        if not transfers:
-                            break
-
-                        reached_start_ts = False
-                        for tx in transfers:
-                            tx_ts = tx.get('block_ts', 0)
-
-                            # Фильтр по дате (если задан)
-                            if start_ts and tx_ts < start_ts:
-                                reached_start_ts = True
-                                continue
-                            if end_ts and tx_ts > end_ts:
-                                continue
-
-                            amount = float(tx.get('quant', 0)) / 1_000_000
-
-                            all_incoming.append({
-                                'tx_hash': tx.get('transaction_id'),
-                                'from_address': tx.get('from_address'),
-                                'to_address': tx.get('to_address'),
-                                'amount_usdt': amount,
-                                'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
-                                'confirmed': tx.get('confirmed', False),
-                                'is_incoming': tx.get('to_address', '').lower() == wallet.address.lower()
-                            })
-                            wallet_tx_count += 1
-
-                        if reached_start_ts:
-                            break
-                        # Пауза между страницами
-                        time.sleep(1)
-                    else:
-                        error_msg = f"HTTP {response.status_code}"
-                        wallets_errors.append({'address': wallet.address, 'error': error_msg})
-                        print(f"[DEBUG] TronScan HTTP error for {wallet.address}: {error_msg}")
-                        break
-            except Exception as e:
-                wallets_errors.append({'address': wallet.address, 'error': str(e)})
-                print(f"[DEBUG] TronScan request error for {wallet.address}: {e}")
-
-            print(f"[DEBUG] Wallet {wallet.address[:10]}... fetched {wallet_tx_count} transfers")
-        
-        # Сортируем все транзакции по времени
-        all_incoming.sort(key=lambda x: x['timestamp'], reverse=True)
-        
         # Обновляем кэш. Атомарно (одним присваиванием sub-dict), иначе читатель
         # мог увидеть новые data со старым timestamp (окно рассинхрона).
         if not wallet_filter: # Кэшируем только общий список
@@ -4172,6 +4188,97 @@ def get_incoming_transactions():
         return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
+
+def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, end_ts=None, result_limit=None):
+    """Обход TronScan: исходящие TRC20-USDT переводы (без внутренних между monitored).
+
+    Вынесено из эндпоинта — общая логика для запроса и фонового прогрева кэша.
+    Возвращает дедуплицированный список по времени ↓.
+    """
+    all_outgoing = []
+
+    for wallet_idx, wallet in enumerate(wallets):
+        # Пауза между кошельками чтобы не словить 429 от TronScan
+        if wallet_idx > 0:
+            time.sleep(1.5)
+
+        try:
+            # При наличии limit — 1 страница с меньшим кол-вом, иначе 2 по 50
+            api_limit = min(result_limit or 50, 50)
+            max_pages = 1 if result_limit else 2
+            for page in range(max_pages):
+                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
+                params = {
+                    'relatedAddress': wallet.address,
+                    'contract_address': USDT_TRC20_CONTRACT,
+                    'limit': api_limit,
+                    'start': page * api_limit,
+                    't': int(time.time())
+                }
+
+                # Retry при 429 (rate limit)
+                for attempt in range(3):
+                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if response.status_code == 429:
+                        wait_time = 2 * (attempt + 1)
+                        print(f"[DEBUG] TronScan outgoing 429 for {wallet.address[:10]}..., waiting {wait_time}s")
+                        time.sleep(wait_time)
+                        continue
+                    break
+
+                if response.status_code == 200:
+                    data = response.json()
+                    transfers = data.get('token_transfers', [])
+                    if not transfers:
+                        break
+
+                    reached_start_ts = False
+                    for tx in transfers:
+                        tx_ts = tx.get('block_ts', 0)
+
+                        if start_ts and tx_ts < start_ts:
+                            reached_start_ts = True
+                            continue
+                        if end_ts and tx_ts > end_ts:
+                            continue
+
+                        # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы между monitored-кошельками
+                        if tx.get('from_address') == wallet.address and tx.get('to_address') not in internal_wallet_addresses:
+                            amount = float(tx.get('quant', 0)) / 1_000_000
+                            all_outgoing.append({
+                                'tx_hash': tx.get('transaction_id'),
+                                'from_address': tx.get('from_address'),
+                                'to_address': tx.get('to_address'),
+                                'amount_usdt': amount,
+                                'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
+                                'confirmed': tx.get('confirmed', False)
+                            })
+
+                    if reached_start_ts:
+                        break
+                    time.sleep(1)
+                else:
+                    print(f"[DEBUG] TronScan outgoing HTTP {response.status_code} for {wallet.address[:10]}...")
+                    break
+        except Exception as e:
+            print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
+
+    all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
+
+    # Дедупликация цепочек переводов: кошелёк → посредник → конечный
+    # TronScan relatedAddress показывает обе ноги. Оставляем одну по amount+время (±15мин)
+    deduped = []
+    seen = set()
+    for tx in all_outgoing:
+        # Округляем время до 15 минут для группировки
+        ts = datetime.fromisoformat(tx['timestamp'])
+        bucket = (round(tx['amount_usdt'], 2), ts.strftime('%Y-%m-%d'), ts.hour, ts.minute // 15)
+        if bucket in seen:
+            continue
+        seen.add(bucket)
+        deduped.append(tx)
+    return deduped
+
 
 @app.route('/api/transactions/outgoing', methods=['GET'])
 def get_outgoing_transactions():
@@ -4220,100 +4327,15 @@ def get_outgoing_transactions():
         if not wallets:
             return jsonify({'success': True, 'available': []})
 
-        all_outgoing = []
-        usdt_contract = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
-
         # Только monitored-кошельки — для фильтрации внутренних переводов между своими.
         # Balance-кошельки (is_monitored=False) НЕ считаются внутренними: переводы туда
         # — легитимные исходящие (например, возмещения фаундеру на его balance-адрес),
         # и их нужно видеть в дропдауне возмещений.
         internal_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all())
 
-        for wallet_idx, wallet in enumerate(wallets):
-            # Пауза между кошельками чтобы не словить 429 от TronScan
-            if wallet_idx > 0:
-                time.sleep(1.5)
-
-            try:
-                # При наличии limit — 1 страница с меньшим кол-вом, иначе 2 по 50
-                api_limit = min(result_limit or 50, 50)
-                max_pages = 1 if result_limit else 2
-                for page in range(max_pages):
-                    url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
-                    params = {
-                        'relatedAddress': wallet.address,
-                        'contract_address': usdt_contract,
-                        'limit': api_limit,
-                        'start': page * api_limit,
-                        't': int(time.time())
-                    }
-
-                    # Retry при 429 (rate limit)
-                    for attempt in range(3):
-                        response = requests.get(url, params=params, headers=headers, timeout=10)
-                        if response.status_code == 429:
-                            wait_time = 2 * (attempt + 1)
-                            print(f"[DEBUG] TronScan outgoing 429 for {wallet.address[:10]}..., waiting {wait_time}s")
-                            time.sleep(wait_time)
-                            continue
-                        break
-
-                    if response.status_code == 200:
-                        data = response.json()
-                        transfers = data.get('token_transfers', [])
-                        if not transfers:
-                            break
-
-                        reached_start_ts = False
-                        for tx in transfers:
-                            tx_ts = tx.get('block_ts', 0)
-
-                            if start_ts and tx_ts < start_ts:
-                                reached_start_ts = True
-                                continue
-                            if end_ts and tx_ts > end_ts:
-                                continue
-
-                            # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы между monitored-кошельками
-                            if tx.get('from_address') == wallet.address and tx.get('to_address') not in internal_wallet_addresses:
-                                amount = float(tx.get('quant', 0)) / 1_000_000
-                                all_outgoing.append({
-                                    'tx_hash': tx.get('transaction_id'),
-                                    'from_address': tx.get('from_address'),
-                                    'to_address': tx.get('to_address'),
-                                    'amount_usdt': amount,
-                                    'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
-                                    'confirmed': tx.get('confirmed', False)
-                                })
-
-                        if reached_start_ts:
-                            break
-                        time.sleep(1)
-                    else:
-                        print(f"[DEBUG] TronScan outgoing HTTP {response.status_code} for {wallet.address[:10]}...")
-                        break
-            except Exception as e:
-                print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
-        
-        all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-
-        # Дедупликация цепочек переводов: кошелёк → посредник → конечный
-        # TronScan relatedAddress показывает обе ноги. Оставляем одну по amount+время (±15мин)
-        deduped = []
-        seen = set()
-        for tx in all_outgoing:
-            # Округляем время до 15 минут для группировки
-            from datetime import datetime as dt
-            ts = dt.fromisoformat(tx['timestamp'])
-            bucket = (round(tx['amount_usdt'], 2), ts.strftime('%Y-%m-%d'), ts.hour, ts.minute // 15)
-            if bucket in seen:
-                continue
-            seen.add(bucket)
-            deduped.append(tx)
-        all_outgoing = deduped
+        all_outgoing = _tronscan_fetch_outgoing(
+            wallets, internal_wallet_addresses,
+            start_ts=start_ts, end_ts=end_ts, result_limit=result_limit)
 
         # Обновляем кэш (полный набор, без limit-фильтра). Атомарно — см. incoming.
         if not wallet_filter and not result_limit:
@@ -4330,6 +4352,39 @@ def get_outgoing_transactions():
         return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
+
+TRONSCAN_WARM_INTERVAL = 240  # сек — меньше CACHE_TTL (300), чтобы кэш не протухал между проходами
+TRONSCAN_WARM_START_DATE = '2025-12-01'  # синхронно с дефолтным фильтром дат на фронте CRM
+
+
+def _tronscan_warm_loop():
+    """Фоновый прогрев TRONSCAN_CACHE: медленный обход TronScan (~20 сек с анти-429
+    паузами) больше не случается внутри HTTP-запроса — эндпоинты transactions/*
+    практически всегда отвечают из кэша. Ошибки глушим: старый кэш остаётся,
+    следующий проход попробует снова."""
+    time.sleep(10)  # даём приложению подняться
+    while True:
+        try:
+            start_ts = int(datetime.strptime(TRONSCAN_WARM_START_DATE, '%Y-%m-%d').timestamp() * 1000)
+            session = get_session()
+            try:
+                wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all()
+            finally:
+                session.close()
+            if wallets:
+                incoming, _, _ = _tronscan_fetch_incoming(wallets, start_ts=start_ts)
+                TRONSCAN_CACHE['incoming'] = {'data': incoming, 'timestamp': time.time()}
+                internal = set(w.address for w in wallets)
+                outgoing = _tronscan_fetch_outgoing(wallets, internal, start_ts=start_ts)
+                TRONSCAN_CACHE['outgoing'] = {'data': outgoing, 'timestamp': time.time()}
+        except Exception as e:
+            print(f"ℹ️ tronscan warm loop: {e}", flush=True)
+        time.sleep(TRONSCAN_WARM_INTERVAL)
+
+
+if os.environ.get('TRONSCAN_WARM_ENABLED', '1') == '1' and 'pytest' not in sys.modules:
+    threading.Thread(target=_tronscan_warm_loop, daemon=True, name='tronscan-warm').start()
+
 
 @app.route('/api/transactions/verify', methods=['POST'])
 def verify_transaction_post():
@@ -4946,11 +5001,11 @@ def get_dashboard():
 @app.route('/api/reimbursements/pending', methods=['GET'])
 def get_pending_reimbursements():
     """Get deals awaiting reimbursement, grouped by founder"""
-    from sqlalchemy.orm import joinedload
+    from sqlalchemy.orm import joinedload, selectinload
     session = get_session()
     try:
         # Find deals with founder_personal source that haven't been reimbursed
-        deals = session.query(Deal).options(joinedload(Deal.client)).filter(
+        deals = session.query(Deal).options(joinedload(Deal.client), selectinload(Deal.agents)).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None,
             Deal.payout_founder_name != None,

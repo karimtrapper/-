@@ -3887,21 +3887,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function openDealEditor(dealId) {
             try {
-                const response = await fetch(`${API_URL}/api/deals/${dealId}`);
-                const data = await response.json();
+                // editingDealId ставим ДО loadCreateForm — форма не должна сбросить режим редактирования
+                editingDealId = dealId;
+
+                // Сразу переключаемся на форму (мгновенный отклик),
+                // сделка и справочники формы грузятся параллельно
+                closeModal();
+                showSection('create');
+
+                const [data] = await Promise.all([
+                    fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
+                    loadCreateForm()
+                ]);
 
                 if (data.success) {
                     const deal = data.deal;
-                    editingDealId = dealId;
-
-                    // Закрываем модальное окно
-                    closeModal();
-
-                    // Переключаемся на вкладку создания
-                    showSection('create');
-
-                    // Загружаем данные формы (менеджеры, клиенты и т.д.)
-                    await loadCreateForm();
 
                     // Обновляем заголовок
                     document.querySelector('#create .card-title').innerHTML =
@@ -4016,9 +4016,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         customSubmitBtn.textContent = 'Сохранить изменения';
                         customSubmitBtn.onclick = () => updateCustomDeal(dealId);
                     }
+                } else {
+                    // Сделка не загрузилась — выходим из режима редактирования
+                    showToast('Не удалось загрузить сделку #' + dealId, 'error');
+                    cancelEditMode();
                 }
             } catch (error) {
                 console.error('Error opening deal editor:', error);
+                showToast('Ошибка загрузки сделки #' + dealId, 'error');
+                cancelEditMode();
             }
         }
 
@@ -4253,12 +4259,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        async function loadCreateForm() {
-            // Сбрасываем режим редактирования если пользователь пришёл через навигацию (не через openDealEditor)
-            // НЕ сбрасываем если editingDealId уже установлен - значит пришли из редактора
-            // Это будет сброшено в cancelEditMode() при необходимости
-
-            // Load managers
+        async function loadManagersForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/managers`);
                 const data = await response.json();
@@ -4272,8 +4273,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error loading managers:', error);
             }
+        }
 
-            // Load clients
+        async function loadClientsForSelect() {
             try {
                 const response = await fetch(`${API_URL}/api/clients`);
                 const data = await response.json();
@@ -4286,24 +4288,40 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error loading clients:', error);
             }
+        }
 
-            // Load incoming transactions for crypto
-            await loadIncomingTxForSelect();
+        let _createFormLoading = null;
+        async function loadCreateForm() {
+            // Сбрасываем режим редактирования если пользователь пришёл через навигацию (не через openDealEditor)
+            // НЕ сбрасываем если editingDealId уже установлен - значит пришли из редактора
+            // Это будет сброшено в cancelEditMode() при необходимости
 
-            // Load cash batches and bank cards
-            await Promise.all([
-                loadCashBatchesForSelect(),
-                loadBankCardsForSelect()
-            ]);
+            // Дедупликация: showSection('create') и openDealEditor вызывают загрузку
+            // одновременно — вторая переиспользует первую (было 12 запросов вместо 6)
+            if (_createFormLoading) return _createFormLoading;
+            _createFormLoading = (async () => {
+                try {
+                    // Все справочники независимы — грузим параллельно
+                    // (раньше 6 запросов шли по очереди, форма открывалась ~3 сек)
+                    await Promise.all([
+                        loadManagersForSelect(),
+                        loadClientsForSelect(),
+                        loadIncomingTxForSelect(),
+                        loadCashBatchesForSelect(),
+                        loadBankCardsForSelect(),
+                        loadReferrerDropdowns()
+                    ]);
 
-            // Загружаем рефереров в оба дропдауна
-            await loadReferrerDropdowns();
+                    // Trigger payin method change to show correct fields
+                    document.getElementById('payinMethod').dispatchEvent(new Event('change'));
 
-            // Trigger payin method change to show correct fields
-            document.getElementById('payinMethod').dispatchEvent(new Event('change'));
-
-            // Апгрейд нативных select → кастомные dropdown
-            setTimeout(upgradeAllSelects, 50);
+                    // Апгрейд нативных select → кастомные dropdown
+                    setTimeout(upgradeAllSelects, 50);
+                } finally {
+                    _createFormLoading = null;
+                }
+            })();
+            return _createFormLoading;
         }
 
         // Загрузка рефереров в дропдауны формы сделки.
