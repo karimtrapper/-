@@ -4988,9 +4988,11 @@ def get_dashboard():
                     'referrer_payout_usdt': period_referrer_payout,
                 },
                 'unit_economics': {
-                    # UA = уникальные клиенты с эпизодами WON+LOSE за период
-                    # (LOSE из DealCloser с 2026-07-20), C1 = B/UA, ARPU = ARPC×C1.
-                    # None — когда LOSE в периоде нет или включён фильтр по рефереру.
+                    # ТЕРМИНОЛОГИЯ: ключи легаси. 'ua' = ЛИДЫ (обращения WON+LOSE
+                    # из DealCloser с 2026-07-20), 'c1' = CR лид→покупка (НЕ C1
+                    # Красинского — трафика/привлечённых в CRM нет), 'arpu' =
+                    # маржа на лида. None — когда LOSE в периоде нет или фильтр
+                    # по рефереру. UI подписывает честно: Leads / CR / ARPL.
                     'ua': unit_ua,
                     'c1': unit_c1,
                     'buyers': buyers_total,
