@@ -260,6 +260,38 @@
         .modal-success h3 { font-size: 18px; color: var(--navy-900); margin-bottom: 8px; }
         .modal-success p { font-size: 14px; color: var(--navy-500); line-height: 1.5; margin-bottom: 20px; }
 
+        /* Выбор способа вывода + батовая ветка */
+        .pm-option {
+            display: flex; align-items: center; gap: 12px; width: 100%; padding: 16px 14px;
+            border: 1.5px solid #E2E8F0; border-radius: 14px; background: var(--navy-50);
+            cursor: pointer; font-family: inherit; text-align: left; margin-bottom: 10px;
+            transition: border-color .15s, background .15s, transform .05s;
+        }
+        .pm-option:hover { border-color: var(--coral); background: #fff; }
+        .pm-option:active { transform: scale(0.99); }
+        .pm-option .pm-ico { width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+        .pm-option .pm-ico.usdt { background: #DCFCE7; }
+        .pm-option .pm-ico.thb { background: #FFF7ED; }
+        .pm-option .pm-t { flex: 1; min-width: 0; }
+        .pm-option .pm-t b { display: block; font-size: 14px; color: var(--navy-900); }
+        .pm-option .pm-t span { font-size: 12px; color: var(--navy-500); }
+        .pm-option .pm-amt { font-size: 16px; font-weight: 800; color: var(--navy-900); white-space: nowrap; }
+        .pm-option .pm-amt.muted { font-size: 12px; font-weight: 600; color: var(--navy-400); }
+        .pm-back {
+            display: inline-flex; align-items: center; gap: 4px; margin-bottom: 14px;
+            background: none; border: none; padding: 0; font-family: inherit;
+            font-size: 13px; color: var(--navy-500); cursor: pointer;
+        }
+        .pm-back:hover { color: var(--coral); }
+        .thb-rate-box {
+            background: linear-gradient(135deg, var(--coral), #EA580C); color: #fff;
+            border-radius: 16px; padding: 16px 18px; margin-bottom: 18px;
+        }
+        .thb-rate-box .thb-big { font-size: 26px; font-weight: 800; line-height: 1.1; }
+        .thb-rate-box .thb-rate { font-size: 13px; font-weight: 600; margin-top: 4px; opacity: .95; }
+        .thb-rate-box .thb-note { font-size: 11.5px; margin-top: 8px; opacity: .85; }
+        .thb-rate-box.loading { background: var(--navy-100); color: var(--navy-500); }
+
         /* Баннеры */
         .banner {
             display: flex; gap: 12px; align-items: flex-start;
@@ -799,15 +831,21 @@
         const STATUS_RU = { new: 'На рассмотрении', in_progress: 'В работе', paid: 'Выплачено', cancelled: 'Отменено' };
         const start = (page - 1) * PAGE_SIZE;
         const items = all.slice(start, start + PAGE_SIZE);
+        const fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
         list.innerHTML = items.map(r => {
             const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+            const isThb = r.payout_method === 'thb';
+            const amountLabel = isThb
+                ? `${fmtThb(r.thb_amount || 0)} ฿`
+                : `$${(r.amount_usdt || 0).toFixed(2)}`;
+            const sub = isThb ? 'Баты на банк' : 'USDT · TRC-20';
             return `
                 <div class="payout-card">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-                        <div style="font-size:13px;font-weight:600;color:var(--navy-900);">$${(r.amount_usdt||0).toFixed(2)}</div>
+                        <div style="font-size:13px;font-weight:600;color:var(--navy-900);">${amountLabel}</div>
                         <span class="payout-status ${r.status}">${STATUS_RU[r.status] || r.status}</span>
                     </div>
-                    <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${maskId(r.id)} · ${date}</div>
+                    <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${maskId(r.id)} · ${date} · ${sub}</div>
                     ${r.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(r.tx_hash)}" target="_blank">TX: ${esc(r.tx_hash)}</a>` : ''}
                 </div>
             `;
@@ -835,17 +873,40 @@
     }
 
     // ============== Модалка заявки на выплату ==============
+    let _thbQuote = null;            // снапшот котировки батов (индикативный, для UI)
+    const _fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
+
+    function _showPayoutStage(id) {
+        ['payoutMethodBox', 'payoutFormBox', 'payoutThbBox', 'payoutSuccessBox']
+            .forEach(s => { document.getElementById(s).style.display = s === id ? 'block' : 'none'; });
+    }
+
     function openPayoutModal() {
         if (!statsData || (statsData.pending_usdt || 0) < 20) return;
         const tg = statsData.telegram || '';
+        const pending = statsData.pending_usdt || 0;
         document.getElementById('payoutModal').classList.add('show');
-        document.getElementById('payoutAmount').textContent = '$' + (statsData.pending_usdt || 0).toFixed(2);
-        document.getElementById('payoutCurrency').textContent = (statsData.payout_currency || 'USDT') + ' (TRC-20)';
+
+        // Стадия выбора: суммы
+        document.getElementById('payoutAmount').textContent = '$' + pending.toFixed(2);
+        document.getElementById('pmUsdtAmt').textContent = '$' + pending.toFixed(2);
+
+        // USDT-форма
+        document.getElementById('payoutAmountUsdt').textContent = '$' + pending.toFixed(2);
         document.getElementById('pmWallet').value = '';
         document.getElementById('pmContactValue').value = tg;
         document.getElementById('pmNotes').value = '';
-        setContactMethod(tg ? 'telegram' : 'telegram');
+        setContactMethod('telegram');
         hidePayoutError();
+
+        // Батовая форма
+        document.getElementById('payoutAmountThb').textContent = '$' + pending.toFixed(2);
+        document.getElementById('pmThbBank').value = '';
+        document.getElementById('pmThbAccName').value = '';
+        document.getElementById('pmThbAccNum').value = '';
+        document.getElementById('pmThbContact').value = tg;
+        setThbContactMethod('telegram');
+        hidePayoutErrorThb();
 
         // Подсказки предыдущих кошельков
         const wallets = statsData.previous_wallets || [];
@@ -859,65 +920,141 @@
             chips.innerHTML = '';
         }
 
-        document.getElementById('payoutFormBox').style.display = 'block';
-        document.getElementById('payoutSuccessBox').style.display = 'none';
+        _showPayoutStage('payoutMethodBox');
         document.body.style.overflow = 'hidden';
+        loadThbQuote();
     }
+
+    // Котировка батов: индикативная сумма для карточки выбора + плашки формы
+    async function loadThbQuote() {
+        _thbQuote = null;
+        const hint = document.getElementById('pmThbHint');
+        const amt = document.getElementById('pmThbAmt');
+        const thbOpt = amt.closest('.pm-option');
+        hint.textContent = 'курс загружается…';
+        amt.textContent = '…';
+        thbOpt.style.opacity = '';
+        thbOpt.onclick = () => pickPayoutMethod('thb');
+        try {
+            const resp = await fetch(`/api/ref/${token}/payout-quote`);
+            const data = await resp.json();
+            const q = data.success ? data.quote : null;
+            if (q) {
+                _thbQuote = q;
+                hint.textContent = 'курс ' + q.client_rate.toFixed(2) + ' ฿/$';
+                amt.textContent = _fmtThb(q.thb_amount) + ' ฿';
+                amt.classList.remove('muted');
+            } else {
+                hint.textContent = 'временно недоступно';
+                amt.textContent = '—';
+                thbOpt.style.opacity = '.55';
+                thbOpt.onclick = () => {};
+            }
+        } catch (err) {
+            hint.textContent = 'временно недоступно';
+            amt.textContent = '—';
+            thbOpt.style.opacity = '.55';
+            thbOpt.onclick = () => {};
+        }
+    }
+
+    function pickPayoutMethod(m) {
+        if (m === 'thb') {
+            if (!_thbQuote) return;
+            const box = document.getElementById('thbRateBox');
+            box.classList.remove('loading');
+            document.getElementById('thbBigAmount').textContent = _fmtThb(_thbQuote.thb_amount) + ' ฿';
+            document.getElementById('thbRateLine').textContent = 'Курс ' + _thbQuote.client_rate.toFixed(2) + ' ฿/$';
+            _showPayoutStage('payoutThbBox');
+        } else {
+            _showPayoutStage('payoutFormBox');
+        }
+    }
+    function backToPayoutMethod() { _showPayoutStage('payoutMethodBox'); }
+
     function closePayoutModal() {
         document.getElementById('payoutModal').classList.remove('show');
         document.body.style.overflow = '';
     }
     function setContactMethod(method) {
-        document.querySelectorAll('.modal-radio').forEach(el => {
+        document.querySelectorAll('#payoutFormBox .modal-radio').forEach(el => {
             el.classList.toggle('active', el.dataset.method === method);
         });
         const inp = document.getElementById('pmContactValue');
         inp.placeholder = method === 'telegram' ? '@username или +66...' : '+66 81 234 56 78';
         inp.dataset.method = method;
     }
+    function setThbContactMethod(method) {
+        document.querySelectorAll('#payoutThbBox .modal-radio').forEach(el => {
+            el.classList.toggle('active', el.dataset.method === method);
+        });
+        const inp = document.getElementById('pmThbContact');
+        inp.placeholder = method === 'telegram' ? '@username или +66...' : '+66 81 234 56 78';
+        inp.dataset.method = method;
+    }
     function showPayoutError(msg) {
         const el = document.getElementById('payoutError');
-        el.textContent = msg;
-        el.classList.add('show');
+        el.textContent = msg; el.classList.add('show');
     }
-    function hidePayoutError() {
-        document.getElementById('payoutError').classList.remove('show');
+    function hidePayoutError() { document.getElementById('payoutError').classList.remove('show'); }
+    function showPayoutErrorThb(msg) {
+        const el = document.getElementById('payoutErrorThb');
+        el.textContent = msg; el.classList.add('show');
     }
+    function hidePayoutErrorThb() { document.getElementById('payoutErrorThb').classList.remove('show'); }
+
     async function submitPayoutRequest(e) {
         e.preventDefault();
-        hidePayoutError();
-        const wallet = document.getElementById('pmWallet').value.trim();
-        const method = document.getElementById('pmContactValue').dataset.method || 'telegram';
-        const contact = document.getElementById('pmContactValue').value.trim();
-        const notes = document.getElementById('pmNotes').value.trim();
+        const isThb = document.getElementById('payoutThbBox').style.display === 'block';
+        let body, btn, errFn;
 
-        if (!wallet) { showPayoutError('Укажите кошелёк для выплаты'); return; }
-        if (!contact) { showPayoutError('Укажите контакт для связи'); return; }
+        if (isThb) {
+            hidePayoutErrorThb(); errFn = showPayoutErrorThb;
+            btn = document.getElementById('pmSubmitThb');
+            const bank = document.getElementById('pmThbBank').value.trim();
+            const accName = document.getElementById('pmThbAccName').value.trim();
+            const accNum = document.getElementById('pmThbAccNum').value.trim();
+            const method = document.getElementById('pmThbContact').dataset.method || 'telegram';
+            const contact = document.getElementById('pmThbContact').value.trim();
+            if (!bank) { errFn('Укажите банк'); return; }
+            if (!accName) { errFn('Укажите имя получателя'); return; }
+            if (!accNum) { errFn('Укажите номер счёта'); return; }
+            if (!contact) { errFn('Укажите контакт для связи'); return; }
+            body = { payout_method: 'thb', bank_name: bank, account_name: accName,
+                     account_number: accNum, contact_method: method, contact_value: contact };
+        } else {
+            hidePayoutError(); errFn = showPayoutError;
+            btn = document.getElementById('pmSubmit');
+            const wallet = document.getElementById('pmWallet').value.trim();
+            const method = document.getElementById('pmContactValue').dataset.method || 'telegram';
+            const contact = document.getElementById('pmContactValue').value.trim();
+            const notes = document.getElementById('pmNotes').value.trim();
+            if (!wallet) { errFn('Укажите кошелёк для выплаты'); return; }
+            if (!contact) { errFn('Укажите контакт для связи'); return; }
+            body = { payout_method: 'usdt', wallet, contact_method: method, contact_value: contact, notes };
+        }
 
-        const btn = document.getElementById('pmSubmit');
-        btn.disabled = true;
-        btn.textContent = 'Отправляем...';
+        btn.disabled = true; btn.textContent = 'Отправляем...';
         try {
             const resp = await fetch(`/api/ref/${token}/payout-request`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    wallet, contact_method: method, contact_value: contact, notes
-                })
+                body: JSON.stringify(body)
             });
             const data = await resp.json();
             if (!data.success) {
-                showPayoutError(data.error || 'Ошибка отправки');
-                btn.disabled = false;
-                btn.textContent = 'Отправить заявку';
+                errFn(data.error || 'Ошибка отправки');
+                btn.disabled = false; btn.textContent = 'Отправить заявку';
                 return;
             }
-            document.getElementById('payoutFormBox').style.display = 'none';
-            document.getElementById('payoutSuccessBox').style.display = 'block';
+            const r = data.request || {};
+            document.getElementById('payoutSuccessText').textContent = (r.payout_method === 'thb')
+                ? `Выплата ${_fmtThb(r.thb_amount || 0)} ฿ на ${r.bank_name || 'банк'}. Менеджер свяжется с вами в ближайшее время.`
+                : 'Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.';
+            _showPayoutStage('payoutSuccessBox');
         } catch (err) {
-            showPayoutError('Сетевая ошибка. Попробуйте ещё раз.');
-            btn.disabled = false;
-            btn.textContent = 'Отправить заявку';
+            errFn('Сетевая ошибка. Попробуйте ещё раз.');
+            btn.disabled = false; btn.textContent = 'Отправить заявку';
         }
     }
     </script>
@@ -927,9 +1064,30 @@
         <div class="modal-box">
             <div class="modal-handle"></div>
 
-            <div id="payoutFormBox">
-                <div class="modal-title">Заявка на выплату</div>
-                <div class="modal-sub">Доступно: <b id="payoutAmount">$0.00</b> · <span id="payoutCurrency">USDT (TRC-20)</span></div>
+            <!-- Стадия 1: выбор способа вывода -->
+            <div id="payoutMethodBox">
+                <div class="modal-title">Вывод средств</div>
+                <div class="modal-sub">Доступно: <b id="payoutAmount">$0.00</b> · выберите способ</div>
+                <button type="button" class="pm-option" onclick="pickPayoutMethod('usdt')">
+                    <div class="pm-ico usdt">🪙</div>
+                    <div class="pm-t"><b>Криптовалютой</b><span>USDT · сеть TRC-20</span></div>
+                    <div class="pm-amt" id="pmUsdtAmt">$0.00</div>
+                </button>
+                <button type="button" class="pm-option" onclick="pickPayoutMethod('thb')">
+                    <div class="pm-ico thb">🏦</div>
+                    <div class="pm-t"><b>Батами на банк</b><span id="pmThbHint">курс загружается…</span></div>
+                    <div class="pm-amt muted" id="pmThbAmt">…</div>
+                </button>
+                <div class="modal-actions">
+                    <button type="button" class="modal-btn modal-btn-cancel" style="width:100%;" onclick="closePayoutModal()">Отмена</button>
+                </div>
+            </div>
+
+            <!-- Стадия 2а: USDT -->
+            <div id="payoutFormBox" style="display:none;">
+                <button type="button" class="pm-back" onclick="backToPayoutMethod()">‹ Способ вывода</button>
+                <div class="modal-title">Вывод в USDT</div>
+                <div class="modal-sub">Сумма: <b id="payoutAmountUsdt">$0.00</b> · TRC-20</div>
 
                 <div class="modal-error" id="payoutError"></div>
 
@@ -976,13 +1134,84 @@
                 </form>
             </div>
 
+            <!-- Стадия 2б: баты на тайский банк -->
+            <div id="payoutThbBox" style="display:none;">
+                <button type="button" class="pm-back" onclick="backToPayoutMethod()">‹ Способ вывода</button>
+                <div class="modal-title">Вывод в батах</div>
+                <div class="modal-sub">Баланс: <b id="payoutAmountThb">$0.00</b></div>
+
+                <div class="thb-rate-box" id="thbRateBox">
+                    <div class="thb-big" id="thbBigAmount">…</div>
+                    <div class="thb-rate" id="thbRateLine">курс загружается…</div>
+                    <div class="thb-note">Курс фиксируется в момент отправки заявки</div>
+                </div>
+
+                <div class="modal-error" id="payoutErrorThb"></div>
+
+                <form onsubmit="submitPayoutRequest(event)">
+                    <div class="modal-field">
+                        <label class="modal-label">Банк</label>
+                        <input type="text" class="modal-input" id="pmThbBank" placeholder="Выберите или впишите свой банк" autocomplete="off" list="pmThbBankList" required>
+                        <datalist id="pmThbBankList">
+                            <option value="Kasikorn (KBank)"></option>
+                            <option value="SCB (Siam Commercial)"></option>
+                            <option value="Bangkok Bank"></option>
+                            <option value="Krungsri (BAY)"></option>
+                            <option value="Krungthai (KTB)"></option>
+                            <option value="TTB (TMBThanachart)"></option>
+                            <option value="GSB (Government Savings)"></option>
+                            <option value="UOB Thailand"></option>
+                            <option value="CIMB Thai"></option>
+                        </datalist>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Имя получателя (как в банке)</label>
+                        <input type="text" class="modal-input" id="pmThbAccName" placeholder="LIDIA IVANOVA" autocomplete="off" required>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Номер счёта</label>
+                        <input type="text" class="modal-input" id="pmThbAccNum" placeholder="123-4-56789-0" autocomplete="off" inputmode="numeric" required>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Способ связи</label>
+                        <div class="modal-radio-group">
+                            <label class="modal-radio active" data-method="telegram" onclick="setThbContactMethod('telegram')">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87z"/></svg>
+                                Telegram
+                            </label>
+                            <label class="modal-radio" data-method="whatsapp" onclick="setThbContactMethod('whatsapp')">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347M12.05 21.785h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884"/></svg>
+                                WhatsApp
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="modal-field">
+                        <label class="modal-label">Контакт</label>
+                        <input type="text" class="modal-input" id="pmThbContact" placeholder="@username или +66..." autocomplete="off" required>
+                    </div>
+
+                    <div class="modal-disclaimer">
+                        Перевод на тайский банковский счёт. Свяжемся с вами, если возникнут вопросы по оплате.
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()">Отмена</button>
+                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmitThb">Отправить заявку</button>
+                    </div>
+                </form>
+            </div>
+
             <div id="payoutSuccessBox" style="display:none;">
                 <div class="modal-success">
                     <div class="icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </div>
                     <h3>Заявка отправлена</h3>
-                    <p>Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.</p>
+                    <p id="payoutSuccessText">Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.</p>
                     <button type="button" class="modal-btn modal-btn-submit" onclick="closePayoutModal()" style="width:100%;">Готово</button>
                 </div>
             </div>

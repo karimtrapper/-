@@ -383,6 +383,17 @@ class PayoutRequest(Base):
     # При статусе paid помечаются оплаченными ТОЛЬКО эти сделки — сделки,
     # закрытые после создания заявки, остаются к выводу (не сгорают).
     deal_ids = Column(Text)
+    # ── Выплата в батах ──
+    # 'usdt' | 'thb'. Курсы — снапшот на момент заявки (фиксируем при запросе:
+    # наша задача успеть откупить, клиенту платим по зафиксированному).
+    payout_method = Column(String(10), default='usdt')
+    bitazza_rate = Column(Float)      # VWAP Bitazza на объём — по нему откупаем
+    client_rate = Column(Float)       # курс клиенту = VWAP × (1 − 0.25%)
+    thb_amount = Column(Float)        # сумма к выплате, ฿ (уже с −20฿)
+    bank_name = Column(String(100))
+    account_name = Column(String(150))
+    account_number = Column(String(60))
+    receipt_tg_file_id = Column(String(200))  # чек выплаты (file_id в Telegram)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
@@ -400,6 +411,14 @@ class PayoutRequest(Base):
             'notes': self.notes,
             'status': self.status,
             'tx_hash': self.tx_hash,
+            'payout_method': self.payout_method or 'usdt',
+            'bitazza_rate': self.bitazza_rate,
+            'client_rate': self.client_rate,
+            'thb_amount': self.thb_amount,
+            'bank_name': self.bank_name,
+            'account_name': self.account_name,
+            'account_number': self.account_number,
+            'has_receipt': bool(self.receipt_tg_file_id),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'processed_at': self.processed_at.isoformat() if self.processed_at else None,
@@ -1071,6 +1090,26 @@ try:
         else:
             try: conn.execute(text("ALTER TABLE payout_requests ADD COLUMN tx_hash VARCHAR(120)"))
             except: pass
+        # payout_requests: выплата в батах (метод, снапшот курсов, реквизиты банка, чек)
+        _thb_cols = [
+            ("payout_method", "VARCHAR(10) DEFAULT 'usdt'"),
+            ("bitazza_rate", "FLOAT"),
+            ("client_rate", "FLOAT"),
+            ("thb_amount", "FLOAT"),
+            ("bank_name", "VARCHAR(100)"),
+            ("account_name", "VARCHAR(150)"),
+            ("account_number", "VARCHAR(60)"),
+            ("receipt_tg_file_id", "VARCHAR(200)"),
+        ]
+        for _col, _type in _thb_cols:
+            if 'postgresql' in DATABASE_URL:
+                try:
+                    conn.execute(text(f"ALTER TABLE payout_requests ADD COLUMN IF NOT EXISTS {_col} {_type}"))
+                except Exception as e:
+                    print(f"ℹ️ payout_requests.{_col}: {e}")
+            else:
+                try: conn.execute(text(f"ALTER TABLE payout_requests ADD COLUMN {_col} {_type}"))
+                except: pass
         # CR-05: partial UNIQUE на wallet_operations(deal_id, type) для защиты от дублей
         # при гонках. Пред-проверка дублей: если есть — лог и пропуск, иначе создание.
         dup_count = conn.execute(text(
@@ -5578,6 +5617,63 @@ def _referrer_balance(db, referrer):
     return round(earned - paid, 2), round(paid, 2)
 
 
+# ── Выплата рефереру в батах: курс со стакана Bitazza ──────────────────────
+# Публичный HTTPS-мост AlphaPoint APEX (авторизация не нужна).
+# Уровень стакана: idx 6 = Price, 8 = Quantity (USDT), 9 = Side (0=bid, 1=ask).
+BITAZZA_L2_URL = 'https://apexapi.bitazza.com/AP/GetL2Snapshot'
+BITAZZA_INST_USDT_THB = 5      # InstrumentId пары USDT/THB (OMSId=1)
+THB_PAYOUT_MARGIN = 0.0025     # −0.25% от VWAP — курс клиенту
+THB_PAYOUT_FEE = 20            # фикс за банковский перевод, ฿ (клиенту не показываем)
+_BITAZZA_CACHE = {'bids': None, 'ts': 0.0}
+_BITAZZA_TTL = 30              # сек; VWAP на сумму считаем локально из кэша
+
+
+def _bitazza_bids():
+    """Bids стакана USDT/THB [(price, qty), …] по цене ↓. Кэш 30 сек, при ошибке сети — последний удачный."""
+    now = time.time()
+    if _BITAZZA_CACHE['bids'] and now - _BITAZZA_CACHE['ts'] < _BITAZZA_TTL:
+        return _BITAZZA_CACHE['bids']
+    try:
+        r = requests.get(BITAZZA_L2_URL, timeout=6, params={
+            'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
+        bids = sorted(((float(l[6]), float(l[8])) for l in r.json()
+                       if l[9] == 0 and float(l[8]) > 0), reverse=True)
+        if bids:
+            _BITAZZA_CACHE.update(bids=bids, ts=now)
+    except Exception as e:
+        print(f'[Bitazza] book error: {e}')
+    return _BITAZZA_CACHE['bids']
+
+
+def thb_payout_quote(amount_usdt, bids=None):
+    """Котировка выплаты в батах: VWAP по стакану на объём → −0.25% → −20฿.
+
+    None — если стакана нет / объём не покрыт / сумма после вычетов ≤ 0.
+    Курс фиксируется в момент заявки — задача команды успеть откупить.
+    """
+    if bids is None:
+        bids = _bitazza_bids()
+    if not bids or not amount_usdt or amount_usdt <= 0:
+        return None
+    remaining, thb = amount_usdt, 0.0
+    for price, qty in bids:
+        take = min(remaining, qty)
+        thb += take * price
+        remaining -= take
+        if remaining <= 0:
+            break
+    if remaining > 0:  # стакан не покрыл объём — не считаем по неполному
+        return None
+    vwap = thb / amount_usdt
+    client_rate = vwap * (1 - THB_PAYOUT_MARGIN)
+    thb_amount = int(amount_usdt * client_rate - THB_PAYOUT_FEE)  # округление вниз до бата
+    if thb_amount <= 0:
+        return None
+    return {'bitazza_rate': round(vwap, 4),
+            'client_rate': round(client_rate, 4),
+            'thb_amount': thb_amount}
+
+
 def _cancel_button(req_id):
     """Inline-клавиатура с кнопкой отмены заявки."""
     return [[{'text': '❌ Отменить заявку', 'callback_data': f'cancel:{req_id}'}]]
@@ -5599,6 +5695,27 @@ def send_referrer_dm(referrer, text, buttons=None):
     except Exception as e:
         print(f'[ReferrerDM] error: {e}')
         return False
+
+
+def _tg_send_document(token, chat_id, blob, filename, caption, thread_id=None):
+    """sendDocument ботом (чек выплаты). Возвращает file_id или None.
+
+    Файл на диске не храним (Railway ephemeral FS) — он живёт в Telegram.
+    """
+    if not token or not chat_id:
+        return None
+    try:
+        data = {'chat_id': chat_id, 'caption': caption, 'parse_mode': 'HTML'}
+        if thread_id:
+            data['message_thread_id'] = int(thread_id)
+        r = requests.post(f"https://api.telegram.org/bot{token}/sendDocument",
+                          data=data, files={'document': (filename, blob)}, timeout=20)
+        if r.status_code == 200:
+            return ((r.json().get('result') or {}).get('document') or {}).get('file_id')
+        print(f'[TG sendDocument] {r.status_code}: {r.text[:200]}')
+    except Exception as e:
+        print(f'[TG sendDocument] error: {e}')
+    return None
 
 
 def _cancel_payout(db, req):
@@ -6702,17 +6819,52 @@ def referrer_stats(token):
         db.close()
 
 
+@app.route('/api/ref/<token>/payout-quote', methods=['GET'])
+def ref_payout_quote(token):
+    """Котировка вывода в батах на текущий баланс реферера (индикативная).
+
+    Показывается в модалке выбора способа. Финальный курс фиксируется
+    сервером в момент создания заявки, не этим ответом.
+    """
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+        if not referrer:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        if not ref_session_authorized(referrer, token):
+            return jsonify({'success': False, 'auth_required': True,
+                            'error': 'Требуется вход через Telegram'}), 401
+        pending, _ = _referrer_balance(db, referrer)
+        quote = thb_payout_quote(pending) if pending >= 20 else None
+        return jsonify({'success': True, 'usdt': pending, 'quote': quote})
+    finally:
+        db.close()
+
+
 @app.route('/api/ref/<token>/payout-request', methods=['POST'])
 def create_payout_request(token):
     """Реферер создаёт заявку на выплату. Публичный эндпоинт по токену."""
     data = request.get_json(silent=True) or {}
+    payout_method = (data.get('payout_method') or 'usdt').strip().lower()
     wallet = (data.get('wallet') or '').strip()
+    bank_name = (data.get('bank_name') or '').strip()
+    account_name = (data.get('account_name') or '').strip()
+    account_number = (data.get('account_number') or '').strip()
     contact_method = (data.get('contact_method') or '').strip().lower()
     contact_value = (data.get('contact_value') or '').strip()
     notes = (data.get('notes') or '').strip() or None
 
-    if not wallet:
-        return jsonify({'success': False, 'error': 'Укажите кошелёк для выплаты'}), 400
+    if payout_method not in ('usdt', 'thb'):
+        return jsonify({'success': False, 'error': 'Неизвестный способ вывода'}), 400
+    if payout_method == 'usdt':
+        if not wallet:
+            return jsonify({'success': False, 'error': 'Укажите кошелёк для выплаты'}), 400
+    else:
+        if not bank_name or not account_name or not account_number:
+            return jsonify({'success': False, 'error': 'Укажите банк, имя получателя и номер счёта'}), 400
+        if len(bank_name) > 100 or len(account_name) > 150 or len(account_number) > 60:
+            return jsonify({'success': False, 'error': 'Слишком длинные реквизиты'}), 400
+        wallet = ''  # для батовой заявки кошелёк не используется
     if contact_method not in ('telegram', 'whatsapp'):
         return jsonify({'success': False, 'error': 'Выберите Telegram или WhatsApp'}), 400
     if not contact_value:
@@ -6770,6 +6922,17 @@ def create_payout_request(token):
         # сделки, закрытые после создания заявки, не сгорают
         unpaid_deal_ids = sorted({r.deal_id for r in rows if not r.paid and (r.payout_usdt or 0)}) if agent_rows else []
 
+        # Батовая выплата: курс фиксируем СЕЙЧАС, сервером (не доверяем фронту) —
+        # задача команды успеть откупить по зафиксированному
+        quote = None
+        if payout_method == 'thb':
+            quote = thb_payout_quote(pending)
+            if not quote:
+                return jsonify({
+                    'success': False,
+                    'error': 'Курс временно недоступен — попробуйте позже или выведите в USDT'
+                }), 503
+
         req = PayoutRequest(
             referrer_id=referrer.id,
             amount_usdt=pending,
@@ -6779,6 +6942,13 @@ def create_payout_request(token):
             notes=notes,
             status='new',
             deal_ids=json.dumps(unpaid_deal_ids),
+            payout_method=payout_method,
+            bitazza_rate=quote['bitazza_rate'] if quote else None,
+            client_rate=quote['client_rate'] if quote else None,
+            thb_amount=quote['thb_amount'] if quote else None,
+            bank_name=bank_name or None,
+            account_name=account_name or None,
+            account_number=account_number or None,
         )
         db.add(req)
         db.commit()
@@ -6790,14 +6960,30 @@ def create_payout_request(token):
         else:
             try:
                 contact_label = 'Telegram' if contact_method == 'telegram' else 'WhatsApp'
-                msg = (
-                    f"💸 <b>Новая заявка на выплату</b>\n\n"
-                    f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
-                    f"<b>Сумма:</b> ${pending:.2f} USDT\n"
-                    f"<b>Валюта:</b> {referrer.payout_currency or 'USDT'} (TRC-20)\n\n"
-                    f"<b>Кошелёк:</b>\n<code>{wallet}</code>\n\n"
-                    f"<b>Связь:</b> {contact_label} — {contact_value}"
-                )
+                if payout_method == 'thb':
+                    thb_fmt = f"{quote['thb_amount']:,.0f}".replace(',', ' ')
+                    msg = (
+                        f"💸 <b>Новая заявка на выплату — БАТЫ</b>\n\n"
+                        f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
+                        f"━━━━━━━━━━━━━━\n"
+                        f"<b>Возместить:</b> ${pending:.2f} USDT\n"
+                        f"<b>Откуп по:</b> {quote['bitazza_rate']} ฿/$ (Bitazza VWAP)\n"
+                        f"<b>Клиенту:</b> {thb_fmt} ฿ · курс {quote['client_rate']}\n"
+                        f"━━━━━━━━━━━━━━\n"
+                        f"<b>Банк:</b> {bank_name}\n"
+                        f"<b>Имя:</b> {account_name}\n"
+                        f"<b>Счёт:</b> <code>{account_number}</code>\n\n"
+                        f"<b>Связь:</b> {contact_label} — {contact_value}"
+                    )
+                else:
+                    msg = (
+                        f"💸 <b>Новая заявка на выплату</b>\n\n"
+                        f"<b>Реферер:</b> {referrer.name} ({referrer.code})\n"
+                        f"<b>Сумма:</b> ${pending:.2f} USDT\n"
+                        f"<b>Валюта:</b> USDT (TRC-20)\n\n"
+                        f"<b>Кошелёк:</b>\n<code>{wallet}</code>\n\n"
+                        f"<b>Связь:</b> {contact_label} — {contact_value}"
+                    )
                 if notes:
                     msg += f"\n\n<b>Комментарий:</b> {notes}"
                 crm_url = 'https://grusha.up.railway.app/crm'
@@ -6813,10 +6999,17 @@ def create_payout_request(token):
 
         # DM рефереру: подтверждение + кнопка отмены
         try:
-            msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
-                   f"Сумма: <b>${pending:.2f}</b>\n"
-                   f"Кошелёк: <code>{wallet}</code>\n\n"
-                   f"Заявка #{req.id} принята в обработку.")
+            if payout_method == 'thb':
+                thb_fmt = f"{quote['thb_amount']:,.0f}".replace(',', ' ')
+                msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
+                       f"Сумма: <b>{thb_fmt} ฿</b> (курс {round(quote['client_rate'], 2)})\n"
+                       f"Банк: {bank_name} · <code>{account_number}</code>\n\n"
+                       f"Заявка #{req.id} принята в обработку.")
+            else:
+                msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
+                       f"Сумма: <b>${pending:.2f}</b>\n"
+                       f"Кошелёк: <code>{wallet}</code>\n\n"
+                       f"Заявка #{req.id} принята в обработку.")
             send_referrer_dm(referrer, msg, buttons=_cancel_button(req.id))
         except Exception as e:
             print(f'[ReferrerDM] create notify error: {e}')
@@ -6911,22 +7104,48 @@ def referrer_payout_requests(referrer_id):
         db.close()
 
 
+def _apply_payout_paid(db, req, now):
+    """paid → помечаем сделки реферера выплаченными, иначе «Доступно к выводу»
+    не уменьшится и партнёр сможет запросить ту же сумму повторно.
+    Только сделки из снапшота заявки (deal_ids) — закрытые после заявки не сгорают.
+    Легаси-заявки без снапшота — старое поведение (все неоплаченные)."""
+    referrer = db.query(Referrer).get(req.referrer_id)
+    if not referrer:
+        return []
+    snap_ids = None
+    if req.deal_ids:
+        try:
+            snap_ids = json.loads(req.deal_ids) or None
+        except (ValueError, TypeError):
+            snap_ids = None
+    paid_deal_ids, _ = _mark_referrer_deals_paid(db, referrer, now, deal_ids=snap_ids)
+    return paid_deal_ids
+
+
 @app.route('/api/payout-requests/<int:req_id>', methods=['PATCH'])
 def update_payout_request(req_id):
-    """Изменить статус заявки (in_progress / paid / cancelled). При paid обязателен tx_hash."""
+    """Изменить статус заявки (in_progress / paid / cancelled).
+
+    paid: USDT-заявка — обязателен tx_hash; батовая — закрывается только
+    через POST /receipt (чек), напрямую в paid не переводится.
+    """
     data = request.get_json(silent=True) or {}
     new_status = (data.get('status') or '').strip().lower()
     tx_hash = (data.get('tx_hash') or '').strip() or None
     if new_status not in ('new', 'in_progress', 'paid', 'cancelled'):
         return jsonify({'success': False, 'error': 'Недопустимый статус'}), 400
-    if new_status == 'paid' and not tx_hash:
-        return jsonify({'success': False, 'error': 'Для статуса paid обязателен tx_hash'}), 400
 
     db = get_session()
     try:
         req = db.query(PayoutRequest).get(req_id)
         if not req:
             return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if new_status == 'paid':
+            if (req.payout_method or 'usdt') == 'thb':
+                return jsonify({'success': False,
+                                'error': 'Батовая заявка закрывается загрузкой чека'}), 400
+            if not tx_hash:
+                return jsonify({'success': False, 'error': 'Для статуса paid обязателен tx_hash'}), 400
         req.status = new_status
         if tx_hash:
             req.tx_hash = tx_hash
@@ -6934,20 +7153,8 @@ def update_payout_request(req_id):
         paid_deal_ids = []
         if new_status in ('paid', 'cancelled'):
             req.processed_at = now
-        # paid → помечаем сделки реферера выплаченными, иначе «Доступно к выводу»
-        # не уменьшится и партнёр сможет запросить ту же сумму повторно.
-        # Только сделки из снапшота заявки (deal_ids) — закрытые после заявки не сгорают.
-        # Легаси-заявки без снапшота — старое поведение (все неоплаченные).
         if new_status == 'paid':
-            referrer = db.query(Referrer).get(req.referrer_id)
-            if referrer:
-                snap_ids = None
-                if req.deal_ids:
-                    try:
-                        snap_ids = json.loads(req.deal_ids) or None
-                    except (ValueError, TypeError):
-                        snap_ids = None
-                paid_deal_ids, _ = _mark_referrer_deals_paid(db, referrer, now, deal_ids=snap_ids)
+            paid_deal_ids = _apply_payout_paid(db, req, now)
         db.commit()
         db.refresh(req)
         if paid_deal_ids:
@@ -6965,6 +7172,68 @@ def update_payout_request(req_id):
                         f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>${req.amount_usdt:.2f}</b>{tx}")
             except Exception as e:
                 print(f'[ReferrerDM] paid notify error: {e}')
+        return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
+    finally:
+        db.close()
+
+
+@app.route('/api/payout-requests/<int:req_id>/receipt', methods=['POST'])
+def payout_request_receipt(req_id):
+    """Выплата батовой заявки: чек (фото/PDF) → рефереру в DM + в рабочий топик,
+    статус paid. Файл не сохраняем на диск (Railway ephemeral) — живёт в Telegram."""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'error': 'Приложи файл чека'}), 400
+    blob = f.read()
+    if not blob or len(blob) > 15 * 1024 * 1024:
+        return jsonify({'success': False, 'error': 'Файл пустой или больше 15 МБ'}), 400
+
+    db = get_session()
+    try:
+        req = db.query(PayoutRequest).get(req_id)
+        if not req:
+            return jsonify({'success': False, 'error': 'Заявка не найдена'}), 404
+        if (req.payout_method or 'usdt') != 'thb':
+            return jsonify({'success': False, 'error': 'Чек — только для батовых заявок'}), 400
+        if req.status in ('paid', 'cancelled'):
+            return jsonify({'success': False, 'error': 'Заявка уже закрыта'}), 400
+
+        referrer = db.query(Referrer).get(req.referrer_id)
+        thb_fmt = f"{(req.thb_amount or 0):,.0f}".replace(',', ' ')
+
+        # 1) Чек рефереру в DM (если привязан TG)
+        dm_file_id = None
+        if referrer and referrer.telegram_user_id and get_login_bot_token():
+            dm_file_id = _tg_send_document(
+                get_login_bot_token(), int(referrer.telegram_user_id), blob, f.filename,
+                f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>{thb_fmt} ฿</b>")
+
+        # 2) Чек в рабочий топик «Задачи»
+        team_file_id = None
+        if not (referrer and referrer.is_test):
+            ref_label = f"{referrer.name} ({referrer.code})" if referrer else f"#{req.referrer_id}"
+            team_file_id = _tg_send_document(
+                os.environ.get('TELEGRAM_BOT_TOKEN', '').strip(),
+                os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip(),
+                blob, f.filename,
+                f"📄 Чек по заявке #{req.id} — {ref_label} · {thb_fmt} ฿",
+                thread_id=os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112'))
+            if not dm_file_id and not team_file_id:
+                return jsonify({'success': False,
+                                'error': 'Не удалось отправить чек в Telegram — заявка не закрыта'}), 502
+
+        now = datetime.utcnow()
+        req.receipt_tg_file_id = team_file_id or dm_file_id or 'sent'
+        req.status = 'paid'
+        req.processed_at = now
+        paid_deal_ids = _apply_payout_paid(db, req, now)
+        db.commit()
+        db.refresh(req)
+        if paid_deal_ids:
+            try:
+                mark_referrer_rewards_paid_in_gsheet(paid_deal_ids, now)
+            except Exception as e:
+                print(f'[GSheet] mark paid error: {e}')
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
     finally:
         db.close()

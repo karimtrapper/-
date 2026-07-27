@@ -8178,18 +8178,45 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const contactIcon = r.contact_method === 'whatsapp' ? '💬' : '✈️';
                     const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
                     const isFinal = r.status === 'paid' || r.status === 'cancelled';
-                    const actions = isFinal ? '' : `
-                        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
-                            <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                    const isThb = r.payout_method === 'thb';
+                    const fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
+                    // Батовая заявка закрывается загрузкой чека, USDT — хешем транзакции
+                    const paidBlock = isThb
+                        ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <input type="file" id="payout-receipt-${r.id}" accept="image/*,.pdf"
+                                       style="flex:1;min-width:200px;font-size:12px;padding:6px;border:1px dashed #CBD5E1;border-radius:6px;background:#F8FAFC;color:#475569;">
+                                <button class="btn btn-sm btn-success" onclick="payThbReceipt(${r.id})">Выплачено (чек)</button>
+                           </div>`
+                        : `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                                 <input type="text" id="payout-tx-${r.id}" placeholder="Хеш транзакции TRC-20 (для «Выплачено»)"
                                        style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;font-family:monospace;">
                                 <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
-                            </div>
+                           </div>`;
+                    const actions = isFinal ? '' : `
+                        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                            ${paidBlock}
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
                                 <button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'cancelled')">Отменить</button>
                             </div>
                         </div>`;
+                    const amountHtml = isThb
+                        ? `<div style="text-align:right;white-space:nowrap;">
+                               <div style="font-size:18px;font-weight:800;color:#2563EB;">${fmtThb(r.thb_amount || 0)} ฿</div>
+                               <div style="font-size:11px;color:#94A3B8;">возместить $${(r.amount_usdt || 0).toFixed(2)}</div>
+                           </div>`
+                        : `<div style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>`;
+                    const details = isThb
+                        ? `<div><span style="color:#94A3B8;">Курс клиенту:</span> <strong>${r.client_rate ?? '—'}</strong> · откуп по <strong>${r.bitazza_rate ?? '—'}</strong> <span style="color:#94A3B8;">(Bitazza VWAP)</span></div>
+                           <div><span style="color:#94A3B8;">Банк:</span> <strong>${escapeHtml(r.bank_name || '—')}</strong></div>
+                           <div><span style="color:#94A3B8;">Имя:</span> <strong>${escapeHtml(r.account_name || '—')}</strong></div>
+                           <div><span style="color:#94A3B8;">Счёт:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;">${escapeHtml(r.account_number || '—')}</code></div>
+                           <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
+                           ${r.has_receipt ? `<div style="color:#16A34A;font-weight:600;">📄 Чек отправлен</div>` : ''}`
+                        : `<div><span style="color:#94A3B8;">Кошелёк:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
+                           <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
+                           ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
+                           ${r.tx_hash ? `<div><span style="color:#94A3B8;">TX:</span> <code style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}`;
                     return `
                     <div style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
@@ -8198,16 +8225,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <strong style="font-size:15px;">${escapeHtml(r.referrer_name || '—')}</strong>
                                     <span style="color:#94A3B8;font-size:12px;">${escapeHtml(r.referrer_code || '')}</span>
                                     <span style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
+                                    ${isThb ? `<span style="background:#EFF6FF;color:#2563EB;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">🏦 Баты</span>` : ''}
                                 </div>
                                 <div style="font-size:12px;color:#64748B;">#${r.id} · ${date}</div>
                             </div>
-                            <div style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>
+                            ${amountHtml}
                         </div>
                         <div style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
-                            <div><span style="color:#94A3B8;">Кошелёк:</span> <code style="background:#F1F5F9;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all;">${escapeHtml(r.wallet)}</code></div>
-                            <div><span style="color:#94A3B8;">${contactIcon} ${contactLabel}:</span> <strong>${escapeHtml(r.contact_value)}</strong></div>
-                            ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
-                            ${r.tx_hash ? `<div><span style="color:#94A3B8;">TX:</span> <code style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}
+                            ${details}
                         </div>
                         ${actions}
                     </div>`;
@@ -8238,6 +8263,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(body)
+                });
+                const data = await res.json();
+                if (!data.success) { alert(data.error || 'Ошибка'); return; }
+                loadPayoutRequests();
+            } catch (e) { alert('Сетевая ошибка'); }
+        }
+
+        // Батовая выплата: загрузка чека → рефереру в DM + в топик, статус paid
+        async function payThbReceipt(id) {
+            const input = document.getElementById(`payout-receipt-${id}`);
+            const file = input?.files?.[0];
+            if (!file) { alert('Приложи чек перевода (фото или PDF)'); input?.focus(); return; }
+            if (!confirm('Отметить заявку выплаченной и отправить чек рефереру?')) return;
+            const fd = new FormData();
+            fd.append('file', file);
+            try {
+                const res = await fetch(`${API_URL}/api/payout-requests/${id}/receipt`, {
+                    method: 'POST', body: fd
                 });
                 const data = await res.json();
                 if (!data.success) { alert(data.error || 'Ошибка'); return; }
