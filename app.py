@@ -4917,6 +4917,32 @@ def get_dashboard():
         unit_cogs_per_deal = round(period_cost / len(period_deals), 2) if period_deals else 0
         unit_arpc = round(period_profit / buyers_total, 2) if buyers_total else 0
 
+        # UA/C1: поток = уникальные клиенты с эпизодами (WON + LOSE) за период.
+        # LOSE пушит DealCloser с 2026-07-20 — это «дошедшие до диалога», не весь
+        # трафик, поэтому C1 = конверсия из обращения в покупку. Если LOSE в
+        # периоде нет вообще (старые периоды / бот не писал) — потока не знаем,
+        # оставляем None, иначе C1 был бы фиктивные 100%. При фильтре по рефереру
+        # тоже None: у LOSE нет referrer_id, знаменатель несопоставим.
+        unit_ua = unit_c1 = unit_arpu = None
+        if referrer_filter in ('', 'all'):
+            period_loses = session.query(Deal).filter(
+                Deal.created_at >= chart_start,
+                Deal.created_at < chart_end,
+                Deal.status == DealStatus.LOSE,
+            ).all()
+            if period_loses and buyers_total:
+                def _client_ident(d):
+                    """Идентичность клиента: имя без регистра (у LOSE нет client_id)."""
+                    name = (d.client_name or (d.client.name if d.client else '') or '').strip().lower()
+                    if name:
+                        return f'n{name}'
+                    return f'c{d.client_id}' if d.client_id else f'd{d.id}'
+                ua_idents = {_client_ident(d) for d in period_deals} | {_client_ident(d) for d in period_loses}
+                unit_ua = len(ua_idents)
+                if unit_ua:
+                    unit_c1 = round(buyers_total / unit_ua * 100, 1)
+                    unit_arpu = round(unit_arpc * buyers_total / unit_ua, 2)
+
         # Разбивка по рефererам (для режима «Только рефералы»)
         ref_agg = {}
         for d in period_referrer_deals:
@@ -4962,11 +4988,11 @@ def get_dashboard():
                     'referrer_payout_usdt': period_referrer_payout,
                 },
                 'unit_economics': {
-                    # Воронка: UA и C1 появятся, когда подтянем лиды из Bitrix
-                    # (WON+LOSE диалоги за период через DealCloser/bitrix-proxy).
-                    # Тогда c1 = buyers/ua, arpu = arpc × c1.
-                    'ua': None,
-                    'c1': None,
+                    # UA = уникальные клиенты с эпизодами WON+LOSE за период
+                    # (LOSE из DealCloser с 2026-07-20), C1 = B/UA, ARPU = ARPC×C1.
+                    # None — когда LOSE в периоде нет или включён фильтр по рефереру.
+                    'ua': unit_ua,
+                    'c1': unit_c1,
                     'buyers': buyers_total,
                     'orders': len(period_deals),
                     'apc': unit_apc,
@@ -4976,7 +5002,7 @@ def get_dashboard():
                     'arpc': unit_arpc,
                     # Маркетинга пока нет (органика) — CPA явный ноль, не «нет данных»
                     'cpa': 0.0,
-                    'arpu': None,
+                    'arpu': unit_arpu,
                     'cm': period_profit,
                     'revenue': period_volume,
                 },

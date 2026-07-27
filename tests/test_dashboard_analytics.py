@@ -229,3 +229,72 @@ class TestReferrerBreakdown:
         assert bd[0]['payout_usdt'] == 80           # 50+30 (make_deal ставит profit/2)
         assert bd[0]['net_usdt'] == 80              # 50 (net d1) + 30 (net d2)
         assert bd[1]['name'] == 'Malik'
+
+
+# ── UA/C1 из эпизодов WON+LOSE ────────────────────────────────────────────
+
+def make_lose(db, name, created_at=None):
+    """LOSE-сделка из DealCloser: только имя, без client_id и финансов."""
+    d = Deal(deal_type=DealType('pay_in'), status=DealStatus.LOSE, client_name=name)
+    if created_at:
+        d.created_at = created_at
+    db.add(d)
+    db.commit()
+    return d
+
+
+class TestUnitEconC1:
+
+    def test_no_lose_in_period_c1_null(self, db, tc):
+        """Нет LOSE в периоде — потока не знаем, UA/C1/ARPU = None (не фиктивные 100%)."""
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id)
+        ue = get_dash(tc).get_json()['dashboard']['unit_economics']
+        assert ue['ua'] is None
+        assert ue['c1'] is None
+        assert ue['arpu'] is None
+
+    def test_c1_counts_lose_episodes(self, db, tc):
+        """UA = уникальные клиенты WON+LOSE, C1 = B/UA×100, ARPU = ARPC×C1."""
+        c1_, c2_ = Client(name='Иван'), Client(name='Пётр')
+        db.add_all([c1_, c2_]); db.commit()
+        make_deal(db, client_id=c1_.id, profit=100)
+        make_deal(db, client_id=c2_.id, profit=100)
+        make_lose(db, 'Олег')
+        make_lose(db, 'Мария')
+        ue = get_dash(tc).get_json()['dashboard']['unit_economics']
+        assert ue['ua'] == 4
+        assert ue['c1'] == 50.0
+        # ARPC = 200/2 = 100, ARPU = 100 × 2/4 = 50
+        assert ue['arpu'] == 50.0
+
+    def test_same_client_won_and_lose_dedup(self, db, tc):
+        """Тот же человек в WON (client.name) и LOSE (client_name, регистр/пробелы) — один UA."""
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id)
+        make_lose(db, ' иВан ')
+        ue = get_dash(tc).get_json()['dashboard']['unit_economics']
+        assert ue['ua'] == 1
+        assert ue['c1'] == 100.0
+
+    def test_referrer_filter_gives_null(self, db, tc):
+        """При фильтре по рефереру C1 не считаем — у LOSE нет referrer_id."""
+        r = Referrer(name='Ref', code='GR-UA', token='t-ua')
+        db.add(r); db.commit()
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id, referrer=r)
+        make_lose(db, 'Олег')
+        ue = get_dash(tc, referrer_id=r.id).get_json()['dashboard']['unit_economics']
+        assert ue['ua'] is None
+        assert ue['c1'] is None
+
+    def test_lose_outside_period_ignored(self, db, tc):
+        """LOSE вне диапазона дат не попадает в UA."""
+        today = datetime.now()
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id)
+        make_lose(db, 'Олег')
+        make_lose(db, 'Старый', created_at=today - timedelta(days=90))
+        ue = get_dash(tc).get_json()['dashboard']['unit_economics']
+        assert ue['ua'] == 2
+        assert ue['c1'] == 50.0
