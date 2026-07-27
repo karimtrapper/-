@@ -2849,6 +2849,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'dashboard': loadDashboard(); break;
                     case 'deals': loadDeals(); break;
                     case 'create':
+                        // Клик по вкладке «Создать» при активном редактировании —
+                        // сбрасываем остатки чужой сделки (поля, sberParts, PUT вместо POST)
+                        if (editingDealId !== null) cancelEditMode();
                         loadCreateForm();
                         break;
                     case 'reimbursements': loadReimbursements(); break;
@@ -3884,16 +3887,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Глобальная переменная для режима редактирования
         let editingDealId = null;
+        // Флаг «идём в форму из редактора»: showSection('create') не должен
+        // сбрасывать режим редактирования, который openDealEditor только что включил
+        let _openingEditor = false;
 
         async function openDealEditor(dealId) {
             try {
+                // Чистый лист: заполнение ниже ставит только непустые поля сделки,
+                // без сброса значения прошлой сделки/черновика проступают в пустых полях
+                cancelEditMode();
                 // editingDealId ставим ДО loadCreateForm — форма не должна сбросить режим редактирования
                 editingDealId = dealId;
 
                 // Сразу переключаемся на форму (мгновенный отклик),
                 // сделка и справочники формы грузятся параллельно
                 closeModal();
-                showSection('create');
+                _openingEditor = true;
+                try {
+                    showSection('create');
+                } finally {
+                    _openingEditor = false;
+                }
 
                 const [data] = await Promise.all([
                     fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
@@ -4235,6 +4249,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'dashboard': loadDashboard(); break;
                 case 'deals': loadDeals(); break;
                 case 'create':
+                    // Пришли в «Создать» навигацией при активном редактировании —
+                    // сбрасываем остатки чужой сделки (поля, sberParts, PUT вместо POST)
+                    if (editingDealId !== null && !_openingEditor) cancelEditMode();
                     loadCreateForm();
                     break;
                 case 'reimbursements': loadReimbursements(); break;
