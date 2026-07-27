@@ -44,5 +44,8 @@ RUN playwright install chromium
 # Копируем весь проект
 COPY . .
 
-# Запуск через gunicorn (Railway сам установит $PORT)
-CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --timeout 120
+# Запуск через gunicorn (Railway сам установит $PORT).
+# --threads 8 (gthread): без него 1 sync-воркер сериализует ВСЕ запросы —
+# обход TronScan или Playwright precise фризил CRM для всех менеджеров.
+# workers строго 1: in-memory локи и кэши рассчитаны на один процесс.
+CMD gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 1 --threads 8 --timeout 120
