@@ -515,6 +515,31 @@ class CardTopup(Base):
                 'source_type': self.source_type, 'source_batch_id': self.source_batch_id,
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
+class ChannelTraffic(Base):
+    """Дневной трафик/расход по каналам привлечения из внешних источников.
+
+    Пишет фоновая джоба _channel_traffic_loop (Яндекс.Метрика; Meta — когда
+    появится токен). Ключ upsert: (date, channel, provider).
+    """
+    __tablename__ = 'channel_traffic'
+    id = Column(Integer, primary_key=True)
+    date = Column(DateTime, nullable=False)          # день (00:00)
+    channel = Column(String(50), nullable=False)     # utm_source ('insta', 'site'…)
+    provider = Column(String(20), nullable=False)    # 'metrika' | 'meta'
+    visits = Column(Integer, default=0)
+    users = Column(Integer, default=0)               # уникальные посетители = UA
+    spend_usd = Column(Float, default=0.0)           # расход канала (рекламные кабинеты)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'date': self.date.strftime('%Y-%m-%d') if self.date else None,
+            'channel': self.channel, 'provider': self.provider,
+            'visits': self.visits, 'users': self.users, 'spend_usd': self.spend_usd,
+        }
+
+
 class Reimbursement(Base):
     __tablename__ = 'reimbursements'
     id = Column(Integer, primary_key=True)
@@ -688,6 +713,9 @@ class Deal(Base):
     # LOSE-сделки и revive-логика (конверсия по Красинскому)
     lose_reason = Column(String(300), nullable=True)         # причина отказа из LLM-анализа DealCloser
     bitrix_deal_id = Column(Integer, nullable=True, index=True)  # id сделки Bitrix (дедуп + трейсинг)
+    # Канал привлечения из /start-парама бота: 'insta', 'site', 'ref:GR-XXX'…
+    # Пишет DealCloser (utm_source__/ref__ из первого сообщения Bitrix-чата)
+    source_channel = Column(String(50), nullable=True)
     revived_by_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)  # WON, забравший этот LOSE
     is_custom = Column(Boolean, default=False)
     custom_payin_currency = Column(String(10))
@@ -754,6 +782,7 @@ class Deal(Base):
             'notes': self.notes,
             'lose_reason': self.lose_reason,
             'bitrix_deal_id': self.bitrix_deal_id,
+            'source_channel': self.source_channel,
             'revived_by_deal_id': self.revived_by_deal_id,
             'reimbursement_id': self.reimbursement_id,
             'reimbursement': self.reimbursement.to_dict() if self.reimbursement else None,
@@ -1123,6 +1152,18 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ lose fields migration: {e}")
+
+# Канал привлечения на сделке (utm_source__/ref__ из start-парама бота)
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_channel VARCHAR(50)"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN source_channel VARCHAR(50)"))
+            except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ source_channel migration: {e}")
 
 # Части прихода (sber_reqs): JSON-список частичных оплат на сделке
 try:
@@ -3153,6 +3194,7 @@ def create_deal():
             payin_parts=json.dumps(data['payin_parts'], ensure_ascii=False) if data.get('payin_parts') else None,
             lose_reason=(data.get('lose_reason') or None),
             bitrix_deal_id=int(data['bitrix_deal_id']) if data.get('bitrix_deal_id') else None,
+            source_channel=(data.get('source_channel') or '').strip()[:50] or None,
             notes=data.get('notes')
         )
         session.add(deal)
@@ -3255,7 +3297,7 @@ def update_deal(deal_id):
                       'payout_founder_name', 'payout_wallet_id',
                       'is_custom', 'custom_payin_currency', 'custom_payin_amount', 'custom_payin_rate',
                       'custom_payout_currency', 'custom_payout_amount', 'custom_payout_rate',
-                      'needs_reimbursement']:
+                      'needs_reimbursement', 'source_channel']:
             if field in data:
                 setattr(deal, field, data[field])
 
@@ -4386,6 +4428,64 @@ if os.environ.get('TRONSCAN_WARM_ENABLED', '1') == '1' and 'pytest' not in sys.m
     threading.Thread(target=_tronscan_warm_loop, daemon=True, name='tronscan-warm').start()
 
 
+# ==================== ТРАФИК ПО КАНАЛАМ (Яндекс.Метрика) ====================
+METRIKA_TOKEN = os.environ.get('METRIKA_TOKEN', '')
+METRIKA_COUNTER_ID = os.environ.get('METRIKA_COUNTER_ID', '106232718')  # счётчик grusha.space
+CHANNEL_TRAFFIC_INTERVAL = 6 * 3600  # раз в 6 часов достаточно — дневные агрегаты
+
+
+def _sync_metrika_traffic(days=7):
+    """Тянет из Reporting API Метрики дневных пользователей/визиты по utm_source.
+
+    UA канала = ym:s:users (пользователи, НЕ визиты — конверсию по Красинскому
+    считаем по людям, по сессиям она занижена). Канал без метки → 'без метки',
+    совпадает с каналом сделок без utm. Upsert по (date, channel, provider).
+    """
+    resp = requests.get('https://api-metrika.yandex.net/stat/v1/data', params={
+        'ids': METRIKA_COUNTER_ID,
+        'metrics': 'ym:s:visits,ym:s:users',
+        'dimensions': 'ym:s:date,ym:s:UTMSource',
+        'date1': (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d'),
+        'date2': 'today',
+        'accuracy': 'full',
+        'limit': 10000,
+    }, headers={'Authorization': f'OAuth {METRIKA_TOKEN}'}, timeout=30)
+    resp.raise_for_status()
+    rows = resp.json().get('data', [])
+    session = get_session()
+    try:
+        for row in rows:
+            day_str = row['dimensions'][0]['name']
+            channel = (row['dimensions'][1].get('name') or '').strip().lower() or 'без метки'
+            day = datetime.strptime(day_str, '%Y-%m-%d')
+            rec = session.query(ChannelTraffic).filter_by(
+                date=day, channel=channel[:50], provider='metrika').first()
+            if not rec:
+                rec = ChannelTraffic(date=day, channel=channel[:50], provider='metrika')
+                session.add(rec)
+            rec.visits = int(row['metrics'][0])
+            rec.users = int(row['metrics'][1])
+        session.commit()
+        print(f"[Metrika] synced {len(rows)} rows", flush=True)
+    finally:
+        session.close()
+
+
+def _channel_traffic_loop():
+    """Фоновый синк трафика по каналам. Не стартует без METRIKA_TOKEN."""
+    time.sleep(30)
+    while True:
+        try:
+            _sync_metrika_traffic()
+        except Exception as e:
+            print(f"ℹ️ metrika sync: {e}", flush=True)
+        time.sleep(CHANNEL_TRAFFIC_INTERVAL)
+
+
+if METRIKA_TOKEN and 'pytest' not in sys.modules:
+    threading.Thread(target=_channel_traffic_loop, daemon=True, name='channel-traffic').start()
+
+
 @app.route('/api/transactions/verify', methods=['POST'])
 def verify_transaction_post():
     """Проверить транзакцию по хэшу (POST версия)"""
@@ -4917,13 +5017,20 @@ def get_dashboard():
         unit_cogs_per_deal = round(period_cost / len(period_deals), 2) if period_deals else 0
         unit_arpc = round(period_profit / buyers_total, 2) if buyers_total else 0
 
-        # UA/C1: поток = уникальные клиенты с эпизодами (WON + LOSE) за период.
+        # Лиды/CR: поток = уникальные клиенты с эпизодами (WON + LOSE) за период.
         # LOSE пушит DealCloser с 2026-07-20 — это «дошедшие до диалога», не весь
-        # трафик, поэтому C1 = конверсия из обращения в покупку. Если LOSE в
-        # периоде нет вообще (старые периоды / бот не писал) — потока не знаем,
-        # оставляем None, иначе C1 был бы фиктивные 100%. При фильтре по рефереру
-        # тоже None: у LOSE нет referrer_id, знаменатель несопоставим.
+        # трафик, поэтому CR = конверсия из обращения в покупку (НЕ C1). Если LOSE
+        # в периоде нет вообще — потока не знаем, оставляем None (иначе фиктивные
+        # 100%). При фильтре по рефереру тоже None: у LOSE нет referrer_id.
+        def _client_ident(d):
+            """Идентичность клиента: имя без регистра (у LOSE нет client_id)."""
+            name = (d.client_name or (d.client.name if d.client else '') or '').strip().lower()
+            if name:
+                return f'n{name}'
+            return f'c{d.client_id}' if d.client_id else f'd{d.id}'
+
         unit_ua = unit_c1 = unit_arpu = None
+        channels_block = None
         if referrer_filter in ('', 'all'):
             period_loses = session.query(Deal).filter(
                 Deal.created_at >= chart_start,
@@ -4931,17 +5038,102 @@ def get_dashboard():
                 Deal.status == DealStatus.LOSE,
             ).all()
             if period_loses and buyers_total:
-                def _client_ident(d):
-                    """Идентичность клиента: имя без регистра (у LOSE нет client_id)."""
-                    name = (d.client_name or (d.client.name if d.client else '') or '').strip().lower()
-                    if name:
-                        return f'n{name}'
-                    return f'c{d.client_id}' if d.client_id else f'd{d.id}'
                 ua_idents = {_client_ident(d) for d in period_deals} | {_client_ident(d) for d in period_loses}
                 unit_ua = len(ua_idents)
                 if unit_ua:
                     unit_c1 = round(buyers_total / unit_ua * 100, 1)
                     unit_arpu = round(unit_arpc * buyers_total / unit_ua, 2)
+
+            # ── Воронка по каналам привлечения (методология Красинского) ──
+            # Канал = utm_source из start-парама бота (пишет DealCloser).
+            # Раздельные знаменатели: UA (Метрика, users — не визиты) → лиды
+            # (обращения WON+LOSE) → покупатели (новых отдельно — CAC канала
+            # относится только к новым; «Старые = Все − Новые»).
+            def _deal_channel(d):
+                if d.source_channel:
+                    return d.source_channel
+                # Легаси-сделки без канала: рефские выводим из имени реферера
+                if d.referrer_name:
+                    return f'ref:{d.referrer_name}'
+                return 'без метки'
+
+            # Первая WON-сделка каждого клиента периода — для деления новые/повторные
+            from sqlalchemy import func as _f
+            period_cids = [cid for cid in period_client_ids]
+            first_deal_at = dict(session.query(
+                Deal.client_id, _f.min(Deal.created_at)
+            ).filter(
+                Deal.client_id.in_(period_cids),
+                Deal.status.in_(ACTIVE_STATUSES),
+            ).group_by(Deal.client_id).all()) if period_cids else {}
+
+            ch_agg = {}
+            def _ch_entry(name):
+                return ch_agg.setdefault(name, {
+                    'channel': name, 'lead_idents': set(), 'buyer_idents': set(),
+                    'new_buyers': 0, 'deals': 0, 'volume_usdt': 0.0, 'profit_usdt': 0.0,
+                })
+            counted_new = set()
+            for d in period_deals:
+                e = _ch_entry(_deal_channel(d))
+                ident = _client_ident(d)
+                e['lead_idents'].add(ident)
+                e['buyer_idents'].add(ident)
+                e['deals'] += 1
+                e['volume_usdt'] += usdt[d.id][0]
+                e['profit_usdt'] += d.net_profit_usdt if d.net_profit_usdt is not None else (d.profit_usdt or 0)
+                if d.client_id and d.client_id not in counted_new:
+                    first = first_deal_at.get(d.client_id)
+                    if first and first >= chart_start:
+                        e['new_buyers'] += 1
+                    counted_new.add(d.client_id)
+            for d in period_loses:
+                _ch_entry(_deal_channel(d))['lead_idents'].add(_client_ident(d))
+
+            # Трафик/расход по каналам из Метрики/рекламных кабинетов (если синкается)
+            traffic_rows = session.query(
+                ChannelTraffic.channel,
+                _f.sum(ChannelTraffic.users), _f.sum(ChannelTraffic.visits),
+                _f.sum(ChannelTraffic.spend_usd),
+            ).filter(
+                ChannelTraffic.date >= chart_start,
+                ChannelTraffic.date < chart_end,
+            ).group_by(ChannelTraffic.channel).all()
+            traffic = {r[0]: {'users': int(r[1] or 0), 'visits': int(r[2] or 0),
+                              'spend': round(float(r[3] or 0), 2)} for r in traffic_rows}
+
+            channels_block = []
+            for name in set(ch_agg) | set(traffic):
+                e = ch_agg.get(name)
+                t = traffic.get(name)
+                leads = len(e['lead_idents']) if e else 0
+                buyers = len(e['buyer_idents']) if e else 0
+                profit = round(e['profit_usdt'], 2) if e else 0.0
+                ua = t['users'] if t else None
+                spend = t['spend'] if t and t['spend'] else 0.0
+                row = {
+                    'channel': name,
+                    'ua': ua,                                  # пользователи (не визиты!)
+                    'visits': t['visits'] if t else None,
+                    'leads': leads,
+                    # CR визит→обращение: по пользователям, не сессиям
+                    'cr_visit_lead': round(leads / ua * 100, 1) if ua else None,
+                    'buyers': buyers,
+                    'new_buyers': e['new_buyers'] if e else 0,
+                    'cr_lead_buyer': round(buyers / leads * 100, 1) if leads else None,
+                    # C1 по Красинскому = покупатели / привлечённые (UA)
+                    'c1': round(buyers / ua * 100, 2) if ua else None,
+                    'deals': e['deals'] if e else 0,
+                    'volume_usdt': round(e['volume_usdt'], 2) if e else 0.0,
+                    'profit_usdt': profit,
+                    'spend_usd': spend,
+                    # Сходимость канала: ARPU vs CPUser (CAC — не actionable)
+                    'cpuser': round(spend / ua, 2) if ua and spend else None,
+                    'arpu': round(profit / ua, 2) if ua else None,
+                    'gross_profit': round(profit - spend, 2) if spend else None,
+                }
+                channels_block.append(row)
+            channels_block.sort(key=lambda r: r['profit_usdt'], reverse=True)
 
         # Разбивка по рефererам (для режима «Только рефералы»)
         ref_agg = {}
@@ -5009,6 +5201,8 @@ def get_dashboard():
                     'revenue': period_volume,
                 },
                 'referrer_breakdown': referrer_breakdown,
+                # Воронка по каналам (None при фильтре по рефереру)
+                'channels': channels_block,
                 'attention': {
                     'pending_deals': len(pending_deals),
                     'unreimbursed_founders': len(unreimbursed),

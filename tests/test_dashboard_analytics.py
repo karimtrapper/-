@@ -298,3 +298,74 @@ class TestUnitEconC1:
         ue = get_dash(tc).get_json()['dashboard']['unit_economics']
         assert ue['ua'] == 2
         assert ue['c1'] == 50.0
+
+
+# ── Воронка по каналам ────────────────────────────────────────────────────
+
+class TestChannels:
+
+    def test_channels_aggregate_won_and_lose(self, db, tc):
+        """Канал из source_channel: лиды = WON+LOSE, покупатели = WON, CR₂ = B/лиды."""
+        c1_, c2_ = Client(name='Иван'), Client(name='Пётр')
+        db.add_all([c1_, c2_]); db.commit()
+        d1 = make_deal(db, client_id=c1_.id, profit=100)
+        d1.source_channel = 'insta'
+        d2 = make_deal(db, client_id=c2_.id, profit=50)
+        d2.source_channel = 'site'
+        db.commit()
+        l = make_lose(db, 'Олег'); l.source_channel = 'insta'; db.commit()
+        ch = {r['channel']: r for r in get_dash(tc).get_json()['dashboard']['channels']}
+        assert ch['insta']['leads'] == 2
+        assert ch['insta']['buyers'] == 1
+        assert ch['insta']['cr_lead_buyer'] == 50.0
+        assert ch['site']['leads'] == 1
+        assert ch['site']['buyers'] == 1
+
+    def test_channel_fallback_ref_and_unmarked(self, db, tc):
+        """Без source_channel: рефские → 'ref:<имя>', остальные → 'без метки'."""
+        c = Client(name='Иван'); db.add(c); db.commit()
+        d = make_deal(db, client_id=c.id)
+        d.referrer_name = 'GR-KARIM'
+        db.commit()
+        c2_ = Client(name='Пётр'); db.add(c2_); db.commit()
+        make_deal(db, client_id=c2_.id)
+        make_lose(db, 'Олег')  # LOSE без канала — «без метки»
+        ch = {r['channel']: r for r in get_dash(tc).get_json()['dashboard']['channels']}
+        assert 'ref:GR-KARIM' in ch
+        assert ch['без метки']['leads'] == 2  # Пётр (WON) + Олег (LOSE)
+
+    def test_new_buyers_split(self, db, tc):
+        """Новые/повторные: первая сделка клиента в периоде → новый («Старые = Все − Новые»)."""
+        today = datetime.now()
+        c = Client(name='Иван'); db.add(c); db.commit()
+        old = make_deal(db, client_id=c.id, created_at=today - timedelta(days=90))
+        d = make_deal(db, client_id=c.id)
+        d.source_channel = 'insta'
+        db.commit()
+        make_lose(db, 'Олег')
+        ch = {r['channel']: r for r in get_dash(tc).get_json()['dashboard']['channels']}
+        assert ch['insta']['buyers'] == 1
+        assert ch['insta']['new_buyers'] == 0  # первая сделка Ивана 90 дней назад — повторный
+
+    def test_channels_null_on_referrer_filter(self, db, tc):
+        """При фильтре по рефереру блок каналов не считается."""
+        r = Referrer(name='Ref', code='GR-CH', token='t-ch')
+        db.add(r); db.commit()
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id, referrer=r)
+        data = get_dash(tc, referrer_id=r.id).get_json()['dashboard']
+        assert data['channels'] is None
+
+    def test_source_channel_accepted_on_create(self, db, tc):
+        """POST /api/deals принимает source_channel (WON и LOSE пути)."""
+        res = tc.post('/api/deals', json={
+            'client_name': 'Тест Канал', 'status': 'pending',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 1,
+            'source_channel': 'insta',
+        })
+        assert res.get_json()['deal']['source_channel'] == 'insta'
+        res2 = tc.post('/api/deals', json={
+            'status': 'lose', 'deal_type': 'pay_in', 'client_name': 'Лося',
+            'lose_reason': 'тест', 'bitrix_deal_id': 999001, 'source_channel': 'site',
+        })
+        assert res2.get_json()['deal']['source_channel'] == 'site'

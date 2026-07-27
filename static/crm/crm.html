@@ -735,6 +735,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div id="unitEconFormula" style="font-size:12px;color:#666;margin-top:10px"></div>
             </div>
 
+            <!-- Воронка по каналам привлечения (utm из start-парама бота) -->
+            <div class="card" id="channelsCard" style="padding:20px;margin-bottom:16px;display:none">
+                <div class="card-title" style="margin-bottom:12px" id="channelsTitle">По каналам</div>
+                <div class="table-container" style="overflow-x:auto">
+                    <table class="unit-econ-table" id="channelsTable"></table>
+                </div>
+                <div style="font-size:12px;color:#666;margin-top:10px">
+                    UA — пользователи сайта из Метрики (не визиты). Лиды — обращения в чат (WON+LOSE).
+                    Каналы копятся с 27.07.2026, «ref:» — легаси-атрибуция по рефералу. При ~40–50 клиентах/мес
+                    помесячный CR канала — в основном шум, выводы на накопленных данных.
+                </div>
+            </div>
+
             <!-- Конверсия (Красинский: эпизоды, новые/повторные, revive) -->
             <div class="card" style="padding:20px;margin-bottom:16px">
                 <div class="card-title" style="margin-bottom:12px">Конверсия (12 мес, когорта первого касания)</div>
@@ -3182,6 +3195,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     // Разбивка по рефererам — в режиме «Только рефералы»
                     renderRefBreakdown(d.referrer_breakdown || [], pl);
+                    renderChannels(d.channels || [], pl);
 
                     // Обновляем заголовки графиков
                     document.getElementById('profitChartTitle').textContent = `Прибыль ${pl} ($)`;
@@ -3330,6 +3344,53 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <td>${num(ue.revenue, '$')}</td>
                         <td>${num(ue.cm, '$', 'good')}</td>
                     </tr>
+                </tbody>`;
+        }
+
+        // Воронка по каналам привлечения: UA (Метрика) → лиды → покупатели.
+        // Раздельные знаменатели по Красинскому, новые покупатели отдельно.
+        function renderChannels(rows, pl) {
+            const card = document.getElementById('channelsCard');
+            if (!rows || !rows.length) { card.style.display = 'none'; return; }
+            card.style.display = '';
+            document.getElementById('channelsTitle').textContent = `По каналам ${pl}`;
+            const na = '<span style="color:#bbb">—</span>';
+            const n = (v, pre = '') => v == null ? na : `${pre}${formatNumber(v)}`;
+            const pct = v => v == null ? na : `${v}%`;
+            document.getElementById('channelsTable').innerHTML = `
+                <thead>
+                    <tr>
+                        <th class="ue-name">Канал</th>
+                        <th class="ue-name">UA<span class="ue-sub">пользователей сайта</span></th>
+                        <th class="ue-name">CR₁<span class="ue-sub">визит → обращение</span></th>
+                        <th class="ue-name">Лиды<span class="ue-sub">обращений</span></th>
+                        <th class="ue-name">CR₂<span class="ue-sub">лид → покупка</span></th>
+                        <th class="ue-name">B<span class="ue-sub">покупателей (новых)</span></th>
+                        <th class="ue-name">C1<span class="ue-sub">UA → покупка</span></th>
+                        <th class="ue-name">Сделки</th>
+                        <th class="ue-name">Объём</th>
+                        <th class="ue-name">Маржа</th>
+                        <th class="ue-name">Расход</th>
+                        <th class="ue-name">ARPU vs CPUser<span class="ue-sub">сходимость канала</span></th>
+                    </tr>
+                </thead>
+                <tbody>${rows.map(r => `
+                    <tr>
+                        <td style="font-weight:600">${escapeHtml(r.channel)}</td>
+                        <td>${n(r.ua)}</td>
+                        <td>${pct(r.cr_visit_lead)}</td>
+                        <td>${r.leads}</td>
+                        <td>${pct(r.cr_lead_buyer)}</td>
+                        <td>${r.buyers}${r.new_buyers ? ` <span style="color:#16a34a">(${r.new_buyers} нов.)</span>` : ''}</td>
+                        <td>${pct(r.c1)}</td>
+                        <td>${r.deals}</td>
+                        <td>${n(r.volume_usdt, '$')}</td>
+                        <td style="color:#16a34a;font-weight:600">${n(r.profit_usdt, '$')}</td>
+                        <td>${r.spend_usd ? '$' + formatNumber(r.spend_usd) : na}</td>
+                        <td>${r.arpu != null && r.cpuser != null
+                            ? `<span style="font-weight:600;color:${r.arpu > r.cpuser ? '#16a34a' : '#dc2626'}">$${formatNumber(r.arpu)} vs $${formatNumber(r.cpuser)}</span>`
+                            : (r.arpu != null ? `$${formatNumber(r.arpu)} vs ?` : na)}</td>
+                    </tr>`).join('')}
                 </tbody>`;
         }
 
