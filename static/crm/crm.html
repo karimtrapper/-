@@ -1124,7 +1124,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
-                        <button type="button" class="btn btn-success" style="margin-top: 1rem;"
+                        <button type="button" id="customDealSubmit" class="btn btn-success" style="margin-top: 1rem;"
                             onclick="createCustomDeal()">
                             Создать кастомную сделку
                         </button>
@@ -3952,6 +3952,41 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // сбрасывать режим редактирования, который openDealEditor только что включил
         let _openingEditor = false;
 
+        // Единая точка переключения кнопки кастомной формы: create ↔ edit.
+        // Кнопку берём по id, а НЕ по `#customDealSection .btn-success` — внутри
+        // секции JS рендерит кнопки «Забрать» с тем же классом (пул приходов Сбера),
+        // и селектор по классу цеплял их вместо submit'а: сделка не сохранялась,
+        // а создавалась новая (потеря добавленного агента/реферала).
+        function setCustomSubmitMode(dealId) {
+            const btn = document.getElementById('customDealSubmit');
+            if (!btn) return;
+            if (dealId) {
+                btn.textContent = 'Сохранить изменения';
+                btn.onclick = () => updateCustomDeal(dealId);
+            } else {
+                btn.textContent = 'Создать кастомную сделку';
+                btn.onclick = createCustomDeal;
+            }
+        }
+
+        // Агенты сделки для формы редактирования. Если строк deal_agents нет,
+        // но у сделки есть легаси-реферер (referrer_name/id — напр. GR-KARIM),
+        // показываем его как агента ур.1: партнёр виден и его можно убрать (🗑).
+        // Общая для обеих форм — стандартной и кастомной.
+        function dealAgentsOrLegacy(deal) {
+            const agents = deal.agents || [];
+            if (agents.length || !(deal.referrer_id || deal.referrer_name)) return agents;
+            const model = deal.referrer_comp_model || 'revshare';
+            return [{
+                referrer_id: deal.referrer_id || null,
+                name: deal.referrer_name || '',
+                tier: 1,
+                comp_model: model,
+                percent: (model === 'markup' ? deal.referrer_markup_percent : deal.referrer_percent) || 0,
+                fixed_usdt: deal.referrer_fixed_usdt || 0,
+            }];
+        }
+
         async function openDealEditor(dealId) {
             try {
                 // Чистый лист: заполнение ниже ставит только непустые поля сделки,
@@ -4013,8 +4048,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         sberParts = (deal.payin_method === 'sber_reqs' && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
                         customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
-                        // Мультиагенты: грузим из deal.agents
-                        customAgentsLoad(deal.agents || []);
+                        // Мультиагенты: грузим из deal.agents (+ легаси-реферер)
+                        customAgentsLoad(dealAgentsOrLegacy(deal));
                         document.getElementById('customNotes').value = deal.notes || '';
 
                         // Пересчитываем
@@ -4045,23 +4080,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             document.getElementById('payoutSource').dispatchEvent(new Event('change'));
                         }
                         if (deal.payout_amount_thb) document.getElementById('payoutAmountThb').value = deal.payout_amount_thb;
-                        // Мультиагенты: грузим из deal.agents (caascade), net пересчитается.
-                        // Если строк агентов нет, но у сделки есть легаси-реферер
-                        // (referrer_name/id — напр. GR-KARIM), показываем его как агента
-                        // ур.1, чтобы партнёр был виден и его можно было убрать (🗑).
-                        let _agentsToLoad = deal.agents || [];
-                        if (!_agentsToLoad.length && (deal.referrer_id || deal.referrer_name)) {
-                            const _m = deal.referrer_comp_model || 'revshare';
-                            _agentsToLoad = [{
-                                referrer_id: deal.referrer_id || null,
-                                name: deal.referrer_name || '',
-                                tier: 1,
-                                comp_model: _m,
-                                percent: (_m === 'markup' ? deal.referrer_markup_percent : deal.referrer_percent) || 0,
-                                fixed_usdt: deal.referrer_fixed_usdt || 0,
-                            }];
-                        }
-                        stdAgentsLoad(_agentsToLoad);
+                        // Мультиагенты: грузим из deal.agents (каскад), net пересчитается
+                        stdAgentsLoad(dealAgentsOrLegacy(deal));
                         if (deal.notes) form.notes.value = deal.notes;
 
                         // Для Binance
@@ -4086,11 +4106,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         submitBtn.dataset.editMode = 'true';
                     }
 
-                    const customSubmitBtn = document.querySelector('#customDealSection .btn-success');
-                    if (customSubmitBtn) {
-                        customSubmitBtn.textContent = 'Сохранить изменения';
-                        customSubmitBtn.onclick = () => updateCustomDeal(dealId);
-                    }
+                    setCustomSubmitMode(dealId);
                 } else {
                     // Сделка не загрузилась — выходим из режима редактирования
                     showToast('Не удалось загрузить сделку #' + dealId, 'error');
@@ -4119,11 +4135,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 submitBtn.dataset.editMode = '';
             }
 
-            const customSubmitBtn = document.querySelector('#customDealSection .btn-success');
-            if (customSubmitBtn) {
-                customSubmitBtn.textContent = 'Создать кастомную сделку';
-                customSubmitBtn.onclick = createCustomDeal;
-            }
+            setCustomSubmitMode(null);
 
             // Сбрасываем кастомную форму
             document.getElementById('customDealToggle').checked = false;
