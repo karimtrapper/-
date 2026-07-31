@@ -743,8 +743,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
                 <div style="font-size:12px;color:#666;margin-top:10px">
                     UA — пользователи сайта из Метрики (не визиты). Лиды — обращения в чат (WON+LOSE).
-                    Каналы копятся с 27.07.2026, «ref:» — легаси-атрибуция по рефералу. При ~40–50 клиентах/мес
-                    помесячный CR канала — в основном шум, выводы на накопленных данных.
+                    Лиды и B — по каналу первого касания клиента (суммируются в итог), сделки/объём/маржа —
+                    по метке самой сделки. Каналы копятся с 27.07.2026, «ref:» — легаси-атрибуция по рефералу.
+                    При ~40–50 клиентах/мес помесячный CR канала — в основном шум, выводы на накопленных данных.
                 </div>
             </div>
 
@@ -3304,6 +3305,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function renderUnitEconTable(ue) {
             const na = '<span class="ue-val na">—</span>';
             const num = (v, pre = '', cls = '') => v == null ? na : `<span class="ue-val ${cls}">${pre}${formatNumber(v)}</span>`;
+            // APC — дробный (1.63 сделки на платящего), округление до целого
+            // ломало проверку CM = B × APC × (AvP − COGS) на глаз
+            const dec = v => v == null ? na : `<span class="ue-val">${Number(v).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
             document.getElementById('unitEconTable').innerHTML = `
                 <thead>
                     <tr>
@@ -3337,7 +3341,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <td>${num(ue.avp, '$')}</td>
                         <td>${num(ue.cogs_per_deal, '$')}</td>
                         <td>${num(ue.profit_per_deal, '$')}</td>
-                        <td>${num(ue.apc)}</td>
+                        <td>${dec(ue.apc)}</td>
                         <td>${num(ue.arpc, '$')}</td>
                         <td>${num(ue.cpa, '$')}</td>
                         <td>${num(ue.arpu, '$')}</td>

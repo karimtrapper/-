@@ -5003,6 +5003,55 @@ def get_dashboard():
         period_referrer_deals = [d for d in period_deals if d.referrer_id]
         period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
 
+        # ── Единая идентичность клиента (шапка юнит-экономики И каналы) ──
+        # У части WON-сделок нет client_id (карточку не завели), у LOSE его нет
+        # никогда. Ключ = client_id, если есть; иначе имя, сматченное на
+        # client_id через мост «имя → id». Раньше шапка считала B по client_id,
+        # а каналы — по имени: один человек дробился на двух покупателей и
+        # суммы по каналам не сходились с итогом.
+        from sqlalchemy import func as _f
+
+        def _norm_name(d):
+            return (d.client_name or (d.client.name if d.client else '') or '').strip().lower()
+
+        _name_to_cid = {}
+        for d in period_deals:
+            nm = _norm_name(d)
+            if nm and d.client_id:
+                _name_to_cid.setdefault(nm, d.client_id)
+
+        def _client_ident(d):
+            """Идентичность клиента: client_id, иначе имя (сматченное на id)."""
+            if d.client_id:
+                return f'c{d.client_id}'
+            nm = _norm_name(d)
+            if nm:
+                cid = _name_to_cid.get(nm)
+                return f'c{cid}' if cid else f'n{nm}'
+            return f'd{d.id}'
+
+        period_buyer_idents = {_client_ident(d) for d in period_deals}
+
+        # Дата первой сделки каждого покупателя — новые/повторные (итог и каналы)
+        _first_seen = {}
+        _cids = [int(i[1:]) for i in period_buyer_idents if i.startswith('c')]
+        if _cids:
+            for cid, ts in session.query(Deal.client_id, _f.min(Deal.created_at)).filter(
+                Deal.client_id.in_(_cids), Deal.status.in_(ACTIVE_STATUSES),
+            ).group_by(Deal.client_id):
+                _first_seen[f'c{cid}'] = ts
+        _names = [i[1:] for i in period_buyer_idents if i.startswith('n')]
+        if _names:
+            _name_key = _f.lower(_f.trim(Deal.client_name))
+            for nm, ts in session.query(_name_key, _f.min(Deal.created_at)).filter(
+                _name_key.in_(_names), Deal.status.in_(ACTIVE_STATUSES),
+            ).group_by(_name_key):
+                _first_seen[f'n{nm}'] = ts
+
+        def _is_new_buyer(ident):
+            first = _first_seen.get(ident)
+            return first is None or first >= chart_start
+
         # График: прибыль и объём по дням (те же завершённые сделки периода)
         month_deals = period_deals
         daily_data = {}
@@ -5040,20 +5089,23 @@ def get_dashboard():
             method_stats[method]['count'] += 1
             method_stats[method]['volume'] += usdt[d.id][0]
 
-        # New vs Old buyers за выбранный период
-        period_client_ids = {d.client_id for d in period_deals if d.client_id}
-        new_buyers = 0
-        for cid in period_client_ids:
-            first = session.query(Deal).filter(Deal.client_id == cid).order_by(Deal.created_at).first()
-            if first and first.created_at and first.created_at >= chart_start:
-                new_buyers += 1
-        old_buyers = len(period_client_ids) - new_buyers
+        # New vs Old buyers за выбранный период (та же идентичность, что и B)
+        new_buyers = sum(1 for i in period_buyer_idents if _is_new_buyer(i))
+        old_buyers = len(period_buyer_idents) - new_buyers
 
         # Юнит-экономика по Красинскому: CM = B × APC × (AvP − COGS)
-        buyers_total = len(period_client_ids)
+        buyers_total = len(period_buyer_idents)
         unit_apc = round(len(period_deals) / buyers_total, 2) if buyers_total else 0
+        # AvP по всем сделкам периода, чтобы AvP × Orders = Revenue (period_avg_check
+        # считается по подмножеству с payin > 0 — для карточки «Ср. чек», не для UE)
+        unit_avp = round(period_volume / len(period_deals), 2) if period_deals else 0
         unit_profit_per_deal = round(period_profit / len(period_deals), 2) if period_deals else 0
-        unit_cogs_per_deal = round(period_cost / len(period_deals), 2) if period_deals else 0
+        # COGS = ВСЕ переменные затраты на сделку (закупка валюты + выплаты
+        # агентам), т.е. AvP − маржа. Раньше брали только закупку, а маржу —
+        # из net_profit_usdt (уже после агентов): колонки одной строки считались
+        # по разным базам и AvP − COGS не сходилось с «маржой со сделки».
+        # Считаем разностью, чтобы строка билась до цента при любом округлении.
+        unit_cogs_per_deal = round(unit_avp - unit_profit_per_deal, 2)
         unit_arpc = round(period_profit / buyers_total, 2) if buyers_total else 0
 
         # Лиды/CR: поток = уникальные клиенты с эпизодами (WON + LOSE) за период.
@@ -5061,13 +5113,6 @@ def get_dashboard():
         # трафик, поэтому CR = конверсия из обращения в покупку (НЕ C1). Если LOSE
         # в периоде нет вообще — потока не знаем, оставляем None (иначе фиктивные
         # 100%). При фильтре по рефереру тоже None: у LOSE нет referrer_id.
-        def _client_ident(d):
-            """Идентичность клиента: имя без регистра (у LOSE нет client_id)."""
-            name = (d.client_name or (d.client.name if d.client else '') or '').strip().lower()
-            if name:
-                return f'n{name}'
-            return f'c{d.client_id}' if d.client_id else f'd{d.id}'
-
         unit_ua = unit_c1 = unit_arpu = None
         channels_block = None
         if referrer_filter in ('', 'all'):
@@ -5077,7 +5122,7 @@ def get_dashboard():
                 Deal.status == DealStatus.LOSE,
             ).all()
             if period_loses and buyers_total:
-                ua_idents = {_client_ident(d) for d in period_deals} | {_client_ident(d) for d in period_loses}
+                ua_idents = period_buyer_idents | {_client_ident(d) for d in period_loses}
                 unit_ua = len(ua_idents)
                 if unit_ua:
                     unit_c1 = round(buyers_total / unit_ua * 100, 1)
@@ -5096,38 +5141,33 @@ def get_dashboard():
                     return f'ref:{d.referrer_name}'
                 return 'без метки'
 
-            # Первая WON-сделка каждого клиента периода — для деления новые/повторные
-            from sqlalchemy import func as _f
-            period_cids = [cid for cid in period_client_ids]
-            first_deal_at = dict(session.query(
-                Deal.client_id, _f.min(Deal.created_at)
-            ).filter(
-                Deal.client_id.in_(period_cids),
-                Deal.status.in_(ACTIVE_STATUSES),
-            ).group_by(Deal.client_id).all()) if period_cids else {}
-
             ch_agg = {}
             def _ch_entry(name):
                 return ch_agg.setdefault(name, {
                     'channel': name, 'lead_idents': set(), 'buyer_idents': set(),
                     'new_buyers': 0, 'deals': 0, 'volume_usdt': 0.0, 'profit_usdt': 0.0,
                 })
-            counted_new = set()
             for d in period_deals:
                 e = _ch_entry(_deal_channel(d))
-                ident = _client_ident(d)
-                e['lead_idents'].add(ident)
-                e['buyer_idents'].add(ident)
                 e['deals'] += 1
                 e['volume_usdt'] += usdt[d.id][0]
                 e['profit_usdt'] += d.net_profit_usdt if d.net_profit_usdt is not None else (d.profit_usdt or 0)
-                if d.client_id and d.client_id not in counted_new:
-                    first = first_deal_at.get(d.client_id)
-                    if first and first >= chart_start:
+
+            # Лиды/покупатели — по каналу ПЕРВОГО касания клиента в периоде.
+            # Клиент со сделками из разных каналов иначе считается в каждом и
+            # сумма по каналам больше итога (у Красинского лид принадлежит
+            # каналу привлечения). Сделки/объём/маржа остаются по метке сделки.
+            first_touch = {}
+            for d in sorted(period_deals + period_loses,
+                            key=lambda x: x.created_at or chart_start):
+                first_touch.setdefault(_client_ident(d), _deal_channel(d))
+            for ident, ch_name in first_touch.items():
+                e = _ch_entry(ch_name)
+                e['lead_idents'].add(ident)
+                if ident in period_buyer_idents:
+                    e['buyer_idents'].add(ident)
+                    if _is_new_buyer(ident):
                         e['new_buyers'] += 1
-                    counted_new.add(d.client_id)
-            for d in period_loses:
-                _ch_entry(_deal_channel(d))['lead_idents'].add(_client_ident(d))
 
             # Трафик/расход по каналам из Метрики/рекламных кабинетов (если синкается)
             traffic_rows = session.query(
@@ -5229,7 +5269,7 @@ def get_dashboard():
                     'buyers': buyers_total,
                     'orders': len(period_deals),
                     'apc': unit_apc,
-                    'avp': period_avg_check,
+                    'avp': unit_avp,
                     'cogs_per_deal': unit_cogs_per_deal,
                     'profit_per_deal': unit_profit_per_deal,
                     'arpc': unit_arpc,
@@ -5250,7 +5290,7 @@ def get_dashboard():
                 'charts': {
                     'daily': chart_days,
                     'methods': method_stats,
-                    'buyers': {'new': new_buyers, 'old': old_buyers, 'total': len(period_client_ids)}
+                    'buyers': {'new': new_buyers, 'old': old_buyers, 'total': buyers_total}
                 }
             }
         })

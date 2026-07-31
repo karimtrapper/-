@@ -369,3 +369,61 @@ class TestChannels:
             'lose_reason': 'тест', 'bitrix_deal_id': 999001, 'source_channel': 'site',
         })
         assert res2.get_json()['deal']['source_channel'] == 'site'
+
+
+# ── Сходимость таблицы (цифры должны биться друг с другом) ────────────────
+
+class TestUnitEconConsistency:
+    """Инварианты строки Красинского. Ловили: COGS без агентских выплат,
+    B по client_id в шапке против имени в каналах, клиент в двух каналах."""
+
+    def test_cogs_includes_agent_payout(self, db, tc):
+        """AvP − COGS == маржа со сделки: COGS = закупка + выплата агенту."""
+        r = Referrer(name='Ref', code='GR-CS', token='t-cs')
+        db.add(r); db.commit()
+        c = Client(name='Иван'); db.add(c); db.commit()
+        d = make_deal(db, client_id=c.id, referrer=r, profit=100, payin=1000)
+        d.net_profit_usdt = 50.0  # gross 100, агенту 50
+        db.commit()
+        ue = get_dash(tc).get_json()['dashboard']['unit_economics']
+        assert ue['avp'] == 1000
+        assert ue['cogs_per_deal'] == 950        # 900 закупка + 50 агенту
+        assert ue['profit_per_deal'] == 50
+        assert round(ue['avp'] - ue['cogs_per_deal'], 2) == ue['profit_per_deal']
+        assert round(ue['avp'] * ue['orders'], 2) == ue['revenue']
+        assert round(ue['arpc'] * ue['buyers'], 2) == ue['cm']
+
+    def test_buyer_without_client_id_counted(self, db, tc):
+        """Сделка без карточки клиента — тоже покупатель; по имени сливается с client_id."""
+        c = Client(name='Иван'); db.add(c); db.commit()
+        make_deal(db, client_id=c.id, profit=100)
+        d = make_deal(db, profit=50)          # без client_id, но тот же человек
+        d.client_name = ' иВан '
+        db.commit()
+        d2 = make_deal(db, profit=30)         # без client_id, другой человек
+        d2.client_name = 'Олег'
+        db.commit()
+        dash = get_dash(tc).get_json()['dashboard']
+        assert dash['unit_economics']['buyers'] == 2   # Иван (2 сделки) + Олег
+        assert dash['unit_economics']['orders'] == 3
+        assert dash['charts']['buyers']['total'] == 2
+
+    def test_channel_sums_match_totals(self, db, tc):
+        """Клиент со сделками в двух каналах не задваивается: сумма по каналам = итог."""
+        today = datetime.now()
+        c = Client(name='Анна'); db.add(c); db.commit()
+        d1 = make_deal(db, client_id=c.id, profit=100, created_at=today - timedelta(days=5))
+        d1.source_channel = 'insta'
+        d2 = make_deal(db, client_id=c.id, profit=50, created_at=today - timedelta(days=2))
+        d2.source_channel = 'site'
+        db.commit()
+        make_lose(db, 'Олег')
+        dash = get_dash(tc).get_json()['dashboard']
+        ue, chans = dash['unit_economics'], dash['channels']
+        assert sum(r['leads'] for r in chans) == ue['ua']      # 2: Анна + Олег
+        assert sum(r['buyers'] for r in chans) == ue['buyers']  # 1: Анна
+        assert sum(r['deals'] for r in chans) == ue['orders']
+        ch = {r['channel']: r for r in chans}
+        assert ch['insta']['buyers'] == 1   # первое касание Анны
+        assert ch['site']['buyers'] == 0
+        assert ch['site']['deals'] == 1     # сделки — по метке самой сделки
