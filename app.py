@@ -14,6 +14,7 @@ import asyncio
 import time
 import json
 import re
+import math
 import hashlib
 import hmac
 import secrets
@@ -739,6 +740,25 @@ class Deal(Base):
     # Пишет DealCloser (utm_source__/ref__ из первого сообщения Bitrix-чата)
     source_channel = Column(String(50), nullable=True)
     revived_by_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True)  # WON, забравший этот LOSE
+    # ── Недвижимость через MF Corporation (leasehold) ────────────────────────
+    # Спека: docs/specs/2026-08-04-mf-corp-leasehold.md
+    # Деньги расходятся по ДВУМ карманам: комиссия оседает в батах на счёте тайской
+    # компании, остаток остаётся в USDT на кошельке. Чистый доход = сумма обоих.
+    deal_kind = Column(String(20), nullable=True)      # None/'exchange' — обычная, 'mf_realty' — через MF Corp
+    realty_purpose = Column(String(200))               # назначение: проект / юнит / номер инвойса
+    invoice_amount_thb = Column(Float)                 # сколько должен получить застройщик
+    sell_rate_thb_usdt = Column(Float)                 # курс продажи (клиенту)
+    buy_rate_thb_usdt = Column(Float)                  # курс покупки (наш) — база себестоимости
+    company_percent = Column(Float)                    # комиссия компании, % от суммы инвойса (кастомная)
+    company_sent_thb = Column(Float)                   # фактически отправлено в MF Corp
+    company_fee_thb = Column(Float)                    # комиссия компании в батах
+    company_fee_usdt = Column(Float)                   # она же в USDT (по курсу покупки)
+    wallet_remainder_usdt = Column(Float)              # остаток на кошельке после комиссии и партнёров
+    katika_fee_thb = Column(Float)                     # выплата номиналу, баты
+    katika_fee_usdt = Column(Float)                    # она же в USDT
+    doc_invoice_url = Column(String(500))
+    doc_contract_url = Column(String(500))
+    doc_payment_url = Column(String(500))
     is_custom = Column(Boolean, default=False)
     custom_payin_currency = Column(String(10))
     custom_payin_amount = Column(Float)
@@ -770,6 +790,21 @@ class Deal(Base):
             'payin_tx_hash': self.payin_tx_hash,
             'payin_tx_hashes': json.loads(self.payin_tx_hashes) if self.payin_tx_hashes else None,
             'payin_tx_verified': self.payin_tx_verified,
+            'deal_kind': self.deal_kind or 'exchange',
+            'realty_purpose': self.realty_purpose,
+            'invoice_amount_thb': self.invoice_amount_thb,
+            'sell_rate_thb_usdt': self.sell_rate_thb_usdt,
+            'buy_rate_thb_usdt': self.buy_rate_thb_usdt,
+            'company_percent': self.company_percent,
+            'company_sent_thb': self.company_sent_thb,
+            'company_fee_thb': self.company_fee_thb,
+            'company_fee_usdt': self.company_fee_usdt,
+            'wallet_remainder_usdt': self.wallet_remainder_usdt,
+            'katika_fee_thb': self.katika_fee_thb,
+            'katika_fee_usdt': self.katika_fee_usdt,
+            'doc_invoice_url': self.doc_invoice_url,
+            'doc_contract_url': self.doc_contract_url,
+            'doc_payment_url': self.doc_payment_url,
             'payin_partner_name': self.payin_partner_name,
             'payin_parts': json.loads(self.payin_parts) if self.payin_parts else None,
             'doverka_transaction_id': self.doverka_transaction_id,
@@ -850,13 +885,25 @@ class DealAgent(Base):
         }
 
 
-def compute_agent_cascade(profit_usdt, volume_usdt, agents):
+def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=None):
     """Считает выплаты агентам каскадом по уровням.
 
     agents — список dict с ключами comp_model, percent, fixed_usdt, tier.
     На одном уровне (tier) все берут от ОДНОЙ базы; база уменьшается на сумму
     выплат уровня перед переходом на следующий. Возвращает (agents_out, net_profit),
     где у каждого агента проставлены '_payout' и '_base'.
+
+    Модели вознаграждения:
+      markup       — % от объёма сделки;
+      fixed        — фиксированная сумма;
+      revshare     — % от прибыли (база уменьшается каскадом);
+      wallet_share — % от того, что осталось НА КОШЕЛЬКЕ (сделки через MF Corp:
+                     часть прибыли заперта в батах на счёте компании, делить её
+                     с партнёром нельзя). База — wallet_base_usdt, тоже каскадная.
+
+    Отрицательных выплат не бывает: партнёр не доплачивает нам. Если база ушла
+    в минус (например, прибыль ещё не известна — сделка ждёт возмещения, а агент
+    ур.1 уже взял markup), выплата уровня ниже = 0, а не отрицательное число.
     """
     profit = profit_usdt or 0
     volume = volume_usdt or 0
@@ -864,24 +911,133 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents):
     for a in agents:
         by_tier.setdefault(int(a.get('tier') or 1), []).append(a)
     base = profit
+    wallet_base = wallet_base_usdt if wallet_base_usdt is not None else profit
     out = []
     for t in sorted(by_tier):
         tier_total = 0.0
         for a in by_tier[t]:
             model = (a.get('comp_model') or 'revshare').lower()
+            pct = float(a.get('percent') or 0) / 100
             if model == 'markup':
-                pay = volume * (float(a.get('percent') or 0) / 100)
+                pay = volume * pct
+                shown_base = base
             elif model == 'fixed':
                 pay = float(a.get('fixed_usdt') or 0)
+                shown_base = base
+            elif model == 'wallet_share':
+                pay = max(wallet_base, 0) * pct
+                shown_base = wallet_base
             else:  # revshare
-                pay = base * (float(a.get('percent') or 0) / 100)
+                pay = max(base, 0) * pct
+                shown_base = base
             pay = round(pay, 2)
             a['_payout'] = pay
-            a['_base'] = round(base, 2)
+            a['_base'] = round(shown_base, 2)
             tier_total += pay
             out.append(a)
         base -= tier_total
+        wallet_base -= tier_total
     return out, round(base, 2)
+
+
+MF_REALTY_KIND = 'mf_realty'
+
+
+def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
+                      company_percent=None, company_sent_thb=None, agents=None):
+    """Расчёт сделки по недвижимости через MF Corporation (leasehold).
+
+    Спека: docs/specs/2026-08-04-mf-corp-leasehold.md. Формулы сверены по строкам
+    таблицы «Cделки недвижимость» за май–июль.
+
+    Клиент платит по курсу продажи, баты покупаем по курсу покупки (он выше) —
+    разница и есть заработок. Баты уходят в MF Corp, там оседает комиссия,
+    остальное остаётся в USDT на кошельке.
+
+    Комиссию задают с одной из двух сторон, вторая считается:
+      company_percent  → сколько батов отправить в компанию;
+      company_sent_thb → какой процент вышел по факту.
+    Если заданы обе — фактическая сумма приоритетнее (процент пересчитываем из неё).
+
+    Возвращает dict со всеми производными величинами и разложенными выплатами
+    партнёрам. Ничего не пишет в БД — чистая функция, её же зовёт форма для превью.
+    """
+    invoice_thb = float(invoice_thb or 0)
+    buy_rate = float(buy_rate or 0)
+    sell_rate = float(sell_rate or 0)
+
+    # Приход: либо известен фактически, либо выводится из курса продажи
+    payin = float(payin_usdt or 0)
+    if not payin and invoice_thb and sell_rate:
+        payin = invoice_thb / sell_rate
+
+    cost_usdt = invoice_thb / buy_rate if buy_rate else 0     # себестоимость батов
+    gross_profit = payin - cost_usdt                          # валовый доход
+
+    # Комиссия компании — от суммы инвойса в батах
+    if company_sent_thb not in (None, ''):
+        sent_thb = float(company_sent_thb)
+        fee_thb = sent_thb - invoice_thb
+        percent = (fee_thb / invoice_thb * 100) if invoice_thb else 0
+    else:
+        percent = float(company_percent or 0)
+        fee_thb = invoice_thb * percent / 100
+        sent_thb = invoice_thb + fee_thb
+    fee_usdt = fee_thb / buy_rate if buy_rate else 0
+
+    # Выплаты партнёрам. База wallet_share — то, что реально остаётся в крипте:
+    # валовый доход минус комиссия, запертая в батах.
+    wallet_base = gross_profit - fee_usdt
+    volume = max(payin, cost_usdt)
+    computed, _ = compute_agent_cascade(gross_profit, volume,
+                                        [dict(a) for a in (agents or [])],
+                                        wallet_base_usdt=wallet_base)
+    agents_total = sum(a.get('_payout') or 0 for a in computed)
+
+    wallet_remainder = wallet_base - agents_total       # осталось на кошельке
+    net_profit = wallet_remainder + fee_usdt            # чистый доход = оба кармана
+
+    return {
+        'payin_usdt': round(payin, 2),
+        'cost_usdt': round(cost_usdt, 2),
+        'gross_profit_usdt': round(gross_profit, 2),
+        'company_percent': round(percent, 4),
+        'company_fee_thb': round(fee_thb, 2),
+        'company_fee_usdt': round(fee_usdt, 2),
+        'company_sent_thb': round(sent_thb, 2),
+        'agents': computed,
+        'agents_total_usdt': round(agents_total, 2),
+        'wallet_remainder_usdt': round(wallet_remainder, 2),
+        'net_profit_usdt': round(net_profit, 2),
+        # Хватает ли крипты на выплаты партнёрам. Минус = придётся конвертировать
+        # баты обратно или платить из кармана (кейс SID + Валера, спека §3.6).
+        'wallet_shortfall_usdt': round(min(wallet_remainder, 0), 2),
+    }
+
+
+def suggest_company_percent(invoice_thb, buy_rate, payin_usdt, agents=None,
+                            sell_rate=None, keep_usdt=0.0):
+    """Максимальный процент компании, при котором крипты хватает на выплаты партнёрам.
+
+    Ровно та арифметика, которую сейчас делают в уме («поставлю 0.9, потому что
+    Валере ещё платить»). keep_usdt — сколько дополнительно оставить на кошельке.
+    Возвращает процент, округлённый вниз до сотых, не больше 100 и не меньше 0.
+    """
+    invoice_thb = float(invoice_thb or 0)
+    buy_rate = float(buy_rate or 0)
+    if not invoice_thb or not buy_rate:
+        return 0.0
+
+    # Выплаты партнёрам зависят от процента (wallet_share), поэтому идём итерациями:
+    # 3 прохода сходятся с запасом — база меняется монотонно и слабо.
+    percent = 0.0
+    for _ in range(3):
+        r = compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=sell_rate,
+                              company_percent=percent, agents=agents)
+        # Свободные деньги = валовый доход − выплаты − что просили оставить
+        free_usdt = r['gross_profit_usdt'] - r['agents_total_usdt'] - float(keep_usdt or 0)
+        percent = max(0.0, free_usdt * buy_rate / invoice_thb * 100)
+    return min(round(math.floor(percent * 100) / 100, 2), 100.0)
 
 
 class ReestrSnapshot(Base):
@@ -1245,6 +1401,31 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ reimbursements.tx_hash migration: {e}")
+
+# Сделки по недвижимости через MF Corporation (leasehold)
+_MF_REALTY_COLUMNS = [
+    ('deal_kind', 'VARCHAR(20)'), ('realty_purpose', 'VARCHAR(200)'),
+    ('invoice_amount_thb', 'DOUBLE PRECISION'), ('sell_rate_thb_usdt', 'DOUBLE PRECISION'),
+    ('buy_rate_thb_usdt', 'DOUBLE PRECISION'), ('company_percent', 'DOUBLE PRECISION'),
+    ('company_sent_thb', 'DOUBLE PRECISION'), ('company_fee_thb', 'DOUBLE PRECISION'),
+    ('company_fee_usdt', 'DOUBLE PRECISION'), ('wallet_remainder_usdt', 'DOUBLE PRECISION'),
+    ('katika_fee_thb', 'DOUBLE PRECISION'), ('katika_fee_usdt', 'DOUBLE PRECISION'),
+    ('doc_invoice_url', 'VARCHAR(500)'), ('doc_contract_url', 'VARCHAR(500)'),
+    ('doc_payment_url', 'VARCHAR(500)'),
+]
+try:
+    with engine.connect() as conn:
+        is_pg = 'postgresql' in DATABASE_URL
+        for col, coltype in _MF_REALTY_COLUMNS:
+            sql_type = coltype if is_pg else coltype.replace('DOUBLE PRECISION', 'FLOAT')
+            if is_pg:
+                conn.execute(text(f"ALTER TABLE deals ADD COLUMN IF NOT EXISTS {col} {sql_type}"))
+            else:
+                try: conn.execute(text(f"ALTER TABLE deals ADD COLUMN {col} {sql_type}"))
+                except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ mf_realty migration: {e}")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
@@ -3007,13 +3188,23 @@ def _apply_deal_agents(session, deal, agents_data):
     # запоминаем кто уже выплачен (чтобы не сбросить при пересохранении)
     prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()  # delete-orphan удалит старые строки на flush
+    # Сделки через MF Corp: часть прибыли заперта в батах на счёте компании, делить
+    # её с партнёром нельзя — база для wallet_share это только то, что в крипте.
+    is_mf = deal.deal_kind == MF_REALTY_KIND
+    wallet_base = ((deal.profit_usdt or 0) - (deal.company_fee_usdt or 0)) if is_mf else None
+
     if not agents_data:
         deal.referrer_payout_usdt = None
-        deal.net_profit_usdt = round(deal.profit_usdt or 0, 2)
+        if is_mf:
+            deal.wallet_remainder_usdt = round(wallet_base, 2)
+            deal.net_profit_usdt = round(wallet_base + (deal.company_fee_usdt or 0), 2)
+        else:
+            deal.net_profit_usdt = round(deal.profit_usdt or 0, 2)
         return
     volume = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
     computed, net = compute_agent_cascade(deal.profit_usdt or 0, volume,
-                                          [dict(a) for a in agents_data])
+                                          [dict(a) for a in agents_data],
+                                          wallet_base_usdt=wallet_base)
     # Имя не передали (скрипт/интеграция шлёт только referrer_id) — берём из профиля.
     # Иначе deal.referrer_name затирался в NULL и партнёр пропадал из списка сделок.
     missing_names = {a.get('referrer_id') for a in computed
@@ -3037,7 +3228,12 @@ def _apply_deal_agents(session, deal, agents_data):
             paid=paid, paid_at=paid_at, paid_note=paid_note,
         ))
         total += a.get('_payout') or 0
-    deal.net_profit_usdt = net
+    if is_mf:
+        # Чистый доход = остаток на кошельке + комиссия, осевшая в компании
+        deal.wallet_remainder_usdt = round(wallet_base - total, 2)
+        deal.net_profit_usdt = round(deal.wallet_remainder_usdt + (deal.company_fee_usdt or 0), 2)
+    else:
+        deal.net_profit_usdt = net
     deal.referrer_payout_usdt = round(total, 2) if total else None
     # кэш агента ур.1 для старых отображений/выгрузок
     primary = min(computed, key=lambda x: int(x.get('tier') or 1))
@@ -3239,6 +3435,30 @@ def _find_referrer_by_code(db, code):
     return None
 
 
+@app.route('/api/deals/mf-realty/preview', methods=['POST'])
+def preview_mf_realty():
+    """Расчёт сделки через MF Corp без сохранения — для формы и проверок.
+
+    Отдаёт разложение по карманам, выплаты партнёрам и подсказку
+    «какой процент компании максимум, чтобы хватило на выплаты из крипты».
+    """
+    data = request.get_json() or {}
+    try:
+        result = compute_mf_realty(
+            data.get('invoice_amount_thb'), data.get('buy_rate_thb_usdt'),
+            data.get('payin_amount_usdt'), sell_rate=data.get('sell_rate_thb_usdt'),
+            company_percent=data.get('company_percent'),
+            company_sent_thb=data.get('company_sent_thb'),
+            agents=data.get('agents') or [])
+        result['suggested_company_percent'] = suggest_company_percent(
+            data.get('invoice_amount_thb'), data.get('buy_rate_thb_usdt'),
+            data.get('payin_amount_usdt'), agents=data.get('agents') or [],
+            sell_rate=data.get('sell_rate_thb_usdt'), keep_usdt=data.get('keep_usdt') or 0)
+    except (TypeError, ValueError) as e:
+        return jsonify({'success': False, 'error': f'Некорректные данные: {e}'}), 400
+    return jsonify({'success': True, 'result': result})
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -3389,6 +3609,7 @@ def create_deal():
             custom_payout_amount=data.get('custom_payout_amount'),
             custom_payout_rate=data.get('custom_payout_rate'),
             payin_parts=json.dumps(data['payin_parts'], ensure_ascii=False) if data.get('payin_parts') else None,
+            deal_kind=(data.get('deal_kind') or None),
             lose_reason=(data.get('lose_reason') or None),
             bitrix_deal_id=int(data['bitrix_deal_id']) if data.get('bitrix_deal_id') else None,
             source_channel=(data.get('source_channel') or '').strip()[:50] or None,
@@ -3409,12 +3630,19 @@ def create_deal():
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
         # Для LOSE финансов нет — пропускаем и пересчёт, и агентов.
         if not is_lose:
-            _recalculate_deal_financials(deal, data)
+            # Недвижимость через MF Corp считается по своим формулам (два кармана),
+            # обычный пересчёт прибыли для неё не подходит
+            if deal.deal_kind == MF_REALTY_KIND:
+                _apply_mf_realty(deal, data)
+            else:
+                _recalculate_deal_financials(deal, data)
 
             # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
             # одиночного реферала (без пересчёта) для единого источника кабинета
             if data.get('agents'):
                 _apply_deal_agents(session, deal, data['agents'])
+            elif deal.deal_kind == MF_REALTY_KIND:
+                _apply_deal_agents(session, deal, [])  # проставит остаток и чистый доход
             else:
                 _mirror_legacy_agent(session, deal)
 
@@ -3587,8 +3815,22 @@ def update_deal(deal_id):
             if deal.status != DealStatus.LOSE and deal.revived_by_deal_id:
                 deal.revived_by_deal_id = None
 
-        # Автоматический пересчёт прибыли и выплаты рефереру
-        _recalculate_deal_financials(deal, data)
+        if 'deal_kind' in data:
+            deal.deal_kind = data.get('deal_kind') or None
+
+        # Автоматический пересчёт прибыли и выплаты рефереру.
+        # Недвижимость через MF Corp — по своим формулам (два кармана).
+        if deal.deal_kind == MF_REALTY_KIND:
+            _apply_mf_realty(deal, data)
+            if 'agents' not in data:
+                _apply_deal_agents(session, deal, [
+                    {'referrer_id': r.referrer_id, 'name': r.name, 'tier': r.tier,
+                     'comp_model': r.comp_model, 'percent': r.percent,
+                     'fixed_usdt': r.fixed_usdt}
+                    for r in sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0))
+                ])
+        else:
+            _recalculate_deal_financials(deal, data)
 
         # Мультиагенты: явный массив agents → каскадный пересчёт (пустой = убрать всех);
         # без массива → зеркалим одиночного реферала (сохраняя ручной payout)
@@ -3606,7 +3848,8 @@ def update_deal(deal_id):
                 deal.referrer_percent = None
                 deal.referrer_markup_percent = None
                 deal.referrer_comp_model = None
-        else:
+        elif deal.deal_kind != MF_REALTY_KIND:
+            # Для MF Corp агенты уже пересчитаны выше вместе с карманами
             _mirror_legacy_agent(session, deal)
 
         session.commit()
@@ -4445,6 +4688,56 @@ def get_incoming_transactions():
         return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
         session.close()
+
+MF_REALTY_INPUT_FIELDS = (
+    'realty_purpose', 'invoice_amount_thb', 'sell_rate_thb_usdt', 'buy_rate_thb_usdt',
+    'company_percent', 'company_sent_thb', 'katika_fee_thb', 'katika_fee_usdt',
+    'doc_invoice_url', 'doc_contract_url', 'doc_payment_url',
+)
+
+
+def _apply_mf_realty(deal, data):
+    """Поля и производные для сделки через MF Corp: себестоимость, комиссия, валовый доход.
+
+    Выплаты партнёрам и остаток на кошельке считаются позже, в _apply_deal_agents —
+    там уже известен состав агентов. Прибыль сделки = валовый доход (приход −
+    себестоимость), поэтому обычный _recalculate_deal_financials для таких сделок
+    не нужен и не вызывается.
+    """
+    for f in MF_REALTY_INPUT_FIELDS:
+        if f in data:
+            val = data.get(f)
+            setattr(deal, f, val if val not in ('', None) else None)
+
+    # Комиссию задают с одной из двух сторон. Источник истины — то, что прислали
+    # ИМЕННО СЕЙЧАС: иначе сохранённая при создании сумма отправки навсегда
+    # перебивала бы правку процента и сделку нельзя было бы пересчитать.
+    if data.get('company_sent_thb') not in (None, ''):
+        sent_thb, percent = deal.company_sent_thb, None
+    elif data.get('company_percent') not in (None, ''):
+        sent_thb, percent = None, deal.company_percent
+    else:
+        sent_thb, percent = None, deal.company_percent  # правят другое поле — считаем от процента
+
+    r = compute_mf_realty(
+        deal.invoice_amount_thb, deal.buy_rate_thb_usdt, deal.payin_amount_usdt,
+        sell_rate=deal.sell_rate_thb_usdt, company_percent=percent,
+        company_sent_thb=sent_thb, agents=[])
+
+    if not deal.payin_amount_usdt:
+        deal.payin_amount_usdt = r['payin_usdt']
+    deal.company_percent = r['company_percent']
+    deal.company_sent_thb = r['company_sent_thb']
+    deal.company_fee_thb = r['company_fee_thb']
+    deal.company_fee_usdt = r['company_fee_usdt']
+    # Себестоимость батов = то, что реально ушло с кошелька
+    deal.payout_amount_usdt = r['cost_usdt']
+    deal.profit_usdt = r['gross_profit_usdt']
+    deal.profit_percent = (r['gross_profit_usdt'] / r['cost_usdt'] * 100) if r['cost_usdt'] else 0
+    # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
+    deal.needs_reimbursement = False
+    return r
+
 
 def _dedupe_transfers(transfers):
     """Убирает повторы переводов — строго по tx_hash.
