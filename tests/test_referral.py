@@ -322,6 +322,121 @@ class TestAutoPopulateReferrer:
         assert deal['referrer_id'] is None
 
 
+# ── Резолв реферального кода в referrer_id при создании сделки ───────────
+
+class TestReferrerCodeResolution:
+    """DealCloser шлёт referrer_name='GR-XXX' — код должен стать профилем.
+
+    Баг до 2026-08-04: код оставался текстом, referrer_id=None → сделка не
+    попадала в кабинет реферера и не начисляла выплату (кейс insight Estate
+    «GR-INSIGH (вручную)»).
+    """
+
+    def _deal(self, tc, client_id, **extra):
+        payload = {
+            'client_id': client_id,
+            'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 1000,
+            'payout_amount_usdt': 970,
+            'payout_method': 'transfer',
+        }
+        payload.update(extra)
+        return tc.post('/api/deals', json=payload).json['deal']
+
+    def test_code_resolved_to_profile(self, tc, referrer, db):
+        c = Client(name='Client By Code')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-ED')
+        assert deal['referrer_id'] == referrer.id
+        assert deal['referrer_name'] == 'Ed'
+        assert deal['referrer_percent'] == 10.0
+
+    def test_code_normalized(self, tc, referrer, db):
+        """GRED (из TG start-параметра, без дефиса) находит GR-ED."""
+        c = Client(name='Client Normalized')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GRED')
+        assert deal['referrer_id'] == referrer.id
+        assert deal['referrer_name'] == 'Ed'
+
+    def test_code_lowercase_resolved(self, tc, referrer, db):
+        c = Client(name='Client Lower')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='gr-ed')
+        assert deal['referrer_id'] == referrer.id
+
+    def test_unknown_code_stays_text(self, tc, db):
+        """Незарегистрированный код (кейс GR-KARIM) — остаётся пометкой без id."""
+        c = Client(name='Client Phantom')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-KARIM')
+        assert deal['referrer_id'] is None
+        assert deal['referrer_name'] == 'GR-KARIM'
+
+    def test_plain_name_not_resolved(self, tc, db):
+        """Свободное имя не код — не ищем и не перезаписываем."""
+        c = Client(name='Client Manual')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='Manual Override', referrer_percent=99)
+        assert deal['referrer_id'] is None
+        assert deal['referrer_name'] == 'Manual Override'
+        assert deal['referrer_percent'] == 99
+
+    def test_explicit_percent_wins(self, tc, referrer, db):
+        """Явный процент не затирается дефолтом профиля."""
+        c = Client(name='Client Pct')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-ED', referrer_percent=25)
+        assert deal['referrer_id'] == referrer.id
+        assert deal['referrer_percent'] == 25
+
+    def test_inactive_referrer_not_resolved(self, tc, db):
+        r = Referrer(name='Off', code='GR-OFF', token=secrets.token_hex(16),
+                     default_percent=10.0, active=False)
+        db.add(r); db.commit()
+        c = Client(name='Client Inactive')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-OFF')
+        assert deal['referrer_id'] is None
+        assert deal['referrer_name'] == 'GR-OFF'
+
+    def test_self_referral_code_ignored(self, tc, db):
+        """Клиент = реферер → код не линкуем (защита от самореферала)."""
+        c = Client(name='Self Ref')
+        db.add(c); db.commit()
+        r = Referrer(name='Self', code='GR-SELF', token=secrets.token_hex(16),
+                     default_percent=10.0, client_id=c.id)
+        db.add(r); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-SELF')
+        assert deal['referrer_id'] is None
+
+    def test_lose_deal_not_linked(self, tc, referrer, db):
+        """LOSE-сделка реферера не получает (не начисляем за непокупку)."""
+        c = Client(name='Client Lose')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-ED', status='lose')
+        assert deal['referrer_id'] is None
+
+    def test_resolved_code_creates_deal_agent(self, tc, referrer, db):
+        """Главное следствие: строка в deal_agents → сделка видна в кабинете."""
+        c = Client(name='Client Agent Row')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_name='GR-ED')
+        rows = db.query(DealAgent).filter(DealAgent.deal_id == deal['id']).all()
+        assert len(rows) == 1
+        assert rows[0].referrer_id == referrer.id
+
+    def test_explicit_referrer_id_wins_over_code(self, tc, referrer, db):
+        other = Referrer(name='Other', code='GR-OTHR', token=secrets.token_hex(16),
+                         default_percent=5.0)
+        db.add(other); db.commit()
+        c = Client(name='Client Both')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_id=other.id, referrer_name='GR-ED')
+        assert deal['referrer_id'] == other.id
+
+
 # ── Авто-расчёт referrer_payout_usdt ─────────────────────────────────────
 
 class TestAutoReferrerPayout:

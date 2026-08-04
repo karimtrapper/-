@@ -13,6 +13,7 @@ import threading
 import asyncio
 import time
 import json
+import re
 import hashlib
 import hmac
 import secrets
@@ -2572,6 +2573,35 @@ def crm_index():
 
 # ==================== CALCULATOR API ====================
 
+# Комиссии Bitazza для калькулятора (позже переедут в настройки CRM)
+CALC_BITAZZA_FEE_PCT = 0.0015     # 0.15% комиссия биржи
+CALC_BITAZZA_FEE_FIXED_THB = 20   # фикс за вывод, ฿ (разово со сделки)
+CALC_BITAZZA_QUOTE_VOLUME = 1000  # номинальный объём USDT для карточки курса
+
+
+def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
+    """Курс Bitazza для калькулятора: VWAP по bids на объём × (1 − 0.15%).
+
+    Фикс 20฿ здесь НЕ вычитается — он разовый на сделку, применяется в расчёте.
+    None — стакан недоступен или объём не покрыт.
+    """
+    bids = _bitazza_bids()
+    if not bids or not usdt_amount or usdt_amount <= 0:
+        return None
+    remaining, thb = usdt_amount, 0.0
+    for price, qty in bids:
+        take = min(remaining, qty)
+        thb += take * price
+        remaining -= take
+        if remaining <= 0:
+            break
+    if remaining > 0:
+        return None
+    vwap = thb / usdt_amount
+    return {'raw_vwap': round(vwap, 4),
+            'effective': round(vwap * (1 - CALC_BITAZZA_FEE_PCT), 4)}
+
+
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
     try:
@@ -2583,9 +2613,19 @@ def get_rates():
             errors.append('USDT/THB недоступен (Binance)')
         if not rub_usdt:
             errors.append('RUB/USDT недоступен (Doverka)')
+        # Bitazza — второй источник USDT/THB; его недоступность не роняет ответ
+        bz = None
+        try:
+            bz = _bitazza_calc_quote()
+        except Exception as e:
+            app.logger.warning(f'Bitazza rate error: {e}')
         return jsonify({
             'usdt_thb': usdt_thb,
             'rub_usdt': rub_usdt,
+            'bitazza_usdt_thb': bz['effective'] if bz else None,
+            'bitazza_raw': bz['raw_vwap'] if bz else None,
+            'bitazza_fee_percent': CALC_BITAZZA_FEE_PCT * 100,
+            'bitazza_fee_fixed_thb': CALC_BITAZZA_FEE_FIXED_THB,
             'success': bool(usdt_thb and rub_usdt),
             'errors': errors
         })
@@ -3097,6 +3137,27 @@ def _sync_sber_claims(session, deal, parts):
         inc.claimed_at = datetime.utcnow()
 
 
+def _find_referrer_by_code(db, code):
+    """Ищет активного реферера по коду. Нормализует: GRED и GR-ED → один реферер.
+
+    Возвращает Referrer или None. Единый резолвер для /set-referrer и создания
+    сделки — чтобы код из DealCloser линковался так же, как при ручной привязке.
+    """
+    code = (code or '').strip().upper()
+    if not code:
+        return None
+    referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
+    if referrer:
+        return referrer
+    normalized = re.sub(r'[^A-Z0-9]', '', code)
+    if not normalized:
+        return None
+    for r in db.query(Referrer).filter(Referrer.active == True).all():
+        if re.sub(r'[^A-Z0-9]', '', r.code.upper()) == normalized:
+            return r
+    return None
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -3159,6 +3220,20 @@ def create_deal():
         ref_comp_model = data.get('referrer_comp_model')
         ref_markup_percent = data.get('referrer_markup_percent')
         ref_fixed_usdt = data.get('referrer_fixed_usdt')
+        # Реферер пришёл кодом (DealCloser шлёт "GR-INSIGH" в referrer_name) —
+        # резолвим в профиль, иначе сделка оставалась бы с текстовым именем без
+        # referrer_id: не попадала в кабинет реферера и без начисления.
+        # Код не нашёлся → оставляем текстом (как было), это ручная пометка.
+        if ref_name and not ref_id and not is_lose:
+            referrer = _find_referrer_by_code(session, ref_name)
+            if referrer and not (referrer.client_id and referrer.client_id == client_id):
+                ref_id = referrer.id
+                ref_name = referrer.name
+                if ref_percent is None:
+                    ref_percent = referrer.default_percent
+                ref_comp_model = ref_comp_model or referrer.comp_model
+                if ref_markup_percent is None:
+                    ref_markup_percent = referrer.markup_percent
         if client_id and not ref_name and not is_lose:
             client_obj = session.query(Client).get(client_id)
             if client_obj and client_obj.referrer_id:
@@ -7474,22 +7549,14 @@ def lookup_referrer():
     """Найти реферера по коду (для DealCloser и CRM).
     Нормализует код: GR-ED и GRED находят одного реферера.
     """
-    import re
     code = request.args.get('code', '').strip().upper()
     if not code:
         return jsonify({'success': False, 'error': 'Укажите код'}), 400
 
     db = get_session()
     try:
-        # Точный поиск
-        referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
-        # Нормализованный поиск (без дефисов/подчёркиваний) — для start-параметра TG
-        if not referrer:
-            normalized = re.sub(r'[^A-Z0-9]', '', code)
-            for r in db.query(Referrer).filter(Referrer.active == True).all():
-                if re.sub(r'[^A-Z0-9]', '', r.code) == normalized:
-                    referrer = r
-                    break
+        # Точный + нормализованный поиск (без дефисов/подчёркиваний) — для start-параметра TG
+        referrer = _find_referrer_by_code(db, code)
         if not referrer:
             return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
         return jsonify({'success': True, 'referrer': referrer.to_dict()})
@@ -7511,15 +7578,8 @@ def set_client_referrer(client_id):
             return jsonify({'success': False, 'error': 'Клиент не найден'}), 404
 
         if code:
-            import re
-            referrer = db.query(Referrer).filter(Referrer.code == code, Referrer.active == True).first()
             # Нормализованный поиск (GRED → GR-ED)
-            if not referrer:
-                normalized = re.sub(r'[^A-Z0-9]', '', code)
-                for r in db.query(Referrer).filter(Referrer.active == True).all():
-                    if re.sub(r'[^A-Z0-9]', '', r.code) == normalized:
-                        referrer = r
-                        break
+            referrer = _find_referrer_by_code(db, code)
         elif referrer_id:
             referrer = db.query(Referrer).get(referrer_id)
         else:
