@@ -1164,11 +1164,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     placeholder="Имя партнера">
                             </div>
                             <div class="form-group" id="payinTxHashGroup">
-                                <label class="form-label">Хэш транзакции (для крипты)</label>
+                                <label class="form-label">Хэш транзакции (для крипты) <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
                                 <select class="form-control" id="payinTxSelect" onchange="selectPayinTx(this)"
                                     style="margin-bottom: 0.5rem;">
                                     <option value="">-- Выбрать из входящих --</option>
                                 </select>
+                                <div id="payinTxPoolBox" style="margin-bottom: 0.5rem;"></div>
                                 <input type="text" class="form-control" name="payin_tx_hash"
                                     placeholder="Или введите TxHash вручную...">
                             </div>
@@ -3730,7 +3731,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? '🏦' : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.payer ? ' · ' + escapeHtml(p.payer) : ''}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
                             </div>
                         ` : ''}
-                        ${deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : ''}
+                        ${(deal.payin_tx_hashes && deal.payin_tx_hashes.length > 1)
+                            ? `<p><strong>Хэши Pay-In (${deal.payin_tx_hashes.length} части):</strong><br>` + deal.payin_tx_hashes.map(t =>
+                                `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
+                              ).join('') + `</p>`
+                            : (deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
                         
                         ${isDoverka ? `
                             <div style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
@@ -4075,6 +4080,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payin_amount_usdt) form.payin_amount_usdt.value = deal.payin_amount_usdt;
                         if (deal.payin_amount_rub) form.payin_amount_rub.value = deal.payin_amount_rub;
                         if (deal.payin_tx_hash) form.payin_tx_hash.value = deal.payin_tx_hash;
+                        // Приход крипты частями: восстанавливаем пул хэшей
+                        resetPayinTxPool(deal.payin_tx_hashes);
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
                         if (deal.doverka_transaction_id) form.doverka_transaction_id.value = deal.doverka_transaction_id;
                         if (deal.payin_partner_name) form.payin_partner_name.value = deal.payin_partner_name;
@@ -4131,6 +4138,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             stdAgents = []; renderStdAgents();
             customAgents = []; renderCustomAgents();
             sberReset();
+            resetPayinTxPool([]);
 
             // Сбрасываем кнопки
             const submitBtn = document.querySelector('#createDealForm button[type="submit"]');
@@ -4684,7 +4692,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const select = document.getElementById('payinTxSelect');
                     select.innerHTML = '<option value="">-- Выбрать из входящих --</option>' +
                         data.available.slice(0, 100).map(tx =>
-                            `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
+                            `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
                         ).join('');
                 }
             } catch (error) {
@@ -4692,16 +4700,75 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        function selectPayinTx(select) {
-            const txHash = select.value;
-            const amount = select.selectedOptions[0]?.dataset?.amount;
+        // Приход крипты частями: пул выбранных входящих транзакций [{hash, amount_usdt}].
+        // Клиент часто шлёт сумму несколькими переводами — суммируем их в Сумму USDT.
+        let payinTxPool = [];
 
-            if (txHash) {
-                document.querySelector('[name="payin_tx_hash"]').value = txHash;
+        function payinTxPoolTotal() {
+            return payinTxPool.reduce((s, t) => s + (t.amount_usdt || 0), 0);
+        }
+
+        function renderPayinTxPool() {
+            const box = document.getElementById('payinTxPoolBox');
+            if (!box) return;
+            if (!payinTxPool.length) { box.innerHTML = ''; return; }
+            box.innerHTML = payinTxPool.map((t, i) => `
+                <div style="display:flex;align-items:center;gap:0.5rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <strong style="color:#059669;">${t.amount_usdt != null ? '+$' + t.amount_usdt.toFixed(2) : '—'}</strong>
+                    <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
+                    <span style="color:#94a3b8;">${t.date || ''}</span>
+                    <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePayinTx(${i})">✕</button>
+                </div>`).join('') +
+                `<div style="text-align:right;font-weight:700;color:#166534;">Частей: ${payinTxPool.length} · итого $${payinTxPoolTotal().toFixed(2)}</div>`;
+        }
+
+        function syncPayinAmountFromPool() {
+            const amountInput = document.querySelector('[name="payin_amount_usdt"]');
+            const hashInput = document.querySelector('[name="payin_tx_hash"]');
+            if (payinTxPool.length) {
+                if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+                // Первый хэш дублируем в поле — его читают карточка сделки и выгрузка
+                if (hashInput) hashInput.value = payinTxPool[0].hash;
             }
-            if (amount) {
-                document.querySelector('[name="payin_amount_usdt"]').value = amount;
+            renderPayinTxPool();
+        }
+
+        function selectPayinTx(select) {
+            const opt = select.selectedOptions[0];
+            const txHash = select.value;
+            select.selectedIndex = 0;
+            if (!txHash) return;
+
+            if (payinTxPool.some(t => t.hash === txHash)) {
+                showToast('Эта транзакция уже добавлена', 'error');
+                return;
             }
+            const amount = parseFloat(opt?.dataset?.amount);
+            payinTxPool.push({
+                hash: txHash,
+                amount_usdt: isNaN(amount) ? null : amount,
+                date: opt?.dataset?.date || '',
+            });
+            syncPayinAmountFromPool();
+        }
+
+        function removePayinTx(index) {
+            payinTxPool.splice(index, 1);
+            if (!payinTxPool.length) {
+                // Пул опустел — поля освобождаем под ручной ввод
+                const hashInput = document.querySelector('[name="payin_tx_hash"]');
+                if (hashInput) hashInput.value = '';
+            }
+            syncPayinAmountFromPool();
+        }
+
+        function resetPayinTxPool(parts) {
+            payinTxPool = (parts || []).map(p => ({
+                hash: p.hash,
+                amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
+                date: '',
+            }));
+            renderPayinTxPool();
         }
 
         // Загрузка исходящих транзакций для Binance
@@ -5762,6 +5829,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = data.payin_method === 'sber_reqs' ? sberParts : [];
 
+            // Приход крипты частями (пустой список = один хэш из поля, как раньше)
+            data.payin_tx_hashes = payinTxPool.map(t => ({ hash: t.hash, amount_usdt: t.amount_usdt }));
+
             // Защита от дублей: блокируем кнопку на время запроса (двойной клик
             // при лаге сети создавал две сделки → двойное списание с кошелька).
             const submitBtn = this.querySelector('button[type="submit"]');
@@ -5794,6 +5864,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     this.reset();
                     stdAgents = []; renderStdAgents();
                     sberReset();
+                    resetPayinTxPool([]);
                     if (isEditMode) cancelEditMode();
                     showSection('deals');
                     loadDashboard();

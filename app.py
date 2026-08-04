@@ -693,6 +693,8 @@ class Deal(Base):
     payin_rate_usdt_thb = Column(Float)
     payin_partner_name = Column(String(100))
     payin_tx_hash = Column(String(100))
+    # Приход частями: JSON [{hash, amount_usdt}]. payin_tx_hash = первый хэш (легаси-отображения)
+    payin_tx_hashes = Column(Text, nullable=True)
     payin_tx_verified = Column(Boolean, default=False)
     doverka_transaction_id = Column(String(100))
     doverka_status = Column(SQLEnum(DoverkaStatus), nullable=True)
@@ -766,6 +768,7 @@ class Deal(Base):
             'payin_amount_usdt': self.payin_amount_usdt,
             'payin_rate_rub_usdt': self.payin_rate_rub_usdt,
             'payin_tx_hash': self.payin_tx_hash,
+            'payin_tx_hashes': json.loads(self.payin_tx_hashes) if self.payin_tx_hashes else None,
             'payin_tx_verified': self.payin_tx_verified,
             'payin_partner_name': self.payin_partner_name,
             'payin_parts': json.loads(self.payin_parts) if self.payin_parts else None,
@@ -1219,6 +1222,18 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_parts migration: {e}")
+
+# Приход крипты частями: JSON-список хэшей с суммами
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_tx_hashes TEXT"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_tx_hashes TEXT"))
+            except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payin_tx_hashes migration: {e}")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
@@ -1704,7 +1719,7 @@ def _sync_deals_to_gsheet_impl(deals):
             # Значения как числа — Google Sheets сам отформатирует
             date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
             payout_usdt = deal.payout_amount_usdt or 0
-            tx_hash = deal.payin_tx_hash or ''
+            tx_hash = ', '.join(_payin_hash_list(deal))
 
             # Чистая прибыль если есть реферер, иначе обычный profit
             net_profit = (deal.net_profit_usdt
@@ -1898,7 +1913,7 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
         f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
         payout_method_str,  # O
         payin_method_str if not deal.is_custom else 'кастом',  # P
-        deal.payin_tx_hash or '',  # Q
+        ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
         str(deal.id) if deal.id else '',  # R: служебный deal.id (проставляем и легаси-строкам)
     ]
     ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
@@ -1977,7 +1992,7 @@ def _update_deal_in_gsheet_impl(deal):
             f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
             payout_method_str,  # O
             payin_method_str if not deal.is_custom else 'кастом',  # P
-            deal.payin_tx_hash or '',  # Q
+            ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
             str(deal.id) if deal.id else '',  # R: служебный deal.id
         ]
 
@@ -3147,6 +3162,51 @@ def _sync_sber_claims(session, deal, parts):
         inc.claimed_at = datetime.utcnow()
 
 
+def _normalize_tx_hashes(raw):
+    """Хэши прихода крипты → [{'hash':.., 'amount_usdt':..}], без дублей и пустых.
+
+    Принимает и строки, и dict — фронт шлёт объекты с суммой части, интеграции
+    могут прислать просто список хэшей.
+    """
+    out, seen = [], set()
+    for item in (raw or []):
+        if isinstance(item, str):
+            h, amt = item.strip(), None
+        elif isinstance(item, dict):
+            h = str(item.get('hash') or item.get('tx_hash') or '').strip()
+            amt = item.get('amount_usdt')
+        else:
+            continue
+        if not h or h in seen:
+            continue
+        seen.add(h)
+        try:
+            amt = float(amt) if amt not in (None, '') else None
+        except (TypeError, ValueError):
+            amt = None
+        out.append({'hash': h, 'amount_usdt': amt})
+    return out
+
+
+def _payin_hash_list(deal):
+    """Все хэши Pay-In сделки: из JSON-списка, иначе одиночный payin_tx_hash."""
+    if deal.payin_tx_hashes:
+        try:
+            return [x['hash'] for x in json.loads(deal.payin_tx_hashes) if x.get('hash')]
+        except (ValueError, TypeError, KeyError, AttributeError):
+            pass
+    return [deal.payin_tx_hash] if deal.payin_tx_hash else []
+
+
+def _apply_payin_tx_hashes(deal, raw):
+    """Пишет список хэшей в сделку. payin_tx_hash = первый — его читают
+    легаси-отображения (карточка, выгрузка в Sheet, DealCloser)."""
+    parts = _normalize_tx_hashes(raw)
+    deal.payin_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
+    if parts:
+        deal.payin_tx_hash = parts[0]['hash']
+
+
 def _find_referrer_by_code(db, code):
     """Ищет активного реферера по коду. Нормализует: GRED и GR-ED → один реферер.
 
@@ -3323,6 +3383,10 @@ def create_deal():
             source_channel=(data.get('source_channel') or '').strip()[:50] or None,
             notes=data.get('notes')
         )
+        # Приход крипты частями: несколько хэшей на одну сделку
+        if data.get('payin_tx_hashes'):
+            _apply_payin_tx_hashes(deal, data['payin_tx_hashes'])
+
         session.add(deal)
         session.flush()
 
@@ -3432,6 +3496,10 @@ def update_deal(deal_id):
             parts = data.get('payin_parts') or []
             deal.payin_parts = json.dumps(parts, ensure_ascii=False) if parts else None
             _sync_sber_claims(session, deal, parts)
+
+        # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
+        if 'payin_tx_hashes' in data:
+            _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
@@ -4138,6 +4206,16 @@ def get_used_transaction_hashes(session):
     # 2. Из полей payin_tx_hash в Deal
     deals_payin = session.query(Deal.payin_tx_hash).filter(Deal.payin_tx_hash != None).all()
     for d in deals_payin: used_hashes.add(d[0])
+
+    # 2b. Приход частями: остальные хэши лежат в JSON payin_tx_hashes
+    deals_multi = session.query(Deal.payin_tx_hashes).filter(Deal.payin_tx_hashes != None).all()
+    for d in deals_multi:
+        try:
+            for part in json.loads(d[0]) or []:
+                if part.get('hash'):
+                    used_hashes.add(part['hash'])
+        except (ValueError, TypeError, AttributeError):
+            continue
     
     # 3. Из полей doverka_payout_hash в Deal
     deals_doverka = session.query(Deal.doverka_payout_hash).filter(Deal.doverka_payout_hash != None).all()
