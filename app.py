@@ -1235,6 +1235,17 @@ try:
 except Exception as e:
     print(f"ℹ️ payin_tx_hashes migration: {e}")
 
+# reimbursements.tx_hash хранит несколько хэшей через запятую, но в БД остался
+# VARCHAR(100) от первой версии — возмещение с 2+ хэшами падало на INSERT
+# (StringDataRightTruncation). В модели уже Text, тип в БД догоняем здесь.
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE reimbursements ALTER COLUMN tx_hash TYPE TEXT"))
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ reimbursements.tx_hash migration: {e}")
+
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
 
