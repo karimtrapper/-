@@ -958,20 +958,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <option value="">Выберите или введите ниже</option>
                             </select>
                         </div>
-                        <!-- Объединено в combobox выше -->
+                        <div class="form-group">
+                            <label class="form-label">Тип сделки</label>
+                            <select class="form-control" id="dealKindSelect" onchange="onDealKindChange()">
+                                <option value="exchange">Обычная (обмен)</option>
+                                <option value="custom">Кастомная — нестандартные валюты</option>
+                                <option value="mf_realty">Недвижимость через MF Corp</option>
+                            </select>
+                        </div>
                     </div>
 
                     <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
 
-                    <!-- Переключатель кастомной сделки -->
-                    <div
-                        style="margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border-radius: 8px; border: 1px solid #bae6fd;">
-                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
-                            <input type="checkbox" id="customDealToggle" onchange="toggleCustomDeal()">
-                            <strong>Кастомная сделка</strong>
-                            <span style="color: #666; font-size: 0.85rem;">(нестандартные валюты: THB→USDT, USD наличные
-                                и др.)</span>
-                        </label>
+                    <!-- Тип сделки выбирается селектом выше; чекбоксы оставлены скрытыми,
+                         на них завязаны загрузка сделки в форму и сброс -->
+                    <input type="checkbox" id="customDealToggle" onchange="toggleCustomDeal()" style="display:none;">
+                    <input type="checkbox" id="mfDealToggle" onchange="toggleMfDeal()" style="display:none;">
+                    <div id="mfDealHint"
+                        style="display:none; margin-bottom: 1rem; padding: 0.75rem; background: #f5f3ff; border-radius: 8px; border: 1px solid #ddd6fe; color:#5b21b6; font-size:0.9rem;">
+                        Инвойс застройщику оплачиваем через тайскую компанию: комиссия остаётся в батах на её счёте,
+                        остальное — в USDT на кошельке. Возмещение фаундеру не нужно.
                     </div>
 
                     <!-- Кастомная сделка - упрощенная форма -->
@@ -1218,6 +1224,79 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
 
+                        <!-- Оплата инвойса через MF Corporation (вместо обычной выдачи) -->
+                        <div id="mfDealSection" style="display:none;">
+                            <h3 style="margin-bottom: 1rem; color: #7c3aed;">Оплата через MF Corporation</h3>
+
+                            <div class="form-row">
+                                <div class="form-group" style="grid-column: span 2;">
+                                    <label class="form-label">Назначение</label>
+                                    <input type="text" class="form-control" id="mfPurpose"
+                                        placeholder="Проект / юнит / номер инвойса" oninput="mfRecalc()">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Сумма инвойса, THB *</label>
+                                    <input type="number" step="any" class="form-control" id="mfInvoiceThb"
+                                        placeholder="16742400" oninput="mfRecalc()">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Курс покупки (наш) *</label>
+                                    <input type="number" step="any" class="form-control" id="mfBuyRate"
+                                        placeholder="33.20" oninput="mfRecalc()">
+                                    <small style="color:#6b7280;">по нему покупаем баты — база себестоимости</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Курс продажи (клиенту)</label>
+                                    <input type="number" step="any" class="form-control" id="mfSellRate"
+                                        placeholder="32.70" oninput="mfRecalc()">
+                                    <small style="color:#6b7280;">если приход не указан — посчитаем из него</small>
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Комиссия компании, %</label>
+                                    <input type="number" step="any" class="form-control" id="mfPercent"
+                                        placeholder="1" oninput="mfRecalc('percent')">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Отправлено в MF Corp, THB</label>
+                                    <input type="number" step="any" class="form-control" id="mfSentThb"
+                                        placeholder="считается из процента" oninput="mfRecalc('sent')">
+                                    <small style="color:#6b7280;">введи факт — процент посчитается обратно</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">&nbsp;</label>
+                                    <button type="button" class="btn btn-secondary" style="width:100%;"
+                                        onclick="mfSuggestPercent()">🎯 Подобрать процент</button>
+                                    <small style="color:#6b7280;">максимум, чтобы хватило на выплаты</small>
+                                </div>
+                            </div>
+
+                            <div id="mfSummary" style="margin-bottom:1rem;"></div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Ссылка на инвойс</label>
+                                    <input type="text" class="form-control" id="mfDocInvoice" placeholder="https://...">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Ссылка на договор</label>
+                                    <input type="text" class="form-control" id="mfDocContract" placeholder="https://...">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Подтверждение оплаты</label>
+                                    <input type="text" class="form-control" id="mfDocPayment" placeholder="https://...">
+                                </div>
+                            </div>
+
+                            <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+                        </div>
+
+                        <div id="payoutSectionStd">
                         <h3 style="margin-bottom: 1rem; color: #ef4444;">Pay-Out (Выдача)</h3>
 
                         <div class="form-row">
@@ -1328,6 +1407,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
+                        </div><!-- /payoutSectionStd -->
+
                         <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
 
                         <h3 style="margin-bottom: 1rem; color: #f59e0b;">Партнер-реферер (опционально)</h3>
@@ -1347,10 +1428,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div id="agentsBlockStdNet" style="margin-top:10px;font-size:13px;color:#166534;font-weight:600;"></div>
                         </div>
 
-                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
+                        <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;" id="profitCalcHr">
 
-                        <h3 style="margin-bottom: 1rem; color: #667eea;">Расчет прибыли</h3>
+                        <h3 style="margin-bottom: 1rem; color: #667eea;" id="profitCalcTitle">Расчет прибыли</h3>
 
+                        <div id="profitCalcRows">
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Прибыль USDT (до партнера)</label>
@@ -1382,6 +1464,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     step="0.0001">
                             </div>
                         </div>
+                        </div><!-- /profitCalcRows -->
 
                         <div class="form-row">
                             <div class="form-group">
@@ -4069,6 +4152,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customDealToggle').checked = false;
                         toggleCustomDeal();
 
+                        // Недвижимость через MF Corp
+                        const isMf = deal.deal_kind === 'mf_realty';
+                        document.getElementById('mfDealToggle').checked = isMf;
+                        toggleMfDeal();
+                        if (isMf) mfFillForm(deal);
+
                         // Заполняем обычную форму
                         if (deal.payin_method) {
                             document.getElementById('payinMethod').value = deal.payin_method;
@@ -4139,6 +4228,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             customAgents = []; renderCustomAgents();
             sberReset();
             resetPayinTxPool([]);
+            document.getElementById('mfDealToggle').checked = false;
+            toggleMfDeal(); mfReset();
 
             // Сбрасываем кнопки
             const submitBtn = document.querySelector('#createDealForm button[type="submit"]');
@@ -5163,6 +5254,199 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // ==================== Custom Deal ====================
+        // ===== Тип сделки (селект в шапке формы) =====
+        function onDealKindChange() {
+            const kind = document.getElementById('dealKindSelect').value;
+            const custom = document.getElementById('customDealToggle');
+            const mf = document.getElementById('mfDealToggle');
+            custom.checked = (kind === 'custom');
+            mf.checked = (kind === 'mf_realty');
+            toggleCustomDeal();
+            toggleMfDeal();
+        }
+
+        function syncDealKindSelect() {
+            const sel = document.getElementById('dealKindSelect');
+            if (!sel) return;
+            sel.value = document.getElementById('mfDealToggle')?.checked ? 'mf_realty'
+                : (document.getElementById('customDealToggle')?.checked ? 'custom' : 'exchange');
+        }
+
+        // ===== Недвижимость через MF Corporation =====
+        function toggleMfDeal() {
+            const isMf = document.getElementById('mfDealToggle').checked;
+            document.getElementById('mfDealSection').style.display = isMf ? 'block' : 'none';
+            document.getElementById('mfDealHint').style.display = isMf ? 'block' : 'none';
+            // Обычная выдача не нужна: платим инвойс через компанию, а не клиенту на руки
+            document.getElementById('payoutSectionStd').style.display = isMf ? 'none' : 'block';
+            ['payout_method', 'payout_source'].forEach(name => {
+                const el = document.querySelector(`#standardDealSection [name="${name}"]`);
+                if (el) el.required = !isMf;
+            });
+            // Прибыль считается по формулам MF Corp — обычный блок расчёта не нужен
+            ['profitCalcHr', 'profitCalcTitle', 'profitCalcRows'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = isMf ? 'none' : '';
+            });
+            syncDealKindSelect();
+            if (isMf) mfRecalc();
+        }
+
+        function mfInputs() {
+            const num = id => {
+                const v = parseFloat(document.getElementById(id)?.value);
+                return isNaN(v) ? null : v;
+            };
+            return {
+                invoice_amount_thb: num('mfInvoiceThb'),
+                buy_rate_thb_usdt: num('mfBuyRate'),
+                sell_rate_thb_usdt: num('mfSellRate'),
+                payin_amount_usdt: parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || null,
+                company_percent: num('mfPercent'),
+                company_sent_thb: num('mfSentThb'),
+                agents: stdAgentsSerialize(),
+            };
+        }
+
+        let _mfTimer = null;
+        function mfRecalc(source) {
+            // Комиссию задают с одной стороны — вторую очищаем, чтобы не спорили
+            if (source === 'percent') document.getElementById('mfSentThb').value = '';
+            if (source === 'sent') document.getElementById('mfPercent').value = '';
+            clearTimeout(_mfTimer);
+            _mfTimer = setTimeout(mfRecalcNow, 250);
+        }
+
+        async function mfRecalcNow() {
+            if (!document.getElementById('mfDealToggle')?.checked) return;
+            const box = document.getElementById('mfSummary');
+            const payload = mfInputs();
+            if (!payload.invoice_amount_thb || !payload.buy_rate_thb_usdt) {
+                box.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;">Заполни сумму инвойса и курс покупки — покажу расклад по карманам.</div>';
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_URL}/api/deals/mf-realty/preview`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (!data.success) { box.innerHTML = `<div style="color:#dc2626;">${data.error}</div>`; return; }
+                renderMfSummary(data.result);
+                // Суммы в карточках агентов — из расчёта MF, иначе там висят нули
+                (data.result.agents || []).forEach((a, i) => {
+                    const el = document.getElementById('saPay' + i);
+                    if (el) el.textContent = '$' + (a._payout || 0).toFixed(2);
+                });
+            } catch (e) {
+                box.innerHTML = '<div style="color:#dc2626;">Не удалось посчитать (сеть)</div>';
+            }
+        }
+
+        function renderMfSummary(r) {
+            const box = document.getElementById('mfSummary');
+            const money = v => '$' + (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const baht = v => '฿' + (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            // Пустые поля процента/суммы дозаполняем расчётом — оператор видит обе стороны
+            const pctEl = document.getElementById('mfPercent');
+            const sentEl = document.getElementById('mfSentThb');
+            if (!pctEl.value) pctEl.placeholder = r.company_percent.toFixed(2) + ' %';
+            if (!sentEl.value) sentEl.placeholder = r.company_sent_thb.toLocaleString('ru-RU');
+
+            const agents = (r.agents || []).map(a =>
+                `<div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">— ур.${a.tier || 1} ${escapeHtml(a.name || 'агент')} · ${a.comp_model}</span><strong>−${money(a._payout)}</strong></div>`
+            ).join('');
+
+            const short = r.wallet_shortfall_usdt < 0;
+            // Партнёрам мы обязаны заплатить из крипты, поэтому их выплаты вычитаем
+            // ДО комиссии компании: иначе кажется, что в компанию можно оставить
+            // весь валовый доход, а на выплаты денег уже не остаётся.
+            const available = r.gross_profit_usdt - r.agents_total_usdt;
+            const overLimit = r.company_fee_usdt > available + 0.01;
+            box.innerHTML = `
+              <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход</span><strong>${money(r.payin_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Себестоимость батов</span><strong>−${money(r.cost_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;"><span>Валовый доход</span><strong>${money(r.gross_profit_usdt)}</strong></div>
+                ${r.agents_total_usdt ? `<div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Выплаты партнёрам</span><strong>−${money(r.agents_total_usdt)}</strong></div>${agents}` : ''}
+                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
+                  <span><strong>Можно оставить в компании</strong> <span style="color:#6b7280;font-size:0.85rem;">потолок комиссии</span></span>
+                  <strong style="color:${available < 0 ? '#dc2626' : '#166534'};">${money(available)}</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">В компанию (${r.company_percent.toFixed(2)}%)</span><strong>${baht(r.company_sent_thb)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">— из них комиссия</span><strong style="color:${overLimit ? '#dc2626' : 'inherit'};">${baht(r.company_fee_thb)} = ${money(r.company_fee_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
+                  <span>Останется на кошельке</span>
+                  <strong style="color:${short ? '#dc2626' : '#166534'};">${money(r.wallet_remainder_usdt)}</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:1.05rem;">
+                  <span><strong>Чистый доход</strong> <span style="color:#6b7280;font-size:0.85rem;">кошелёк + компания</span></span>
+                  <strong style="color:#7c3aed;">${money(r.net_profit_usdt)}</strong>
+                </div>
+                ${short ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ Не хватает ${money(-r.wallet_shortfall_usdt)} в крипте на выплаты — придётся конвертировать баты обратно или платить из кармана. Нажми «Подобрать процент».</div>` : ''}
+              </div>`;
+        }
+
+        async function mfSuggestPercent() {
+            const payload = mfInputs();
+            if (!payload.invoice_amount_thb || !payload.buy_rate_thb_usdt) {
+                showToast('Сначала заполни сумму инвойса и курс покупки', 'error');
+                return;
+            }
+            const resp = await fetch(`${API_URL}/api/deals/mf-realty/preview`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!data.success) { showToast('Ошибка: ' + data.error, 'error'); return; }
+            const pct = data.result.suggested_company_percent;
+            document.getElementById('mfPercent').value = pct;
+            document.getElementById('mfSentThb').value = '';
+            showToast(`Максимум ${pct}% — при большем не хватит крипты на выплаты`);
+            mfRecalcNow();
+        }
+
+        function mfFormData() {
+            const val = id => {
+                const v = document.getElementById(id)?.value;
+                return v === '' || v === undefined ? null : v;
+            };
+            return {
+                deal_kind: 'mf_realty',
+                realty_purpose: val('mfPurpose'),
+                invoice_amount_thb: parseFloat(val('mfInvoiceThb')) || null,
+                buy_rate_thb_usdt: parseFloat(val('mfBuyRate')) || null,
+                sell_rate_thb_usdt: parseFloat(val('mfSellRate')) || null,
+                company_percent: val('mfPercent') !== null ? parseFloat(val('mfPercent')) : null,
+                company_sent_thb: val('mfSentThb') !== null ? parseFloat(val('mfSentThb')) : null,
+                doc_invoice_url: val('mfDocInvoice'),
+                doc_contract_url: val('mfDocContract'),
+                doc_payment_url: val('mfDocPayment'),
+            };
+        }
+
+        function mfFillForm(deal) {
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = (v ?? ''); };
+            set('mfPurpose', deal.realty_purpose);
+            set('mfInvoiceThb', deal.invoice_amount_thb);
+            set('mfBuyRate', deal.buy_rate_thb_usdt);
+            set('mfSellRate', deal.sell_rate_thb_usdt);
+            set('mfPercent', deal.company_percent);
+            set('mfSentThb', '');
+            set('mfDocInvoice', deal.doc_invoice_url);
+            set('mfDocContract', deal.doc_contract_url);
+            set('mfDocPayment', deal.doc_payment_url);
+            mfRecalcNow();
+        }
+
+        function mfReset() {
+            ['mfPurpose', 'mfInvoiceThb', 'mfBuyRate', 'mfSellRate', 'mfPercent', 'mfSentThb',
+             'mfDocInvoice', 'mfDocContract', 'mfDocPayment'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            const box = document.getElementById('mfSummary'); if (box) box.innerHTML = '';
+        }
+
         function toggleCustomDeal() {
             const isCustom = document.getElementById('customDealToggle').checked;
             document.getElementById('customDealSection').style.display = isCustom ? 'block' : 'none';
@@ -5175,6 +5459,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (el) el.required = !isCustom;
             });
 
+            syncDealKindSelect();
             if (isCustom) { calcCustomProfit(); onCustomPayinMethodChange(); }
         }
 
@@ -5325,8 +5610,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function stdAgentsAdd(){ const t=stdAgentsMode==='flat'?1:(stdAgents.reduce((m,a)=>Math.max(m,a.tier||1),0)+1); stdAgents.push({referrer_id:null,name:'',tier:t,comp_model:'revshare',percent:10,fixed_usdt:0}); renderStdAgents(); calculateProfit(); }
         function stdAgentsRemove(i){ stdAgents.splice(i,1); renderStdAgents(); calculateProfit(); }
         function stdAgentsTier(i,d){ stdAgents[i].tier=Math.max(1,(stdAgents[i].tier||1)+d); stdAgentsMode=null; renderStdAgents(); calculateProfit(); }
-        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model') renderStdAgents(); calculateProfit(); }
-        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${r.name}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" oninput="stdAgentsField(${i},'fixed_usdt',this.value)" placeholder="$" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" oninput="stdAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" onclick="stdAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>Ур.${a.tier||1}<button type="button" onclick="stdAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" onchange="stdAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select><button type="button" onclick="stdAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" onchange="stdAgentsField(${i},'comp_model',this.value)" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>revshare (% от прибыли)</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>markup (+% к курсу)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>fixed ($ сумма)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">$0</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
+        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); }
+        function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${r.name}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" oninput="stdAgentsField(${i},'fixed_usdt',this.value)" placeholder="$" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" oninput="stdAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" onclick="stdAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>Ур.${a.tier||1}<button type="button" onclick="stdAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" onchange="stdAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select><button type="button" onclick="stdAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" onchange="stdAgentsField(${i},'comp_model',this.value)" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>revshare (% от прибыли)</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>markup (+% к курсу)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>fixed ($ сумма)</option><option value="wallet_share" ${a.comp_model==='wallet_share'?'selected':''}>% от остатка на кошельке (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">$0</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
         function stdAgentsRecalc(){ const {profit,volume}=_stdProfitVolume(); const net=_agentsCascade(profit,volume,stdAgents); stdAgents.forEach((a,i)=>{const el=document.getElementById('saPay'+i); if(el) el.textContent='$'+(a._payout||0).toFixed(2);}); const total=stdAgents.reduce((s,a)=>s+(a._payout||0),0); const netEl=document.getElementById('agentsBlockStdNet'); if(netEl) netEl.innerHTML=stdAgents.length?`Агентам всего: <b>$${total.toFixed(2)}</b> · Чистая наша: <b>$${net.toFixed(2)}</b>`:''; return net; }
         function stdAgentsSerialize(){ return stdAgents.filter(a=>a.referrer_id||a.name).map(a=>({referrer_id:a.referrer_id?parseInt(a.referrer_id):null,name:a.name||null,tier:a.tier||1,comp_model:a.comp_model||'revshare',percent:a.comp_model==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp_model==='fixed'?(+a.fixed_usdt||0):0})); }
         function stdAgentsLoad(arr){ stdAgents=(arr||[]).map(a=>({referrer_id:a.referrer_id||null,name:a.name||'',tier:a.tier||1,comp_model:a.comp_model||'revshare',percent:a.percent||0,fixed_usdt:a.fixed_usdt||0})); stdAgentsMode=stdAgents.length&&stdAgents.every(a=>(a.tier||1)===1)?'flat':'cascade'; renderStdAgents(); calculateProfit(); }
@@ -5832,6 +6117,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Приход крипты частями (пустой список = один хэш из поля, как раньше)
             data.payin_tx_hashes = payinTxPool.map(t => ({ hash: t.hash, amount_usdt: t.amount_usdt }));
 
+            // Недвижимость через MF Corp: свои поля вместо обычной выдачи
+            if (document.getElementById('mfDealToggle')?.checked) {
+                Object.assign(data, mfFormData());
+                delete data.payout_amount_thb;
+                delete data.payout_source;
+            } else {
+                data.deal_kind = 'exchange';
+            }
+
             // Защита от дублей: блокируем кнопку на время запроса (двойной клик
             // при лаге сети создавал две сделки → двойное списание с кошелька).
             const submitBtn = this.querySelector('button[type="submit"]');
@@ -5865,6 +6159,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     stdAgents = []; renderStdAgents();
                     sberReset();
                     resetPayinTxPool([]);
+                    document.getElementById('mfDealToggle').checked = false;
+                    toggleMfDeal(); mfReset();
                     if (isEditMode) cancelEditMode();
                     showSection('deals');
                     loadDashboard();
