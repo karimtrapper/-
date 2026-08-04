@@ -2988,6 +2988,16 @@ def _apply_deal_agents(session, deal, agents_data):
     volume = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
     computed, net = compute_agent_cascade(deal.profit_usdt or 0, volume,
                                           [dict(a) for a in agents_data])
+    # Имя не передали (скрипт/интеграция шлёт только referrer_id) — берём из профиля.
+    # Иначе deal.referrer_name затирался в NULL и партнёр пропадал из списка сделок.
+    missing_names = {a.get('referrer_id') for a in computed
+                     if a.get('referrer_id') and not a.get('name')}
+    if missing_names:
+        names = dict(session.query(Referrer.id, Referrer.name)
+                     .filter(Referrer.id.in_(missing_names)).all())
+        for a in computed:
+            if not a.get('name'):
+                a['name'] = names.get(a.get('referrer_id'))
     total = 0.0
     for a in computed:
         tier = int(a.get('tier') or 1)
@@ -3247,13 +3257,15 @@ def create_deal():
                         ref_comp_model = ref_comp_model or referrer.comp_model
                         if ref_markup_percent is None:
                             ref_markup_percent = referrer.markup_percent
-        # Если реферер выбран явно (ref_id передан) и снапшот модели не задан — берём из профиля
-        if ref_id and not ref_comp_model:
+        # Реферер выбран явно (ref_id передан): недостающие снапшот модели и имя — из профиля
+        if ref_id and (not ref_comp_model or not ref_name):
             ref_obj = session.query(Referrer).get(ref_id)
             if ref_obj:
-                ref_comp_model = ref_obj.comp_model or 'revshare'
-                if ref_markup_percent is None:
-                    ref_markup_percent = ref_obj.markup_percent
+                ref_name = ref_name or ref_obj.name
+                if not ref_comp_model:
+                    ref_comp_model = ref_obj.comp_model or 'revshare'
+                    if ref_markup_percent is None:
+                        ref_markup_percent = ref_obj.markup_percent
 
         # Умный дефолт needs_reimbursement:
         # если payout не в THB (USDT/RUB/USD) — возмещение не нужно

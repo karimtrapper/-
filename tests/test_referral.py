@@ -427,6 +427,33 @@ class TestReferrerCodeResolution:
         assert len(rows) == 1
         assert rows[0].referrer_id == referrer.id
 
+    def test_referrer_id_without_name_takes_profile_name(self, tc, referrer, db):
+        """Скрипт шлёт только referrer_id — имя берём из профиля, не NULL."""
+        c = Client(name='Client Id Only')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id, referrer_id=referrer.id)
+        assert deal['referrer_id'] == referrer.id
+        assert deal['referrer_name'] == 'Ed'
+
+    def test_agents_without_name_keep_partner_visible(self, tc, referrer, db):
+        """PUT agents без name не должен затирать referrer_name в NULL.
+
+        Грабля 04.08: партнёр пропадал из колонки списка сделок после правки
+        сделки скриптом (форма CRM имя шлёт всегда, интеграции — нет).
+        """
+        c = Client(name='Client Agents')
+        db.add(c); db.commit()
+        deal = self._deal(tc, c.id)
+        resp = tc.put(f"/api/deals/{deal['id']}", json={
+            'agents': [{'referrer_id': referrer.id, 'tier': 1,
+                        'comp_model': 'revshare', 'percent': 10}],
+        })
+        updated = resp.json['deal']
+        assert updated['referrer_id'] == referrer.id
+        assert updated['referrer_name'] == 'Ed'
+        rows = db.query(DealAgent).filter(DealAgent.deal_id == deal['id']).all()
+        assert [r.name for r in rows] == ['Ed']
+
     def test_explicit_referrer_id_wins_over_code(self, tc, referrer, db):
         other = Referrer(name='Other', code='GR-OTHR', token=secrets.token_hex(16),
                          default_percent=5.0)
