@@ -70,6 +70,12 @@ def check_auth():
         if path.startswith(pub):
             return None
 
+    # Локальный стенд без логина: только при явном флаге И только на sqlite.
+    # На проде DATABASE_URL — Postgres, поэтому обход невозможен даже если
+    # переменную выставят по ошибке.
+    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+        return None
+
     # Сервисный доступ для ботов (DealCloser, SberNotifier) — непротухающий API-ключ.
     # Иммунитет к ротации человеческого пароля админа: ключ живёт в env, не в БД.
     svc_key = os.environ.get('SERVICE_API_KEY', '')
@@ -756,6 +762,7 @@ class Deal(Base):
     wallet_remainder_usdt = Column(Float)              # остаток на кошельке после комиссии и партнёров
     katika_fee_thb = Column(Float)                     # выплата номиналу, баты
     katika_fee_usdt = Column(Float)                    # она же в USDT
+    client_spread_percent = Column(Float)              # спред клиенту: курс продажи = курс покупки − спред
     doc_invoice_url = Column(String(500))
     doc_contract_url = Column(String(500))
     doc_payment_url = Column(String(500))
@@ -802,6 +809,7 @@ class Deal(Base):
             'wallet_remainder_usdt': self.wallet_remainder_usdt,
             'katika_fee_thb': self.katika_fee_thb,
             'katika_fee_usdt': self.katika_fee_usdt,
+            'client_spread_percent': self.client_spread_percent,
             'doc_invoice_url': self.doc_invoice_url,
             'doc_contract_url': self.doc_contract_url,
             'doc_payment_url': self.doc_payment_url,
@@ -966,14 +974,6 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
     buy_rate = float(buy_rate or 0)
     sell_rate = float(sell_rate or 0)
 
-    # Приход: либо известен фактически, либо выводится из курса продажи
-    payin = float(payin_usdt or 0)
-    if not payin and invoice_thb and sell_rate:
-        payin = invoice_thb / sell_rate
-
-    cost_usdt = invoice_thb / buy_rate if buy_rate else 0     # себестоимость батов
-    gross_profit = payin - cost_usdt                          # валовый доход
-
     # Комиссия компании — от суммы инвойса в батах
     if company_sent_thb not in (None, ''):
         sent_thb = float(company_sent_thb)
@@ -985,21 +985,34 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
         sent_thb = invoice_thb + fee_thb
     fee_usdt = fee_thb / buy_rate if buy_rate else 0
 
-    # Выплаты партнёрам. База wallet_share — то, что реально остаётся в крипте:
-    # валовый доход минус комиссия, запертая в батах.
-    wallet_base = gross_profit - fee_usdt
+    # Приход: либо известен фактически, либо выводится из курса продажи
+    payin = float(payin_usdt or 0)
+    if not payin and invoice_thb and sell_rate:
+        payin = invoice_thb / sell_rate
+
+    # Себестоимость = ВСЯ отправляемая в компанию сумма: баты покупаем вместе
+    # с комиссией, с кошелька уходит именно столько. Отдельно держим стоимость
+    # самого инвойса — по ней видно общий заработок до расщепления на карманы.
+    cost_usdt = sent_thb / buy_rate if buy_rate else 0
+    invoice_cost_usdt = invoice_thb / buy_rate if buy_rate else 0
+    crypto_profit = payin - cost_usdt          # осталось в крипте до выплат партнёрам
+    gross_profit = payin - invoice_cost_usdt   # общий заработок (крипта + комиссия)
+
+    # Партнёрам платим из крипты, поэтому база wallet_share — именно крипта
     volume = max(payin, cost_usdt)
     computed, _ = compute_agent_cascade(gross_profit, volume,
                                         [dict(a) for a in (agents or [])],
-                                        wallet_base_usdt=wallet_base)
+                                        wallet_base_usdt=crypto_profit)
     agents_total = sum(a.get('_payout') or 0 for a in computed)
 
-    wallet_remainder = wallet_base - agents_total       # осталось на кошельке
+    wallet_remainder = crypto_profit - agents_total     # осталось на кошельке
     net_profit = wallet_remainder + fee_usdt            # чистый доход = оба кармана
 
     return {
         'payin_usdt': round(payin, 2),
         'cost_usdt': round(cost_usdt, 2),
+        'invoice_cost_usdt': round(invoice_cost_usdt, 2),
+        'crypto_profit_usdt': round(crypto_profit, 2),
         'gross_profit_usdt': round(gross_profit, 2),
         'company_percent': round(percent, 4),
         'company_fee_thb': round(fee_thb, 2),
@@ -1013,6 +1026,11 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
         # баты обратно или платить из кармана (кейс SID + Валера, спека §3.6).
         'wallet_shortfall_usdt': round(min(wallet_remainder, 0), 2),
     }
+
+
+def client_sell_rate(buy_rate, spread_percent):
+    """Курс клиенту = наш курс минус спред: 33.20 − 1.5% = 32.702."""
+    return round(float(buy_rate or 0) * (1 - float(spread_percent or 0) / 100), 6)
 
 
 def suggest_company_percent(invoice_thb, buy_rate, payin_usdt, agents=None,
@@ -1410,6 +1428,7 @@ _MF_REALTY_COLUMNS = [
     ('company_sent_thb', 'DOUBLE PRECISION'), ('company_fee_thb', 'DOUBLE PRECISION'),
     ('company_fee_usdt', 'DOUBLE PRECISION'), ('wallet_remainder_usdt', 'DOUBLE PRECISION'),
     ('katika_fee_thb', 'DOUBLE PRECISION'), ('katika_fee_usdt', 'DOUBLE PRECISION'),
+    ('client_spread_percent', 'DOUBLE PRECISION'),
     ('doc_invoice_url', 'VARCHAR(500)'), ('doc_contract_url', 'VARCHAR(500)'),
     ('doc_payment_url', 'VARCHAR(500)'),
 ]
@@ -3188,10 +3207,10 @@ def _apply_deal_agents(session, deal, agents_data):
     # запоминаем кто уже выплачен (чтобы не сбросить при пересохранении)
     prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()  # delete-orphan удалит старые строки на flush
-    # Сделки через MF Corp: часть прибыли заперта в батах на счёте компании, делить
-    # её с партнёром нельзя — база для wallet_share это только то, что в крипте.
+    # Сделки через MF Corp: комиссия заперта в батах на счёте компании и в
+    # profit_usdt уже не входит (там только крипта) — она и есть база wallet_share.
     is_mf = deal.deal_kind == MF_REALTY_KIND
-    wallet_base = ((deal.profit_usdt or 0) - (deal.company_fee_usdt or 0)) if is_mf else None
+    wallet_base = (deal.profit_usdt or 0) if is_mf else None
 
     if not agents_data:
         deal.referrer_payout_usdt = None
@@ -4692,6 +4711,7 @@ def get_incoming_transactions():
 MF_REALTY_INPUT_FIELDS = (
     'realty_purpose', 'invoice_amount_thb', 'sell_rate_thb_usdt', 'buy_rate_thb_usdt',
     'company_percent', 'company_sent_thb', 'katika_fee_thb', 'katika_fee_usdt',
+    'client_spread_percent',
     'doc_invoice_url', 'doc_contract_url', 'doc_payment_url',
 )
 
@@ -4730,10 +4750,12 @@ def _apply_mf_realty(deal, data):
     deal.company_sent_thb = r['company_sent_thb']
     deal.company_fee_thb = r['company_fee_thb']
     deal.company_fee_usdt = r['company_fee_usdt']
-    # Себестоимость батов = то, что реально ушло с кошелька
+    # С кошелька уходит вся отправка в компанию (инвойс + комиссия)
     deal.payout_amount_usdt = r['cost_usdt']
-    deal.profit_usdt = r['gross_profit_usdt']
-    deal.profit_percent = (r['gross_profit_usdt'] / r['cost_usdt'] * 100) if r['cost_usdt'] else 0
+    # Прибыль сделки = то, что осталось в крипте. Комиссия в батах — второй
+    # карман, она приплюсовывается в net_profit_usdt (см. _apply_deal_agents)
+    deal.profit_usdt = r['crypto_profit_usdt']
+    deal.profit_percent = (r['crypto_profit_usdt'] / r['cost_usdt'] * 100) if r['cost_usdt'] else 0
     # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
     deal.needs_reimbursement = False
     return r

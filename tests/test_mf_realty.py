@@ -77,7 +77,8 @@ class TestAgainstSheet:
         """июль · находкина bho property · rub-thb, агент фиксом $323."""
         r = compute_mf_realty(622370, 33.22, 19929.17, company_percent=1,
                               agents=[{'tier': 1, 'comp_model': 'fixed', 'fixed_usdt': 323.00}])
-        assert approx(r['cost_usdt'], 18734.80)
+        assert approx(r['invoice_cost_usdt'], 18734.80)
+        assert approx(r['cost_usdt'], 18922.15), 'с кошелька уходит инвойс + комиссия'
         assert approx(r['gross_profit_usdt'], 1194.37)
         assert approx(r['company_fee_thb'], 6223.70)
         assert approx(r['company_fee_usdt'], 187.35)
@@ -97,7 +98,7 @@ class TestAgainstSheet:
         r = compute_mf_realty(390360, 33.24, None, sell_rate=32.53, company_percent=1,
                               agents=[{'tier': 1, 'comp_model': 'fixed', 'fixed_usdt': 41.10}])
         assert approx(r['payin_usdt'], 12000.00)
-        assert approx(r['cost_usdt'], 11743.68)
+        assert approx(r['invoice_cost_usdt'], 11743.68)
         assert approx(r['wallet_remainder_usdt'], 97.78)
         assert approx(r['net_profit_usdt'], 215.22)
 
@@ -137,6 +138,23 @@ class TestTwoPockets:
         r = compute_mf_realty(1000000, 33.0, 31000, company_percent=0, agents=[])
         assert r['company_fee_usdt'] == 0
         assert approx(r['wallet_remainder_usdt'], r['gross_profit_usdt'])
+        assert approx(r['cost_usdt'], r['invoice_cost_usdt'])
+
+    def test_cost_includes_company_fee(self):
+        """Себестоимость = вся отправка: баты покупаем вместе с комиссией."""
+        r = compute_mf_realty(16742400, 33.20, 511968.69, company_percent=0.9, agents=[])
+        assert approx(r['company_sent_thb'], 16893081.60)
+        assert approx(r['cost_usdt'], 508827.76), 'проверка по арифметике Карима'
+        assert approx(r['crypto_profit_usdt'], 3140.93)
+        assert approx(r['net_profit_usdt'], 7679.53)
+
+    def test_client_rate_from_spread(self):
+        """Курс клиенту = наш курс минус спред: 33.20 − 1.5% = 32.702."""
+        from app import client_sell_rate
+        assert approx(client_sell_rate(33.20, 1.5), 32.702, eps=0.0005)
+        r = compute_mf_realty(16742400, 33.20, None, sell_rate=client_sell_rate(33.20, 1.5),
+                              company_percent=0.9, agents=[])
+        assert approx(r['payin_usdt'], 511968.69)
 
 
 # ── Выплаты партнёрам ────────────────────────────────────────────────────
@@ -146,8 +164,7 @@ class TestAgents:
         """wallet_share берёт % от того, что в крипте, а не от валовой прибыли."""
         r = compute_mf_realty(1000000, 33.0, 31000, company_percent=1,
                               agents=[{'tier': 1, 'comp_model': 'wallet_share', 'percent': 10}])
-        wallet_base = r['gross_profit_usdt'] - r['company_fee_usdt']
-        assert approx(r['agents'][0]['_payout'], round(wallet_base * 0.1, 2))
+        assert approx(r['agents'][0]['_payout'], round(r['crypto_profit_usdt'] * 0.1, 2))
 
     def test_revshare_would_overpay(self):
         """Тот же процент через revshare даёт больше — это и есть переплата партнёру."""
@@ -165,7 +182,7 @@ class TestAgents:
         ])
         sid, valera = r['agents']
         assert approx(sid['_payout'], 512000 * 0.005)          # $2 560 от объёма
-        wallet_after_sid = r['gross_profit_usdt'] - r['company_fee_usdt'] - sid['_payout']
+        wallet_after_sid = r['crypto_profit_usdt'] - sid['_payout']
         assert approx(valera['_payout'], round(max(wallet_after_sid, 0) * 0.1, 2))
         assert approx(r['net_profit_usdt'],
                       r['wallet_remainder_usdt'] + r['company_fee_usdt'])
@@ -266,9 +283,9 @@ class TestApi:
         assert deal['deal_kind'] == 'mf_realty'
         assert approx(deal['company_fee_thb'], 6223.70)
         assert approx(deal['company_fee_usdt'], 187.35)
-        assert approx(deal['profit_usdt'], 1194.37)
+        assert approx(deal['profit_usdt'], 1007.02), 'прибыль сделки = то, что в крипте'
         assert approx(deal['wallet_remainder_usdt'], 1007.02)   # без агентов
-        assert approx(deal['net_profit_usdt'], 1194.37)
+        assert approx(deal['net_profit_usdt'], 1194.37), 'чистый = крипта + компания'
 
     def test_create_with_agents(self, tc):
         deal = tc.post('/api/deals', json=_mf_payload(agents=[
@@ -288,6 +305,7 @@ class TestApi:
         assert approx(deal['company_fee_thb'], 3111.85)
         assert approx(deal['net_profit_usdt'], 1194.37), 'чистый доход не зависит от процента'
         assert approx(deal['wallet_remainder_usdt'], 1100.71)
+        assert approx(deal['payout_amount_usdt'], 18828.47), 'с кошелька ушла вся отправка'
 
     def test_update_by_fact_overrides_percent(self, tc):
         """Прислали фактическую сумму отправки — процент выводится из неё."""

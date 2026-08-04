@@ -1245,13 +1245,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div class="form-group">
                                     <label class="form-label">Курс покупки (наш) *</label>
                                     <input type="number" step="any" class="form-control" id="mfBuyRate"
-                                        placeholder="33.20" oninput="mfRecalc()">
+                                        placeholder="33.20" oninput="mfSpreadChanged()">
                                     <small style="color:#6b7280;">по нему покупаем баты — база себестоимости</small>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Спред клиенту, %</label>
+                                    <input type="number" step="any" class="form-control" id="mfSpread"
+                                        placeholder="1.5" oninput="mfSpreadChanged()">
+                                    <small style="color:#6b7280;">курс клиенту = наш минус спред</small>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Курс продажи (клиенту)</label>
                                     <input type="number" step="any" class="form-control" id="mfSellRate"
-                                        placeholder="32.70" oninput="mfRecalc()">
+                                        placeholder="32.702" oninput="mfRecalc()">
                                     <small style="color:#6b7280;">если приход не указан — посчитаем из него</small>
                                 </div>
                             </div>
@@ -5308,6 +5314,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             };
         }
 
+        function mfSpreadChanged() {
+            const buy = parseFloat(document.getElementById('mfBuyRate')?.value);
+            const spread = parseFloat(document.getElementById('mfSpread')?.value);
+            if (buy && !isNaN(spread)) {
+                document.getElementById('mfSellRate').value = (buy * (1 - spread / 100)).toFixed(4);
+            }
+            mfRecalc();
+        }
+
         let _mfTimer = null;
         function mfRecalc(source) {
             // Комиссию задают с одной стороны — вторую очищаем, чтобы не спорили
@@ -5361,23 +5376,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Партнёрам мы обязаны заплатить из крипты, поэтому их выплаты вычитаем
             // ДО комиссии компании: иначе кажется, что в компанию можно оставить
             // весь валовый доход, а на выплаты денег уже не остаётся.
-            const available = r.gross_profit_usdt - r.agents_total_usdt;
+            const available = r.gross_profit_usdt - r.agents_total_usdt;  // приход − инвойс/курс − выплаты
             const overLimit = r.company_fee_usdt > available + 0.01;
             box.innerHTML = `
               <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход</span><strong>${money(r.payin_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Себестоимость батов</span><strong>−${money(r.cost_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;"><span>Валовый доход</span><strong>${money(r.gross_profit_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено в компанию (${r.company_percent.toFixed(2)}%) ${baht(r.company_sent_thb)}</span><strong>−${money(r.cost_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;"><span>Осталось в крипте</span><strong style="color:${r.crypto_profit_usdt < 0 ? '#dc2626' : 'inherit'};">${money(r.crypto_profit_usdt)}</strong></div>
                 ${r.agents_total_usdt ? `<div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Выплаты партнёрам</span><strong>−${money(r.agents_total_usdt)}</strong></div>${agents}` : ''}
-                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
-                  <span><strong>Можно оставить в компании</strong> <span style="color:#6b7280;font-size:0.85rem;">потолок комиссии</span></span>
-                  <strong style="color:${available < 0 ? '#dc2626' : '#166534'};">${money(available)}</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">В компанию (${r.company_percent.toFixed(2)}%)</span><strong>${baht(r.company_sent_thb)}</strong></div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">— из них комиссия</span><strong style="color:${overLimit ? '#dc2626' : 'inherit'};">${baht(r.company_fee_thb)} = ${money(r.company_fee_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
+                <div style="display:flex;justify-content:space-between;">
                   <span>Останется на кошельке</span>
                   <strong style="color:${short ? '#dc2626' : '#166534'};">${money(r.wallet_remainder_usdt)}</strong>
+                </div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Комиссия осела в компании ${baht(r.company_fee_thb)}</span><strong style="color:${overLimit ? '#dc2626' : 'inherit'};">+${money(r.company_fee_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
+                  <span style="color:#6b7280;">Потолок комиссии</span>
+                  <strong style="color:${available < 0 ? '#dc2626' : '#166534'};">${money(available)}</strong>
                 </div>
                 <div style="display:flex;justify-content:space-between;font-size:1.05rem;">
                   <span><strong>Чистый доход</strong> <span style="color:#6b7280;font-size:0.85rem;">кошелёк + компания</span></span>
@@ -5417,6 +5431,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 invoice_amount_thb: parseFloat(val('mfInvoiceThb')) || null,
                 buy_rate_thb_usdt: parseFloat(val('mfBuyRate')) || null,
                 sell_rate_thb_usdt: parseFloat(val('mfSellRate')) || null,
+                client_spread_percent: val('mfSpread') !== null ? parseFloat(val('mfSpread')) : null,
                 company_percent: val('mfPercent') !== null ? parseFloat(val('mfPercent')) : null,
                 company_sent_thb: val('mfSentThb') !== null ? parseFloat(val('mfSentThb')) : null,
                 doc_invoice_url: val('mfDocInvoice'),
@@ -5431,6 +5446,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             set('mfInvoiceThb', deal.invoice_amount_thb);
             set('mfBuyRate', deal.buy_rate_thb_usdt);
             set('mfSellRate', deal.sell_rate_thb_usdt);
+            set('mfSpread', deal.client_spread_percent);
             set('mfPercent', deal.company_percent);
             set('mfSentThb', '');
             set('mfDocInvoice', deal.doc_invoice_url);
@@ -5440,7 +5456,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         function mfReset() {
-            ['mfPurpose', 'mfInvoiceThb', 'mfBuyRate', 'mfSellRate', 'mfPercent', 'mfSentThb',
+            ['mfPurpose', 'mfInvoiceThb', 'mfBuyRate', 'mfSellRate', 'mfSpread', 'mfPercent', 'mfSentThb',
              'mfDocInvoice', 'mfDocContract', 'mfDocPayment'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = '';
             });
