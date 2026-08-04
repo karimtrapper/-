@@ -108,13 +108,17 @@ from sqlalchemy.orm import sessionmaker, scoped_session
 
 # Автоматически выбираем PostgreSQL для прода или SQLite для локальной разработки
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
-if DATABASE_URL:
+if DATABASE_URL.startswith('sqlite'):
+    # Отдельный sqlite-файл: демо-стенд не должен жить в одной базе с тестами —
+    # они чистят deals/clients/admins и стирают всё, что там завели руками
+    engine = create_engine(DATABASE_URL, echo=False, connect_args={'check_same_thread': False})
+elif DATABASE_URL:
     # Railway PostgreSQL (иногда начинается с postgres://, нужно postgresql://)
     if DATABASE_URL.startswith('postgres://'):
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
     engine = create_engine(DATABASE_URL, echo=False, connect_args={'connect_timeout': 10})
 else:
-    # Локальная SQLite
+    # Локальная SQLite по умолчанию
     DATABASE_PATH = os.path.join(os.path.dirname(__file__), 'local.db')
     DATABASE_URL = f'sqlite:///{DATABASE_PATH}'
     engine = create_engine(DATABASE_URL, echo=False, connect_args={'check_same_thread': False})
@@ -2458,6 +2462,9 @@ from calculator import ExchangeRateProvider, ExchangeCalculator, playwright_queu
 @app.route('/login', methods=['GET'])
 def login_page():
     """Страница входа"""
+    # Локальный стенд без логина — форма входа там только мешает
+    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+        return redirect('/crm')
     if flask_session.get('user_id'):
         return redirect('/crm')
     return send_from_directory('static/auth', 'login.html')

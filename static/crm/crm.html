@@ -1237,7 +1237,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div class="form-group">
                                     <label class="form-label">Сумма инвойса, THB *</label>
                                     <input type="number" step="any" class="form-control" id="mfInvoiceThb"
-                                        placeholder="16742400" oninput="mfRecalc()">
+                                        placeholder="16742400" oninput="mfRecalc('invoice')">
                                 </div>
                             </div>
 
@@ -5328,6 +5328,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Комиссию задают с одной стороны — вторую очищаем, чтобы не спорили
             if (source === 'percent') document.getElementById('mfSentThb').value = '';
             if (source === 'sent') document.getElementById('mfPercent').value = '';
+            // Сумма отправки всегда привязана к конкретному инвойсу: сменили инвойс —
+            // старый факт больше не относится к делу, иначе процент улетает в космос
+            if (source === 'invoice') document.getElementById('mfSentThb').value = '';
             clearTimeout(_mfTimer);
             _mfTimer = setTimeout(mfRecalcNow, 250);
         }
@@ -5377,26 +5380,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // ДО комиссии компании: иначе кажется, что в компанию можно оставить
             // весь валовый доход, а на выплаты денег уже не остаётся.
             const available = r.gross_profit_usdt - r.agents_total_usdt;  // приход − инвойс/курс − выплаты
+            const invoiceThb = r.company_sent_thb - r.company_fee_thb;
             const overLimit = r.company_fee_usdt > available + 0.01;
             box.innerHTML = `
               <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено в компанию (${r.company_percent.toFixed(2)}%) ${baht(r.company_sent_thb)}</span><strong>−${money(r.cost_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено в компанию ${baht(r.company_sent_thb)}</span><strong>−${money(r.cost_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— инвойс застройщику ${baht(invoiceThb)}</span><span style="color:#6b7280;">${money(r.invoice_cost_usdt)}</span></div>
+                <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— комиссия компании ${baht(r.company_fee_thb)} (${r.company_percent.toFixed(2)}%)</span><span style="color:#6b7280;">${money(r.company_fee_usdt)}</span></div>
                 <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;"><span>Осталось в крипте</span><strong style="color:${r.crypto_profit_usdt < 0 ? '#dc2626' : 'inherit'};">${money(r.crypto_profit_usdt)}</strong></div>
                 ${r.agents_total_usdt ? `<div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Выплаты партнёрам</span><strong>−${money(r.agents_total_usdt)}</strong></div>${agents}` : ''}
                 <div style="display:flex;justify-content:space-between;">
                   <span>Останется на кошельке</span>
                   <strong style="color:${short ? '#dc2626' : '#166534'};">${money(r.wallet_remainder_usdt)}</strong>
                 </div>
-                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Комиссия осела в компании ${baht(r.company_fee_thb)}</span><strong style="color:${overLimit ? '#dc2626' : 'inherit'};">+${money(r.company_fee_usdt)}</strong></div>
-                <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
-                  <span style="color:#6b7280;">Потолок комиссии</span>
-                  <strong style="color:${available < 0 ? '#dc2626' : '#166534'};">${money(available)}</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;font-size:1.05rem;">
+                <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">+ комиссия, осевшая в компании</span><strong style="color:${overLimit ? '#dc2626' : 'inherit'};">+${money(r.company_fee_usdt)}</strong></div>
+                <div style="display:flex;justify-content:space-between;font-size:1.05rem;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;">
                   <span><strong>Чистый доход</strong> <span style="color:#6b7280;font-size:0.85rem;">кошелёк + компания</span></span>
                   <strong style="color:#7c3aed;">${money(r.net_profit_usdt)}</strong>
                 </div>
+                ${(r.company_percent > 3 || r.company_percent < 0) ? `<div style="margin-top:6px;color:#b45309;font-size:0.9rem;">⚠️ Комиссия компании ${r.company_percent.toFixed(2)}% — обычно около 1%. Проверь сумму отправки: она привязана к текущему инвойсу.</div>` : ''}
                 ${short ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ Не хватает ${money(-r.wallet_shortfall_usdt)} в крипте на выплаты — придётся конвертировать баты обратно или платить из кармана. Нажми «Подобрать процент».</div>` : ''}
               </div>`;
         }
