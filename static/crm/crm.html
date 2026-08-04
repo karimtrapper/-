@@ -6682,6 +6682,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // ==================== Reimbursements ====================
         // Глобальный кэш исходящих транзакций
         let outgoingTransactionsCache = [];
+        // Хэши, уже учтённые в прошлых возмещениях — помечаем, чтобы не взять дважды
+        let usedTxHashes = new Set();
 
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
@@ -6692,6 +6694,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).catch(() => ({ success: false })),
             ]);
             outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
+            // Пересобираем: карточки перерисовываются, старый пул к ним уже не относится
+            reimburseTxPool = {};
+            reimburseAmountManual = {};
+            usedTxHashes = new Set(
+                (historyResult.success ? historyResult.reimbursements : [])
+                    .flatMap(r => r.tx_hashes || [])
+            );
 
             try {
                 const pendingData = pendingResult;
@@ -6738,31 +6747,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 }).join('')}
                             </div>
                             
-                            <!-- Выбор исходящей транзакции из списка -->
+                            <!-- Выбор исходящих транзакций: можно добавить несколько, суммы складываются -->
                             <div class="form-group" style="margin-bottom: 1rem;">
-                                <label class="form-label">Выбрать перевод из истории (исходящие USDT)</label>
+                                <label class="form-label">Добавить перевод из истории (исходящие USDT) — можно несколько, суммируются</label>
                                 <select class="form-control reimburse-tx-select" data-founder="${founder.founder_name}" onchange="selectOutgoingTx('${founder.founder_name}', this)">
                                     <option value="">-- Выбрать из списка или ввести вручную --</option>
                                     ${outgoingTransactionsCache.map(tx => `
-                                        <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}">
-                                            -$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
+                                        <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">
+                                            ${usedTxHashes.has(tx.tx_hash) ? '⚠️ уже учтён · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
                                         </option>
                                     `).join('')}
                                 </select>
                                 ${outgoingTransactionsCache.length === 0 ? '<small style="color: #666;">Нет исходящих транзакций</small>' : ''}
+                                <div class="reimburse-tx-pool" data-founder="${founder.founder_name}" style="margin-top: 0.5rem;"></div>
                             </div>
-                            
+
                             <div class="form-row" style="margin-bottom: 1rem;">
                                 <div class="form-group">
                                     <label class="form-label">Сумма возмещения USDT *</label>
-                                    <input type="number" class="form-control reimburse-amount" data-founder="${founder.founder_name}" placeholder="Сколько USDT перевели" step="0.01" required oninput="updateReimbursementRate('${founder.founder_name}')">
+                                    <input type="number" class="form-control reimburse-amount" data-founder="${founder.founder_name}" placeholder="Сколько USDT перевели" step="0.01" required oninput="onReimburseAmountInput('${founder.founder_name}')">
+                                    <small class="reimburse-amount-hint" data-founder="${founder.founder_name}" style="color:#6b7280;"></small>
                                 </div>
                                 <div class="form-group">
                                     <label class="form-label">Итоговый курс (авто)</label>
                                     <input type="text" class="form-control reimburse-rate" data-founder="${founder.founder_name}" readonly placeholder="THB/USDT">
                                 </div>
                                 <div class="form-group" style="flex: 2;">
-                                    <label class="form-label">Хэши транзакций</label>
+                                    <label class="form-label">Хэши вручную (если перевода нет в списке)</label>
                                     <div class="reimburse-tx-hashes" data-founder="${founder.founder_name}">
                                         <div style="display:flex;gap:0.25rem;margin-bottom:0.25rem;">
                                             <input type="text" class="form-control reimburse-tx-hash-input" placeholder="TxHash #1" style="flex:1;">
@@ -6852,31 +6863,96 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             container.appendChild(row);
         }
 
+        // Пул выбранных переводов по фаундеру: [{hash, amount, date}]. Суммы складываются.
+        let reimburseTxPool = {};
+        // Флаг «сумму правили руками» — тогда не перетираем её пересчётом из пула
+        let reimburseAmountManual = {};
+
+        function poolTotal(founderName) {
+            return (reimburseTxPool[founderName] || []).reduce((s, t) => s + t.amount, 0);
+        }
+
+        function renderTxPool(founderName) {
+            const box = document.querySelector(`.reimburse-tx-pool[data-founder="${founderName}"]`);
+            if (!box) return;
+            const pool = reimburseTxPool[founderName] || [];
+            if (!pool.length) { box.innerHTML = ''; return; }
+            box.innerHTML = pool.map(t => `
+                <div style="display:flex;align-items:center;gap:0.5rem;background:white;border:1px solid #e5e7eb;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <strong style="color:#667eea;">$${t.amount.toFixed(2)}</strong>
+                    <code style="flex:1;color:#6b7280;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
+                    <span style="color:#9ca3af;">${t.date || ''}</span>
+                    ${usedTxHashes.has(t.hash) ? '<span title="Уже учтён в другом возмещении">⚠️</span>' : ''}
+                    <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePoolTx('${founderName}','${t.hash}')">✕</button>
+                </div>`).join('') +
+                `<div style="text-align:right;font-weight:700;color:#166534;">Выбрано переводов: ${pool.length} · итого $${poolTotal(founderName).toFixed(2)}</div>`;
+        }
+
         function selectOutgoingTx(founderName, selectEl) {
+            const opt = selectEl.selectedOptions[0];
             const txHash = selectEl.value;
-            const amount = selectEl.selectedOptions[0]?.dataset?.amount;
-
-            // Вставляем хэш в первое пустое поле, или создаём новое
-            const inputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
-            let filled = false;
-            for (const inp of inputs) {
-                if (!inp.value.trim()) { inp.value = txHash; filled = true; break; }
-            }
-            if (!filled && txHash) {
-                addTxHashField(founderName);
-                const newInputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
-                newInputs[newInputs.length - 1].value = txHash;
-            }
-
-            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
-            if (amount && amountInput) {
-                // Суммируем если уже есть значение (несколько транзакций)
-                const current = parseFloat(amountInput.value) || 0;
-                amountInput.value = (current + parseFloat(amount)).toFixed(2);
-                updateReimbursementRate(founderName);
-            }
-            // Сбрасываем селект
             selectEl.selectedIndex = 0;
+            if (!txHash) return;
+
+            const pool = reimburseTxPool[founderName] = reimburseTxPool[founderName] || [];
+            if (pool.some(t => t.hash === txHash)) {
+                showToast('Этот перевод уже добавлен', 'error');
+                return;
+            }
+            pool.push({
+                hash: txHash,
+                amount: parseFloat(opt?.dataset?.amount) || 0,
+                date: opt?.dataset?.date || '',
+            });
+            renderTxPool(founderName);
+            syncReimburseAmount(founderName);
+            if (usedTxHashes.has(txHash)) {
+                showToast('⚠️ Этот перевод уже учтён в другом возмещении', 'error');
+            }
+        }
+
+        function removePoolTx(founderName, txHash) {
+            const pool = reimburseTxPool[founderName] || [];
+            reimburseTxPool[founderName] = pool.filter(t => t.hash !== txHash);
+            renderTxPool(founderName);
+            syncReimburseAmount(founderName);
+        }
+
+        function syncReimburseAmount(founderName, force) {
+            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
+            if (!amountInput) return;
+            const pool = reimburseTxPool[founderName] || [];
+            if (force) reimburseAmountManual[founderName] = false;
+            // Сумма из пула — если юзер не правил поле руками
+            if (!reimburseAmountManual[founderName]) {
+                amountInput.value = pool.length ? poolTotal(founderName).toFixed(2) : '';
+            }
+            renderAmountHint(founderName);
+            updateReimbursementRate(founderName);
+        }
+
+        function renderAmountHint(founderName) {
+            const hint = document.querySelector(`.reimburse-amount-hint[data-founder="${founderName}"]`);
+            if (!hint) return;
+            const pool = reimburseTxPool[founderName] || [];
+            if (!pool.length) { hint.innerHTML = ''; return; }
+            const total = poolTotal(founderName);
+            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
+            const current = parseFloat(amountInput?.value) || 0;
+            if (Math.abs(current - total) < 0.01) {
+                hint.style.color = '#6b7280';
+                hint.textContent = `= сумма ${pool.length} выбранных переводов`;
+            } else {
+                hint.style.color = '#b45309';
+                hint.innerHTML = `⚠️ вручную, сумма переводов $${total.toFixed(2)} ` +
+                    `<button type="button" class="btn btn-sm btn-secondary" style="padding:0 6px;" onclick="syncReimburseAmount('${founderName}', true)">пересчитать</button>`;
+            }
+        }
+
+        function onReimburseAmountInput(founderName) {
+            reimburseAmountManual[founderName] = true;
+            renderAmountHint(founderName);
+            updateReimbursementRate(founderName);
         }
 
         function updateReimbursementRate(founderName) {
@@ -6944,9 +7020,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
 
-            // Собираем все хэши из полей
+            // Хэши: выбранные переводы из истории + введённые вручную, без дублей
             const hashInputs = document.querySelectorAll(`.reimburse-tx-hashes[data-founder="${founderName}"] .reimburse-tx-hash-input`);
-            const txHashes = Array.from(hashInputs).map(i => i.value.trim()).filter(Boolean);
+            const manualHashes = Array.from(hashInputs).map(i => i.value.trim()).filter(Boolean);
+            const poolHashes = (reimburseTxPool[founderName] || []).map(t => t.hash);
+            const txHashes = [...new Set([...poolHashes, ...manualHashes])];
 
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements`, {
