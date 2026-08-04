@@ -4435,6 +4435,27 @@ def get_incoming_transactions():
     finally:
         session.close()
 
+def _dedupe_transfers(transfers):
+    """Убирает повторы переводов — строго по tx_hash.
+
+    Дубли возникают на стыке страниц TronScan и когда один перевод виден с двух
+    наших кошельков. Раньше ключом было amount + 15-минутное окно: одинаковые
+    суммы, отправленные подряд (выплата 500k пятью переводами по 100k), схлопывались
+    в одну — из дропдауна возмещений пропадали реальные переводы (кейс 04.08).
+    Разные переводы всегда имеют разные хэши, поэтому потерь больше нет.
+    """
+    seen = set()
+    deduped = []
+    for tx in transfers:
+        h = tx.get('tx_hash')
+        if h and h in seen:
+            continue
+        if h:
+            seen.add(h)
+        deduped.append(tx)
+    return deduped
+
+
 def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, end_ts=None, result_limit=None):
     """Обход TronScan: исходящие TRC20-USDT переводы (без внутренних между monitored).
 
@@ -4510,20 +4531,7 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
             print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
 
     all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-
-    # Дедупликация цепочек переводов: кошелёк → посредник → конечный
-    # TronScan relatedAddress показывает обе ноги. Оставляем одну по amount+время (±15мин)
-    deduped = []
-    seen = set()
-    for tx in all_outgoing:
-        # Округляем время до 15 минут для группировки
-        ts = datetime.fromisoformat(tx['timestamp'])
-        bucket = (round(tx['amount_usdt'], 2), ts.strftime('%Y-%m-%d'), ts.hour, ts.minute // 15)
-        if bucket in seen:
-            continue
-        seen.add(bucket)
-        deduped.append(tx)
-    return deduped
+    return _dedupe_transfers(all_outgoing)
 
 
 @app.route('/api/transactions/outgoing', methods=['GET'])
