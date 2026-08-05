@@ -3942,7 +3942,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <p><strong>Валовая прибыль:</strong> 
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
-                            : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
+                            : (deal.deal_kind === 'mf_realty'
+                                // У MF-сделки прибыль в двух карманах: profit_usdt — только
+                                // крипта. Показывать её как «валовую» нельзя: выплаты партнёрам
+                                // считаются от полной, и на экране чистая выходила больше валовой
+                                ? (() => {
+                                    const crypto = deal.profit_usdt || 0;
+                                    const fee = deal.company_fee_usdt || 0;
+                                    const gross = crypto + fee;
+                                    const pct = deal.payout_amount_usdt ? gross / deal.payout_amount_usdt * 100 : 0;
+                                    return `<span style="color: #10b981;">$${gross.toFixed(2)}</span> (${pct.toFixed(1)}%)
+                                        <br><span style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании $${fee.toFixed(2)}</span>`;
+                                })()
+                                : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`)
                         }
                         </p>
                         
