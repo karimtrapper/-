@@ -1278,8 +1278,10 @@ function applyPartnerMarkup(result) {
     const adj = 1 - m;   // множитель для outgoing (клиент получит меньше)
     const inv = 1 + m;   // множитель для incoming (клиент заплатит больше)
 
-    // Сохраняем "исходные" значения для отображения дельты
-    result.__base_final_rate = result.final_rate;
+    // Сохраняем "исходные" значения для отображения дельты. Если расход фрихолда
+    // уже сдвинул курс — базой остаётся курс ДО него, иначе дельта покажет только
+    // часть ухудшения
+    if (result.__base_final_rate === undefined) result.__base_final_rate = result.final_rate;
     if (typeof result.thb_received === 'number') result.__base_thb_received = result.thb_received;
     if (typeof result.usdt_received === 'number') result.__base_usdt_received = result.usdt_received;
     if (typeof result.rub_to_pay === 'number') result.__base_rub_to_pay = result.rub_to_pay;
@@ -1315,8 +1317,77 @@ function applyPartnerMarkup(result) {
     return result;
 }
 
+// Расход на перевод застройщику (фрихолд): комиссия % + фикс $ в USD.
+// Это наша себестоимость, поэтому она закладывается в курс клиенту, а не съедает
+// прибыль: иначе выбранная «желаемая прибыль» была бы враньём.
+// Комиссия берётся от суммы, которая реально уйдёт застройщику, поэтому решаем
+// уравнение X + (X·p + F) = то, что мы можем отдать → X = (out − F) / (1 + p).
+function applyPropertyFee(result) {
+    result.__prop_fee_applied = false;
+    if (state.dealCategory !== 'property_freehold') return result;
+
+    const pct = parseFloat(document.getElementById('propFeePercent')?.value) || 0;
+    const fixed = parseFloat(document.getElementById('propFeeFixed')?.value) || 0;
+    if (pct <= 0 && fixed <= 0) return result;
+    const p = pct / 100;
+
+    const s = result.scenario;
+    // Расход задан в USD — для THB-сценариев переводим его через курс USDT/THB
+    const outIsThb = (s === 'RUB → THB' || s === 'THB ← RUB' || s === 'USDT → THB');
+    const usdtThb = result.usdt_thb_rate || state.rates.usdt_thb || 0;
+    if (outIsThb && !usdtThb) return result;   // без курса пересчитать нечем
+
+    // Курс USDT→THB считается как out/in, остальные — как in/out: направление,
+    // в которое «ухудшение» двигает число, у них противоположное
+    const rateIsOutPerIn = (s === 'USDT → THB');
+    result.__base_final_rate = result.final_rate;
+
+    if (result.direction === 'target') {
+        // Клиент хочет получить фиксированную сумму — расход добавляется к тому,
+        // что он вносит: отправить придётся X·(1+p) + F
+        const target = getAmount();
+        if (!target) return result;
+        const targetUsdt = outIsThb ? target / usdtThb : target;
+        const feeUsdt = targetUsdt * p + fixed;
+        const k = (targetUsdt + feeUsdt) / targetUsdt;
+        if (!isFinite(k) || k <= 0) return result;
+
+        ['rub_to_pay', 'thb_to_pay', 'usdt_to_pay', 'rub_amount'].forEach(f => {
+            if (typeof result[f] === 'number') result[f] *= k;
+        });
+        if (typeof result.final_rate === 'number') {
+            result.final_rate = rateIsOutPerIn ? result.final_rate / k : result.final_rate * k;
+        }
+        result.__prop_fee_usdt = feeUsdt;
+    } else {
+        // Клиент вносит сумму — расход уменьшает то, что до него дойдёт
+        const outField = ['usdt_received', 'thb_received', 'usdt_amount']
+            .find(f => typeof result[f] === 'number' && result[f] > 0);
+        if (!outField) return result;
+        const out = result[outField];
+        const outUsdt = outIsThb ? out / usdtThb : out;
+        const newOutUsdt = (outUsdt - fixed) / (1 + p);
+        if (!(newOutUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
+        const k = newOutUsdt / outUsdt;
+
+        result[outField] = out * k;
+        if (typeof result.final_rate === 'number') {
+            result.final_rate = rateIsOutPerIn ? result.final_rate * k : result.final_rate / k;
+        }
+        result.__prop_fee_usdt = newOutUsdt * p + fixed;
+    }
+
+    result.__prop_fee_applied = true;
+    result.__prop_fee_pct = pct;
+    result.__prop_fee_fixed = fixed;
+    return result;
+}
+
 // Отображение результата
 function displayResult(result) {
+    // Сначала расход на перевод (наша себестоимость), потом наценка партнёра —
+    // markup идёт поверх итогового курса, а не поверх «голого»
+    applyPropertyFee(result);
     // Применяем markup партнёра (если включено) — курс реально меняется
     applyPartnerMarkup(result);
 
@@ -1586,6 +1657,16 @@ function displayDetailedSteps(result) {
             html += `<div class="detail-row"><span class="detail-label">% прибыли:</span><span class="detail-value">${p.toFixed(2)}%</span></div>`;
         }
         
+        // Расход на перевод застройщику — показываем явно, иначе видно только
+        // ухудшившийся курс и непонятно, откуда он взялся
+        if (result.__prop_fee_applied) {
+            html += `<div class="detail-row"><span class="detail-label">🏠 Перевод застройщику:</span><span class="detail-value">${result.__prop_fee_pct.toFixed(2)}% + $${result.__prop_fee_fixed}</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Расход на перевод:</span><span class="detail-value">${formatNumber(result.__prop_fee_usdt)} USDT</span></div>`;
+            if (typeof result.__base_final_rate === 'number') {
+                html += `<div class="detail-row"><span class="detail-label">Курс без расхода:</span><span class="detail-value">${result.__base_final_rate.toFixed(6)}</span></div>`;
+            }
+        }
+
         // Расчет партнера (на клиенте)
         const hasPartner = document.getElementById('hasPartner');
         if (hasPartner && hasPartner.checked && result.profit_usdt !== undefined) {

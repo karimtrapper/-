@@ -214,14 +214,14 @@
                     <div class="fee-cell">
                         <label class="input-label">Комиссия за перевод</label>
                         <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" value="0.8">
+                            <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" value="0.8" oninput="hideResults()">
                             <span class="input-currency">%</span>
                         </div>
                     </div>
                     <div class="fee-cell">
                         <label class="input-label">Фикс за перевод</label>
                         <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" value="50">
+                            <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" value="50" oninput="hideResults()">
                             <span class="input-currency">$</span>
                         </div>
                     </div>
