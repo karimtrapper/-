@@ -1318,10 +1318,15 @@ function applyPartnerMarkup(result) {
 }
 
 // Расход на перевод застройщику (фрихолд): комиссия % + фикс $ в USD.
-// Это наша себестоимость, поэтому она закладывается в курс клиенту, а не съедает
-// прибыль: иначе выбранная «желаемая прибыль» была бы враньём.
-// Комиссия берётся от суммы, которая реально уйдёт застройщику, поэтому решаем
-// уравнение X + (X·p + F) = то, что мы можем отдать → X = (out − F) / (1 + p).
+// Это наша себестоимость, поэтому она закладывается в курс, а не съедает прибыль:
+// иначе выбранная «желаемая прибыль» была бы враньём.
+//
+// Комиссия банка снимается С ОТПРАВЛЯЕМОЙ суммы, поэтому «вношу» и «хочу получить»
+// считаются по-разному:
+//   • вношу S       → до застройщика дойдёт  X = S·(1−p) − F
+//   • хочу X дойдёт → отправить придётся     S = (X + F) / (1−p)
+// Обратное (докладывать комиссию сверх X) завышало бы сумму до застройщика:
+// клиенту назвали бы курс, по которому застройщик получит меньше обещанного.
 function applyPropertyFee(result) {
     result.__prop_fee_applied = false;
     if (state.dealCategory !== 'property_freehold') return result;
@@ -1340,16 +1345,20 @@ function applyPropertyFee(result) {
     // Курс USDT→THB считается как out/in, остальные — как in/out: направление,
     // в которое «ухудшение» двигает число, у них противоположное
     const rateIsOutPerIn = (s === 'USDT → THB');
-    result.__base_final_rate = result.final_rate;
+    // Курс до расхода — для строки «курс без расхода». Базу партнёрского markup
+    // не трогаем: у него своя точка отсчёта
+    result.__prop_rate_before = result.final_rate;
 
     if (result.direction === 'target') {
-        // Клиент хочет получить фиксированную сумму — расход добавляется к тому,
-        // что он вносит: отправить придётся X·(1+p) + F
+        // Клиент хочет, чтобы застройщик получил X — отправить надо (X + F)/(1−p),
+        // значит клиент вносит больше в той же пропорции
         const target = getAmount();
         if (!target) return result;
         const targetUsdt = outIsThb ? target / usdtThb : target;
-        const feeUsdt = targetUsdt * p + fixed;
-        const k = (targetUsdt + feeUsdt) / targetUsdt;
+        const sendUsdt = (targetUsdt + fixed) / (1 - p);
+        if (!(sendUsdt > 0) || p >= 1) return result;
+        const feeUsdt = sendUsdt - targetUsdt;
+        const k = sendUsdt / targetUsdt;
         if (!isFinite(k) || k <= 0) return result;
 
         ['rub_to_pay', 'thb_to_pay', 'usdt_to_pay', 'rub_amount'].forEach(f => {
@@ -1358,23 +1367,27 @@ function applyPropertyFee(result) {
         if (typeof result.final_rate === 'number') {
             result.final_rate = rateIsOutPerIn ? result.final_rate / k : result.final_rate * k;
         }
+        result.__prop_send_usdt = sendUsdt;
+        result.__prop_arrive_usdt = targetUsdt;
         result.__prop_fee_usdt = feeUsdt;
     } else {
-        // Клиент вносит сумму — расход уменьшает то, что до него дойдёт
+        // Клиент вносит сумму — она и есть отправляемая, комиссия снимается с неё
         const outField = ['usdt_received', 'thb_received', 'usdt_amount']
             .find(f => typeof result[f] === 'number' && result[f] > 0);
         if (!outField) return result;
         const out = result[outField];
-        const outUsdt = outIsThb ? out / usdtThb : out;
-        const newOutUsdt = (outUsdt - fixed) / (1 + p);
-        if (!(newOutUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
-        const k = newOutUsdt / outUsdt;
+        const sendUsdt = outIsThb ? out / usdtThb : out;
+        const arriveUsdt = sendUsdt * (1 - p) - fixed;
+        if (!(arriveUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
+        const k = arriveUsdt / sendUsdt;
 
         result[outField] = out * k;
         if (typeof result.final_rate === 'number') {
             result.final_rate = rateIsOutPerIn ? result.final_rate * k : result.final_rate / k;
         }
-        result.__prop_fee_usdt = newOutUsdt * p + fixed;
+        result.__prop_send_usdt = sendUsdt;
+        result.__prop_arrive_usdt = arriveUsdt;
+        result.__prop_fee_usdt = sendUsdt - arriveUsdt;
     }
 
     result.__prop_fee_applied = true;
@@ -1385,11 +1398,11 @@ function applyPropertyFee(result) {
 
 // Отображение результата
 function displayResult(result) {
-    // Сначала расход на перевод (наша себестоимость), потом наценка партнёра —
-    // markup идёт поверх итогового курса, а не поверх «голого»
-    applyPropertyFee(result);
     // Применяем markup партнёра (если включено) — курс реально меняется
     applyPartnerMarkup(result);
+    // Расход на перевод — последним: комиссия банка снимается с суммы, которая
+    // реально уходит, а она уже уменьшена на наценку партнёра
+    applyPropertyFee(result);
 
     // Сохраняем результат в state для дальнейшего использования (например, создания платежа)
     state.lastResult = result;
@@ -1475,6 +1488,17 @@ function displayResult(result) {
         rateCurrency = '';
     }
     
+    // При фрихолде итог — это то, что дойдёт до застройщика, а не «клиент получит»:
+    // разница как раз и есть предмет вопроса «а сколько реально уйдёт»
+    const resLabel = document.getElementById('resultLabel');
+    if (resLabel) {
+        if (result.__prop_fee_applied && result.direction !== 'target') {
+            resLabel.textContent = 'Дойдёт застройщику:';
+        } else if (resLabel.textContent === 'Дойдёт застройщику:') {
+            resLabel.textContent = 'Клиент получит:';
+        }
+    }
+
     document.getElementById('resultValue').textContent = resultValue;
     document.getElementById('finalRate').textContent = rateValue;
     document.getElementById('rateCurrency').textContent = rateCurrency;
@@ -1511,7 +1535,9 @@ function displayResult(result) {
     if (isTarget) {
         clientMsg = `Отдаёте: ${cleanOutput}\nПолучаете: ${fmtClean(inputAmount)} ${inputCurrency}\nКурс: ${rateValue} ${rateCurrency}`;
     } else {
-        clientMsg = `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
+        clientMsg = result.__prop_fee_applied
+            ? `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nЗастройщик получит: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`
+            : `Отдаёте: ${fmtClean(inputAmount)} ${inputCurrency}\nПолучаете: ${cleanOutput}\nКурс: ${rateValue} ${rateCurrency}`;
     }
 
     copyText.textContent = clientMsg;
@@ -1660,10 +1686,12 @@ function displayDetailedSteps(result) {
         // Расход на перевод застройщику — показываем явно, иначе видно только
         // ухудшившийся курс и непонятно, откуда он взялся
         if (result.__prop_fee_applied) {
-            html += `<div class="detail-row"><span class="detail-label">🏠 Перевод застройщику:</span><span class="detail-value">${result.__prop_fee_pct.toFixed(2)}% + $${result.__prop_fee_fixed}</span></div>`;
-            html += `<div class="detail-row"><span class="detail-label">Расход на перевод:</span><span class="detail-value">${formatNumber(result.__prop_fee_usdt)} USDT</span></div>`;
-            if (typeof result.__base_final_rate === 'number') {
-                html += `<div class="detail-row"><span class="detail-label">Курс без расхода:</span><span class="detail-value">${result.__base_final_rate.toFixed(6)}</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">🏠 Комиссия за перевод:</span><span class="detail-value">${result.__prop_fee_pct.toFixed(2)}% + $${result.__prop_fee_fixed}</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Отправляем:</span><span class="detail-value">${formatNumber(result.__prop_send_usdt)} USDT</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Съест перевод:</span><span class="detail-value">−${formatNumber(result.__prop_fee_usdt)} USDT</span></div>`;
+            html += `<div class="detail-row"><span class="detail-label">Дойдёт застройщику:</span><span class="detail-value highlight-final">${formatNumber(result.__prop_arrive_usdt)} USDT</span></div>`;
+            if (typeof result.__prop_rate_before === 'number') {
+                html += `<div class="detail-row"><span class="detail-label">Курс без комиссии перевода:</span><span class="detail-value">${result.__prop_rate_before.toFixed(6)}</span></div>`;
             }
         }
 
