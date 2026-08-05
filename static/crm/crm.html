@@ -3351,7 +3351,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
                             <td>${deal.custom_payout_currency
                             ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
-                            : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
+                            : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
+                                : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
+                                    // У MF-сделки клиенту баты не выдают — они уходят в компанию
+                                    ? formatNumber(deal.company_sent_thb) + ' ฿'
+                                    : '-'))}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}</td>
                             <td><span class="badge badge-${deal.status}">${getStatusLabel(deal.status)}</span></td>
                         </tr>
@@ -3728,7 +3732,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
                             <td>${deal.custom_payout_currency
                                 ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
-                                : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿' : '-')}</td>
+                                : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
+                                : (deal.deal_kind === 'mf_realty' && deal.company_sent_thb
+                                    // У MF-сделки клиенту баты не выдают — они уходят в компанию
+                                    ? formatNumber(deal.company_sent_thb) + ' ฿'
+                                    : '-'))}</td>
                             <td style="color: ${profitUnknown ? '#f59e0b' : ((deal.net_profit_usdt || deal.profit_usdt) > 0 ? '#10b981' : '#ef4444')}; font-weight: 600;">
                                 ${profitUnknown ? '⏳ ожид.' : (deal.net_profit_usdt != null ? '$' + deal.net_profit_usdt.toFixed(2) : (deal.profit_usdt != null ? '$' + deal.profit_usdt.toFixed(2) : '-'))}
                             </td>
@@ -4150,6 +4158,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }];
         }
 
+        // Блокировка формы редактирования на время загрузки сделки
+        function setEditorBusy(busy, dealId) {
+            const card = document.querySelector('#create .card');
+            if (!card) return;
+            let veil = document.getElementById('editorBusyVeil');
+            if (busy) {
+                if (!veil) {
+                    veil = document.createElement('div');
+                    veil.id = 'editorBusyVeil';
+                    veil.style.cssText = 'position:absolute;inset:0;background:rgba(255,255,255,0.82);'
+                        + 'display:flex;align-items:flex-start;justify-content:center;padding-top:80px;'
+                        + 'z-index:50;font-weight:600;color:#475569;border-radius:12px;';
+                    card.style.position = 'relative';
+                    card.appendChild(veil);
+                }
+                veil.textContent = `Загружаю сделку #${dealId}…`;
+                veil.style.display = 'flex';
+            } else if (veil) {
+                veil.style.display = 'none';
+            }
+            // Кнопки сохранения на время загрузки не работают
+            card.querySelectorAll('button[type="submit"], #saveDealBtn').forEach(b => b.disabled = busy);
+        }
+
         async function openDealEditor(dealId) {
             try {
                 // Чистый лист: заполнение ниже ставит только непустые поля сделки,
@@ -4168,10 +4200,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     _openingEditor = false;
                 }
 
-                const [data] = await Promise.all([
-                    fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
-                    loadCreateForm()
-                ]);
+                // Пока сделка едет (справочники + сама сделка — пара секунд), форма
+                // показывает поля ПРЕДЫДУЩЕЙ сделки, а editingDealId уже переключён:
+                // сохранение в этот момент записывало чужие данные в открытую сделку
+                // (кейс #461 — клиент подменился на клиента из #462). Закрываем ввод.
+                setEditorBusy(true, dealId);
+
+                let data;
+                try {
+                    [data] = await Promise.all([
+                        fetch(`${API_URL}/api/deals/${dealId}`).then(r => r.json()),
+                        loadCreateForm()
+                    ]);
+                } finally {
+                    setEditorBusy(false);
+                }
 
                 if (data.success) {
                     const deal = data.deal;
@@ -4184,9 +4227,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     // Общие поля для обоих типов сделок
                     const form = document.getElementById('createDealForm');
-                    if (deal.manager_name) document.getElementById('managerSelect').value = deal.manager_name;
-                    if (deal.client_id) document.getElementById('clientSelect').value = deal.client_id;
-                    if (deal.client_name) form.client_name.value = deal.client_name;
+                    // Пустое значение — тоже значение: при `if (deal.X)` поле оставалось
+                    // от прошлой сделки и уезжало в неё при сохранении
+                    document.getElementById('managerSelect').value = deal.manager_name || '';
+                    document.getElementById('clientSelect').value = deal.client_id || '';
+                    form.client_name.value = deal.client_name || '';
 
                     // Заполняем дату
                     if (deal.created_at) {
@@ -4567,10 +4612,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 try {
                     // Все справочники независимы — грузим параллельно
                     // (раньше 6 запросов шли по очереди, форма открывалась ~3 сек)
+                    // Списка входящих переводов ждать незачем: он только наполняет
+                    // дропдаун, значения сделки из него не подставляются, а поход в
+                    // TronScan держал открытие формы лишнюю секунду
+                    loadIncomingTxForSelect();
                     await Promise.all([
                         loadManagersForSelect(),
                         loadClientsForSelect(),
-                        loadIncomingTxForSelect(),
                         loadCashBatchesForSelect(),
                         loadBankCardsForSelect(),
                         loadReferrerDropdowns()
