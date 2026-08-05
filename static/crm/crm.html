@@ -1285,10 +1285,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                             <div class="form-group" style="margin-bottom:1rem;">
                                 <label class="form-label">Переводы в MF Corp (факт)</label>
-                                <select class="form-control" id="mfPayoutTxSelect" onchange="selectMfPayoutTx(this)"
-                                    style="margin-bottom:0.5rem;">
-                                    <option value="">-- Выбрать из исходящих --</option>
-                                </select>
+                                <button type="button" class="btn btn-secondary" id="mfPayoutPickerBtn"
+                                    onclick="toggleMfPayoutPicker()" style="width:100%;margin-bottom:0.5rem;">
+                                    ➕ Выбрать переводы
+                                </button>
+                                <!-- Отправка часто идёт пачкой одинаковых сумм на один адрес — выбирать
+                                     их по одному мучительно, поэтому чекбоксы + «отметить все видимые» -->
+                                <div id="mfPayoutPicker" style="display:none;margin-bottom:0.5rem;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;padding:8px;">
+                                    <div style="display:flex;gap:0.5rem;margin-bottom:6px;">
+                                        <input type="text" class="form-control" id="mfPayoutSearch" placeholder="Фильтр: адрес, сумма или хэш"
+                                            oninput="renderMfPayoutPicker()" style="flex:1;">
+                                        <button type="button" class="btn btn-sm btn-secondary" onclick="mfPayoutCheckAll(true)">Все</button>
+                                        <button type="button" class="btn btn-sm btn-secondary" onclick="mfPayoutCheckAll(false)">Снять</button>
+                                    </div>
+                                    <div id="mfPayoutPickerList" style="max-height:260px;overflow-y:auto;"></div>
+                                    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+                                        <span id="mfPayoutPickerSum" style="font-size:0.85rem;color:#475569;"></span>
+                                        <button type="button" class="btn btn-sm btn-primary" onclick="addMfPayoutChecked()">Добавить отмеченные</button>
+                                    </div>
+                                </div>
                                 <div id="mfPayoutTxWarn" style="display:none;margin-bottom:0.5rem;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;"></div>
                                 <div id="mfPayoutTxPoolBox" style="margin-bottom:0.5rem;"></div>
                                 <small style="color:#6b7280;">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</small>
@@ -5552,22 +5567,81 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 `<div style="text-align:right;font-weight:700;color:#b91c1c;">Переводов: ${mfPayoutTxPool.length} · итого $${mfPayoutTxTotal().toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`;
         }
 
-        function selectMfPayoutTx(select) {
-            const opt = select.selectedOptions[0];
-            const txHash = select.value;
-            select.selectedIndex = 0;
-            if (!txHash) return;
-            if (mfPayoutTxPool.some(t => t.hash === txHash)) {
-                showToast('Этот перевод уже добавлен', 'error');
-                return;
-            }
-            const amount = parseFloat(opt?.dataset?.amount);
-            mfPayoutTxPool.push({
-                hash: txHash,
-                amount_usdt: isNaN(amount) ? null : amount,
-                to_address: opt?.dataset?.to || '',
-                date: opt?.dataset?.date || '',
+        // Список исходящих для выбора + отмеченные галочками (до нажатия «Добавить»)
+        let mfPayoutTxOptions = [];
+        let mfPayoutChecked = new Set();
+
+        function toggleMfPayoutPicker() {
+            const box = document.getElementById('mfPayoutPicker');
+            if (!box) return;
+            const open = box.style.display === 'none';
+            box.style.display = open ? 'block' : 'none';
+            if (open) renderMfPayoutPicker();
+        }
+
+        function mfPayoutVisible() {
+            const q = (document.getElementById('mfPayoutSearch')?.value || '').trim().toLowerCase();
+            const inPool = h => mfPayoutTxPool.some(t => t.hash === h);
+            return mfPayoutTxOptions.filter(tx => {
+                if (inPool(tx.tx_hash)) return false;   // уже добавленные не показываем
+                if (!q) return true;
+                return (tx.to_address || '').toLowerCase().includes(q)
+                    || (tx.tx_hash || '').toLowerCase().includes(q)
+                    || String(tx.amount_usdt).includes(q);
             });
+        }
+
+        function renderMfPayoutPicker() {
+            const list = document.getElementById('mfPayoutPickerList');
+            if (!list) return;
+            const rows = mfPayoutVisible();
+            if (!rows.length) {
+                list.innerHTML = '<div style="color:#94a3b8;font-size:0.85rem;padding:6px;">Нет подходящих переводов</div>';
+            } else {
+                list.innerHTML = rows.map(tx => `
+                    <label style="display:flex;align-items:center;gap:0.5rem;padding:4px 6px;border-radius:6px;font-size:0.85rem;cursor:pointer;background:${mfPayoutChecked.has(tx.tx_hash) ? '#eef2ff' : 'transparent'};">
+                        <input type="checkbox" ${mfPayoutChecked.has(tx.tx_hash) ? 'checked' : ''}
+                            onchange="mfPayoutCheck('${tx.tx_hash}', this.checked)">
+                        <strong style="color:#b91c1c;min-width:110px;">−$${(tx.amount_usdt || 0).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>
+                        <span style="color:#334155;">→ ${escapeHtml((tx.to_address || '').substring(0, 14))}…</span>
+                        <span style="flex:1;"></span>
+                        <span style="color:#94a3b8;">${formatDate(tx.timestamp)}</span>
+                    </label>`).join('');
+            }
+            const sum = mfPayoutTxOptions
+                .filter(tx => mfPayoutChecked.has(tx.tx_hash))
+                .reduce((s, tx) => s + (tx.amount_usdt || 0), 0);
+            const el = document.getElementById('mfPayoutPickerSum');
+            if (el) el.textContent = mfPayoutChecked.size
+                ? `Отмечено: ${mfPayoutChecked.size} · $${sum.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
+                : 'Ничего не отмечено';
+        }
+
+        function mfPayoutCheck(hash, on) {
+            if (on) mfPayoutChecked.add(hash); else mfPayoutChecked.delete(hash);
+            renderMfPayoutPicker();
+        }
+
+        function mfPayoutCheckAll(on) {
+            // Только видимые: с фильтром «все» означает «все по этому адресу»,
+            // иначе кнопка молча цепляла бы отфильтрованное
+            mfPayoutVisible().forEach(tx => on ? mfPayoutChecked.add(tx.tx_hash) : mfPayoutChecked.delete(tx.tx_hash));
+            renderMfPayoutPicker();
+        }
+
+        function addMfPayoutChecked() {
+            const picked = mfPayoutTxOptions.filter(tx => mfPayoutChecked.has(tx.tx_hash)
+                && !mfPayoutTxPool.some(t => t.hash === tx.tx_hash));
+            if (!picked.length) { showToast('Отметь хотя бы один перевод', 'error'); return; }
+            picked.forEach(tx => mfPayoutTxPool.push({
+                hash: tx.tx_hash,
+                amount_usdt: tx.amount_usdt != null ? Number(tx.amount_usdt) : null,
+                to_address: tx.to_address || '',
+                date: formatDate(tx.timestamp) || '',
+            }));
+            mfPayoutChecked.clear();
+            document.getElementById('mfPayoutPicker').style.display = 'none';
+            showToast(`Добавлено переводов: ${picked.length}`);
             renderMfPayoutTxPool();
             mfRecalcNow();
         }
@@ -5575,10 +5649,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function removeMfPayoutTx(index) {
             mfPayoutTxPool.splice(index, 1);
             renderMfPayoutTxPool();
+            renderMfPayoutPicker();   // снятый перевод снова доступен для выбора
             mfRecalcNow();
         }
 
         function resetMfPayoutTxPool(parts) {
+            mfPayoutChecked.clear();
+            const picker = document.getElementById('mfPayoutPicker');
+            if (picker) picker.style.display = 'none';
             mfPayoutTxPool = (parts || []).map(p => ({
                 hash: p.hash,
                 amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
@@ -5589,8 +5667,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function loadMfPayoutTx() {
-            const select = document.getElementById('mfPayoutTxSelect');
-            if (!select) return;
+            if (!document.getElementById('mfPayoutPicker')) return;
             try {
                 const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
                 let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}&limit=200`;
@@ -5607,10 +5684,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         : '';
                     warn.style.display = failed ? 'block' : 'none';
                 }
-                select.innerHTML = '<option value="">-- Выбрать из исходящих --</option>' +
-                    (data.available || []).slice(0, 200).map(tx =>
-                        `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-to="${tx.to_address || ''}" data-date="${formatDate(tx.timestamp)}">−$${tx.amount_usdt.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})} → ${(tx.to_address || '').substring(0, 10)}… | ${formatDate(tx.timestamp)}</option>`
-                    ).join('');
+                mfPayoutTxOptions = (data.available || []).slice(0, 300);
+                const btn = document.getElementById('mfPayoutPickerBtn');
+                if (btn) btn.textContent = `➕ Выбрать переводы (${mfPayoutTxOptions.length} исходящих)`;
+                renderMfPayoutPicker();
             } catch (e) {
                 console.error('Error loading outgoing for MF:', e);
             }
