@@ -4754,6 +4754,26 @@ _TRONSCAN_HEADERS = {
 }
 
 
+def _merge_partial_with_cache(fresh, cache_key, failed_addresses, addr_field):
+    """Кошельки, ответившие 429, добираем из прошлого кэша.
+
+    Иначе один rate-limit у TronScan обнуляет их переводы в списке: пользователь
+    видит неполную выборку и не знает об этом. Дедуп по tx_hash.
+    """
+    if not failed_addresses:
+        return fresh
+    old = (TRONSCAN_CACHE.get(cache_key) or {}).get('data') or []
+    seen = {t.get('tx_hash') for t in fresh}
+    rescued = [t for t in old
+               if t.get(addr_field) in failed_addresses and t.get('tx_hash') not in seen]
+    if rescued:
+        print(f'[TronScan] {cache_key}: добрал {len(rescued)} переводов из кэша '
+              f'для {len(failed_addresses)} кошельков с 429', flush=True)
+    merged = fresh + rescued
+    merged.sort(key=lambda x: x.get('timestamp') or '', reverse=True)
+    return merged
+
+
 def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
     """Обход TronScan по кошелькам: TRC20-USDT переводы (входящие помечены is_incoming).
 
@@ -4900,10 +4920,19 @@ def get_incoming_transactions():
         all_incoming, wallets_checked, wallets_errors = _tronscan_fetch_incoming(
             wallets, start_ts=start_ts, end_ts=end_ts)
 
+        # Кошельки, не ответившие из-за 429, добираем из прошлого кэша: иначе
+        # один rate-limit TronScan обнуляет их переводы в выборке
+        failed = {e.get('address') for e in wallets_errors if e.get('address')}
+        all_incoming = _merge_partial_with_cache(all_incoming, 'incoming', failed, 'to_address')
+
         # Обновляем кэш. Атомарно (одним присваиванием sub-dict), иначе читатель
         # мог увидеть новые data со старым timestamp (окно рассинхрона).
-        if not wallet_filter: # Кэшируем только общий список
-            TRONSCAN_CACHE['incoming'] = {'data': all_incoming, 'timestamp': current_time}
+        # Частичный результат кэшируем со СТАРЫМ timestamp — чтобы следующий
+        # запрос попробовал снова, а не ждал полный TTL на неполных данных.
+        if not wallet_filter:
+            ts = current_time if not failed else (
+                TRONSCAN_CACHE['incoming'].get('timestamp') or current_time)
+            TRONSCAN_CACHE['incoming'] = {'data': all_incoming, 'timestamp': ts}
         
         used_hashes = get_used_transaction_hashes(session)
         
@@ -5001,13 +5030,17 @@ def _dedupe_transfers(transfers):
     return deduped
 
 
-def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, end_ts=None, result_limit=None):
+def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, end_ts=None,
+                             result_limit=None, with_errors=False):
     """Обход TronScan: исходящие TRC20-USDT переводы (без внутренних между monitored).
 
     Вынесено из эндпоинта — общая логика для запроса и фонового прогрева кэша.
-    Возвращает дедуплицированный список по времени ↓.
+    Возвращает дедуплицированный список по времени ↓; с with_errors=True —
+    пару (список, адреса кошельков, не ответивших из-за 429/ошибки), чтобы
+    вызывающий не принял частичную выборку за полную.
     """
     all_outgoing = []
+    failed = []
 
     for wallet_idx, wallet in enumerate(wallets):
         # Пауза между кошельками чтобы не словить 429 от TronScan
@@ -5071,12 +5104,15 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
                     time.sleep(1)
                 else:
                     print(f"[DEBUG] TronScan outgoing HTTP {response.status_code} for {wallet.address[:10]}...")
+                    failed.append(wallet.address)
                     break
         except Exception as e:
             print(f"[DEBUG] TronScan outgoing error for {wallet.address}: {e}")
+            failed.append(wallet.address)
 
     all_outgoing.sort(key=lambda x: x['timestamp'], reverse=True)
-    return _dedupe_transfers(all_outgoing)
+    deduped = _dedupe_transfers(all_outgoing)
+    return (deduped, failed) if with_errors else deduped
 
 
 @app.route('/api/transactions/outgoing', methods=['GET'])
@@ -5132,18 +5168,23 @@ def get_outgoing_transactions():
         # и их нужно видеть в дропдауне возмещений.
         internal_wallet_addresses = set(w.address for w in session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all())
 
-        all_outgoing = _tronscan_fetch_outgoing(
+        all_outgoing, failed_out = _tronscan_fetch_outgoing(
             wallets, internal_wallet_addresses,
-            start_ts=start_ts, end_ts=end_ts, result_limit=result_limit)
+            start_ts=start_ts, end_ts=end_ts, result_limit=result_limit, with_errors=True)
+        failed_out = set(failed_out)
+        all_outgoing = _merge_partial_with_cache(all_outgoing, 'outgoing', failed_out, 'from_address')
 
         # Обновляем кэш (полный набор, без limit-фильтра). Атомарно — см. incoming.
         if not wallet_filter and not result_limit:
-            TRONSCAN_CACHE['outgoing'] = {'data': all_outgoing, 'timestamp': current_time}
+            ts = current_time if not failed_out else (
+                TRONSCAN_CACHE['outgoing'].get('timestamp') or current_time)
+            TRONSCAN_CACHE['outgoing'] = {'data': all_outgoing, 'timestamp': ts}
 
         final_limit = result_limit or 1000
         return jsonify({
             'success': True,
             'available': all_outgoing[:final_limit],
+            'wallets_errors': [{'address': a, 'error': 'rate limit'} for a in sorted(failed_out)],
             'cached': False
         })
     except Exception as e:
@@ -5171,11 +5212,29 @@ def _tronscan_warm_loop():
             finally:
                 session.close()
             if wallets:
-                incoming, _, _ = _tronscan_fetch_incoming(wallets, start_ts=start_ts)
-                TRONSCAN_CACHE['incoming'] = {'data': incoming, 'timestamp': time.time()}
+                # Прогрев — главный писатель кэша. Кошельки, огрызнувшиеся 429,
+                # добираем из прошлых данных и НЕ обновляем timestamp: иначе
+                # неполная выборка живёт полный TTL и юзер видит не все переводы.
+                incoming, _, in_errors = _tronscan_fetch_incoming(wallets, start_ts=start_ts)
+                failed_in = {e.get('address') for e in in_errors if e.get('address')}
+                incoming = _merge_partial_with_cache(incoming, 'incoming', failed_in, 'to_address')
+                TRONSCAN_CACHE['incoming'] = {
+                    'data': incoming,
+                    'timestamp': (TRONSCAN_CACHE['incoming'].get('timestamp') or 0)
+                    if failed_in else time.time()}
+
                 internal = set(w.address for w in wallets)
-                outgoing = _tronscan_fetch_outgoing(wallets, internal, start_ts=start_ts)
-                TRONSCAN_CACHE['outgoing'] = {'data': outgoing, 'timestamp': time.time()}
+                outgoing, failed_out = _tronscan_fetch_outgoing(
+                    wallets, internal, start_ts=start_ts, with_errors=True)
+                failed_out = set(failed_out)
+                outgoing = _merge_partial_with_cache(outgoing, 'outgoing', failed_out, 'from_address')
+                TRONSCAN_CACHE['outgoing'] = {
+                    'data': outgoing,
+                    'timestamp': (TRONSCAN_CACHE['outgoing'].get('timestamp') or 0)
+                    if failed_out else time.time()}
+                if failed_in or failed_out:
+                    print(f'[TronScan] прогрев неполный: 429 у {len(failed_in)} вх. / '
+                          f'{len(failed_out)} исх. кошельков', flush=True)
         except Exception as e:
             print(f"ℹ️ tronscan warm loop: {e}", flush=True)
         time.sleep(TRONSCAN_WARM_INTERVAL)
