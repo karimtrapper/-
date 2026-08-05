@@ -706,6 +706,9 @@ class Deal(Base):
     payin_tx_hash = Column(String(100))
     # Приход частями: JSON [{hash, amount_usdt}]. payin_tx_hash = первый хэш (легаси-отображения)
     payin_tx_hashes = Column(Text, nullable=True)
+    # Фактическая отправка в MF Corp: JSON [{hash, amount_usdt, to_address, date}].
+    # Расчётная себестоимость — модель; эти переводы — то, что реально ушло
+    payout_tx_hashes = Column(Text, nullable=True)
     payin_tx_verified = Column(Boolean, default=False)
     doverka_transaction_id = Column(String(100))
     doverka_status = Column(SQLEnum(DoverkaStatus), nullable=True)
@@ -800,6 +803,7 @@ class Deal(Base):
             'payin_rate_rub_usdt': self.payin_rate_rub_usdt,
             'payin_tx_hash': self.payin_tx_hash,
             'payin_tx_hashes': json.loads(self.payin_tx_hashes) if self.payin_tx_hashes else None,
+            'payout_tx_hashes': json.loads(self.payout_tx_hashes) if self.payout_tx_hashes else None,
             'payin_tx_verified': self.payin_tx_verified,
             'deal_kind': self.deal_kind or 'exchange',
             'realty_purpose': self.realty_purpose,
@@ -956,7 +960,8 @@ MF_REALTY_KIND = 'mf_realty'
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
-                      company_percent=None, company_sent_thb=None, agents=None):
+                      company_percent=None, company_sent_thb=None, agents=None,
+                      actual_cost_usdt=None):
     """Расчёт сделки по недвижимости через MF Corporation (leasehold).
 
     Спека: docs/specs/2026-08-04-mf-corp-leasehold.md. Формулы сверены по строкам
@@ -997,7 +1002,10 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
     # Себестоимость = ВСЯ отправляемая в компанию сумма: баты покупаем вместе
     # с комиссией, с кошелька уходит именно столько. Отдельно держим стоимость
     # самого инвойса — по ней видно общий заработок до расщепления на карманы.
-    cost_usdt = sent_thb / buy_rate if buy_rate else 0
+    computed_cost_usdt = sent_thb / buy_rate if buy_rate else 0
+    # Если переводы в компанию отмечены — себестоимость берём по факту, а не по
+    # курсу: разница (комиссии сети, округление) должна быть видна, а не растворяться
+    cost_usdt = float(actual_cost_usdt) if actual_cost_usdt else computed_cost_usdt
     invoice_cost_usdt = invoice_thb / buy_rate if buy_rate else 0
     crypto_profit = payin - cost_usdt          # осталось в крипте до выплат партнёрам
     gross_profit = payin - invoice_cost_usdt   # общий заработок (крипта + комиссия)
@@ -1015,6 +1023,9 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
     return {
         'payin_usdt': round(payin, 2),
         'cost_usdt': round(cost_usdt, 2),
+        'computed_cost_usdt': round(computed_cost_usdt, 2),
+        # Расхождение факта с расчётом: комиссии сети, округление курса
+        'cost_diff_usdt': round(cost_usdt - computed_cost_usdt, 2) if actual_cost_usdt else 0,
         'invoice_cost_usdt': round(invoice_cost_usdt, 2),
         'crypto_profit_usdt': round(crypto_profit, 2),
         'gross_profit_usdt': round(gross_profit, 2),
@@ -1432,7 +1443,7 @@ _MF_REALTY_COLUMNS = [
     ('company_sent_thb', 'DOUBLE PRECISION'), ('company_fee_thb', 'DOUBLE PRECISION'),
     ('company_fee_usdt', 'DOUBLE PRECISION'), ('crypto_remainder_usdt', 'DOUBLE PRECISION'),
     ('katika_fee_thb', 'DOUBLE PRECISION'), ('katika_fee_usdt', 'DOUBLE PRECISION'),
-    ('client_spread_percent', 'DOUBLE PRECISION'),
+    ('client_spread_percent', 'DOUBLE PRECISION'), ('payout_tx_hashes', 'TEXT'),
     ('doc_invoice_url', 'VARCHAR(500)'), ('doc_contract_url', 'VARCHAR(500)'),
     ('doc_payment_url', 'VARCHAR(500)'),
 ]
@@ -1916,7 +1927,7 @@ def build_realty_row(deal):
         d.doc_invoice_url or '',
         d.doc_contract_url or '',
         d.doc_payment_url or '',
-        ', '.join(_payin_hash_list(d)),
+        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
         d.id,                                            # CRM ID — якорь upsert
     ]
 
@@ -2529,6 +2540,24 @@ def _mf_realty_telegram_text(deal):
         f"— комиссия компании: {deal.company_fee_thb or 0:,.0f} ฿ "
         f"(${fee_usdt:,.2f}, {deal.company_percent or 0:.2f}%)"
     )
+    # Куда и сколько реально ушло — чтобы отправку можно было сверить, не заходя в CRM
+    payout_parts = []
+    if deal.payout_tx_hashes:
+        try:
+            payout_parts = json.loads(deal.payout_tx_hashes)
+        except (ValueError, TypeError):
+            payout_parts = []
+    if payout_parts:
+        msg += f"\n— Переводы ({len(payout_parts)}) —"
+        for pt in payout_parts:
+            addr = (pt.get('to_address') or '')[:10]
+            msg += f"\n• ${float(pt.get('amount_usdt') or 0):,.2f}"
+            if addr:
+                msg += f" → {addr}…"
+            if pt.get('date'):
+                msg += f" · {pt['date']}"
+        total_sent = sum(float(pt.get('amount_usdt') or 0) for pt in payout_parts)
+        msg += f"\nИтого ушло: ${total_sent:,.2f}"
     agents = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
     if agents:
         labels = {'markup': 'от курса', 'fixed': 'фикс',
@@ -3611,6 +3640,56 @@ def _normalize_tx_hashes(raw):
     return out
 
 
+def _normalize_payout_transfers(raw):
+    """Переводы отправки → [{'hash','amount_usdt','to_address','date'}].
+
+    Адрес храним, чтобы в карточке и в форме было видно КУДА ушли деньги,
+    а не только сколько.
+    """
+    out, seen = [], set()
+    for item in (raw or []):
+        if isinstance(item, str):
+            h, amt, addr, date = item.strip(), None, '', ''
+        elif isinstance(item, dict):
+            h = str(item.get('hash') or item.get('tx_hash') or '').strip()
+            amt = item.get('amount_usdt')
+            addr = str(item.get('to_address') or '').strip()
+            date = str(item.get('date') or '').strip()
+        else:
+            continue
+        if not h or h in seen:
+            continue
+        seen.add(h)
+        try:
+            amt = float(amt) if amt not in (None, '') else None
+        except (TypeError, ValueError):
+            amt = None
+        out.append({'hash': h, 'amount_usdt': amt, 'to_address': addr, 'date': date})
+    return out
+
+
+def _payout_hash_list(deal):
+    """Хэши фактической отправки в компанию."""
+    if not deal.payout_tx_hashes:
+        return []
+    try:
+        return [x['hash'] for x in json.loads(deal.payout_tx_hashes) if x.get('hash')]
+    except (ValueError, TypeError, KeyError, AttributeError):
+        return []
+
+
+def _payout_transfers_total(deal):
+    """Сумма фактической отправки. None, если переводов нет или суммы не заданы."""
+    if not deal.payout_tx_hashes:
+        return None
+    try:
+        parts = json.loads(deal.payout_tx_hashes)
+    except (ValueError, TypeError):
+        return None
+    amounts = [p.get('amount_usdt') for p in parts if p.get('amount_usdt') is not None]
+    return round(sum(amounts), 2) if amounts else None
+
+
 def _payin_hash_list(deal):
     """Все хэши Pay-In сделки: из JSON-списка, иначе одиночный payin_tx_hash."""
     if deal.payin_tx_hashes:
@@ -3660,12 +3739,17 @@ def preview_mf_realty():
     """
     data = request.get_json() or {}
     try:
+        actual = None
+        parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
+        amounts = [x['amount_usdt'] for x in parts if x['amount_usdt'] is not None]
+        if amounts:
+            actual = round(sum(amounts), 2)
         result = compute_mf_realty(
             data.get('invoice_amount_thb'), data.get('buy_rate_thb_usdt'),
             data.get('payin_amount_usdt'), sell_rate=data.get('sell_rate_thb_usdt'),
             company_percent=data.get('company_percent'),
             company_sent_thb=data.get('company_sent_thb'),
-            agents=data.get('agents') or [])
+            agents=data.get('agents') or [], actual_cost_usdt=actual)
         result['suggested_company_percent'] = suggest_company_percent(
             data.get('invoice_amount_thb'), data.get('buy_rate_thb_usdt'),
             data.get('payin_amount_usdt'), agents=data.get('agents') or [],
@@ -4699,6 +4783,16 @@ def get_used_transaction_hashes(session):
     deals_payin = session.query(Deal.payin_tx_hash).filter(Deal.payin_tx_hash != None).all()
     for d in deals_payin: used_hashes.add(d[0])
 
+    # 2c. Фактическая отправка в MF Corp — те же хэши нельзя учесть дважды
+    deals_payout_multi = session.query(Deal.payout_tx_hashes).filter(Deal.payout_tx_hashes != None).all()
+    for d in deals_payout_multi:
+        try:
+            for part in json.loads(d[0]) or []:
+                if part.get('hash'):
+                    used_hashes.add(part['hash'])
+        except (ValueError, TypeError, AttributeError):
+            continue
+
     # 2b. Приход частями: остальные хэши лежат в JSON payin_tx_hashes
     deals_multi = session.query(Deal.payin_tx_hashes).filter(Deal.payin_tx_hashes != None).all()
     for d in deals_multi:
@@ -4977,6 +5071,13 @@ def _apply_mf_realty(deal, data):
             val = data.get(f)
             setattr(deal, f, val if val not in ('', None) else None)
 
+    # Фактические переводы в компанию (куда и сколько ушло)
+    if 'payout_tx_hashes' in data:
+        parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
+        deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
+        if parts and parts[0].get('hash'):
+            deal.payout_tx_hash = parts[0]['hash']
+
     # Комиссию задают с одной из двух сторон. Источник истины — то, что прислали
     # ИМЕННО СЕЙЧАС: иначе сохранённая при создании сумма отправки навсегда
     # перебивала бы правку процента и сделку нельзя было бы пересчитать.
@@ -4990,7 +5091,8 @@ def _apply_mf_realty(deal, data):
     r = compute_mf_realty(
         deal.invoice_amount_thb, deal.buy_rate_thb_usdt, deal.payin_amount_usdt,
         sell_rate=deal.sell_rate_thb_usdt, company_percent=percent,
-        company_sent_thb=sent_thb, agents=[])
+        company_sent_thb=sent_thb, agents=[],
+        actual_cost_usdt=_payout_transfers_total(deal))
 
     if not deal.payin_amount_usdt:
         deal.payin_amount_usdt = r['payin_usdt']

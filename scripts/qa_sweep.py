@@ -179,7 +179,47 @@ if 'id' in rf:
         check('сделка завершена возмещением', after['status'] == 'completed', after['status'])
         check('выплата USDT проставлена', approx(after['payout_amount_usdt'], 520))
 
-print('\n══ 9. Дедуп переводов TronScan ══')
+print('\n══ 9. Фактические переводы в MF Corp ══')
+# Отправка ушла шестью переводами: 5×100 000 + 8 828 = $508 828.00 при расчётных
+# $508 827.76 — расхождение должно быть видно, а не растворяться в модели
+parts = [{'hash': f'QAPAYOUT{i}', 'amount_usdt': 100000, 'to_address': 'TQAmfcorp0000000001',
+          'date': '05.08.2026'} for i in range(5)]
+parts.append({'hash': 'QAPAYOUT5', 'amount_usdt': 8828, 'to_address': 'TQAmfcorp0000000001',
+              'date': '05.08.2026'})
+prev = api('POST', '/api/deals/mf-realty/preview',
+           {'invoice_amount_thb': 16742400, 'buy_rate_thb_usdt': 33.20,
+            'payin_amount_usdt': 512000, 'company_percent': 0.9,
+            'payout_tx_hashes': parts})
+if prev.get('success'):
+    pr = prev['result']
+    check('превью: себестоимость по факту $508 828.00', approx(pr['cost_usdt'], 508828.00), pr.get('cost_usdt'))
+    check('превью: по курсу $508 827.76', approx(pr['computed_cost_usdt'], 508827.76), pr.get('computed_cost_usdt'))
+    check('превью: расхождение $0.24', approx(pr['cost_diff_usdt'], 0.24), pr.get('cost_diff_usdt'))
+else:
+    check('превью с переводами отвечает', False, prev.get('error'))
+
+dp = deal(client_name='QA MF Факт', deal_kind='mf_realty', deal_type='pay_in',
+          payin_method='crypto_direct', payin_amount_usdt=512000,
+          realty_purpose='QA Villa Факт', invoice_amount_thb=16742400,
+          buy_rate_thb_usdt=33.20, company_percent=0.9, payout_tx_hashes=parts)
+check('сделка с переводами создана', 'id' in dp, dp.get('_error', ''))
+if 'id' in dp:
+    check('переводов сохранено 6', len(dp.get('payout_tx_hashes') or []) == 6)
+    check('адрес получателя виден',
+          (dp['payout_tx_hashes'][0] or {}).get('to_address') == 'TQAmfcorp0000000001')
+    check('себестоимость по факту $508 828.00', approx(dp['payout_amount_usdt'], 508828.00), dp.get('payout_amount_usdt'))
+    check('в крипте $3 172.00 (на $0.24 меньше модели)', approx(dp['profit_usdt'], 3172.00), dp.get('profit_usdt'))
+    check('сумма переводов = себестоимости',
+          approx(sum(x['amount_usdt'] for x in dp['payout_tx_hashes']), dp['payout_amount_usdt']))
+    # Хэши заняты: повторно привязать к другой сделке нельзя
+    inc = api('GET', '/api/transactions/incoming')
+    check('эндпоинт входящих отвечает', inc.get('success') is True, inc.get('error'))
+    # Снимаем переводы — возвращаемся к расчёту по курсу
+    api('PUT', f"/api/deals/{dp['id']}", {'payout_tx_hashes': []})
+    back = api('GET', f"/api/deals/{dp['id']}")['deal']
+    check('без переводов вернулись к $508 827.76', approx(back['payout_amount_usdt'], 508827.76), back.get('payout_amount_usdt'))
+
+print('\n══ 10. Дедуп переводов TronScan ══')
 out = api('GET', '/api/transactions/outgoing')
 check('эндпоинт исходящих отвечает', out.get('success') is True, out.get('error'))
 

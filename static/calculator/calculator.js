@@ -544,7 +544,15 @@ function updateRatesDisplay() {
 
     // Показываем USDT-THB (в режиме custom — ручной курс)
     const usdtThbEl = document.getElementById('usdtThbRate');
+    const usdtThbLabel = document.getElementById('usdtThbLabel');
+    const usdtThbSub = document.getElementById('usdtThbSub');
+    const srcToggle = document.getElementById('rateSourceToggle');
+    // Тумблер источника прячем в custom (там курс ручной)
+    if (srcToggle) srcToggle.style.display = (state.method === 'custom') ? 'none' : 'inline-flex';
+    if (usdtThbSub) usdtThbSub.style.display = 'none';
+
     if (state.method === 'custom') {
+        if (usdtThbLabel) usdtThbLabel.textContent = 'USDT-THB (ручной)';
         if (state.customUsdtThb) {
             usdtThbEl.textContent = `${state.customUsdtThb.toFixed(4)} ฿`;
             usdtThbEl.classList.remove('rate-error');
@@ -554,7 +562,33 @@ function updateRatesDisplay() {
         }
         usdtThbEl.style.color = '';
         usdtThbEl.style.fontWeight = '';
+    } else if (state.rateSource === 'bitazza') {
+        // Bitazza — дефолтный источник, эффективный курс (VWAP − 0.15%)
+        if (usdtThbLabel) usdtThbLabel.textContent = 'USDT-THB (Bitazza)';
+        const eff = state.rates.bitazza_usdt_thb;
+        if (eff) {
+            usdtThbEl.textContent = `${eff.toFixed(2)} ฿`;
+            usdtThbEl.classList.remove('rate-error');
+            if (usdtThbSub) {
+                const raw = state.rates.bitazza_raw;
+                const feeP = state.rates.bitazza_fee_percent ?? 0.15;
+                const feeF = state.rates.bitazza_fee_fixed_thb ?? 20;
+                usdtThbSub.textContent = `VWAP ${raw ? raw.toFixed(2) : '—'} · −${feeP}% · −${feeF}฿/сделку`;
+                usdtThbSub.style.display = 'block';
+            }
+        } else if (state.rates.usdt_thb) {
+            // Bitazza недоступна — фоллбэк на Binance с пометкой
+            usdtThbEl.textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
+            usdtThbEl.classList.remove('rate-error');
+            if (usdtThbLabel) usdtThbLabel.textContent = 'USDT-THB (Binance — фоллбэк)';
+        } else {
+            usdtThbEl.textContent = '—';
+            usdtThbEl.classList.add('rate-error');
+        }
+        usdtThbEl.style.color = '';
+        usdtThbEl.style.fontWeight = '';
     } else if (state.rates.usdt_thb) {
+        if (usdtThbLabel) usdtThbLabel.textContent = 'USDT-THB (Binance)';
         usdtThbEl.textContent = `${state.rates.usdt_thb.toFixed(2)} ฿`;
         usdtThbEl.classList.remove('rate-error');
         // Сбрасываем красную подсветку точного курса при обновлении
@@ -1938,3 +1972,69 @@ function createDealFromCalc() {
     window.open(`/crm#create?data=${encoded}`, '_blank');
 }
 
+
+// ==========================================
+// ТИП СДЕЛКИ + ИСТОЧНИК КУРСА + НЕДВИЖИМОСТЬ
+// ==========================================
+
+// Расширяем состояние
+state.dealCategory = 'exchange';          // exchange | property_freehold | property_leasehold | other
+state.rateSource = 'bitazza';             // bitazza | binance
+state.propProfit = 2.0;                   // прибыль Grusha по недвижимости, %
+
+// --- Тип сделки ---
+// Тип — это классификатор сделки. Метод обмена, курсы, сценарии и настройки
+// (скидка, партнёр) остаются ВО ВСЕХ типах. Разница только в доп-полях:
+//   • фрихолд — доп-расход на перевод застройщику (комиссия % + фикс $)
+//   • другое  — поле «что за сделка»
+//   • лизхолд / обмен — без доп-полей, обычный обмен
+function switchDealCategory(cat) {
+    state.dealCategory = cat;
+    try { localStorage.setItem('grusha_deal_category', cat); } catch(e) {}
+
+    document.querySelectorAll('.dealtype-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.category === cat);
+    });
+
+    // Обменный экран и метод видны всегда — тип их не прячет
+    const extra = document.getElementById('propertyExtra');
+    const feeWrap = document.getElementById('propertyFeeWrapper');
+    const noteWrap = document.getElementById('propertyNoteWrapper');
+    const badge = document.getElementById('propertyBadge');
+
+    if (cat === 'property_freehold') {
+        extra.style.display = 'block';
+        feeWrap.style.display = 'block';
+        noteWrap.style.display = 'none';
+        badge.textContent = '🏠 Фрихолд — доп-расход на перевод застройщику';
+        document.getElementById('propFeePercent').value = '0.8';
+        document.getElementById('propFeeFixed').value = '50';
+    } else if (cat === 'other') {
+        extra.style.display = 'block';
+        feeWrap.style.display = 'none';
+        noteWrap.style.display = 'block';
+        badge.textContent = '✏️ Другое — укажите, что за сделка';
+    } else {
+        // exchange / property_leasehold — обычный обмен, без доп-полей
+        extra.style.display = 'none';
+    }
+    hideResults();
+}
+
+// --- Источник курса (Bitazza / Binance) ---
+function setRateSource(src) {
+    state.rateSource = src;
+    document.getElementById('srcBitazza').classList.toggle('active', src === 'bitazza');
+    document.getElementById('srcBinance').classList.toggle('active', src === 'binance');
+    updateRatesDisplay();
+    hideResults();
+}
+
+// Восстановление типа сделки при загрузке
+(function initDealCategory() {
+    document.addEventListener('DOMContentLoaded', () => {
+        let saved = 'exchange';
+        try { saved = localStorage.getItem('grusha_deal_category') || 'exchange'; } catch(e) {}
+        if (saved !== 'exchange') switchDealCategory(saved);
+    });
+})();

@@ -110,6 +110,18 @@ def excel_round(value, decimals=2):
         places = Decimal(10) ** -decimals
         return float(d.quantize(places, rounding=ROUND_HALF_UP))
 
+
+def safe_rate(numerator, denominator, decimals=6):
+    """Итоговый курс с защитой от деления на ноль.
+
+    Когда сумма выдачи после вычета фикс-комиссии округляется в 0 (слишком
+    маленькая сумма обмена), знаменатель = 0 → ZeroDivisionError роняет весь
+    /api/calculate. Возвращаем 0.0, чтобы валидацию суммы делал вызывающий код.
+    """
+    if not denominator:
+        return 0.0
+    return excel_round(numerator / denominator, decimals)
+
 # Импорт детального калькулятора брокера
 try:
     from broker_detailed import BrokerCalculatorDetailed
@@ -532,8 +544,8 @@ class ExchangeCalculator:
         withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
-        
-        final_rate = excel_round(rub_amount / thb_to_receive, 6)
+
+        final_rate = safe_rate(rub_amount, thb_to_receive, 6)
         
         # Прибыль
         bonus_usdt = excel_round(usdt_amount * bonus, 2)
@@ -584,8 +596,8 @@ class ExchangeCalculator:
         # 3. RUB-USDT
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         rub_amount = excel_round(usdt_amount * rub_usdt_rate_sell, 2)
-        
-        final_rate = excel_round(rub_amount / thb_target, 6)
+
+        final_rate = safe_rate(rub_amount, thb_target, 6)
         
         # Прибыль
         bonus_usdt = excel_round(usdt_amount * bonus, 2)
@@ -629,8 +641,8 @@ class ExchangeCalculator:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 + usdt_comm)
         usdt_before_commission = thb_amount / usdt_thb_rate_sell
         usdt_received = excel_round(usdt_before_commission - 1, 2)
-        
-        final_rate = excel_round(thb_amount / usdt_received, 6)
+
+        final_rate = safe_rate(thb_amount, usdt_received, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_received
@@ -663,8 +675,8 @@ class ExchangeCalculator:
         usdt_before_commission = usdt_target + 1
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 + usdt_comm)
         thb_amount = excel_round(usdt_before_commission * usdt_thb_rate_sell, 2)
-        
-        final_rate = excel_round(thb_amount / usdt_target, 6)
+
+        final_rate = safe_rate(thb_amount, usdt_target, 6)
         
         incoming_usdt = excel_round(thb_amount / self.usdt_thb_rate, 2)
         outgoing_usdt = usdt_target
@@ -700,8 +712,8 @@ class ExchangeCalculator:
         withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
         withdrawal_fixed = 20
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
-        
-        final_rate = excel_round(thb_to_receive / usdt_amount, 4)
+
+        final_rate = safe_rate(thb_to_receive, usdt_amount, 4)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -737,8 +749,8 @@ class ExchangeCalculator:
         
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         usdt_amount = excel_round(thb_to_exchange / usdt_thb_rate_sell, 2)
-        
-        final_rate = excel_round(thb_target / usdt_amount, 4)
+
+        final_rate = safe_rate(thb_target, usdt_amount, 4)
         
         incoming_usdt = usdt_amount
         outgoing_usdt = excel_round(thb_to_exchange / self.usdt_thb_rate, 2)
@@ -782,7 +794,7 @@ class ExchangeCalculator:
         rub_usdt_rate_sell = self.rub_usdt_rate * (1 + rub_comm)
         rub_amount = excel_round(usdt_before_commission * rub_usdt_rate_sell, 2)
 
-        final_rate = excel_round(rub_amount / usdt_target, 6)
+        final_rate = safe_rate(rub_amount, usdt_target, 6)
 
         # Прибыль: USDT по рыночному курсу + бонус - выплата клиенту
         usdt_at_market = rub_amount / self.rub_usdt_rate
@@ -831,7 +843,7 @@ class ExchangeCalculator:
         withdrawal_commission = 1  # 1 USDT
         usdt_received = excel_round(usdt_before_commission - withdrawal_commission, 2)
 
-        final_rate = excel_round(rub_amount / usdt_received, 6)
+        final_rate = safe_rate(rub_amount, usdt_received, 6)
 
         # Прибыль: USDT по рыночному курсу + бонус - выплата клиенту
         usdt_at_market = rub_amount / self.rub_usdt_rate

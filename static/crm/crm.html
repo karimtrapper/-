@@ -1283,6 +1283,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>
                             </div>
 
+                            <div class="form-group" style="margin-bottom:1rem;">
+                                <label class="form-label">Переводы в MF Corp (факт)</label>
+                                <select class="form-control" id="mfPayoutTxSelect" onchange="selectMfPayoutTx(this)"
+                                    style="margin-bottom:0.5rem;">
+                                    <option value="">-- Выбрать из исходящих --</option>
+                                </select>
+                                <div id="mfPayoutTxWarn" style="display:none;margin-bottom:0.5rem;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;"></div>
+                                <div id="mfPayoutTxPoolBox" style="margin-bottom:0.5rem;"></div>
+                                <small style="color:#6b7280;">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</small>
+                            </div>
+
                             <div id="mfSummary" style="margin-bottom:1rem;"></div>
 
                             <div class="form-row">
@@ -3851,7 +3862,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ` : ''}
                         
                         <hr style="margin: 1rem 0;">
-                        
+
+                        ${deal.deal_kind === 'mf_realty' ? `
+                            <h4 style="color: #7c3aed; margin-bottom: 0.5rem;">Отправка через MF Corporation</h4>
+                            ${deal.realty_purpose ? `<p><strong>Назначение:</strong> ${escapeHtml(deal.realty_purpose)}</p>` : ''}
+                            <p><strong>Инвойс застройщику:</strong> ${formatNumber(deal.invoice_amount_thb)} ฿</p>
+                            <p><strong>Отправлено в компанию:</strong> ${formatNumber(deal.company_sent_thb)} ฿ ${deal.company_percent != null ? `<span style="color:#6b7280;">(комиссия ${Number(deal.company_percent).toFixed(2)}% = ${formatNumber(deal.company_fee_thb)} ฿ / $${(deal.company_fee_usdt || 0).toFixed(2)})</span>` : ''}</p>
+                            <p><strong>Курс покупки:</strong> ${deal.buy_rate_thb_usdt || '-'}${deal.sell_rate_thb_usdt ? ` · <strong>курс клиенту:</strong> ${deal.sell_rate_thb_usdt}` : ''}</p>
+                            <p><strong>Себестоимость:</strong> $${(deal.payout_amount_usdt || 0).toFixed(2)}</p>
+                            ${(deal.payout_tx_hashes && deal.payout_tx_hashes.length) ? (() => {
+                                const total = deal.payout_tx_hashes.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
+                                return `<div style="background:#fef2f2;padding:0.5rem;border-radius:6px;border:1px solid #fecaca;margin:0.5rem 0;">
+                                    <p style="margin:0 0 4px;"><strong>Переводы в компанию (${deal.payout_tx_hashes.length}):</strong></p>
+                                    ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
+                                        <strong style="color:#b91c1c;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                        ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
+                                        ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
+                                        <a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#b91c1c;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                    </p>`).join('')}
+                                    <p style="margin:4px 0 0;color:#b91c1c;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
+                                </div>`;
+                            })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — себестоимость посчитана по курсу.</p>'}
+                            <p><strong>Осталось в крипте:</strong> <span style="color:#059669;">$${(deal.crypto_remainder_usdt != null ? deal.crypto_remainder_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>
+                               · <strong>в компании:</strong> <span style="color:#059669;">$${(deal.company_fee_usdt || 0).toFixed(2)}</span></p>
+                            <hr style="margin: 1rem 0;">
+                        ` : ''}
+
+                        ${deal.deal_kind === 'mf_realty' ? '' : `
                         <h4 style="color: #ef4444; margin-bottom: 0.5rem;">Pay-Out</h4>
                         ${deal.is_custom ? `
                             <p><strong>Валюта:</strong> ${deal.custom_payout_currency}</p>
@@ -3883,9 +3920,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>
                             ` : ''}
                         `}
-                        
                         <hr style="margin: 1rem 0;">
-                        
+                        `}
+
                         <h4 style="color: #667eea; margin-bottom: 0.5rem;">Финансы</h4>
                         <p><strong>Валовая прибыль:</strong> 
                             ${profitUnknown
@@ -3934,7 +3971,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <p><strong>Чистая прибыль:</strong> 
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
-                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && deal.referrer_name ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                            : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || deal.deal_kind === 'mf_realty') ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
                         }
                         </p>
                         
@@ -5307,7 +5344,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (el) el.style.display = isMf ? 'none' : '';
             });
             syncDealKindSelect();
-            if (isMf) mfRecalc();
+            if (isMf) { mfRecalc(); loadMfPayoutTx(); }
         }
 
         function mfInputs() {
@@ -5322,6 +5359,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payin_amount_usdt: parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || null,
                 company_percent: num('mfPercent'),
                 company_sent_thb: num('mfSentThb'),
+                payout_tx_hashes: mfPayoutTxPool,
                 agents: stdAgentsSerialize(),
             };
         }
@@ -5398,12 +5436,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const available = r.gross_profit_usdt - r.agents_total_usdt;  // приход − инвойс/курс − выплаты
             const invoiceThb = r.company_sent_thb - r.company_fee_thb;
             const overLimit = r.company_fee_usdt > available + 0.01;
+            // Переводы отмечены — показываем, что себестоимость взята по факту, и где
+            // разошлась с курсовым расчётом (комиссии сети, округление)
+            const diff = r.cost_diff_usdt || 0;
+            const factLine = mfPayoutTxPool.length ? `
+                <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— по факту ${mfPayoutTxPool.length} перевод(а/ов), по курсу ${money(r.computed_cost_usdt)}</span><span style="color:${Math.abs(diff) > 1 ? '#b45309' : '#9ca3af'};">${diff > 0 ? '+' : ''}${money(diff)}</span></div>` : '';
             box.innerHTML = `
               <div style="background:#faf5ff;border:1px solid #e9d5ff;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Отправлено в компанию ${baht(r.company_sent_thb)}</span><strong>−${money(r.cost_usdt)}</strong></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— инвойс застройщику ${baht(invoiceThb)}</span><span style="color:#6b7280;">${money(r.invoice_cost_usdt)}</span></div>
                 <div style="display:flex;justify-content:space-between;"><span style="color:#9ca3af;padding-left:12px;">— комиссия компании ${baht(r.company_fee_thb)} (${r.company_percent.toFixed(2)}%)</span><span style="color:#6b7280;">${money(r.company_fee_usdt)}</span></div>
+                ${factLine}
                 <div style="display:flex;justify-content:space-between;border-top:1px solid #e9d5ff;margin-top:4px;padding-top:4px;"><span>Осталось в крипте</span><strong style="color:${r.crypto_profit_usdt < 0 ? '#dc2626' : 'inherit'};">${money(r.crypto_profit_usdt)}</strong></div>
                 ${r.agents_total_usdt ? `<div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Выплаты партнёрам</span><strong>−${money(r.agents_total_usdt)}</strong></div>${agents}` : ''}
                 <div style="display:flex;justify-content:space-between;">
@@ -5453,6 +5497,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 client_spread_percent: val('mfSpread') !== null ? parseFloat(val('mfSpread')) : null,
                 company_percent: val('mfPercent') !== null ? parseFloat(val('mfPercent')) : null,
                 company_sent_thb: val('mfSentThb') !== null ? parseFloat(val('mfSentThb')) : null,
+                payout_tx_hashes: mfPayoutTxPool,
                 doc_invoice_url: val('mfDocInvoice'),
                 doc_contract_url: val('mfDocContract'),
                 doc_payment_url: val('mfDocPayment'),
@@ -5471,6 +5516,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             set('mfDocInvoice', deal.doc_invoice_url);
             set('mfDocContract', deal.doc_contract_url);
             set('mfDocPayment', deal.doc_payment_url);
+            resetMfPayoutTxPool(deal.payout_tx_hashes);
             mfRecalcNow();
         }
 
@@ -5480,6 +5526,94 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const el = document.getElementById(id); if (el) el.value = '';
             });
             const box = document.getElementById('mfSummary'); if (box) box.innerHTML = '';
+            resetMfPayoutTxPool([]);
+        }
+
+        // Фактическая отправка в MF Corp: пул исходящих переводов [{hash, amount_usdt, to_address, date}].
+        // Расчёт по курсу — модель; здесь видно, куда и сколько ушло на самом деле.
+        let mfPayoutTxPool = [];
+
+        function mfPayoutTxTotal() {
+            return mfPayoutTxPool.reduce((s, t) => s + (t.amount_usdt || 0), 0);
+        }
+
+        function renderMfPayoutTxPool() {
+            const box = document.getElementById('mfPayoutTxPoolBox');
+            if (!box) return;
+            if (!mfPayoutTxPool.length) { box.innerHTML = ''; return; }
+            box.innerHTML = mfPayoutTxPool.map((t, i) => `
+                <div style="display:flex;align-items:center;gap:0.5rem;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <strong style="color:#dc2626;">${t.amount_usdt != null ? '−$' + t.amount_usdt.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '—'}</strong>
+                    <span style="color:#334155;">→ ${escapeHtml((t.to_address || '').substring(0, 12))}${t.to_address ? '…' : ''}</span>
+                    <code style="flex:1;color:#94a3b8;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.hash.substring(0, 14))}…</code>
+                    <span style="color:#94a3b8;">${escapeHtml(t.date || '')}</span>
+                    <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removeMfPayoutTx(${i})">✕</button>
+                </div>`).join('') +
+                `<div style="text-align:right;font-weight:700;color:#b91c1c;">Переводов: ${mfPayoutTxPool.length} · итого $${mfPayoutTxTotal().toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>`;
+        }
+
+        function selectMfPayoutTx(select) {
+            const opt = select.selectedOptions[0];
+            const txHash = select.value;
+            select.selectedIndex = 0;
+            if (!txHash) return;
+            if (mfPayoutTxPool.some(t => t.hash === txHash)) {
+                showToast('Этот перевод уже добавлен', 'error');
+                return;
+            }
+            const amount = parseFloat(opt?.dataset?.amount);
+            mfPayoutTxPool.push({
+                hash: txHash,
+                amount_usdt: isNaN(amount) ? null : amount,
+                to_address: opt?.dataset?.to || '',
+                date: opt?.dataset?.date || '',
+            });
+            renderMfPayoutTxPool();
+            mfRecalcNow();
+        }
+
+        function removeMfPayoutTx(index) {
+            mfPayoutTxPool.splice(index, 1);
+            renderMfPayoutTxPool();
+            mfRecalcNow();
+        }
+
+        function resetMfPayoutTxPool(parts) {
+            mfPayoutTxPool = (parts || []).map(p => ({
+                hash: p.hash,
+                amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
+                to_address: p.to_address || '',
+                date: p.date || '',
+            }));
+            renderMfPayoutTxPool();
+        }
+
+        async function loadMfPayoutTx() {
+            const select = document.getElementById('mfPayoutTxSelect');
+            if (!select) return;
+            try {
+                const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
+                let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}&limit=200`;
+                const resp = await fetch(url);
+                const data = await resp.json();
+                if (!data.success) return;
+                // Кошельки, не ответившие из-за лимита TronScan: список неполный — говорим об этом,
+                // иначе оператор решит, что перевода не было
+                const failed = (data.wallets_errors || []).length;
+                const warn = document.getElementById('mfPayoutTxWarn');
+                if (warn) {
+                    warn.innerHTML = failed
+                        ? `⚠️ TronScan ответил не по всем кошелькам (${failed}) — список может быть неполным.`
+                        : '';
+                    warn.style.display = failed ? 'block' : 'none';
+                }
+                select.innerHTML = '<option value="">-- Выбрать из исходящих --</option>' +
+                    (data.available || []).slice(0, 200).map(tx =>
+                        `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-to="${tx.to_address || ''}" data-date="${formatDate(tx.timestamp)}">−$${tx.amount_usdt.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2})} → ${(tx.to_address || '').substring(0, 10)}… | ${formatDate(tx.timestamp)}</option>`
+                    ).join('');
+            } catch (e) {
+                console.error('Error loading outgoing for MF:', e);
+            }
         }
 
         function toggleCustomDeal() {

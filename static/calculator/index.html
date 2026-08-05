@@ -6,7 +6,7 @@
     <title>Калькулятор обмена - Doverka & Broker</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=13">
+    <link rel="stylesheet" href="styles.css?v=16">
     <style>
         .top-nav {
             background: #1E293B;
@@ -73,8 +73,26 @@
             <div class="subtitle">RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ</div>
         </header>
 
+        <!-- Тип сделки -->
+        <div class="switcher-caption">Тип сделки</div>
+        <div class="dealtype-switcher">
+            <button class="dealtype-btn active" data-category="exchange" onclick="switchDealCategory('exchange')">
+                💱 Обмен
+            </button>
+            <button class="dealtype-btn" data-category="property_freehold" onclick="switchDealCategory('property_freehold')">
+                🏠 Фрихолд
+            </button>
+            <button class="dealtype-btn" data-category="property_leasehold" onclick="switchDealCategory('property_leasehold')">
+                📜 Лизхолд
+            </button>
+            <button class="dealtype-btn" data-category="other" onclick="switchDealCategory('other')">
+                ✏️ Другое
+            </button>
+        </div>
+
         <!-- Переключатель метода -->
-        <div class="method-switcher">
+        <div class="switcher-caption" id="methodCaption">Метод обмена</div>
+        <div class="method-switcher" id="methodSwitcher">
             <button class="method-btn active" data-method="doverka" onclick="switchMethod('doverka')">
                 🏦 Doverka (SBP)
             </button>
@@ -110,14 +128,19 @@
         <div class="rates-card" id="ratesCard">
             <div class="rates-header">
                 <span class="rates-title">📊 Актуальные курсы</span>
+                <div class="rate-source-toggle" id="rateSourceToggle">
+                    <button class="src-btn active" id="srcBitazza" onclick="setRateSource('bitazza')">Bitazza</button>
+                    <button class="src-btn" id="srcBinance" onclick="setRateSource('binance')">Binance</button>
+                </div>
                 <button class="refresh-btn" id="refreshBtn" onclick="refreshRates()">
                     <span class="refresh-icon">↻</span> Обновить
                 </button>
             </div>
             <div class="rates-grid">
                 <div class="rate-item">
-                    <div class="rate-label">USDT-THB (Binance)</div>
+                    <div class="rate-label" id="usdtThbLabel">USDT-THB (Bitazza)</div>
                     <div class="rate-value" id="usdtThbRate">31.16 ฿</div>
+                    <div class="rate-sub" id="usdtThbSub" style="display:none;"></div>
                 </div>
                 <div class="rate-item">
                     <div class="rate-label" id="rubUsdtLabel">RUB-USDT (Doverka)</div>
@@ -172,8 +195,43 @@
             </button>
         </div>
 
+        <!-- Недвижимость / другое: оплата инвойса с доп-комиссиями -->
+        <!-- Доп-поля недвижимости (надстройка над обменом, не заменяет его) -->
+        <div class="property-extra" id="propertyExtra" style="display: none;">
+            <div class="property-badge" id="propertyBadge">🏠 Фрихолд — доп-расход на перевод застройщику</div>
+
+            <!-- Только «Другое»: что за сделка -->
+            <div id="propertyNoteWrapper" style="display: none; margin-bottom: 14px;">
+                <label class="input-label">✏️ Что за сделка</label>
+                <div class="input-wrapper">
+                    <input type="text" id="propertyNote" class="amount-input" placeholder="Например: оплата за мебель" style="font-size: 15px; height: 44px;">
+                </div>
+            </div>
+
+            <!-- Только фрихолд: комиссия за перевод (USD) -->
+            <div id="propertyFeeWrapper">
+                <div class="fee-grid">
+                    <div class="fee-cell">
+                        <label class="input-label">Комиссия за перевод</label>
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" value="0.8">
+                            <span class="input-currency">%</span>
+                        </div>
+                    </div>
+                    <div class="fee-cell">
+                        <label class="input-label">Фикс за перевод</label>
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" value="50">
+                            <span class="input-currency">$</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="fee-hint" id="propFeeHint">⚙️ Префилл фрихолда 0.8% + $50 — расход на перевод в USD, ляжет в расчёт ниже. Можно изменить под сделку.</div>
+            </div>
+        </div>
+
         <!-- Форма расчета -->
-        <div class="calculator-card">
+        <div class="calculator-card" id="exchangeCard">
             <div class="input-section">
                 <!-- Тип операции (показывается только для Брокера) -->
                 <div class="direction-switcher" id="directionSwitcher" style="display: none; margin-bottom: 20px;">
@@ -377,7 +435,7 @@
         </footer>
     </div>
 
-    <script src="calculator.js?v=22"></script>
+    <script src="calculator.js?v=25"></script>
     <script>
         // Диагностика загрузки
         console.log('🔍 Проверка функций:');

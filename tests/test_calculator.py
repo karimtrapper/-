@@ -268,3 +268,33 @@ class TestDoverkaProfit:
     def test_rub_usdt_profit_positive(self, calc):
         r = calc.rub_to_usdt_amount(500_000, custom_profit_margin=5.0)
         assert r['profit_usdt'] > 0
+
+
+# ── Регресс: защита от деления на ноль (safe_rate) ──────────────────────────
+
+from calculator import safe_rate
+
+
+class TestSafeRate:
+    """final_rate не должен ронять расчёт при нулевой выдаче (ZeroDivisionError)"""
+
+    def test_zero_denominator_returns_zero(self):
+        assert safe_rate(100, 0) == 0.0
+        assert safe_rate(100, 0, 4) == 0.0
+
+    def test_normal_division(self):
+        assert safe_rate(100, 4) == 25.0
+
+    def test_tiny_amounts_no_crash(self, calc):
+        # Слишком маленькие суммы: выдача округляется в 0 → раньше ZeroDivisionError
+        for amount in (1, 5, 10, 20, 33, 34):
+            r = calc.thb_to_usdt(amount, custom_profit_margin=3.0)
+            assert 'final_rate' in r  # не упало
+            r2 = calc.rub_to_thb(amount, custom_profit_margin=3.0)
+            assert 'final_rate' in r2
+
+    def test_broker_tiny_amounts_no_crash(self):
+        from broker_detailed import BrokerCalculatorDetailed
+        b = BrokerCalculatorDetailed(USDT_THB, RUB_USDT, 4.0)
+        for amount in (1, 10, 34):
+            assert 'final_rate' in b.thb_to_usdt_amount(amount)
