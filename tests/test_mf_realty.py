@@ -6,7 +6,7 @@
 взяты из реальных строк, а не придуманы.
 
 Суть: деньги расходятся по двум карманам — комиссия оседает в батах на счёте
-тайской компании, остаток остаётся в USDT на кошельке. Чистый доход = сумма обоих.
+тайской компании, остаток остаётся прибылью в USDT. Чистый доход = сумма обоих.
 
 Запуск: cd Dev/CalcCRM && python -m pytest tests/test_mf_realty.py -v
 """
@@ -82,7 +82,7 @@ class TestAgainstSheet:
         assert approx(r['gross_profit_usdt'], 1194.37)
         assert approx(r['company_fee_thb'], 6223.70)
         assert approx(r['company_fee_usdt'], 187.35)
-        assert approx(r['wallet_remainder_usdt'], 684.02)
+        assert approx(r['crypto_remainder_usdt'], 684.02)
         assert approx(r['net_profit_usdt'], 871.37)
 
     def test_july_vladimir_no_agent(self):
@@ -90,7 +90,7 @@ class TestAgainstSheet:
         r = compute_mf_realty(2647300, 33.37, 81780.00, company_percent=1, agents=[])
         assert approx(r['gross_profit_usdt'], 2448.26)
         assert approx(r['company_fee_usdt'], 793.32)
-        assert approx(r['wallet_remainder_usdt'], 1654.95)
+        assert approx(r['crypto_remainder_usdt'], 1654.95)
         assert approx(r['net_profit_usdt'], 2448.26)
 
     def test_june_julia_payin_from_sell_rate(self):
@@ -99,7 +99,7 @@ class TestAgainstSheet:
                               agents=[{'tier': 1, 'comp_model': 'fixed', 'fixed_usdt': 41.10}])
         assert approx(r['payin_usdt'], 12000.00)
         assert approx(r['invoice_cost_usdt'], 11743.68)
-        assert approx(r['wallet_remainder_usdt'], 97.78)
+        assert approx(r['crypto_remainder_usdt'], 97.78)
         assert approx(r['net_profit_usdt'], 215.22)
 
     def test_may_amal_percent_from_fact(self):
@@ -121,23 +121,23 @@ class TestAgainstSheet:
 # ── Два кармана ───────────────────────────────────────────────────────────
 
 class TestTwoPockets:
-    def test_net_equals_wallet_plus_company(self):
-        """Главное тождество: чистый доход = кошелёк + компания."""
+    def test_net_equals_crypto_plus_company(self):
+        """Главное тождество: чистый доход = крипта + компания."""
         r = compute_mf_realty(622370, 33.22, 19929.17, company_percent=1,
                               agents=[{'tier': 1, 'comp_model': 'fixed', 'fixed_usdt': 323.00}])
-        assert approx(r['net_profit_usdt'], r['wallet_remainder_usdt'] + r['company_fee_usdt'])
+        assert approx(r['net_profit_usdt'], r['crypto_remainder_usdt'] + r['company_fee_usdt'])
 
-    def test_bigger_company_percent_shrinks_wallet(self):
+    def test_bigger_company_percent_shrinks_crypto(self):
         """Больше процент компании → меньше остаётся в крипте, чистый доход тот же."""
         low = compute_mf_realty(1000000, 33.0, 31000, company_percent=0.5, agents=[])
         high = compute_mf_realty(1000000, 33.0, 31000, company_percent=1.5, agents=[])
-        assert high['wallet_remainder_usdt'] < low['wallet_remainder_usdt']
+        assert high['crypto_remainder_usdt'] < low['crypto_remainder_usdt']
         assert approx(high['net_profit_usdt'], low['net_profit_usdt'])
 
     def test_zero_percent_all_in_crypto(self):
         r = compute_mf_realty(1000000, 33.0, 31000, company_percent=0, agents=[])
         assert r['company_fee_usdt'] == 0
-        assert approx(r['wallet_remainder_usdt'], r['gross_profit_usdt'])
+        assert approx(r['crypto_remainder_usdt'], r['gross_profit_usdt'])
         assert approx(r['cost_usdt'], r['invoice_cost_usdt'])
 
     def test_cost_includes_company_fee(self):
@@ -160,32 +160,32 @@ class TestTwoPockets:
 # ── Выплаты партнёрам ────────────────────────────────────────────────────
 
 class TestAgents:
-    def test_wallet_share_base_excludes_company_fee(self):
-        """wallet_share берёт % от того, что в крипте, а не от валовой прибыли."""
+    def test_crypto_share_base_excludes_company_fee(self):
+        """crypto_share берёт % от того, что в крипте, а не от валовой прибыли."""
         r = compute_mf_realty(1000000, 33.0, 31000, company_percent=1,
-                              agents=[{'tier': 1, 'comp_model': 'wallet_share', 'percent': 10}])
+                              agents=[{'tier': 1, 'comp_model': 'crypto_share', 'percent': 10}])
         assert approx(r['agents'][0]['_payout'], round(r['crypto_profit_usdt'] * 0.1, 2))
 
     def test_revshare_would_overpay(self):
         """Тот же процент через revshare даёт больше — это и есть переплата партнёру."""
-        wallet = compute_mf_realty(1000000, 33.0, 31000, company_percent=1,
-                                   agents=[{'tier': 1, 'comp_model': 'wallet_share', 'percent': 10}])
+        crypto = compute_mf_realty(1000000, 33.0, 31000, company_percent=1,
+                                   agents=[{'tier': 1, 'comp_model': 'crypto_share', 'percent': 10}])
         rev = compute_mf_realty(1000000, 33.0, 31000, company_percent=1,
                                 agents=[{'tier': 1, 'comp_model': 'revshare', 'percent': 10}])
-        assert rev['agents'][0]['_payout'] > wallet['agents'][0]['_payout']
+        assert rev['agents'][0]['_payout'] > crypto['agents'][0]['_payout']
 
     def test_sid_valera_cascade(self):
         """Кейс #458: SID 0.5% от объёма (ур.1) + Валера 10% от остатка (ур.2)."""
         r = compute_mf_realty(16742400, 33.20, 512000, company_percent=0.9, agents=[
             {'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
-            {'tier': 2, 'comp_model': 'wallet_share', 'percent': 10},
+            {'tier': 2, 'comp_model': 'crypto_share', 'percent': 10},
         ])
         sid, valera = r['agents']
         assert approx(sid['_payout'], 512000 * 0.005)          # $2 560 от объёма
-        wallet_after_sid = r['crypto_profit_usdt'] - sid['_payout']
-        assert approx(valera['_payout'], round(max(wallet_after_sid, 0) * 0.1, 2))
+        crypto_after_sid = r['crypto_profit_usdt'] - sid['_payout']
+        assert approx(valera['_payout'], round(max(crypto_after_sid, 0) * 0.1, 2))
         assert approx(r['net_profit_usdt'],
-                      r['wallet_remainder_usdt'] + r['company_fee_usdt'])
+                      r['crypto_remainder_usdt'] + r['company_fee_usdt'])
 
     def test_no_negative_payout_when_profit_unknown(self):
         """R9: прибыль ещё 0, ур.1 уже взял markup → ур.2 получает 0, а не минус."""
@@ -196,15 +196,15 @@ class TestAgents:
         assert res[0]['_payout'] == 2560.0
         assert res[1]['_payout'] == 0.0, 'до фикса тут было -256.00'
 
-    def test_negative_base_wallet_share_also_zero(self):
+    def test_negative_base_crypto_share_also_zero(self):
         res, _ = compute_agent_cascade(0, 100000, [
             {'tier': 1, 'comp_model': 'markup', 'percent': 1},
-            {'tier': 2, 'comp_model': 'wallet_share', 'percent': 50},
-        ], wallet_base_usdt=-500)
+            {'tier': 2, 'comp_model': 'crypto_share', 'percent': 50},
+        ], crypto_base_usdt=-500)
         assert res[1]['_payout'] == 0.0
 
     def test_ordinary_deals_unchanged(self):
-        """Регресс: обычный каскад без wallet_base работает как раньше."""
+        """Регресс: обычный каскад без crypto_base работает как раньше."""
         res, net = compute_agent_cascade(2793.15, 58409, [
             {'tier': 1, 'comp_model': 'revshare', 'percent': 20},
             {'tier': 2, 'comp_model': 'revshare', 'percent': 50},
@@ -220,11 +220,11 @@ class TestSuggestPercent:
     def test_suggested_percent_leaves_enough_for_agents(self):
         """Кейс «поставлю 0.9, потому что Валере ещё платить» — считает система."""
         agents = [{'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
-                  {'tier': 2, 'comp_model': 'wallet_share', 'percent': 10}]
+                  {'tier': 2, 'comp_model': 'crypto_share', 'percent': 10}]
         pct = suggest_company_percent(16742400, 33.20, 512000, agents=agents)
         r = compute_mf_realty(16742400, 33.20, 512000, company_percent=pct, agents=agents)
-        assert r['wallet_remainder_usdt'] >= -0.01, 'дефицита быть не должно'
-        assert r['wallet_shortfall_usdt'] == 0
+        assert r['crypto_remainder_usdt'] >= -0.01, 'дефицита быть не должно'
+        assert r['crypto_shortfall_usdt'] == 0
 
     def test_suggested_is_maximum_possible(self):
         """Подсказка — именно максимум: чуть больше уже уводит в минус."""
@@ -232,7 +232,7 @@ class TestSuggestPercent:
         pct = suggest_company_percent(16742400, 33.20, 512000, agents=agents)
         higher = compute_mf_realty(16742400, 33.20, 512000, company_percent=pct + 0.05,
                                    agents=agents)
-        assert higher['wallet_remainder_usdt'] < 0
+        assert higher['crypto_remainder_usdt'] < 0
 
     def test_no_profit_no_percent(self):
         """Прибыли нет (курсы сошлись), а агент берёт markup — подсказка 0%.
@@ -247,8 +247,8 @@ class TestSuggestPercent:
         """Перебор процента → отрицательный остаток и явный признак дефицита."""
         r = compute_mf_realty(16742400, 33.20, 512000, company_percent=5,
                               agents=[{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}])
-        assert r['wallet_remainder_usdt'] < 0
-        assert r['wallet_shortfall_usdt'] < 0
+        assert r['crypto_remainder_usdt'] < 0
+        assert r['crypto_shortfall_usdt'] < 0
 
     def test_keep_usdt_reserves_extra(self):
         base = suggest_company_percent(1000000, 33.0, 31000, agents=[])
@@ -284,14 +284,14 @@ class TestApi:
         assert approx(deal['company_fee_thb'], 6223.70)
         assert approx(deal['company_fee_usdt'], 187.35)
         assert approx(deal['profit_usdt'], 1007.02), 'прибыль сделки = то, что в крипте'
-        assert approx(deal['wallet_remainder_usdt'], 1007.02)   # без агентов
+        assert approx(deal['crypto_remainder_usdt'], 1007.02)   # без агентов
         assert approx(deal['net_profit_usdt'], 1194.37), 'чистый = крипта + компания'
 
     def test_create_with_agents(self, tc):
         deal = tc.post('/api/deals', json=_mf_payload(agents=[
             {'tier': 1, 'comp_model': 'fixed', 'fixed_usdt': 323.00, 'name': 'Агент'},
         ])).json['deal']
-        assert approx(deal['wallet_remainder_usdt'], 684.02)
+        assert approx(deal['crypto_remainder_usdt'], 684.02)
         assert approx(deal['net_profit_usdt'], 871.37)
 
     def test_not_queued_for_reimbursement(self, tc):
@@ -304,7 +304,7 @@ class TestApi:
         deal = tc.put(f'/api/deals/{did}', json={'company_percent': 0.5}).json['deal']
         assert approx(deal['company_fee_thb'], 3111.85)
         assert approx(deal['net_profit_usdt'], 1194.37), 'чистый доход не зависит от процента'
-        assert approx(deal['wallet_remainder_usdt'], 1100.71)
+        assert approx(deal['crypto_remainder_usdt'], 1100.71)
         assert approx(deal['payout_amount_usdt'], 18828.47), 'с кошелька ушла вся отправка'
 
     def test_update_by_fact_overrides_percent(self, tc):
@@ -320,7 +320,7 @@ class TestApi:
         ])).json['deal']['id']
         deal = tc.put(f'/api/deals/{did}', json={'company_percent': 1}).json['deal']
         assert len(deal['agents']) == 1
-        assert approx(deal['wallet_remainder_usdt'], 684.02)
+        assert approx(deal['crypto_remainder_usdt'], 684.02)
 
     def test_ordinary_deal_untouched(self, tc):
         """Регресс: обычная сделка считается как раньше и не получает поля MF."""

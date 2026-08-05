@@ -763,7 +763,7 @@ class Deal(Base):
     company_sent_thb = Column(Float)                   # фактически отправлено в MF Corp
     company_fee_thb = Column(Float)                    # комиссия компании в батах
     company_fee_usdt = Column(Float)                   # она же в USDT (по курсу покупки)
-    wallet_remainder_usdt = Column(Float)              # остаток на кошельке после комиссии и партнёров
+    crypto_remainder_usdt = Column(Float)              # остаток на кошельке после комиссии и партнёров
     katika_fee_thb = Column(Float)                     # выплата номиналу, баты
     katika_fee_usdt = Column(Float)                    # она же в USDT
     client_spread_percent = Column(Float)              # спред клиенту: курс продажи = курс покупки − спред
@@ -810,7 +810,7 @@ class Deal(Base):
             'company_sent_thb': self.company_sent_thb,
             'company_fee_thb': self.company_fee_thb,
             'company_fee_usdt': self.company_fee_usdt,
-            'wallet_remainder_usdt': self.wallet_remainder_usdt,
+            'crypto_remainder_usdt': self.crypto_remainder_usdt,
             'katika_fee_thb': self.katika_fee_thb,
             'katika_fee_usdt': self.katika_fee_usdt,
             'client_spread_percent': self.client_spread_percent,
@@ -897,7 +897,7 @@ class DealAgent(Base):
         }
 
 
-def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=None):
+def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=None):
     """Считает выплаты агентам каскадом по уровням.
 
     agents — список dict с ключами comp_model, percent, fixed_usdt, tier.
@@ -909,9 +909,9 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=Non
       markup       — % от объёма сделки;
       fixed        — фиксированная сумма;
       revshare     — % от прибыли (база уменьшается каскадом);
-      wallet_share — % от того, что осталось НА КОШЕЛЬКЕ (сделки через MF Corp:
+      crypto_share — % от того, что осталось НА КОШЕЛЬКЕ (сделки через MF Corp:
                      часть прибыли заперта в батах на счёте компании, делить её
-                     с партнёром нельзя). База — wallet_base_usdt, тоже каскадная.
+                     с партнёром нельзя). База — crypto_base_usdt, тоже каскадная.
 
     Отрицательных выплат не бывает: партнёр не доплачивает нам. Если база ушла
     в минус (например, прибыль ещё не известна — сделка ждёт возмещения, а агент
@@ -923,7 +923,7 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=Non
     for a in agents:
         by_tier.setdefault(int(a.get('tier') or 1), []).append(a)
     base = profit
-    wallet_base = wallet_base_usdt if wallet_base_usdt is not None else profit
+    crypto_base = crypto_base_usdt if crypto_base_usdt is not None else profit
     out = []
     for t in sorted(by_tier):
         tier_total = 0.0
@@ -936,9 +936,9 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=Non
             elif model == 'fixed':
                 pay = float(a.get('fixed_usdt') or 0)
                 shown_base = base
-            elif model == 'wallet_share':
-                pay = max(wallet_base, 0) * pct
-                shown_base = wallet_base
+            elif model == 'crypto_share':
+                pay = max(crypto_base, 0) * pct
+                shown_base = crypto_base
             else:  # revshare
                 pay = max(base, 0) * pct
                 shown_base = base
@@ -948,7 +948,7 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, wallet_base_usdt=Non
             tier_total += pay
             out.append(a)
         base -= tier_total
-        wallet_base -= tier_total
+        crypto_base -= tier_total
     return out, round(base, 2)
 
 
@@ -1002,11 +1002,11 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
     crypto_profit = payin - cost_usdt          # осталось в крипте до выплат партнёрам
     gross_profit = payin - invoice_cost_usdt   # общий заработок (крипта + комиссия)
 
-    # Партнёрам платим из крипты, поэтому база wallet_share — именно крипта
+    # Партнёрам платим из крипты, поэтому база crypto_share — именно крипта
     volume = max(payin, cost_usdt)
     computed, _ = compute_agent_cascade(gross_profit, volume,
                                         [dict(a) for a in (agents or [])],
-                                        wallet_base_usdt=crypto_profit)
+                                        crypto_base_usdt=crypto_profit)
     agents_total = sum(a.get('_payout') or 0 for a in computed)
 
     wallet_remainder = crypto_profit - agents_total     # осталось на кошельке
@@ -1024,11 +1024,11 @@ def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
         'company_sent_thb': round(sent_thb, 2),
         'agents': computed,
         'agents_total_usdt': round(agents_total, 2),
-        'wallet_remainder_usdt': round(wallet_remainder, 2),
+        'crypto_remainder_usdt': round(wallet_remainder, 2),
         'net_profit_usdt': round(net_profit, 2),
         # Хватает ли крипты на выплаты партнёрам. Минус = придётся конвертировать
         # баты обратно или платить из кармана (кейс SID + Валера, спека §3.6).
-        'wallet_shortfall_usdt': round(min(wallet_remainder, 0), 2),
+        'crypto_shortfall_usdt': round(min(wallet_remainder, 0), 2),
     }
 
 
@@ -1050,7 +1050,7 @@ def suggest_company_percent(invoice_thb, buy_rate, payin_usdt, agents=None,
     if not invoice_thb or not buy_rate:
         return 0.0
 
-    # Выплаты партнёрам зависят от процента (wallet_share), поэтому идём итерациями:
+    # Выплаты партнёрам зависят от процента (crypto_share), поэтому идём итерациями:
     # 3 прохода сходятся с запасом — база меняется монотонно и слабо.
     percent = 0.0
     for _ in range(3):
@@ -1430,7 +1430,7 @@ _MF_REALTY_COLUMNS = [
     ('invoice_amount_thb', 'DOUBLE PRECISION'), ('sell_rate_thb_usdt', 'DOUBLE PRECISION'),
     ('buy_rate_thb_usdt', 'DOUBLE PRECISION'), ('company_percent', 'DOUBLE PRECISION'),
     ('company_sent_thb', 'DOUBLE PRECISION'), ('company_fee_thb', 'DOUBLE PRECISION'),
-    ('company_fee_usdt', 'DOUBLE PRECISION'), ('wallet_remainder_usdt', 'DOUBLE PRECISION'),
+    ('company_fee_usdt', 'DOUBLE PRECISION'), ('crypto_remainder_usdt', 'DOUBLE PRECISION'),
     ('katika_fee_thb', 'DOUBLE PRECISION'), ('katika_fee_usdt', 'DOUBLE PRECISION'),
     ('client_spread_percent', 'DOUBLE PRECISION'),
     ('doc_invoice_url', 'VARCHAR(500)'), ('doc_contract_url', 'VARCHAR(500)'),
@@ -3215,22 +3215,22 @@ def _apply_deal_agents(session, deal, agents_data):
     prev_paid = {(r.referrer_id, r.tier or 1): (r.paid or False, r.paid_at, r.paid_note) for r in deal.agents}
     deal.agents.clear()  # delete-orphan удалит старые строки на flush
     # Сделки через MF Corp: комиссия заперта в батах на счёте компании и в
-    # profit_usdt уже не входит (там только крипта) — она и есть база wallet_share.
+    # profit_usdt уже не входит (там только крипта) — она и есть база crypto_share.
     is_mf = deal.deal_kind == MF_REALTY_KIND
-    wallet_base = (deal.profit_usdt or 0) if is_mf else None
+    crypto_base = (deal.profit_usdt or 0) if is_mf else None
 
     if not agents_data:
         deal.referrer_payout_usdt = None
         if is_mf:
-            deal.wallet_remainder_usdt = round(wallet_base, 2)
-            deal.net_profit_usdt = round(wallet_base + (deal.company_fee_usdt or 0), 2)
+            deal.crypto_remainder_usdt = round(crypto_base, 2)
+            deal.net_profit_usdt = round(crypto_base + (deal.company_fee_usdt or 0), 2)
         else:
             deal.net_profit_usdt = round(deal.profit_usdt or 0, 2)
         return
     volume = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
     computed, net = compute_agent_cascade(deal.profit_usdt or 0, volume,
                                           [dict(a) for a in agents_data],
-                                          wallet_base_usdt=wallet_base)
+                                          crypto_base_usdt=crypto_base)
     # Имя не передали (скрипт/интеграция шлёт только referrer_id) — берём из профиля.
     # Иначе deal.referrer_name затирался в NULL и партнёр пропадал из списка сделок.
     missing_names = {a.get('referrer_id') for a in computed
@@ -3256,8 +3256,8 @@ def _apply_deal_agents(session, deal, agents_data):
         total += a.get('_payout') or 0
     if is_mf:
         # Чистый доход = остаток на кошельке + комиссия, осевшая в компании
-        deal.wallet_remainder_usdt = round(wallet_base - total, 2)
-        deal.net_profit_usdt = round(deal.wallet_remainder_usdt + (deal.company_fee_usdt or 0), 2)
+        deal.crypto_remainder_usdt = round(crypto_base - total, 2)
+        deal.net_profit_usdt = round(deal.crypto_remainder_usdt + (deal.company_fee_usdt or 0), 2)
     else:
         deal.net_profit_usdt = net
     deal.referrer_payout_usdt = round(total, 2) if total else None
