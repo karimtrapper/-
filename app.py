@@ -3970,10 +3970,13 @@ def create_deal():
                 sync_realty_deal_to_gsheet(deal)
             except Exception as e:
                 print(f'[GSheet realty] sync error on create: {e}')
-            try:
-                _send_deal_telegram(deal)
-            except Exception as e:
-                print(f'[Telegram] realty error on create: {e}')
+            # Только для сразу завершённых: сделку в pending уведомит «Завершить»,
+            # иначе одно и то же уведомление придёт дважды
+            if deal.status == DealStatus.COMPLETED:
+                try:
+                    _send_deal_telegram(deal)
+                except Exception as e:
+                    print(f'[Telegram] realty error on create: {e}')
 
         if deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind != MF_REALTY_KIND:
             send_deal_completed_webhook(deal)
@@ -4017,6 +4020,7 @@ def update_deal(deal_id):
         
         data = request.get_json()
         old_status = deal.status
+        old_kind = deal.deal_kind
         
         # Обновляем дату если передана
         if data.get('created_at'):
@@ -4185,6 +4189,17 @@ def update_deal(deal_id):
                 sync_realty_deal_to_gsheet(deal)
             except Exception as e:
                 print(f'[GSheet realty] sync error on update: {e}')
+            # Уведомление шлём при завершении — как у обычных сделок, оператор
+            # ждёт его именно после «Завершить». Второй случай: обычную сделку
+            # переделали в MF-сделку, тогда уведомления по ней ещё не было
+            became_mf = old_kind != MF_REALTY_KIND
+            just_done = (deal.status == DealStatus.COMPLETED
+                         and old_status != DealStatus.COMPLETED)
+            if just_done or (became_mf and deal.status == DealStatus.COMPLETED):
+                try:
+                    _send_deal_telegram(deal)
+                except Exception as e:
+                    print(f'[Telegram] realty error on update: {e}')
 
         # Webhook при завершении
         if (deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED
