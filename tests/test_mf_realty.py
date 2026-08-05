@@ -134,6 +134,29 @@ class TestTwoPockets:
         assert high['crypto_remainder_usdt'] < low['crypto_remainder_usdt']
         assert approx(high['net_profit_usdt'], low['net_profit_usdt'])
 
+    def test_company_percent_neutral_without_crypto_share(self):
+        """Без партнёра на крипте процент компании — просто дележ карманов."""
+        ag = [{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}]
+        low = compute_mf_realty(16742400, 33.20, 512000, company_percent=0.5, agents=ag)
+        high = compute_mf_realty(16742400, 33.20, 512000, company_percent=0.9, agents=ag)
+        assert approx(low['net_profit_usdt'], high['net_profit_usdt'])
+
+    def test_company_percent_trades_against_crypto_share_partner(self):
+        """С партнёром на крипте процент компании перестаёт быть нейтральным.
+
+        Меньше оставили компании → больше осталось в крипте → больше забрал
+        партнёр → меньше наш чистый доход. Это не баг, а следствие базы:
+        сначала считается, сколько осело в компании, и только остаток делится.
+        """
+        ag = [{'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
+              {'tier': 2, 'comp_model': 'crypto_share', 'percent': 10}]
+        low = compute_mf_realty(16742400, 33.20, 512000, company_percent=0.5, agents=ag)
+        high = compute_mf_realty(16742400, 33.20, 512000, company_percent=0.9, agents=ag)
+        assert low['agents'][1]['_payout'] > high['agents'][1]['_payout']
+        assert low['net_profit_usdt'] < high['net_profit_usdt']
+        assert approx(low['net_profit_usdt'], 4887.90)
+        assert approx(high['net_profit_usdt'], 5089.62)
+
     def test_zero_percent_all_in_crypto(self):
         r = compute_mf_realty(1000000, 33.0, 31000, company_percent=0, agents=[])
         assert r['company_fee_usdt'] == 0
