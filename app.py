@@ -3437,6 +3437,13 @@ def _apply_deal_agents(session, deal, agents_data):
     # profit_usdt уже не входит (там только крипта) — она и есть база crypto_share.
     is_mf = deal.deal_kind == MF_REALTY_KIND
     crypto_base = (deal.profit_usdt or 0) if is_mf else None
+    # revshare — «% от ПРИБЫЛИ», а прибыль MF-сделки лежит в двух карманах:
+    # крипта (profit_usdt) + комиссия, осевшая в батах на счёте компании.
+    # Считать revshare только от крипты нельзя: выплата партнёру начала бы
+    # зависеть от того, сколько мы оставили компании. Для доли именно от крипты
+    # есть отдельная модель crypto_share.
+    profit_base = round((deal.profit_usdt or 0) + (deal.company_fee_usdt or 0), 2) if is_mf \
+        else (deal.profit_usdt or 0)
 
     if not agents_data:
         deal.referrer_payout_usdt = None
@@ -3447,7 +3454,7 @@ def _apply_deal_agents(session, deal, agents_data):
             deal.net_profit_usdt = round(deal.profit_usdt or 0, 2)
         return
     volume = max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0)
-    computed, net = compute_agent_cascade(deal.profit_usdt or 0, volume,
+    computed, net = compute_agent_cascade(profit_base, volume,
                                           [dict(a) for a in agents_data],
                                           crypto_base_usdt=crypto_base)
     # Имя не передали (скрипт/интеграция шлёт только referrer_id) — берём из профиля.

@@ -367,3 +367,54 @@ class TestApi:
     def test_preview_bad_input(self, tc):
         r = tc.post('/api/deals/mf-realty/preview', json={'invoice_amount_thb': 'abc'})
         assert r.status_code == 400
+
+
+# ── revshare считается от валовой прибыли, а не только от крипты ──────────
+# Инцидент 05.08 (сделка #458): форма показывала Valera revshare 10% → $515.08,
+# после сохранения в карточке оказалось $61.20 — бэкенд брал базой profit_usdt,
+# то есть только крипто-часть. Тогда выплата партнёру зависела бы от того,
+# сколько мы решили оставить в компании; для доли от крипты есть crypto_share.
+
+class TestRevshareBaseMf:
+    def test_revshare_from_gross_profit(self, tc):
+        d = tc.post('/api/deals', json={
+            'client_name': 'Clover Revshare', 'deal_kind': 'mf_realty',
+            'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
+            'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'agents': [
+                {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
+                {'name': 'Valera', 'tier': 2, 'comp_model': 'revshare', 'percent': 10},
+            ]}).json['deal']
+        ag = {a['tier']: a for a in d['agents']}
+        assert abs(ag[1]['payout_usdt'] - 2560.00) < 0.02
+        # (крипта 3 172.24 + комиссия 4 538.60 − 2 560) × 10%
+        assert abs(ag[2]['payout_usdt'] - 515.08) < 0.05, ag[2]['payout_usdt']
+
+    def test_crypto_share_still_from_crypto(self, tc):
+        """Модель «% от прибыли в крипте» базу не меняет — иначе она теряет смысл."""
+        d = tc.post('/api/deals', json={
+            'client_name': 'Clover CryptoShare', 'deal_kind': 'mf_realty',
+            'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
+            'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'agents': [
+                {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
+                {'name': 'Valera', 'tier': 2, 'comp_model': 'crypto_share', 'percent': 10},
+            ]}).json['deal']
+        ag = {a['tier']: a for a in d['agents']}
+        assert abs(ag[2]['payout_usdt'] - 61.22) < 0.05, ag[2]['payout_usdt']
+
+    def test_net_profit_after_revshare(self, tc):
+        """Чистый доход = остаток крипты + комиссия компании, выплаты уходят из крипты."""
+        d = tc.post('/api/deals', json={
+            'client_name': 'Clover Net', 'deal_kind': 'mf_realty',
+            'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 512000, 'invoice_amount_thb': 16742400,
+            'buy_rate_thb_usdt': 33.20, 'company_percent': 0.9,
+            'agents': [
+                {'name': 'Lidia SID', 'tier': 1, 'comp_model': 'markup', 'percent': 0.5},
+                {'name': 'Valera', 'tier': 2, 'comp_model': 'revshare', 'percent': 10},
+            ]}).json['deal']
+        assert abs(d['crypto_remainder_usdt'] - 97.16) < 0.05, d['crypto_remainder_usdt']
+        assert abs(d['net_profit_usdt'] - 4635.76) < 0.05, d['net_profit_usdt']
