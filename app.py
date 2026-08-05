@@ -1794,6 +1794,29 @@ GSHEET_REFERRERS_HEADERS = [
     '№', 'Дата', 'ID сделки', 'Реферер', 'Код', 'Модель', '%',
     'Объём USDT', 'Profit USDT', 'Reward USDT', 'Выплачено',
 ]
+# ── Таблица «Cделки недвижимость» (сделки через MF Corp) ─────────────────
+# Отдельный файл от «общей сделки»: помесячные листы «<месяц> leasehold».
+# Лист создаётся лениво — при первой сделке месяца, из шаблона колонок ниже.
+GSHEET_REALTY_ID = os.environ.get(
+    'GSHEET_REALTY_ID', '1OhcHOoAI3_EMplg-VaP3lI8FjhOahA3jY7f62T3pkg4')
+GSHEET_REALTY_ALL = 'все сделки'   # сводный лист: каждая строка независимо от месяца
+# Колонки один в один с листами май–июль (включая опечатки в шапке — иначе
+# существующие листы пришлось бы переписывать). CRM ID добавлен последним:
+# это якорь для upsert, без него правка сделки плодила бы дубли строк.
+GSHEET_REALTY_HEADERS = [
+    'Назанчение', 'дата', 'направление', 'сумма руб', 'курс от брокера rub-usdt',
+    'от кого', 'сумма thb', 'курс продажи', 'курс покупкт', 'приход usdt ',
+    'cколько потратили на инвойс', 'доход Тайской компании usdt',
+    'процент на тайскую компанию', 'отправлено на компанию в thb',
+    'Доход в бата тайской компании', 'доход Катики в батах ', 'доход Катики в usdt ',
+    'доход', 'выплата агенту', 'доход в usdt на кошельке', 'чистый доход',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+]
+GSHEET_REALTY_MONTHS = [
+    'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+    'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
+]
+
 GOOGLE_SA_JSON = os.environ.get('GOOGLE_SA_JSON', '')  # JSON строка service account
 # OAuth user-credentials (для доступа к файлам в закрытых папках Workspace)
 GOOGLE_OAUTH_CLIENT_ID = os.environ.get('GOOGLE_OAUTH_CLIENT_ID', '')
@@ -1835,6 +1858,133 @@ def get_gsheet_client():
         sa_path, scopes=['https://www.googleapis.com/auth/spreadsheets']
     )
     return gspread.authorize(creds)
+
+
+def realty_month_sheet_name(deal_date):
+    """Имя листа месяца: «июль leasehold». Месяц берём из ДАТЫ СДЕЛКИ, не из
+    «сегодня» — иначе правка июльской сделки в августе создаёт лишний лист."""
+    return f'{GSHEET_REALTY_MONTHS[deal_date.month - 1]} leasehold'
+
+
+def _realty_find_month_worksheet(sh, name):
+    """Ищет лист месяца с допуском на опечатки в существующих названиях
+    («май leeshold» на проде). Сравниваем по месяцу, а не по полной строке."""
+    month = name.split()[0]
+    for ws in sh.worksheets():
+        title = ws.title.strip().lower()
+        if title.startswith(month) and ('leasehold' in title or 'leeshold' in title):
+            return ws
+    return None
+
+
+def build_realty_row(deal):
+    """Строка выгрузки сделки через MF Corp — порядок как в GSHEET_REALTY_HEADERS."""
+    d = deal
+    direction = ''
+    if d.payin_method:
+        pm = d.payin_method.value
+        direction = 'usdt-thb' if pm == 'crypto_direct' else 'rub-thb'
+    agents_total = d.referrer_payout_usdt or 0
+    agent_names = ', '.join(
+        a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
+    ) if d.agents else ''
+    return [
+        d.realty_purpose or '',                          # Назначение
+        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
+        direction,
+        d.payin_amount_rub or '',
+        d.payin_rate_rub_usdt or '',
+        agent_names,                                     # от кого
+        d.invoice_amount_thb or '',
+        d.sell_rate_thb_usdt or '',
+        d.buy_rate_thb_usdt or '',
+        d.payin_amount_usdt or '',
+        # «сколько потратили на инвойс» — стоимость самого инвойса, без комиссии
+        round((d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2) if d.buy_rate_thb_usdt else '',
+        d.company_fee_usdt or '',
+        (d.company_percent / 100) if d.company_percent else '',   # процент — как доля, лист форматирует
+        d.company_sent_thb or '',
+        d.company_fee_thb or '',
+        d.katika_fee_thb or '',
+        d.katika_fee_usdt or '',
+        # «доход» в таблице = приход − стоимость инвойса (оба кармана до выплат)
+        round((d.payin_amount_usdt or 0) - (d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2)
+        if d.buy_rate_thb_usdt else '',
+        agents_total or '',
+        d.crypto_remainder_usdt or '',                   # «доход в usdt на кошельке»
+        d.net_profit_usdt or '',                         # чистый доход
+        d.doc_invoice_url or '',
+        d.doc_contract_url or '',
+        d.doc_payment_url or '',
+        ', '.join(_payin_hash_list(d)),
+        d.id,                                            # CRM ID — якорь upsert
+    ]
+
+
+def sync_realty_deal_to_gsheet(deal):
+    """Выгрузка сделки через MF Corp в таблицу «Cделки недвижимость».
+
+    Лист месяца создаётся лениво из шаблона колонок; строка ищется по CRM ID
+    и перезаписывается (upsert), иначе дописывается. Та же строка дублируется
+    в сводный лист «все сделки» — чтобы считать год без склейки вкладок.
+    Никогда не роняет вызывающего: возвращает dict с диагностикой.
+    """
+    with _gsheet_lock:
+        return _sync_realty_deal_impl(deal)
+
+
+def _realty_upsert(ws, row, deal_id):
+    """Перезаписывает строку с этим CRM ID либо дописывает новую. True = вставка."""
+    id_col = len(GSHEET_REALTY_HEADERS)          # CRM ID — последняя колонка
+    ids = ws.col_values(id_col)
+    for idx, val in enumerate(ids, start=1):
+        if val and str(val).strip() == str(deal_id):
+            end = gspread.utils.rowcol_to_a1(idx, id_col)
+            ws.update(f'A{idx}:{end}', [row], value_input_option='USER_ENTERED')
+            return False
+    ws.append_row(row, value_input_option='USER_ENTERED')
+    return True
+
+
+def _realty_get_or_create_ws(sh, title, rows=200):
+    """Лист по имени, создаётся с шапкой если его нет."""
+    try:
+        return sh.worksheet(title)
+    except Exception:
+        ws = sh.add_worksheet(title=title, rows=rows, cols=len(GSHEET_REALTY_HEADERS))
+        ws.append_row(GSHEET_REALTY_HEADERS, value_input_option='USER_ENTERED')
+        return ws
+
+
+def _sync_realty_deal_impl(deal):
+    try:
+        gc = get_gsheet_client()
+        if not gc:
+            return {'ok': False, 'error': 'no_credentials'}
+        sh = gc.open_by_key(GSHEET_REALTY_ID)
+        month_name = realty_month_sheet_name(deal.created_at or datetime.utcnow())
+        ws = _realty_find_month_worksheet(sh, month_name)
+        created = False
+        if ws is None:
+            ws = _realty_get_or_create_ws(sh, month_name)
+            created = True
+        elif not ws.col_values(1):
+            # Лист месяца есть, но пустой (завели руками и не заполнили) —
+            # без шапки строка легла бы в первую строку и читалась как заголовок
+            ws.append_row(GSHEET_REALTY_HEADERS, value_input_option='USER_ENTERED')
+        row = build_realty_row(deal)
+        inserted = _realty_upsert(ws, row, deal.id)
+        # Сводный лист — тот же upsert, чтобы правка не плодила дубли
+        try:
+            _realty_upsert(_realty_get_or_create_ws(sh, GSHEET_REALTY_ALL, rows=2000),
+                           row, deal.id)
+        except Exception as e:
+            print(f'[GSheet realty] сводный лист: {e}', flush=True)
+        return {'ok': True, 'sheet': ws.title, 'sheet_created': created,
+                'inserted': inserted}
+    except Exception as e:
+        print(f'[GSheet realty] {e}', flush=True)
+        return {'ok': False, 'error': str(e)}
 
 
 def sync_deals_to_gsheet(deals):
@@ -2358,8 +2508,48 @@ def delete_referrer_reward_from_gsheet(deal):
         print(f'[GSheet] Referrer delete error: {e}')
 
 
+def _mf_realty_telegram_text(deal):
+    """Текст уведомления по сделке через MF Corp.
+
+    У обычной сделки один карман, здесь два — поэтому общий шаблон не подходит:
+    он показал бы «Выдано: 0 THB» (инвойс лежит в другом поле) и «чистую нашу»
+    без указания, что часть суммы заперта в батах на счёте компании.
+    """
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    client = (deal.client.name if deal.client else deal.client_name) or 'без имени'
+    fee_usdt = deal.company_fee_usdt or 0
+    crypto = deal.crypto_remainder_usdt or 0
+    msg = (
+        f"🏠 <b>Недвижимость {deal.id} — {client} — {date_str}</b>\n"
+        f"{deal.realty_purpose or ''}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Отправлено в MF Corp: {deal.company_sent_thb or 0:,.0f} ฿ "
+        f"(${deal.payout_amount_usdt or 0:,.2f})\n"
+        f"— инвойс застройщику: {deal.invoice_amount_thb or 0:,.0f} ฿\n"
+        f"— комиссия компании: {deal.company_fee_thb or 0:,.0f} ฿ "
+        f"(${fee_usdt:,.2f}, {deal.company_percent or 0:.2f}%)"
+    )
+    agents = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
+    if agents:
+        labels = {'markup': 'от курса', 'fixed': 'фикс',
+                  'revshare': 'от прибыли', 'crypto_share': 'от прибыли в крипте'}
+        msg += "\n— Партнёры —"
+        for a in agents:
+            lbl = labels.get(a.comp_model, a.comp_model or '')
+            pct = f"{a.percent or 0}% " if a.comp_model != 'fixed' else ''
+            msg += f"\n• Ур.{a.tier or 1} {a.name or '-'} · {pct}{lbl} → ${a.payout_usdt or 0:,.2f}"
+        msg += f"\nВыплаты партнёрам: ${deal.referrer_payout_usdt or 0:,.2f}"
+    msg += (
+        f"\n\n💰 <b>Чистый доход: ${deal.net_profit_usdt or 0:,.2f}</b>\n"
+        f"   на кошельке ${crypto:,.2f} · в компании ${fee_usdt:,.2f}"
+    )
+    return msg
+
+
 def _send_deal_telegram(deal):
     """Отправляет уведомление о сделке в Telegram"""
+    if deal.deal_kind == MF_REALTY_KIND:
+        return send_telegram_notification(_mf_realty_telegram_text(deal))
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_usdt = deal.payout_amount_usdt or 0
     profit = deal.profit_usdt or 0
@@ -3688,7 +3878,20 @@ def create_deal():
         
         # Если сделка создана сразу со статусом completed (skip_sync — для импорта исторических сделок)
         skip_sync = data.get('skip_sync', False)
-        if deal.status == DealStatus.COMPLETED and not skip_sync:
+
+        # Недвижимость через MF Corp: прибыль известна сразу (возмещения нет),
+        # поэтому выгружаем и уведомляем не дожидаясь статуса completed
+        if deal.deal_kind == MF_REALTY_KIND and not skip_sync:
+            try:
+                sync_realty_deal_to_gsheet(deal)
+            except Exception as e:
+                print(f'[GSheet realty] sync error on create: {e}')
+            try:
+                _send_deal_telegram(deal)
+            except Exception as e:
+                print(f'[Telegram] realty error on create: {e}')
+
+        if deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind != MF_REALTY_KIND:
             send_deal_completed_webhook(deal)
             notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
@@ -3891,8 +4094,17 @@ def update_deal(deal_id):
                     )
                     session.commit()
 
+        # Недвижимость через MF Corp: правки догоняют таблицу через upsert
+        # по CRM ID, дубли строк не появляются
+        if deal.deal_kind == MF_REALTY_KIND:
+            try:
+                sync_realty_deal_to_gsheet(deal)
+            except Exception as e:
+                print(f'[GSheet realty] sync error on update: {e}')
+
         # Webhook при завершении
-        if deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED:
+        if (deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED
+                and deal.deal_kind != MF_REALTY_KIND):
             send_deal_completed_webhook(deal)
             notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram только если сделка ещё НЕ была возмещена
