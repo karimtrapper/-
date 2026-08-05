@@ -3422,6 +3422,15 @@ def _recalculate_deal_financials(deal, data):
     deal.net_profit_usdt = round(deal.profit_usdt - referrer_payout, 2)
 
 
+def db_referrer_names(session, names_lower):
+    """Активные рефереры, чьё имя совпало с одним из переданных (без учёта регистра)."""
+    if not names_lower:
+        return []
+    rows = session.query(Referrer.id, Referrer.name).filter(Referrer.active == True).all()
+    return [(rid, rname) for rid, rname in rows
+            if rname and rname.strip().lower() in names_lower]
+
+
 def _apply_deal_agents(session, deal, agents_data):
     """Сохраняет агентов сделки (мультиагенты) и пересчитывает выплаты каскадом.
 
@@ -3457,6 +3466,21 @@ def _apply_deal_agents(session, deal, agents_data):
     computed, net = compute_agent_cascade(profit_base, volume,
                                           [dict(a) for a in agents_data],
                                           crypto_base_usdt=crypto_base)
+    # Обратный случай: прислали только имя без referrer_id — связь с профилем
+    # терялась молча, и сделка исчезала из кабинета партнёра (он видит свои
+    # сделки по deal_agents.referrer_id). Находим по точному имени; если тёзок
+    # несколько — не гадаем, оставляем как есть.
+    nameless = [a for a in computed if not a.get('referrer_id') and (a.get('name') or '').strip()]
+    if nameless:
+        wanted = {(a['name'] or '').strip().lower() for a in nameless}
+        by_name = {}
+        for rid, rname in db_referrer_names(session, wanted):
+            by_name.setdefault(rname.strip().lower(), []).append(rid)
+        for a in nameless:
+            found = by_name.get((a['name'] or '').strip().lower()) or []
+            if len(found) == 1:
+                a['referrer_id'] = found[0]
+
     # Имя не передали (скрипт/интеграция шлёт только referrer_id) — берём из профиля.
     # Иначе deal.referrer_name затирался в NULL и партнёр пропадал из списка сделок.
     missing_names = {a.get('referrer_id') for a in computed

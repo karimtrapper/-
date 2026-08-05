@@ -716,3 +716,61 @@ class TestReimbursementRefreshesAgents:
         assert agent.payout_usdt == 39.40
         assert deal.net_profit_usdt == 157.60
         assert round(deal.profit_usdt - agent.payout_usdt, 2) == deal.net_profit_usdt
+
+
+# ── Агенты без referrer_id: связь с профилем ищем по имени ────────────────
+# Инцидент 05.08: пересчёт агентов сделки #458 отправили с одними именами —
+# referrer_id обнулился, и сделка пропала из кабинета партнёра (кабинет читает
+# свои сделки по deal_agents.referrer_id). Симметрично уже существующему
+# «имя берём из профиля, если прислали только id».
+
+class TestAgentNameResolve:
+    def test_agent_without_id_linked_by_name(self, tc):
+        r = tc.post('/api/referrers', json={
+            'name': 'Валера Тест', 'code': 'GR-VALTEST', 'default_percent': 10})
+        rid = r.json['referrer']['id']
+        d = tc.post('/api/deals', json={
+            'client_name': 'Link By Name', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'payout_method': 'transfer', 'payout_source': 'binance',
+            'payout_amount_thb': 33000, 'status': 'completed',
+            'agents': [{'name': 'Валера Тест', 'tier': 1,
+                        'comp_model': 'revshare', 'percent': 10}]}).json['deal']
+        assert d['agents'][0]['referrer_id'] == rid, 'связь с профилем должна восстановиться'
+
+    def test_case_insensitive(self, tc):
+        r = tc.post('/api/referrers', json={
+            'name': 'Lidia SID Thailand', 'code': 'GR-LIDTEST', 'default_percent': 30})
+        rid = r.json['referrer']['id']
+        d = tc.post('/api/deals', json={
+            'client_name': 'Link Case', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'payout_method': 'transfer', 'payout_source': 'binance',
+            'payout_amount_thb': 33000, 'status': 'completed',
+            'agents': [{'name': '  lidia sid thailand ', 'tier': 1,
+                        'comp_model': 'revshare', 'percent': 30}]}).json['deal']
+        assert d['agents'][0]['referrer_id'] == rid
+
+    def test_unknown_name_stays_manual(self, tc):
+        """Партнёра нет в базе — строка остаётся ручной, а не цепляется к случайному."""
+        d = tc.post('/api/deals', json={
+            'client_name': 'Manual Agent', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'payout_method': 'transfer', 'payout_source': 'binance',
+            'payout_amount_thb': 33000, 'status': 'completed',
+            'agents': [{'name': 'Никому Неизвестный', 'tier': 1,
+                        'comp_model': 'revshare', 'percent': 10}]}).json['deal']
+        assert d['agents'][0]['referrer_id'] is None
+        assert d['agents'][0]['name'] == 'Никому Неизвестный'
+
+    def test_namesakes_not_guessed(self, tc):
+        """Два партнёра с одним именем — гадать нельзя, оставляем без привязки."""
+        tc.post('/api/referrers', json={'name': 'Тёзка', 'code': 'GR-TWIN1', 'default_percent': 10})
+        tc.post('/api/referrers', json={'name': 'Тёзка', 'code': 'GR-TWIN2', 'default_percent': 20})
+        d = tc.post('/api/deals', json={
+            'client_name': 'Twins', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 1000,
+            'payout_method': 'transfer', 'payout_source': 'binance',
+            'payout_amount_thb': 33000, 'status': 'completed',
+            'agents': [{'name': 'Тёзка', 'tier': 1, 'comp_model': 'revshare', 'percent': 10}]}).json['deal']
+        assert d['agents'][0]['referrer_id'] is None
