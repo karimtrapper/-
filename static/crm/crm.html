@@ -5046,6 +5046,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
                 // Первый хэш дублируем в поле — его читают карточка сделки и выгрузка
                 if (hashInput) hashInput.value = payinTxPool[0].hash;
+                // Сумма пула — это факт прихода, значит курс выводим из рублей,
+                // а не наоборот; заодно пересчитываем сводку недвижимости
+                payinMode = 'usdt';
+                autoCalcUsdt();
             }
             renderPayinTxPool();
         }
@@ -5260,7 +5264,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // Show/hide fields based on payin method
-        document.getElementById('payinMethod').addEventListener('change', function () {
+        document.getElementById('payinMethod').addEventListener('change', applyPayinMethodFields);
+
+        function applyPayinMethodFields() {
+            const method = document.getElementById('payinMethod');
             const partnerGroup = document.getElementById('payinPartnerGroup');
             const rubGroup = document.getElementById('payinRubGroup');
             const doverkaGroup = document.getElementById('doverkaGroup');
@@ -5269,9 +5276,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const exchangeRateGroup = document.getElementById('exchangeRateGroup');
             const wlPickerGroup = document.getElementById('wlPickerGroup');
 
-            const isCryptoDirect = this.value === 'crypto_direct';
-            const isSberWL = this.value === 'sber_wl';
-            const isSberReqs = this.value === 'sber_reqs';
+            const isCryptoDirect = method.value === 'crypto_direct';
+            const isSberWL = method.value === 'sber_wl';
+            const isSberReqs = method.value === 'sber_reqs';
+            // Недвижимость: чем бы клиент ни платил, застройщику уходит крипта/валюта
+            // с нашей стороны, и приход в USDT надо сверить хэшами. Раньше блок хэшей
+            // прятался на «Сбер (реквизиты)» — приход рублями, а хэш добавить некуда.
+            const isRealty = document.getElementById('mfDealToggle')?.checked
+                || document.getElementById('fhDealToggle')?.checked;
 
             // WL picker
             wlPickerGroup.style.display = isSberWL ? 'block' : 'none';
@@ -5283,10 +5295,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (isSberReqs) sberLoadIncomes();
 
             // Партнеры
-            partnerGroup.style.display = this.value === 'partners_cash' ? 'block' : 'none';
+            partnerGroup.style.display = method.value === 'partners_cash' ? 'block' : 'none';
 
             // Рубли и курс RUB/USDT
-            if (this.value === 'spp_doverka' || this.value === 'partners_cash' || isSberWL || isSberReqs) {
+            if (method.value === 'spp_doverka' || method.value === 'partners_cash' || isSberWL || isSberReqs) {
                 rubGroup.style.display = 'block';
                 rateGroup.style.display = 'block';
             } else {
@@ -5298,14 +5310,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             exchangeRateGroup.style.display = isCryptoDirect ? 'none' : 'block';
 
             // Доверка / TxHash
-            if (this.value === 'spp_doverka') {
+            if (method.value === 'spp_doverka') {
                 doverkaGroup.style.display = 'flex';
-                txHashGroup.style.display = 'none';
+                txHashGroup.style.display = isRealty ? 'block' : 'none';
             } else {
                 doverkaGroup.style.display = 'none';
-                txHashGroup.style.display = (isSberWL || isSberReqs) ? 'none' : 'block';
+                txHashGroup.style.display = ((isSberWL || isSberReqs) && !isRealty) ? 'none' : 'block';
             }
-        });
+        }
 
         async function loadWlTransactions() {
             const merchant = document.getElementById('wlMerchantFilter').value || 'grusha';
@@ -5518,6 +5530,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const el = document.getElementById(id);
                 if (el) el.style.display = realty ? 'none' : '';
             });
+            // Блок хэшей прихода зависит и от типа сделки: у недвижимости он нужен
+            // при любом методе Pay-In, поэтому пересобираем видимость полей метода
+            applyPayinMethodFields();
         }
 
         // ===== Недвижимость через MF Corporation =====
