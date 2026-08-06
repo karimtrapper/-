@@ -168,3 +168,98 @@ def test_sber_income_pool_renders_btn_success(html):
     """
     assert re.search(r"class=[\"']btn btn-success btn-sm[\"'][^>]*onclick=\\?[\"']sberAddIncome", html), \
         'кнопка «Забрать» пула приходов Сбера больше не .btn-success — пересмотреть контракт'
+
+
+# ==================== состояние редактора сделки ====================
+# Кейс #463 (06.08): открыли редактор одной сделки, не дождались загрузки —
+# перешли в другую. Ответ первого запроса заполнял форму ПОСЛЕ переключения
+# editingDealId, и обычная сделка сохранилась как «фрихолд» с пустыми полями.
+# Сохранение уходит в ту сделку, что в editingDealId, поэтому любое заполнение
+# формы устаревшим ответом = порча чужих данных.
+
+def _function_body(html: str, name: str) -> str:
+    """Тело функции верхнего уровня (по отступу закрывающей скобки)."""
+    m = re.search(rf'^([ \t]*)(?:async +)?function {re.escape(name)}\s*\([^)]*\)\s*\{{',
+                  html, re.M)
+    assert m, f'функция {name} не найдена в crm.html'
+    indent = m.group(1)
+    end = html.find(f'\n{indent}}}', m.end())
+    assert end != -1, f'не найден конец функции {name}'
+    return html[m.end():end]
+
+
+def test_editor_ignores_stale_response(html):
+    """openDealEditor не заполняет форму ответом устаревшего запроса."""
+    body = _function_body(html, 'openDealEditor')
+    assert '_editorRequestId' in body, \
+        ('регрессия: пропала защита от гонки редакторов — открытие второй сделки '
+         'до загрузки первой снова заполнит форму чужими данными')
+    guard = re.search(r'if\s*\(\s*reqId\s*!==\s*_editorRequestId\s*\)\s*return', body)
+    assert guard, 'нужен ранний выход, когда пока грузили — открыли другую сделку'
+    fill = body.find('if (data.success)')
+    assert fill != -1 and guard.start() < fill, \
+        'проверка актуальности запроса должна стоять ДО заполнения формы'
+
+
+DEAL_KIND_TOGGLES = ['customDealToggle', 'mfDealToggle', 'fhDealToggle']
+
+
+def test_editor_resets_every_kind_toggle(html):
+    """Каждая ветка редактора выставляет ВСЕ переключатели типа сделки.
+
+    Иначе тип протекает между сделками: открыл фрихолд, следом кастомную —
+    и она сохраняется с полями фрихолда.
+    """
+    body = _function_body(html, 'openDealEditor')
+    for toggle in DEAL_KIND_TOGGLES:
+        assert f"getElementById('{toggle}').checked =" in body, \
+            f'openDealEditor не выставляет {toggle} — состояние прошлой сделки останется'
+
+
+def test_cancel_and_submit_reset_all_toggles(html):
+    """Отмена редактирования и успешное сохранение чистят все типы."""
+    cancel = _function_body(html, 'cancelEditMode')
+    for toggle in DEAL_KIND_TOGGLES:
+        assert toggle in cancel, f'cancelEditMode не сбрасывает {toggle}'
+    # после успешного сохранения форма возвращается в режим создания
+    submit = html[html.find('showToast(isEditMode ?'):][:1500]
+    for toggle in DEAL_KIND_TOGGLES:
+        assert toggle in submit, f'после сохранения не сброшен {toggle}'
+
+
+def test_kind_select_options_match_toggles(html):
+    """Каждый пункт «Тип сделки» имеет обработку в onDealKindChange."""
+    select = extract_subtree(html, 'dealKindSelect')
+    values = set(re.findall(r'<option value="([\w_]+)"', select))
+    assert values == {'exchange', 'custom', 'mf_realty', 'mf_freehold'}, values
+    body = _function_body(html, 'onDealKindChange')
+    for value in values - {'exchange'}:
+        assert f"'{value}'" in body, f'onDealKindChange не обрабатывает тип {value}'
+    sync = _function_body(html, 'syncDealKindSelect')
+    for value in values - {'exchange'}:
+        assert f"'{value}'" in sync, f'syncDealKindSelect не знает про тип {value}'
+
+
+def test_agent_model_rerenders_on_referrer_pick(html):
+    """Выбор реферера перерисовывает блок агентов.
+
+    Регрессия 06.08: модель и процент подставлялись из профиля в данные, но
+    селект оставался прежним — на экране revshare, считался markup ($299.70
+    вместо $6.00), и сделка сохранялась по невидимой модели.
+    """
+    for field_fn, render_fn in (('stdAgentsField', 'renderStdAgents'),
+                                ('customAgentsField', 'renderCustomAgents')):
+        body = _function_body(html, field_fn)
+        assert re.search(rf"referrer_id'\s*\)\s*{re.escape(render_fn)}\(\)|"
+                         rf"k\s*===\s*'comp_model'\s*\|\|\s*k\s*===\s*'referrer_id'\s*\)\s*{re.escape(render_fn)}\(\)",
+                         body), \
+            f'{field_fn}: после выбора реферера нужен {render_fn}() — иначе модель на экране врёт'
+
+
+def test_realty_payout_block_is_shared_not_duplicated(html):
+    """Блок фактических переводов один на оба типа недвижимости."""
+    assert html.count('id="realtyPayoutTxBlock"') == 1
+    for slot in ('mfPayoutSlot', 'fhPayoutSlot'):
+        assert f'id="{slot}"' in html, f'нет слота {slot} для переезда блока переводов'
+    body = _function_body(html, 'moveRealtyPayoutBlock')
+    assert 'appendChild' in body, 'блок переводов должен переезжать в активную форму'

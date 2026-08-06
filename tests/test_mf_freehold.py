@@ -493,3 +493,51 @@ class TestActualTransfers:
         finally:
             s.close()
         assert 'ff' * 16 in sheet.worksheet('август freehold').rows[1][19]
+
+
+# ── Страховка от порчи данных формой ─────────────────────────────────────
+# Кейс #463 (06.08): пользователь открыл редактор одной сделки, не дождавшись
+# загрузки — перешёл в другую. Ответ первого запроса заполнял форму уже после
+# переключения, и обычная сделка сохранилась с типом «фрихолд» и пустыми полями
+# перевода: прибыль обнулилась, выплата агенту осталась. Фронт починен (ответ
+# устаревшего запроса игнорируется), но тип без своих полей сервер обязан
+# отвергать сам — форма не единственный клиент API.
+
+class TestRealtyPayloadGuard:
+    def test_freehold_without_fields_rejected(self, tc):
+        r = tc.post('/api/deals', json={
+            'client_name': 'Порча', 'deal_kind': 'mf_freehold', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 999,
+        })
+        assert r.status_code == 400
+        assert 'фрихолд' in r.json['error'].lower()
+
+    def test_leasehold_without_fields_rejected(self, tc):
+        r = tc.post('/api/deals', json={
+            'client_name': 'Порча', 'deal_kind': 'mf_realty', 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct', 'payin_amount_usdt': 999,
+        })
+        assert r.status_code == 400
+
+    def test_ordinary_deal_cannot_silently_become_freehold(self, tc):
+        """Ровно кейс #463: PUT меняет тип, но данных перевода нет — отказ."""
+        did = tc.post('/api/deals', json={
+            'client_name': 'Обычная', 'deal_type': 'pay_in', 'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 999.32, 'payout_amount_usdt': 979, 'payout_method': 'transfer',
+        }).json['deal']['id']
+        r = tc.put(f'/api/deals/{did}', json={'deal_kind': 'mf_freehold'})
+        assert r.status_code == 400
+        after = tc.get(f'/api/deals/{did}').json['deal']
+        assert after['deal_kind'] == 'exchange', 'сделка осталась прежней'
+        assert approx(after['profit_usdt'], 20.32), 'прибыль не обнулилась'
+
+    def test_freehold_with_fields_passes(self, tc):
+        assert tc.post('/api/deals', json=_fh_payload()).status_code == 201
+
+    def test_freehold_by_transfers_only_passes(self, tc):
+        """Инвойс не заполнили, но переводы отмечены — данные есть, сделка валидна."""
+        r = tc.post('/api/deals', json=_fh_payload(
+            invoice_amount_usd=None,
+            payout_tx_hashes=[{'hash': 'ab' * 16, 'amount_usdt': 39373}]))
+        assert r.status_code == 201
+        assert approx(r.json['deal']['transfer_sent_usd'], 39373)

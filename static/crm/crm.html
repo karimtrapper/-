@@ -4291,7 +4291,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             card.querySelectorAll('button[type="submit"], #saveDealBtn').forEach(b => b.disabled = busy);
         }
 
+        // Номер последнего открытия редактора. Ответ устаревшего запроса обязан
+        // молчать: пользователь открывает сделку, не дождавшись загрузки предыдущей,
+        // и ответы возвращаются в произвольном порядке. Без этого поля заполнялись
+        // ЧУЖОЙ сделкой при уже переключённом editingDealId — сохранение переписывало
+        // открытую сделку данными предыдущей (кейс #463: обычная сделка стала фрихолдом).
+        let _editorRequestId = 0;
+
         async function openDealEditor(dealId) {
+            const reqId = ++_editorRequestId;
             try {
                 // Чистый лист: заполнение ниже ставит только непустые поля сделки,
                 // без сброса значения прошлой сделки/черновика проступают в пустых полях
@@ -4322,8 +4330,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         loadCreateForm()
                     ]);
                 } finally {
-                    setEditorBusy(false);
+                    // Завесу снимает только актуальное открытие, иначе форма
+                    // разблокируется, пока едет следующая сделка
+                    if (reqId === _editorRequestId) setEditorBusy(false);
                 }
+
+                // Пока грузили, открыли другую сделку — этот ответ уже не про неё
+                if (reqId !== _editorRequestId) return;
 
                 if (data.success) {
                     const deal = data.deal;
@@ -6857,8 +6870,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     stdAgents = []; renderStdAgents();
                     sberReset();
                     resetPayinTxPool([]);
+                    // Все типы возвращаем в исходное: this.reset() снимает галочки,
+                    // но секции остаются на экране, пока не позвали toggle
+                    document.getElementById('customDealToggle').checked = false;
                     document.getElementById('mfDealToggle').checked = false;
                     document.getElementById('fhDealToggle').checked = false;
+                    toggleCustomDeal();
                     toggleMfDeal(); mfReset();
                     toggleFhDeal(); fhReset();
                     payinMode = 'rate';

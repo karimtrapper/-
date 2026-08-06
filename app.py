@@ -4266,6 +4266,12 @@ def create_deal():
             else:
                 _mirror_legacy_agent(session, deal)
 
+        # Тип недвижимости без своих полей — протёкшее состояние формы, не сделка
+        realty_error = realty_payload_error(deal)
+        if realty_error:
+            session.rollback()
+            return jsonify({'success': False, 'error': realty_error}), 400
+
         # Автоматическое списание с кошелька при создании
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
             op = WalletOperation(
@@ -4492,6 +4498,11 @@ def update_deal(deal_id):
         elif deal.deal_kind not in REALTY_KINDS:
             # У недвижимости агенты уже пересчитаны выше вместе с прибылью
             _mirror_legacy_agent(session, deal)
+
+        realty_error = realty_payload_error(deal)
+        if realty_error:
+            session.rollback()
+            return jsonify({'success': False, 'error': realty_error}), 400
 
         session.commit()
 
@@ -5448,6 +5459,27 @@ def _apply_mf_realty(deal, data):
     # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
     deal.needs_reimbursement = False
     return r
+
+
+def realty_payload_error(deal):
+    """Проверка, что сделка по недвижимости не пустая по своему типу.
+
+    Страховка от порчи данных со стороны формы: если тип проставлен, а полей нет,
+    почти всегда это протёкшее состояние редактора, а не осознанный ввод (кейс #463:
+    обычная сделка сохранилась как фрихолд с пустыми полями перевода — прибыль
+    обнулилась, а выплата агенту осталась). Сервер такую сделку не принимает.
+    Возвращает текст ошибки или None.
+    """
+    if deal.deal_kind == MF_REALTY_KIND:
+        if not (deal.invoice_amount_thb and deal.buy_rate_thb_usdt):
+            return ('Лизхолд без суммы инвойса в батах и курса покупки. '
+                    'Проверь тип сделки — похоже, форма сохранила не то.')
+    if deal.deal_kind == MF_FREEHOLD_KIND:
+        if not (deal.invoice_amount_usd or deal.transfer_sent_usd
+                or _payout_transfers_total(deal)):
+            return ('Фрихолд без инвойса застройщику и суммы отправки. '
+                    'Проверь тип сделки — похоже, форма сохранила не то.')
+    return None
 
 
 MF_FREEHOLD_INPUT_FIELDS = (
