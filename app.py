@@ -770,6 +770,16 @@ class Deal(Base):
     katika_fee_thb = Column(Float)                     # выплата номиналу, баты
     katika_fee_usdt = Column(Float)                    # она же в USDT
     client_spread_percent = Column(Float)              # спред клиенту: курс продажи = курс покупки − спред
+    # ── Недвижимость фрихолд (оплата застройщику SWIFT-ом из-за рубежа) ──────
+    # Спека: docs/specs/2026-08-06-mf-freehold.md. Карман ОДИН: тайская компания
+    # не участвует, банк съедает комиссию ИЗ отправленной суммы, вся прибыль
+    # остаётся в USDT. Приход заводится так же, как у лизхолда.
+    invoice_amount_usd = Column(Float)                 # сколько должен получить застройщик
+    transfer_sent_usd = Column(Float)                  # сколько ушло с нашей стороны
+    transfer_fee_percent = Column(Float)               # комиссия за перевод, % от отправки
+    transfer_fee_fixed_usd = Column(Float)             # фикс за платёж, $
+    transfer_fee_usd = Column(Float)                   # производная: вся комиссия за перевод
+    transfer_arrive_usd = Column(Float)                # производная: дойдёт до застройщика
     doc_invoice_url = Column(String(500))
     doc_contract_url = Column(String(500))
     doc_payment_url = Column(String(500))
@@ -818,6 +828,12 @@ class Deal(Base):
             'katika_fee_thb': self.katika_fee_thb,
             'katika_fee_usdt': self.katika_fee_usdt,
             'client_spread_percent': self.client_spread_percent,
+            'invoice_amount_usd': self.invoice_amount_usd,
+            'transfer_sent_usd': self.transfer_sent_usd,
+            'transfer_fee_percent': self.transfer_fee_percent,
+            'transfer_fee_fixed_usd': self.transfer_fee_fixed_usd,
+            'transfer_fee_usd': self.transfer_fee_usd,
+            'transfer_arrive_usd': self.transfer_arrive_usd,
             'doc_invoice_url': self.doc_invoice_url,
             'doc_contract_url': self.doc_contract_url,
             'doc_payment_url': self.doc_payment_url,
@@ -956,7 +972,11 @@ def compute_agent_cascade(profit_usdt, volume_usdt, agents, crypto_base_usdt=Non
     return out, round(base, 2)
 
 
-MF_REALTY_KIND = 'mf_realty'
+MF_REALTY_KIND = 'mf_realty'      # недвижимость через тайскую компанию (лизхолд)
+MF_FREEHOLD_KIND = 'mf_freehold'  # недвижимость фрихолд: оплата SWIFT-ом из-за рубежа
+# Оба типа недвижимости: своя математика, возмещение не нужно, выгрузка в
+# «Cделки недвижимость», свой шаблон Telegram. Общая ветка кода — по этому кортежу.
+REALTY_KINDS = (MF_REALTY_KIND, MF_FREEHOLD_KIND)
 
 
 def compute_mf_realty(invoice_thb, buy_rate, payin_usdt, sell_rate=None,
@@ -1071,6 +1091,74 @@ def suggest_company_percent(invoice_thb, buy_rate, payin_usdt, agents=None,
         free_usdt = r['gross_profit_usdt'] - r['agents_total_usdt'] - float(keep_usdt or 0)
         percent = max(0.0, free_usdt * buy_rate / invoice_thb * 100)
     return min(round(math.floor(percent * 100) / 100, 2), 100.0)
+
+
+def compute_mf_freehold(payin_usdt, invoice_usd=None, sent_usd=None,
+                        fee_percent=None, fee_fixed_usd=None, agents=None):
+    """Расчёт сделки по недвижимости во фрихолде (оплата застройщику SWIFT-ом).
+
+    Спека: docs/specs/2026-08-06-mf-freehold.md. Отличие от лизхолда — карман
+    ОДИН: тайская компания в платеже не участвует, деньги уходят в USD со счёта
+    за пределами Таиланда, поэтому вся прибыль остаётся в USDT.
+
+    Комиссия банка снимается С ОТПРАВЛЯЕМОЙ суммы (та же физика, что в
+    калькуляторе, коммит 22c6dfb), поэтому стороны считаются по-разному:
+      отправили S      → дойдёт  X = S·(1−p) − F
+      должно дойти X   → отправить S = (X + F)/(1−p)
+    Обратный вариант («доложить комиссию сверх X») обещал бы застройщику больше,
+    чем до него дойдёт.
+
+    Себестоимость сделки = вся отправленная сумма: комиссия уже внутри неё,
+    отдельной строкой её вычитать нельзя — получилось бы двойное списание.
+    Поэтому валовый доход = приход − отправка УЖЕ учитывает все расходы, и это
+    же число — база выплат агентам (решение Карима 06.08).
+
+    Ничего не пишет в БД — чистая функция, её же зовёт форма для превью.
+    """
+    payin = float(payin_usdt or 0)
+    invoice = float(invoice_usd or 0)
+    p = float(fee_percent or 0) / 100
+    fixed = float(fee_fixed_usd or 0)
+
+    if sent_usd not in (None, ''):
+        sent = float(sent_usd)
+        arrive = sent * (1 - p) - fixed if p < 1 else 0.0
+    elif invoice and p < 1:
+        arrive = invoice
+        sent = (invoice + fixed) / (1 - p)
+    else:
+        sent = arrive = 0.0
+    arrive = max(arrive, 0.0)
+    fee = max(sent - arrive, 0.0) if sent else 0.0
+
+    gross_profit = payin - sent          # уже после всех расходов: комиссия внутри отправки
+    volume = max(payin, sent)
+    computed, _ = compute_agent_cascade(gross_profit, volume,
+                                        [dict(a) for a in (agents or [])],
+                                        crypto_base_usdt=gross_profit)
+    agents_total = sum(a.get('_payout') or 0 for a in computed)
+    net_profit = gross_profit - agents_total
+
+    return {
+        'payin_usdt': round(payin, 2),
+        'invoice_usd': round(invoice, 2),
+        'sent_usd': round(sent, 2),
+        'arrive_usd': round(arrive, 2),
+        'fee_usd': round(fee, 2),
+        'fee_percent': round(p * 100, 4),
+        'fee_fixed_usd': round(fixed, 2),
+        # Фактическая доля комиссии в отправке — видно, во сколько обошёлся перевод
+        'effective_fee_percent': round(fee / sent * 100, 4) if sent else 0,
+        # Меньше нуля = застройщику дойдёт меньше инвойса, надо доотправить
+        'invoice_gap_usd': round(arrive - invoice, 2) if invoice else 0,
+        'gross_profit_usdt': round(gross_profit, 2),
+        'profit_percent': round(gross_profit / sent * 100, 2) if sent else 0,
+        'agents': computed,
+        'agents_total_usdt': round(agents_total, 2),
+        'net_profit_usdt': round(net_profit, 2),
+        # Минус = выплаты агентам больше заработка сделки
+        'net_shortfall_usdt': round(min(net_profit, 0), 2),
+    }
 
 
 class ReestrSnapshot(Base):
@@ -1446,6 +1534,10 @@ _MF_REALTY_COLUMNS = [
     ('client_spread_percent', 'DOUBLE PRECISION'), ('payout_tx_hashes', 'TEXT'),
     ('doc_invoice_url', 'VARCHAR(500)'), ('doc_contract_url', 'VARCHAR(500)'),
     ('doc_payment_url', 'VARCHAR(500)'),
+    # Фрихолд (оплата SWIFT-ом, один карман)
+    ('invoice_amount_usd', 'DOUBLE PRECISION'), ('transfer_sent_usd', 'DOUBLE PRECISION'),
+    ('transfer_fee_percent', 'DOUBLE PRECISION'), ('transfer_fee_fixed_usd', 'DOUBLE PRECISION'),
+    ('transfer_fee_usd', 'DOUBLE PRECISION'), ('transfer_arrive_usd', 'DOUBLE PRECISION'),
 ]
 try:
     with engine.connect() as conn:
@@ -1823,6 +1915,16 @@ GSHEET_REALTY_HEADERS = [
     'доход', 'выплата агенту', 'доход в usdt на кошельке', 'чистый доход',
     'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
 ]
+# Фрихолд — свой набор колонок: карман один, зато есть расход на перевод и
+# сумма, которая реально дойдёт до застройщика. Лист «<месяц> freehold».
+GSHEET_FREEHOLD_ALL = 'все сделки freehold'
+GSHEET_FREEHOLD_HEADERS = [
+    'Назначение', 'дата', 'направление', 'сумма руб', 'курс от брокера rub-usdt',
+    'от кого', 'приход usdt', 'инвойс застройщику usd', 'отправлено usd',
+    'комиссия за перевод %', 'фикс за перевод usd', 'комиссия за перевод usd',
+    'дойдёт застройщику usd', 'доход', 'выплата агенту', 'чистый доход',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+]
 GSHEET_REALTY_MONTHS = [
     'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
@@ -1877,15 +1979,28 @@ def realty_month_sheet_name(deal_date):
     return f'{GSHEET_REALTY_MONTHS[deal_date.month - 1]} leasehold'
 
 
-def _realty_find_month_worksheet(sh, name):
-    """Ищет лист месяца с допуском на опечатки в существующих названиях
-    («май leeshold» на проде). Сравниваем по месяцу, а не по полной строке."""
+def freehold_month_sheet_name(deal_date):
+    """Имя листа месяца для фрихолда: «август freehold» (в таблице уже есть «май freehold»)."""
+    return f'{GSHEET_REALTY_MONTHS[deal_date.month - 1]} freehold'
+
+
+def _find_month_worksheet(sh, name, keywords):
+    """Ищет лист месяца по ключевым словам, а не по полной строке.
+
+    Допуск на опечатки в существующих названиях («май leeshold» на проде):
+    сверяем месяц из начала имени + любое из keywords в заголовке.
+    """
     month = name.split()[0]
     for ws in sh.worksheets():
         title = ws.title.strip().lower()
-        if title.startswith(month) and ('leasehold' in title or 'leeshold' in title):
+        if title.startswith(month) and any(k in title for k in keywords):
             return ws
     return None
+
+
+def _realty_find_month_worksheet(sh, name):
+    """Лист месяца для лизхолда («июль leasehold», «май leeshold»)."""
+    return _find_month_worksheet(sh, name, ('leasehold', 'leeshold'))
 
 
 def build_realty_row(deal):
@@ -1932,6 +2047,41 @@ def build_realty_row(deal):
     ]
 
 
+def build_freehold_row(deal):
+    """Строка выгрузки сделки во фрихолде — порядок как в GSHEET_FREEHOLD_HEADERS."""
+    d = deal
+    direction = ''
+    if d.payin_method:
+        direction = 'usdt-usd' if d.payin_method.value == 'crypto_direct' else 'rub-usd'
+    agent_names = ', '.join(
+        a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
+    ) if d.agents else ''
+    return [
+        d.realty_purpose or '',
+        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
+        direction,
+        d.payin_amount_rub or '',
+        d.payin_rate_rub_usdt or '',
+        agent_names,                                     # от кого
+        d.payin_amount_usdt or '',
+        d.invoice_amount_usd or '',
+        d.transfer_sent_usd or '',
+        d.transfer_fee_percent or '',
+        d.transfer_fee_fixed_usd or '',
+        d.transfer_fee_usd or '',
+        d.transfer_arrive_usd or '',
+        # «доход» = приход − отправка, расходы на перевод уже внутри отправки
+        d.profit_usdt or '',
+        d.referrer_payout_usdt or '',
+        d.net_profit_usdt or '',
+        d.doc_invoice_url or '',
+        d.doc_contract_url or '',
+        d.doc_payment_url or '',
+        ', '.join(_payin_hash_list(d)),
+        d.id,                                            # CRM ID — якорь upsert
+    ]
+
+
 def sync_realty_deal_to_gsheet(deal):
     """Выгрузка сделки через MF Corp в таблицу «Cделки недвижимость».
 
@@ -1944,9 +2094,9 @@ def sync_realty_deal_to_gsheet(deal):
         return _sync_realty_deal_impl(deal)
 
 
-def _realty_upsert(ws, row, deal_id):
+def _realty_upsert(ws, row, deal_id, id_col=None):
     """Перезаписывает строку с этим CRM ID либо дописывает новую. True = вставка."""
-    id_col = len(GSHEET_REALTY_HEADERS)          # CRM ID — последняя колонка
+    id_col = id_col or len(GSHEET_REALTY_HEADERS)   # CRM ID — последняя колонка
     ids = ws.col_values(id_col)
     for idx, val in enumerate(ids, start=1):
         if val and str(val).strip() == str(deal_id):
@@ -1957,14 +2107,58 @@ def _realty_upsert(ws, row, deal_id):
     return True
 
 
-def _realty_get_or_create_ws(sh, title, rows=200):
+def _realty_get_or_create_ws(sh, title, rows=200, headers=None):
     """Лист по имени, создаётся с шапкой если его нет."""
+    headers = headers or GSHEET_REALTY_HEADERS
     try:
         return sh.worksheet(title)
     except Exception:
-        ws = sh.add_worksheet(title=title, rows=rows, cols=len(GSHEET_REALTY_HEADERS))
-        ws.append_row(GSHEET_REALTY_HEADERS, value_input_option='USER_ENTERED')
+        ws = sh.add_worksheet(title=title, rows=rows, cols=len(headers))
+        ws.append_row(headers, value_input_option='USER_ENTERED')
         return ws
+
+
+def _sheet_header(ws):
+    """Первая строка листа, пустой список если недоступна."""
+    try:
+        return [str(x).strip() for x in (ws.row_values(1) or [])]
+    except Exception:
+        return []
+
+
+def _sync_freehold_impl(sh, deal, when):
+    """Фрихолд: лист «<месяц> freehold», свои колонки.
+
+    Лист «май freehold» в таблице заполнен руками и по другой разметке —
+    дописать туда наши колонки значило бы разъехаться с шапкой. Поэтому при
+    несовпадении заголовка пишем в «<месяц> freehold CRM», а ручной лист
+    оставляем как есть.
+    """
+    title = freehold_month_sheet_name(when)
+    ws = _find_month_worksheet(sh, title, ('freehold',))
+    created = False
+    if ws is None:
+        ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+        created = True
+    else:
+        header = _sheet_header(ws)
+        if not any(header):
+            # Лист завели руками и не заполнили — без шапки строка читалась бы заголовком
+            ws.append_row(GSHEET_FREEHOLD_HEADERS, value_input_option='USER_ENTERED')
+        elif header != GSHEET_FREEHOLD_HEADERS:
+            title = f'{title} CRM'
+            ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
+            created = True
+    row = build_freehold_row(deal)
+    inserted = _realty_upsert(ws, row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+    try:
+        _realty_upsert(
+            _realty_get_or_create_ws(sh, GSHEET_FREEHOLD_ALL, rows=2000,
+                                     headers=GSHEET_FREEHOLD_HEADERS),
+            row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+    except Exception as e:
+        print(f'[GSheet freehold] сводный лист: {e}', flush=True)
+    return {'ok': True, 'sheet': ws.title, 'sheet_created': created, 'inserted': inserted}
 
 
 def _sync_realty_deal_impl(deal):
@@ -1973,7 +2167,10 @@ def _sync_realty_deal_impl(deal):
         if not gc:
             return {'ok': False, 'error': 'no_credentials'}
         sh = gc.open_by_key(GSHEET_REALTY_ID)
-        month_name = realty_month_sheet_name(deal.created_at or datetime.utcnow())
+        when = deal.created_at or datetime.utcnow()
+        if deal.deal_kind == MF_FREEHOLD_KIND:
+            return _sync_freehold_impl(sh, deal, when)
+        month_name = realty_month_sheet_name(when)
         ws = _realty_find_month_worksheet(sh, month_name)
         created = False
         if ws is None:
@@ -2575,10 +2772,54 @@ def _mf_realty_telegram_text(deal):
     return msg
 
 
+def _mf_freehold_telegram_text(deal):
+    """Текст уведомления по сделке во фрихолде.
+
+    Главное, чего нет в общем шаблоне: сколько съел перевод и сколько РЕАЛЬНО
+    дойдёт до застройщика. Прибыль здесь тонкая (сотни долларов на десятки
+    тысяч), поэтому расход показываем строкой, а не прячем в себестоимость.
+    """
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    client = (deal.client.name if deal.client else deal.client_name) or 'без имени'
+    sent = deal.transfer_sent_usd or 0
+    arrive = deal.transfer_arrive_usd or 0
+    fee = deal.transfer_fee_usd or 0
+    invoice = deal.invoice_amount_usd or 0
+    msg = (
+        f"🏠 <b>Фрихолд {deal.id} — {client} — {date_str}</b>\n"
+        f"{deal.realty_purpose or ''}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Отправлено: ${sent:,.2f}\n"
+        f"— комиссия за перевод: ${fee:,.2f} "
+        f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
+        f"— дойдёт застройщику: ${arrive:,.2f}"
+    )
+    gap = round(arrive - invoice, 2) if invoice else 0
+    if gap < -0.01:
+        msg += f"\n⚠️ Инвойс ${invoice:,.2f} — не хватает ${-gap:,.2f}"
+    agents = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
+    if agents:
+        labels = {'markup': 'от курса', 'fixed': 'фикс',
+                  'revshare': 'от прибыли', 'crypto_share': 'от прибыли в крипте'}
+        msg += "\n— Партнёры —"
+        for a in agents:
+            lbl = labels.get(a.comp_model, a.comp_model or '')
+            pct = f"{a.percent or 0}% " if a.comp_model != 'fixed' else ''
+            msg += f"\n• Ур.{a.tier or 1} {a.name or '-'} · {pct}{lbl} → ${a.payout_usdt or 0:,.2f}"
+        msg += f"\nВыплаты партнёрам: ${deal.referrer_payout_usdt or 0:,.2f}"
+    msg += (
+        f"\n\n💰 <b>Чистый доход: ${deal.net_profit_usdt or 0:,.2f}</b>\n"
+        f"   прибыль до выплат ${deal.profit_usdt or 0:,.2f} (после расходов на перевод)"
+    )
+    return msg
+
+
 def _send_deal_telegram(deal):
     """Отправляет уведомление о сделке в Telegram"""
     if deal.deal_kind == MF_REALTY_KIND:
         return send_telegram_notification(_mf_realty_telegram_text(deal))
+    if deal.deal_kind == MF_FREEHOLD_KIND:
+        return send_telegram_notification(_mf_freehold_telegram_text(deal))
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_usdt = deal.payout_amount_usdt or 0
     profit = deal.profit_usdt or 0
@@ -3444,6 +3685,8 @@ def _apply_deal_agents(session, deal, agents_data):
     deal.agents.clear()  # delete-orphan удалит старые строки на flush
     # Сделки через MF Corp: комиссия заперта в батах на счёте компании и в
     # profit_usdt уже не входит (там только крипта) — она и есть база crypto_share.
+    # Фрихолд идёт обычной веткой: карман один, а profit_usdt там уже посчитан
+    # после всех расходов на перевод — именно он и есть база выплат агентам.
     is_mf = deal.deal_kind == MF_REALTY_KIND
     crypto_base = (deal.profit_usdt or 0) if is_mf else None
     # revshare — «% от ПРИБЫЛИ», а прибыль MF-сделки лежит в двух карманах:
@@ -3790,6 +4033,27 @@ def preview_mf_realty():
     return jsonify({'success': True, 'result': result})
 
 
+@app.route('/api/deals/mf-freehold/preview', methods=['POST'])
+def preview_mf_freehold():
+    """Расчёт сделки во фрихолде без сохранения — для формы.
+
+    Показывает цепочку «приход → отправка → комиссия перевода → дойдёт
+    застройщику» и прибыль после всех расходов вместе с выплатами агентам.
+    """
+    data = request.get_json() or {}
+    try:
+        result = compute_mf_freehold(
+            data.get('payin_amount_usdt'),
+            invoice_usd=data.get('invoice_amount_usd'),
+            sent_usd=data.get('transfer_sent_usd'),
+            fee_percent=data.get('transfer_fee_percent'),
+            fee_fixed_usd=data.get('transfer_fee_fixed_usd'),
+            agents=data.get('agents') or [])
+    except (TypeError, ValueError) as e:
+        return jsonify({'success': False, 'error': f'Некорректные данные: {e}'}), 400
+    return jsonify({'success': True, 'result': result})
+
+
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
     session = get_session()
@@ -3965,6 +4229,8 @@ def create_deal():
             # обычный пересчёт прибыли для неё не подходит
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
+            elif deal.deal_kind == MF_FREEHOLD_KIND:
+                _apply_mf_freehold(deal, data)
             else:
                 _recalculate_deal_financials(deal, data)
 
@@ -3972,7 +4238,7 @@ def create_deal():
             # одиночного реферала (без пересчёта) для единого источника кабинета
             if data.get('agents'):
                 _apply_deal_agents(session, deal, data['agents'])
-            elif deal.deal_kind == MF_REALTY_KIND:
+            elif deal.deal_kind in REALTY_KINDS:
                 _apply_deal_agents(session, deal, [])  # проставит остаток и чистый доход
             else:
                 _mirror_legacy_agent(session, deal)
@@ -3994,9 +4260,9 @@ def create_deal():
         # Если сделка создана сразу со статусом completed (skip_sync — для импорта исторических сделок)
         skip_sync = data.get('skip_sync', False)
 
-        # Недвижимость через MF Corp: прибыль известна сразу (возмещения нет),
+        # Недвижимость (лизхолд/фрихолд): прибыль известна сразу (возмещения нет),
         # поэтому выгружаем и уведомляем не дожидаясь статуса completed
-        if deal.deal_kind == MF_REALTY_KIND and not skip_sync:
+        if deal.deal_kind in REALTY_KINDS and not skip_sync:
             try:
                 sync_realty_deal_to_gsheet(deal)
             except Exception as e:
@@ -4009,7 +4275,7 @@ def create_deal():
                 except Exception as e:
                     print(f'[Telegram] realty error on create: {e}')
 
-        if deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind != MF_REALTY_KIND:
+        if deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind not in REALTY_KINDS:
             send_deal_completed_webhook(deal)
             notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
@@ -4167,9 +4433,13 @@ def update_deal(deal_id):
             deal.deal_kind = data.get('deal_kind') or None
 
         # Автоматический пересчёт прибыли и выплаты рефереру.
-        # Недвижимость через MF Corp — по своим формулам (два кармана).
-        if deal.deal_kind == MF_REALTY_KIND:
-            _apply_mf_realty(deal, data)
+        # Недвижимость — по своим формулам (лизхолд: два кармана; фрихолд: расходы
+        # на перевод внутри отправки), обычный расчёт для них не подходит.
+        if deal.deal_kind in REALTY_KINDS:
+            if deal.deal_kind == MF_REALTY_KIND:
+                _apply_mf_realty(deal, data)
+            else:
+                _apply_mf_freehold(deal, data)
             if 'agents' not in data:
                 _apply_deal_agents(session, deal, [
                     {'referrer_id': r.referrer_id, 'name': r.name, 'tier': r.tier,
@@ -4196,8 +4466,8 @@ def update_deal(deal_id):
                 deal.referrer_percent = None
                 deal.referrer_markup_percent = None
                 deal.referrer_comp_model = None
-        elif deal.deal_kind != MF_REALTY_KIND:
-            # Для MF Corp агенты уже пересчитаны выше вместе с карманами
+        elif deal.deal_kind not in REALTY_KINDS:
+            # У недвижимости агенты уже пересчитаны выше вместе с прибылью
             _mirror_legacy_agent(session, deal)
 
         session.commit()
@@ -4213,17 +4483,17 @@ def update_deal(deal_id):
                     )
                     session.commit()
 
-        # Недвижимость через MF Corp: правки догоняют таблицу через upsert
-        # по CRM ID, дубли строк не появляются
-        if deal.deal_kind == MF_REALTY_KIND:
+        # Недвижимость: правки догоняют таблицу через upsert по CRM ID,
+        # дубли строк не появляются
+        if deal.deal_kind in REALTY_KINDS:
             try:
                 sync_realty_deal_to_gsheet(deal)
             except Exception as e:
                 print(f'[GSheet realty] sync error on update: {e}')
             # Уведомление шлём при завершении — как у обычных сделок, оператор
             # ждёт его именно после «Завершить». Второй случай: обычную сделку
-            # переделали в MF-сделку, тогда уведомления по ней ещё не было
-            became_mf = old_kind != MF_REALTY_KIND
+            # переделали в сделку по недвижимости, тогда уведомления ещё не было
+            became_mf = old_kind != deal.deal_kind
             just_done = (deal.status == DealStatus.COMPLETED
                          and old_status != DealStatus.COMPLETED)
             if just_done or (became_mf and deal.status == DealStatus.COMPLETED):
@@ -4234,7 +4504,7 @@ def update_deal(deal_id):
 
         # Webhook при завершении
         if (deal.status == DealStatus.COMPLETED and old_status != DealStatus.COMPLETED
-                and deal.deal_kind != MF_REALTY_KIND):
+                and deal.deal_kind not in REALTY_KINDS):
             send_deal_completed_webhook(deal)
             notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram только если сделка ещё НЕ была возмещена
@@ -5152,6 +5422,51 @@ def _apply_mf_realty(deal, data):
     # карман, она приплюсовывается в net_profit_usdt (см. _apply_deal_agents)
     deal.profit_usdt = r['crypto_profit_usdt']
     deal.profit_percent = (r['crypto_profit_usdt'] / r['cost_usdt'] * 100) if r['cost_usdt'] else 0
+    # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
+    deal.needs_reimbursement = False
+    return r
+
+
+MF_FREEHOLD_INPUT_FIELDS = (
+    'realty_purpose', 'invoice_amount_usd', 'transfer_sent_usd',
+    'transfer_fee_percent', 'transfer_fee_fixed_usd',
+    'doc_invoice_url', 'doc_contract_url', 'doc_payment_url',
+)
+
+
+def _apply_mf_freehold(deal, data):
+    """Поля и производные сделки во фрихолде: отправка, комиссия перевода, прибыль.
+
+    Прибыль сделки = приход − отправка, и это УЖЕ после всех расходов (комиссия
+    банка снимается с отправляемой суммы). Выплаты агентам считаются позже, в
+    _apply_deal_agents, от этого же числа — обычной веткой, без карманов.
+    """
+    for f in MF_FREEHOLD_INPUT_FIELDS:
+        if f in data:
+            val = data.get(f)
+            setattr(deal, f, val if val not in ('', None) else None)
+
+    # Приход в рублях: USDT считаем по курсу брокера, как в лизхолде (rub-*)
+    if not deal.payin_amount_usdt and deal.payin_amount_rub and deal.payin_rate_rub_usdt:
+        deal.payin_amount_usdt = round(deal.payin_amount_rub / deal.payin_rate_rub_usdt, 2)
+
+    # Отправку задают либо фактом, либо через инвойс. Источник истины — то, что
+    # прислали ИМЕННО СЕЙЧАС: иначе сохранённый факт навсегда перебивал бы правку
+    # инвойса или комиссии и сделку нельзя было бы пересчитать (грабля лизхолда).
+    sent = deal.transfer_sent_usd if data.get('transfer_sent_usd') not in (None, '') else None
+
+    r = compute_mf_freehold(
+        deal.payin_amount_usdt, invoice_usd=deal.invoice_amount_usd, sent_usd=sent,
+        fee_percent=deal.transfer_fee_percent, fee_fixed_usd=deal.transfer_fee_fixed_usd,
+        agents=[])
+
+    deal.transfer_sent_usd = r['sent_usd']
+    deal.transfer_arrive_usd = r['arrive_usd']
+    deal.transfer_fee_usd = r['fee_usd']
+    # С нашей стороны ушла вся отправка — она и есть себестоимость сделки
+    deal.payout_amount_usdt = r['sent_usd']
+    deal.profit_usdt = r['gross_profit_usdt']
+    deal.profit_percent = r['profit_percent']
     # Платим со своего кошелька, а не из кармана фаундера — возмещать нечего
     deal.needs_reimbursement = False
     return r
