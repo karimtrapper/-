@@ -1166,7 +1166,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Сумма USDT</label>
-                                <input type="number" step="any" class="form-control" name="payin_amount_usdt" placeholder="1000">
+                                <input type="number" step="any" class="form-control" name="payin_amount_usdt" placeholder="1000"
+                                    oninput="payinUsdtChanged()">
+                                <small style="color:#6b7280;">введи сколько USDT реально пришло — курс посчитается из рублей</small>
                             </div>
                         </div>
 
@@ -1190,7 +1192,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
                                 <input type="number" step="any" class="form-control" name="payin_rate_rub_usdt" placeholder="92.5"
-                                    oninput="autoCalcUsdt()">
+                                    oninput="payinRateChanged()">
                             </div>
                         </div>
 
@@ -4439,6 +4441,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('fhDealToggle').checked = false;
             toggleMfDeal(); mfReset();
             toggleFhDeal(); fhReset();
+            payinMode = 'rate';
 
             // Сбрасываем кнопки
             const submitBtn = document.querySelector('#createDealForm button[type="submit"]');
@@ -6561,19 +6564,36 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // Авто-расчёт USDT из RUB и курса (только при создании, не при редактировании)
+        // Что из тройки «рубли — курс — USDT» задано руками: 'rate' (курс известен,
+        // USDT выводим) или 'usdt' (пришло столько USDT, курс выводим из рублей).
+        // Без этого ввод USDT затирался бы обратным пересчётом при любой правке суммы.
+        let payinMode = 'rate';
+
+        function payinRateChanged() { payinMode = 'rate'; autoCalcUsdt(); }
+
+        function payinUsdtChanged() { payinMode = 'usdt'; autoCalcUsdt(); }
+
+        // Пересчёт сводки недвижимости: у обоих типов приход — входной параметр
+        function realtyPayinRecalc() {
+            if (document.getElementById('mfDealToggle')?.checked) mfRecalc();
+            if (document.getElementById('fhDealToggle')?.checked) fhRecalc();
+        }
+
         function autoCalcUsdt() {
             const form = document.getElementById('createDealForm');
-            // Не перезаписывать USDT при редактировании существующей сделки
-            if (editingDealId !== null) {
-                calculateProfit();
-                return;
-            }
             const rub = parseFloat(form.payin_amount_rub.value) || 0;
             const rate = parseFloat(form.payin_rate_rub_usdt.value) || 0;
-            if (rub > 0 && rate > 0) {
+            const usdt = parseFloat(form.payin_amount_usdt.value) || 0;
+            if (payinMode === 'usdt') {
+                // Приход в USDT задан руками — он источник истины (это то, что реально
+                // купили), поэтому из рублей выводим КУРС, а не наоборот
+                if (rub > 0 && usdt > 0) form.payin_rate_rub_usdt.value = (rub / usdt).toFixed(4);
+            } else if (editingDealId === null && rub > 0 && rate > 0) {
+                // При редактировании USDT не перезаписываем: там уже стоит факт сделки
                 form.payin_amount_usdt.value = (rub / rate).toFixed(2);
             }
             calculateProfit();
+            realtyPayinRecalc();
         }
 
         function calculateProfit() {
@@ -6775,6 +6795,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     document.getElementById('fhDealToggle').checked = false;
                     toggleMfDeal(); mfReset();
                     toggleFhDeal(); fhReset();
+                    payinMode = 'rate';
                     if (isEditMode) cancelEditMode();
                     showSection('deals');
                     loadDashboard();
