@@ -13,6 +13,7 @@
 import pytest
 import sys
 import os
+import json
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -440,3 +441,55 @@ class TestTelegram:
         finally:
             s.close()
         assert 'не хватает' in text
+
+
+# ── Фактические переводы: чем ушли деньги ────────────────────────────────
+
+class TestActualTransfers:
+    def test_marked_transfers_become_the_fact(self, tc):
+        """Отметили переводы — их сумма и есть отправка, поле можно не заполнять."""
+        deal = tc.post('/api/deals', json=_fh_payload(payout_tx_hashes=[
+            {'hash': 'aa' * 16, 'amount_usdt': 20000, 'to_address': 'TX1', 'date': '06.08.2026'},
+            {'hash': 'bb' * 16, 'amount_usdt': 19373, 'to_address': 'TX1', 'date': '06.08.2026'},
+        ])).json['deal']
+        assert approx(deal['transfer_sent_usd'], 39373.00)
+        assert approx(deal['transfer_arrive_usd'], 39008.02)
+        assert approx(deal['profit_usdt'], 160.77)
+        assert len(deal['payout_tx_hashes']) == 2
+        assert deal['payout_tx_hashes'][0]['to_address'] == 'TX1', 'адрес храним — видно КУДА ушло'
+
+    def test_manual_fact_wins_over_transfers(self, tc):
+        """Ввели отправку руками — она приоритетнее суммы переводов."""
+        deal = tc.post('/api/deals', json=_fh_payload(
+            transfer_sent_usd=39500,
+            payout_tx_hashes=[{'hash': 'cc' * 16, 'amount_usdt': 39373}])).json['deal']
+        assert approx(deal['transfer_sent_usd'], 39500)
+
+    def test_preview_counts_transfers(self, tc):
+        r = tc.post('/api/deals/mf-freehold/preview', json={
+            'payin_amount_usdt': 39533.77, 'invoice_amount_usd': 39008.02,
+            'transfer_fee_percent': 0.8, 'transfer_fee_fixed_usd': 50,
+            'payout_tx_hashes': [{'hash': 'dd' * 16, 'amount_usdt': 39373}],
+        }).json
+        assert r['success'] and approx(r['result']['sent_usd'], 39373.00)
+
+    def test_telegram_lists_transfers(self):
+        s, deal = _make_freehold_deal(payout_tx_hashes=json.dumps([
+            {'hash': 'ee' * 16, 'amount_usdt': 39373, 'to_address': 'TXaddress', 'date': '06.08.2026'}]))
+        try:
+            text = _mf_freehold_telegram_text(deal)
+        finally:
+            s.close()
+        assert 'Переводы (1)' in text and 'TXaddress' in text
+
+    def test_export_uses_payout_hashes(self, monkeypatch):
+        """В выгрузку идут хэши отправки — по ним сверяют платёж."""
+        sheet = FakeSheet()
+        monkeypatch.setattr(A, 'get_gsheet_client', lambda: FakeClient(sheet))
+        s, deal = _make_freehold_deal(payout_tx_hashes=json.dumps([
+            {'hash': 'ff' * 16, 'amount_usdt': 39373}]))
+        try:
+            sync_realty_deal_to_gsheet(deal)
+        finally:
+            s.close()
+        assert 'ff' * 16 in sheet.worksheet('август freehold').rows[1][19]

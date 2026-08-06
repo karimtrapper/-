@@ -2077,7 +2077,8 @@ def build_freehold_row(deal):
         d.doc_invoice_url or '',
         d.doc_contract_url or '',
         d.doc_payment_url or '',
-        ', '.join(_payin_hash_list(d)),
+        # Сверяют отправку: если переводы отмечены — их хэши, иначе хэши прихода
+        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
         d.id,                                            # CRM ID — якорь upsert
     ]
 
@@ -2797,6 +2798,22 @@ def _mf_freehold_telegram_text(deal):
     gap = round(arrive - invoice, 2) if invoice else 0
     if gap < -0.01:
         msg += f"\n⚠️ Инвойс ${invoice:,.2f} — не хватает ${-gap:,.2f}"
+    # Куда и сколько реально ушло — отправку сверяют по этим переводам
+    payout_parts = []
+    if deal.payout_tx_hashes:
+        try:
+            payout_parts = json.loads(deal.payout_tx_hashes)
+        except (ValueError, TypeError):
+            payout_parts = []
+    if payout_parts:
+        msg += f"\n— Переводы ({len(payout_parts)}) —"
+        for pt in payout_parts:
+            addr = (pt.get('to_address') or '')[:10]
+            msg += f"\n• ${float(pt.get('amount_usdt') or 0):,.2f}"
+            if addr:
+                msg += f" → {addr}…"
+            if pt.get('date'):
+                msg += f" · {pt['date']}"
     agents = sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0)) if deal.agents else []
     if agents:
         labels = {'markup': 'от курса', 'fixed': 'фикс',
@@ -4042,10 +4059,16 @@ def preview_mf_freehold():
     """
     data = request.get_json() or {}
     try:
+        sent = data.get('transfer_sent_usd')
+        if sent in (None, ''):
+            # Отмеченные переводы = факт отправки, поле «отправлено» можно не трогать
+            parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
+            amounts = [x['amount_usdt'] for x in parts if x['amount_usdt'] is not None]
+            sent = round(sum(amounts), 2) if amounts else None
         result = compute_mf_freehold(
             data.get('payin_amount_usdt'),
             invoice_usd=data.get('invoice_amount_usd'),
-            sent_usd=data.get('transfer_sent_usd'),
+            sent_usd=sent,
             fee_percent=data.get('transfer_fee_percent'),
             fee_fixed_usd=data.get('transfer_fee_fixed_usd'),
             agents=data.get('agents') or [])
@@ -5450,10 +5473,21 @@ def _apply_mf_freehold(deal, data):
     if not deal.payin_amount_usdt and deal.payin_amount_rub and deal.payin_rate_rub_usdt:
         deal.payin_amount_usdt = round(deal.payin_amount_rub / deal.payin_rate_rub_usdt, 2)
 
+    # Фактические переводы, которыми ушли деньги: адрес и хэш, чтобы отправку
+    # можно было сверить в блокчейне, а не верить полю с суммой
+    if 'payout_tx_hashes' in data:
+        parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
+        deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
+        if parts and parts[0].get('hash'):
+            deal.payout_tx_hash = parts[0]['hash']
+
     # Отправку задают либо фактом, либо через инвойс. Источник истины — то, что
     # прислали ИМЕННО СЕЙЧАС: иначе сохранённый факт навсегда перебивал бы правку
     # инвойса или комиссии и сделку нельзя было бы пересчитать (грабля лизхолда).
     sent = deal.transfer_sent_usd if data.get('transfer_sent_usd') not in (None, '') else None
+    # Переводы отмечены — их сумма и есть фактическая отправка
+    if sent is None:
+        sent = _payout_transfers_total(deal)
 
     r = compute_mf_freehold(
         deal.payin_amount_usdt, invoice_usd=deal.invoice_amount_usd, sent_usd=sent,

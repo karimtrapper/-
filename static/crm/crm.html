@@ -1292,8 +1292,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>
                             </div>
 
-                            <div class="form-group" style="margin-bottom:1rem;">
-                                <label class="form-label">Переводы в MF Corp (факт)</label>
+                            <!-- Слот блока фактических переводов: он общий для лизхолда и
+                                 фрихолда и переезжает в активную форму (см. moveRealtyPayoutBlock) -->
+                            <div id="mfPayoutSlot"></div>
+
+                            <div class="form-group" id="realtyPayoutTxBlock" style="margin-bottom:1rem;">
+                                <label class="form-label" id="realtyPayoutTxLabel">Переводы в MF Corp (факт)</label>
                                 <button type="button" class="btn btn-secondary" id="mfPayoutPickerBtn"
                                     onclick="toggleMfPayoutPicker()" style="width:100%;margin-bottom:0.5rem;">
                                     ➕ Выбрать переводы
@@ -1315,7 +1319,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>
                                 <div id="mfPayoutTxWarn" style="display:none;margin-bottom:0.5rem;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;"></div>
                                 <div id="mfPayoutTxPoolBox" style="margin-bottom:0.5rem;"></div>
-                                <small style="color:#6b7280;">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</small>
+                                <small style="color:#6b7280;" id="realtyPayoutTxHint">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</small>
                             </div>
 
                             <div id="mfSummary" style="margin-bottom:1rem;"></div>
@@ -1375,6 +1379,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <small style="color:#6b7280;">введи факт — посчитаем, сколько дойдёт</small>
                                 </div>
                             </div>
+
+                            <!-- Сюда переезжает общий блок фактических переводов -->
+                            <div id="fhPayoutSlot"></div>
 
                             <div id="fhSummary" style="margin-bottom:1rem;"></div>
 
@@ -3994,6 +4001,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <p><strong>Дойдёт застройщику:</strong> $${(deal.transfer_arrive_usd || 0).toFixed(2)}
                                ${(deal.invoice_amount_usd && (deal.transfer_arrive_usd || 0) - deal.invoice_amount_usd < -0.01)
                                   ? `<span style="color:#dc2626;">— не хватает $${(deal.invoice_amount_usd - (deal.transfer_arrive_usd || 0)).toFixed(2)}</span>` : ''}</p>
+                            ${(deal.payout_tx_hashes && deal.payout_tx_hashes.length) ? (() => {
+                                const total = deal.payout_tx_hashes.reduce((a, t) => a + (Number(t.amount_usdt) || 0), 0);
+                                return `<div style="background:#ecfeff;padding:0.5rem;border-radius:6px;border:1px solid #a5f3fc;margin:0.5rem 0;">
+                                    <p style="margin:0 0 4px;"><strong>Переводы (${deal.payout_tx_hashes.length}):</strong></p>
+                                    ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
+                                        <strong style="color:#0e7490;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                        ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
+                                        ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
+                                        <a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#cffafe;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#0e7490;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                    </p>`).join('')}
+                                    <p style="margin:4px 0 0;color:#0e7490;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
+                                </div>`;
+                            })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — отправка взята из поля, а не из блокчейна.</p>'}
                             ${deal.doc_payment_url ? `<p><strong>Подтверждение платежа:</strong> <a href="${escapeHtml(deal.doc_payment_url)}" target="_blank">открыть</a></p>` : ''}
                             <hr style="margin: 1rem 0;">
                         ` : ''}
@@ -5533,6 +5553,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Блок хэшей прихода зависит и от типа сделки: у недвижимости он нужен
             // при любом методе Pay-In, поэтому пересобираем видимость полей метода
             applyPayinMethodFields();
+            moveRealtyPayoutBlock();
+        }
+
+        // Блок фактических переводов один на оба типа недвижимости: логика выбора,
+        // фильтр и пул общие, различается только подпись. Вместо копии разметки
+        // физически переносим блок в активную форму — обработчики inline, переезд переживают.
+        function moveRealtyPayoutBlock() {
+            const block = document.getElementById('realtyPayoutTxBlock');
+            if (!block) return;
+            const isFh = document.getElementById('fhDealToggle')?.checked;
+            const slot = document.getElementById(isFh ? 'fhPayoutSlot' : 'mfPayoutSlot');
+            if (slot && block.parentElement !== slot) slot.appendChild(block);
+            const label = document.getElementById('realtyPayoutTxLabel');
+            const hint = document.getElementById('realtyPayoutTxHint');
+            if (label) label.textContent = isFh ? 'Переводы застройщику (факт)' : 'Переводы в MF Corp (факт)';
+            if (hint) hint.textContent = isFh
+                ? 'отметь переводы, которыми реально ушли деньги — сумма станет фактической отправкой'
+                : 'отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту';
         }
 
         // ===== Недвижимость через MF Corporation =====
@@ -5734,7 +5772,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('fhDealHint').style.display = isFh ? 'block' : 'none';
             applyRealtyLayout();
             syncDealKindSelect();
-            if (isFh) fhRecalc();
+            if (isFh) { fhRecalc(); loadMfPayoutTx(); }
         }
 
         function fhInputs() {
@@ -5756,6 +5794,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 transfer_fee_percent: num('fhFeePercent'),
                 transfer_fee_fixed_usd: num('fhFeeFixed'),
                 payin_amount_usdt: payin,
+                payout_tx_hashes: mfPayoutTxPool,
                 agents: stdAgentsSerialize(),
             };
         }
@@ -5853,6 +5892,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 transfer_sent_usd: num('fhSentUsd'),
                 transfer_fee_percent: num('fhFeePercent'),
                 transfer_fee_fixed_usd: num('fhFeeFixed'),
+                payout_tx_hashes: mfPayoutTxPool,
                 doc_invoice_url: val('fhDocInvoice'),
                 doc_contract_url: val('fhDocContract'),
                 doc_payment_url: val('fhDocPayment'),
@@ -5879,6 +5919,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             set('fhDocInvoice', deal.doc_invoice_url);
             set('fhDocContract', deal.doc_contract_url);
             set('fhDocPayment', deal.doc_payment_url);
+            resetMfPayoutTxPool(deal.payout_tx_hashes);
             fhRecalcNow();
         }
 
@@ -5889,6 +5930,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const pct = document.getElementById('fhFeePercent'); if (pct) pct.value = '0.8';
             const fix = document.getElementById('fhFeeFixed'); if (fix) fix.value = '50';
             const box = document.getElementById('fhSummary'); if (box) box.innerHTML = '';
+            resetMfPayoutTxPool([]);
             _fhLast = null;
         }
 
@@ -5991,14 +6033,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('mfPayoutPicker').style.display = 'none';
             showToast(`Добавлено переводов: ${picked.length}`);
             renderMfPayoutTxPool();
-            mfRecalcNow();
+            realtyPayoutRecalc();
         }
 
         function removeMfPayoutTx(index) {
             mfPayoutTxPool.splice(index, 1);
             renderMfPayoutTxPool();
             renderMfPayoutPicker();   // снятый перевод снова доступен для выбора
-            mfRecalcNow();
+            realtyPayoutRecalc();
+        }
+
+        // Пул переводов общий, пересчитать надо ту форму, что открыта
+        function realtyPayoutRecalc() {
+            if (document.getElementById('fhDealToggle')?.checked) fhRecalcNow();
+            else mfRecalcNow();
         }
 
         function resetMfPayoutTxPool(parts) {
@@ -6121,7 +6169,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     customAgents[i].percent = r.comp_model === 'markup' ? (r.markup_percent || 0) : (r.default_percent || 0);
                 }
             }
-            if (k === 'comp_model') renderCustomAgents();
+            // Перерисовываем и при выборе реферера: из профиля подставляются модель
+            // и процент, а селект оставался на прежнем значении — на экране revshare,
+            // в данных markup, и выплата считалась от объёма (кейс 06.08: $299.70 вместо $6)
+            if (k === 'comp_model' || k === 'referrer_id') renderCustomAgents();
             calcCustomProfit();
         }
 
@@ -6204,7 +6255,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function stdAgentsAdd(){ const t=stdAgentsMode==='flat'?1:(stdAgents.reduce((m,a)=>Math.max(m,a.tier||1),0)+1); stdAgents.push({referrer_id:null,name:'',tier:t,comp_model:'revshare',percent:10,fixed_usdt:0}); renderStdAgents(); calculateProfit(); }
         function stdAgentsRemove(i){ stdAgents.splice(i,1); renderStdAgents(); calculateProfit(); }
         function stdAgentsTier(i,d){ stdAgents[i].tier=Math.max(1,(stdAgents[i].tier||1)+d); stdAgentsMode=null; renderStdAgents(); calculateProfit(); }
-        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); if(document.getElementById('fhDealToggle')?.checked) fhRecalc(); }
+        function stdAgentsField(i,k,v){ if(k==='percent'||k==='fixed_usdt') v=parseFloat(v)||0; stdAgents[i][k]=v; if(k==='referrer_id'){ const r=(_referrersCache||[]).find(x=>String(x.id)===String(v)); if(r){ stdAgents[i].name=r.name; stdAgents[i].comp_model=r.comp_model||'revshare'; stdAgents[i].percent=r.comp_model==='markup'?(r.markup_percent||0):(r.default_percent||0);} } if(k==='comp_model'||k==='referrer_id') renderStdAgents(); calculateProfit(); if(document.getElementById('mfDealToggle')?.checked) mfRecalc(); if(document.getElementById('fhDealToggle')?.checked) fhRecalc(); }
         function renderStdAgents(){ const box=document.getElementById('agentsBlockStd'); if(!box) return; const refs=(_referrersCache||[]).filter(r=>r.active); box.innerHTML=stdAgents.map((a,i)=>{ const placeholder=(!a.referrer_id&&a.name)?`<option value="" selected>${escapeHtml(a.name)} (вручную)</option>`:'<option value="">— выбрать агента —</option>'; const opts=placeholder+refs.map(r=>`<option value="${r.id}" ${String(r.id)===String(a.referrer_id)?'selected':''}>${r.name}</option>`).join(''); const valField=a.comp_model==='fixed'?`<input type="number" step="any" class="form-control" value="${a.fixed_usdt||0}" oninput="stdAgentsField(${i},'fixed_usdt',this.value)" placeholder="$" style="width:90px;">`:`<input type="number" step="any" class="form-control" value="${a.percent||0}" oninput="stdAgentsField(${i},'percent',this.value)" placeholder="%" style="width:90px;">`; return `<div style="background:white;border:1px solid #d1fae5;border-radius:8px;padding:10px;margin-bottom:8px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;"><span style="display:inline-flex;align-items:center;gap:4px;background:#6366f1;color:white;border-radius:999px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;"><button type="button" onclick="stdAgentsTier(${i},-1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">−</button>Ур.${a.tier||1}<button type="button" onclick="stdAgentsTier(${i},1)" style="border:none;background:rgba(255,255,255,.25);color:white;border-radius:50%;width:18px;height:18px;cursor:pointer;">+</button></span><select class="form-control" onchange="stdAgentsField(${i},'referrer_id',this.value)" style="flex:1;">${opts}</select><button type="button" onclick="stdAgentsRemove(${i})" style="border:none;background:transparent;color:#94a3b8;font-size:16px;cursor:pointer;">🗑</button></div><div style="display:flex;align-items:center;gap:8px;"><select class="form-control" onchange="stdAgentsField(${i},'comp_model',this.value)" style="flex:1;"><option value="revshare" ${a.comp_model==='revshare'?'selected':''}>revshare (% от прибыли)</option><option value="markup" ${a.comp_model==='markup'?'selected':''}>markup (+% к курсу)</option><option value="fixed" ${a.comp_model==='fixed'?'selected':''}>fixed ($ сумма)</option><option value="crypto_share" ${a.comp_model==='crypto_share'?'selected':''}>% от прибыли в крипте (MF Corp)</option></select>${valField}<span style="min-width:90px;text-align:right;font-weight:700;color:#16a34a;" id="saPay${i}">$0</span></div></div>`; }).join(''); document.getElementById('saPreCascade')?.classList.toggle('active',stdAgentsMode==='cascade'); document.getElementById('saPreFlat')?.classList.toggle('active',stdAgentsMode==='flat'); }
         function stdAgentsRecalc(){
             // Недвижимость через MF Corp считается по своим формулам (два кармана).
