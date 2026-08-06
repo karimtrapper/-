@@ -5792,6 +5792,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             const gap = r.invoice_gap_usd || 0;
             const negative = r.gross_profit_usdt < 0;
+            // Markup берётся от ОБЪЁМА, а не от прибыли: на марже фрихолда 0.4%
+            // наценка 0.5% больше всего заработка сделки. Это не ошибка расчёта —
+            // наценку партнёра клиент должен оплатить в курсе (калькулятор её
+            // закладывает). Не заложили — она съедает нашу прибыль, и это видно.
+            const markupAgent = (r.agents || []).some(a => a.comp_model === 'markup');
             box.innerHTML = `
               <div style="background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:0.75rem;">
                 <div style="display:flex;justify-content:space-between;"><span style="color:#6b7280;">Приход от клиента</span><strong>${money(r.payin_usdt)}</strong></div>
@@ -5810,6 +5815,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 ${gap < -0.01 ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ До застройщика дойдёт на ${money(-gap)} меньше инвойса — доотправь или пересчитай сумму.</div>` : ''}
                 ${gap > 0.01 ? `<div style="margin-top:6px;color:#b45309;font-size:0.9rem;">Переотправлено на ${money(gap)} сверх инвойса.</div>` : ''}
                 ${r.net_shortfall_usdt < 0 ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ Выплаты партнёрам больше заработка сделки на ${money(-r.net_shortfall_usdt)} — платим из своего кармана.</div>` : ''}
+                ${markupAgent ? `<div style="margin-top:6px;color:#0e7490;font-size:0.85rem;">ℹ️ Наценка партнёра считается от объёма (${money(Math.max(r.payin_usdt, r.sent_usd))}), а не от прибыли — она должна быть заложена в курс клиенту. Если нет, она вычитается из нашего заработка.</div>` : ''}
               </div>`;
         }
 

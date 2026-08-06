@@ -154,6 +154,30 @@ class TestAgentsBase:
         assert approx(first['_payout'], 39533.77 * 0.001)
         assert approx(second['_payout'], round(max(r['gross_profit_usdt'] - first['_payout'], 0) * 0.1, 2))
 
+    def test_markup_priced_into_rate_keeps_our_profit(self):
+        """Наценка партнёра заложена в курс → наш чистый доход не меняется.
+
+        Markup считается от ОБЪЁМА, а не от прибыли: 0.5% от $39 500 = $197.67
+        при заработке сделки $160.77. Работает это только когда наценку оплатил
+        клиент (калькулятор её закладывает: курс → наша прибыль → markup → комиссия).
+        """
+        ag = [{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}]
+        alone = compute_mf_freehold(39533.77, invoice_usd=39008.02, fee_percent=0.8,
+                                    fee_fixed_usd=50, agents=[])
+        priced_in = compute_mf_freehold(round(39533.77 / (1 - 0.005), 2),
+                                        invoice_usd=39008.02, fee_percent=0.8,
+                                        fee_fixed_usd=50, agents=ag)
+        assert approx(priced_in['net_profit_usdt'], alone['net_profit_usdt'])
+
+    def test_markup_not_priced_in_eats_profit(self):
+        """Наценку в курс не заложили — она вычитается из нашего заработка, в минус."""
+        r = compute_mf_freehold(39533.77, invoice_usd=39008.02, fee_percent=0.8,
+                                fee_fixed_usd=50,
+                                agents=[{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}])
+        assert approx(r['agents'][0]['_payout'], 197.67)
+        assert approx(r['net_profit_usdt'], -36.90)
+        assert r['net_shortfall_usdt'] < 0, 'дефицит должен быть виден, а не тихо съеден'
+
     def test_payout_over_profit_flags_shortfall(self):
         """Фикс больше заработка сделки → явный признак, а не тихий минус."""
         r = compute_mf_freehold(39533.77, sent_usd=39373, fee_percent=0.8, fee_fixed_usd=50,
