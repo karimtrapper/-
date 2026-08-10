@@ -176,3 +176,43 @@ class TestReconcileEndpoint:
 
     def test_missing_wallet_404(self, cli):
         assert cli.get('/api/wallets/999999/reconcile').status_code == 404
+
+
+class TestTronScanRetry:
+    """429 у TronScan — штатная ситуация: по тому же IP стучится прогрев кэша."""
+
+    class _R:
+        def __init__(self, code, payload=None):
+            self.status_code, self._p = code, payload or {}
+
+        def json(self):
+            return self._p
+
+    def test_transfers_retry_on_429(self, monkeypatch):
+        calls = []
+        payload = {'token_transfers': [{
+            'transaction_id': 'h1', 'from_address': ADDR, 'to_address': OTHER,
+            'quant': '1000000', 'block_ts': _ts(1), 'finalResult': 'SUCCESS'}]}
+
+        def fake_get(url, **kw):
+            calls.append(url)
+            return TestTronScanRetry._R(429) if len(calls) == 1 else TestTronScanRetry._R(200, payload)
+
+        monkeypatch.setattr(appmod.requests, 'get', fake_get)
+        monkeypatch.setattr(appmod.time, 'sleep', lambda *_: None)
+        out = appmod._tron_usdt_transfers(ADDR, pages=1)
+        assert len(calls) == 2, 'после 429 должен быть повтор'
+        assert out and out[0]['type'] == 'expense' and out[0]['amount'] == 1.0
+
+    def test_transfers_give_up_after_retries(self, monkeypatch):
+        monkeypatch.setattr(appmod.requests, 'get', lambda url, **kw: TestTronScanRetry._R(429))
+        monkeypatch.setattr(appmod.time, 'sleep', lambda *_: None)
+        assert appmod._tron_usdt_transfers(ADDR, pages=1) is None
+
+    def test_failed_transfer_is_ignored(self, monkeypatch):
+        """Неудавшийся перевод денег не двигал — в сверку не берём."""
+        payload = {'token_transfers': [{
+            'transaction_id': 'bad', 'from_address': ADDR, 'to_address': OTHER,
+            'quant': '5000000', 'block_ts': _ts(1), 'finalResult': 'FAILED'}]}
+        monkeypatch.setattr(appmod.requests, 'get', lambda url, **kw: TestTronScanRetry._R(200, payload))
+        assert appmod._tron_usdt_transfers(ADDR, pages=1) == []

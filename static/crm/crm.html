@@ -7497,7 +7497,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     return;
                 }
                 const money = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                let html = `<div style="color:#475569;">В сети: <b>$${money(d.onchain_balance)}</b> · в CRM: <b>$${money(d.crm_balance)}</b></div>`;
+                // Баланс сети мог не прочитаться (лимит TronScan) — «—», а не $0.00:
+                // нулём это выглядело бы как «на кошельке пусто»
+                const onchain = d.onchain_balance === null ? '—' : `$${money(d.onchain_balance)}`;
+                let html = `<div style="color:#475569;">В сети: <b>${onchain}</b> · в CRM: <b>$${money(d.crm_balance)}</b></div>`;
                 if (!d.unmatched.length) {
                     html += `<div style="color:#166534; margin-top:4px;">✅ Всё отмечено: сверено переводов ${d.checked_transfers}</div>`;
                 } else {

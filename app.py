@@ -5268,8 +5268,16 @@ def _tron_balances(address):
     подтягивается из сети, чтобы не вбивать руками (и не ошибаться).
     """
     try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}', timeout=8)
+        # Ретрай на 429: с одного IP сюда же ходит фоновый прогрев кэша, и без
+        # него баланс молча оказывался «непрочитанным» (кейс 10.08, кошелёк #14)
+        for attempt in range(3):
+            r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}',
+                             headers=_TRONSCAN_HEADERS, timeout=8)
+            if r.status_code != 429:
+                break
+            time.sleep(2 * (attempt + 1))
         if r.status_code != 200:
+            app.logger.warning(f'TronScan balance HTTP {r.status_code} for {address}')
             return None
         data = r.json()
         if not data or not data.get('address'):
@@ -5314,12 +5322,20 @@ def _tron_usdt_transfers(address, start_ts=None, pages=2, per_page=50):
     out = []
     for page in range(pages):
         try:
-            r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
-                             headers=_TRONSCAN_HEADERS, timeout=10,
-                             params={'relatedAddress': address,
-                                     'contract_address': USDT_TRC20_CONTRACT,
-                                     'limit': per_page, 'start': page * per_page})
+            # 429 у TronScan — обычное дело: по тому же IP стучится фоновый
+            # прогрев кэша. Без ретрая сверка падала бы через раз (ловилось
+            # на проде 10.08: локально 200, с Railway — пусто).
+            for attempt in range(3):
+                r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                 headers=_TRONSCAN_HEADERS, timeout=10,
+                                 params={'relatedAddress': address,
+                                         'contract_address': USDT_TRC20_CONTRACT,
+                                         'limit': per_page, 'start': page * per_page})
+                if r.status_code != 429:
+                    break
+                time.sleep(2 * (attempt + 1))
             if r.status_code != 200:
+                app.logger.warning(f'TronScan transfers HTTP {r.status_code} for {address}')
                 return None if not out else out
             transfers = r.json().get('token_transfers') or []
         except Exception as e:
