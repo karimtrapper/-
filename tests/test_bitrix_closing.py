@@ -121,3 +121,48 @@ class TestClose:
                             lambda did, reason: (got.update({'reason': reason}), (True, ''))[1])
         cli.post('/api/bitrix/deals/1009/close-lose', json={'reason': 'не устроил курс'})
         assert got['reason'] == 'не устроил курс'
+
+
+class TestPortalWiring:
+    """Портал только один и только из env.
+
+    До 10.08.2026 дефолт вёл на реверс-прокси старого портала МаксФина, а
+    воронка бралась нулевая — CRM показывала чужие корпоративные сделки
+    (ООО/ЧОО) вместо клиентов Grusha. Фоллбэка быть не должно.
+    """
+
+    def test_no_webhook_fails_loudly(self, monkeypatch):
+        monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', '')
+        with pytest.raises(bitrix_deals.BitrixError, match='BITRIX_WEBHOOK'):
+            bitrix_deals.get_active_deals()
+
+    def test_requests_go_to_env_webhook(self, monkeypatch):
+        seen = {}
+
+        class _Resp:
+            @staticmethod
+            def json():
+                return {'result': []}
+
+        def _fake_post(url, data=None, timeout=None):
+            seen['url'] = url
+            seen['data'] = data
+            return _Resp()
+
+        monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', 'https://portal.example/rest/1/key/')
+        monkeypatch.setattr(bitrix_deals.requests, 'post', _fake_post)
+        bitrix_deals.get_active_deals()
+        assert seen['url'] == 'https://portal.example/rest/1/key/crm.deal.list'
+        assert seen['data']['filter[CATEGORY_ID]'] == 0
+
+    def test_contacts_search_uses_grusha_pipeline(self, cli, monkeypatch):
+        seen = {}
+
+        def _fake(method, data=None):
+            seen['method'], seen['data'] = method, data
+            return {'result': [{'ID': '1', 'TITLE': 'Артём - Grusha', 'CONTACT_ID': '77'}]}
+
+        monkeypatch.setattr(bitrix_deals, '_post', _fake)
+        body = cli.get('/api/bitrix/contacts/search?q=Артём').get_json()
+        assert seen['data']['filter[CATEGORY_ID]'] == bitrix_deals.BITRIX_PIPELINE_ID == 0
+        assert body['contacts'] == [{'id': '77', 'name': 'Артём'}]

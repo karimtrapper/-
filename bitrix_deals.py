@@ -5,19 +5,18 @@
 Код тот же, что крутился в проде с апреля, переписан с aiohttp на requests —
 Flask синхронный, тянуть асинхронную сессию в воркер незачем.
 
-Ходим через Railway reverse-proxy (`BITRIX_WEBHOOK`): прямой доступ к порталу
-с некоторых сетей закрыт. Секрет прокси — в `BITRIX_PROXY_SECRET`.
+Портал один — облачный Grusha (`b24-1tgrla.bitrix24.com`), вебхук целиком
+в env `BITRIX_WEBHOOK`. Дефолта нет намеренно: раньше он вёл на реверс-прокси
+старого портала, и при незаданной переменной CRM молча показывала чужую
+воронку (сделки МаксФина с ООО/ЧОО вместо клиентов Grusha).
 """
 import os
 
 import requests
 
-BITRIX_WEBHOOK = os.environ.get(
-    'BITRIX_WEBHOOK', 'https://bitrix-proxy-production.up.railway.app/bx/'
-)
-BITRIX_PROXY_SECRET = os.environ.get('BITRIX_PROXY_SECRET', '')
+BITRIX_WEBHOOK = os.environ.get('BITRIX_WEBHOOK', '')
 
-# default-воронка Grusha (b24-1tgrla.bitrix24.com), миграция 2026-04-30 с C18
+# default-воронка Grusha (b24-1tgrla.bitrix24.com)
 BITRIX_PIPELINE_ID = 0
 ACTIVE_STAGES = ['NEW', 'PREPARATION']
 STAGE_WON = 'WON'
@@ -56,10 +55,9 @@ class BitrixError(RuntimeError):
 
 
 def _post(method: str, data: dict | None = None) -> dict:
-    headers = {}
-    if BITRIX_PROXY_SECRET:
-        headers['X-Proxy-Secret'] = BITRIX_PROXY_SECRET
-    resp = requests.post(BITRIX_WEBHOOK + method, data=data or {}, headers=headers, timeout=20)
+    if not BITRIX_WEBHOOK:
+        raise BitrixError('BITRIX_WEBHOOK не задан — вебхук портала берётся только из env')
+    resp = requests.post(BITRIX_WEBHOOK + method, data=data or {}, timeout=20)
     try:
         return resp.json()
     except ValueError:

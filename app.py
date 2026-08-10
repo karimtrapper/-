@@ -8140,39 +8140,29 @@ def bitrix_close_lose(deal_id):
 
 # ==================== BITRIX CONTACTS SEARCH ====================
 
-BITRIX_PROXY_URL = os.environ.get('BITRIX_PROXY_URL', 'https://bitrix-proxy-production.up.railway.app')
-BITRIX_PROXY_SECRET = os.environ.get('BITRIX_PROXY_SECRET', '')
-
-
 @app.route('/api/bitrix/contacts/search', methods=['GET'])
 def search_bitrix_contacts():
-    """Поиск контактов из воронки C18 (Grusha) в Bitrix.
-    Ищет по сделкам C18 с похожим именем, возвращает уникальные контакты."""
+    """Поиск контактов по сделкам основной воронки Grusha в Bitrix.
+    Возвращает уникальные контакты по похожему имени в TITLE."""
     query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify({'success': True, 'contacts': []})
 
-    import requests as req
-    headers = {'Content-Type': 'application/json', 'X-Proxy-Secret': BITRIX_PROXY_SECRET}
+    import bitrix_deals
     try:
-        # Ищем сделки C18 по имени клиента (TITLE содержит имя)
-        resp = req.post(
-            f'{BITRIX_PROXY_URL}/bx/crm.deal.list',
-            headers=headers,
-            json={
-                'filter': {'CATEGORY_ID': 18, '%TITLE': query},
-                'select': ['ID', 'TITLE', 'CONTACT_ID'],
-                'order': {'ID': 'DESC'},
-                'start': 0,
-            },
-            timeout=5,
-        )
-        data = resp.json()
-        # Уникальные контакты из сделок C18
+        data = bitrix_deals._post('crm.deal.list', {
+            'filter[CATEGORY_ID]': bitrix_deals.BITRIX_PIPELINE_ID,
+            'filter[%TITLE]': query,
+            'order[ID]': 'DESC',
+            'select[0]': 'ID',
+            'select[1]': 'TITLE',
+            'select[2]': 'CONTACT_ID',
+        })
+        # Уникальные контакты из найденных сделок
         seen = {}
         for deal in data.get('result', []):
             cid = deal.get('CONTACT_ID')
-            title = deal.get('TITLE', '').replace(' - exgreen.pro', '').strip()
+            title = deal.get('TITLE', '').replace(' - Grusha', '').strip()
             if cid and cid not in seen:
                 seen[cid] = title
         contacts = [{'id': cid, 'name': name} for cid, name in list(seen.items())[:20]]
