@@ -3217,16 +3217,36 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     others.map(x => `<li>#${x.deal_id} ${escapeHtml(x.client_name || '')} — $${money(x.share_usdt)}${x.payout_thb ? ' (' + money(x.payout_thb) + ' ฿)' : ''}</li>`).join('') +
                     `</ul>`;
             }
-            (r.tx_uses || []).forEach(t => {
-                html += `<div style="margin-top:4px;">Перевод <code style="font-size:0.8rem;">${(t.tx_hash || '').substring(0, 16)}…</code>:
-                    всего $${money(t.tx_amount_usdt)}, в это возмещение взято $${money(t.taken_usdt)}` +
-                    (t.free_usdt > 0.01 ? ` · <b style="color:#b45309;">ещё свободно $${money(t.free_usdt)}</b>` : '') + `</div>`;
-            });
-            const un = r.unallocated_usdt || 0;
-            if (Math.abs(un) >= 0.01) {
-                const warn = un > 0 ? '#b45309' : '#b91c1c';
-                const label = un > 0 ? 'не распределено' : 'распределено больше перевода';
-                html += `<div style="margin-top:4px;color:${warn};font-weight:600;">⚠️ ${label}: $${money(Math.abs(un))}</div>`;
+            // Итог печатаем ВСЕГДА, даже когда сходится: иначе «остатка нет»
+            // и «остаток не показан» выглядят одинаково — как раз этот вопрос
+            // и возник по сделке #460.
+            const allocated = r.allocated_usdt !== undefined
+                ? r.allocated_usdt
+                : rows.reduce((sum, x) => sum + (x.share_usdt || 0), 0);
+            const un = (r.amount_usdt || 0) - allocated;
+            if (un > 0.01) {
+                html += `<div style="margin-top:6px;color:#b45309;font-weight:600;">
+                    ⚠️ Не распределено: $${money(un)} — этот запас можно потратить на другую сделку</div>`;
+            } else if (un < -0.01) {
+                html += `<div style="margin-top:6px;color:#b91c1c;font-weight:600;">
+                    ⛔ Распределено на $${money(-un)} больше, чем перевели — где-то задвоение</div>`;
+            } else {
+                html += `<div style="margin-top:6px;color:#166534;">
+                    ✅ Сходится: распределено $${money(allocated)} из $${money(r.amount_usdt)}, лишнего нет</div>`;
+            }
+
+            // Переводы с остатками — только у возмещений, заведённых после 10.08.
+            if ((r.tx_uses || []).length) {
+                (r.tx_uses || []).forEach(t => {
+                    html += `<div style="margin-top:4px;">Перевод <code style="font-size:0.8rem;">${(t.tx_hash || '').substring(0, 16)}…</code>:
+                        всего $${money(t.tx_amount_usdt)}, сюда взято $${money(t.taken_usdt)}` +
+                        (t.free_usdt > 0.01
+                            ? ` · <b style="color:#b45309;">свободно ещё $${money(t.free_usdt)}</b>`
+                            : ` · <span style="color:#166534;">разобран полностью</span>`) + `</div>`;
+                });
+            } else {
+                html += `<div style="margin-top:4px;color:#94a3b8;">
+                    Перевод не заведён в учёт (возмещение создано до 10.08) — остаток по хэшу неизвестен</div>`;
             }
             html += `</div>`;
             return html;
