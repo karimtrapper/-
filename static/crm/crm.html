@@ -2684,7 +2684,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Начальный баланс USDT</label>
-                    <input type="number" class="form-control" id="newWalletInitialBalance" value="0" step="0.01">
+                    <div style="display:flex; gap:8px; align-items:center;">
+                        <input type="number" class="form-control" id="newWalletInitialBalance" value="0" step="0.01"
+                            style="flex:1;">
+                        <button type="button" class="btn btn-secondary" id="newWalletFetchBalanceBtn"
+                            onclick="fetchWalletBalanceFromTron(true)"
+                            style="white-space:nowrap; padding:0.6rem 0.9rem;">⟳ Из TronScan</button>
+                    </div>
                     <div id="newWalletBalanceHint" style="display:none; margin-top:6px; font-size:0.85rem; color:#64748b;"></div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Добавить кошелек</button>
@@ -7279,14 +7285,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Баланс кошелька TRON тянем из сети, а не спрашиваем у менеджера:
         // руками остаток вбивали с ошибками, а он и так публичный.
+        // manual=true — жали кнопку «⟳ Из TronScan»: тогда ругаемся на пустой
+        // и на кривой адрес, автовызов в такой ситуации просто молчит.
         let _walletBalanceReq = 0;
-        async function fetchWalletBalanceFromTron() {
+        let _walletBalancePending = null;   // сабмит ждёт его, иначе сохранит ноль
+        async function fetchWalletBalanceFromTron(manual = false) {
             const addr = document.getElementById('newWalletAddress').value.trim();
             const hint = document.getElementById('newWalletBalanceHint');
             const balanceInput = document.getElementById('newWalletInitialBalance');
+            const btn = document.getElementById('newWalletFetchBalanceBtn');
             // Виртуальный кошелёк (просто имя вместо адреса) — считаем руками, как раньше
             if (!(addr.startsWith('T') && addr.length === 34)) {
-                hint.style.display = 'none';
+                if (manual) {
+                    hint.style.display = 'block';
+                    hint.style.color = '#b45309';
+                    hint.textContent = addr
+                        ? '⚠️ Это не адрес TRON (нужны 34 символа с T) — впиши остаток вручную'
+                        : '⚠️ Сначала введи адрес кошелька';
+                } else {
+                    hint.style.display = 'none';
+                }
                 balanceInput.readOnly = false;
                 return;
             }
@@ -7294,29 +7312,43 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             hint.style.display = 'block';
             hint.style.color = '#64748b';
             hint.textContent = '⏳ Смотрю баланс в TronScan...';
-            try {
-                const r = await fetch(`${API_URL}/api/tronscan/balance/${encodeURIComponent(addr)}`);
-                const d = await r.json();
-                if (reqId !== _walletBalanceReq) return;  // адрес успели поменять
-                if (d.success) {
-                    balanceInput.value = d.usdt_balance;
-                    hint.style.color = '#059669';
-                    hint.textContent = `✅ Баланс из TronScan: ${d.usdt_balance} USDT · ${d.trx_balance} TRX`;
-                } else {
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Читаю...'; }
+            const job = (async () => {
+                try {
+                    const r = await fetch(`${API_URL}/api/tronscan/balance/${encodeURIComponent(addr)}`);
+                    const d = await r.json();
+                    if (reqId !== _walletBalanceReq) return;  // адрес успели поменять
+                    if (d.success) {
+                        balanceInput.value = d.usdt_balance;
+                        hint.style.color = '#059669';
+                        hint.textContent = `✅ Баланс из TronScan: ${d.usdt_balance} USDT · ${d.trx_balance} TRX`;
+                    } else {
+                        hint.style.color = '#b45309';
+                        hint.textContent = `⚠️ ${d.error || 'Баланс не получен'} — впиши остаток вручную`;
+                    }
+                } catch (e) {
+                    if (reqId !== _walletBalanceReq) return;
                     hint.style.color = '#b45309';
-                    hint.textContent = `⚠️ ${d.error || 'Баланс не получен'} — впиши остаток вручную`;
+                    hint.textContent = '⚠️ TronScan не ответил — впиши остаток вручную';
+                } finally {
+                    if (reqId === _walletBalanceReq && btn) {
+                        btn.disabled = false; btn.textContent = '⟳ Из TronScan';
+                    }
                 }
-            } catch (e) {
-                if (reqId !== _walletBalanceReq) return;
-                hint.style.color = '#b45309';
-                hint.textContent = '⚠️ TronScan не ответил — впиши остаток вручную';
-            }
+            })();
+            _walletBalancePending = job;
+            await job;
+            if (_walletBalancePending === job) _walletBalancePending = null;
         }
-        document.getElementById('newWalletAddress').addEventListener('blur', fetchWalletBalanceFromTron);
-        document.getElementById('newWalletAddress').addEventListener('change', fetchWalletBalanceFromTron);
+        document.getElementById('newWalletAddress').addEventListener('blur', () => fetchWalletBalanceFromTron());
+        document.getElementById('newWalletAddress').addEventListener('change', () => fetchWalletBalanceFromTron());
 
         document.getElementById('addWalletFormBalance').onsubmit = async function (e) {
             e.preventDefault();
+            // Вставили адрес и сразу жмут «Добавить» — blur и сабмит идут подряд,
+            // и без этого ожидания форма прочитала бы поле до ответа TronScan
+            // и сохранила ноль.
+            if (_walletBalancePending) { try { await _walletBalancePending; } catch (_) { } }
             const label = document.getElementById('newWalletLabel').value;
             const address = document.getElementById('newWalletAddress').value;
             const initialBalance = parseFloat(document.getElementById('newWalletInitialBalance').value) || 0;
@@ -7430,6 +7462,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">${w.label || 'Кошелек'}</div>
                             <div class="stat-value" style="font-size: 1.5rem; color: #10b981;">$${w.system_balance.toFixed(2)}</div>
                             <div style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
+                            <button class="btn btn-sm" onclick="event.stopPropagation(); reconcileWallet(${w.id})"
+                                style="margin-top:8px; width:100%; font-size:0.75rem; padding:4px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px;">⟳ Сверить с сетью</button>
+                            <div id="walletRecon${w.id}" style="display:none; margin-top:8px; font-size:0.75rem; text-align:left; line-height:1.5;"></div>
                         </div>
                     `).join('');
 
@@ -7442,6 +7477,51 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     }
                 }
             } catch (e) { console.error('Error loading wallets summary:', e); }
+        }
+
+        // Сверка кошелька с блокчейном. Баланс в CRM — сумма операций, которые
+        // завёл человек; забыли отметить выдачу или пришёл неожиданный приход —
+        // цифра врёт молча. Кнопка показывает ровно те переводы, которых в CRM нет.
+        async function reconcileWallet(walletId) {
+            const box = document.getElementById(`walletRecon${walletId}`);
+            if (!box) return;
+            box.style.display = 'block';
+            box.style.color = '#64748b';
+            box.textContent = '⏳ Сверяю с TronScan...';
+            try {
+                const r = await fetch(`${API_URL}/api/wallets/${walletId}/reconcile`);
+                const d = await r.json();
+                if (!d.success) {
+                    box.style.color = '#b45309';
+                    box.textContent = `⚠️ ${d.error || 'Сверка не вышла'}`;
+                    return;
+                }
+                const money = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                let html = `<div style="color:#475569;">В сети: <b>$${money(d.onchain_balance)}</b> · в CRM: <b>$${money(d.crm_balance)}</b></div>`;
+                if (!d.unmatched.length) {
+                    html += `<div style="color:#166534; margin-top:4px;">✅ Всё отмечено: сверено переводов ${d.checked_transfers}</div>`;
+                } else {
+                    html += `<div style="color:#b91c1c; font-weight:600; margin-top:4px;">⚠️ Не отмечено в CRM: ${d.unmatched.length}</div>`;
+                    html += d.unmatched.map(t => {
+                        const sign = t.type === 'income' ? '+' : '−';
+                        const color = t.type === 'income' ? '#0369a1' : '#b91c1c';
+                        const when = t.date ? t.date.substring(0, 10) : '';
+                        const label = t.type === 'income' ? 'приход без операции' : 'расход без операции';
+                        return `<div style="margin-top:3px; color:${color};">${sign}$${money(t.amount)} · ${when} · ${label}
+                            <a href="https://tronscan.org/#/transaction/${t.tx_hash}" target="_blank" onclick="event.stopPropagation()" style="color:#64748b;">чек</a></div>`;
+                    }).join('');
+                }
+                // Расхождение баланса печатаем всегда: «сошлось» и «не проверяли»
+                // не должны выглядеть одинаково (та же грабля, что с возмещениями)
+                if (Math.abs(d.diff || 0) > 0.01) {
+                    html += `<div style="margin-top:4px; color:#b45309;">Разница: ${d.diff > 0 ? '+' : ''}$${money(d.diff)}</div>`;
+                }
+                box.innerHTML = html;
+                box.style.color = '#475569';
+            } catch (e) {
+                box.style.color = '#b45309';
+                box.textContent = '⚠️ Сеть не ответила — попробуй ещё раз';
+            }
         }
 
         async function showWalletHistory(walletId, address, label) {

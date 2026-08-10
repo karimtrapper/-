@@ -5300,6 +5300,138 @@ def tronscan_balance(address):
                     'usdt_balance': round(usdt, 2), 'trx_balance': round(trx, 6)})
 
 
+def _tron_usdt_transfers(address, start_ts=None, pages=2, per_page=50):
+    """TRC20-USDT переводы адреса (входящие и исходящие) по TronScan.
+
+    Отдельно от `_tronscan_fetch_incoming/outgoing`: тем нужен срез по всем
+    monitored-кошелькам с отбрасыванием внутренних переводов, а сверке — вся
+    история ОДНОГО адреса, включая переводы между своими (для этого кошелька
+    они такое же движение денег, как любое другое).
+
+    None — TronScan не ответил; пустой список — переводов нет. Разница важна:
+    в первом случае «неучтённых нет» было бы враньём.
+    """
+    out = []
+    for page in range(pages):
+        try:
+            r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                             headers=_TRONSCAN_HEADERS, timeout=10,
+                             params={'relatedAddress': address,
+                                     'contract_address': USDT_TRC20_CONTRACT,
+                                     'limit': per_page, 'start': page * per_page})
+            if r.status_code != 200:
+                return None if not out else out
+            transfers = r.json().get('token_transfers') or []
+        except Exception as e:
+            app.logger.warning(f'TronScan transfers error for {address}: {e}')
+            return None if not out else out
+        if not transfers:
+            break
+        stop = False
+        for tx in transfers:
+            ts = tx.get('block_ts') or 0
+            if start_ts and ts < start_ts:
+                stop = True          # выдача отсортирована по времени ↓
+                continue
+            if tx.get('finalResult') not in (None, '', 'SUCCESS'):
+                continue             # неудавшийся перевод денег не двигал
+            frm, to = tx.get('from_address'), tx.get('to_address')
+            if address not in (frm, to):
+                continue
+            out.append({
+                'tx_hash': tx.get('transaction_id'),
+                'type': 'income' if to == address else 'expense',
+                'amount': round(float(tx.get('quant') or 0) / 1_000_000, 6),
+                'ts': ts,
+                'date': datetime.utcfromtimestamp(ts / 1000).isoformat() if ts else None,
+                'counterparty': frm if to == address else to,
+            })
+        if stop or len(transfers) < per_page:
+            break
+    return out
+
+
+def reconcile_wallet(session, wallet, transfers=None):
+    """Сверка кошелька с блокчейном: что в сети есть, а в CRM не отмечено.
+
+    Зачем: баланс в CRM складывается из операций, которые заводит человек.
+    Забыли отметить выдачу — CRM думает, что деньги на месте; пришёл приход,
+    которого никто не ждал — он вообще нигде не виден. Сверка ловит оба случая.
+
+    Матчинг двухступенчатый: сначала по хэшу (надёжно), затем — для операций
+    без хэша (заводили руками) — по типу и сумме с точностью до цента, каждая
+    операция закрывает не больше одного перевода.
+
+    Переводы берём с момента создания кошелька: всё, что было до, уже сидит
+    в стартовом остатке, и показывать его как «неучтённое» — шум.
+    """
+    ops = session.query(WalletOperation).filter(
+        WalletOperation.wallet_id == wallet.id).all()
+    crm_balance = round(sum((o.amount or 0) if o.type == 'income' else -(o.amount or 0)
+                            for o in ops), 2)
+
+    if transfers is None:
+        start_ts = int(wallet.created_at.timestamp() * 1000) if wallet.created_at else None
+        transfers = _tron_usdt_transfers(wallet.address, start_ts=start_ts)
+    if transfers is None:
+        return {'ok': False, 'error': 'TronScan не ответил — сверить не с чем',
+                'crm_balance': crm_balance}
+
+    by_hash = {(o.tx_hash or '').lower(): o for o in ops if o.tx_hash}
+    # Операции без хэша — кандидаты на матч по сумме; каждую используем один раз
+    loose = [o for o in ops if not o.tx_hash]
+    used = set()
+    unmatched, matched = [], 0
+    for t in transfers:
+        if (t['tx_hash'] or '').lower() in by_hash:
+            matched += 1
+            continue
+        hit = next((o for o in loose
+                    if o.id not in used and o.type == t['type']
+                    and abs((o.amount or 0) - t['amount']) < 0.01), None)
+        if hit:
+            used.add(hit.id)
+            matched += 1
+            continue
+        unmatched.append(t)
+
+    onchain = _tron_balances(wallet.address)
+    onchain_usdt = round(onchain[0], 2) if onchain else None
+    return {
+        'ok': True,
+        'wallet_id': wallet.id, 'address': wallet.address, 'label': wallet.label,
+        'crm_balance': crm_balance,
+        'onchain_balance': onchain_usdt,
+        # Плюс = в сети денег больше, чем знает CRM (не отметили приход)
+        'diff': round(onchain_usdt - crm_balance, 2) if onchain_usdt is not None else None,
+        'checked_transfers': len(transfers),
+        'matched': matched,
+        'unmatched': unmatched,
+        'unmatched_income': round(sum(t['amount'] for t in unmatched if t['type'] == 'income'), 2),
+        'unmatched_expense': round(sum(t['amount'] for t in unmatched if t['type'] == 'expense'), 2),
+        'since': wallet.created_at.isoformat() if wallet.created_at else None,
+    }
+
+
+@app.route('/api/wallets/<int:wallet_id>/reconcile', methods=['GET'])
+def wallet_reconcile(wallet_id):
+    """Что в блокчейне произошло, а в CRM не отмечено."""
+    session = get_session()
+    try:
+        wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
+        if not wallet:
+            return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+        if not (wallet.address or '').startswith('T') or len(wallet.address) != 34:
+            return jsonify({'success': False,
+                            'error': 'Виртуальный кошелёк — в блокчейне его нет'}), 400
+        r = reconcile_wallet(session, wallet)
+        if not r.get('ok'):
+            return jsonify({'success': False, **r}), 502
+        return jsonify({'success': True, **r})
+    finally:
+        session.close()
+
+
 @app.route('/api/wallets/<int:wallet_id>', methods=['DELETE'])
 def delete_wallet(wallet_id):
     session = get_session()
