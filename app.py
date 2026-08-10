@@ -7333,6 +7333,39 @@ def doverka_payments_history():
     return jsonify(resp.json()), resp.status_code
 
 
+# Рельс платёжных ссылок Grusha Exchange. sberbank-sbp — сберовский СБП с QR НСПК
+# (то же, чем платят клиенты WL-бота). Менять только через env, не в коде.
+CONNECTOR_PROVIDER = os.environ.get('CONNECTOR_PROVIDER', 'sberbank-sbp')
+
+
+def _extract_sbp_link(data):
+    """Прямая ссылка НСПК из ответа коннектора (она же за QR на странице оплаты)."""
+    ext = ((data.get('provider_payload') or {}).get('externalParams') or {})
+    sbp = ext.get('sbpPayload') or data.get('approve_url')
+    return sbp if sbp and 'nspk.ru' in str(sbp) else None
+
+
+def _notify_payment_link_created(payload, data):
+    """Уведомление в рабочий чат: ссылка выставлена, ждём оплату.
+
+    Раньше созданная ссылка нигде не светилась — команда узнавала о платеже
+    только когда клиент напишет. WL-бот про свои ссылки пишет, а калькулятор молчал.
+    """
+    try:
+        meta = payload.get('metadata') or {}
+        comment = str(meta.get('comment') or '').strip()
+        thb = meta.get('thb_amount') or 0
+        msg = (f"🔗 <b>Ссылка на оплату создана</b>\n"
+               f"{payload.get('amount', 0):,.0f} ₽" + (f" → {float(thb):,.2f} ฿" if thb else "") + "\n")
+        if comment:
+            msg += f"{comment}\n"
+        link = data.get('public_link') or data.get('approve_url') or ''
+        msg += link
+        send_telegram_notification(msg)
+    except Exception as e:
+        app.logger.warning(f'payment link notify failed: {e}')
+
+
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
     """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API.
@@ -7403,18 +7436,27 @@ def proxy_create_payment():
     }
 
     if provider == 'grusha':
-        # Пробуем grushab-2-b.ru (персонализированная страница)
+        # Страница оплаты Grusha Exchange. Рельс задаётся заголовком провайдера:
+        # sberbank-sbp = наш сберовский СБП (QR НСПК, тот же, что у WL-бота),
+        # sberbank = форма payecom, doverkapay = Доверка (ей больше не пользуемся).
         try:
             response = requests.post(
                 'https://grushab-2-b.ru/api/payments',
                 json=safe_payload,
-                headers={'Content-Type': 'application/json', 'X-Provider-Name': 'doverkapay'},
+                headers={'Content-Type': 'application/json',
+                         'X-Provider-Name': CONNECTOR_PROVIDER},
                 timeout=8
             )
             try:
-                return jsonify(response.json()), response.status_code
+                data = response.json()
             except Exception:
                 return jsonify({'success': False, 'message': f'Grusha HTTP {response.status_code}', 'grusha_down': True}), 502
+            if response.status_code < 400 and isinstance(data, dict):
+                # Прямая СБП-ссылка (её же показывает QR на странице оплаты) —
+                # менеджеру бывает нужна сама ссылка, а не страница-обёртка.
+                data['sbp_link'] = _extract_sbp_link(data)
+                _notify_payment_link_created(safe_payload, data)
+            return jsonify(data), response.status_code
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return jsonify({'success': False, 'message': 'grushab-2-b.ru не отвечает', 'grusha_down': True}), 503
 

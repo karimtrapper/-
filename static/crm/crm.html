@@ -940,7 +940,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <div class="card">
                 <div class="card-title">Создать новую сделку</div>
 
-                <form id="createDealForm">
+                <!-- novalidate: нативная валидация молча блокировала submit, когда невалидное
+                     поле скрыто (браузер не может показать подсказку) — проверяем сами, с тостом -->
+                <form id="createDealForm" novalidate>
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Менеджер</label>
@@ -4352,7 +4354,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const form = document.getElementById('createDealForm');
                     // Пустое значение — тоже значение: при `if (deal.X)` поле оставалось
                     // от прошлой сделки и уезжало в неё при сохранении
-                    document.getElementById('managerSelect').value = deal.manager_name || '';
+                    setManagerSelectValue(deal.manager_name);
                     document.getElementById('clientSelect').value = deal.client_id || '';
                     form.client_name.value = deal.client_name || '';
 
@@ -4712,6 +4714,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error loading managers:', error);
             }
+        }
+
+        function setManagerSelectValue(name) {
+            const select = document.getElementById('managerSelect');
+            if (!select) return;
+            const value = name || '';
+            // Менеджер мог стать неактивным или быть переименован — в списке его нет,
+            // select остаётся пустым и роняет валидацию невидимого поля. Добавляем.
+            if (value && ![...select.options].some(o => o.value === value)) {
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = value + ' (не в списке)';
+                select.appendChild(opt);
+            }
+            select.value = value;
         }
 
         async function loadClientsForSelect() {
@@ -6772,8 +6789,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         document.getElementById('payoutSource')?.addEventListener('change', calculateProfit);
         document.getElementById('bankCardSelect')?.addEventListener('change', calculateProfit);
 
+        function reportInvalidField(form) {
+            /* Возвращает true, если форму отправлять нельзя, и объясняет почему.
+               Нативная валидация тут не годится: невалидное поле часто скрыто
+               (кастомная сделка, недвижимость), и браузер просто ничего не делает. */
+            for (const el of form.elements) {
+                if (el.willValidate && !el.checkValidity()) {
+                    const group = el.closest('.form-group');
+                    const label = group ? (group.querySelector('.form-label') || {}).textContent : '';
+                    showToast('Заполните поле: ' + ((label || el.name || '').trim() || 'обязательное'), 'warning', 4000);
+                    if (el.offsetParent !== null) { el.focus(); el.reportValidity(); }
+                    return true;
+                }
+            }
+            return false;
+        }
+
         document.getElementById('createDealForm').addEventListener('submit', async function (e) {
             e.preventDefault();
+            if (reportInvalidField(this)) return;
 
             // Если включена кастомная сделка — перенаправляем на кастомный обработчик
             if (document.getElementById('customDealToggle').checked) {

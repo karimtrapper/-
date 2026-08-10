@@ -399,6 +399,16 @@
                             📋 Копировать
                         </button>
                     </div>
+                    <!-- Прямая ссылка СБП (НСПК) — та же, что за QR на странице оплаты -->
+                    <div id="sbpLinkBox" class="info-note" style="display: none; margin-top: 10px; background: #EEF2FF; border: 1px solid #C7D2FE; color: #3730A3; align-items: flex-start; gap: 12px;">
+                        <div style="flex: 1;">
+                            <strong>🏦 Прямая ссылка СБП (QR):</strong><br>
+                            <a id="sbpLink" href="#" target="_blank" style="word-break: break-all; color: #4F46E5; font-weight: 600; text-decoration: underline;"></a>
+                        </div>
+                        <button onclick="copySbpLink()" class="refresh-btn" style="background: #6366F1; padding: 6px 12px; font-size: 12px; margin-top: 4px;">
+                            📋 Копировать
+                        </button>
+                    </div>
                 </div>
 
                 <div class="details-section">

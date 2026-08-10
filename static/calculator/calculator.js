@@ -1836,13 +1836,31 @@ function _buildPaymentPayload(provider) {
     };
 }
 
-function _showPaymentLink(publicLink) {
+function _showPaymentLink(publicLink, sbpLink) {
     const resultDiv = document.getElementById('paymentResult');
     const linkA = document.getElementById('paymentLink');
     linkA.href = publicLink;
     linkA.innerText = publicLink;
+    // Прямая ссылка СБП есть только у сберовского рельса — показываем, когда пришла
+    const sbpBox = document.getElementById('sbpLinkBox');
+    const sbpA = document.getElementById('sbpLink');
+    if (sbpBox && sbpA) {
+        if (sbpLink) {
+            sbpA.href = sbpLink;
+            sbpA.innerText = sbpLink;
+            sbpBox.style.display = 'flex';
+        } else {
+            sbpBox.style.display = 'none';
+        }
+    }
     resultDiv.style.display = 'block';
     resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function copySbpLink() {
+    const link = document.getElementById('sbpLink').innerText;
+    if (!link) return;
+    navigator.clipboard.writeText(link).then(() => showToast('Ссылка СБП скопирована!', 'success'));
 }
 
 async function _sendPayment(provider) {
@@ -1871,7 +1889,7 @@ async function createPayment() {
         const result = await _sendPayment('grusha');
 
         if (result.ok && result.data.public_link) {
-            _showPaymentLink(result.data.public_link);
+            _showPaymentLink(result.data.public_link, result.data.sbp_link);
             return;
         }
 
