@@ -5318,6 +5318,30 @@ def delete_wallet(wallet_id):
     finally:
         session.close()
 
+
+@app.route('/api/wallets/<int:wallet_id>', methods=['PATCH'])
+def update_wallet(wallet_id):
+    """Подпись кошелька. Адресов в мониторинге больше пяти, по строке `T...`
+    оператор их не различает и не понимает, куда должен был прийти перевод."""
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        wallet = session.query(Wallet).filter(Wallet.id == wallet_id).first()
+        if not wallet:
+            return jsonify({'success': False, 'error': 'Кошелёк не найден'}), 404
+
+        if 'label' in data:
+            wallet.label = (data.get('label') or '').strip()[:100]
+        session.commit()
+        return jsonify({'success': True, 'wallet': wallet.to_dict()})
+    except Exception as e:
+        session.rollback()
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+    finally:
+        session.close()
+
+
 def get_used_transaction_hashes(session):
     """Собрать все хэши транзакций, которые уже используются в системе"""
     used_hashes = set()
