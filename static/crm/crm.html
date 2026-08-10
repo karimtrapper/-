@@ -3199,6 +3199,39 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
         }
 
+        function renderReimbursementBreakdown(deal) {
+            /* Одним переводом закрываем несколько сделок. По карточке было видно
+               только «Возмещение #232» — непонятно, сколько всего перевели, что
+               ещё вошло в тот же хэш и осталось ли нераспределённое. Без этого
+               один перевод можно «возместить» дважды и не заметить. */
+            const r = deal.reimbursement;
+            if (!r) return '';
+            const rows = (r.deals_breakdown || []);
+            const money = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const others = rows.filter(x => x.deal_id !== deal.id);
+            let html = `<div style="margin-top:8px;font-size:0.85rem;line-height:1.6;">
+                <div>Перевод всего: <b>$${money(r.amount_usdt)}</b> · сделок в возмещении: <b>${r.deals_count || rows.length}</b></div>
+                <div>Доля этой сделки: <b>$${money(deal.payout_amount_usdt)}</b></div>`;
+            if (others.length) {
+                html += `<div style="margin-top:4px;">Вместе с ней покрыты:</div><ul style="margin:2px 0 0 18px;padding:0;">` +
+                    others.map(x => `<li>#${x.deal_id} ${escapeHtml(x.client_name || '')} — $${money(x.share_usdt)}${x.payout_thb ? ' (' + money(x.payout_thb) + ' ฿)' : ''}</li>`).join('') +
+                    `</ul>`;
+            }
+            (r.tx_uses || []).forEach(t => {
+                html += `<div style="margin-top:4px;">Перевод <code style="font-size:0.8rem;">${(t.tx_hash || '').substring(0, 16)}…</code>:
+                    всего $${money(t.tx_amount_usdt)}, в это возмещение взято $${money(t.taken_usdt)}` +
+                    (t.free_usdt > 0.01 ? ` · <b style="color:#b45309;">ещё свободно $${money(t.free_usdt)}</b>` : '') + `</div>`;
+            });
+            const un = r.unallocated_usdt || 0;
+            if (Math.abs(un) >= 0.01) {
+                const warn = un > 0 ? '#b45309' : '#b91c1c';
+                const label = un > 0 ? 'не распределено' : 'распределено больше перевода';
+                html += `<div style="margin-top:4px;color:${warn};font-weight:600;">⚠️ ${label}: $${money(Math.abs(un))}</div>`;
+            }
+            html += `</div>`;
+            return html;
+        }
+
         function showConfirm(message) {
             return new Promise(resolve => {
                 const overlay = document.createElement('div');
@@ -4078,6 +4111,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
                                     <strong>Возмещение:</strong> #${deal.reimbursement_id} ✅
                                     ${deal.reimbursement?.tx_hash ? `<br><strong>Хэш возмещения:</strong> <a href="https://tronscan.org/#/transaction/${deal.reimbursement.tx_hash}" target="_blank" style="font-family: monospace; font-size: 0.8rem; text-decoration: none; color: #065f46;">${deal.reimbursement.tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.reimbursement.tx_hash}')" style="cursor: pointer;">📋</span>` : ''}
+                                    ${renderReimbursementBreakdown(deal)}
                                 </div>
                             ` : ''}
                         `}
@@ -5059,6 +5093,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const response = await fetch(`${API_URL}/api/wallets/${walletId}`, { method: 'DELETE' });
                 if ((await response.json()).success) loadTransactions();
             } catch (e) { console.error(e); }
+        }
+
+        // Подпись кошелька. Без перерисовки списка: она дёргает TronScan по
+        // каждому адресу, а правка подписи этого не стоит
+        async function saveWalletLabel(walletId, label) {
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ label })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast(label.trim() ? 'Подпись сохранена' : 'Подпись убрана');
+                } else {
+                    showToast('Не сохранилось: ' + (data.error || 'ошибка'), 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Не сохранилось: нет связи с сервером', 'error');
+            }
         }
 
         async function loadIncomingTxForSelect() {
@@ -8147,9 +8202,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbForCheckbox}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
-                                        <span>Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong></span>
+                                        <span style="flex:1;">Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong></span>
+                                        <input type="number" step="0.01" class="reimburse-alloc" data-founder="${founder.founder_name}" data-deal-id="${deal.id}"
+                                               placeholder="доля $" title="Сколько из перевода уходит на эту сделку"
+                                               style="width:120px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;"
+                                               oninput="onAllocInput('${founder.founder_name}')" onclick="event.preventDefault();event.stopPropagation();">
                                     </label>`;
                                 }).join('')}
+                                <div class="reimburse-alloc-summary" data-founder="${founder.founder_name}" style="margin-top:6px;font-size:0.9rem;"></div>
                             </div>
                             
                             <!-- Выбор исходящих транзакций: можно добавить несколько, суммы складываются -->
@@ -8211,6 +8271,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     ${r.deals_count} сделок | ${formatDate(r.created_at)}<br>
                                     ${(r.tx_hashes && r.tx_hashes.length > 0) ? r.tx_hashes.map(h => `<code style="font-size: 0.8rem; cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; display:inline-block; margin: 1px 0;" onclick="copyHash('${h}')" title="Нажмите чтобы скопировать">${h.substring(0, 25)}...</code>`).join('<br>') : '<span style="color: #f59e0b;">Без хэша</span>'}
                                 </p>
+                                <div style="font-size:0.85rem;color:#475569;">
+                                    ${(r.deals_breakdown || []).map(d => `#${d.deal_id} ${escapeHtml(d.client_name || '')} — $${(d.share_usdt || 0).toFixed(2)}`).join(' · ')}
+                                    ${(r.tx_free_total || 0) > 0.01 ? `<div style="color:#b45309;font-weight:600;margin-top:2px;">Не разобрано по переводам: $${r.tx_free_total.toFixed(2)}</div>` : ''}
+                                </div>
                             </div>
                             <div class="batch-amount">
                                 <div class="thb" style="color: #667eea;">$${r.amount_usdt.toFixed(2)}</div>
@@ -8256,6 +8320,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function updateReimbursementTotal(founderName) {
             updateReimbursementRate(founderName);
+            prefillAllocations(founderName);
         }
 
         function addTxHashField(founderName) {
@@ -8335,6 +8400,66 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             renderAmountHint(founderName);
             updateReimbursementRate(founderName);
+            prefillAllocations(founderName);
+        }
+
+        // ── Распределение перевода по сделкам ────────────────────────────
+        // Пропорция по батам — только предзаполнение. Итоговые суммы решает
+        // менеджер: бывает, что из перевода на 700 на эти сделки идёт 500,
+        // а 200 остаются запасом на следующие.
+        let allocManual = {};
+
+        function allocInputs(founderName) {
+            return [...document.querySelectorAll(`.reimburse-alloc[data-founder="${founderName}"]`)];
+        }
+
+        function checkedDeals(founderName) {
+            return [...document.querySelectorAll(`.reimburse-deal[data-founder="${founderName}"]:checked`)];
+        }
+
+        function allocTotal(founderName) {
+            return allocInputs(founderName).reduce((sum, el) => {
+                const box = document.querySelector(`.reimburse-deal[data-founder="${founderName}"][data-deal-id="${el.dataset.dealId}"]`);
+                if (!box || !box.checked) return sum;
+                return sum + (parseFloat(el.value) || 0);
+            }, 0);
+        }
+
+        function prefillAllocations(founderName) {
+            if (allocManual[founderName]) return;   // руками правили — не трогаем
+            const amountInput = document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`);
+            const total = parseFloat(amountInput?.value) || 0;
+            const boxes = checkedDeals(founderName);
+            const thbTotal = boxes.reduce((s, b) => s + (parseFloat(b.dataset.thb) || 0), 0);
+            allocInputs(founderName).forEach(el => {
+                const box = boxes.find(b => b.dataset.dealId === el.dataset.dealId);
+                if (!box) { el.value = ''; return; }
+                const thb = parseFloat(box.dataset.thb) || 0;
+                el.value = (total && thbTotal) ? (total * thb / thbTotal).toFixed(2) : '';
+            });
+            renderAllocSummary(founderName);
+        }
+
+        function onAllocInput(founderName) {
+            allocManual[founderName] = true;
+            renderAllocSummary(founderName);
+        }
+
+        function renderAllocSummary(founderName) {
+            const box = document.querySelector(`.reimburse-alloc-summary[data-founder="${founderName}"]`);
+            if (!box) return;
+            const total = parseFloat(document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`)?.value) || 0;
+            const alloc = allocTotal(founderName);
+            const left = total - alloc;
+            const money = (v) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            let color = '#166534', note = '';
+            if (left < -0.01) { color = '#b91c1c'; note = ' — больше, чем перевели'; }
+            else if (left > 0.01) { color = '#b45309'; note = ' — останется запасом на переводе'; }
+            box.innerHTML = `<b>Распределено $${money(alloc)}</b> из $${money(total)} · ` +
+                `<span style="color:${color};font-weight:600;">остаток $${money(left)}${note}</span>` +
+                (allocManual[founderName] ? ` · <a href="#" onclick="event.preventDefault();allocManual['${founderName}']=false;prefillAllocations('${founderName}')">пересчитать пропорционально</a>` : '');
+            const btn = document.querySelector(`.reimburse-btn[data-founder="${founderName}"]`);
+            if (btn) btn.disabled = left < -0.01;
         }
 
         function renderAmountHint(founderName) {
@@ -8432,6 +8557,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const poolHashes = (reimburseTxPool[founderName] || []).map(t => t.hash);
             const txHashes = [...new Set([...poolHashes, ...manualHashes])];
 
+            // Сколько берём из каждого перевода: из пула знаем он-чейн суммы,
+            // для хэшей, вписанных руками, сумму определит сервер (остаток перевода).
+            const poolByHash = Object.fromEntries((reimburseTxPool[founderName] || []).map(t => [t.hash, t.amount]));
+            const txUses = txHashes.map(h => ({ tx_hash: h, amount_usdt: poolByHash[h] || 0 }));
+            // Доли по сделкам — только по отмеченным и только заполненные
+            const dealAllocations = allocInputs(founderName)
+                .filter(el => dealIds.includes(parseInt(el.dataset.dealId)) && el.value !== '')
+                .map(el => ({ deal_id: parseInt(el.dataset.dealId), amount_usdt: parseFloat(el.value) || 0 }));
+
             try {
                 const response = await fetch(`${API_URL}/api/reimbursements`, {
                     method: 'POST',
@@ -8440,7 +8574,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         founder_name: founderName,
                         deal_ids: dealIds,
                         amount_usdt: amountUsdt,
-                        tx_hashes: txHashes
+                        tx_hashes: txHashes,
+                        tx_uses: txUses,
+                        deal_allocations: dealAllocations
                     })
                 });
 
@@ -8570,11 +8706,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const currentFilter = walletFilter?.value || '';
 
                 if (walletsData.success && walletsData.wallets.length > 0) {
+                    // Адрес показываем целиком: обрезанный `TVmgzMQ2...` не отличить
+                    // от соседнего кошелька, и оператор ищет приход не там, где он есть
                     document.getElementById('walletsInfo').innerHTML = `
-                        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem;">
                             ${walletsData.wallets.map(w => `
-                                <div style="padding: 0.75rem; background: #f0fdf4; border-radius: 8px; flex: 1; min-width: 200px; position: relative;">
-                                    <div style="font-family: monospace; font-size: 0.8rem; color: #666; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
+                                <div style="padding: 0.75rem 2rem 0.75rem 0.75rem; background: #f0fdf4; border-radius: 8px; position: relative;">
+                                    <input type="text" value="${escapeHtml(w.label || '')}"
+                                        placeholder="Подпись — чей это кошелёк?"
+                                        onchange="saveWalletLabel(${w.id}, this.value)"
+                                        onkeydown="if (event.key === 'Enter') this.blur();"
+                                        style="width: 100%; border: none; background: transparent; font-weight: 600; font-size: 0.9rem; color: #065f46; padding: 0 0 4px 0; outline: none; border-bottom: 1px dashed #a7f3d0;">
+                                    <div style="display: flex; align-items: center; gap: 6px; margin-top: 0.5rem;">
+                                        <span style="font-family: monospace; font-size: 0.78rem; color: #475569; word-break: break-all; line-height: 1.35;">${w.address}</span>
+                                        <span onclick="copyHash('${w.address}')" title="Скопировать адрес"
+                                            style="cursor: pointer; flex-shrink: 0;">📋</span>
+                                    </div>
                                     <div style="margin-top: 0.5rem;">
                                         <strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
                                         <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>
@@ -8587,7 +8734,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     if (walletFilter) {
                         walletFilter.innerHTML = '<option value="">Все кошельки</option>' +
-                            walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${w.address.substring(0, 8)}... ($${w.usdt_balance.toFixed(0)})</option>`).join('');
+                            walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${escapeHtml(w.label || w.address.substring(0, 8) + '...')} ($${w.usdt_balance.toFixed(0)})</option>`).join('');
                     }
                 } else {
                     document.getElementById('walletsInfo').innerHTML = `
@@ -9073,9 +9220,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // ==================== Copy Hash Helper ====================
         function copyHash(hash) {
             navigator.clipboard.writeText(hash).then(() => {
-                // Показываем короткое уведомление
+                // Показываем короткое уведомление. Копируют и хэши, и адреса —
+                // текст нейтральный, иначе после копирования адреса врёт
                 const toast = document.createElement('div');
-                toast.textContent = 'Хэш скопирован!';
+                toast.textContent = 'Скопировано: ' + hash.substring(0, 10) + '…';
                 toast.style.cssText = 'position: fixed; bottom: 20px; right: 20px; background: #10b981; color: white; padding: 0.75rem 1.5rem; border-radius: 8px; z-index: 10000; animation: fadeIn 0.3s;';
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 2000);

@@ -582,13 +582,110 @@ class Reimbursement(Base):
     tx_verified = Column(Boolean, default=False)
     notes = Column(Text)
     deals = relationship("Deal", back_populates="reimbursement")
+    tx_uses = relationship('ReimbursementTxUse', back_populates='reimbursement',
+                           cascade='all, delete-orphan')
 
     def to_dict(self):
         # tx_hashes — список для фронта
         hashes = [h.strip() for h in (self.tx_hash or '').split(',') if h.strip()]
-        return {'id': self.id, 'founder_name': self.founder_name, 'amount_usdt': self.amount_usdt,
+        # Состав возмещения: одним переводом закрываем несколько сделок, и по
+        # карточке одной сделки было не понять, что ещё вошло в тот же хэш и
+        # осталось ли нераспределённое. Без этого один перевод легко «возместить»
+        # дважды. НЕ вызываем deal.to_dict() — Deal.to_dict сам зовёт этот метод.
+        breakdown = []
+        allocated = 0.0
+        for d in (self.deals or []):
+            share = d.payout_amount_usdt or 0
+            allocated += share
+            breakdown.append({
+                'deal_id': d.id,
+                'client_name': (d.client.name if d.client else d.client_name) or '',
+                'payout_thb': d.payout_amount_thb,
+                'share_usdt': round(share, 2),
+            })
+        total = self.amount_usdt or 0
+        # Переводы, из которых сложилось возмещение, с остатком по каждому.
+        # По ним видно «запас»: сколько из перевода ещё не разобрано по сделкам.
+        tx_uses = []
+        for u in (self.tx_uses or []):
+            tx = u.tx
+            tx_uses.append({
+                'tx_hash': tx.tx_hash if tx else '',
+                'tx_amount_usdt': round((tx.amount_usdt or 0) if tx else 0, 2),
+                'taken_usdt': round(u.amount_usdt or 0, 2),
+                'free_usdt': tx.free_usdt() if tx else 0,
+                'source': tx.source if tx else '',
+            })
+        return {'id': self.id, 'founder_name': self.founder_name, 'amount_usdt': total,
                 'tx_hash': self.tx_hash, 'tx_hashes': hashes, 'tx_verified': self.tx_verified,
+                'created_at': self.created_at.isoformat() if self.created_at else None,
+                'deals_breakdown': breakdown,
+                'deals_count': len(breakdown),
+                'allocated_usdt': round(allocated, 2),
+                'unallocated_usdt': round(total - allocated, 2),
+                'tx_uses': tx_uses,
+                'tx_free_total': round(sum(t['free_usdt'] for t in tx_uses), 2)}
+
+class ReimbursementTx(Base):
+    """Перевод фаундеру — одна запись на хэш транзакции.
+
+    Раньше хэши жили строкой в `Reimbursement.tx_hash`, и «сколько из перевода уже
+    разобрано» система не знала: один и тот же перевод можно было провести дважды,
+    и обе сделки выглядели возмещёнными. Теперь перевод — сущность с суммой,
+    а возмещения берут из него доли (см. ReimbursementTxUse).
+    """
+    __tablename__ = 'reimbursement_txs'
+    id = Column(Integer, primary_key=True)
+    tx_hash = Column(String(120), nullable=False, unique=True, index=True)
+    founder_name = Column(String(100))
+    amount_usdt = Column(Float, nullable=False, default=0)
+    source = Column(String(20), default='tronscan')   # tronscan | manual
+    created_at = Column(DateTime, default=datetime.utcnow)
+    notes = Column(Text)
+    uses = relationship('ReimbursementTxUse', back_populates='tx',
+                        cascade='all, delete-orphan')
+
+    def used_usdt(self):
+        """Сколько из перевода уже разобрано по возмещениям.
+
+        Считаем запросом, а не по `self.uses`: в рамках одного запроса
+        использования добавляются и читаются тут же, а коллекция в памяти
+        к этому моменту ещё не перечитана — остаток показывался бы старый.
+        """
+        from sqlalchemy import func as _f
+        from sqlalchemy.orm import object_session
+        s = object_session(self)
+        if s is not None and self.id:
+            # no_autoflush обязателен: to_dict вызывается в середине запроса,
+            # и автофлаш здесь выталкивал незавершённые изменения чужой логики
+            # (ловилось падениями реферальных тестов на общем прогоне).
+            with s.no_autoflush:
+                val = s.query(_f.sum(ReimbursementTxUse.amount_usdt)).filter(
+                    ReimbursementTxUse.tx_id == self.id).scalar()
+            return round(val or 0, 2)
+        return round(sum(u.amount_usdt or 0 for u in (self.uses or [])), 2)
+
+    def free_usdt(self):
+        """Незадействованный остаток перевода — тот самый «запас»."""
+        return round((self.amount_usdt or 0) - self.used_usdt(), 2)
+
+    def to_dict(self):
+        return {'id': self.id, 'tx_hash': self.tx_hash, 'founder_name': self.founder_name,
+                'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
+                'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
                 'created_at': self.created_at.isoformat() if self.created_at else None}
+
+
+class ReimbursementTxUse(Base):
+    """Сколько из конкретного перевода ушло в конкретное возмещение."""
+    __tablename__ = 'reimbursement_tx_uses'
+    id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer, ForeignKey('reimbursement_txs.id'), nullable=False, index=True)
+    reimbursement_id = Column(Integer, ForeignKey('reimbursements.id'), nullable=False, index=True)
+    amount_usdt = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    tx = relationship('ReimbursementTx', back_populates='uses')
+    reimbursement = relationship('Reimbursement', back_populates='tx_uses')
 
 class CashAllocation(Base):
     __tablename__ = 'cash_allocations'
@@ -6705,6 +6802,48 @@ def get_dashboard():
 
 # ==================== REIMBURSEMENTS API ====================
 
+def _tron_tx_amount(tx_hash):
+    """Сумма USDT перевода по хэшу из TronScan. None — если не прочиталась.
+
+    Сумму перевода берём из сети, а не с рук: именно она задаёт потолок,
+    сколько можно разнести по сделкам.
+    """
+    try:
+        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                         timeout=10)
+        if r.status_code != 200:
+            return None
+        trc = (r.json() or {}).get('trc20TransferInfo') or []
+        if not trc:
+            return None
+        return round(float(trc[0].get('amount_str', 0)) / 1_000_000, 2) or None
+    except Exception as e:
+        app.logger.warning(f'tron tx amount {tx_hash[:16]}: {e}')
+        return None
+
+
+@app.route('/api/reimbursements/tx', methods=['GET'])
+def get_reimbursement_txs():
+    """Переводы с остатками — подсказка для формы возмещения.
+
+    `?founder=` фильтрует по фаундеру, `?only_free=1` оставляет только те,
+    из которых ещё есть что взять.
+    """
+    from sqlalchemy.orm import selectinload
+    session = get_session()
+    try:
+        q = session.query(ReimbursementTx).options(selectinload(ReimbursementTx.uses))
+        founder = (request.args.get('founder') or '').strip()
+        if founder:
+            q = q.filter(ReimbursementTx.founder_name == founder)
+        txs = [t.to_dict() for t in q.order_by(ReimbursementTx.created_at.desc()).all()]
+        if request.args.get('only_free') == '1':
+            txs = [t for t in txs if t['free_usdt'] > 0.01]
+        return jsonify({'success': True, 'txs': txs})
+    finally:
+        session.close()
+
+
 @app.route('/api/reimbursements/pending', methods=['GET'])
 def get_pending_reimbursements():
     """Get deals awaiting reimbursement, grouped by founder"""
@@ -6768,6 +6907,66 @@ def create_reimbursement():
         if not founder_name or not deal_ids or not amount_usdt:
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
 
+        # ── Переводы: сколько берём из каждого ────────────────────────────
+        # Раньше ничто не мешало ввести тот же хэш второй раз и «возместить» одни
+        # и те же деньги дважды. Теперь перевод — сущность с суммой, а возмещение
+        # берёт из него долю; больше остатка взять нельзя.
+        tx_uses_req = data.get('tx_uses') or []
+        if not tx_uses_req and tx_hashes:
+            # Обратная совместимость: старый фронт шлёт только хэши. Считаем,
+            # что берём всю сумму возмещения, разложенную по переводам поровну.
+            share = float(amount_usdt) / len(tx_hashes)
+            tx_uses_req = [{'tx_hash': h.strip(), 'amount_usdt': share}
+                           for h in tx_hashes if h.strip()]
+
+        prepared_uses = []
+        for item in tx_uses_req:
+            h = str(item.get('tx_hash') or '').strip()
+            if not h:
+                continue
+            try:
+                take = round(float(item.get('amount_usdt') or 0), 2)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': f'Некорректная сумма по переводу {h[:16]}…'}), 400
+
+            tx = session.query(ReimbursementTx).filter(ReimbursementTx.tx_hash == h).first()
+            if tx is None:
+                # Первый раз видим перевод — сумму берём из блокчейна, а не с рук.
+                onchain = _tron_tx_amount(h)
+                tx = ReimbursementTx(
+                    tx_hash=h, founder_name=founder_name,
+                    amount_usdt=onchain if onchain is not None else (take or 0),
+                    source='tronscan' if onchain is not None else 'manual',
+                )
+                session.add(tx)
+                session.flush()
+            if not take:
+                take = tx.free_usdt()
+
+            free = tx.free_usdt()
+            if take > free + 0.01 and not data.get('force'):
+                return jsonify({
+                    'success': False,
+                    'error': f'Из перевода {h[:16]}… доступно ${free:.2f} '
+                             f'(всего ${(tx.amount_usdt or 0):.2f}), запрошено ${take:.2f}',
+                    'tx_hash': h, 'tx_free_usdt': free,
+                }), 409
+            prepared_uses.append((tx, take))
+
+        # ── Явные доли по сделкам ─────────────────────────────────────────
+        alloc_req = {}
+        for item in (data.get('deal_allocations') or []):
+            try:
+                alloc_req[int(item.get('deal_id'))] = round(float(item.get('amount_usdt') or 0), 2)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Некорректная сумма в распределении'}), 400
+        taken_total = round(sum(t for _, t in prepared_uses), 2)
+        if alloc_req and taken_total and round(sum(alloc_req.values()), 2) > taken_total + 0.01:
+            return jsonify({
+                'success': False,
+                'error': f'Распределено ${sum(alloc_req.values()):.2f}, а из переводов взято ${taken_total:.2f}',
+            }), 400
+
         # Create reimbursement
         reimbursement = Reimbursement(
             founder_name=founder_name,
@@ -6776,6 +6975,10 @@ def create_reimbursement():
         )
         session.add(reimbursement)
         session.flush()  # Get the ID
+
+        for tx, take in prepared_uses:
+            session.add(ReimbursementTxUse(tx_id=tx.id, reimbursement_id=reimbursement.id,
+                                           amount_usdt=take))
         
         # Update deals
         # CR-05: блокировка строк сделок на время возмещения. Без with_for_update
@@ -6795,7 +6998,11 @@ def create_reimbursement():
         for deal in deals:
             deal.reimbursement_id = reimbursement.id
             deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
-            deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
+            if deal.id in alloc_req:
+                # Менеджер сказал явно, сколько этой сделке — верим ему, а не пропорции
+                deal.payout_amount_usdt = alloc_req[deal.id]
+            else:
+                deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
             total_thb += deal_payout
             
             # Recalculate profit now that we know payout USDT

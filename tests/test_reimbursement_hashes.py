@@ -15,7 +15,9 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
-from app import app, get_session, Deal, Client, AdminUser, Reimbursement
+import app as appmod
+from app import (app, get_session, Deal, Client, AdminUser, Reimbursement,
+                 ReimbursementTx, ReimbursementTxUse)
 
 HASHES = [
     'e68c2832dea7d5286753000000000000000000000000000000000000000000a1',
@@ -28,15 +30,22 @@ HASHES = [
 
 
 @pytest.fixture(autouse=True)
-def clean_db():
+def clean_db(monkeypatch):
     s = get_session()
     try:
         s.query(Deal).delete()
+        # Bulk-delete не тянет ORM-каскад, поэтому использования и сами переводы
+        # чистим явно — иначе остаток по этим хэшам «съеден» прошлым тестом
+        # и возмещение отобьётся как повторное.
+        s.query(ReimbursementTxUse).delete()
         s.query(Reimbursement).delete()
+        s.query(ReimbursementTx).delete()
         s.query(Client).delete()
         s.commit()
     finally:
         s.close()
+    # Хэши тут синтетические — в сеть за суммой не ходим, сумма берётся из запроса
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
     yield
 
 
