@@ -7294,13 +7294,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const hint = document.getElementById('newWalletBalanceHint');
             const balanceInput = document.getElementById('newWalletInitialBalance');
             const btn = document.getElementById('newWalletFetchBalanceBtn');
-            // Виртуальный кошелёк (просто имя вместо адреса) — считаем руками, как раньше
-            if (!(addr.startsWith('T') && addr.length === 34)) {
+            // Виртуальный кошелёк (просто имя вместо адреса) — считаем руками, как раньше.
+            // Длину не проверяем жёстко: адрес мог приехать с лишним пробелом или
+            // подменённым символом, и точную причину лучше назовёт сервер.
+            if (!(addr.startsWith('T') && addr.length >= 30 && addr.length <= 40)) {
                 if (manual) {
                     hint.style.display = 'block';
                     hint.style.color = '#b45309';
                     hint.textContent = addr
-                        ? '⚠️ Это не адрес TRON (нужны 34 символа с T) — впиши остаток вручную'
+                        ? '⚠️ Это не адрес TRON (34 символа, начинается с T) — впиши остаток вручную'
                         : '⚠️ Сначала введи адрес кошелька';
                 } else {
                     hint.style.display = 'none';
@@ -7318,13 +7320,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const r = await fetch(`${API_URL}/api/tronscan/balance/${encodeURIComponent(addr)}`);
                     const d = await r.json();
                     if (reqId !== _walletBalanceReq) return;  // адрес успели поменять
+                    // Адрес мог приехать с подменёнными символами (× вместо x
+                    // и т.п.) — сервер их чинит, и в поле кладём уже чистый,
+                    // иначе кошелёк заведётся с адресом, которого нет в сети
+                    const fixNote = (d.fixed || []).length
+                        ? ` (поправил ${d.fixed.map(f => `«${f.from}»→«${f.to}»`).join(', ')})`
+                        : '';
+                    if (d.address && d.address !== addr) {
+                        document.getElementById('newWalletAddress').value = d.address;
+                    }
                     if (d.success) {
                         balanceInput.value = d.usdt_balance;
                         hint.style.color = '#059669';
-                        hint.textContent = `✅ Баланс из TronScan: ${d.usdt_balance} USDT · ${d.trx_balance} TRX`;
+                        hint.textContent = `✅ Баланс из TronScan: ${d.usdt_balance} USDT · ${d.trx_balance} TRX${fixNote}`;
                     } else {
                         hint.style.color = '#b45309';
-                        hint.textContent = `⚠️ ${d.error || 'Баланс не получен'} — впиши остаток вручную`;
+                        hint.textContent = `⚠️ ${d.error || 'Баланс не получен'}${fixNote}`;
                     }
                 } catch (e) {
                     if (reqId !== _walletBalanceReq) return;

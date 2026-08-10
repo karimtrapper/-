@@ -5207,7 +5207,20 @@ def add_wallet():
         address = data.get('address', '').strip()
         if not address:
             return jsonify({'success': False, 'error': 'Адрес обязателен'}), 400
-        
+
+        # Адрес-двойник (× вместо x и прочие гомоглифы) чиним здесь, а не только
+        # в форме: кошелёк заводят и через API, и кривой адрес потом навсегда
+        # ломает сверку — TronScan такого адреса не знает.
+        # Виртуальные кошельки (просто имя вместо адреса) не трогаем.
+        if address.startswith('T') and len(address) >= 30:
+            fixed_address, fixes = normalize_tron_address(address)
+            problem = tron_address_problem(fixed_address)
+            if problem:
+                return jsonify({'success': False, 'error': problem}), 400
+            if fixes:
+                app.logger.info(f'[Wallet] адрес поправлен: {address} → {fixed_address}')
+            address = fixed_address
+
         # Проверяем что кошелёк не дублируется
         existing = session.query(Wallet).filter(Wallet.address == address).first()
         if existing:
@@ -5294,17 +5307,75 @@ def _tron_balances(address):
         return None
 
 
+TRON_B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+
+# Похожие на глаз символы, которые приезжают вместе с адресом из мессенджеров
+# и заметок. Классика — «5x5» превращается автозаменой в «5×5»: длина та же,
+# начинается с T, поэтому проверка «T + 34 символа» пропускает, а TronScan
+# отвечает «адрес не найден», и виноватым выглядит TronScan (кейс 10.08).
+TRON_HOMOGLYPHS = {
+    '×': 'x', '✕': 'x', '✖': 'x',
+    'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K', 'М': 'M', 'Н': 'H', 'О': 'O',
+    'Р': 'P', 'С': 'C', 'Т': 'T', 'У': 'Y', 'Х': 'X',
+    'а': 'a', 'е': 'e', 'о': 'o', 'р': 'p', 'с': 'c', 'у': 'y', 'х': 'x',
+    ' ': '', '​': '', '–': '', '—': '',
+}
+
+
+def normalize_tron_address(raw):
+    """Чинит подменённые символы. Возвращает (адрес, [(позиция, было, стало)])."""
+    addr = (raw or '').strip()
+    fixes = []
+    out = []
+    for i, ch in enumerate(addr):
+        if ch in TRON_HOMOGLYPHS:
+            repl = TRON_HOMOGLYPHS[ch]
+            fixes.append({'pos': i + 1, 'from': ch, 'to': repl})
+            out.append(repl)
+        else:
+            out.append(ch)
+    return ''.join(out), fixes
+
+
+def tron_address_problem(addr):
+    """Что не так с адресом. None — адрес корректен (включая контрольную сумму).
+
+    Base58Check ловит и опечатку в одном символе, а не только длину: без этой
+    проверки «похожий, но чужой» адрес уходил бы в сеть и возвращался как
+    «не найден», хотя проблема ровно в вводе.
+    """
+    if not addr:
+        return 'Сначала введи адрес кошелька'
+    if not addr.startswith('T'):
+        return 'Адрес TRON начинается с T'
+    if len(addr) != 34:
+        return f'В адресе TRON 34 символа, здесь {len(addr)}'
+    bad = [(i + 1, c) for i, c in enumerate(addr) if c not in TRON_B58]
+    if bad:
+        pos, ch = bad[0]
+        return f'Символ {ch!r} (позиция {pos}) не встречается в адресах TRON'
+    num = 0
+    for c in addr:
+        num = num * 58 + TRON_B58.index(c)
+    raw = num.to_bytes(25, 'big')
+    if hashlib.sha256(hashlib.sha256(raw[:-4]).digest()).digest()[:4] != raw[-4:]:
+        return 'Контрольная сумма адреса не сходится — где-то опечатка'
+    return None
+
+
 @app.route('/api/tronscan/balance/<address>', methods=['GET'])
 def tronscan_balance(address):
     """Баланс адреса до создания кошелька — для автоподстановки в форму."""
-    address = (address or '').strip()
-    if not (address.startswith('T') and len(address) == 34):
-        return jsonify({'success': False, 'error': 'Не похоже на адрес TRON'}), 400
+    address, fixes = normalize_tron_address(address)
+    problem = tron_address_problem(address)
+    if problem:
+        return jsonify({'success': False, 'error': problem, 'fixed': fixes}), 400
     balances = _tron_balances(address)
     if balances is None:
-        return jsonify({'success': False, 'error': 'Адрес не найден или TronScan недоступен'}), 502
+        return jsonify({'success': False, 'fixed': fixes,
+                        'error': 'TronScan не ответил — попробуй ещё раз'}), 502
     usdt, trx = balances
-    return jsonify({'success': True, 'address': address,
+    return jsonify({'success': True, 'address': address, 'fixed': fixes,
                     'usdt_balance': round(usdt, 2), 'trx_balance': round(trx, 6)})
 
 
