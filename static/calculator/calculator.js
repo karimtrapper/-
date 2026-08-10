@@ -373,10 +373,11 @@ function toggleDiscount() {
         const amount = getAmount();
         if (amount > 0) {
             let defaultProfit = 4.0;
-            // Для USDT-сценариев дефолт 2.5%
+            // Для USDT-сценариев дефолт 2% (решение Карима 10.08; до этого 2.5%,
+            // причём такой кнопки в пресетах нет — активной не подсвечивалась ни одна)
             const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
             if (isUsdtScenario) {
-                defaultProfit = 2.5;
+                defaultProfit = 2.0;
             } else {
                 // Определяем базу для расчета (рубли)
                 let baseAmount = amount;
@@ -1131,7 +1132,7 @@ function calculateLocal(amount) {
     // В локальном режиме (file://) берем профит из стейта, если включена скидка,
     // иначе определяем его по порогам Doverka (имитируем поведение сервера)
     const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
-    let targetProfit = isUsdtScenario ? 2.5 : 4.0;
+    let targetProfit = isUsdtScenario ? 2.0 : 4.0;   // USDT-дефолт 2%, см. toggleDiscount
     if (state.applyDiscount) {
         targetProfit = state.profitMargin;
     } else if (!isUsdtScenario) {
