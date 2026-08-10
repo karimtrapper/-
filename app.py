@@ -57,6 +57,40 @@ PUBLIC_PATHS = [
     '/api/webhook/payment-link',               # Коннектор сообщает об оплате ссылки (защищён ключом в URL)
 ]
 
+# Что открывает read-only ключ (SERVICE_API_KEY_RO) — Claude Code фаундера.
+# Белый список, а не «любой GET»: снаружи остаются персональные данные клиентов
+# (/api/kyc/photo отдаёт паспорта и селфи) и платные вызовы модели
+# (/api/bitrix/deals/<id>/analyze гоняет LLM по чату на каждый запрос).
+READONLY_PATHS = [
+    '/api/deals',                 # сделки: список, карточка, кандидаты LOSE
+    '/api/clients', '/api/managers',
+    '/api/referrers',             # рефереры, их неоплаченные сделки, заявки
+    '/api/payout-requests',       # заявки рефереров на вывод
+    '/api/reimbursements',        # возмещения, в т.ч. /pending — что не возмещено
+    '/api/wallets', '/api/cards', '/api/cash/',
+    '/api/transactions/',         # приходы и расходы по кошелькам
+    '/api/sber-incomes', '/api/wl-transactions',
+    '/api/analytics/',            # дашборд, юнит-экономика, конверсия
+    '/api/reestr/',
+    '/api/health',
+]
+
+
+def _api_key_matches(expected: str) -> bool:
+    """Сравнивает заголовок X-Api-Key с ключом из env.
+
+    Сравнение по байтам, а не по строкам: `secrets.compare_digest` на non-ASCII
+    строке кидает TypeError — заголовок с кириллицей ронял запрос в 500 вместо
+    честного 401.
+    """
+    if not expected:
+        return False
+    return secrets.compare_digest(
+        request.headers.get('X-Api-Key', '').encode('utf-8'),
+        expected.encode('utf-8'),
+    )
+
+
 @app.before_request
 def check_auth():
     """Проверка авторизации для всех /api/* и /crm кроме публичных"""
@@ -79,8 +113,20 @@ def check_auth():
 
     # Сервисный доступ для ботов (DealCloser, SberNotifier) — непротухающий API-ключ.
     # Иммунитет к ротации человеческого пароля админа: ключ живёт в env, не в БД.
-    svc_key = os.environ.get('SERVICE_API_KEY', '')
-    if svc_key and secrets.compare_digest(request.headers.get('X-Api-Key', ''), svc_key):
+    if _api_key_matches(os.environ.get('SERVICE_API_KEY', '')):
+        return None
+
+    # Read-only ключ — Claude Code фаундера смотрит сделки, рефералов, возмещения
+    # и балансы. Только GET и только пути из READONLY_PATHS; отзывается сменой
+    # одной переменной, боты на основном ключе этого не замечают.
+    if _api_key_matches(os.environ.get('SERVICE_API_KEY_RO', '')):
+        if request.method != 'GET':
+            return jsonify({'success': False, 'error': 'read_only_key',
+                            'detail': 'Ключ только для чтения — запись через CRM'}), 403
+        if not any(path.startswith(p) for p in READONLY_PATHS):
+            return jsonify({'success': False, 'error': 'read_only_key_scope',
+                            'detail': f'Путь {path} закрыт для read-only ключа'}), 403
+        app.logger.info(f'RO-ключ: GET {path}')
         return None
 
     # Проверяем сессию
@@ -154,7 +200,7 @@ TRONSCAN_CACHE = {
 CACHE_TTL = 300 # 5 минут
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from enum import Enum
@@ -3781,6 +3827,29 @@ def get_deals():
         if date_to:
             # Включаем весь день date_to
             query = query.filter(Deal.created_at < datetime.strptime(date_to, '%Y-%m-%d') + timedelta(days=1))
+        # Поиск: номер сделки или кусок имени клиента / реферера / менеджера.
+        # Без него «найди сделки Сергея» = выкачать все страницы и грепать локально.
+        q = (request.args.get('q') or '').strip()
+        if q:
+            if q.isdigit():
+                query = query.filter(Deal.id == int(q))
+            elif session.bind.dialect.name == 'postgresql':
+                like = f'%{q}%'
+                query = query.filter(or_(
+                    Deal.client_name.ilike(like),
+                    Deal.referrer_name.ilike(like),
+                    Deal.manager_name.ilike(like),
+                ))
+            else:
+                # SQLite (локальный стенд, тесты): ilike не понижает кириллицу —
+                # отбираем id в Python, чтобы поиск вёл себя как на проде.
+                q_cf = q.casefold()
+                rows = session.query(
+                    Deal.id, Deal.client_name, Deal.referrer_name, Deal.manager_name
+                ).all()
+                matched = [r[0] for r in rows
+                           if any(v and q_cf in v.casefold() for v in r[1:])]
+                query = query.filter(Deal.id.in_(matched))
         # Пагинация
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 50))
