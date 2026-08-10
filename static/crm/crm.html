@@ -2658,6 +2658,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Начальный баланс USDT</label>
                     <input type="number" class="form-control" id="newWalletInitialBalance" value="0" step="0.01">
+                    <div id="newWalletBalanceHint" style="display:none; margin-top:6px; font-size:0.85rem; color:#64748b;"></div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Добавить кошелек</button>
             </form>
@@ -6898,6 +6899,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // ==================== Balance Tab Logic ====================
         function openAddWalletModal() {
             document.getElementById('addWalletModal').classList.add('active');
+            // Чистим форму: иначе подсказка о балансе прошлого адреса вводит в заблуждение
+            document.getElementById('addWalletFormBalance').reset();
+            const hint = document.getElementById('newWalletBalanceHint');
+            if (hint) hint.style.display = 'none';
         }
 
         function closeAddWalletModal() {
@@ -6921,6 +6926,44 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function closeTopupCardModal() {
             document.getElementById('topupCardModal').classList.remove('active');
         }
+
+        // Баланс кошелька TRON тянем из сети, а не спрашиваем у менеджера:
+        // руками остаток вбивали с ошибками, а он и так публичный.
+        let _walletBalanceReq = 0;
+        async function fetchWalletBalanceFromTron() {
+            const addr = document.getElementById('newWalletAddress').value.trim();
+            const hint = document.getElementById('newWalletBalanceHint');
+            const balanceInput = document.getElementById('newWalletInitialBalance');
+            // Виртуальный кошелёк (просто имя вместо адреса) — считаем руками, как раньше
+            if (!(addr.startsWith('T') && addr.length === 34)) {
+                hint.style.display = 'none';
+                balanceInput.readOnly = false;
+                return;
+            }
+            const reqId = ++_walletBalanceReq;
+            hint.style.display = 'block';
+            hint.style.color = '#64748b';
+            hint.textContent = '⏳ Смотрю баланс в TronScan...';
+            try {
+                const r = await fetch(`${API_URL}/api/tronscan/balance/${encodeURIComponent(addr)}`);
+                const d = await r.json();
+                if (reqId !== _walletBalanceReq) return;  // адрес успели поменять
+                if (d.success) {
+                    balanceInput.value = d.usdt_balance;
+                    hint.style.color = '#059669';
+                    hint.textContent = `✅ Баланс из TronScan: ${d.usdt_balance} USDT · ${d.trx_balance} TRX`;
+                } else {
+                    hint.style.color = '#b45309';
+                    hint.textContent = `⚠️ ${d.error || 'Баланс не получен'} — впиши остаток вручную`;
+                }
+            } catch (e) {
+                if (reqId !== _walletBalanceReq) return;
+                hint.style.color = '#b45309';
+                hint.textContent = '⚠️ TronScan не ответил — впиши остаток вручную';
+            }
+        }
+        document.getElementById('newWalletAddress').addEventListener('blur', fetchWalletBalanceFromTron);
+        document.getElementById('newWalletAddress').addEventListener('change', fetchWalletBalanceFromTron);
 
         document.getElementById('addWalletFormBalance').onsubmit = async function (e) {
             e.preventDefault();

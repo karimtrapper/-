@@ -5155,6 +5155,49 @@ def add_wallet():
     finally:
         session.close()
 
+USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+
+
+def _tron_balances(address):
+    """Балансы адреса TRON: (usdt, trx). None — если адрес не читается.
+
+    Тот же источник, что и в add_wallet, вынесен отдельно: баланс нужен ещё
+    и до создания кошелька — менеджер вводит адрес, а начальный остаток
+    подтягивается из сети, чтобы не вбивать руками (и не ошибаться).
+    """
+    try:
+        r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}', timeout=8)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        if not data or not data.get('address'):
+            return None
+        trx = float(data.get('balance', 0)) / 1_000_000
+        usdt = 0.0
+        for token in data.get('trc20token_balances', []) or []:
+            if token.get('tokenId') == USDT_TRC20_CONTRACT:
+                usdt = float(token.get('balance', 0)) / 1_000_000
+                break
+        return usdt, trx
+    except Exception as e:
+        app.logger.warning(f'TronScan balance error for {address}: {e}')
+        return None
+
+
+@app.route('/api/tronscan/balance/<address>', methods=['GET'])
+def tronscan_balance(address):
+    """Баланс адреса до создания кошелька — для автоподстановки в форму."""
+    address = (address or '').strip()
+    if not (address.startswith('T') and len(address) == 34):
+        return jsonify({'success': False, 'error': 'Не похоже на адрес TRON'}), 400
+    balances = _tron_balances(address)
+    if balances is None:
+        return jsonify({'success': False, 'error': 'Адрес не найден или TronScan недоступен'}), 502
+    usdt, trx = balances
+    return jsonify({'success': True, 'address': address,
+                    'usdt_balance': round(usdt, 2), 'trx_balance': round(trx, 6)})
+
+
 @app.route('/api/wallets/<int:wallet_id>', methods=['DELETE'])
 def delete_wallet(wallet_id):
     session = get_session()
