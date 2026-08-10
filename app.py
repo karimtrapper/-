@@ -7345,27 +7345,6 @@ def _extract_sbp_link(data):
     return sbp if sbp and 'nspk.ru' in str(sbp) else None
 
 
-def _notify_payment_link_created(payload, data):
-    """Уведомление в рабочий чат: ссылка выставлена, ждём оплату.
-
-    Раньше созданная ссылка нигде не светилась — команда узнавала о платеже
-    только когда клиент напишет. WL-бот про свои ссылки пишет, а калькулятор молчал.
-    """
-    try:
-        meta = payload.get('metadata') or {}
-        comment = str(meta.get('comment') or '').strip()
-        thb = meta.get('thb_amount') or 0
-        msg = (f"🔗 <b>Ссылка на оплату создана</b>\n"
-               f"{payload.get('amount', 0):,.0f} ₽" + (f" → {float(thb):,.2f} ฿" if thb else "") + "\n")
-        if comment:
-            msg += f"{comment}\n"
-        link = data.get('public_link') or data.get('approve_url') or ''
-        msg += link
-        send_telegram_notification(msg)
-    except Exception as e:
-        app.logger.warning(f'payment link notify failed: {e}')
-
-
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
     """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API.
@@ -7455,7 +7434,6 @@ def proxy_create_payment():
                 # Прямая СБП-ссылка (её же показывает QR на странице оплаты) —
                 # менеджеру бывает нужна сама ссылка, а не страница-обёртка.
                 data['sbp_link'] = _extract_sbp_link(data)
-                _notify_payment_link_created(safe_payload, data)
             return jsonify(data), response.status_code
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return jsonify({'success': False, 'message': 'grushab-2-b.ru не отвечает', 'grusha_down': True}), 503

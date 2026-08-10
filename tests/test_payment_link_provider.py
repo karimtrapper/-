@@ -56,7 +56,6 @@ def capture_post(monkeypatch):
         })
 
     monkeypatch.setattr(appmod.requests, 'post', _post)
-    monkeypatch.setattr(appmod, 'send_telegram_notification', lambda *a, **kw: True)
     return calls
 
 
@@ -78,30 +77,6 @@ class TestConnectorProvider:
         """Форма payecom (провайдер sberbank) — не НСПК, прямую ссылку не показываем."""
         monkeypatch.setattr(appmod.requests, 'post', lambda *a, **kw: _Resp(
             {'public_link': PUBLIC, 'approve_url': 'https://payecom.ru/pay_ru?orderId=1'}))
-        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda *a, **kw: True)
         body = cli.post('/api/proxy/create-payment',
                         json={'provider': 'grusha', 'amount': 10000}).get_json()
         assert body['sbp_link'] is None
-
-
-class TestNotification:
-    def test_notifies_working_chat(self, cli, monkeypatch, capture_post):
-        sent = []
-        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda text, *a, **kw: sent.append(text))
-        cli.post('/api/proxy/create-payment', json={
-            'provider': 'grusha', 'amount': 10000,
-            'metadata': {'thb_amount': 3544.67, 'comment': 'Мария, заказ 12'},
-        })
-        assert len(sent) == 1
-        assert 'Ссылка на оплату создана' in sent[0]
-        assert 'Мария, заказ 12' in sent[0]
-        assert PUBLIC in sent[0]
-
-    def test_notify_failure_does_not_break_link(self, cli, monkeypatch, capture_post):
-        """Телеграм лёг — ссылка всё равно должна вернуться менеджеру."""
-        def _boom(*a, **kw):
-            raise RuntimeError('tg down')
-        monkeypatch.setattr(appmod, 'send_telegram_notification', _boom)
-        resp = cli.post('/api/proxy/create-payment', json={'provider': 'grusha', 'amount': 10000})
-        assert resp.status_code == 200
-        assert resp.get_json()['public_link'] == PUBLIC
