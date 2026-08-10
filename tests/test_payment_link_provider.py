@@ -56,6 +56,7 @@ def capture_post(monkeypatch):
         })
 
     monkeypatch.setattr(appmod.requests, 'post', _post)
+    monkeypatch.setattr(appmod, 'send_telegram_notification', lambda *a, **kw: True)
     return calls
 
 
@@ -77,6 +78,86 @@ class TestConnectorProvider:
         """Форма payecom (провайдер sberbank) — не НСПК, прямую ссылку не показываем."""
         monkeypatch.setattr(appmod.requests, 'post', lambda *a, **kw: _Resp(
             {'public_link': PUBLIC, 'approve_url': 'https://payecom.ru/pay_ru?orderId=1'}))
+        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda *a, **kw: True)
         body = cli.post('/api/proxy/create-payment',
                         json={'provider': 'grusha', 'amount': 10000}).get_json()
         assert body['sbp_link'] is None
+
+
+class TestNotification:
+    def test_notifies_working_chat(self, cli, monkeypatch, capture_post):
+        sent = []
+        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda text, *a, **kw: sent.append(text))
+        cli.post('/api/proxy/create-payment', json={
+            'provider': 'grusha', 'amount': 10000,
+            'metadata': {'thb_amount': 3544.67, 'comment': 'Мария, заказ 12'},
+        })
+        assert len(sent) == 1
+        assert 'Ссылка на оплату создана' in sent[0]
+        assert 'Мария, заказ 12' in sent[0]
+        assert PUBLIC in sent[0]
+
+    def test_notify_failure_does_not_break_link(self, cli, monkeypatch, capture_post):
+        """Телеграм лёг — ссылка всё равно должна вернуться менеджеру."""
+        def _boom(*a, **kw):
+            raise RuntimeError('tg down')
+        monkeypatch.setattr(appmod, 'send_telegram_notification', _boom)
+        resp = cli.post('/api/proxy/create-payment', json={'provider': 'grusha', 'amount': 10000})
+        assert resp.status_code == 200
+        assert resp.get_json()['public_link'] == PUBLIC
+
+class TestDescription:
+    def test_no_amounts_in_description(self, cli, capture_post):
+        """Описание видно клиенту на странице оплаты — суммы туда не пишем."""
+        cli.post('/api/proxy/create-payment', json={
+            'provider': 'grusha', 'amount': 100000,
+            'description': 'Обмен 100 000.00 RUB на 35 758.68 THB',
+        })
+        assert capture_post['json']['description'] == 'Grusha Exchange'
+
+
+class TestPaidWebhook:
+    """Коннектор сообщает об оплате → уведомление в рабочий чат."""
+
+    def _create_link(self, cli, capture_post):
+        cli.post('/api/proxy/create-payment', json={
+            'provider': 'grusha', 'amount': 100000, 'order_id': 'GR-777',
+            'metadata': {'thb_amount': 35758.68, 'comment': 'Мария'},
+        })
+        return capture_post['json']['webhook_url']
+
+    def test_webhook_url_passed_to_connector(self, cli, capture_post):
+        url = self._create_link(cli, capture_post)
+        assert '/api/webhook/payment-link?key=' in url
+
+    def test_paid_status_notifies(self, cli, capture_post, monkeypatch):
+        self._create_link(cli, capture_post)
+        sent = []
+        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda text, *a, **kw: sent.append(text))
+        resp = cli.post(f'/api/webhook/payment-link?key={appmod.payment_webhook_key()}',
+                        json={'order_id': 'GR-777', 'status': 'PAID'})
+        assert resp.status_code == 200
+        assert len(sent) == 1
+        assert 'Оплачено' in sent[0] and 'Мария' in sent[0]
+
+    def test_pending_status_is_silent(self, cli, capture_post, monkeypatch):
+        self._create_link(cli, capture_post)
+        sent = []
+        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda text, *a, **kw: sent.append(text))
+        cli.post(f'/api/webhook/payment-link?key={appmod.payment_webhook_key()}',
+                 json={'order_id': 'GR-777', 'status': 'PENDING'})
+        assert sent == []
+
+    def test_wrong_key_rejected(self, cli, monkeypatch):
+        sent = []
+        monkeypatch.setattr(appmod, 'send_telegram_notification', lambda text, *a, **kw: sent.append(text))
+        resp = cli.post('/api/webhook/payment-link?key=nope',
+                        json={'order_id': 'GR-777', 'status': 'PAID'})
+        assert resp.status_code == 403
+        assert sent == []
+
+    def test_garbage_body_answers_200(self, cli):
+        """Мусор не должен вызывать ретраи коннектора."""
+        resp = cli.post(f'/api/webhook/payment-link?key={appmod.payment_webhook_key()}',
+                        data='not json', content_type='text/plain')
+        assert resp.status_code == 200

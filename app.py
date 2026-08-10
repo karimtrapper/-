@@ -54,6 +54,7 @@ PUBLIC_PATHS = [
     '/api/auth/',                              # Авторизация
     '/api/webhook/doverka',                    # Вебхук Doverka (защищён HMAC-подписью)
     '/api/sber-incomes/ingest',                # Пуш приходов Сбера с VPS (защищён X-Api-Key)
+    '/api/webhook/payment-link',               # Коннектор сообщает об оплате ссылки (защищён ключом в URL)
 ]
 
 @app.before_request
@@ -7345,6 +7346,58 @@ def _extract_sbp_link(data):
     return sbp if sbp and 'nspk.ru' in str(sbp) else None
 
 
+# Детали выставленных ссылок: order_id → сумма/฿/комментарий. Нужны, чтобы
+# уведомление об оплате было человеческим — коннектор в вебхуке шлёт только
+# order_id и статус. Память процесса, ограничена по размеру: потеря записи
+# после рестарта не критична (уведомление придёт без деталей).
+_PAYMENT_LINKS = {}
+_PAYMENT_LINKS_MAX = 500
+PAYMENT_PAID_STATUSES = {'PAID', 'SUCCESS', 'SUCCEEDED', 'COMPLETED', 'DONE'}
+
+
+def payment_webhook_key():
+    """Ключ вебхука оплаты. Из env, иначе стабильно выводится из SECRET_KEY."""
+    key = os.environ.get('PAYMENT_WEBHOOK_KEY', '').strip()
+    if key:
+        return key
+    import hashlib
+    return hashlib.sha256(('payment-link:' + str(app.secret_key)).encode()).hexdigest()[:32]
+
+
+def _remember_payment_link(payload, data):
+    if len(_PAYMENT_LINKS) >= _PAYMENT_LINKS_MAX:
+        for k in list(_PAYMENT_LINKS)[:_PAYMENT_LINKS_MAX // 5]:
+            _PAYMENT_LINKS.pop(k, None)
+    meta = payload.get('metadata') or {}
+    _PAYMENT_LINKS[str(payload.get('order_id'))] = {
+        'amount': payload.get('amount'),
+        'thb': meta.get('thb_amount'),
+        'comment': str(meta.get('comment') or '').strip(),
+        'link': data.get('public_link') or '',
+    }
+
+
+def _notify_payment_link_created(payload, data):
+    """Уведомление в рабочий чат: ссылка выставлена, ждём оплату.
+
+    Раньше созданная ссылка нигде не светилась — команда узнавала о платеже
+    только когда клиент напишет. WL-бот про свои ссылки пишет, а калькулятор молчал.
+    """
+    try:
+        meta = payload.get('metadata') or {}
+        comment = str(meta.get('comment') or '').strip()
+        thb = meta.get('thb_amount') or 0
+        msg = (f"🔗 <b>Ссылка на оплату создана</b>\n"
+               f"{payload.get('amount', 0):,.0f} ₽" + (f" → {float(thb):,.2f} ฿" if thb else "") + "\n")
+        if comment:
+            msg += f"{comment}\n"
+        link = data.get('public_link') or data.get('approve_url') or ''
+        msg += link
+        send_telegram_notification(msg)
+    except Exception as e:
+        app.logger.warning(f'payment link notify failed: {e}')
+
+
 @app.route('/api/proxy/create-payment', methods=['POST'])
 def proxy_create_payment():
     """Прокси для создания платежа. Сначала grushab-2-b.ru, fallback на Doverka API.
@@ -7365,7 +7418,9 @@ def proxy_create_payment():
         return jsonify({'success': False, 'message': 'amount out of range'}), 400
 
     order_id = str(raw.get('order_id') or f'GR-{int(__import__("time").time() * 1000)}')[:64]
-    description = str(raw.get('description') or 'Grusha Exchange')[:128]
+    # Описание видно клиенту на странице оплаты, поэтому суммы туда не пишем —
+    # они и так показаны отдельной строкой. Оставляем только бренд.
+    description = 'Grusha Exchange'
 
     # Доп. безопасные поля для grushab-2-b.ru (whitelist значений где можно).
     ALLOWED_CURRENCIES = {'RUB', 'USD', 'USDT', 'THB', 'EUR'}
@@ -7399,8 +7454,14 @@ def proxy_create_payment():
             else:
                 metadata[ks] = str(v)[:256]
 
+    # Куда коннектор постучится об оплате. Без этого CalcCRM про оплату не узнаёт
+    # (раньше так и было — ссылку выставили и ждали, пока клиент сам напишет).
+    base = os.environ.get('PUBLIC_BASE_URL', 'https://grusha.up.railway.app').rstrip('/')
+    webhook_url = f'{base}/api/webhook/payment-link?key={payment_webhook_key()}'
+
     # Безопасный payload, отдаваемый в grushab-2-b.ru.
     safe_payload = {
+        'webhook_url': webhook_url,
         'amount': amount_val,
         'currency': currency,
         'order_id': order_id,
@@ -7434,6 +7495,8 @@ def proxy_create_payment():
                 # Прямая СБП-ссылка (её же показывает QR на странице оплаты) —
                 # менеджеру бывает нужна сама ссылка, а не страница-обёртка.
                 data['sbp_link'] = _extract_sbp_link(data)
+                _remember_payment_link(safe_payload, data)
+                _notify_payment_link_created(safe_payload, data)
             return jsonify(data), response.status_code
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
             return jsonify({'success': False, 'message': 'grushab-2-b.ru не отвечает', 'grusha_down': True}), 503
@@ -7502,6 +7565,37 @@ def doverka_currencies():
         timeout=15
     )
     return jsonify(resp.json()), resp.status_code
+
+@app.route('/api/webhook/payment-link', methods=['POST'])
+def payment_link_webhook():
+    """Коннектор сообщает, что ссылку оплатили → уведомление в рабочий чат.
+
+    Отвечаем 200 даже на мусор: иначе коннектор будет ретраить бесконечно.
+    Защита — ключ в query (публичный путь, тела не подписываются).
+    """
+    if not secrets.compare_digest(str(request.args.get('key', '')), payment_webhook_key()):
+        return jsonify({'ok': False}), 403
+
+    data = request.get_json(silent=True) or {}
+    status = str(data.get('status') or '').upper().strip()
+    order_id = str(data.get('order_id') or '')
+    if not order_id or status not in PAYMENT_PAID_STATUSES:
+        return jsonify({'ok': True}), 200
+
+    info = _PAYMENT_LINKS.pop(order_id, {})
+    amount = info.get('amount') or data.get('amount') or 0
+    thb = info.get('thb')
+    try:
+        msg = f"💰 <b>Оплачено</b>\n{float(amount):,.0f} ₽"
+        if thb:
+            msg += f" → {float(thb):,.2f} ฿"
+    except (TypeError, ValueError):
+        msg = "💰 <b>Оплачено</b>"
+    if info.get('comment'):
+        msg += f"\n{info['comment']}"
+    send_telegram_notification(msg)
+    return jsonify({'ok': True}), 200
+
 
 @app.route('/api/webhook/doverka', methods=['POST'])
 def doverka_webhook():
