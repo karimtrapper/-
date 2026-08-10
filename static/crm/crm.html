@@ -367,11 +367,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 }
 .client-dropdown-create:hover { background: var(--coral-light); }
 /* Toast уведомления */
-.toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+/* Тост по центру сверху и крупный: в правом углу мелкое сообщение проходило мимо
+   глаз — оператор не понимал, сохранилось или нет. */
+.toast-container { position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+    z-index: 9999; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .toast {
-    padding: 14px 20px; border-radius: var(--r-sm); color: white;
-    font-size: 14px; font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    animation: toastIn 0.3s ease-out; max-width: 360px;
+    padding: 18px 28px; border-radius: var(--r-sm); color: white;
+    font-size: 17px; font-weight: 600; line-height: 1.4; text-align: center;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+    animation: toastIn 0.3s ease-out; max-width: min(560px, 92vw);
 }
 .toast.success { background: var(--green-dark); }
 .toast.error { background: var(--red); }
@@ -680,6 +684,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <div class="nav-tabs">
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals">Сделки</button>
+            <button class="nav-tab" data-section="closing">🔒 Закрытие</button>
             <button class="nav-tab" data-section="exchangers">🔁 Обменники</button>
             <button class="nav-tab" data-section="balance">Баланс</button>
             <button class="nav-tab" data-section="reimbursements">Возмещения</button>
@@ -867,6 +872,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         </section>
 
         <!-- Deals Section -->
+        <!-- Закрытие сделок Bitrix (перенос из бота DealCloser) -->
+        <section id="closing" class="section">
+            <div class="card">
+                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;">
+                    <span>Закрытие сделок Bitrix</span>
+                    <button class="btn btn-secondary" onclick="loadBitrixDeals()">↻ Обновить</button>
+                </div>
+                <p style="color:#64748b;margin-bottom:1rem;">
+                    Активные сделки воронки. Открой сделку — прочитаю переписку и разберу суммы,
+                    метод оплаты и фаундера. Проверь цифры и закрой WON или LOSE:
+                    сделка запишется в CRM и стадия проставится в Bitrix одним действием.
+                </p>
+                <div id="bitrixDealsList"><div class="alert alert-info">Нажми «Обновить»</div></div>
+            </div>
+            <div class="card" id="bitrixAnalysisCard" style="display:none;">
+                <div class="card-title" id="bitrixAnalysisTitle">Разбор сделки</div>
+                <div id="bitrixAnalysisBody"></div>
+            </div>
+        </section>
+
         <section id="deals" class="section">
             <div class="card">
                 <div class="card-title">Фильтры</div>
@@ -946,7 +971,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div class="form-row">
                         <div class="form-group">
                             <label class="form-label">Менеджер</label>
-                            <select class="form-control" name="manager_name" id="managerSelect" required>
+                            <select class="form-control" name="manager_name" id="managerSelect">
                                 <!-- Загружается динамически -->
                             </select>
                         </div>
@@ -3056,6 +3081,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 switch (tab.dataset.section) {
                     case 'dashboard': loadDashboard(); break;
                     case 'deals': loadDeals(); break;
+                case 'closing': loadBitrixDeals(); break;
                     case 'create':
                         // Клик по вкладке «Создать» при активном редактировании —
                         // сбрасываем остатки чужой сделки (поля, sberParts, PUT вместо POST)
@@ -3157,7 +3183,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // ==================== Toast уведомления ====================
-        function showToast(message, type = 'success', duration = 3000) {
+        function showToast(message, type = 'success', duration = null) {
+            // Ошибки и предупреждения висят дольше: их нужно прочитать, а не заметить
+            if (duration === null) duration = (type === 'success') ? 3500 : 7000;
             let container = document.querySelector('.toast-container');
             if (!container) {
                 container = document.createElement('div');
@@ -6931,6 +6959,219 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         });
 
         // ==================== Balance Tab Logic ====================
+        // ===== Закрытие сделок Bitrix (перенос из бота DealCloser) =====
+        let _bitrixCurrent = null;   // {deal, analysis, deal_payload}
+
+        async function loadBitrixDeals() {
+            const box = document.getElementById('bitrixDealsList');
+            box.innerHTML = '<div class="alert alert-info">Гружу сделки из Bitrix...</div>';
+            try {
+                const d = await (await fetch(`${API_URL}/api/bitrix/active-deals`)).json();
+                if (!d.success) { box.innerHTML = `<div class="alert alert-danger">${d.error}</div>`; return; }
+                if (!d.deals.length) { box.innerHTML = '<div class="alert alert-success">Активных сделок нет</div>'; return; }
+                box.innerHTML = d.deals.map(x => `
+                    <div class="list-row" style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid #eef2f7;">
+                        <div>
+                            <strong>#${x.ID}</strong> ${x.TITLE || 'без названия'}
+                            <div style="color:#64748b;font-size:0.85rem;">${x.STAGE_ID} · ${(x.DATE_CREATE||'').slice(0,10)}</div>
+                        </div>
+                        <button class="btn btn-primary" onclick="analyzeBitrixDeal(${x.ID})">Разобрать</button>
+                    </div>`).join('');
+            } catch (e) {
+                box.innerHTML = '<div class="alert alert-danger">Bitrix не отвечает</div>';
+            }
+        }
+
+        async function analyzeBitrixDeal(dealId) {
+            const card = document.getElementById('bitrixAnalysisCard');
+            const body = document.getElementById('bitrixAnalysisBody');
+            card.style.display = 'block';
+            body.innerHTML = '<div class="alert alert-info">Читаю переписку и разбираю...</div>';
+            card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            try {
+                const d = await (await fetch(`${API_URL}/api/bitrix/deals/${dealId}/analyze`)).json();
+                if (!d.success) { body.innerHTML = `<div class="alert alert-danger">${d.error}</div>`; return; }
+                _bitrixCurrent = d;
+                renderBitrixAnalysis(d);
+            } catch (e) {
+                body.innerHTML = '<div class="alert alert-danger">Не получилось разобрать сделку</div>';
+            }
+        }
+
+        function renderBitrixAnalysis(d) {
+            const a = d.analysis, p = d.deal_payload;
+            const verdictColor = a.verdict === 'WON' ? '#059669' : (a.verdict === 'LOSE' ? '#dc2626' : '#b45309');
+            const num = (v) => (v === null || v === undefined) ? '' : v;
+            document.getElementById('bitrixAnalysisTitle').textContent =
+                `Сделка #${d.deal.id} · ${d.deal.client_name || 'без имени'}`;
+            const prev = a.prev_deal_id
+                ? `<div style="color:#64748b;font-size:0.85rem;margin-top:4px;">Прошлая сделка #${a.prev_deal_id} (${a.prev_deal_stage}, ${a.prev_deal_closedate}): ${a.prev_deal_summary || '—'} · всего закрытых: ${a.total_closed_deals}</div>`
+                : '';
+            document.getElementById('bitrixAnalysisBody').innerHTML = `
+                <div style="padding:12px;border-radius:8px;background:#f8fafc;margin-bottom:1rem;">
+                    <div style="font-weight:700;color:${verdictColor};">${a.verdict} · уверенность ${a.confidence}</div>
+                    <div style="margin-top:6px;white-space:pre-wrap;">${a.summary || ''}</div>
+                    <div style="color:#64748b;font-size:0.85rem;margin-top:6px;">сообщений в чате: ${a.messages_count}${a.payment_time ? ' · оплата ~' + a.payment_time : ''}${a.intent ? ' · intent: ' + a.intent : ''}</div>
+                    ${prev}
+                </div>
+                <div class="alert alert-warning" style="margin-bottom:1rem;">
+                    Разбор делает модель по живой переписке — <b>проверь суммы перед закрытием</b>.
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Клиент</label>
+                        <input class="form-control" id="bxClientName" value="${d.deal.client_name || ''}"></div>
+                    <div class="form-group"><label class="form-label">Метод Pay-In</label>
+                        <select class="form-control" id="bxPayinMethod">
+                            ${['spp_doverka:СБП','crypto_direct:Крипта','partners_cash:Наличные','sber_wl:Сбер (WL)','sber_reqs:Сбер (реквизиты)']
+                              .map(o => { const [v,t] = o.split(':'); return `<option value="${v}" ${p.payin_method===v?'selected':''}>${t}</option>`; }).join('')}
+                        </select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Приход RUB</label>
+                        <input type="number" step="any" class="form-control" id="bxPayinRub" value="${num(p.payin_amount_rub)}"></div>
+                    <div class="form-group"><label class="form-label">Приход USDT</label>
+                        <input type="number" step="any" class="form-control" id="bxPayinUsdt" value="${num(p.payin_amount_usdt)}"></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Выдано THB</label>
+                        <input type="number" step="any" class="form-control" id="bxPayoutThb" value="${num(p.payout_amount_thb)}"></div>
+                    <div class="form-group"><label class="form-label">Способ выдачи</label>
+                        <select class="form-control" id="bxPayoutMethod">
+                            ${['transfer:Перевод','courier:Курьер','office:Офис','atm:Банкомат']
+                              .map(o => { const [v,t] = o.split(':'); return `<option value="${v}" ${p.payout_method===v?'selected':''}>${t}</option>`; }).join('')}
+                        </select></div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Фаундер (кто выдал)</label>
+                        <input class="form-control" id="bxFounder" value="${p.payout_founder_name || ''}"></div>
+                    <div class="form-group"><label class="form-label">Хэш прихода</label>
+                        <input class="form-control" id="bxTxHash" value="${p.payin_tx_hash || ''}"></div>
+                </div>
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label class="form-label">Причина отказа (для LOSE)</label>
+                    <input class="form-control" id="bxLoseReason" value="${a.lose_reason || ''}" placeholder="Например: не устроил курс">
+                </div>
+                <div id="bxReviveBox" style="display:none;margin-bottom:1rem;"></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                    <button class="btn btn-success" id="bxWonBtn" onclick="closeBitrixWon()">✅ Закрыть WON</button>
+                    <button class="btn btn-danger" onclick="closeBitrixLose()">❌ Закрыть LOSE</button>
+                </div>`;
+        }
+
+        function _bxCollect() {
+            const val = (id) => document.getElementById(id).value;
+            const numOrNull = (id) => { const v = parseFloat(val(id)); return isNaN(v) ? null : v; };
+            const p = { ..._bitrixCurrent.deal_payload };
+            p.client_name = val('bxClientName');
+            p.payin_method = val('bxPayinMethod');
+            p.payin_amount_rub = numOrNull('bxPayinRub');
+            p.payin_amount_usdt = numOrNull('bxPayinUsdt');
+            p.payout_amount_thb = numOrNull('bxPayoutThb');
+            p.payout_method = val('bxPayoutMethod');
+            p.payout_founder_name = val('bxFounder');
+            p.payin_tx_hash = val('bxTxHash') || null;
+            return p;
+        }
+
+        async function closeBitrixWon() {
+            if (!_bitrixCurrent) return;
+            const dealId = _bitrixCurrent.deal.id;
+            const p = _bxCollect();
+            if (!p.payout_amount_thb && !p.payin_amount_usdt) {
+                showToast('Пустые суммы — проверь разбор перед закрытием', 'warning'); return;
+            }
+            const btn = document.getElementById('bxWonBtn');
+            btn.disabled = true; btn.textContent = '⏳ Закрываю...';
+            try {
+                // Сначала CRM: если запись не прошла, стадию в Bitrix не двигаем —
+                // иначе сделка «выиграна», а в учёте её нет.
+                const crm = await (await fetch(`${API_URL}/api/deals`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(p)
+                })).json();
+                if (!crm.success && !crm.deal) throw new Error(crm.error || 'CalcCRM отказал');
+                const crmDealId = (crm.deal || {}).id;
+
+                const bx = await (await fetch(`${API_URL}/api/bitrix/deals/${dealId}/close-won`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(p)
+                })).json();
+                if (!bx.success) {
+                    showToast('Сделка в CRM создана, но Bitrix не принял: ' + bx.error, 'error', 6000);
+                } else {
+                    showToast(`Готово: сделка #${crmDealId} в CRM, Bitrix WON`);
+                }
+                await offerRevive(crmDealId, p.client_name);
+                loadBitrixDeals();
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, 'error', 6000);
+            } finally {
+                btn.disabled = false; btn.textContent = '✅ Закрыть WON';
+            }
+        }
+
+        async function offerRevive(wonDealId, clientName) {
+            /* Прошлые отказы этого клиента привязываем к победе — иначе он выглядит
+               купившим с первого касания, и конверсия завышается. */
+            if (!wonDealId || !clientName) return;
+            try {
+                const d = await (await fetch(`${API_URL}/api/deals/lose-candidates?client_name=${encodeURIComponent(clientName)}`)).json();
+                const list = (d.candidates || d.deals || []);
+                if (!d.success || !list.length) return;
+                const box = document.getElementById('bxReviveBox');
+                box.style.display = 'block';
+                box.innerHTML = `
+                    <div class="alert alert-info">
+                        У клиента были отказы — привязать их к этой победе?
+                        ${list.map(c => `<label style="display:block;margin-top:6px;">
+                            <input type="checkbox" class="bx-revive" value="${c.id}" checked>
+                            #${c.id} · ${(c.created_at||'').slice(0,10)} · ${c.lose_reason || 'без причины'}
+                        </label>`).join('')}
+                        <button class="btn btn-primary" style="margin-top:8px;" onclick="applyRevive(${wonDealId})">Привязать выбранные</button>
+                    </div>`;
+            } catch (e) { /* тихо: revive — не критичный шаг */ }
+        }
+
+        async function applyRevive(wonDealId) {
+            const ids = [...document.querySelectorAll('.bx-revive:checked')].map(c => parseInt(c.value));
+            if (!ids.length) return;
+            const r = await (await fetch(`${API_URL}/api/deals/${wonDealId}/revive`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lose_ids: ids })
+            })).json();
+            showToast(r.success ? 'Отказы привязаны к победе' : ('Не вышло: ' + r.error), r.success ? 'success' : 'error');
+            document.getElementById('bxReviveBox').style.display = 'none';
+        }
+
+        async function closeBitrixLose() {
+            if (!_bitrixCurrent) return;
+            const dealId = _bitrixCurrent.deal.id;
+            const reason = document.getElementById('bxLoseReason').value.trim();
+            if (!(await showConfirm('Закрыть сделку как LOSE?' + (reason ? '<br>Причина: ' + reason : '<br>Причина не указана — подставим «Клиент не вернулся»')))) return;
+            try {
+                // LOSE тоже пишем в CRM: без этого отказ не попадёт в конверсию.
+                const p = _bxCollect();
+                await fetch(`${API_URL}/api/deals`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_name: p.client_name, status: 'lose',
+                        lose_reason: reason || 'Клиент не вернулся',
+                        bitrix_deal_id: dealId, source_channel: p.source_channel || null,
+                        payin_amount_rub: p.payin_amount_rub, payin_amount_usdt: p.payin_amount_usdt,
+                    })
+                });
+                const bx = await (await fetch(`${API_URL}/api/bitrix/deals/${dealId}/close-lose`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason })
+                })).json();
+                showToast(bx.success ? 'Закрыто LOSE' : ('Bitrix не принял: ' + bx.error), bx.success ? 'success' : 'error');
+                document.getElementById('bitrixAnalysisCard').style.display = 'none';
+                loadBitrixDeals();
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, 'error', 6000);
+            }
+        }
+
         function openAddWalletModal() {
             document.getElementById('addWalletModal').classList.add('active');
             // Чистим форму: иначе подсказка о балансе прошлого адреса вводит в заблуждение

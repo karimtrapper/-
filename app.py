@@ -8028,6 +8028,116 @@ def _delete_kyc_files(token):
     if os.path.exists(upload_dir):
         shutil.rmtree(upload_dir, ignore_errors=True)
 
+# ==================== ЗАКРЫТИЕ СДЕЛОК BITRIX (перенос из бота DealCloser) ====
+
+@app.route('/api/bitrix/active-deals', methods=['GET'])
+def bitrix_active_deals():
+    """Незакрытые сделки основной воронки — список для оператора."""
+    try:
+        import bitrix_deals
+        return jsonify({'success': True, 'deals': bitrix_deals.get_active_deals()})
+    except Exception as e:
+        app.logger.error(f'bitrix active deals: {e}')
+        return jsonify({'success': False, 'error': f'Bitrix недоступен: {e}'}), 502
+
+
+@app.route('/api/bitrix/deals/<int:deal_id>/analyze', methods=['GET'])
+def bitrix_analyze_deal(deal_id):
+    """Читает чат сделки и разбирает его: суммы, метод, фаундер, WON/LOSE.
+
+    Логика разбора — та же, что была в боте: сначала ищем прошлую закрытую
+    сделку этого контакта, её CLOSEDATE становится отсечкой, чтобы суммы
+    прошлого обмена не приехали в новую сделку.
+    """
+    try:
+        import bitrix_deals
+        from deal_chat_analyzer import analyze_chat
+
+        deal = bitrix_deals.get_deal(deal_id)
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка не найдена в Bitrix'}), 404
+
+        messages = bitrix_deals.get_deal_chat_messages(deal_id)
+        prev_deal, total_closed = bitrix_deals.get_last_closed_deal_by_contact(
+            deal.get('CONTACT_ID'), deal_id)
+        prev_messages = None
+        if prev_deal and 'LOSE' in str(prev_deal.get('STAGE_ID', '')):
+            # Мягкая отсечка: клиент мог вернуться к тому же намерению («давай как вчера»)
+            prev_messages = bitrix_deals.get_deal_chat_messages(int(prev_deal['ID']))
+
+        result = asyncio.run(analyze_chat(
+            messages,
+            deal_title=deal.get('TITLE', ''),
+            prev_deal=prev_deal,
+            prev_deal_messages=prev_messages,
+            total_closed=total_closed,
+        ))
+
+        client_name = (deal.get('TITLE') or '').replace(' - exgreen.pro', '').strip()
+        payload = result.to_calccrm_payload(client_name=client_name)
+        payload['bitrix_deal_id'] = deal_id
+        return jsonify({
+            'success': True,
+            'deal': {'id': deal_id, 'title': deal.get('TITLE'), 'stage': deal.get('STAGE_ID'),
+                     'contact_id': deal.get('CONTACT_ID'), 'client_name': client_name},
+            'analysis': {
+                'verdict': result.verdict, 'confidence': result.confidence,
+                'summary': result.summary, 'intent': result.intent,
+                'lose_reason': result.lose_reason, 'payment_time': result.payment_time,
+                'prev_deal_id': result.prev_deal_id, 'prev_deal_stage': result.prev_deal_stage,
+                'prev_deal_summary': result.prev_deal_summary,
+                'prev_deal_closedate': result.prev_deal_closedate,
+                'total_closed_deals': result.total_closed_deals,
+                'messages_count': len(messages),
+            },
+            'deal_payload': payload,
+        })
+    except Exception as e:
+        app.logger.error(f'bitrix analyze {deal_id}: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 502
+
+
+@app.route('/api/bitrix/deals/<int:deal_id>/close-won', methods=['POST'])
+def bitrix_close_won(deal_id):
+    """Переводит сделку в WON. Сделку в CalcCRM фронт создаёт ДО этого вызова.
+
+    Порядок именно такой: если запись в CRM не прошла, в Bitrix ничего не
+    двигаем — иначе сделка «выиграна», а денег в учёте нет.
+    """
+    data = request.get_json(silent=True) or {}
+    try:
+        import bitrix_deals
+        ok, err = bitrix_deals.close_won(deal_id, data)
+        if not ok:
+            return jsonify({'success': False, 'error': err}), 502
+        ref = str(data.get('referrer_name') or '').strip()
+        if ref:
+            try:
+                bitrix_deals.set_deal_utm(deal_id, ref)
+            except Exception as e:
+                app.logger.warning(f'utm set failed for {deal_id}: {e}')
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'bitrix close won {deal_id}: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 502
+
+
+@app.route('/api/bitrix/deals/<int:deal_id>/close-lose', methods=['POST'])
+def bitrix_close_lose(deal_id):
+    """Переводит сделку в LOSE. Lose-сделку в CalcCRM фронт создаёт ДО вызова —
+    без неё отказ не попадёт в конверсию."""
+    data = request.get_json(silent=True) or {}
+    try:
+        import bitrix_deals
+        ok, err = bitrix_deals.close_lose(deal_id, str(data.get('reason') or ''))
+        if not ok:
+            return jsonify({'success': False, 'error': err}), 502
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f'bitrix close lose {deal_id}: {e}')
+        return jsonify({'success': False, 'error': str(e)}), 502
+
+
 # ==================== BITRIX CONTACTS SEARCH ====================
 
 BITRIX_PROXY_URL = os.environ.get('BITRIX_PROXY_URL', 'https://bitrix-proxy-production.up.railway.app')
