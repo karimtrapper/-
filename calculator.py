@@ -425,6 +425,13 @@ class ExchangeRateProvider:
             }
 
 
+# Комиссия площадки за выдачу бат. Зависит от того, где откупаем:
+# Binance 0.25%, Bitazza 0.15%. Фикс за вывод одинаковый.
+WITHDRAWAL_PCT_BINANCE = 0.0025
+WITHDRAWAL_PCT_BITAZZA = 0.0015
+WITHDRAWAL_FIXED_THB = 20
+
+
 class CommissionCalculator:
     """Расчет комиссий по уровням сумм"""
     
@@ -483,14 +490,20 @@ class CommissionCalculator:
 class ExchangeCalculator:
     """Калькулятор обмена валют для режима Doverka (SBP)"""
     
-    def __init__(self, usdt_thb_rate: float, rub_usdt_rate: float):
+    def __init__(self, usdt_thb_rate: float, rub_usdt_rate: float,
+                 withdrawal_percent: float = WITHDRAWAL_PCT_BINANCE,
+                 withdrawal_fixed: float = WITHDRAWAL_FIXED_THB):
         """
         Args:
-            usdt_thb_rate: Курс USDT-THB от Binance
-            rub_usdt_rate: Курс RUB-USDT от Doverka
+            usdt_thb_rate: Курс USDT-THB биржи, на которой откупаем баты
+            rub_usdt_rate: Курс RUB-USDT
+            withdrawal_percent: комиссия площадки за выдачу, доля (Binance 0.25%, Bitazza 0.15%)
+            withdrawal_fixed: фикс за вывод, ฿
         """
         self.usdt_thb_rate = usdt_thb_rate
         self.rub_usdt_rate = rub_usdt_rate
+        self.withdrawal_percent = withdrawal_percent
+        self.withdrawal_fixed = withdrawal_fixed
     
     def _get_commissions(self, target_profit: float, rub_amount: float = 0):
         """Расчет комиссий для Doverka с фиксированными значениями"""
@@ -541,8 +554,8 @@ class ExchangeCalculator:
         thb_to_exchange = usdt_amount * usdt_thb_rate_sell
         
         # 3. Выдача
-        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
-        withdrawal_fixed = 20
+        withdrawal_percent_fee = excel_round(thb_to_exchange * self.withdrawal_percent, 2)
+        withdrawal_fixed = self.withdrawal_fixed
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
 
         final_rate = safe_rate(rub_amount, thb_to_receive, 6)
@@ -586,8 +599,8 @@ class ExchangeCalculator:
         rub_comm, usdt_comm, bonus, level_name = self._get_commissions(custom_profit_margin, estimated_rub)
         
         # 1. Выдача
-        thb_to_exchange = (thb_target + 20) / (1 - 0.0025)
-        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - 20, 2)
+        thb_to_exchange = (thb_target + self.withdrawal_fixed) / (1 - self.withdrawal_percent)
+        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - self.withdrawal_fixed, 2)
         
         # 2. USDT-THB
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
@@ -709,8 +722,8 @@ class ExchangeCalculator:
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         thb_to_exchange = usdt_amount * usdt_thb_rate_sell
         
-        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
-        withdrawal_fixed = 20
+        withdrawal_percent_fee = excel_round(thb_to_exchange * self.withdrawal_percent, 2)
+        withdrawal_fixed = self.withdrawal_fixed
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
 
         final_rate = safe_rate(thb_to_receive, usdt_amount, 4)
@@ -744,8 +757,8 @@ class ExchangeCalculator:
         target_profit = custom_profit_margin if custom_profit_margin is not None else 4.0
         usdt_comm = target_profit / 100.0
         
-        thb_to_exchange = (thb_target + 20) / (1 - 0.0025)
-        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - 20, 2)
+        thb_to_exchange = (thb_target + self.withdrawal_fixed) / (1 - self.withdrawal_percent)
+        withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - self.withdrawal_fixed, 2)
         
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
         usdt_amount = excel_round(thb_to_exchange / usdt_thb_rate_sell, 2)

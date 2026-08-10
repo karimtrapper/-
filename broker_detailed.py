@@ -25,7 +25,8 @@ def safe_rate(numerator, denominator, decimals=6):
 class BrokerCalculatorDetailed:
     """Калькулятор брокера с детальными результатами и динамической прибылью"""
     
-    def __init__(self, usdt_thb_rate: float, custom_rub_usdt_rate: float, target_profit: float = 4.0):
+    def __init__(self, usdt_thb_rate: float, custom_rub_usdt_rate: float, target_profit: float = 4.0,
+                 withdrawal_percent: float = 0.0025, withdrawal_fixed: float = 20):
         """
         Args:
             usdt_thb_rate: Базовый курс USDT-THB (Binance)
@@ -35,6 +36,9 @@ class BrokerCalculatorDetailed:
         self.usdt_thb_rate = usdt_thb_rate
         self.rub_usdt_rate = custom_rub_usdt_rate
         self.target_profit = target_profit
+        # Комиссия площадки за выдачу: Binance 0.25%, Bitazza 0.15%
+        self.withdrawal_percent = withdrawal_percent
+        self.withdrawal_fixed = withdrawal_fixed
         
         # Расчет комиссий для этапов на основе целевой прибыли (как в CSV)
         # Мы используем точные значения из CSV для основных шагов, 
@@ -80,8 +84,8 @@ class BrokerCalculatorDetailed:
         Соответствует операциям 1.1-1.3 в CSV
         """
         # Комиссии за выдачу
-        withdrawal_fixed = 20
-        thb_to_exchange = (thb_target + withdrawal_fixed) / (1 - 0.0025)
+        withdrawal_fixed = self.withdrawal_fixed
+        thb_to_exchange = (thb_target + withdrawal_fixed) / (1 - self.withdrawal_percent)
         thb_to_exchange_display = excel_round(thb_to_exchange, 2)
         withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - withdrawal_fixed, 2)
         
@@ -144,8 +148,8 @@ class BrokerCalculatorDetailed:
         thb_to_exchange = usdt_amount * usdt_thb_rate_sell
         thb_to_exchange_display = excel_round(thb_to_exchange, 2)
         
-        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
-        withdrawal_fixed = 20
+        withdrawal_percent_fee = excel_round(thb_to_exchange * self.withdrawal_percent, 2)
+        withdrawal_fixed = self.withdrawal_fixed
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
         final_rate = safe_rate(rub_amount, thb_to_receive, 6)
@@ -263,8 +267,8 @@ class BrokerCalculatorDetailed:
         """
         Операция 5: USDT → THB (клиент хочет получить конкретную сумму THB)
         """
-        withdrawal_fixed = 20
-        thb_to_exchange = (thb_target + withdrawal_fixed) / (1 - 0.0025)
+        withdrawal_fixed = self.withdrawal_fixed
+        thb_to_exchange = (thb_target + withdrawal_fixed) / (1 - self.withdrawal_percent)
         thb_to_exchange_display = excel_round(thb_to_exchange, 2)
         withdrawal_percent_fee = excel_round(thb_to_exchange - thb_target - withdrawal_fixed, 2)
         
@@ -309,8 +313,8 @@ class BrokerCalculatorDetailed:
         thb_to_exchange = usdt_amount * usdt_thb_rate_sell
         thb_to_exchange_display = excel_round(thb_to_exchange, 2)
         
-        withdrawal_percent_fee = excel_round(thb_to_exchange * 0.0025, 2)
-        withdrawal_fixed = 20
+        withdrawal_percent_fee = excel_round(thb_to_exchange * self.withdrawal_percent, 2)
+        withdrawal_fixed = self.withdrawal_fixed
         thb_to_receive = excel_round(thb_to_exchange - withdrawal_percent_fee - withdrawal_fixed, 2)
         
         final_rate = safe_rate(thb_to_receive, usdt_amount, 6)

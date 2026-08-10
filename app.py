@@ -216,7 +216,7 @@ class PayInMethod(str, Enum):
 
 
 PAYIN_METHOD_LABELS = {
-    'spp_doverka': 'доверка',
+    'spp_doverka': 'СБП',
     'crypto_direct': 'крипта',
     'partners_cash': 'наличные',
     'sber_wl': 'сбер WL',
@@ -2932,7 +2932,8 @@ def send_deal_completed_webhook(deal):
     send_webhook_async(WEBHOOK_URL, data)
 
 # ==================== CALCULATOR IMPORTS ====================
-from calculator import ExchangeRateProvider, ExchangeCalculator, playwright_queue
+from calculator import (ExchangeRateProvider, ExchangeCalculator, playwright_queue,
+                        WITHDRAWAL_PCT_BINANCE, WITHDRAWAL_PCT_BITAZZA, WITHDRAWAL_FIXED_THB)
 
 # ==================== AUTH ====================
 
@@ -3289,6 +3290,34 @@ CALC_BITAZZA_FEE_FIXED_THB = 20   # фикс за вывод, ฿ (разово 
 CALC_BITAZZA_QUOTE_VOLUME = 1000  # номинальный объём USDT для карточки курса
 
 
+def _estimate_usdt_volume(scenario, direction, amount, rates):
+    """Прикидка объёма сделки в USDT — на неё считаем VWAP стакана Bitazza.
+
+    `amount` в разных сценариях приходит в разной валюте, поэтому сначала
+    определяем единицу, потом переводим в USDT по текущим курсам. Точность
+    тут не критична: нужен порядок величины, чтобы взять реальную глубину
+    стакана, а не номинальную 1000 USDT.
+    """
+    ut = rates.get('usdt_thb') or 0
+    ru = rates.get('rub_usdt') or 0
+    unit = {
+        ('rub-to-thb', 'amount'): 'RUB', ('rub-to-thb', 'target'): 'THB',
+        ('rub-to-usdt', 'amount'): 'RUB', ('rub-to-usdt', 'target'): 'USDT',
+        ('usdt-to-thb', 'amount'): 'USDT', ('usdt-to-thb', 'target'): 'THB',
+        ('thb-to-usdt', 'amount'): 'THB', ('thb-to-usdt', 'target'): 'USDT',
+    }.get((scenario, direction), 'USDT')
+    try:
+        if unit == 'USDT':
+            vol = float(amount)
+        elif unit == 'RUB':
+            vol = float(amount) / ru if ru else 0
+        else:  # THB
+            vol = float(amount) / ut if ut else 0
+    except (TypeError, ValueError, ZeroDivisionError):
+        vol = 0
+    return vol if vol > 0 else CALC_BITAZZA_QUOTE_VOLUME
+
+
 def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
     """Курс Bitazza для калькулятора: VWAP по bids на объём × (1 − 0.15%).
 
@@ -3530,11 +3559,29 @@ def calculate():
 
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
 
+        # Источник курса USDT-THB: bitazza (стакан по API) | binance | custom (ручной).
+        # От него зависит и комиссия площадки за выдачу: Bitazza 0.15%, Binance 0.25%.
+        rate_source = str(data.get('rate_source') or 'binance').lower()
+        withdrawal_pct = WITHDRAWAL_PCT_BINANCE
+
         # Если передан точный курс USDT-THB (от Playwright), используем его
         custom_usdt_thb = data.get('custom_usdt_thb')
         if custom_usdt_thb:
             rates['usdt_thb'] = float(custom_usdt_thb)
             print(f"🎯 Использую точный курс USDT-THB: {rates['usdt_thb']:.4f}", flush=True)
+
+        if rate_source == 'bitazza':
+            # VWAP считаем на реальный объём сделки — на крупных суммах стакан «съедается»
+            # и курс отличается от номинальной карточки.
+            bz = _bitazza_calc_quote(_estimate_usdt_volume(scenario, direction, amount, rates))
+            if bz:
+                # raw VWAP: комиссию биржи 0.15% вычитаем ниже как комиссию за выдачу,
+                # иначе она удержится дважды.
+                rates['usdt_thb'] = bz['raw_vwap']
+                withdrawal_pct = WITHDRAWAL_PCT_BITAZZA
+            else:
+                # Стакан недоступен — честно откатываемся на Binance вместе с его комиссией
+                rate_source = 'binance'
 
         # Мягкая деградация: если биржа недоступна, курс = None → не роняем расчёт
         # в 500, а честно отвечаем 503. USDT-THB нужен всем сценариям.
@@ -3551,7 +3598,9 @@ def calculate():
             custom_rub_usdt = float(custom_rub_usdt_raw) if custom_rub_usdt_raw not in (None, '', 0) else 80.9
             pm_raw = data.get('profit_margin')
             profit_margin = float(pm_raw) if pm_raw not in (None, '') else 4.0
-            broker_calc = BrokerCalculatorDetailed(rates['usdt_thb'], custom_rub_usdt, profit_margin)
+            broker_calc = BrokerCalculatorDetailed(rates['usdt_thb'], custom_rub_usdt, profit_margin,
+                                                   withdrawal_percent=withdrawal_pct,
+                                                   withdrawal_fixed=WITHDRAWAL_FIXED_THB)
             
             if scenario == 'rub-to-thb':
                 result = broker_calc.rub_to_thb_target(amount) if direction == 'target' else broker_calc.rub_to_thb_amount(amount)
@@ -3564,7 +3613,9 @@ def calculate():
             else:
                 return jsonify({'error': 'Invalid scenario'}), 400
         else:
-            calculator = ExchangeCalculator(rates['usdt_thb'], rates['rub_usdt'])
+            calculator = ExchangeCalculator(rates['usdt_thb'], rates['rub_usdt'],
+                                            withdrawal_percent=withdrawal_pct,
+                                            withdrawal_fixed=WITHDRAWAL_FIXED_THB)
             profit_margin = float(data.get('profit_margin')) if data.get('profit_margin') else None
             
             if scenario == 'rub-to-thb':
@@ -3583,6 +3634,11 @@ def calculate():
         # менеджеру бессмысленный расчёт — возвращаем понятную ошибку.
         if result.get('final_rate', 0) <= 0:
             return jsonify({'error': 'Сумма слишком мала для расчёта'}), 400
+
+        # Откуда курс и по какой ставке считали выдачу — фронт подписывает этим
+        # строку «Комиссия за выдачу (0,15%)» вместо захардкоженных 0,25%.
+        result['rate_source'] = rate_source
+        result['withdrawal_percent_rate'] = round(withdrawal_pct * 100, 3)
 
         # CalcCRM — внутренний инструмент за авторизацией, отдаём всю кухню
         # (profit_usdt, комиссии, incoming/outgoing, bonus_usdt, курсы).

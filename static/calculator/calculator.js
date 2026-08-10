@@ -170,7 +170,7 @@ function switchMethod(method) {
     } else {
         document.getElementById('customRateSection').style.display = 'none';
         document.getElementById('directionSwitcher').style.display = 'none';
-        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT (Doverka)';
+        document.getElementById('rubUsdtLabel').textContent = 'RUB-USDT';
         
         // Показываем doverka сценарии, скрываем broker
         document.querySelectorAll('.scenario-btn').forEach(btn => {
@@ -849,6 +849,7 @@ async function calculate() {
             // Используем API для расчёта через брокера (custom — тот же путь, но оба курса ручные)
             const requestData = {
                 method: 'broker',
+                rate_source: state.method === 'custom' ? 'custom' : state.rateSource,
                 scenario: state.scenario,
                 direction: state.direction,
                 amount: amount,
@@ -887,6 +888,7 @@ async function calculate() {
 
             const requestData = {
                 method: 'doverka',
+                rate_source: state.rateSource,
                 scenario: effectiveScenario,
                 direction: effectiveDirection,
                 amount: amount,
@@ -940,6 +942,9 @@ async function calculate() {
 // если сценарий требует связку USDT↔THB. Кнопка «🎯 Precise» убрана.
 
 function scenarioNeedsPrecise(scenario) {
+    // Точный курс парсится с Binance через Playwright. Если считаем по Bitazza —
+    // курс берётся из её стакана по API, дёргать Binance незачем.
+    if (state.rateSource === 'bitazza') return false;
     // Playwright нужен только там где есть THB (USDT-THB курс с Binance)
     return scenario !== 'rub-to-usdt' && scenario !== 'usdt-from-rub';
 }
@@ -1159,7 +1164,8 @@ function calculateLocal(amount) {
         const thb_before_fees = usdt_initial * usdt_thb_rate_sell;
         
         // 3. Комиссии за выдачу
-        const withdrawal_percent_fee = thb_before_fees * 0.0025;
+        const wdRate = state.rateSource === 'bitazza' ? 0.0015 : 0.0025;
+        const withdrawal_percent_fee = thb_before_fees * wdRate;
         const withdrawal_fixed = 20;
         const thbNet = thb_before_fees - withdrawal_percent_fee - withdrawal_fixed;
         
@@ -1187,7 +1193,7 @@ function calculateLocal(amount) {
             outgoing_usdt: outgoing_usdt,
             profit_usdt: profit_usdt,
             profit_percent_actual: targetProfit,
-            commission_level: `Doverka (${targetProfit}%)`
+            commission_level: `СБП (${targetProfit}%)`
         };
     }
     
@@ -1195,7 +1201,8 @@ function calculateLocal(amount) {
     if (state.method === 'doverka' && state.scenario === 'thb-to-rub') {
         // 1. Комиссии за выдачу
         const withdrawal_fixed = 20;
-        const withdrawal_percent_fee = amount * 0.0025;  // amount - это THB
+        const wdRate2 = state.rateSource === 'bitazza' ? 0.0015 : 0.0025;
+        const withdrawal_percent_fee = amount * wdRate2;  // amount - это THB
         
         // 2. THB к обмену
         const thb_to_exchange = amount + withdrawal_fixed + withdrawal_percent_fee;
@@ -1231,7 +1238,7 @@ function calculateLocal(amount) {
             outgoing_usdt: outgoing_usdt,
             profit_usdt: profit_usdt,
             profit_percent_actual: targetProfit,
-            commission_level: `Doverka (${targetProfit}%)`
+            commission_level: `СБП (${targetProfit}%)`
         };
     }
     
@@ -1633,7 +1640,9 @@ function displayDetailedSteps(result) {
 
     // Комиссии за выдачу
     if (result.withdrawal_percent !== undefined) {
-        html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (0,25%):</span><span class="detail-value">${formatNumber(result.withdrawal_percent)} ฿</span></div>`;
+        const wdPct = (result.withdrawal_percent_rate !== undefined ? result.withdrawal_percent_rate : 0.25)
+            .toString().replace('.', ',');
+        html += `<div class="detail-row"><span class="detail-label">Комиссия за выдачу (${wdPct}%):</span><span class="detail-value">${formatNumber(result.withdrawal_percent)} ฿</span></div>`;
     }
     if (result.withdrawal_fixed !== undefined) {
         const isUsdtScenario = result.scenario === 'RUB → USDT';
@@ -1866,23 +1875,13 @@ async function createPayment() {
             return;
         }
 
-        // Шаг 2: grusha не работает — спрашиваем
+        // Шаг 2: страница Grusha Exchange не отвечает. Фоллбэка на Доверку нет —
+        // клиент должен видеть только нашу страницу, чужой мерчант ему не уходит.
         if (result.data.grusha_down) {
-            const useDoverka = await showConfirm(
-                '⚠️ grushab-2-b.ru не отвечает.<br><br>' +
-                'Создать платёж напрямую через Доверку?<br>' +
-                '<small style="color:#666">(Клиент получит ссылку merchant.doverkapay.com)</small>'
+            throw new Error(
+                'Страница оплаты Grusha Exchange не отвечает. Ссылку сейчас не создать — ' +
+                'сообщи Кариму и предложи клиенту другой способ оплаты.'
             );
-            if (!useDoverka) return;
-
-            createBtn.innerText = '⏳ СОЗДАНИЕ ЧЕРЕЗ ДОВЕРКУ...';
-            const doverkaResult = await _sendPayment('doverka');
-
-            if (doverkaResult.ok && doverkaResult.data.public_link) {
-                _showPaymentLink(doverkaResult.data.public_link);
-                return;
-            }
-            throw new Error(doverkaResult.data.message || 'Ошибка Doverka API');
         }
 
         // Другая ошибка

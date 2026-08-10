@@ -1106,7 +1106,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" id="customPayinMethod" onchange="onCustomPayinMethodChange()">
                                     <option value="crypto_direct">Крипта напрямую</option>
-                                    <option value="spp_doverka">СБП / Доверка</option>
+                                    <option value="spp_doverka">СБП</option>
                                     <option value="sber_wl">Сбер (WL Bot)</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
@@ -1152,7 +1152,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
-                                    <option value="spp_doverka">СБП / Доверка</option>
+                                    <option value="spp_doverka">СБП</option>
                                     <option value="partners_cash">Партнеры (наличные)</option>
                                     <option value="crypto_direct">Крипта напрямую</option>
                                     <option value="sber_wl">Сбер (WL Bot)</option>
@@ -3618,7 +3618,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Charts ====================
         let chartInstances = {};
-        const METHOD_NAMES = {'spp_doverka': 'СБП/Доверка', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'Сбер WL', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
+        const METHOD_NAMES = {'spp_doverka': 'СБП', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'Сбер WL', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
         let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
 
@@ -8640,7 +8640,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function getPayinMethodLabel(method) {
             const labels = {
-                'spp_doverka': 'СБП / Доверка',
+                'spp_doverka': 'СБП',
                 'partners_cash': 'Партнеры (наличные)',
                 'crypto_direct': 'Крипта',
                 'sber_wl': 'Сбер (WL Bot)',
