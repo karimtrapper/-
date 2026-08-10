@@ -216,3 +216,19 @@ class TestTronScanRetry:
             'quant': '5000000', 'block_ts': _ts(1), 'finalResult': 'FAILED'}]}
         monkeypatch.setattr(appmod.requests, 'get', lambda url, **kw: TestTronScanRetry._R(200, payload))
         assert appmod._tron_usdt_transfers(ADDR, pages=1) == []
+
+
+class TestTruncation:
+    def test_full_page_is_reported_as_truncated(self, wallet, onchain):
+        """100 переводов = уперлись в лимит обхода, значит история неполная."""
+        s, w = wallet
+        onchain(1000)
+        many = [_tx(f'h{i}', 'income', 1, days_ago=1) for i in range(appmod.TRON_RECONCILE_MAX_TRANSFERS)]
+        r = reconcile_wallet(s, w, transfers=many)
+        assert r['truncated'] is True
+
+    def test_short_list_is_not_truncated(self, wallet, onchain):
+        s, w = wallet
+        onchain(1000)
+        r = reconcile_wallet(s, w, transfers=[_tx('h1', 'income', 1)])
+        assert r['truncated'] is False

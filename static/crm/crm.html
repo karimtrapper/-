@@ -7505,7 +7505,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     html += `<div style="color:#166534; margin-top:4px;">✅ Всё отмечено: сверено переводов ${d.checked_transfers}</div>`;
                 } else {
                     html += `<div style="color:#b91c1c; font-weight:600; margin-top:4px;">⚠️ Не отмечено в CRM: ${d.unmatched.length}</div>`;
-                    html += d.unmatched.map(t => {
+                    const shown = d.unmatched.slice(0, 15);
+                    html += shown.map(t => {
                         const sign = t.type === 'income' ? '+' : '−';
                         const color = t.type === 'income' ? '#0369a1' : '#b91c1c';
                         const when = t.date ? t.date.substring(0, 10) : '';
@@ -7513,6 +7514,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         return `<div style="margin-top:3px; color:${color};">${sign}$${money(t.amount)} · ${when} · ${label}
                             <a href="https://tronscan.org/#/transaction/${t.tx_hash}" target="_blank" onclick="event.stopPropagation()" style="color:#64748b;">чек</a></div>`;
                     }).join('');
+                    if (d.unmatched.length > shown.length) {
+                        html += `<div style="color:#64748b; margin-top:3px;">…и ещё ${d.unmatched.length - shown.length}</div>`;
+                    }
+                }
+                if (d.truncated) {
+                    html += `<div style="margin-top:4px; color:#b45309;">История обрезана: смотрели последние ${d.checked_transfers} переводов, более старые не проверены</div>`;
                 }
                 // Расхождение баланса печатаем всегда: «сошлось» и «не проверяли»
                 // не должны выглядеть одинаково (та же грабля, что с возмещениями)

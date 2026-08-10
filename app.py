@@ -5308,7 +5308,13 @@ def tronscan_balance(address):
                     'usdt_balance': round(usdt, 2), 'trx_balance': round(trx, 6)})
 
 
-def _tron_usdt_transfers(address, start_ts=None, pages=2, per_page=50):
+TRON_RECONCILE_PAGES = 2       # сколько страниц TronScan обходим при сверке
+TRON_RECONCILE_PER_PAGE = 50
+TRON_RECONCILE_MAX_TRANSFERS = TRON_RECONCILE_PAGES * TRON_RECONCILE_PER_PAGE
+
+
+def _tron_usdt_transfers(address, start_ts=None, pages=TRON_RECONCILE_PAGES,
+                         per_page=TRON_RECONCILE_PER_PAGE):
     """TRC20-USDT переводы адреса (входящие и исходящие) по TronScan.
 
     Отдельно от `_tronscan_fetch_incoming/outgoing`: тем нужен срез по всем
@@ -5418,6 +5424,9 @@ def reconcile_wallet(session, wallet, transfers=None):
         'wallet_id': wallet.id, 'address': wallet.address, 'label': wallet.label,
         'crm_balance': crm_balance,
         'onchain_balance': onchain_usdt,
+        # Глубина обхода ограничена — молчать об этом нельзя, иначе «сверено всё»
+        # и «сверено первое, что влезло» выглядят одинаково
+        'truncated': len(transfers) >= TRON_RECONCILE_MAX_TRANSFERS,
         # Плюс = в сети денег больше, чем знает CRM (не отметили приход)
         'diff': round(onchain_usdt - crm_balance, 2) if onchain_usdt is not None else None,
         'checked_transfers': len(transfers),
