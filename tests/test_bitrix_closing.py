@@ -154,6 +154,10 @@ class TestPortalWiring:
         bitrix_deals.get_active_deals()
         assert seen['url'] == 'https://portal.example/rest/1/key/crm.deal.list'
         assert seen['data']['filter[CATEGORY_ID]'] == 0
+        # Закрытые отсекает портал: страница из 50 свежих WON/LOSE иначе
+        # съедала выборку и оператор видел пустой список
+        assert seen['data']['filter[!STAGE_ID][0]'] == 'WON'
+        assert seen['data']['filter[!STAGE_ID][1]'] == 'LOSE'
 
     def test_contacts_search_uses_grusha_pipeline(self, cli, monkeypatch):
         seen = {}

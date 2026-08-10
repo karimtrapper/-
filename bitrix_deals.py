@@ -69,9 +69,17 @@ def get_deal(deal_id: int) -> dict:
 
 
 def get_active_deals(limit: int = 50) -> list[dict]:
-    """Незакрытые сделки основной воронки — то, что оператору предстоит разобрать."""
+    """Незакрытые сделки основной воронки — то, что оператору предстоит разобрать.
+
+    WON/LOSE отсекаются на портале, а не в Python: `crm.deal.list` отдаёт
+    страницами по 50, и закрытые сделки (их подавляющее большинство) выбирали
+    всю страницу целиком — список оператора оказывался пустым при живых
+    активных сделках.
+    """
     result = _post('crm.deal.list', {
         'filter[CATEGORY_ID]': BITRIX_PIPELINE_ID,
+        'filter[!STAGE_ID][0]': STAGE_WON,
+        'filter[!STAGE_ID][1]': STAGE_LOSE,
         'order[DATE_CREATE]': 'DESC',
         'select[0]': 'ID',
         'select[1]': 'TITLE',
