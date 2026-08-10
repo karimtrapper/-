@@ -3,7 +3,9 @@
 
 Спека: docs/specs/2026-08-06-mf-freehold.md
 Эталон — пример из §8 спеки лизхолда: получено 39 533.77, отправлено 39 373,
-доход 160.77 (комиссия 0.8% + $50 внутри отправки).
+доход 160.77. Комиссия 0.8% + $50 начисляется НА СУММУ ПЛАТЕЖА и добавляется
+сверху, поэтому этой отправке отвечает инвойс 39 010.91 (до правки 10.08 модель
+делала gross-up и считала тот же транш от инвойса 39 008.02).
 
 Отличие от лизхолда: карман ОДИН — тайская компания в платеже не участвует,
 поэтому вся прибыль в USDT, и она уже после расходов на перевод.
@@ -73,17 +75,17 @@ class TestAgainstExample:
     def test_by_fact_of_transfer(self):
         r = compute_mf_freehold(39533.77, sent_usd=39373, fee_percent=0.8,
                                 fee_fixed_usd=50, agents=[])
-        assert approx(r['fee_usd'], 364.98)
-        assert approx(r['arrive_usd'], 39008.02), 'комиссия снимается С отправки'
+        assert approx(r['fee_usd'], 362.09)
+        assert approx(r['arrive_usd'], 39010.91), 'комиссия начислена на сумму платежа'
         assert approx(r['gross_profit_usdt'], 160.77)
         assert approx(r['net_profit_usdt'], 160.77), 'без агентов чистый = валовый'
 
     def test_by_invoice_gives_same_transfer(self):
         """Обратная сторона: знаем, сколько должно дойти → сколько отправить."""
-        r = compute_mf_freehold(39533.77, invoice_usd=39008.02, fee_percent=0.8,
+        r = compute_mf_freehold(39533.77, invoice_usd=39010.91, fee_percent=0.8,
                                 fee_fixed_usd=50, agents=[])
         assert approx(r['sent_usd'], 39373.00)
-        assert approx(r['arrive_usd'], 39008.02)
+        assert approx(r['arrive_usd'], 39010.91)
         assert approx(r['gross_profit_usdt'], 160.77)
 
     def test_round_trip(self):
@@ -94,22 +96,43 @@ class TestAgainstExample:
                                    fee_fixed_usd=100, agents=[])
         assert approx(back['arrive_usd'], 45000)
 
-    def test_fee_is_deducted_not_added_on_top(self):
-        """Регресс на коррекцию 05.08: комиссия НЕ докладывается сверх отправки.
+    def test_fee_is_charged_on_the_invoice_not_on_the_transfer(self):
+        """Регресс 10.08: процент считается ОТ ИНВОЙСА и добавляется сверху.
 
-        Иначе застройщику обещают больше, чем до него дойдёт.
+        Старая модель делала gross-up `(X + F)/(1−p)` — брала процент с самой
+        отправки. Разница мелкая (p·комиссия), но систематическая: на сделках
+        Радимира она дала +$5,14 к реальному траншу.
         """
+        r = compute_mf_freehold(80000, invoice_usd=39010.91, fee_percent=0.8,
+                                fee_fixed_usd=50, agents=[])
+        assert approx(r['fee_usd'], 39010.91 * 0.008 + 50)
+        assert r['sent_usd'] > (39010.91 + 50) / (1 - 0.008) - 5, 'подстраховка от опечатки'
+        assert approx(r['sent_usd'], 39010.91 + r['fee_usd'])
+
+    def test_transfer_is_bigger_than_what_arrives(self):
         r = compute_mf_freehold(40000, sent_usd=39373, fee_percent=0.8,
                                 fee_fixed_usd=50, agents=[])
         assert r['arrive_usd'] < r['sent_usd']
         assert approx(r['sent_usd'] - r['arrive_usd'], r['fee_usd'])
 
+    def test_radimir_case_matches_real_transfer(self):
+        """Живой кейс 10.08: два инвойса, один транш 74 078,195 USDT.
+
+        Хэш 3ffa8013… — по нему и вскрылось расхождение со старой формулой.
+        """
+        parts = [compute_mf_freehold(0, invoice_usd=inv, fee_percent=0.8,
+                                     fee_fixed_usd=25, agents=[])['sent_usd']
+                 for inv in (37879.61, 35561.06)]
+        assert approx(parts[0], 38207.65)
+        assert approx(parts[1], 35870.55)
+        assert approx(sum(parts), 74078.20)
+
     def test_invoice_gap_flags_underpayment(self):
         """Отправили меньше, чем нужно, — видно, сколько не хватает застройщику."""
-        r = compute_mf_freehold(40000, invoice_usd=39008.02, sent_usd=39000,
+        r = compute_mf_freehold(40000, invoice_usd=39010.91, sent_usd=39000,
                                 fee_percent=0.8, fee_fixed_usd=50, agents=[])
         assert r['invoice_gap_usd'] < 0
-        assert approx(r['invoice_gap_usd'], r['arrive_usd'] - 39008.02)
+        assert approx(r['invoice_gap_usd'], r['arrive_usd'] - 39010.91)
 
     def test_no_fee_means_transfer_equals_invoice(self):
         r = compute_mf_freehold(40000, invoice_usd=39000, agents=[])
@@ -142,7 +165,7 @@ class TestAgentsBase:
         after = compute_mf_freehold(39533.77, sent_usd=39373, fee_percent=0.8,
                                     fee_fixed_usd=50,
                                     agents=[{'tier': 1, 'comp_model': 'revshare', 'percent': 10}])
-        naive = (39533.77 - 39008.02) * 0.10      # 10% от «приход − инвойс»
+        naive = (39533.77 - 39010.91) * 0.10      # 10% от «приход − инвойс»
         assert naive > after['agents'][0]['_payout'] * 3
 
     def test_cascade_markup_then_revshare(self):
@@ -163,16 +186,16 @@ class TestAgentsBase:
         клиент (калькулятор её закладывает: курс → наша прибыль → markup → комиссия).
         """
         ag = [{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}]
-        alone = compute_mf_freehold(39533.77, invoice_usd=39008.02, fee_percent=0.8,
+        alone = compute_mf_freehold(39533.77, invoice_usd=39010.91, fee_percent=0.8,
                                     fee_fixed_usd=50, agents=[])
         priced_in = compute_mf_freehold(round(39533.77 / (1 - 0.005), 2),
-                                        invoice_usd=39008.02, fee_percent=0.8,
+                                        invoice_usd=39010.91, fee_percent=0.8,
                                         fee_fixed_usd=50, agents=ag)
         assert approx(priced_in['net_profit_usdt'], alone['net_profit_usdt'])
 
     def test_markup_not_priced_in_eats_profit(self):
         """Наценку в курс не заложили — она вычитается из нашего заработка, в минус."""
-        r = compute_mf_freehold(39533.77, invoice_usd=39008.02, fee_percent=0.8,
+        r = compute_mf_freehold(39533.77, invoice_usd=39010.91, fee_percent=0.8,
                                 fee_fixed_usd=50,
                                 agents=[{'tier': 1, 'comp_model': 'markup', 'percent': 0.5}])
         assert approx(r['agents'][0]['_payout'], 197.67)
@@ -197,7 +220,7 @@ def _fh_payload(**extra):
         'payin_method': 'crypto_direct',
         'payin_amount_usdt': 39533.77,
         'realty_purpose': 'Layan Green Park B12',
-        'invoice_amount_usd': 39008.02,
+        'invoice_amount_usd': 39010.91,
         'transfer_fee_percent': 0.8,
         'transfer_fee_fixed_usd': 50,
     }
@@ -210,8 +233,8 @@ class TestApi:
         deal = tc.post('/api/deals', json=_fh_payload()).json['deal']
         assert deal['deal_kind'] == 'mf_freehold'
         assert approx(deal['transfer_sent_usd'], 39373.00)
-        assert approx(deal['transfer_fee_usd'], 364.98)
-        assert approx(deal['transfer_arrive_usd'], 39008.02)
+        assert approx(deal['transfer_fee_usd'], 362.09)
+        assert approx(deal['transfer_arrive_usd'], 39010.91)
         assert approx(deal['profit_usdt'], 160.77)
         assert approx(deal['net_profit_usdt'], 160.77)
         assert approx(deal['payout_amount_usdt'], 39373.00), 'с кошелька ушла вся отправка'
@@ -238,7 +261,7 @@ class TestApi:
         did = tc.post('/api/deals', json=_fh_payload()).json['deal']['id']
         deal = tc.put(f'/api/deals/{did}', json={'transfer_fee_percent': 1.5}).json['deal']
         assert approx(deal['sent_usd'] if 'sent_usd' in deal else deal['transfer_sent_usd'],
-                      (39008.02 + 50) / (1 - 0.015))
+                      39010.91 * 1.015 + 50)
         assert deal['profit_usdt'] < 160.77, 'дороже перевод — меньше прибыль'
 
     def test_update_by_fact_of_transfer(self, tc):
@@ -246,8 +269,8 @@ class TestApi:
         did = tc.post('/api/deals', json=_fh_payload()).json['deal']['id']
         deal = tc.put(f'/api/deals/{did}', json={'transfer_sent_usd': 39500}).json['deal']
         assert approx(deal['transfer_sent_usd'], 39500)
-        assert approx(deal['transfer_arrive_usd'], 39500 * 0.992 - 50)
-        assert deal['transfer_arrive_usd'] > 39008.02, 'переотправили сверх инвойса'
+        assert approx(deal['transfer_arrive_usd'], (39500 - 50) / 1.008)
+        assert deal['transfer_arrive_usd'] > 39010.91, 'переотправили сверх инвойса'
 
     def test_update_keeps_agents(self, tc):
         did = tc.post('/api/deals', json=_fh_payload(agents=[
@@ -278,7 +301,7 @@ class TestApi:
 
     def test_preview_endpoint(self, tc):
         r = tc.post('/api/deals/mf-freehold/preview', json={
-            'payin_amount_usdt': 39533.77, 'invoice_amount_usd': 39008.02,
+            'payin_amount_usdt': 39533.77, 'invoice_amount_usd': 39010.91,
             'transfer_fee_percent': 0.8, 'transfer_fee_fixed_usd': 50,
         }).json
         assert r['success']
@@ -344,10 +367,10 @@ def _make_freehold_deal(**extra):
     s = get_session()
     d = Deal(client_name='Freehold Client', deal_kind='mf_freehold', deal_type=DealType.PAY_IN,
              created_at=datetime(2026, 8, 6), realty_purpose='Layan Green Park B12',
-             payin_amount_usdt=39533.77, invoice_amount_usd=39008.02,
+             payin_amount_usdt=39533.77, invoice_amount_usd=39010.91,
              transfer_sent_usd=39373.00, transfer_fee_percent=0.8,
-             transfer_fee_fixed_usd=50, transfer_fee_usd=364.98,
-             transfer_arrive_usd=39008.02, profit_usdt=160.77, net_profit_usdt=160.77)
+             transfer_fee_fixed_usd=50, transfer_fee_usd=362.09,
+             transfer_arrive_usd=39010.91, profit_usdt=160.77, net_profit_usdt=160.77)
     for k, v in extra.items():
         setattr(d, k, v)
     s.add(d); s.commit(); s.refresh(d)
@@ -371,7 +394,7 @@ class TestExport:
         assert ws.rows[0] == GSHEET_FREEHOLD_HEADERS
         row = ws.rows[1]
         assert row[0] == 'Layan Green Park B12'
-        assert row[7] == '39008.02'          # инвойс застройщику
+        assert row[7] == '39010.91'          # инвойс застройщику
         assert row[8] == '39373.0'           # отправлено
         assert row[-1] == str(deal.id)       # CRM ID — якорь upsert
 
@@ -430,8 +453,8 @@ class TestTelegram:
         finally:
             s.close()
         assert 'Фрихолд' in text
-        assert 'дойдёт застройщику: $39,008.02' in text
-        assert 'комиссия за перевод: $364.98' in text
+        assert 'дойдёт застройщику: $39,010.91' in text
+        assert 'комиссия за перевод: $362.09' in text
         assert 'Чистый доход: $160.77' in text
 
     def test_warns_when_invoice_not_covered(self):
@@ -453,7 +476,7 @@ class TestActualTransfers:
             {'hash': 'bb' * 16, 'amount_usdt': 19373, 'to_address': 'TX1', 'date': '06.08.2026'},
         ])).json['deal']
         assert approx(deal['transfer_sent_usd'], 39373.00)
-        assert approx(deal['transfer_arrive_usd'], 39008.02)
+        assert approx(deal['transfer_arrive_usd'], 39010.91)
         assert approx(deal['profit_usdt'], 160.77)
         assert len(deal['payout_tx_hashes']) == 2
         assert deal['payout_tx_hashes'][0]['to_address'] == 'TX1', 'адрес храним — видно КУДА ушло'
@@ -467,7 +490,7 @@ class TestActualTransfers:
 
     def test_preview_counts_transfers(self, tc):
         r = tc.post('/api/deals/mf-freehold/preview', json={
-            'payin_amount_usdt': 39533.77, 'invoice_amount_usd': 39008.02,
+            'payin_amount_usdt': 39533.77, 'invoice_amount_usd': 39010.91,
             'transfer_fee_percent': 0.8, 'transfer_fee_fixed_usd': 50,
             'payout_tx_hashes': [{'hash': 'dd' * 16, 'amount_usdt': 39373}],
         }).json

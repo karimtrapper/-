@@ -1328,12 +1328,13 @@ function applyPartnerMarkup(result) {
 // Это наша себестоимость, поэтому она закладывается в курс, а не съедает прибыль:
 // иначе выбранная «желаемая прибыль» была бы враньём.
 //
-// Комиссия банка снимается С ОТПРАВЛЯЕМОЙ суммы, поэтому «вношу» и «хочу получить»
-// считаются по-разному:
-//   • вношу S       → до застройщика дойдёт  X = S·(1−p) − F
-//   • хочу X дойдёт → отправить придётся     S = (X + F) / (1−p)
-// Обратное (докладывать комиссию сверх X) завышало бы сумму до застройщика:
-// клиенту назвали бы курс, по которому застройщик получит меньше обещанного.
+// Комиссия начисляется НА СУММУ ПЛАТЕЖА и добавляется сверху (правка 10.08,
+// сверено с реальным траншем по сделкам Радимира), поэтому «вношу» и «хочу
+// получить» считаются по-разному:
+//   • вношу S       → до застройщика дойдёт  X = (S − F) / (1+p)
+//   • хочу X дойдёт → отправить придётся     S = X·(1+p) + F
+// Раньше здесь стоял gross-up (X + F)/(1−p) — он брал процент с самой отправки
+// и завышал её на p·комиссию.
 function applyPropertyFee(result) {
     result.__prop_fee_applied = false;
     if (state.dealCategory !== 'property_freehold') return result;
@@ -1357,13 +1358,13 @@ function applyPropertyFee(result) {
     result.__prop_rate_before = result.final_rate;
 
     if (result.direction === 'target') {
-        // Клиент хочет, чтобы застройщик получил X — отправить надо (X + F)/(1−p),
+        // Клиент хочет, чтобы застройщик получил X — отправить надо X·(1+p) + F,
         // значит клиент вносит больше в той же пропорции
         const target = getAmount();
         if (!target) return result;
         const targetUsdt = outIsThb ? target / usdtThb : target;
-        const sendUsdt = (targetUsdt + fixed) / (1 - p);
-        if (!(sendUsdt > 0) || p >= 1) return result;
+        const sendUsdt = targetUsdt * (1 + p) + fixed;
+        if (!(sendUsdt > 0)) return result;
         const feeUsdt = sendUsdt - targetUsdt;
         const k = sendUsdt / targetUsdt;
         if (!isFinite(k) || k <= 0) return result;
@@ -1378,13 +1379,13 @@ function applyPropertyFee(result) {
         result.__prop_arrive_usdt = targetUsdt;
         result.__prop_fee_usdt = feeUsdt;
     } else {
-        // Клиент вносит сумму — она и есть отправляемая, комиссия снимается с неё
+        // Клиент вносит сумму — она и есть отправляемая, комиссия сидит внутри неё
         const outField = ['usdt_received', 'thb_received', 'usdt_amount']
             .find(f => typeof result[f] === 'number' && result[f] > 0);
         if (!outField) return result;
         const out = result[outField];
         const sendUsdt = outIsThb ? out / usdtThb : out;
-        const arriveUsdt = sendUsdt * (1 - p) - fixed;
+        const arriveUsdt = (sendUsdt - fixed) / (1 + p);
         if (!(arriveUsdt > 0)) return result;   // расход съел всю сумму — не калечим расчёт
         const k = arriveUsdt / sendUsdt;
 

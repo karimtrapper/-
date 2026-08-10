@@ -6045,8 +6045,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // отправку (сохранённое число вечно перебивало бы её).
             const p = (parseFloat(deal.transfer_fee_percent) || 0) / 100;
             const fixed = parseFloat(deal.transfer_fee_fixed_usd) || 0;
-            const derived = (deal.invoice_amount_usd && p < 1)
-                ? (deal.invoice_amount_usd + fixed) / (1 - p) : null;
+            const derived = deal.invoice_amount_usd
+                ? deal.invoice_amount_usd * (1 + p) + fixed : null;
             const isFact = deal.transfer_sent_usd != null
                 && (derived === null || Math.abs(deal.transfer_sent_usd - derived) > 0.01);
             set('fhSentUsd', isFact ? deal.transfer_sent_usd : '');
