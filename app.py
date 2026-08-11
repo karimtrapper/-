@@ -3041,10 +3041,20 @@ def _send_deal_telegram(deal):
             payout_val = int(deal.payout_amount_thb) if deal.payout_amount_thb else 0
             payout_cur = 'THB'
 
+    # Откуда выдали: без этого «Выдано 19 652 THB» не говорит, чьи это баты —
+    # карта уже откуплена, а наличные фаундера ещё ждут возмещения
+    source_note = ''
+    if deal.payout_source == PayOutSource.BANK_CARD and deal.bank_card:
+        source_note = f" · с карты {deal.bank_card.bank_name}"
+    elif deal.payout_source == PayOutSource.FOUNDER_PERSONAL and deal.payout_founder_name:
+        source_note = f" · личные {deal.payout_founder_name}"
+    elif deal.payout_source == PayOutSource.CASH_BATCH:
+        source_note = ' · из кассы'
+
     msg = (
         f"✅ <b>Сделка {deal.id} — {(deal.client.name if deal.client else deal.client_name) or 'без имени'} — {date_str}</b>\n"
         f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
-        f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f})\n"
+        f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f}){source_note}\n"
         f"Прибыль: ${profit:,.2f}"
     )
     # Блок агентов (мультиагенты) + чистая прибыль
@@ -3959,6 +3969,12 @@ def _sync_card_allocation(session, deal):
         cost_usdt=cost_usdt, card_rate=round(rate, 4),
     ))
     card.balance_thb = round((card.balance_thb or 0) - amount_thb, 2)
+    # Себестоимость выдачи = курс карты. Форма её показывает, но не отправляет
+    # (поле readonly и без name), из-за чего payout_amount_usdt оставался пустым:
+    # карточка писала «Ожидает возмещения», а Telegram слал $0.00
+    if rate:
+        deal.payout_amount_usdt = cost_usdt
+        deal.cash_batch_rate = round(rate, 4)
     if card.balance_thb < 0:
         return (f'Остаток карты «{card.bank_name}» ушёл в минус: '
                 f'{card.balance_thb:,.2f} THB — проверьте пополнения')
@@ -4494,6 +4510,9 @@ def create_deal():
         # (фаундер не тратил наличные THB из кармана)
         if 'needs_reimbursement' in data:
             needs_reimb = bool(data.get('needs_reimbursement'))
+        elif data.get('payout_source') == PayOutSource.BANK_CARD.value:
+            # Баты с карты откуплены заранее, при её пополнении — возмещать нечего
+            needs_reimb = False
         else:
             payout_is_thb = (
                 bool(data.get('payout_amount_thb'))
@@ -4554,6 +4573,10 @@ def create_deal():
         session.add(deal)
         session.flush()
 
+        # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
+        # карты. Обязательно до пересчёта финансов — прибыль считается из неё
+        card_warning = _sync_card_allocation(session, deal)
+
         # Забор приходов Сбера из пула под части сделки (sber_reqs)
         if data.get('payin_parts'):
             _sync_sber_claims(session, deal, data['payin_parts'])
@@ -4580,6 +4603,13 @@ def create_deal():
             else:
                 _mirror_legacy_agent(session, deal)
 
+        # Выдача с карты завершена в момент создания: возмещения ждать не надо,
+        # себестоимость и прибыль уже известны — держать её в pending незачем
+        if (deal.payout_source == PayOutSource.BANK_CARD
+                and deal.status == DealStatus.PENDING
+                and deal.payout_amount_usdt):
+            deal.status = DealStatus.COMPLETED
+
         # Тип недвижимости без своих полей — протёкшее состояние формы, не сделка
         realty_error = realty_payload_error(deal)
         if realty_error:
@@ -4597,9 +4627,6 @@ def create_deal():
                 deal_id=deal.id
             )
             session.add(op)
-
-        # Выдача с карты: снимаем баты с её остатка
-        card_warning = _sync_card_allocation(session, deal)
 
         session.commit()
 
@@ -4705,8 +4732,11 @@ def update_deal(deal_id):
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
-            payout_is_thb = bool(deal.payout_amount_thb) or deal.custom_payout_currency == 'THB'
-            deal.needs_reimbursement = payout_is_thb
+            if (data.get('payout_source') or (deal.payout_source.value if deal.payout_source else None)) == PayOutSource.BANK_CARD.value:
+                deal.needs_reimbursement = False  # баты с карты уже откуплены
+            else:
+                payout_is_thb = bool(deal.payout_amount_thb) or deal.custom_payout_currency == 'THB'
+                deal.needs_reimbursement = payout_is_thb
         
         # Обновляем Enum поля
         if 'payin_method' in data:

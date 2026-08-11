@@ -255,6 +255,50 @@ def test_history_shows_spending_and_reference(client):
     assert data['allocations'][0]['client_name'] == 'Ольга П.'
 
 
+# ── Себестоимость, возмещение, автозавершение ────────────────────────────
+
+def test_cost_and_profit_filled_from_card_rate(client):
+    """Форма не шлёт стоимость USDT (поле readonly без name) — берём её из
+    курса карты, иначе карточка пишет «Ожидает возмещения», а Telegram — $0.00."""
+    card_id = _mk_card()
+    payload = _deal_payload(card_id, 19652.0)
+    payload.pop('payout_amount_usdt')
+    payload['payin_amount_usdt'] = 609.89
+
+    deal = client.post('/api/deals', json=payload).get_json()['deal']
+
+    assert deal['payout_amount_usdt'] == round(19652.0 / 33.5213, 2)   # 586.25
+    assert deal['profit_usdt'] == round(609.89 - 586.25, 2)            # 23.64
+    assert deal['cash_batch_rate'] == 33.5213
+
+
+def test_card_deal_needs_no_reimbursement(client):
+    """Баты откуплены при пополнении карты — возмещать нечего."""
+    card_id = _mk_card()
+    deal = client.post('/api/deals', json=_deal_payload(card_id, 19652.0)).get_json()['deal']
+    assert deal['needs_reimbursement'] is False
+
+
+def test_card_deal_completes_itself(client):
+    """Прибыль известна сразу, ждать нечего — сделка не висит в pending."""
+    card_id = _mk_card()
+    payload = _deal_payload(card_id, 19652.0, status='pending')
+    payload.pop('payout_amount_usdt')
+
+    deal = client.post('/api/deals', json=payload).get_json()['deal']
+    assert deal['status'] == 'completed'
+
+
+def test_founder_payout_still_waits_reimbursement(client):
+    """Личные фаундера по-прежнему ждут возмещения — правило только про карту."""
+    card_id = _mk_card()
+    deal = client.post('/api/deals', json=_deal_payload(
+        card_id, 19652.0, payout_source='founder_personal',
+        payout_founder_name='Андрей')).get_json()['deal']
+    assert deal['needs_reimbursement'] is True
+    assert deal['status'] == 'completed'  # статус пришёл из payload, не автоматом
+
+
 # ── Ручное списание (движения мимо клиентов) ─────────────────────────────
 
 def test_adjust_reduces_balance_keeping_rate(client):
