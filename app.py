@@ -329,6 +329,8 @@ class Client(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     notes = Column(Text)
     referrer_id = Column(Integer, ForeignKey('referrers.id'), nullable=True)
+    # Демо-клиент тестового реферера: не показываем в CRM (см. Deal.is_test)
+    is_test = Column(Boolean, default=False)
     referrer = relationship("Referrer", back_populates="referred_clients", foreign_keys=[referrer_id])
     deals = relationship("Deal", back_populates="client")
 
@@ -336,6 +338,7 @@ class Client(Base):
         return {'id': self.id, 'name': self.name, 'telegram': self.telegram, 'phone': self.phone,
                 'total_deals': self.total_deals, 'total_volume_usdt': self.total_volume_usdt,
                 'referrer_id': self.referrer_id,
+                'is_test': bool(self.is_test),
                 'referrer_name': self.referrer.name if self.referrer else None}
 
 class Partner(Base):
@@ -848,6 +851,10 @@ class Deal(Base):
     manager_name = Column(String(100))
     deal_type = Column(SQLEnum(DealType), nullable=False)
     status = Column(SQLEnum(DealStatus), default=DealStatus.PENDING)
+    # Демо-сделка тестового реферера: живёт только в реферальном кабинете.
+    # В CRM (список сделок, клиенты, аналитика), в GSheet и в TG-уведомления
+    # НЕ попадает — витрина для показа партнёру, а не реальные деньги.
+    is_test = Column(Boolean, default=False)
     client_id = Column(Integer, ForeignKey('clients.id'), nullable=True)
     client = relationship("Client", back_populates="deals")
     client_name = Column(String(100))
@@ -963,6 +970,7 @@ class Deal(Base):
             'manager_name': self.manager_name,
             'deal_type': self.deal_type.value if self.deal_type else None,
             'status': self.status.value if self.status else None,
+            'is_test': bool(self.is_test),
             'client_id': self.client_id,
             'client_name': self.client.name if self.client else self.client_name,
             'client': self.client.to_dict() if self.client else None,
@@ -1485,6 +1493,19 @@ try:
                 print(f"ℹ️ referrers.is_test: {e}")
         else:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN is_test BOOLEAN DEFAULT 0"))
+            except: pass
+        # is_test на сделках и клиентах — демо-данные тестового реферера.
+        # Видны только в реферальном кабинете, из CRM/аналитики/GSheet исключены.
+        if 'postgresql' in DATABASE_URL:
+            try:
+                conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE"))
+                conn.execute(text("ALTER TABLE clients ADD COLUMN IF NOT EXISTS is_test BOOLEAN DEFAULT FALSE"))
+            except Exception as e:
+                print(f"ℹ️ deals/clients.is_test: {e}")
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN is_test BOOLEAN DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE clients ADD COLUMN is_test BOOLEAN DEFAULT 0"))
             except: pass
         # Вход в кабинет: режим + привязанный TG id
         if 'postgresql' in DATABASE_URL:
@@ -2371,6 +2392,9 @@ def _sync_realty_deal_impl(deal):
 
 def sync_deals_to_gsheet(deals):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    deals = [d for d in deals if not getattr(d, 'is_test', False)]  # демо не льём в таблицу
+    if not deals:
+        return
     with _gsheet_lock:
         return _sync_deals_to_gsheet_impl(deals)
 
@@ -2586,6 +2610,8 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
 
 def delete_deal_from_gsheet(deal):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    if getattr(deal, 'is_test', False):
+        return
     with _gsheet_lock:
         return _delete_deal_from_gsheet_impl(deal)
 
@@ -2670,6 +2696,8 @@ def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
 
 def update_deal_in_gsheet(deal):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
+    if getattr(deal, 'is_test', False):
+        return
     with _gsheet_lock:
         return _update_deal_in_gsheet_impl(deal)
 
@@ -2770,6 +2798,8 @@ def _get_or_create_referrers_worksheet(sh):
 
 def sync_referrer_reward_to_gsheet(deal):
     """Добавляет строку выплаты рефереру в лист 'рефереры'."""
+    if getattr(deal, 'is_test', False):
+        return
     if not deal.referrer_id or not deal.referrer_payout_usdt:
         return
     try:
@@ -3006,6 +3036,9 @@ def _mf_freehold_telegram_text(deal):
 
 def _send_deal_telegram(deal):
     """Отправляет уведомление о сделке в Telegram"""
+    if getattr(deal, 'is_test', False):
+        print(f'[TG] Skip notify: deal #{deal.id} is test')
+        return
     if deal.deal_kind == MF_REALTY_KIND:
         return send_telegram_notification(_mf_realty_telegram_text(deal))
     if deal.deal_kind == MF_FREEHOLD_KIND:
@@ -3105,7 +3138,7 @@ def send_webhook_async(url, data):
         threading.Thread(target=_send).start()
 
 def send_deal_completed_webhook(deal):
-    if not WEBHOOK_URL:
+    if not WEBHOOK_URL or getattr(deal, 'is_test', False):
         return
     data = {
         'event': 'deal_completed',
@@ -3849,6 +3882,9 @@ def get_deals():
         elif request.args.get('include_lose') != '1':
             # LOSE — аналитические записи, в основном списке сделок не показываем
             query = query.filter(Deal.status != DealStatus.LOSE)
+        # Демо-сделки тестового реферера в CRM не показываем (?include_test=1 — вернуть)
+        if request.args.get('include_test') != '1':
+            query = query.filter(Deal.is_test.isnot(True))
         manager = request.args.get('manager')
         if manager:
             query = query.filter(Deal.manager_name.ilike(f'%{manager}%'))
@@ -4525,6 +4561,7 @@ def create_deal():
             manager_name=data.get('manager_name'),
             deal_type=DealType(data.get('deal_type', 'pay_in')),
             status=DealStatus(data.get('status', 'pending')),
+            is_test=bool(data.get('is_test', False)),
             client_id=client_id,
             client_name=client_name,
             payin_method=PayInMethod(data['payin_method']) if data.get('payin_method') else None,
@@ -5037,6 +5074,7 @@ def get_lose_candidates():
         all_unrevived = session.query(Deal).filter(
             Deal.status == DealStatus.LOSE,
             Deal.revived_by_deal_id == None,
+            Deal.is_test.isnot(True),
         ).order_by(Deal.created_at.desc()).all()
         candidates = [d for d in all_unrevived if (
             (d.client_name and d.client_name.strip().casefold() == name_cf)
@@ -5131,7 +5169,8 @@ def analytics_conversion():
         # Тянем все сделки: когорта первого касания и repeat-детект смотрят
         # в прошлое за пределы окна. Объём таблицы малый (сотни строк).
         all_deals = session.query(Deal).filter(
-            Deal.status.in_(list(won_statuses) + [DealStatus.LOSE])
+            Deal.status.in_(list(won_statuses) + [DealStatus.LOSE]),
+            Deal.is_test.isnot(True),
         ).all()
 
         def identity(d):
@@ -6546,6 +6585,8 @@ def get_clients():
     session = get_session()
     try:
         query = session.query(Client)
+        if request.args.get('include_test') != '1':
+            query = query.filter(Client.is_test.isnot(True))  # демо-клиенты тестового реферера
         search = request.args.get('search', '').strip()
         if search:
             query = query.filter(Client.name.ilike(f'%{search}%'))
@@ -6996,12 +7037,14 @@ def get_dashboard():
         referrer_filter = request.args.get('referrer_id', '')
 
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
-        pending_deals = session.query(Deal).filter(Deal.status == DealStatus.PENDING).all()
+        pending_deals = session.query(Deal).filter(
+            Deal.status == DealStatus.PENDING, Deal.is_test.isnot(True)).all()
 
         # Невозмещенные
         unreimbursed = session.query(Deal).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
-            Deal.reimbursement_id == None
+            Deal.reimbursement_id == None,
+            Deal.is_test.isnot(True)
         ).all()
 
         # Метрики за период. Только завершённые сделки (completed/verified) —
@@ -7011,6 +7054,7 @@ def get_dashboard():
             Deal.created_at >= chart_start,
             Deal.created_at < chart_end,
             Deal.status.in_(ACTIVE_STATUSES),
+            Deal.is_test.isnot(True),
         )
         if referrer_filter == 'none':
             deals_q = deals_q.filter(Deal.referrer_id == None)
@@ -7153,6 +7197,7 @@ def get_dashboard():
                 Deal.created_at >= chart_start,
                 Deal.created_at < chart_end,
                 Deal.status == DealStatus.LOSE,
+                Deal.is_test.isnot(True),
             ).all()
             if period_loses and buyers_total:
                 ua_idents = period_buyer_idents | {_client_ident(d) for d in period_loses}
@@ -7385,7 +7430,8 @@ def get_pending_reimbursements():
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None,
             Deal.payout_founder_name != None,
-            Deal.needs_reimbursement != False
+            Deal.needs_reimbursement != False,
+            Deal.is_test.isnot(True)
         ).order_by(Deal.payout_founder_name, Deal.created_at.desc()).all()
         
         # Group by founder
@@ -9424,6 +9470,11 @@ def list_payout_requests():
         q = db.query(PayoutRequest).order_by(PayoutRequest.created_at.desc())
         if status_filter:
             q = q.filter(PayoutRequest.status == status_filter)
+        if request.args.get('include_test') != '1':
+            # Заявки демо-рефереров (витрина) команде в списке не нужны
+            test_ids = [r.id for r in db.query(Referrer.id).filter(Referrer.is_test == True).all()]
+            if test_ids:
+                q = q.filter(~PayoutRequest.referrer_id.in_(test_ids))
         items = [r.to_dict(with_referrer=True) for r in q.limit(200).all()]
         return jsonify({'success': True, 'requests': items})
     finally:
