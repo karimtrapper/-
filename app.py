@@ -563,9 +563,7 @@ class BankCard(Base):
     topups = relationship("CardTopup", back_populates="card")
     
     def to_dict(self):
-        total_thb = sum(t.amount_thb for t in self.topups) if self.topups else 0
-        total_usdt = sum(t.cost_usdt for t in self.topups) if self.topups else 0
-        avg_rate = total_thb / total_usdt if total_usdt > 0 else 0
+        avg_rate = _card_avg_rate(self)
         return {
             'id': self.id, 'created_at': self.created_at.isoformat() if self.created_at else None,
             'bank_name': self.bank_name, 'card_name': self.card_name, 'holder_name': self.holder_name,
@@ -584,13 +582,17 @@ class CardTopup(Base):
     purchase_rate = Column(Float, nullable=False)
     source_type = Column(String(50))
     source_batch_id = Column(Integer, ForeignKey('cash_batches.id'), nullable=True)
+    # Чем подтверждается пополнение: хэш TRON, если заводили криптой, либо
+    # банковский референс (у IPPS это строка вида IDTT260723564098)
+    reference = Column(String(120))
     notes = Column(Text)
     card = relationship("BankCard", back_populates="topups")
-    
+
     def to_dict(self):
         return {'id': self.id, 'card_id': self.card_id, 'amount_thb': self.amount_thb,
                 'cost_usdt': self.cost_usdt, 'purchase_rate': self.purchase_rate,
                 'source_type': self.source_type, 'source_batch_id': self.source_batch_id,
+                'reference': self.reference, 'notes': self.notes,
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
 class ChannelTraffic(Base):
@@ -761,6 +763,15 @@ class CardAllocation(Base):
     deal = relationship("Deal", back_populates="card_allocations")
     card = relationship("BankCard", back_populates="allocations")
 
+    def to_dict(self):
+        return {
+            'id': self.id, 'deal_id': self.deal_id, 'card_id': self.card_id,
+            'amount_thb': self.amount_thb, 'cost_usdt': self.cost_usdt,
+            'card_rate': self.card_rate,
+            'client_name': self.deal.client_name if self.deal else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
 class Transaction(Base):
     __tablename__ = 'transactions'
     id = Column(Integer, primary_key=True)
@@ -868,6 +879,10 @@ class Deal(Base):
     cash_batch_id = Column(Integer, ForeignKey('cash_batches.id'), nullable=True)
     cash_batch = relationship("CashBatch", back_populates="deals")
     cash_batch_rate = Column(Float)
+    # С какой карты (THB-счёта) выдали баты. Курс закупки карты — база
+    # себестоимости выдачи; сама аллокация лежит в card_allocations.
+    bank_card_id = Column(Integer, ForeignKey('bank_cards.id'), nullable=True)
+    bank_card = relationship("BankCard", foreign_keys=[bank_card_id])
     payout_founder_name = Column(String(100))
     reimbursement_id = Column(Integer, ForeignKey('reimbursements.id'), nullable=True)
     reimbursement = relationship("Reimbursement", back_populates="deals")
@@ -993,6 +1008,7 @@ class Deal(Base):
             'payout_tx_hash': self.payout_tx_hash,
             'payout_wallet_id': self.payout_wallet_id,
             'cash_batch_rate': self.cash_batch_rate,
+            'bank_card_id': self.bank_card_id,
             'payout_founder_name': self.payout_founder_name,
             'profit_usdt': self.profit_usdt,
             'profit_percent': self.profit_percent,
@@ -1389,6 +1405,15 @@ try:
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_balance BOOLEAN DEFAULT FALSE"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
+            except: pass
+        # Выдача с карты (THB-счёта): какой картой закрыли сделку
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS bank_card_id INTEGER REFERENCES bank_cards(id)"))
+            conn.execute(text("ALTER TABLE card_topups ADD COLUMN IF NOT EXISTS reference VARCHAR(120)"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN bank_card_id INTEGER"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE card_topups ADD COLUMN reference VARCHAR(120)"))
             except: pass
         # Реферальная система
         if 'postgresql' in DATABASE_URL:
@@ -3879,6 +3904,67 @@ def get_deal(deal_id):
     finally:
         session.close()
 
+def _card_avg_rate(card):
+    """Средневзвешенный курс закупки карты, THB за 1 USDT.
+
+    Считается по всем её пополнениям: сколько бат завели и во что они обошлись.
+    Это база себестоимости любой выдачи с этой карты.
+    """
+    total_thb = sum(t.amount_thb for t in card.topups) if card.topups else 0
+    total_usdt = sum(t.cost_usdt for t in card.topups) if card.topups else 0
+    return total_thb / total_usdt if total_usdt > 0 else 0
+
+
+def _sync_card_allocation(session, deal):
+    """Держит расход по карте в согласии со сделкой.
+
+    Выдача с карты — единственное движение, которого карта раньше не видела:
+    баланс рос от пополнений и не уменьшался никогда. Функция идемпотентна —
+    зовётся и при создании, и при каждом обновлении: сначала возвращает деньги
+    туда, откуда их сняли в прошлый раз, потом списывает заново по текущему
+    состоянию сделки. Поэтому смена карты, суммы или уход сделки в LOSE
+    отрабатывают сами, без отдельных веток.
+
+    Возвращает текст предупреждения, если карте не хватило. В минус пускаем
+    сознательно: остаток в CRM ведёт человек и он отстаёт от факта, а
+    блокировать закрытие уже состоявшейся выдачи из-за этого нельзя.
+    """
+    for alloc in session.query(CardAllocation).filter(CardAllocation.deal_id == deal.id).all():
+        card = session.query(BankCard).filter(BankCard.id == alloc.card_id).with_for_update().first()
+        if card:
+            card.balance_thb = round((card.balance_thb or 0) + alloc.amount_thb, 2)
+        session.delete(alloc)
+    session.flush()
+
+    needs_allocation = (
+        deal.payout_source == PayOutSource.BANK_CARD
+        and deal.bank_card_id
+        and (deal.payout_amount_thb or 0) > 0
+        and deal.status not in (DealStatus.LOSE, DealStatus.CANCELLED)
+    )
+    if not needs_allocation:
+        return None
+
+    card = session.query(BankCard).filter(BankCard.id == deal.bank_card_id).with_for_update().first()
+    if not card:
+        return f'Карта #{deal.bank_card_id} не найдена — расход по сделке не списан'
+
+    amount_thb = round(deal.payout_amount_thb, 2)
+    rate = _card_avg_rate(card)
+    # Курса нет только у карты без пополнений — тогда берём себестоимость,
+    # посчитанную формой, чтобы не записать нулевую стоимость выдачи
+    cost_usdt = round(amount_thb / rate, 2) if rate else round(deal.payout_amount_usdt or 0, 2)
+    session.add(CardAllocation(
+        deal_id=deal.id, card_id=card.id, amount_thb=amount_thb,
+        cost_usdt=cost_usdt, card_rate=round(rate, 4),
+    ))
+    card.balance_thb = round((card.balance_thb or 0) - amount_thb, 2)
+    if card.balance_thb < 0:
+        return (f'Остаток карты «{card.bank_name}» ушёл в минус: '
+                f'{card.balance_thb:,.2f} THB — проверьте пополнения')
+    return None
+
+
 def _recalculate_deal_financials(deal, data):
     """Пересчитывает прибыль, выплату рефереру и чистую прибыль сделки.
 
@@ -4431,6 +4517,7 @@ def create_deal():
             payout_method=PayOutMethod(data['payout_method']) if data.get('payout_method') else None,
             payout_source=PayOutSource(data['payout_source']) if data.get('payout_source') else None,
             payout_wallet_id=data.get('payout_wallet_id'),
+            bank_card_id=data.get('bank_card_id') or None,
             payout_amount_thb=data.get('payout_amount_thb'),
             payout_amount_usdt=data.get('payout_amount_usdt'),
             payout_tx_hash=data.get('payout_tx_hash'),
@@ -4511,8 +4598,11 @@ def create_deal():
             )
             session.add(op)
 
+        # Выдача с карты: снимаем баты с её остатка
+        card_warning = _sync_card_allocation(session, deal)
+
         session.commit()
-        
+
         # Если сделка создана сразу со статусом completed (skip_sync — для импорта исторических сделок)
         skip_sync = data.get('skip_sync', False)
 
@@ -4549,7 +4639,10 @@ def create_deal():
                 except Exception as e:
                     print(f'[Telegram] Error on create: {e}')
 
-        return jsonify({'success': True, 'deal': deal.to_dict()}), 201
+        payload = {'success': True, 'deal': deal.to_dict()}
+        if card_warning:
+            payload['warning'] = card_warning
+        return jsonify(payload), 201
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -4631,6 +4724,17 @@ def update_deal(deal_id):
                 and old_payout_source != PayOutSource.FOUNDER_PERSONAL
                 and deal.reimbursement_id is None):
                 deal.status = DealStatus.PENDING
+
+        if 'bank_card_id' in data:
+            # Пустое значение при неизменном источнике «карта» не трогает привязку:
+            # карта с нулевым остатком выпадает из дропдауна (/api/cards/balance
+            # отдаёт только balance_thb > 0), и форма пришлёт пустое поле — тихо
+            # отвязывать сделку от карты из-за этого нельзя
+            new_card_id = data['bank_card_id'] or None
+            keep_existing = (new_card_id is None and deal.bank_card_id
+                             and deal.payout_source == PayOutSource.BANK_CARD)
+            if not keep_existing:
+                deal.bank_card_id = new_card_id
 
         # Управление списанием с Binance кошелька при сохранении/завершении
         if deal.payout_source == PayOutSource.BINANCE and deal.payout_wallet_id and deal.payout_amount_usdt:
@@ -4731,6 +4835,9 @@ def update_deal(deal_id):
             session.rollback()
             return jsonify({'success': False, 'error': realty_error}), 400
 
+        # Выдача с карты: пересобираем расход под текущее состояние сделки
+        card_warning = _sync_card_allocation(session, deal)
+
         session.commit()
 
         # Обновление агрегатов реферера при завершении сделки
@@ -4791,7 +4898,10 @@ def update_deal(deal_id):
             except Exception as e:
                 print(f'[GSheet] Update error: {e}')
 
-        return jsonify({'success': True, 'deal': deal.to_dict()})
+        payload = {'success': True, 'deal': deal.to_dict()}
+        if card_warning:
+            payload['warning'] = card_warning
+        return jsonify(payload)
     except Exception as e:
         import traceback
         tb = traceback.format_exc()
@@ -4822,6 +4932,14 @@ def delete_deal(deal_id):
 
         # Удаляем связанные операции по кошелькам (Binance списания)
         session.query(WalletOperation).filter(WalletOperation.deal_id == deal_id).delete()
+
+        # Возвращаем батам карту: удалить аллокацию мало, остаток тоже надо вернуть,
+        # иначе удаление сделки навсегда съедает деньги с карты
+        for alloc in session.query(CardAllocation).filter(CardAllocation.deal_id == deal_id).all():
+            card = session.query(BankCard).filter(BankCard.id == alloc.card_id).with_for_update().first()
+            if card:
+                card.balance_thb = round((card.balance_thb or 0) + alloc.amount_thb, 2)
+            session.delete(alloc)
 
         # Освобождаем забранные приходы Сбера (иначе FK claimed_deal_id заблокирует удаление)
         session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).update(
@@ -6570,11 +6688,7 @@ def get_cards_balance():
 
         result = []
         for c in cards:
-            # Рассчитываем средневзвешенный курс закупки
-            total_thb = sum(t.amount_thb for t in c.topups) if c.topups else 0
-            total_usdt = sum(t.cost_usdt for t in c.topups) if c.topups else 0
-            avg_rate = total_thb / total_usdt if total_usdt > 0 else 0
-
+            avg_rate = _card_avg_rate(c)
             result.append({
                 'id': c.id,
                 'bank_name': c.bank_name,
@@ -6637,7 +6751,9 @@ def topup_card(card_id):
             cost_usdt=cost_usdt,
             purchase_rate=purchase_rate,
             source_type=source_type,
-            source_batch_id=source_batch_id
+            source_batch_id=source_batch_id,
+            reference=(data.get('reference') or '').strip()[:120] or None,
+            notes=(data.get('notes') or '').strip() or None
         )
         
         card.balance_thb += amount_thb
@@ -6674,9 +6790,16 @@ def get_card_history(card_id):
                 'cost_usdt': t.cost_usdt,
                 'purchase_rate': t.purchase_rate,
                 'source_type': t.source_type,
-                'source_batch_id': t.source_batch_id
+                'source_batch_id': t.source_batch_id,
+                'reference': t.reference,
+                'notes': t.notes
             }
             result.append(topup_data)
+
+        # Расходы: выдачи клиентам с этой карты
+        allocations = session.query(CardAllocation).filter(
+            CardAllocation.card_id == card_id
+        ).order_by(CardAllocation.created_at.desc()).all()
 
         return jsonify({
             'success': True,
@@ -6687,7 +6810,10 @@ def get_card_history(card_id):
                 'balance_thb': card.balance_thb
             },
             'topups': result,
-            'total_topups': len(result)
+            'total_topups': len(result),
+            'allocations': [a.to_dict() for a in allocations],
+            'total_spent_thb': round(sum(a.amount_thb for a in allocations), 2),
+            'total_spent_usdt': round(sum(a.cost_usdt for a in allocations), 2)
         })
     finally:
         session.close()
