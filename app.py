@@ -6818,6 +6818,55 @@ def get_card_history(card_id):
     finally:
         session.close()
 
+@app.route('/api/cards/<int:card_id>/adjust', methods=['POST'])
+def adjust_card(card_id):
+    """Ручное списание бат с карты, не связанное со сделкой.
+
+    Нужно для движений мимо клиентов: тестовый перевод, комиссия банка,
+    перекидка на другой свой счёт. Списание оформляется как пополнение
+    с минусом, а стоимость в USDT снимается по текущему среднему курсу
+    карты — иначе средний курс поехал бы вниз, будто баты подешевели.
+
+    Принимает `amount_thb` (сколько снять, положительное число) либо
+    `new_balance_thb` (каким должен стать остаток).
+    """
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        card = session.query(BankCard).filter(BankCard.id == card_id).with_for_update().first()
+        if not card:
+            return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
+
+        current = card.balance_thb or 0
+        if data.get('new_balance_thb') is not None:
+            amount_thb = round(current - parse_float(data.get('new_balance_thb')), 2)
+        else:
+            amount_thb = round(parse_float(data.get('amount_thb')), 2)
+        if not amount_thb:
+            return jsonify({'success': False, 'error': 'Укажите сумму списания'}), 400
+
+        rate = _card_avg_rate(card)
+        reason = (data.get('reason') or '').strip()[:200] or 'Ручная корректировка'
+        session.add(CardTopup(
+            card_id=card.id,
+            amount_thb=-amount_thb,
+            cost_usdt=round(-amount_thb / rate, 2) if rate else 0,
+            purchase_rate=round(rate, 4),
+            source_type='adjustment',
+            reference=(data.get('reference') or '').strip()[:120] or None,
+            notes=reason,
+        ))
+        card.balance_thb = round(current - amount_thb, 2)
+        session.commit()
+        return jsonify({'success': True, 'card': card.to_dict(),
+                        'balance_thb': card.balance_thb, 'adjusted_thb': amount_thb})
+    except Exception as e:
+        session.rollback()
+        app.logger.error(f'[adjust_card] error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+    finally:
+        session.close()
+
 @app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['DELETE'])
 def delete_card_topup(card_id, topup_id):
     session = get_session()

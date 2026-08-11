@@ -255,6 +255,46 @@ def test_history_shows_spending_and_reference(client):
     assert data['allocations'][0]['client_name'] == 'Ольга П.'
 
 
+# ── Ручное списание (движения мимо клиентов) ─────────────────────────────
+
+def test_adjust_reduces_balance_keeping_rate(client):
+    """Тестовый перевод 10 000 ฿ ушёл со счёта — остаток падает,
+    средний курс закупки остаётся прежним."""
+    card_id = _mk_card()
+    r = client.post(f'/api/cards/{card_id}/adjust',
+                    json={'amount_thb': 10000, 'reason': 'Тестовый платёж 30.07'})
+    assert r.status_code == 200, r.get_json()
+
+    assert _balance(card_id) == 251466.06
+    assert round(_avg_rate(card_id), 4) == 33.5213
+
+
+def test_adjust_by_target_balance(client):
+    """Можно задать не сумму списания, а желаемый остаток."""
+    card_id = _mk_card()
+    client.post(f'/api/cards/{card_id}/adjust', json={'new_balance_thb': 200974.06})
+    assert _balance(card_id) == 200974.06
+
+
+def test_adjust_requires_amount(client):
+    card_id = _mk_card()
+    r = client.post(f'/api/cards/{card_id}/adjust', json={'amount_thb': 0})
+    assert r.status_code == 400
+    assert _balance(card_id) == 261466.06
+
+
+def test_adjust_shows_in_history(client):
+    card_id = _mk_card()
+    client.post(f'/api/cards/{card_id}/adjust',
+                json={'amount_thb': 10000, 'reason': 'Тестовый платёж 30.07'})
+
+    data = client.get(f'/api/cards/{card_id}/history').get_json()
+    adj = [t for t in data['topups'] if t['source_type'] == 'adjustment']
+    assert len(adj) == 1
+    assert adj[0]['amount_thb'] == -10000
+    assert adj[0]['notes'] == 'Тестовый платёж 30.07'
+
+
 def test_topup_saves_reference(client):
     card_id = _mk_card(amount_thb=1.0, cost_usdt=1.0)
     r = client.post(f'/api/cards/{card_id}/topup', json={

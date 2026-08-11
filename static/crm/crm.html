@@ -7291,6 +7291,40 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('addCardModal').classList.remove('active');
         }
 
+        // Ручное списание с карты: движения мимо клиентов — тестовый перевод,
+        // комиссия банка, перекидка на другой свой счёт
+        async function adjustCard(cardId, currentBalance) {
+            const raw = prompt(
+                `Остаток: ${formatNumber(currentBalance)} THB\n\n` +
+                `Сколько списать (в батах)?`,
+                ''
+            );
+            if (raw === null) return;
+            const amount = parseFloat(String(raw).replace(/\s/g, '').replace(',', '.'));
+            if (!amount || amount <= 0) {
+                showToast('Введите положительную сумму', 'error');
+                return;
+            }
+            const reason = prompt('Причина списания:', 'Тестовый платёж') || '';
+            try {
+                const r = await fetch(`${API_URL}/api/cards/${cardId}/adjust`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount_thb: amount, reason })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    showToast(`Списано ${formatNumber(amount)} THB · остаток ${formatNumber(d.balance_thb)} THB`, 'success');
+                    loadBankCards();
+                } else {
+                    showToast('Ошибка: ' + d.error, 'error');
+                }
+            } catch (e) {
+                console.error('Error adjusting card:', e);
+                showToast('Ошибка списания', 'error');
+            }
+        }
+
         function openTopupCardModal(cardId) {
             document.getElementById('topupCardFormId').value = cardId;
             document.getElementById('topupCardModal').classList.add('active');
@@ -8095,6 +8129,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 
                                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
                                     <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
+                                    <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb})">Списать</button>
                                     <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
                                     ${!card.topups || card.topups.length === 0 ? `
                                         <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
