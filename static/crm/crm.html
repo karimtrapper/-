@@ -903,6 +903,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <option value="pending">Ожидает</option>
                             <option value="completed">Завершена</option>
                             <option value="verified">Проверена</option>
+                            <option value="not_lead">Не обращение</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -7156,6 +7157,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
                     <button class="btn btn-success" id="bxWonBtn" onclick="closeBitrixWon()">✅ Закрыть WON</button>
                     <button class="btn btn-danger" onclick="closeBitrixLose()">❌ Закрыть LOSE</button>
+                    <button class="btn btn-light" onclick="dismissBitrixDeal()"
+                            title="Клиент написал случайно или дописал по прошлой сделке — это не лид, в конверсию не идёт">
+                        🚫 Не обращение</button>
                 </div>`;
         }
 
@@ -7281,6 +7285,39 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 })).json();
                 showToast(bx.success ? 'Закрыто LOSE' : ('Bitrix не принял: ' + bx.error), bx.success ? 'success' : 'error');
                 document.getElementById('bitrixAnalysisCard').style.display = 'none';
+                loadBitrixDeals();
+            } catch (e) {
+                showToast('Ошибка: ' + e.message, 'error', 6000);
+            }
+        }
+
+        async function dismissBitrixDeal() {
+            /* Не победа и не отказ: клиент написал случайно или дописал что-то по уже
+               закрытой сделке. Лида здесь не было, поэтому в конверсию такая запись
+               не идёт совсем — иначе CR занижается на чужих касаниях. */
+            if (!_bitrixCurrent) return;
+            const dealId = _bitrixCurrent.deal.id;
+            const p = _bxCollect();
+            if (!(await showConfirm('Пометить как «не обращение»?<br>В Bitrix уйдёт в LOSE, в конверсии не учитывается.'))) return;
+            try {
+                const crm = await (await fetch(`${API_URL}/api/deals`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        client_name: p.client_name, status: 'not_lead',
+                        lose_reason: 'не обращение', bitrix_deal_id: dealId,
+                        source_channel: p.source_channel || null,
+                    })
+                })).json();
+                if (!crm.success && !crm.deal) throw new Error(crm.error || 'CalcCRM отказал');
+                const bx = await (await fetch(`${API_URL}/api/bitrix/deals/${dealId}/close-lose`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'не обращение' })
+                })).json();
+                showToast(bx.success ? 'Помечено «не обращение», в конверсию не пойдёт'
+                                     : ('Запись есть, Bitrix не принял: ' + bx.error),
+                          bx.success ? 'success' : 'error', bx.success ? 3000 : 6000);
+                document.getElementById('bitrixAnalysisCard').style.display = 'none';
+                _bitrixCurrent = null;
                 loadBitrixDeals();
             } catch (e) {
                 showToast('Ошибка: ' + e.message, 'error', 6000);
@@ -9319,7 +9356,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 'completed': 'Завершена',
                 'verified': 'Проверена',
                 'cancelled': 'Отменена',
-                'lose': 'LOSE'
+                'lose': 'LOSE',
+                'not_lead': 'Не обращение'
             };
             return labels[status] || status;
         }

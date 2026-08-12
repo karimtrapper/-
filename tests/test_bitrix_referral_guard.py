@@ -133,6 +133,85 @@ class TestWonIdempotency:
         assert a['deal']['id'] != b['deal']['id']
 
 
+class TestNotLead:
+    """«Не обращение» — не победа и не отказ, из конверсии выпадает совсем."""
+
+    BASE = {'client_name': 'Случайный - Grusha', 'status': 'not_lead',
+            'lose_reason': 'не обращение', 'bitrix_deal_id': 1050}
+
+    @pytest.fixture(autouse=True)
+    def clean_db(self):
+        def _clean():
+            session = get_session()
+            try:
+                session.query(DealAgent).delete()
+                session.query(Deal).delete()
+                session.query(Client).delete()
+                session.commit()
+            finally:
+                session.close()
+        _clean()
+        yield
+        _clean()
+
+    def test_client_is_not_created(self, cli):
+        """Случайное сообщение не должно заводить клиента в базе."""
+        assert cli.post('/api/deals', json=self.BASE).get_json()['success'] is True
+        session = get_session()
+        try:
+            assert session.query(Client).count() == 0
+        finally:
+            session.close()
+
+    def test_hidden_from_main_list(self, cli):
+        cli.post('/api/deals', json=self.BASE)
+        ids = [d['id'] for d in cli.get('/api/deals').get_json()['deals']]
+        assert ids == []
+        by_status = cli.get('/api/deals?status=not_lead').get_json()['deals']
+        assert len(by_status) == 1
+
+    def test_not_counted_in_conversion(self, cli):
+        """Ради этого всё и делалось: знаменатель CR не растёт."""
+        cli.post('/api/deals', json={'client_name': 'Покупатель', 'status': 'completed',
+                                     'payin_amount_usdt': 100, 'payout_amount_usdt': 98,
+                                     'skip_sync': True})
+        before = cli.get('/api/analytics/conversion').get_json()
+        cli.post('/api/deals', json=self.BASE)
+        after = cli.get('/api/analytics/conversion').get_json()
+        assert after['totals'] == before['totals']
+
+    def test_lose_still_counted(self, cli):
+        """Контроль: обычный отказ конверсию менять обязан."""
+        cli.post('/api/deals', json={'client_name': 'Покупатель', 'status': 'completed',
+                                     'payin_amount_usdt': 100, 'payout_amount_usdt': 98,
+                                     'skip_sync': True})
+        before = cli.get('/api/analytics/conversion').get_json()
+        cli.post('/api/deals', json={'client_name': 'Ушедший', 'status': 'lose',
+                                     'lose_reason': 'не устроил курс', 'bitrix_deal_id': 1051})
+        after = cli.get('/api/analytics/conversion').get_json()
+        assert after['totals'] != before['totals']
+
+    def test_not_offered_for_revive(self, cli):
+        cli.post('/api/deals', json=self.BASE)
+        d = cli.get('/api/deals/lose-candidates?client_name=Случайный - Grusha').get_json()
+        assert not (d.get('candidates') or d.get('deals') or [])
+
+    def test_second_click_is_idempotent(self, cli):
+        first = cli.post('/api/deals', json=self.BASE).get_json()
+        second = cli.post('/api/deals', json=self.BASE).get_json()
+        assert second['duplicate'] is True
+        assert second['deal']['id'] == first['deal']['id']
+
+    def test_won_after_dismiss_still_possible(self, cli):
+        """Ошиблись кнопкой — победу по той же сделке Битрикса завести можно."""
+        cli.post('/api/deals', json=self.BASE)
+        won = cli.post('/api/deals', json={
+            'client_name': 'Случайный - Grusha', 'status': 'pending', 'bitrix_deal_id': 1050,
+            'payout_amount_thb': 5000, 'payout_method': 'transfer', 'skip_sync': True,
+        }).get_json()
+        assert won['success'] is True and not won.get('duplicate')
+
+
 class TestCloseWonUiContract:
     """Контракт кнопки: после успешной записи она не должна оживать."""
 
@@ -153,3 +232,11 @@ class TestCloseWonUiContract:
     def test_referrer_field_is_editable(self, html):
         assert 'id="bxReferrer"' in html
         assert "p.referrer_name = val('bxReferrer')" in html
+
+    def test_dismiss_button_wired(self, html):
+        assert 'dismissBitrixDeal()' in html
+        body = html[html.index('async function dismissBitrixDeal'):html.index('function openAddWalletModal')]
+        assert "status: 'not_lead'" in body
+        # карточку прячем, иначе кнопку жмут повторно
+        assert "getElementById('bitrixAnalysisCard').style.display = 'none'" in body
+        assert "'not_lead': 'Не обращение'" in html

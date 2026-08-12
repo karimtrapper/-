@@ -295,6 +295,12 @@ class DealStatus(str, Enum):
     VERIFIED = "verified"
     CANCELLED = "cancelled"
     LOSE = "lose"  # несостоявшаяся сделка (из DealCloser) — только для конверсии, не деньги
+    # Не обращение: клиент написал случайно или дописал что-то по уже закрытой
+    # сделке. Это не лид — ни в победы, ни в отказы, из конверсии исключено совсем.
+    NOT_LEAD = "not_lead"
+
+# Записи без денег: клиента не заводим, финансы и агентов не считаем
+NON_DEAL_STATUSES = (DealStatus.LOSE, DealStatus.NOT_LEAD)
 
 class CashBatchStatus(str, Enum):
     ACTIVE = "active"
@@ -1645,7 +1651,8 @@ if 'postgresql' in DATABASE_URL:
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac:
             ac.execute(text("ALTER TYPE dealstatus ADD VALUE IF NOT EXISTS 'LOSE'"))
-        print("✅ LOSE enum value added")
+            ac.execute(text("ALTER TYPE dealstatus ADD VALUE IF NOT EXISTS 'NOT_LEAD'"))
+        print("✅ LOSE/NOT_LEAD enum values added")
     except Exception as e:
         print(f"ℹ️ LOSE enum: {e}")
 
@@ -3880,8 +3887,9 @@ def get_deals():
         if status:
             query = query.filter(Deal.status == DealStatus(status))
         elif request.args.get('include_lose') != '1':
-            # LOSE — аналитические записи, в основном списке сделок не показываем
-            query = query.filter(Deal.status != DealStatus.LOSE)
+            # LOSE и «не обращение» — аналитические записи, в основном списке
+            # сделок не показываем (достать можно фильтром по статусу)
+            query = query.filter(Deal.status.notin_(NON_DEAL_STATUSES))
         # Демо-сделки тестового реферера в CRM не показываем (?include_test=1 — вернуть)
         if request.args.get('include_test') != '1':
             query = query.filter(Deal.is_test.isnot(True))
@@ -3986,7 +3994,7 @@ def _sync_card_allocation(session, deal):
         deal.payout_source == PayOutSource.BANK_CARD
         and deal.bank_card_id
         and (deal.payout_amount_thb or 0) > 0
-        and deal.status not in (DealStatus.LOSE, DealStatus.CANCELLED)
+        and deal.status not in NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
     )
     if not needs_allocation:
         return None
@@ -4465,13 +4473,14 @@ def create_deal():
         # Одна сделка Битрикса — одна сделка здесь. Повторный клик «Закрыть WON»
         # и ретрай бота отдают уже созданную запись, а не плодят дубль (12.08:
         # кнопка после закрытия оставалась активной, WON записывался дважды).
-        # Отказ и победа считаются отдельно: сделку, ошибочно закрытую LOSE,
-        # можно перезакрыть в WON.
-        is_lose = data.get('status') == DealStatus.LOSE.value
+        # Победа и «не деньги» (отказ, не обращение) считаются отдельно: сделку,
+        # ошибочно закрытую отказом, можно перезакрыть в WON.
+        is_non_deal = data.get('status') in [s.value for s in NON_DEAL_STATUSES]
         if data.get('bitrix_deal_id'):
             dup_query = session.query(Deal).filter(
                 Deal.bitrix_deal_id == int(data['bitrix_deal_id']),
-                Deal.status == DealStatus.LOSE if is_lose else Deal.status != DealStatus.LOSE,
+                Deal.status.in_(NON_DEAL_STATUSES) if is_non_deal
+                else Deal.status.notin_(NON_DEAL_STATUSES),
             )
             existing_deal = dup_query.first()
             if existing_deal:
@@ -4487,9 +4496,9 @@ def create_deal():
             client_name = client_name.strip()
             existing_client = session.query(Client).filter(Client.name.ilike(client_name)).first()
             if not existing_client:
-                # Для LOSE клиента НЕ создаём (замусорит базу непокупателями),
-                # матчинг revive идёт по client_name.
-                if not is_lose:
+                # Для отказа и «не обращения» клиента НЕ создаём (замусорит базу
+                # непокупателями), матчинг revive идёт по client_name.
+                if not is_non_deal:
                     new_client = Client(name=client_name)
                     session.add(new_client)
                     session.flush()
@@ -4512,7 +4521,7 @@ def create_deal():
         # резолвим в профиль, иначе сделка оставалась бы с текстовым именем без
         # referrer_id: не попадала в кабинет реферера и без начисления.
         # Код не нашёлся → оставляем текстом (как было), это ручная пометка.
-        if ref_name and not ref_id and not is_lose:
+        if ref_name and not ref_id and not is_non_deal:
             referrer = _find_referrer_by_code(session, ref_name)
             if referrer and not (referrer.client_id and referrer.client_id == client_id):
                 ref_id = referrer.id
@@ -4522,7 +4531,7 @@ def create_deal():
                 ref_comp_model = ref_comp_model or referrer.comp_model
                 if ref_markup_percent is None:
                     ref_markup_percent = referrer.markup_percent
-        if client_id and not ref_name and not is_lose:
+        if client_id and not ref_name and not is_non_deal:
             client_obj = session.query(Client).get(client_id)
             if client_obj and client_obj.referrer_id:
                 referrer = session.query(Referrer).get(client_obj.referrer_id)
@@ -4624,8 +4633,8 @@ def create_deal():
 
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
-        # Для LOSE финансов нет — пропускаем и пересчёт, и агентов.
-        if not is_lose:
+        # Для отказа и «не обращения» финансов нет — пропускаем пересчёт и агентов.
+        if not is_non_deal:
             # Недвижимость через MF Corp считается по своим формулам (два кармана),
             # обычный пересчёт прибыли для неё не подходит
             if deal.deal_kind == MF_REALTY_KIND:
