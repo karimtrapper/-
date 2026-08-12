@@ -4462,16 +4462,20 @@ def create_deal():
         else:
             created_at = datetime.now()
         
-        # LOSE-сделка (из DealCloser): только конверсия, не деньги.
-        # Идемпотентность по bitrix_deal_id — retry/double-tap бота не плодит дубли.
+        # Одна сделка Битрикса — одна сделка здесь. Повторный клик «Закрыть WON»
+        # и ретрай бота отдают уже созданную запись, а не плодят дубль (12.08:
+        # кнопка после закрытия оставалась активной, WON записывался дважды).
+        # Отказ и победа считаются отдельно: сделку, ошибочно закрытую LOSE,
+        # можно перезакрыть в WON.
         is_lose = data.get('status') == DealStatus.LOSE.value
-        if is_lose and data.get('bitrix_deal_id'):
-            existing_lose = session.query(Deal).filter(
-                Deal.status == DealStatus.LOSE,
+        if data.get('bitrix_deal_id'):
+            dup_query = session.query(Deal).filter(
                 Deal.bitrix_deal_id == int(data['bitrix_deal_id']),
-            ).first()
-            if existing_lose:
-                return jsonify({'success': True, 'deal': existing_lose.to_dict(), 'duplicate': True}), 200
+                Deal.status == DealStatus.LOSE if is_lose else Deal.status != DealStatus.LOSE,
+            )
+            existing_deal = dup_query.first()
+            if existing_deal:
+                return jsonify({'success': True, 'deal': existing_deal.to_dict(), 'duplicate': True}), 200
 
         # Автоматически создаём клиента если указано имя и такого клиента ещё нет
         client_id = data.get('client_id')

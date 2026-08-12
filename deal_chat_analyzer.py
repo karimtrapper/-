@@ -121,7 +121,9 @@ Grusha — обмен RUB→THB, USDT→THB для русскоязычных в
 Если в чате клиент упоминает реферальный код (формат "GR-XXX"), или говорит "от друга", "по рекомендации [имя]", "посоветовал [имя]", или менеджер спрашивает "откуда узнали?" и клиент называет имя — извлеки:
 - referral_code: строка (код GR-XXX) или null
 - referred_by_name: имя реферера если упоминается, или null
-Также проверь start-параметр бота: если видишь "ref__GRKARIM" — это реферальный код GR-KARIM.
+Также проверь start-параметр бота: "ref__GRXXXX" в сообщении — это реферальный код GR-XXXX.
+Код и имя бери ТОЛЬКО дословно из переписки. Ничего не подставляй из примеров этой инструкции
+и не достраивай по памяти: нет реферала в чате — верни null. Это самая частая ошибка.
 
 Верни ТОЛЬКО валидный JSON, без markdown-обёртки."""
 
@@ -384,6 +386,21 @@ def _extract_referral_code(messages: list[dict]) -> str:
                 continue
             return f"GR-{code_part.upper()}"
     return ""
+
+
+def _mentioned_in_chat(value: str, messages: list[dict]) -> bool:
+    """Встречается ли значение дословно в переписке.
+
+    Модель повторяет реферала из примера в промпте, когда в чате его нет:
+    12.08 «GR-KARIM» приехал в две сделки, где строки ref__ вообще не было,
+    и осел меткой партнёра в CRM и в UTM сделки Битрикса. Сверяем: без знаков
+    препинания и регистра значение должно найтись в тексте сообщений.
+    """
+    strip = lambda s: re.sub(r"[\W_]+", "", s or "", flags=re.UNICODE).casefold()
+    needle = strip(value)
+    if len(needle) < 3:
+        return False
+    return any(needle in strip(msg.get("text")) for msg in messages)
 
 
 def _extract_source_channel(messages: list[dict]) -> str:
@@ -719,6 +736,14 @@ async def analyze_chat(
     result.payment_time = data.get("payment_time") or ""
     result.referral_code = data.get("referral_code") or ""
     result.referred_by_name = data.get("referred_by_name") or ""
+
+    # Реферала от модели принимаем, только если он дословно есть в переписке —
+    # иначе сделка уезжает к чужому партнёру (см. _mentioned_in_chat)
+    for field_name in ("referral_code", "referred_by_name"):
+        value = getattr(result, field_name)
+        if value and not _mentioned_in_chat(value, messages):
+            logger.warning(f"{field_name} '{value}' от модели нет в чате — отбрасываю")
+            setattr(result, field_name, "")
 
     # Regex-фоллбэк: если LLM не нашёл реферала, ищем ref__GRXXXX в сообщениях
     if not result.referral_code:

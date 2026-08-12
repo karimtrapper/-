@@ -7146,9 +7146,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div class="form-group"><label class="form-label">Хэш прихода</label>
                         <input class="form-control" id="bxTxHash" value="${p.payin_tx_hash || ''}"></div>
                 </div>
-                <div class="form-group" style="margin-bottom:1rem;">
-                    <label class="form-label">Причина отказа (для LOSE)</label>
-                    <input class="form-control" id="bxLoseReason" value="${a.lose_reason || ''}" placeholder="Например: не устроил курс">
+                <div class="form-row">
+                    <div class="form-group"><label class="form-label">Реферал (партнёр)</label>
+                        <input class="form-control" id="bxReferrer" value="${p.referrer_name || ''}" placeholder="пусто — сделка без партнёра"></div>
+                    <div class="form-group"><label class="form-label">Причина отказа (для LOSE)</label>
+                        <input class="form-control" id="bxLoseReason" value="${a.lose_reason || ''}" placeholder="Например: не устроил курс"></div>
                 </div>
                 <div id="bxReviveBox" style="display:none;margin-bottom:1rem;"></div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -7169,6 +7171,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             p.payout_method = val('bxPayoutMethod');
             p.payout_founder_name = val('bxFounder');
             p.payin_tx_hash = val('bxTxHash') || null;
+            // Реферала оператор видит и может стереть: модель иногда приписывает
+            // партнёра, которого в переписке не было
+            p.referrer_name = val('bxReferrer').trim() || null;
             return p;
         }
 
@@ -7181,6 +7186,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             const btn = document.getElementById('bxWonBtn');
             btn.disabled = true; btn.textContent = '⏳ Закрываю...';
+            let created = false;
             try {
                 // Сначала CRM: если запись не прошла, стадию в Bitrix не двигаем —
                 // иначе сделка «выиграна», а в учёте её нет.
@@ -7190,6 +7196,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 })).json();
                 if (!crm.success && !crm.deal) throw new Error(crm.error || 'CalcCRM отказал');
                 const crmDealId = (crm.deal || {}).id;
+                created = true;
 
                 const bx = await (await fetch(`${API_URL}/api/bitrix/deals/${dealId}/close-won`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -7197,6 +7204,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 })).json();
                 if (!bx.success) {
                     showToast('Сделка в CRM создана, но Bitrix не принял: ' + bx.error, 'error', 6000);
+                } else if (crm.duplicate) {
+                    showToast(`Сделка #${crmDealId} по этой сделке Bitrix уже была — дубль не завели`, 'warning', 6000);
                 } else {
                     showToast(`Готово: сделка #${crmDealId} в CRM, Bitrix WON`);
                 }
@@ -7205,7 +7214,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (e) {
                 showToast('Ошибка: ' + e.message, 'error', 6000);
             } finally {
-                btn.disabled = false; btn.textContent = '✅ Закрыть WON';
+                // Кнопку возвращаем только если записи в CRM так и не появилось.
+                // Иначе она остаётся активной и второй клик пишет сделку заново.
+                if (created) {
+                    btn.textContent = '✅ Закрыто';
+                    _bitrixCurrent = null;
+                } else {
+                    btn.disabled = false; btn.textContent = '✅ Закрыть WON';
+                }
             }
         }
 
