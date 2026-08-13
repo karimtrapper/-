@@ -1062,9 +1062,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         <!-- Сбер (реквизиты) в кастомной сделке: пул приходов + части -->
                         <div id="sberReqsGroupC" style="display:none; margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:6px;">
                                 <strong style="color:#0369a1;">🏦 Приходы Сбера</strong>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">🔄 Обновить</button>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <select id="sberKindSelectC" class="form-control" style="max-width:180px;padding:4px 8px;font-size:12px;" onchange="sberKindChanged(this.value)">
+                                        <option value="">Все приходы</option>
+                                        <option value="acquiring">СБП (эквайринг)</option>
+                                        <option value="transfer">Реквизиты</option>
+                                    </select>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">🔄</button>
+                                </div>
                             </div>
                             <div id="sberIncomesAvailC" style="max-height:180px; overflow-y:auto; margin-bottom:8px;"></div>
                             <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
@@ -1134,10 +1141,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" id="customPayinMethod" onchange="onCustomPayinMethodChange()">
                                     <option value="crypto_direct">Крипта напрямую</option>
-                                    <option value="spp_doverka">СБП</option>
-                                    <option value="sber_wl">Сбер (WL Bot)</option>
+                                    <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
                                     <option value="partners_cash">Партнёры (наличные)</option>
+                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                             </div>
                             <div class="form-group" id="customPayinTxHashGroup">
@@ -1180,11 +1187,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
                                 <select class="form-control" name="payin_method" id="payinMethod" required>
-                                    <option value="spp_doverka">СБП</option>
-                                    <option value="partners_cash">Партнеры (наличные)</option>
-                                    <option value="crypto_direct">Крипта напрямую</option>
-                                    <option value="sber_wl">Сбер (WL Bot)</option>
+                                    <option value="sber_wl">СБП</option>
                                     <option value="sber_reqs">Сбер (реквизиты)</option>
+                                    <option value="crypto_direct">Крипта напрямую</option>
+                                    <option value="partners_cash">Партнеры (наличные)</option>
+                                    <!-- Архив: тот же СБП, но через умершую Доверку. Скрыт из выбора,
+                                         показывается только когда открыта старая сделка с этим методом -->
+                                    <option value="spp_doverka" data-legacy="1" hidden>СБП (Доверка, архив)</option>
                                 </select>
                             </div>
                             <div class="form-group" id="payinRubGroup">
@@ -1238,9 +1247,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         <!-- Сбер (реквизиты): пул приходов + части оплаты -->
                         <div id="sberReqsGroup" style="display:none; margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:6px;">
                                 <strong style="color:#0369a1;">🏦 Приходы Сбера</strong>
-                                <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">🔄 Обновить</button>
+                                <div style="display:flex; gap:6px; align-items:center;">
+                                    <select id="sberKindSelect" class="form-control" style="max-width:180px;padding:4px 8px;font-size:12px;" onchange="sberKindChanged(this.value)">
+                                        <option value="">Все приходы</option>
+                                        <option value="acquiring">СБП (эквайринг)</option>
+                                        <option value="transfer">Реквизиты</option>
+                                    </select>
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="sberLoadIncomes()">🔄</button>
+                                </div>
                             </div>
                             <div id="sberIncomesAvail" style="max-height:180px; overflow-y:auto; margin-bottom:8px;"></div>
                             <div style="display:flex; gap:6px; align-items:center; margin-bottom:8px;">
@@ -3714,7 +3730,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Charts ====================
         let chartInstances = {};
-        const METHOD_NAMES = {'spp_doverka': 'СБП', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'Сбер WL', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
+        const METHOD_NAMES = {'spp_doverka': 'СБП (Доверка)', 'partner_cash': 'Партнёры', 'crypto_direct': 'Крипта', 'sber_wl': 'СБП', 'sber_reqs': 'Сбер реквизиты', 'custom': 'Кастомная', 'unknown': 'Другое'};
         let currentPeriod = '30d';
         let dashRange = null; // {from:'YYYY-MM-DD', to:'YYYY-MM-DD', label} — кастомный диапазон или месяц
 
@@ -4028,7 +4044,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${(deal.payin_parts && deal.payin_parts.length) ? `
                             <div style="background: #f0f9ff; padding: 0.5rem; border-radius: 6px; border: 1px solid #bae6fd; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход частями (${deal.payin_parts.length}):</strong></p>
-                                ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? '🏦' : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.payer ? ' · ' + escapeHtml(p.payer) : ''}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
+                                ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? (p.kind === 'acquiring' ? '📲' : '🏦') : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.kind === 'acquiring' ? ` <span style="color:#64748b;">(эквайринг: на счёт ${formatNumber(p.net_rub)} + комиссия ${formatNumber(p.fee_rub)})</span>` : (p.payer ? ' · ' + escapeHtml(p.payer) : '')}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
                             </div>
                         ` : ''}
                         ${(deal.payin_tx_hashes && deal.payin_tx_hashes.length > 1)
@@ -4471,8 +4487,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         document.getElementById('customPayoutRate').value = deal.custom_payout_rate || '';
                         document.getElementById('customPayoutMethod').value = deal.payout_method || 'office';
                         // Метод Pay-In + части прихода Сбера
-                        if (deal.payin_method) document.getElementById('customPayinMethod').value = deal.payin_method;
-                        sberParts = (deal.payin_method === 'sber_reqs' && deal.payin_parts) ? deal.payin_parts.slice() : [];
+                        if (deal.payin_method) setPayinMethodValue('customPayinMethod', deal.payin_method);
+                        sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         onCustomPayinMethodChange();
                         customUsdtMode = { payin: 'rate', payout: 'rate' };  // грузим курс → USDT производный
                         // Мультиагенты: грузим из deal.agents (+ легаси-реферер)
@@ -4499,11 +4515,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                         // Заполняем обычную форму
                         if (deal.payin_method) {
-                            document.getElementById('payinMethod').value = deal.payin_method;
+                            setPayinMethodValue('payinMethod', deal.payin_method);
                             document.getElementById('payinMethod').dispatchEvent(new Event('change'));
                         }
-                        // Части прихода Сбера (sber_reqs)
-                        sberParts = (deal.payin_method === 'sber_reqs' && deal.payin_parts) ? deal.payin_parts.slice() : [];
+                        // Части прихода Сбера (СБП и реквизиты — общий пул выписки)
+                        sberParts = (methodUsesSberPool(deal.payin_method) && deal.payin_parts) ? deal.payin_parts.slice() : [];
                         if (sberParts.length) sberRender();
                         if (deal.payin_amount_usdt) form.payin_amount_usdt.value = deal.payin_amount_usdt;
                         if (deal.payin_amount_rub) form.payin_amount_rub.value = deal.payin_amount_rub;
@@ -4650,7 +4666,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 client_name: clientName,
                 created_at: createdAt || null,
                 payin_method: customMethod,
-                payin_parts: customMethod === 'sber_reqs' ? sberParts : [],
+                payin_parts: methodUsesSberPool(customMethod) ? sberParts : [],
                 payout_source: 'binance',
                 payin_amount_usdt: payinUsdt,
                 payout_amount_usdt: payoutUsdt,
@@ -5442,6 +5458,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Show/hide fields based on payin method
         document.getElementById('payinMethod').addEventListener('change', applyPayinMethodFields);
 
+        // Оба сберовских метода кормятся из одной выписки: СБП приходит эквайрингом,
+        // реквизиты — переводом от ФИО. Пул один, различаются меткой kind.
+        function methodUsesSberPool(method) { return method === 'sber_reqs' || method === 'sber_wl'; }
+
+        // Архивные методы (spp_doverka) убраны из выпадашки, но у старых сделок они
+        // в базе: если просто присвоить value, селект останется пустым и сохранение
+        // молча сменит метод. Поэтому опцию для такого значения раскрываем обратно.
+        function setPayinMethodValue(selectId, value) {
+            const sel = document.getElementById(selectId);
+            if (!sel || !value) return;
+            const opt = Array.from(sel.options).find(o => o.value === value);
+            if (opt) opt.hidden = false;
+            sel.value = value;
+        }
+
         function applyPayinMethodFields() {
             const method = document.getElementById('payinMethod');
             const partnerGroup = document.getElementById('payinPartnerGroup');
@@ -5461,14 +5492,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const isRealty = document.getElementById('mfDealToggle')?.checked
                 || document.getElementById('fhDealToggle')?.checked;
 
-            // WL picker
+            // WL picker (СБП: ссылка WL-бота знает сумму, курс и USDT клиента)
             wlPickerGroup.style.display = isSberWL ? 'block' : 'none';
             if (isSberWL) loadWlTransactions();
 
-            // Сбер (реквизиты): пул приходов
+            // Пул выписки Сбера — для обоих сберовских методов. СБП раньше не имел
+            // доступа к пулу: платёж клиента лежал в выписке эквайрингом и не
+            // привязывался ни к чему, поэтому «где эти деньги» было не ответить.
             const sberGroup = document.getElementById('sberReqsGroup');
-            if (sberGroup) sberGroup.style.display = isSberReqs ? 'block' : 'none';
-            if (isSberReqs) sberLoadIncomes();
+            const usesPool = methodUsesSberPool(method.value);
+            if (sberGroup) sberGroup.style.display = usesPool ? 'block' : 'none';
+            if (usesPool) {
+                sberSetKindFilter(isSberWL ? 'acquiring' : 'transfer');
+                sberLoadIncomes();
+            }
 
             // Партнеры
             partnerGroup.style.display = method.value === 'partners_cash' ? 'block' : 'none';
@@ -5548,12 +5585,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // uuid → приход из пула (займётся при сохранении), null → ручная часть.
         let sberParts = [];
         let sberIncomesCache = [];
+        let sberKindFilter = '';   // '' | 'acquiring' (СБП) | 'transfer' (реквизиты)
 
         function sberSfx() { return document.getElementById('customDealToggle')?.checked ? 'C' : ''; }
 
+        function sberSetKindFilter(kind) {
+            sberKindFilter = kind || '';
+            ['sberKindSelect', 'sberKindSelectC'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.value = sberKindFilter;
+            });
+        }
+
+        function sberKindChanged(kind) { sberSetKindFilter(kind); sberLoadIncomes(); }
+
         async function sberLoadIncomes() {
             try {
-                const resp = await fetch(`${API_URL}/api/sber-incomes`);
+                const url = `${API_URL}/api/sber-incomes` + (sberKindFilter ? `?kind=${sberKindFilter}` : '');
+                const resp = await fetch(url);
                 const data = await resp.json();
                 sberIncomesCache = data.incomes || [];
             } catch (e) { sberIncomesCache = []; }
@@ -5563,8 +5612,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function sberAddIncome(uuid) {
             const inc = sberIncomesCache.find(i => i.uuid === uuid);
             if (!inc || sberParts.some(p => p.uuid === uuid)) return;
-            sberParts.push({ uuid: inc.uuid, amount_rub: inc.amount_rub, payer: inc.payer || '',
-                             date: (inc.operation_date || '').substring(0, 10), note: '' });
+            // В сделку идёт то, что заплатил КЛИЕНТ. У эквайринга на счёт падает
+            // меньше — банк удерживает комиссию сразу, поэтому берём gross,
+            // иначе курс клиента и объём сделки занижены на размер комиссии.
+            sberParts.push({ uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+                             payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
+                             note: '', kind: inc.kind || 'transfer',
+                             fee_rub: inc.fee_rub || 0, net_rub: inc.amount_rub });
             sberRender();
         }
 
@@ -5582,6 +5636,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function sberRemovePart(i) { sberParts.splice(i, 1); sberRender(); }
 
+        const rub2 = v => Number(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Строка прихода в пуле. У эквайринга (СБП) плательщик всегда «Московский банк
+        // Сбербанка России» и сумма уже за вычетом комиссии — показываем, сколько
+        // заплатил клиент, сколько удержал банк и какой мерчант, иначе строку
+        // не сопоставить ни с одной сделкой.
+        function sberIncomeLine(i) {
+            const date = (i.operation_date || '').substring(0, 10);
+            if (i.kind === 'acquiring') {
+                const mer = i.merchant ? ` · мерчант …${String(i.merchant).slice(-4)}` : '';
+                return `<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
+                    + `<b>${rub2(i.gross_rub)} ₽</b> `
+                    + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} + комиссия ${rub2(i.fee_rub)})</span>`
+                    + `${mer} · ${date}`;
+            }
+            return `<span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
+                + `<b>${rub2(i.amount_rub)} ₽</b> · ${escapeHtml(i.payer || '—')} · ${date}`;
+        }
+
         function sberPartsSum() { return sberParts.reduce((s, p) => s + (+p.amount_rub || 0), 0); }
 
         function sberRender() {
@@ -5593,23 +5666,32 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const avail = sberIncomesCache.filter(i => !chosen.has(i.uuid));
                 availEl.innerHTML = avail.length ? avail.map(i => `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
-                        <span>💰 <b>${Number(i.amount_rub).toLocaleString('ru-RU')} ₽</b> · ${escapeHtml(i.payer || '—')} · ${(i.operation_date || '').substring(0, 10)}</span>
+                        <span>${sberIncomeLine(i)}</span>
                         <button type="button" class="btn btn-success btn-sm" onclick="sberAddIncome('${escapeHtml(i.uuid)}')">Забрать</button>
                     </div>`).join('') : '<div style="color:#94a3b8;font-size:13px;padding:4px;">Нет незабранных приходов</div>';
             }
             // Выбранные части
             const listEl = document.getElementById('sberPartsList' + sfx);
             if (listEl) {
-                listEl.innerHTML = sberParts.map((p, i) => `
+                listEl.innerHTML = sberParts.map((p, i) => {
+                    const isAcq = p.kind === 'acquiring';
+                    const tail = isAcq
+                        ? `<span style="color:#64748b;">эквайринг: на счёт ${rub2(p.net_rub)} + комиссия ${rub2(p.fee_rub)}</span>`
+                        : (p.payer ? escapeHtml(p.payer) : '');
+                    return `
                     <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
-                        <span>${p.uuid ? '🏦' : '✍️'} <b>${Number(p.amount_rub).toLocaleString('ru-RU')} ₽</b>${p.payer ? ' · ' + escapeHtml(p.payer) : ''}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span>
+                        <span>${p.uuid ? (isAcq ? '📲' : '🏦') : '✍️'} <b>${rub2(p.amount_rub)} ₽</b>${tail ? ' · ' + tail : ''}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</span>
                         <span onclick="sberRemovePart(${i})" style="cursor:pointer;color:#ef4444;font-weight:700;padding:0 4px;">✕</span>
-                    </div>`).join('');
+                    </div>`;
+                }).join('');
             }
             const totalEl = document.getElementById('sberPartsTotal' + sfx);
             const total = sberPartsSum();
+            const feeTotal = sberParts.reduce((s, p) => s + (+p.fee_rub || 0), 0);
             if (totalEl) totalEl.textContent = sberParts.length
-                ? `Итого приход: ${total.toLocaleString('ru-RU')} ₽ (частей: ${sberParts.length})` : '';
+                ? `Итого от клиента: ${rub2(total)} ₽ (частей: ${sberParts.length})`
+                  + (feeTotal ? ` · комиссия эквайринга ${rub2(feeTotal)} ₽ → на счёт ${rub2(total - feeTotal)} ₽` : '')
+                : '';
             // Сумма частей → в поле суммы формы
             if (sberParts.length) {
                 if (sfx === 'C') {
@@ -6551,13 +6633,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const label = document.getElementById('customPickerLabel');
             const select = document.getElementById('customPayinTxSelect');
             document.getElementById('customPayinPickerInfo').textContent = '';
-            // Сбер (реквизиты): свой блок с пулом приходов и частями
+            // Сберовские методы: общий пул выписки (СБП — эквайринг, реквизиты — перевод)
             const sberGroupC = document.getElementById('sberReqsGroupC');
-            if (sberGroupC) sberGroupC.style.display = method === 'sber_reqs' ? 'block' : 'none';
+            const usesPool = methodUsesSberPool(method);
+            if (sberGroupC) sberGroupC.style.display = usesPool ? 'block' : 'none';
+            if (usesPool) {
+                sberSetKindFilter(method === 'sber_wl' ? 'acquiring' : 'transfer');
+                sberLoadIncomes();
+            }
             if (method === 'sber_reqs') {
                 picker.style.display = 'none';
                 select.innerHTML = '';
-                sberLoadIncomes();
                 return;
             }
             if (method === 'sber_wl') {
@@ -6715,7 +6801,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payin_method: payinMethod,
                 payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
-                payin_parts: payinMethod === 'sber_reqs' ? sberParts : [],
+                payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
 
                 // Кастомные данные Pay-In
                 custom_payin_currency: payinCurrency,
@@ -6980,7 +7066,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             data.agents = stdAgentsSerialize();
 
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
-            data.payin_parts = data.payin_method === 'sber_reqs' ? sberParts : [];
+            data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts : [];
 
             // Приход крипты частями (пустой список = один хэш из поля, как раньше)
             data.payin_tx_hashes = payinTxPool.map(t => ({ hash: t.hash, amount_usdt: t.amount_usdt }));
@@ -7122,7 +7208,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <input class="form-control" id="bxClientName" value="${d.deal.client_name || ''}"></div>
                     <div class="form-group"><label class="form-label">Метод Pay-In</label>
                         <select class="form-control" id="bxPayinMethod">
-                            ${['spp_doverka:СБП','crypto_direct:Крипта','partners_cash:Наличные','sber_wl:Сбер (WL)','sber_reqs:Сбер (реквизиты)']
+                            ${['sber_wl:СБП','sber_reqs:Сбер (реквизиты)','crypto_direct:Крипта','partners_cash:Наличные']
                               .map(o => { const [v,t] = o.split(':'); return `<option value="${v}" ${p.payin_method===v?'selected':''}>${t}</option>`; }).join('')}
                         </select></div>
                 </div>
@@ -9364,10 +9450,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function getPayinMethodLabel(method) {
             const labels = {
-                'spp_doverka': 'СБП',
+                'spp_doverka': 'СБП (Доверка)',
                 'partners_cash': 'Партнеры (наличные)',
                 'crypto_direct': 'Крипта',
-                'sber_wl': 'Сбер (WL Bot)',
+                'sber_wl': 'СБП',
                 'sber_reqs': 'Сбер (реквизиты)'
             };
             return labels[method] || method || '-';

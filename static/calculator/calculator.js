@@ -2072,7 +2072,10 @@ function createDealFromCalc() {
         profit_usdt: r.profit_usdt || null,
         profit_percent: r.profit_percent_actual || r.profit_percent || null,
         exchange_rate: r.final_rate || null,
-        payin_method: state.method === 'doverka' ? 'spp_doverka' : 'crypto_direct',
+        // Сценарий «doverka» в калькуляторе давно означает просто СБП (провайдер
+        // Доверка не используется с мая) → сделка создаётся живым методом sber_wl,
+        // иначе она падала в архивный spp_doverka и путала отчёты
+        payin_method: state.method === 'doverka' ? 'sber_wl' : 'crypto_direct',
         notes: comment,
         scenario: r.scenario || '',
         method: state.method,

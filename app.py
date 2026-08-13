@@ -263,10 +263,13 @@ class PayInMethod(str, Enum):
 
 
 PAYIN_METHOD_LABELS = {
-    'spp_doverka': 'СБП',
+    # sber_wl — живой СБП-рельс: ссылка WL-бота → QR НСПК → эквайринг Сбера.
+    # spp_doverka — тот же СБП, но через умершего провайдера Доверку; значение
+    # оставлено ради истории (68 сделок янв–апр) и помечено, чтобы не путать.
+    'spp_doverka': 'СБП (Доверка)',
     'crypto_direct': 'крипта',
     'partners_cash': 'наличные',
-    'sber_wl': 'сбер WL',
+    'sber_wl': 'СБП',
     'sber_reqs': 'сбер реквизиты',
 }
 
@@ -1367,6 +1370,40 @@ class ReestrInflow(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+_ACQ_FEE_RE = re.compile(r'Комиссия\s+([0-9][0-9\s ]*(?:[.,]\d{1,2})?)', re.IGNORECASE)
+_ACQ_MERCHANT_RE = re.compile(r'Мерчант\s*№\s*(\d+)')
+
+
+def parse_sber_acquiring(purpose):
+    """Разбор назначения прихода Сбера: эквайринг (СБП) или перевод по реквизитам.
+
+    В выписку приходят оба потока, и в пуле они были неразличимы. Отличие —
+    в назначении: у СБП-платежа (ссылка WL-бота → QR НСПК) банк пишет
+    «Зачисление средств по операциям эквайринга. Мерчант №781003872118.
+    Комиссия 700.00.», плательщик — «Московский банк Сбербанка России».
+    У перевода по реквизитам плательщик — ФИО клиента, назначение произвольное.
+
+    Главное: эквайринг зачисляется УЖЕ ЗА ВЫЧЕТОМ комиссии, а клиент заплатил
+    больше — 99 300 ₽ на счёте при 100 000 ₽ от клиента. В сделку должен идти
+    gross = зачислено + комиссия, иначе курс клиента и объём занижены.
+    Ставку не хардкодим: у разных мерчантов она разная (видели 0.7% и 2.4%).
+    """
+    text_ = purpose or ''
+    low = text_.lower()
+    if 'эквайринг' not in low and 'мерчант' not in low:
+        return {'kind': 'transfer', 'merchant': None, 'fee_rub': 0.0}
+    fee = 0.0
+    m = _ACQ_FEE_RE.search(text_)
+    if m:
+        raw = m.group(1).replace(' ', '').replace(' ', '').replace(',', '.')
+        try:
+            fee = float(raw)
+        except ValueError:
+            fee = 0.0
+    mer = _ACQ_MERCHANT_RE.search(text_)
+    return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None, 'fee_rub': fee}
+
+
 class SberIncome(Base):
     """Приход на счёт Сбера (реквизиты). Пушится SberNotifier'ом с VPS
     (POST /api/sber-incomes/ingest, идемпотентный upsert по uuid выписки).
@@ -1385,14 +1422,22 @@ class SberIncome(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def to_dict(self):
+        acq = parse_sber_acquiring(self.purpose)
+        net = self.amount_rub or 0
         return {
             'id': self.id, 'uuid': self.uuid,
             'operation_date': self.operation_date,
-            'amount_rub': self.amount_rub,
+            'amount_rub': self.amount_rub,           # зачислено на счёт (net)
             'payer': self.payer, 'purpose': self.purpose,
             'doc_number': self.doc_number,
             'claimed_deal_id': self.claimed_deal_id,
             'claimed_at': self.claimed_at.isoformat() if self.claimed_at else None,
+            # Разметка потока: 'acquiring' — СБП через эквайринг, 'transfer' — реквизиты
+            'kind': acq['kind'],
+            'merchant': acq['merchant'],
+            'fee_rub': round(acq['fee_rub'], 2),
+            # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
+            'gross_rub': round(net + acq['fee_rub'], 2),
         }
 
 
@@ -4243,13 +4288,19 @@ def ingest_sber_incomes():
 @app.route('/api/sber-incomes', methods=['GET'])
 def list_sber_incomes():
     """Пул приходов Сбера для пикера в форме сделки.
-    По умолчанию — только незабранные; ?all=1 — все (с меткой сделки)."""
+    По умолчанию — только незабранные; ?all=1 — все (с меткой сделки).
+    ?kind=acquiring|transfer — только СБП-эквайринг либо только реквизиты.
+    Фильтр по потоку в Python: вид определяется по тексту назначения, а не колонкой."""
     db = get_session()
     try:
         q = db.query(SberIncome).order_by(SberIncome.operation_date.desc(), SberIncome.id.desc())
         if request.args.get('all') != '1':
             q = q.filter(SberIncome.claimed_deal_id.is_(None))
-        return jsonify({'success': True, 'incomes': [i.to_dict() for i in q.limit(300).all()]})
+        kind = (request.args.get('kind') or '').strip()
+        rows = [i.to_dict() for i in q.limit(600).all()]
+        if kind in ('acquiring', 'transfer'):
+            rows = [r for r in rows if r['kind'] == kind]
+        return jsonify({'success': True, 'incomes': rows[:300]})
     finally:
         db.close()
 
