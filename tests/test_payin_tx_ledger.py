@@ -190,3 +190,42 @@ def test_verified_amount_still_blocks(db):
     d2 = make_deal(db, 300.0, [{'hash': H, 'amount_usdt': 300.0}])
     with pytest.raises(ValueError):
         _sync_payin_tx_uses(db, d2, _payin_tx_parts(d2))
+
+
+def test_deal_deletion_frees_its_share(tc, db):
+    """Удаление сделки не должно блокироваться реестром и обязано вернуть
+    её долю в остаток. FK payin_tx_uses_deal_id_fkey ловил это 400-й."""
+    tx = PayinTx(tx_hash=H, amount_usdt=2760.0, source='tronscan')
+    db.add(tx); db.commit()
+    d1 = make_deal(db, 2353.0, [{'hash': H, 'amount_usdt': 2353.0}])
+    _sync_payin_tx_uses(db, d1, _payin_tx_parts(d1))
+    db.commit()
+    deal_id = d1.id
+    assert tx.free_usdt() == pytest.approx(407.0, abs=0.01)
+
+    r = tc.delete(f'/api/deals/{deal_id}')
+    assert r.status_code == 200, r.get_data(as_text=True)
+    db.expire_all()
+    tx = db.query(PayinTx).filter(PayinTx.tx_hash == H).first()
+    assert tx.free_usdt() == pytest.approx(2760.0, abs=0.01)
+    assert db.query(PayinTxUse).filter(PayinTxUse.deal_id == deal_id).count() == 0
+
+
+@pytest.fixture
+def tc():
+    app.config['TESTING'] = True
+    from app import AdminUser
+    s = get_session()
+    try:
+        a = s.query(AdminUser).first()
+        if not a:
+            a = AdminUser(username='test_admin', display_name='T',
+                          password_hash=AdminUser.hash_password('x'))
+            s.add(a); s.commit()
+        aid = a.id
+    finally:
+        s.close()
+    with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = aid
+        yield c

@@ -5637,6 +5637,11 @@ def delete_deal(deal_id):
         session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).update(
             {'claimed_deal_id': None, 'claimed_at': None})
 
+        # Снимаем доли сделки во входящих переводах. Без этого FK
+        # payin_tx_uses_deal_id_fkey не даёт удалить сделку вовсе, а сама доля
+        # осталась бы висеть и занимать остаток перевода
+        session.query(PayinTxUse).filter(PayinTxUse.deal_id == deal_id).delete()
+
         # Отвязываем LOSE, привязанные к этой WON (иначе FK revived_by_deal_id заблокирует удаление)
         session.query(Deal).filter(Deal.revived_by_deal_id == deal_id).update(
             {'revived_by_deal_id': None})
