@@ -15,7 +15,7 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 from app import (app, get_session, Deal, Client, AdminUser,
                  PayInMethod, DealType, DealStatus,
                  _normalize_payin_extra, _payin_extra_list, _payin_all_parts,
-                 _apply_payin_extra, _payin_hash_list)
+                 _apply_payin_extra, _payin_hash_list, split_by_payin_share)
 
 H_EXTRA = 'cc11dd22ee33ff44aa55bb66cc77dd88ee99ff00aa11bb22cc33dd44ee55ff66'
 
@@ -326,3 +326,41 @@ def test_put_removing_extra_returns_to_single(tc, db):
     assert d.payin_extra is None
     assert d.payin_amount_usdt == 6920.0
     assert d.payin_amount_rub == 600000
+
+
+# ==================== Task 5: пропорциональное разбиение ====================
+
+def test_split_reconciles_with_total():
+    """Сумма долей равна исходному числу — иначе лист перестанет сходиться."""
+    assert split_by_payin_share(8669.00, [2365.362, 6920.0]) == [2208.35, 6460.65]
+    assert sum(split_by_payin_share(8669.00, [2365.362, 6920.0])) == 8669.00
+
+
+def test_split_agent_payout():
+    assert split_by_payin_share(185.71, [2365.362, 6920.0]) == [47.31, 138.40]
+
+
+def test_split_three_parts_residual_goes_last():
+    """Некруглые доли: остаток округления добирает последняя часть."""
+    res = split_by_payin_share(100.00, [1, 1, 1])
+    assert res == [33.33, 33.33, 33.34]
+    assert sum(res) == 100.00
+
+
+def test_split_single_part_returns_total():
+    assert split_by_payin_share(8669.00, [9285.362]) == [8669.00]
+
+
+def test_split_zero_total():
+    assert split_by_payin_share(0, [1, 2]) == [0.0, 0.0]
+
+
+def test_split_handles_zero_denominator():
+    """Приходов нет — делить нечего, но и падать нельзя."""
+    assert split_by_payin_share(100.0, [0, 0]) == [0.0, 100.0]
+
+
+def test_split_thb_without_decimals():
+    """Баты в листе целые — остаток тоже должен уйти в последнюю часть."""
+    res = split_by_payin_share(282600, [2365.362, 6920.0], digits=0)
+    assert sum(res) == 282600

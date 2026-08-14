@@ -4497,6 +4497,27 @@ def _payin_all_parts(deal):
     return [main] + extra
 
 
+def split_by_payin_share(total, part_amounts, digits=2):
+    """Делит число по долям приходов частей. Только для выгрузки — в БД доли
+    не хранятся.
+
+    Остаток округления добирает ПОСЛЕДНЯЯ часть: иначе сумма строк разойдётся
+    с итогом сделки на копейки и лист перестанет сходиться при сверке месяца.
+    """
+    n = len(part_amounts)
+    if not n:
+        return []
+    total = float(total or 0)
+    denom = sum(float(a or 0) for a in part_amounts)
+    out, acc = [], 0.0
+    for a in part_amounts[:-1]:
+        v = round(total * float(a or 0) / denom, digits) if denom else 0.0
+        out.append(v)
+        acc += v
+    out.append(round(total - acc, digits))
+    return out
+
+
 def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
     """Пишет дополнительные приходы и пересчитывает агрегаты в плоских полях.
 
