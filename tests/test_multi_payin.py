@@ -191,15 +191,18 @@ def test_apply_rate_ignores_crypto_part(db):
     assert d.payin_rate_rub_usdt == pytest.approx(84.5537, abs=1e-4)
 
 
-def test_apply_method_is_largest_part(db):
-    """payin_method читают Битрикс, фильтры и DealCloser — ставим метод
-    крупнейшей части, а не первой введённой."""
+def test_apply_keeps_main_method_even_if_extra_is_bigger(db):
+    """payin_method — метод ОСНОВНОЙ части, и он не должен переписываться
+    более крупной дополнительной: восстановить его больше неоткуда, а по нему
+    рисуется первая строка в карточке, Telegram и выгрузке."""
     d = make_deal(payin_method=PayInMethod.SBER_REQS)
     db.add(d); db.commit()
     _apply_payin_extra(db, d, [
         {'method': 'partners_cash', 'amount_rub': 600000, 'amount_usdt': 6920.0}],
         main_usdt=2365.362, main_rub=200000)
-    assert d.payin_method == PayInMethod.PARTNERS_CASH
+    assert d.payin_method == PayInMethod.SBER_REQS
+    assert _payin_all_parts(d)[0]['method'] == 'sber_reqs'
+    assert _payin_all_parts(d)[1]['method'] == 'partners_cash'
 
 
 def test_apply_method_kept_when_main_is_largest(db):

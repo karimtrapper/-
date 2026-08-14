@@ -4758,14 +4758,13 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
     deal.payin_rate_rub_usdt = (round(total_rub / rub_usdt, 6)
                                 if (total_rub and rub_usdt) else None)
 
-    # Метод крупнейшей части: его читают Битрикс, фильтры списка и DealCloser
-    if extra:
-        biggest = max(extra, key=lambda p: p['amount_usdt'])
-        if biggest['amount_usdt'] > main_usdt:
-            try:
-                deal.payin_method = PayInMethod(biggest['method'])
-            except ValueError:
-                pass
+    # payin_method НЕ трогаем: это метод ОСНОВНОЙ части, и восстановить его
+    # больше неоткуда — суммы частей выводятся вычитанием, а метод нигде не
+    # дублируется. Правило «метод крупнейшей части» затирало его: на сделке
+    # 200 000 ₽ по реквизитам + 600 000 ₽ наличными основная часть начинала
+    # показываться как «наличные» и в карточке, и в Telegram. Разбивка по
+    # каналам теперь видна везде (TG, карточка, строки выгрузки), поэтому
+    # сводить сделку к одному «главному» методу больше не требуется.
 
     # Слияние хэшей: без него приход дополнительной части можно списать второй раз
     merged_hashes = list(_normalize_tx_hashes(
