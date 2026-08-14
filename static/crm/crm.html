@@ -5242,6 +5242,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         data.available.slice(0, 100).map(tx =>
                             `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">+$${tx.amount_usdt.toFixed(2)} | ${tx.from_address?.substring(0, 10)}... | ${formatDate(tx.timestamp)}</option>`
                         ).join('');
+                    // Тот же список нужен дополнительным приходам: там хэш тоже
+                    // выбирается, а не вбивается руками. Кэшируем и перерисовываем
+                    // карточки частей — список приезжает асинхронно, позже них
+                    payinExtraTxCache = data.available.slice(0, 100);
+                    if (typeof payinExtraRender === 'function' && payinExtra.length) {
+                        payinExtraRender();
+                    }
                 }
             } catch (error) {
                 console.error('Error loading incoming transactions:', error);
@@ -5518,6 +5525,40 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // главных полях формы, менеджер вводит его как привык.
         let payinExtra = [];
 
+        // Кэш входящих транзакций для пикеров ЧАСТЕЙ (у экрана возмещений
+        // свой incomingTxCache — имена не пересекаем). Наполняется
+        // loadIncomingTxForSelect — тем же запросом, что кормит основной блок
+        let payinExtraTxCache = [];
+
+        // Хэши, уже занятые в этой форме: основной пул, ручное поле и все части.
+        // Показывать их в выборе нельзя — один приход списался бы дважды.
+        // Свой выбранный хэш тоже убираем из списка: он виден в поле рядом
+        function payinUsedHashes() {
+            const used = new Set(payinTxPool.map(t => t.hash));
+            const manual = document.querySelector('[name="payin_tx_hash"]')?.value?.trim();
+            if (manual) used.add(manual);
+            payinExtra.forEach(p => { if (p.tx_hash) used.add(p.tx_hash.trim()); });
+            return used;
+        }
+
+        function payinExtraPickTx(i, select) {
+            const opt = select.selectedOptions[0];
+            const hash = select.value;
+            select.selectedIndex = 0;
+            if (!hash) return;
+            payinExtra[i].tx_hash = hash;
+            const amount = parseFloat(opt?.dataset?.amount);
+            // Сумма из сети — источник истины: это то, что реально пришло
+            if (!isNaN(amount)) {
+                payinExtra[i].amount_usdt = amount;
+                const p = payinExtra[i];
+                if (p.amount_rub && p.amount_usdt) {
+                    p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
+                }
+            }
+            payinExtraRender();
+        }
+
         // Лейблы для селекта части. spp_doverka не показываем — провайдер умер,
         // опция оставлена только для открытия старых сделок
         const PAYIN_EXTRA_METHODS = [
@@ -5583,8 +5624,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <input type="text" class="form-control" style="max-width:150px;"
                             placeholder="Партнёр" value="${p.partner_name || ''}"
                             oninput="payinExtraSet(${i}, 'partner_name', this.value)">` : ''}
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center;">
+                        ${(() => {
+                            const used = payinUsedHashes();
+                            const free = payinExtraTxCache.filter(t => !used.has(t.tx_hash));
+                            if (!free.length) return '';
+                            return `<select class="form-control" style="max-width:340px;"
+                                onchange="payinExtraPickTx(${i}, this)">
+                                <option value="">-- Выбрать хэш из входящих --</option>
+                                ${free.map(t => `<option value="${t.tx_hash}" data-amount="${t.amount_usdt}">+$${t.amount_usdt.toFixed(2)} | ${(t.from_address || '').substring(0, 10)}… | ${formatDate(t.timestamp)}</option>`).join('')}
+                            </select>`;
+                        })()}
                         <input type="text" class="form-control" style="max-width:280px;"
-                            placeholder="TxHash (если крипта)" value="${p.tx_hash || ''}"
+                            placeholder="Или TxHash вручную..." value="${p.tx_hash || ''}"
                             oninput="payinExtraSet(${i}, 'tx_hash', this.value)">
                     </div>
                 </div>`;
