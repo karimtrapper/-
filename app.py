@@ -4497,6 +4497,75 @@ def _payin_all_parts(deal):
     return [main] + extra
 
 
+def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
+    """Пишет дополнительные приходы и пересчитывает агрегаты в плоских полях.
+
+    main_usdt / main_rub — суммы ОСНОВНОЙ части, передаются явно. Брать их из
+    deal.payin_amount_* нельзя: там уже агрегат, и повторный вызов прибавил бы
+    дополнительные части второй раз.
+
+    Хэши и uuid'ы приходов Сбера сливаются в payin_tx_hashes / payin_parts —
+    на этом стоит защита от двойного учёта (get_used_transaction_hashes и
+    _sync_sber_claims), и она продолжает работать без правок.
+    """
+    extra = _normalize_payin_extra(raw_extra)
+    deal.payin_extra = json.dumps(extra, ensure_ascii=False) if extra else None
+
+    main_usdt = float(main_usdt or 0)
+    main_rub = float(main_rub or 0)
+
+    deal.payin_amount_usdt = round(
+        main_usdt + sum(p['amount_usdt'] for p in extra), 6) or None
+    total_rub = round(main_rub + sum(p['amount_rub'] or 0 for p in extra), 6)
+    deal.payin_amount_rub = total_rub or None
+
+    # Средневзвешенный курс — только по рублёвым частям. Курс первой части
+    # разошёлся бы с итогом: 800 000 / 86.7052 = 9 226.67 при приходе 9 285.36.
+    rub_usdt = main_usdt if main_rub else 0.0
+    rub_usdt += sum(p['amount_usdt'] for p in extra if p['amount_rub'])
+    deal.payin_rate_rub_usdt = (round(total_rub / rub_usdt, 6)
+                                if (total_rub and rub_usdt) else None)
+
+    # Метод крупнейшей части: его читают Битрикс, фильтры списка и DealCloser
+    if extra:
+        biggest = max(extra, key=lambda p: p['amount_usdt'])
+        if biggest['amount_usdt'] > main_usdt:
+            try:
+                deal.payin_method = PayInMethod(biggest['method'])
+            except ValueError:
+                pass
+
+    # Слияние хэшей: без него приход дополнительной части можно списать второй раз
+    merged_hashes = list(_normalize_tx_hashes(
+        json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []))
+    seen = {h['hash'] for h in merged_hashes}
+    for p in extra:
+        for h in p['tx_hashes']:
+            if h['hash'] not in seen:
+                seen.add(h['hash'])
+                merged_hashes.append(h)
+    if merged_hashes:
+        _apply_payin_tx_hashes(deal, merged_hashes)
+
+    # Слияние приходов Сбера: _sync_sber_claims забирает их из пула по payin_parts
+    extra_uuids = [u for p in extra for u in p['sber_uuids']]
+    if extra_uuids:
+        base = []
+        if deal.payin_parts:
+            try:
+                base = json.loads(deal.payin_parts) or []
+            except (ValueError, TypeError):
+                base = []
+        known = {str(x.get('uuid')) for x in base if isinstance(x, dict) and x.get('uuid')}
+        for uid in extra_uuids:
+            if uid not in known:
+                known.add(uid)
+                base.append({'uuid': uid, 'amount_rub': None, 'payer': '',
+                             'date': '', 'note': 'доп. приход'})
+        deal.payin_parts = json.dumps(base, ensure_ascii=False)
+        _sync_sber_claims(session, deal, base)
+
+
 def _normalize_payout_transfers(raw):
     """Переводы отправки → [{'hash','amount_usdt','to_address','date'}].
 

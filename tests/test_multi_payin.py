@@ -14,7 +14,8 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
 from app import (app, get_session, Deal, Client, AdminUser,
                  PayInMethod, DealType, DealStatus,
-                 _normalize_payin_extra, _payin_extra_list, _payin_all_parts)
+                 _normalize_payin_extra, _payin_extra_list, _payin_all_parts,
+                 _apply_payin_extra, _payin_hash_list)
 
 H_EXTRA = 'cc11dd22ee33ff44aa55bb66cc77dd88ee99ff00aa11bb22cc33dd44ee55ff66'
 
@@ -150,3 +151,91 @@ def test_extra_list_survives_broken_json(db):
     db.add(d)
     db.commit()
     assert _payin_extra_list(d) == []
+
+
+# ============ Task 3: пересчёт агрегатов и защита от двойного учёта ============
+
+def test_apply_aggregates_totals(db):
+    """Итог = основная часть + дополнительные. Эталон спеки §4."""
+    d = make_deal()
+    db.add(d)
+    db.commit()
+    _apply_payin_extra(db, d, [
+        {'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362}],
+        main_usdt=6920.0, main_rub=600000)
+    assert d.payin_amount_usdt == pytest.approx(9285.362, abs=0.001)
+    assert d.payin_amount_rub == pytest.approx(800000, abs=0.01)
+
+
+def test_apply_weighted_rate_reconciles(db):
+    """Средневзвешенный курс сходится делением — в этом весь его смысл.
+    Курс первой части (86.7052) дал бы 9226.67 вместо 9285.36."""
+    d = make_deal()
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [
+        {'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362}],
+        main_usdt=6920.0, main_rub=600000)
+    assert d.payin_rate_rub_usdt == pytest.approx(86.1571, abs=1e-4)
+    assert d.payin_amount_rub / d.payin_rate_rub_usdt == pytest.approx(
+        d.payin_amount_usdt, abs=0.01)
+
+
+def test_apply_rate_ignores_crypto_part(db):
+    """У крипты рублей нет — в знаменатель средневзвешенного она не идёт."""
+    d = make_deal(payin_method=PayInMethod.SBER_REQS)
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [{'method': 'crypto_direct', 'amount_usdt': 500}],
+                       main_usdt=2365.362, main_rub=200000)
+    assert d.payin_amount_usdt == pytest.approx(2865.362, abs=0.001)
+    assert d.payin_rate_rub_usdt == pytest.approx(84.5537, abs=1e-4)
+
+
+def test_apply_method_is_largest_part(db):
+    """payin_method читают Битрикс, фильтры и DealCloser — ставим метод
+    крупнейшей части, а не первой введённой."""
+    d = make_deal(payin_method=PayInMethod.SBER_REQS)
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [
+        {'method': 'partners_cash', 'amount_rub': 600000, 'amount_usdt': 6920.0}],
+        main_usdt=2365.362, main_rub=200000)
+    assert d.payin_method == PayInMethod.PARTNERS_CASH
+
+
+def test_apply_method_kept_when_main_is_largest(db):
+    d = make_deal(payin_method=PayInMethod.PARTNERS_CASH)
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [
+        {'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362}],
+        main_usdt=6920.0, main_rub=600000)
+    assert d.payin_method == PayInMethod.PARTNERS_CASH
+
+
+def test_apply_merges_hashes_for_double_spend_guard(db):
+    """Хэш дополнительной части обязан попасть в payin_tx_hashes — иначе
+    get_used_transaction_hashes его не увидит и приход спишут дважды."""
+    d = make_deal(payin_tx_hashes=json.dumps([{'hash': 'a' * 64, 'amount_usdt': 6920.0}]))
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [{
+        'method': 'crypto_direct', 'amount_usdt': 500,
+        'tx_hashes': [{'hash': 'b' * 64, 'amount_usdt': 500}]}],
+        main_usdt=6920.0, main_rub=None)
+    assert set(_payin_hash_list(d)) == {'a' * 64, 'b' * 64}
+
+
+def test_apply_is_idempotent(db):
+    """Повторный вызов с теми же аргументами не удваивает приход."""
+    d = make_deal()
+    db.add(d); db.commit()
+    extra = [{'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362}]
+    _apply_payin_extra(db, d, extra, main_usdt=6920.0, main_rub=600000)
+    _apply_payin_extra(db, d, extra, main_usdt=6920.0, main_rub=600000)
+    assert d.payin_amount_usdt == pytest.approx(9285.362, abs=0.001)
+
+
+def test_apply_empty_extra_clears_column(db):
+    """Убрали все дополнительные части — колонка пустеет, агрегаты = основная часть."""
+    d = make_deal(payin_extra=json.dumps([{'method': 'sber_reqs', 'amount_usdt': 100}]))
+    db.add(d); db.commit()
+    _apply_payin_extra(db, d, [], main_usdt=6920.0, main_rub=600000)
+    assert d.payin_extra is None
+    assert d.payin_amount_usdt == 6920.0
