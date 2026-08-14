@@ -239,3 +239,90 @@ def test_apply_empty_extra_clears_column(db):
     _apply_payin_extra(db, d, [], main_usdt=6920.0, main_rub=600000)
     assert d.payin_extra is None
     assert d.payin_amount_usdt == 6920.0
+
+
+# ==================== Task 4: API принимает payin_extra ====================
+
+@pytest.fixture
+def tc():
+    app.config['TESTING'] = True
+    s = get_session()
+    try:
+        a = s.query(AdminUser).first()
+        if not a:
+            a = AdminUser(username='test_admin', display_name='T',
+                          password_hash=AdminUser.hash_password('x'))
+            s.add(a); s.commit()
+        aid = a.id
+    finally:
+        s.close()
+    with app.test_client() as c:
+        with c.session_transaction() as sess:
+            sess['user_id'] = aid
+        yield c
+
+
+def _payload(**over):
+    base = {
+        'client_name': 'elena imaikina',
+        'payin_method': 'partners_cash',
+        'payin_amount_rub': 600000,
+        'payin_amount_usdt': 6920.0,
+        'payin_partner_name': 'FOEX',
+        'payin_extra': [{'method': 'sber_reqs', 'amount_rub': 200000,
+                         'amount_usdt': 2365.362}],
+    }
+    base.update(over)
+    return base
+
+
+def test_post_deal_aggregates(tc, db):
+    r = tc.post('/api/deals', json=_payload())
+    assert r.status_code in (200, 201), r.get_data(as_text=True)
+    d = db.query(Deal).order_by(Deal.id.desc()).first()
+    assert d.payin_amount_usdt == pytest.approx(9285.362, abs=0.001)
+    assert d.payin_amount_rub == pytest.approx(800000, abs=0.01)
+    assert d.payin_rate_rub_usdt == pytest.approx(86.1571, abs=1e-4)
+    assert len(json.loads(d.payin_extra)) == 1
+
+
+def test_put_deal_recomputes(tc, db):
+    tc.post('/api/deals', json=_payload(payin_extra=[]))
+    d = db.query(Deal).order_by(Deal.id.desc()).first()
+    assert d.payin_amount_usdt == 6920.0
+    deal_id = d.id
+
+    r = tc.put(f'/api/deals/{deal_id}', json={
+        'payin_amount_rub': 600000, 'payin_amount_usdt': 6920.0,
+        'payin_extra': [{'method': 'sber_reqs', 'amount_rub': 200000,
+                         'amount_usdt': 2365.362}]})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    db.expire_all()
+    d = db.query(Deal).filter(Deal.id == deal_id).first()
+    assert d.payin_amount_usdt == pytest.approx(9285.362, abs=0.001)
+
+
+def test_put_without_payin_extra_does_not_drift(tc, db):
+    """Интеграция шлёт PUT без payin_extra — приход не должен вырасти."""
+    tc.post('/api/deals', json=_payload())
+    d = db.query(Deal).order_by(Deal.id.desc()).first()
+    deal_id, before = d.id, d.payin_amount_usdt
+
+    tc.put(f'/api/deals/{deal_id}', json={'notes': 'просто заметка'})
+    tc.put(f'/api/deals/{deal_id}', json={'notes': 'и ещё раз'})
+    db.expire_all()
+    d = db.query(Deal).filter(Deal.id == deal_id).first()
+    assert d.payin_amount_usdt == pytest.approx(before, abs=0.001)
+
+
+def test_put_removing_extra_returns_to_single(tc, db):
+    tc.post('/api/deals', json=_payload())
+    d = db.query(Deal).order_by(Deal.id.desc()).first()
+    deal_id = d.id
+    tc.put(f'/api/deals/{deal_id}', json={
+        'payin_amount_rub': 600000, 'payin_amount_usdt': 6920.0, 'payin_extra': []})
+    db.expire_all()
+    d = db.query(Deal).filter(Deal.id == deal_id).first()
+    assert d.payin_extra is None
+    assert d.payin_amount_usdt == 6920.0
+    assert d.payin_amount_rub == 600000

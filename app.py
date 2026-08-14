@@ -4893,6 +4893,14 @@ def create_deal():
         if data.get('payin_parts'):
             _sync_sber_claims(session, deal, data['payin_parts'])
 
+        # Дополнительные приходы: плоские поля выше приняли суммы ОСНОВНОЙ части,
+        # здесь они превращаются в агрегаты по всей сделке. Должно идти ДО
+        # пересчёта финансов — прибыль и выплаты считаются от итогового прихода.
+        if data.get('payin_extra'):
+            _apply_payin_extra(session, deal, data['payin_extra'],
+                               main_usdt=data.get('payin_amount_usdt'),
+                               main_rub=data.get('payin_amount_rub'))
+
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
         # Для отказа и «не обращения» финансов нет — пропускаем пересчёт и агентов.
@@ -5041,6 +5049,22 @@ def update_deal(deal_id):
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
         if 'payin_tx_hashes' in data:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
+
+        # Дополнительные приходы. Суммы основной части вычисляем ДО записи
+        # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
+        # СТАРЫХ дополнительных из сохранённого итога — иначе приход поедет вверх
+        # на каждом PUT без payin_extra (интеграции их не шлют).
+        if 'payin_extra' in data or deal.payin_extra:
+            old_extra = _payin_extra_list(deal)
+            old_usdt = sum(p.get('amount_usdt') or 0 for p in old_extra)
+            old_rub = sum(p.get('amount_rub') or 0 for p in old_extra)
+            main_usdt = (data['payin_amount_usdt'] if 'payin_amount_usdt' in data
+                         else round((deal.payin_amount_usdt or 0) - old_usdt, 6))
+            main_rub = (data['payin_amount_rub'] if 'payin_amount_rub' in data
+                        else round((deal.payin_amount_rub or 0) - old_rub, 6))
+            _apply_payin_extra(session, deal,
+                               data.get('payin_extra', old_extra),
+                               main_usdt=main_usdt, main_rub=main_rub)
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
