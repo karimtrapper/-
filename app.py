@@ -3026,6 +3026,28 @@ def delete_referrer_reward_from_gsheet(deal):
         print(f'[GSheet] Referrer delete error: {e}')
 
 
+def _payin_parts_block(deal):
+    """Блок «— Приход —» для уведомлений. Пусто у сделки с одним каналом.
+
+    Один и тот же во всех трёх шаблонах: получатель должен видеть, откуда
+    сложился приход, независимо от типа сделки.
+    """
+    parts = _payin_all_parts(deal)
+    if len(parts) < 2:
+        return ''
+    out = f"\n— Приход ({len(parts)}) —"
+    for p in parts:
+        name = PAYIN_METHOD_LABELS.get(p['method'], p['method'] or '—')
+        if p['partner_name']:
+            name += f" {p['partner_name']}"
+        if p['amount_rub'] and p['rate_rub_usdt']:
+            out += (f"\n• {name} · {p['amount_rub']:,.0f} ₽ @ {p['rate_rub_usdt']:.4f}"
+                    f" → ${p['amount_usdt']:,.2f}")
+        else:
+            out += f"\n• {name} → ${p['amount_usdt']:,.2f}"
+    return out
+
+
 def _mf_realty_telegram_text(deal):
     """Текст уведомления по сделке через MF Corp.
 
@@ -3040,7 +3062,8 @@ def _mf_realty_telegram_text(deal):
     msg = (
         f"🏠 <b>Недвижимость {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
-        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
+        f"{_payin_parts_block(deal)}\n"
         f"Отправлено в MF Corp: {deal.company_sent_thb or 0:,.0f} ฿ "
         f"(${deal.payout_amount_usdt or 0:,.2f})\n"
         f"— инвойс застройщику: {deal.invoice_amount_thb or 0:,.0f} ฿\n"
@@ -3098,7 +3121,8 @@ def _mf_freehold_telegram_text(deal):
     msg = (
         f"🏠 <b>Фрихолд {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
-        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
+        f"{_payin_parts_block(deal)}\n"
         f"Отправлено: ${sent:,.2f}\n"
         f"— комиссия за перевод: ${fee:,.2f} "
         f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
@@ -3190,9 +3214,19 @@ def _send_deal_telegram(deal):
     elif deal.payout_source == PayOutSource.CASH_BATCH:
         source_note = ' · из кассы'
 
+    # При смешанных валютах частей строка «Получено» в рублях занижает — у
+    # крипто-части рублей нет. Тогда печатаем итог в USDT, разбивка идёт ниже.
+    _parts = _payin_all_parts(deal)
+    _mixed = len(_parts) > 1 and any(
+        bool(p['amount_rub']) != bool(_parts[0]['amount_rub']) for p in _parts)
+    received_line = (f"Получено: ${amount_in_usdt:,.2f} (несколько каналов)"
+                     if _mixed
+                     else f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})")
+
     msg = (
         f"✅ <b>Сделка {deal.id} — {(deal.client.name if deal.client else deal.client_name) or 'без имени'} — {date_str}</b>\n"
-        f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
+        f"{received_line}"
+        f"{_payin_parts_block(deal)}\n"
         f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f}){source_note}\n"
         f"Прибыль: ${profit:,.2f}"
     )
