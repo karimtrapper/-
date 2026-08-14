@@ -382,6 +382,15 @@ class Referrer(Base):
     # Модель вознаграждения: 'revshare' (% от прибыли) или 'markup' (+% к курсу клиента)
     comp_model = Column(String(20), default='revshare')
     markup_percent = Column(Float, default=0.0)
+    # ── Платёжные ссылки (продукт на рельсах Rapira+Bitazza, см. partner_rates.py) ──
+    # Отдельные поля, а не comp_model/markup_percent: там связка Доверки со своей
+    # лестницей комиссий, смешивать экономику двух разных рельсов нельзя.
+    can_create_links = Column(Boolean, default=False)      # доступ к созданию ссылок
+    link_base_markup_percent = Column(Float)               # наша наценка, % (NULL → глобальная 3.5)
+    link_markup_percent = Column(Float, default=0.0)       # наценка партнёра СВЕРХУ нашей (платит клиент)
+    link_revshare_percent = Column(Float, default=0.0)     # доля партнёра от нашей прибыли, %
+    link_logo_url = Column(String(512))                    # логотип на странице оплаты (white label)
+    link_description = Column(String(200))                 # подпись клиенту на странице оплаты
     active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
     auth_mode = Column(String(20), default='link')       # 'link' | 'telegram'
@@ -403,6 +412,12 @@ class Referrer(Base):
             'payout_currency': self.payout_currency or 'USDT',
             'comp_model': self.comp_model or 'revshare',
             'markup_percent': self.markup_percent or 0.0,
+            'can_create_links': bool(self.can_create_links),
+            'link_base_markup_percent': self.link_base_markup_percent,
+            'link_markup_percent': self.link_markup_percent or 0.0,
+            'link_revshare_percent': self.link_revshare_percent or 0.0,
+            'link_logo_url': self.link_logo_url,
+            'link_description': self.link_description,
             'active': self.active,
             'auth_mode': self.auth_mode or 'link',
             'telegram_user_id': self.telegram_user_id,
@@ -921,6 +936,13 @@ class Deal(Base):
     # Части прихода (метод sber_reqs, оплата частями): JSON-список
     # [{uuid|null, amount_rub, payer, date, note}]. uuid → приход из пула sber_incomes.
     payin_parts = Column(Text, nullable=True)
+    # Дополнительные приходы сверх основного: JSON-список
+    # [{method, amount_rub, rate_rub_usdt, amount_usdt, partner_name,
+    #   tx_hashes, sber_uuids, note}]
+    # Основной приход остаётся в плоских payin_* — часть 1 это он. После
+    # сохранения плоские поля хранят АГРЕГАТЫ (итог USDT, сумма рублей,
+    # средневзвешенный курс), поэтому весь остальной код читает их как раньше.
+    payin_extra = Column(Text, nullable=True)
     # LOSE-сделки и revive-логика (конверсия по Красинскому)
     lose_reason = Column(String(300), nullable=True)         # причина отказа из LLM-анализа DealCloser
     bitrix_deal_id = Column(Integer, nullable=True, index=True)  # id сделки Bitrix (дедуп + трейсинг)
@@ -1015,6 +1037,7 @@ class Deal(Base):
             'doc_payment_url': self.doc_payment_url,
             'payin_partner_name': self.payin_partner_name,
             'payin_parts': json.loads(self.payin_parts) if self.payin_parts else None,
+            'payin_extra': json.loads(self.payin_extra) if self.payin_extra else None,
             'doverka_transaction_id': self.doverka_transaction_id,
             'doverka_status': self.doverka_status.value if self.doverka_status else None,
             'doverka_payout_hash': self.doverka_payout_hash,
@@ -1486,6 +1509,13 @@ try:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_comp_model VARCHAR(20)"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_markup_percent FLOAT"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_paid_at TIMESTAMP"))
+            # Платёжные ссылки партнёра: доступ выключен у всех, прод не меняется
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS can_create_links BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_base_markup_percent FLOAT"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_markup_percent FLOAT DEFAULT 0"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_revshare_percent FLOAT DEFAULT 0"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_logo_url VARCHAR(512)"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_description VARCHAR(200)"))
         else:
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
             except: pass
@@ -1502,6 +1532,18 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_markup_percent FLOAT"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN can_create_links BOOLEAN DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_base_markup_percent FLOAT"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_markup_percent FLOAT DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_revshare_percent FLOAT DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_logo_url VARCHAR(512)"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_description VARCHAR(200)"))
             except: pass
         # Бэкфилл мультиагентов: старый одиночный реферал → строка deal_agents (ур.1).
         # Идемпотентно (NOT EXISTS) — безопасно выполнять при каждом старте.
@@ -1757,6 +1799,18 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_tx_hashes migration: {e}")
+
+# Дополнительные приходы: несколько способов Pay-In в одной сделке
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_extra TEXT"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_extra TEXT"))
+            except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payin_extra migration: {e}")
 
 # reimbursements.tx_hash хранит несколько хэшей через запятую, но в БД остался
 # VARCHAR(100) от первой версии — возмещение с 2+ хэшами падало на INSERT
@@ -2159,7 +2213,7 @@ GSHEET_REALTY_HEADERS = [
     'процент на тайскую компанию', 'отправлено на компанию в thb',
     'Доход в бата тайской компании', 'доход Катики в батах ', 'доход Катики в usdt ',
     'доход', 'выплата агенту', 'доход в usdt на кошельке', 'чистый доход',
-    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID', 'часть',
 ]
 # Фрихолд — свой набор колонок: карман один, зато есть расход на перевод и
 # сумма, которая реально дойдёт до застройщика. Лист «<месяц> freehold».
@@ -2169,8 +2223,11 @@ GSHEET_FREEHOLD_HEADERS = [
     'от кого', 'приход usdt', 'инвойс застройщику usd', 'отправлено usd',
     'комиссия за перевод %', 'фикс за перевод usd', 'комиссия за перевод usd',
     'дойдёт застройщику usd', 'доход', 'выплата агенту', 'чистый доход',
-    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID', 'часть',
 ]
+# CRM ID больше не последняя колонка — позицию берём по имени, а не по длине
+GSHEET_REALTY_ID_COL = GSHEET_REALTY_HEADERS.index('CRM ID') + 1
+GSHEET_FREEHOLD_ID_COL = GSHEET_FREEHOLD_HEADERS.index('CRM ID') + 1
 GSHEET_REALTY_MONTHS = [
     'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
@@ -2249,84 +2306,135 @@ def _realty_find_month_worksheet(sh, name):
     return _find_month_worksheet(sh, name, ('leasehold', 'leeshold'))
 
 
-def build_realty_row(deal):
-    """Строка выгрузки сделки через MF Corp — порядок как в GSHEET_REALTY_HEADERS."""
+def build_realty_rows(deal):
+    """Строки выгрузки сделки через MF Corp — по строке на часть Pay-In.
+
+    Порядок колонок — как в GSHEET_REALTY_HEADERS. Делится всё, что
+    пропорционально приходу; инвойс, курсы, процент компании и ссылки на
+    документы описывают одну отправку и стоят только в первой строке.
+    """
     d = deal
-    direction = ''
-    if d.payin_method:
-        pm = d.payin_method.value
-        direction = 'usdt-thb' if pm == 'crypto_direct' else 'rub-thb'
-    agents_total = d.referrer_payout_usdt or 0
+    parts = _payin_all_parts(d)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+
     agent_names = ', '.join(
         a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
     ) if d.agents else ''
-    return [
-        d.realty_purpose or '',                          # Назначение
-        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
-        direction,
-        d.payin_amount_rub or '',
-        d.payin_rate_rub_usdt or '',
-        agent_names,                                     # от кого
-        d.invoice_amount_thb or '',
-        d.sell_rate_thb_usdt or '',
-        d.buy_rate_thb_usdt or '',
-        d.payin_amount_usdt or '',
-        # «сколько потратили на инвойс» — стоимость самого инвойса, без комиссии
-        round((d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2) if d.buy_rate_thb_usdt else '',
-        d.company_fee_usdt or '',
-        (d.company_percent / 100) if d.company_percent else '',   # процент — как доля, лист форматирует
-        d.company_sent_thb or '',
-        d.company_fee_thb or '',
-        d.katika_fee_thb or '',
-        d.katika_fee_usdt or '',
-        # «доход» в таблице = приход − стоимость инвойса (оба кармана до выплат)
-        round((d.payin_amount_usdt or 0) - (d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2)
-        if d.buy_rate_thb_usdt else '',
-        agents_total or '',
-        d.crypto_remainder_usdt or '',                   # «доход в usdt на кошельке»
-        d.net_profit_usdt or '',                         # чистый доход
-        d.doc_invoice_url or '',
-        d.doc_contract_url or '',
-        d.doc_payment_url or '',
-        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
-        d.id,                                            # CRM ID — якорь upsert
-    ]
+    date_str = d.created_at.strftime('%d.%m.%Y') if d.created_at else ''
+
+    invoice_cost = (round((d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2)
+                    if d.buy_rate_thb_usdt else 0)
+    income = (round((d.payin_amount_usdt or 0) - invoice_cost, 2)
+              if d.buy_rate_thb_usdt else 0)
+
+    # Колонка хэша сверяет ОТПРАВКУ: если переводы в компанию отмечены — их хэши.
+    # Отправка одна на сделку, поэтому они стоят в первой строке; остальные части
+    # показывают свои хэши прихода.
+    payout_hashes = _payout_hash_list(d)
+
+    cost_split = split_by_payin_share(invoice_cost, amounts)
+    fee_usdt_split = split_by_payin_share(d.company_fee_usdt or 0, amounts)
+    sent_thb_split = split_by_payin_share(d.company_sent_thb or 0, amounts)
+    fee_thb_split = split_by_payin_share(d.company_fee_thb or 0, amounts)
+    katika_thb_split = split_by_payin_share(d.katika_fee_thb or 0, amounts)
+    katika_usdt_split = split_by_payin_share(d.katika_fee_usdt or 0, amounts)
+    income_split = split_by_payin_share(income, amounts)
+    agent_split = split_by_payin_share(d.referrer_payout_usdt or 0, amounts)
+    wallet_split = split_by_payin_share(d.crypto_remainder_usdt or 0, amounts)
+    net_split = split_by_payin_share(d.net_profit_usdt or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        first = (i == 0)
+        rows.append([
+            d.realty_purpose or '',                                       # 0 Назначение
+            date_str,                                                     # 1 дата
+            'usdt-thb' if p['method'] == 'crypto_direct' else 'rub-thb',  # 2 направление
+            p['amount_rub'] or '',                                        # 3 сумма руб части
+            p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
+            agent_names,                                                  # 5 от кого
+            (d.invoice_amount_thb or '') if first else '',                # 6 сумма thb
+            (d.sell_rate_thb_usdt or '') if first else '',                # 7 курс продажи
+            (d.buy_rate_thb_usdt or '') if first else '',                 # 8 курс покупкт
+            p['amount_usdt'] or '',                                       # 9 приход usdt части
+            cost_split[i] or '',                                          # 10 потратили на инвойс
+            fee_usdt_split[i] or '',                                      # 11 доход компании usdt
+            ((d.company_percent / 100) if d.company_percent else '') if first else '',  # 12
+            sent_thb_split[i] or '',                                      # 13 отправлено thb
+            fee_thb_split[i] or '',                                       # 14 доход в батах
+            katika_thb_split[i] or '',                                    # 15 Катика баты
+            katika_usdt_split[i] or '',                                   # 16 Катика usdt
+            income_split[i] or '',                                        # 17 доход
+            agent_split[i] or '',                                         # 18 выплата агенту
+            wallet_split[i] or '',                                        # 19 на кошельке
+            net_split[i] or '',                                           # 20 чистый доход
+            (d.doc_invoice_url or '') if first else '',                   # 21 инвойс
+            (d.doc_contract_url or '') if first else '',                  # 22 договор
+            (d.doc_payment_url or '') if first else '',                   # 23 оплата
+            (', '.join(payout_hashes) if (first and payout_hashes)
+             else ', '.join(h['hash'] for h in p['tx_hashes'])),          # 24 хеш
+            d.id,                                                         # 25 CRM ID
+            f'{i + 1}/{n}',                                               # 26 часть
+        ])
+    return rows
 
 
-def build_freehold_row(deal):
-    """Строка выгрузки сделки во фрихолде — порядок как в GSHEET_FREEHOLD_HEADERS."""
+def build_freehold_rows(deal):
+    """Строки выгрузки сделки во фрихолде — по строке на часть Pay-In.
+
+    Делятся приход и всё, что от него пропорционально: отправка, доход, выплата
+    агенту, чистый доход. Инвойс, комиссия за перевод, «дойдёт застройщику» и
+    ссылки на документы описывают один SWIFT — стоят только в первой строке,
+    делить их значило бы придумать переводы, которых не было.
+    """
     d = deal
-    direction = ''
-    if d.payin_method:
-        direction = 'usdt-usd' if d.payin_method.value == 'crypto_direct' else 'rub-usd'
+    parts = _payin_all_parts(d)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+
     agent_names = ', '.join(
         a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
     ) if d.agents else ''
-    return [
-        d.realty_purpose or '',
-        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
-        direction,
-        d.payin_amount_rub or '',
-        d.payin_rate_rub_usdt or '',
-        agent_names,                                     # от кого
-        d.payin_amount_usdt or '',
-        d.invoice_amount_usd or '',
-        d.transfer_sent_usd or '',
-        d.transfer_fee_percent or '',
-        d.transfer_fee_fixed_usd or '',
-        d.transfer_fee_usd or '',
-        d.transfer_arrive_usd or '',
-        # «доход» = приход − отправка, расходы на перевод уже внутри отправки
-        d.profit_usdt or '',
-        d.referrer_payout_usdt or '',
-        d.net_profit_usdt or '',
-        d.doc_invoice_url or '',
-        d.doc_contract_url or '',
-        d.doc_payment_url or '',
-        # Сверяют отправку: если переводы отмечены — их хэши, иначе хэши прихода
-        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
-        d.id,                                            # CRM ID — якорь upsert
-    ]
+    date_str = d.created_at.strftime('%d.%m.%Y') if d.created_at else ''
+
+    # Как у лизхолда: сверяют отправку, поэтому хэши переводов — в первой строке
+    payout_hashes = _payout_hash_list(d)
+
+    sent_split = split_by_payin_share(d.transfer_sent_usd or 0, amounts)
+    profit_split = split_by_payin_share(d.profit_usdt or 0, amounts)
+    agent_split = split_by_payin_share(d.referrer_payout_usdt or 0, amounts)
+    net_split = split_by_payin_share(d.net_profit_usdt or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        first = (i == 0)
+        rows.append([
+            d.realty_purpose or '',                                       # 0 Назначение
+            date_str,                                                     # 1 дата
+            'usdt-usd' if p['method'] == 'crypto_direct' else 'rub-usd',  # 2 направление
+            p['amount_rub'] or '',                                        # 3 сумма руб части
+            p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
+            agent_names,                                                  # 5 от кого
+            p['amount_usdt'] or '',                                       # 6 приход usdt части
+            (d.invoice_amount_usd or '') if first else '',                # 7 инвойс
+            sent_split[i] or '',                                          # 8 отправлено — доля
+            (d.transfer_fee_percent or '') if first else '',              # 9 комиссия %
+            (d.transfer_fee_fixed_usd or '') if first else '',            # 10 фикс
+            (d.transfer_fee_usd or '') if first else '',                  # 11 комиссия usd
+            (d.transfer_arrive_usd or '') if first else '',               # 12 дойдёт
+            profit_split[i] or '',                                        # 13 доход — доля
+            agent_split[i] or '',                                         # 14 выплата агенту
+            net_split[i] or '',                                           # 15 чистый доход
+            (d.doc_invoice_url or '') if first else '',                   # 16 инвойс url
+            (d.doc_contract_url or '') if first else '',                  # 17 договор
+            (d.doc_payment_url or '') if first else '',                   # 18 оплата
+            (', '.join(payout_hashes) if (first and payout_hashes)
+             else ', '.join(h['hash'] for h in p['tx_hashes'])),          # 19 хеш
+            d.id,                                                         # 20 CRM ID
+            f'{i + 1}/{n}',                                               # 21 часть
+        ])
+    return rows
 
 
 def sync_realty_deal_to_gsheet(deal):
@@ -2341,17 +2449,32 @@ def sync_realty_deal_to_gsheet(deal):
         return _sync_realty_deal_impl(deal)
 
 
-def _realty_upsert(ws, row, deal_id, id_col=None):
-    """Перезаписывает строку с этим CRM ID либо дописывает новую. True = вставка."""
-    id_col = id_col or len(GSHEET_REALTY_HEADERS)   # CRM ID — последняя колонка
+def _realty_upsert(ws, rows, deal_id, id_col=None):
+    """Перезаписывает блок строк сделки по CRM ID либо дописывает. True = вставка.
+
+    Число частей могло измениться с прошлой выгрузки: лишние строки удаляются
+    снизу вверх (сверху вниз номера ниже съезжают), недостающие вставляются.
+    Без выравнивания update затёр бы соседнюю сделку.
+    """
+    id_col = id_col or GSHEET_REALTY_ID_COL
+    width = len(rows[0])
     ids = ws.col_values(id_col)
-    for idx, val in enumerate(ids, start=1):
-        if val and str(val).strip() == str(deal_id):
-            end = gspread.utils.rowcol_to_a1(idx, id_col)
-            ws.update(f'A{idx}:{end}', [row], value_input_option='USER_ENTERED')
-            return False
-    ws.append_row(row, value_input_option='USER_ENTERED')
-    return True
+    hits = [idx for idx, val in enumerate(ids, start=1)
+            if val and str(val).strip() == str(deal_id)]
+    if not hits:
+        for row in rows:
+            ws.append_row(row, value_input_option='USER_ENTERED')
+        return True
+
+    while len(hits) > len(rows):
+        ws.delete_rows(hits.pop())
+    while len(hits) < len(rows):
+        ws.insert_rows([[''] * width], row=hits[-1] + 1)
+        hits.append(hits[-1] + 1)
+
+    end = gspread.utils.rowcol_to_a1(hits[-1], width)
+    ws.update(f'A{hits[0]}:{end}', rows, value_input_option='USER_ENTERED')
+    return False
 
 
 def _realty_get_or_create_ws(sh, title, rows=200, headers=None):
@@ -2392,17 +2515,17 @@ def _sync_freehold_impl(sh, deal, when):
         if not any(header):
             # Лист завели руками и не заполнили — без шапки строка читалась бы заголовком
             ws.append_row(GSHEET_FREEHOLD_HEADERS, value_input_option='USER_ENTERED')
-        elif header != GSHEET_FREEHOLD_HEADERS:
+        elif GSHEET_FREEHOLD_HEADERS[:len(header)] != header:
             title = f'{title} CRM'
             ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
             created = True
-    row = build_freehold_row(deal)
-    inserted = _realty_upsert(ws, row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+    rows = build_freehold_rows(deal)
+    inserted = _realty_upsert(ws, rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     try:
         _realty_upsert(
             _realty_get_or_create_ws(sh, GSHEET_FREEHOLD_ALL, rows=2000,
                                      headers=GSHEET_FREEHOLD_HEADERS),
-            row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+            rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     except Exception as e:
         print(f'[GSheet freehold] сводный лист: {e}', flush=True)
     return {'ok': True, 'sheet': ws.title, 'sheet_created': created, 'inserted': inserted}
@@ -2427,12 +2550,12 @@ def _sync_realty_deal_impl(deal):
             # Лист месяца есть, но пустой (завели руками и не заполнили) —
             # без шапки строка легла бы в первую строку и читалась как заголовок
             ws.append_row(GSHEET_REALTY_HEADERS, value_input_option='USER_ENTERED')
-        row = build_realty_row(deal)
-        inserted = _realty_upsert(ws, row, deal.id)
+        rows = build_realty_rows(deal)
+        inserted = _realty_upsert(ws, rows, deal.id)
         # Сводный лист — тот же upsert, чтобы правка не плодила дубли
         try:
             _realty_upsert(_realty_get_or_create_ws(sh, GSHEET_REALTY_ALL, rows=2000),
-                           row, deal.id)
+                           rows, deal.id)
         except Exception as e:
             print(f'[GSheet realty] сводный лист: {e}', flush=True)
         return {'ok': True, 'sheet': ws.title, 'sheet_created': created,
@@ -2449,6 +2572,83 @@ def sync_deals_to_gsheet(deals):
         return
     with _gsheet_lock:
         return _sync_deals_to_gsheet_impl(deals)
+
+
+def build_deal_rows(deal, start_num):
+    """Строки листа «общая сделка» для одной сделки — по строке на часть Pay-In.
+
+    Колонки A–R как раньше, S — «часть» (`1/2`, `2/2`; у одноканальной `1/1`).
+    Номер первой строки обычный, дальше `.2`, `.3` — так видно, что строки
+    принадлежат одной сделке, и счётчик остаётся счётчиком сделок.
+
+    Делится всё, что пропорционально приходу: выдача клиенту, выдача в USDT,
+    выплата партнёру, чистая доходность. Приход, метод и хэши идут построчно
+    от самой части. Остальное дублируется.
+
+    У сделки с одним каналом строка получается ровно такой же, как до
+    появления частей, — плюс «1/1» в новой колонке.
+    """
+    parts = _payin_all_parts(deal)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+    single = (n == 1)
+
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    payout_method_str = PAYOUT_METHOD_LABELS.get(
+        deal.payout_method.value if deal.payout_method else '', '')
+    net_profit = (deal.net_profit_usdt
+                  if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
+                  else deal.profit_usdt)
+
+    payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+    payout_currency = (deal.custom_payout_currency or 'thb').lower()
+    payout_usdt = deal.payout_amount_usdt or 0
+
+    thb_split = split_by_payin_share(payout_thb, amounts, digits=0)
+    usdt_split = split_by_payin_share(payout_usdt, amounts)
+    ref_split = split_by_payin_share(deal.referrer_payout_usdt or 0, amounts)
+    net_split = split_by_payin_share(net_profit or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        # Кастомная одночастная сделка сохраняет прежний вид: приход в своей
+        # валюте из custom_*, а не восстановленный из плоских полей
+        if deal.is_custom and single:
+            currency_in = (deal.custom_payin_currency or '').lower()
+            amount_in = deal.custom_payin_amount or 0
+            amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+        elif p['amount_rub']:
+            currency_in, amount_in = 'rub', p['amount_rub']
+            amount_in_usdt = p['amount_usdt']
+        else:
+            currency_in, amount_in = 'usdt', p['amount_usdt']
+            amount_in_usdt = p['amount_usdt']
+
+        method_str = ('кастом' if deal.is_custom
+                      else PAYIN_METHOD_LABELS.get(p['method'], ''))
+
+        rows.append([
+            start_num if i == 0 else f'{start_num}.{i + 1}',       # A: номер
+            (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
+            '',                                                    # C: пусто
+            date_str,                                              # D: дата
+            f'{amount_in:,.2f}' if amount_in else '',              # E: сумма части
+            currency_in,                                           # F: валюта
+            f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',   # G: USDT части
+            int(thb_split[i]) if thb_split[i] else '',             # H: доля выдачи
+            payout_currency,                                       # I: валюта выдачи
+            f'${usdt_split[i]:,.2f}' if usdt_split[i] else '',     # J: доля выдачи USDT
+            '',                                                    # K: брокеру
+            deal.referrer_name or '',                              # L: реферал
+            f'${ref_split[i]:,.2f}' if ref_split[i] else '',       # M: доля партнёру
+            f'${net_split[i]:,.2f}' if net_profit is not None else '',  # N: доля чистой
+            payout_method_str,                                     # O: способ выдачи
+            method_str,                                            # P: метод ЧАСТИ
+            ', '.join(h['hash'] for h in p['tx_hashes']),          # Q: хэши части
+            str(deal.id) if deal.id else '',                       # R: якорь upsert
+            f'{i + 1}/{n}',                                        # S: часть
+        ])
+    return rows
 
 
 def _sync_deals_to_gsheet_impl(deals):
@@ -2472,7 +2672,9 @@ def _sync_deals_to_gsheet_impl(deals):
         deals = list(deals)
         new_deals = []
         for d in deals:
-            existing_row_num = find_deal_row_in_gsheet(ws, all_rows, d)
+            # Тем же поиском, что и перезапись: у многочастной сделки без якоря
+            # он вернёт пусто, и она пойдёт на вставку, а не затрёт чужую строку
+            existing_row_num = find_deal_rows_in_gsheet(all_rows, d)
             if existing_row_num:
                 existing_to_update.append(d)
             else:
@@ -2510,65 +2712,10 @@ def _sync_deals_to_gsheet_impl(deals):
 
         new_rows = []
         for deal in deals:
+            # Номер инкрементируется на СДЕЛКУ, а не на строку: части получают
+            # тот же номер с суффиксом (187, 187.2), счётчик остаётся счётчиком сделок
             last_num += 1
-
-            payin_method_str = PAYIN_METHOD_LABELS.get(
-                deal.payin_method.value if deal.payin_method else '', ''
-            )
-            payout_method_str = PAYOUT_METHOD_LABELS.get(
-                deal.payout_method.value if deal.payout_method else '', ''
-            )
-
-            # Валюта пополнения (кастомные сделки используют custom_* поля)
-            if deal.is_custom:
-                currency_in = (deal.custom_payin_currency or '').lower()
-                amount_in = deal.custom_payin_amount or 0
-                amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-            elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-                currency_in = 'usdt'
-                amount_in = deal.payin_amount_usdt or 0
-                amount_in_usdt = amount_in
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-            else:
-                currency_in = 'rub'
-                amount_in = deal.payin_amount_rub or 0
-                amount_in_usdt = deal.payin_amount_usdt or 0
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-
-            # Значения как числа — Google Sheets сам отформатирует
-            date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-            payout_usdt = deal.payout_amount_usdt or 0
-            tx_hash = ', '.join(_payin_hash_list(deal))
-
-            # Чистая прибыль если есть реферер, иначе обычный profit
-            net_profit = (deal.net_profit_usdt
-                          if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                          else deal.profit_usdt)
-            row = [
-                last_num,                              # A: номер
-                (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
-                '',                                    # C: пусто
-                date_str,                              # D: дата
-                f'{amount_in:,.2f}' if amount_in else '',  # E: сумма получения
-                currency_in,                           # F: валюта
-                f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',  # G: получение в USDT
-                int(payout_thb) if payout_thb else '',  # H: выдача клиенту
-                payout_currency,                       # I: валюта выдачи
-                f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
-                '',                                    # K: брокеру
-                deal.referrer_name or '',              # L: реферал (имя)
-                f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнеру
-                f'${net_profit:,.2f}' if net_profit is not None else '',  # N: чистая доходность
-                payout_method_str,                     # O: способ выдачи
-                payin_method_str if not deal.is_custom else 'кастом',  # P: способ пополнения
-                tx_hash,                               # Q: хеш
-                str(deal.id) if deal.id else '',       # R: служебный deal.id (идемпотентность)
-            ]
-            new_rows.append(row)
+            new_rows.extend(build_deal_rows(deal, last_num))
 
         if new_rows:
             # Находим строку-образец для копирования формата (последняя строка с номером)
@@ -2660,6 +2807,29 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
     return None
 
 
+def find_deal_rows_in_gsheet(all_rows, deal):
+    """Номера ВСЕХ строк сделки (1-indexed), по порядку сверху вниз.
+
+    Основной путь — `deal.id` в колонке R. Фолбэки по «имя + дата» и
+    «дата + сумма USDT» оставлены только для сделок с ОДНОЙ частью: у
+    многочастной в колонке G лежат суммы частей, а фолбэк сравнивает с итогом —
+    своё он не найдёт никогда, зато может совпасть чужая сделка с близкой суммой
+    в тот же день, и снесётся она.
+    """
+    deal_id_str = str(deal.id) if getattr(deal, 'id', None) else ''
+    if deal_id_str:
+        hits = [i + 1 for i, row in enumerate(all_rows)
+                if len(row) >= 18 and str(row[17]).strip() == deal_id_str]
+        if hits:
+            return hits
+
+    if len(_payin_all_parts(deal)) > 1:
+        return []          # вслепую многочастную не ищем
+
+    row_num = find_deal_row_in_gsheet(None, all_rows, deal)
+    return [row_num] if row_num else []
+
+
 def delete_deal_from_gsheet(deal):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
     if getattr(deal, 'is_test', False):
@@ -2669,7 +2839,11 @@ def delete_deal_from_gsheet(deal):
 
 
 def _delete_deal_from_gsheet_impl(deal):
-    """Удаляет строку сделки из Google Sheet"""
+    """Удаляет ВСЕ строки сделки из листа «общая сделка».
+
+    Снизу вверх: после первого delete_rows номера строк ниже съезжают на
+    единицу, и удаление сверху вниз снесло бы соседнюю сделку.
+    """
     try:
         gc = get_gsheet_client()
         if not gc:
@@ -2677,72 +2851,40 @@ def _delete_deal_from_gsheet_impl(deal):
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
-        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-        if row_num:
+        row_nums = find_deal_rows_in_gsheet(all_rows, deal)
+        if not row_nums:
+            print(f'[GSheet] Rows not found for deal #{deal.id} ({deal.client_name})')
+            return
+        for row_num in sorted(row_nums, reverse=True):
             ws.delete_rows(row_num)
-            print(f'[GSheet] Deleted row {row_num} ({deal.client_name})')
-        else:
-            print(f'[GSheet] Row not found for {deal.client_name}')
+        print(f'[GSheet] Deleted {len(row_nums)} row(s) for deal #{deal.id}')
     except Exception as e:
         print(f'[GSheet] Delete error: {e}')
 
 
 def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
-    """Обновляет существующую строку сделки в листе «общая сделка»
-    без проверки reimbursement_id. Используется sync_deals_to_gsheet для
-    идемпотентности."""
-    row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-    if not row_num:
-        return False
-    payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
-    payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
+    """Перезаписывает блок строк сделки в листе «общая сделка» без проверки
+    reimbursement_id. Используется sync_deals_to_gsheet для идемпотентности.
 
-    if deal.is_custom:
-        currency_in = (deal.custom_payin_currency or '').lower()
-        amount_in = deal.custom_payin_amount or 0
-        amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-        currency_in = 'usdt'
-        amount_in = deal.payin_amount_usdt or 0
-        amount_in_usdt = amount_in
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    else:
-        currency_in = 'rub'
-        amount_in = deal.payin_amount_rub or 0
-        amount_in_usdt = deal.payin_amount_usdt or 0
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-    payout_usdt = deal.payout_amount_usdt or 0
-    existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
-    net_profit = (deal.net_profit_usdt
-                  if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                  else deal.profit_usdt)
-    row = [
-        existing_num,
-        (deal.client.name if deal.client else deal.client_name) or '',
-        '',
-        date_str,
-        f'{amount_in:,.2f}' if amount_in else '',
-        currency_in,
-        f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
-        int(payout_thb) if payout_thb else '',
-        payout_currency,
-        f'${payout_usdt:,.2f}' if payout_usdt else '',
-        '',
-        deal.referrer_name or '',  # L: реферал (имя)
-        f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
-        f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
-        payout_method_str,  # O
-        payin_method_str if not deal.is_custom else 'кастом',  # P
-        ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
-        str(deal.id) if deal.id else '',  # R: служебный deal.id (проставляем и легаси-строкам)
-    ]
-    ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
-    print(f'[GSheet] Force-updated row {row_num} for deal #{deal.id}')
+    Число частей могло измениться с прошлой выгрузки, поэтому блок сначала
+    выравнивается по длине: лишние строки удаляются снизу вверх, недостающие
+    вставляются. Без этого ws.update затёр бы соседнюю сделку.
+    """
+    row_nums = find_deal_rows_in_gsheet(all_rows, deal)
+    if not row_nums:
+        return False
+    existing_num = all_rows[row_nums[0] - 1][0] if all_rows[row_nums[0] - 1] else ''
+    rows = build_deal_rows(deal, existing_num or (deal.id or ''))
+
+    while len(row_nums) > len(rows):
+        ws.delete_rows(row_nums.pop())
+    while len(row_nums) < len(rows):
+        ws.insert_rows([[''] * len(rows[0])], row=row_nums[-1] + 1)
+        row_nums.append(row_nums[-1] + 1)
+
+    ws.update(values=rows, range_name=f'A{row_nums[0]}:S{row_nums[-1]}',
+              value_input_option='USER_ENTERED')
+    print(f'[GSheet] Force-updated {len(rows)} row(s) for deal #{deal.id}')
     return True
 
 
@@ -2755,7 +2897,12 @@ def update_deal_in_gsheet(deal):
 
 
 def _update_deal_in_gsheet_impl(deal):
-    """Обновляет строку сделки в Google Sheet (только если возмещена)"""
+    """Обновляет строки сделки в Google Sheet (только если возмещена).
+
+    Сборка строк — общая с _force_update_deal_row_in_gsheet: раньше здесь
+    лежала её копия, и любая правка формата требовала синхронной правки в двух
+    местах. Заодно отсюда приезжает выравнивание блока по числу частей.
+    """
     if deal.reimbursement_id is None:
         return
     try:
@@ -2765,66 +2912,8 @@ def _update_deal_in_gsheet_impl(deal):
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
-        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-        if not row_num:
+        if not _force_update_deal_row_in_gsheet(ws, all_rows, deal):
             print(f'[GSheet] Row not found for update: {deal.client_name}')
-            return
-
-        payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
-        payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
-
-        # Кастомные сделки используют custom_* поля
-        if deal.is_custom:
-            currency_in = (deal.custom_payin_currency or '').lower()
-            amount_in = deal.custom_payin_amount or 0
-            amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-        elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-            currency_in = 'usdt'
-            amount_in = deal.payin_amount_usdt or 0
-            amount_in_usdt = amount_in
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-        else:
-            currency_in = 'rub'
-            amount_in = deal.payin_amount_rub or 0
-            amount_in_usdt = deal.payin_amount_usdt or 0
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-
-        date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-        payout_usdt = deal.payout_amount_usdt or 0
-
-        # Сохраняем номер из колонки A (не перезаписываем)
-        existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
-        net_profit = (deal.net_profit_usdt
-                      if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                      else deal.profit_usdt)
-
-        row = [
-            existing_num,
-            (deal.client.name if deal.client else deal.client_name) or '',
-            '',
-            date_str,
-            f'{amount_in:,.2f}' if amount_in else '',
-            currency_in,
-            f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
-            int(payout_thb) if payout_thb else '',
-            payout_currency,
-            f'${payout_usdt:,.2f}' if payout_usdt else '',
-            '',
-            deal.referrer_name or '',  # L: реферал (имя)
-            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
-            f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
-            payout_method_str,  # O
-            payin_method_str if not deal.is_custom else 'кастом',  # P
-            ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
-            str(deal.id) if deal.id else '',  # R: служебный deal.id
-        ]
-
-        ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
-        print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
 
@@ -2972,6 +3061,28 @@ def delete_referrer_reward_from_gsheet(deal):
         print(f'[GSheet] Referrer delete error: {e}')
 
 
+def _payin_parts_block(deal):
+    """Блок «— Приход —» для уведомлений. Пусто у сделки с одним каналом.
+
+    Один и тот же во всех трёх шаблонах: получатель должен видеть, откуда
+    сложился приход, независимо от типа сделки.
+    """
+    parts = _payin_all_parts(deal)
+    if len(parts) < 2:
+        return ''
+    out = f"\n— Приход ({len(parts)}) —"
+    for p in parts:
+        name = PAYIN_METHOD_LABELS.get(p['method'], p['method'] or '—')
+        if p['partner_name']:
+            name += f" {p['partner_name']}"
+        if p['amount_rub'] and p['rate_rub_usdt']:
+            out += (f"\n• {name} · {p['amount_rub']:,.0f} ₽ @ {p['rate_rub_usdt']:.4f}"
+                    f" → ${p['amount_usdt']:,.2f}")
+        else:
+            out += f"\n• {name} → ${p['amount_usdt']:,.2f}"
+    return out
+
+
 def _mf_realty_telegram_text(deal):
     """Текст уведомления по сделке через MF Corp.
 
@@ -2986,7 +3097,8 @@ def _mf_realty_telegram_text(deal):
     msg = (
         f"🏠 <b>Недвижимость {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
-        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
+        f"{_payin_parts_block(deal)}\n"
         f"Отправлено в MF Corp: {deal.company_sent_thb or 0:,.0f} ฿ "
         f"(${deal.payout_amount_usdt or 0:,.2f})\n"
         f"— инвойс застройщику: {deal.invoice_amount_thb or 0:,.0f} ฿\n"
@@ -3044,7 +3156,8 @@ def _mf_freehold_telegram_text(deal):
     msg = (
         f"🏠 <b>Фрихолд {deal.id} — {client} — {date_str}</b>\n"
         f"{deal.realty_purpose or ''}\n"
-        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}\n"
+        f"Приход: ${deal.payin_amount_usdt or 0:,.2f}"
+        f"{_payin_parts_block(deal)}\n"
         f"Отправлено: ${sent:,.2f}\n"
         f"— комиссия за перевод: ${fee:,.2f} "
         f"({deal.transfer_fee_percent or 0:.2f}% + ${deal.transfer_fee_fixed_usd or 0:,.0f})\n"
@@ -3136,9 +3249,19 @@ def _send_deal_telegram(deal):
     elif deal.payout_source == PayOutSource.CASH_BATCH:
         source_note = ' · из кассы'
 
+    # При смешанных валютах частей строка «Получено» в рублях занижает — у
+    # крипто-части рублей нет. Тогда печатаем итог в USDT, разбивка идёт ниже.
+    _parts = _payin_all_parts(deal)
+    _mixed = len(_parts) > 1 and any(
+        bool(p['amount_rub']) != bool(_parts[0]['amount_rub']) for p in _parts)
+    received_line = (f"Получено: ${amount_in_usdt:,.2f} (несколько каналов)"
+                     if _mixed
+                     else f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})")
+
     msg = (
         f"✅ <b>Сделка {deal.id} — {(deal.client.name if deal.client else deal.client_name) or 'без имени'} — {date_str}</b>\n"
-        f"Получено: {amount_in:,.2f} {currency} (${amount_in_usdt:,.2f})\n"
+        f"{received_line}"
+        f"{_payin_parts_block(deal)}\n"
         f"Выдано: {payout_val:,} {payout_cur} (${payout_usdt:,.2f}){source_note}\n"
         f"Прибыль: ${profit:,.2f}"
     )
@@ -3202,6 +3325,8 @@ def send_deal_completed_webhook(deal):
 # ==================== CALCULATOR IMPORTS ====================
 from calculator import (ExchangeRateProvider, ExchangeCalculator, playwright_queue,
                         WITHDRAWAL_PCT_BINANCE, WITHDRAWAL_PCT_BITAZZA, WITHDRAWAL_FIXED_THB)
+# Курс партнёрских ссылок — другие рельсы (Rapira + Bitazza), не путать с calculator
+import partner_rates
 
 # ==================== AUTH ====================
 
@@ -4355,6 +4480,182 @@ def _normalize_tx_hashes(raw):
     return out
 
 
+def _normalize_payin_extra(raw):
+    """Дополнительные приходы → список частей одного формата.
+
+    Часть без суммы USDT выбрасывается: строка без денег ничего не описывает,
+    а в выгрузке дала бы пустую строку с чужой долей. Неизвестный метод тоже
+    выбрасываем — на нём упал бы лейбл в Sheet и в Telegram.
+
+    Курс считается из рублей, если его не прислали: форма умеет вводить в обе
+    стороны, интеграции могут прислать только рубли и USDT.
+    """
+    out = []
+    for item in (raw or []):
+        if not isinstance(item, dict):
+            continue
+        method = str(item.get('method') or '').strip()
+        if method not in PAYIN_METHOD_LABELS:
+            continue
+        try:
+            usdt = float(item.get('amount_usdt'))
+        except (TypeError, ValueError):
+            continue
+        if usdt <= 0:
+            continue
+
+        def _pos(key):
+            try:
+                v = float(item.get(key))
+            except (TypeError, ValueError):
+                return None
+            return v if v > 0 else None
+
+        rub = _pos('amount_rub')
+        rate = _pos('rate_rub_usdt')
+        if rub and not rate:
+            rate = round(rub / usdt, 6)
+        out.append({
+            'method': method,
+            'amount_rub': rub,
+            'rate_rub_usdt': rate,
+            'amount_usdt': round(usdt, 6),
+            'partner_name': (str(item.get('partner_name') or '').strip() or None),
+            'tx_hashes': _normalize_tx_hashes(item.get('tx_hashes')),
+            'sber_uuids': [str(u) for u in (item.get('sber_uuids') or []) if u],
+            'note': str(item.get('note') or '').strip(),
+        })
+    return out
+
+
+def _payin_extra_list(deal):
+    """Дополнительные приходы сделки. Битый JSON = пустой список, не падаем."""
+    if not deal.payin_extra:
+        return []
+    try:
+        parsed = json.loads(deal.payin_extra)
+    except (ValueError, TypeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _payin_all_parts(deal):
+    """Все части прихода, первая — основная, из плоских payin_* полей.
+
+    Основная часть отдельно НЕ хранится: плоские поля после сохранения содержат
+    агрегаты, поэтому её суммы восстанавливаются вычитанием дополнительных.
+    Так у выгрузки и уведомлений один формат, и они не знают про асимметрию.
+    """
+    extra = _payin_extra_list(deal)
+    main_usdt = round((deal.payin_amount_usdt or 0)
+                      - sum(p.get('amount_usdt') or 0 for p in extra), 6)
+    main_rub = round((deal.payin_amount_rub or 0)
+                     - sum(p.get('amount_rub') or 0 for p in extra), 6)
+    main = {
+        'method': deal.payin_method.value if deal.payin_method else '',
+        'amount_rub': main_rub if main_rub > 0 else None,
+        'rate_rub_usdt': (round(main_rub / main_usdt, 6)
+                          if main_rub > 0 and main_usdt > 0 else None),
+        'amount_usdt': main_usdt,
+        'partner_name': deal.payin_partner_name or None,
+        'tx_hashes': _normalize_tx_hashes(
+            json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []),
+        'sber_uuids': [],
+        'note': '',
+    }
+    return [main] + extra
+
+
+def split_by_payin_share(total, part_amounts, digits=2):
+    """Делит число по долям приходов частей. Только для выгрузки — в БД доли
+    не хранятся.
+
+    Остаток округления добирает ПОСЛЕДНЯЯ часть: иначе сумма строк разойдётся
+    с итогом сделки на копейки и лист перестанет сходиться при сверке месяца.
+    """
+    n = len(part_amounts)
+    if not n:
+        return []
+    total = float(total or 0)
+    denom = sum(float(a or 0) for a in part_amounts)
+    out, acc = [], 0.0
+    for a in part_amounts[:-1]:
+        v = round(total * float(a or 0) / denom, digits) if denom else 0.0
+        out.append(v)
+        acc += v
+    out.append(round(total - acc, digits))
+    return out
+
+
+def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
+    """Пишет дополнительные приходы и пересчитывает агрегаты в плоских полях.
+
+    main_usdt / main_rub — суммы ОСНОВНОЙ части, передаются явно. Брать их из
+    deal.payin_amount_* нельзя: там уже агрегат, и повторный вызов прибавил бы
+    дополнительные части второй раз.
+
+    Хэши и uuid'ы приходов Сбера сливаются в payin_tx_hashes / payin_parts —
+    на этом стоит защита от двойного учёта (get_used_transaction_hashes и
+    _sync_sber_claims), и она продолжает работать без правок.
+    """
+    extra = _normalize_payin_extra(raw_extra)
+    deal.payin_extra = json.dumps(extra, ensure_ascii=False) if extra else None
+
+    main_usdt = float(main_usdt or 0)
+    main_rub = float(main_rub or 0)
+
+    deal.payin_amount_usdt = round(
+        main_usdt + sum(p['amount_usdt'] for p in extra), 6) or None
+    total_rub = round(main_rub + sum(p['amount_rub'] or 0 for p in extra), 6)
+    deal.payin_amount_rub = total_rub or None
+
+    # Средневзвешенный курс — только по рублёвым частям. Курс первой части
+    # разошёлся бы с итогом: 800 000 / 86.7052 = 9 226.67 при приходе 9 285.36.
+    rub_usdt = main_usdt if main_rub else 0.0
+    rub_usdt += sum(p['amount_usdt'] for p in extra if p['amount_rub'])
+    deal.payin_rate_rub_usdt = (round(total_rub / rub_usdt, 6)
+                                if (total_rub and rub_usdt) else None)
+
+    # Метод крупнейшей части: его читают Битрикс, фильтры списка и DealCloser
+    if extra:
+        biggest = max(extra, key=lambda p: p['amount_usdt'])
+        if biggest['amount_usdt'] > main_usdt:
+            try:
+                deal.payin_method = PayInMethod(biggest['method'])
+            except ValueError:
+                pass
+
+    # Слияние хэшей: без него приход дополнительной части можно списать второй раз
+    merged_hashes = list(_normalize_tx_hashes(
+        json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []))
+    seen = {h['hash'] for h in merged_hashes}
+    for p in extra:
+        for h in p['tx_hashes']:
+            if h['hash'] not in seen:
+                seen.add(h['hash'])
+                merged_hashes.append(h)
+    if merged_hashes:
+        _apply_payin_tx_hashes(deal, merged_hashes)
+
+    # Слияние приходов Сбера: _sync_sber_claims забирает их из пула по payin_parts
+    extra_uuids = [u for p in extra for u in p['sber_uuids']]
+    if extra_uuids:
+        base = []
+        if deal.payin_parts:
+            try:
+                base = json.loads(deal.payin_parts) or []
+            except (ValueError, TypeError):
+                base = []
+        known = {str(x.get('uuid')) for x in base if isinstance(x, dict) and x.get('uuid')}
+        for uid in extra_uuids:
+            if uid not in known:
+                known.add(uid)
+                base.append({'uuid': uid, 'amount_rub': None, 'payer': '',
+                             'date': '', 'note': 'доп. приход'})
+        deal.payin_parts = json.dumps(base, ensure_ascii=False)
+        _sync_sber_claims(session, deal, base)
+
+
 def _normalize_payout_transfers(raw):
     """Переводы отправки → [{'hash','amount_usdt','to_address','date'}].
 
@@ -4682,6 +4983,14 @@ def create_deal():
         if data.get('payin_parts'):
             _sync_sber_claims(session, deal, data['payin_parts'])
 
+        # Дополнительные приходы: плоские поля выше приняли суммы ОСНОВНОЙ части,
+        # здесь они превращаются в агрегаты по всей сделке. Должно идти ДО
+        # пересчёта финансов — прибыль и выплаты считаются от итогового прихода.
+        if data.get('payin_extra'):
+            _apply_payin_extra(session, deal, data['payin_extra'],
+                               main_usdt=data.get('payin_amount_usdt'),
+                               main_rub=data.get('payin_amount_rub'))
+
         # Пересчёт выплаты рефереру и чистой прибыли (фронт мог не знать
         # об авто-привязке реферера к клиенту и прислать referrer_payout_usdt=null)
         # Для отказа и «не обращения» финансов нет — пропускаем пересчёт и агентов.
@@ -4830,6 +5139,22 @@ def update_deal(deal_id):
         # Приход крипты частями: пустой список = вернуться к одиночному хэшу из формы
         if 'payin_tx_hashes' in data:
             _apply_payin_tx_hashes(deal, data.get('payin_tx_hashes'))
+
+        # Дополнительные приходы. Суммы основной части вычисляем ДО записи
+        # агрегатов: если поле не пришло в payload, восстанавливаем её вычитанием
+        # СТАРЫХ дополнительных из сохранённого итога — иначе приход поедет вверх
+        # на каждом PUT без payin_extra (интеграции их не шлют).
+        if 'payin_extra' in data or deal.payin_extra:
+            old_extra = _payin_extra_list(deal)
+            old_usdt = sum(p.get('amount_usdt') or 0 for p in old_extra)
+            old_rub = sum(p.get('amount_rub') or 0 for p in old_extra)
+            main_usdt = (data['payin_amount_usdt'] if 'payin_amount_usdt' in data
+                         else round((deal.payin_amount_usdt or 0) - old_usdt, 6))
+            main_rub = (data['payin_amount_rub'] if 'payin_amount_rub' in data
+                        else round((deal.payin_amount_rub or 0) - old_rub, 6))
+            _apply_payin_extra(session, deal,
+                               data.get('payin_extra', old_extra),
+                               main_usdt=main_usdt, main_rub=main_rub)
 
         # Пересчёт needs_reimbursement если не передан явно, но изменился payout_amount_thb
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
@@ -9302,6 +9627,9 @@ def referrer_stats(token):
             'default_percent': referrer.default_percent,
             'comp_model': referrer.comp_model or 'revshare',
             'markup_percent': referrer.markup_percent or 0.0,
+            'can_create_links': bool(referrer.can_create_links),
+            'link_logo_url': referrer.link_logo_url,
+            'link_description': referrer.link_description,
             'total_referred_clients': referred_clients,
             'clients_with_deals': clients_with_deals,
             'conversion_rate': conversion_rate,
@@ -9343,6 +9671,84 @@ def ref_payout_quote(token):
         pending, _ = _referrer_balance(db, referrer)
         quote = thb_payout_quote(pending) if pending >= 20 else None
         return jsonify({'success': True, 'usdt': pending, 'quote': quote})
+    finally:
+        db.close()
+
+
+def _link_partner_or_error(db, token):
+    """(referrer, None) если партнёру можно делать ссылки, иначе (None, ответ с ошибкой).
+
+    Флаг проверяется на сервере в каждом эндпоинте ссылок, а не только в UI.
+    """
+    referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+    if not referrer:
+        return None, (jsonify({'success': False, 'error': 'Реферер не найден'}), 404)
+    if not ref_session_authorized(referrer, token):
+        return None, (jsonify({'success': False, 'auth_required': True,
+                               'error': 'Требуется вход через Telegram'}), 401)
+    if not referrer.can_create_links:
+        return None, (jsonify({'success': False, 'error': 'Создание ссылок не подключено'}), 403)
+    # Второй рубеж: даже с поднятым флагом в режиме link кабинет открывает любой,
+    # у кого есть URL с токеном, — платежи от нашего имени так отдавать нельзя.
+    # Флаг мог быть выставлен в обход PUT (миграция, ручной UPDATE), поэтому проверяем здесь.
+    local_stand = os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL
+    if (referrer.auth_mode or 'link') != 'telegram' and not local_stand:
+        return None, (jsonify({'success': False,
+                               'error': 'Нужен вход через Telegram'}), 403)
+    return referrer, None
+
+
+LINK_MIN_RUB, LINK_MAX_RUB = 1000, 1_000_000
+
+
+@app.route('/api/ref/<token>/links/quote', methods=['POST'])
+def ref_link_quote(token):
+    """Котировка платёжной ссылки: партнёр вводит сумму в ₽ или ฿, курс считает сервер.
+
+    Цифрам из браузера не верим — принимаем только сумму и валюту ввода.
+    Наружу отдаём суммы, курс и вознаграждение партнёра; наша прибыль
+    и курсы закупки остаются внутри.
+    """
+    data = request.get_json() or {}
+    db = get_session()
+    try:
+        referrer, err = _link_partner_or_error(db, token)
+        if err:
+            return err
+
+        currency = (data.get('currency') or 'THB').strip().upper()
+        if currency not in ('RUB', 'THB'):
+            return jsonify({'success': False, 'error': 'Валюта: RUB или THB'}), 400
+        try:
+            amount = float(data.get('amount') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Некорректная сумма'}), 400
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'Сумма должна быть больше нуля'}), 400
+
+        try:
+            q = partner_rates.quote(
+                thb_amount=amount if currency == 'THB' else None,
+                rub_amount=amount if currency == 'RUB' else None,
+                base_markup=referrer.link_base_markup_percent,
+                partner_markup=referrer.link_markup_percent or 0.0,
+                partner_revshare=referrer.link_revshare_percent or 0.0)
+        except partner_rates.RateError as e:
+            return jsonify({'success': False, 'error': str(e)}), 503
+
+        if not (LINK_MIN_RUB <= q['amount_rub'] <= LINK_MAX_RUB):
+            return jsonify({'success': False,
+                            'error': f'Сумма вне лимитов: {LINK_MIN_RUB:,} – {LINK_MAX_RUB:,} ₽'
+                                     .replace(',', ' ')}), 400
+
+        return jsonify({'success': True, 'quote': {
+            'amount_rub': q['amount_rub'],
+            'amount_thb': q['amount_thb'],
+            'rate': q['rate'],
+            'reward_usdt': q['partner_usdt'],
+            'reward_thb': q['partner_thb'],
+            'expires_in': 900,
+        }})
     finally:
         db.close()
 
@@ -9918,6 +10324,26 @@ def update_referrer(referrer_id):
             referrer.total_paid_usdt = parse_float(data.get('total_paid_usdt'))
         if 'auth_mode' in data:
             referrer.auth_mode = 'telegram' if data['auth_mode'] == 'telegram' else 'link'
+        # Настройки платёжных ссылок
+        if 'can_create_links' in data:
+            want = bool(data['can_create_links'])
+            # В режиме link кабинет пускает любого, у кого есть URL с токеном, а тут
+            # создаются платежи от нашего имени. Пока нет своего логина — только TG.
+            if want and (referrer.auth_mode or 'link') != 'telegram':
+                return jsonify({'success': False,
+                                'error': 'Ссылки можно включить только при входе через Telegram'}), 400
+            referrer.can_create_links = want
+        if 'link_base_markup_percent' in data:
+            raw = data['link_base_markup_percent']
+            referrer.link_base_markup_percent = None if raw in (None, '') else float(raw)
+        if 'link_markup_percent' in data:
+            referrer.link_markup_percent = float(data['link_markup_percent'] or 0)
+        if 'link_revshare_percent' in data:
+            referrer.link_revshare_percent = float(data['link_revshare_percent'] or 0)
+        if 'link_logo_url' in data:
+            referrer.link_logo_url = (data['link_logo_url'] or '').strip() or None
+        if 'link_description' in data:
+            referrer.link_description = (data['link_description'] or '').strip()[:200] or None
 
         db.commit()
         return jsonify({'success': True, 'referrer': referrer.to_dict()})

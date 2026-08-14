@@ -245,7 +245,7 @@ class TestPreviewAndExport:
                  net_profit_usdt=5089.62,
                  payin_tx_hashes=json.dumps([{'hash': 'in1', 'amount_usdt': PAYIN}]),
                  payout_tx_hashes=json.dumps(CLOVER_PARTS))
-        row = dict(zip(A.GSHEET_REALTY_HEADERS, A.build_realty_row(d)))
+        row = dict(zip(A.GSHEET_REALTY_HEADERS, A.build_realty_rows(d)[0]))
         assert row['хеш транзакции'].startswith('h0, h1')
         assert 'in1' not in row['хеш транзакции']
 
@@ -256,7 +256,7 @@ class TestPreviewAndExport:
                  company_sent_thb=16893081.60, company_fee_thb=150681.60,
                  company_fee_usdt=4538.60, payout_amount_usdt=508827.76,
                  payin_tx_hashes=json.dumps([{'hash': 'in1', 'amount_usdt': PAYIN}]))
-        row = dict(zip(A.GSHEET_REALTY_HEADERS, A.build_realty_row(d)))
+        row = dict(zip(A.GSHEET_REALTY_HEADERS, A.build_realty_rows(d)[0]))
         assert row['хеш транзакции'] == 'in1'
 
 
