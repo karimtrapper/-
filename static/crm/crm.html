@@ -5581,7 +5581,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function payinExtraAdd() {
             payinExtra.push({ method: 'crypto_direct', amount_rub: null,
                               rate_rub_usdt: null, amount_usdt: null,
-                              partner_name: '', tx_hash: '', note: '', _mode: 'rate' });
+                              partner_name: '', tx_hash: '', note: '', _mode: 'rate',
+                              sber_parts: [] });
             payinExtraRender();
         }
 
@@ -5592,9 +5593,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // парное поле правим точечно по id, сводку пересчитываем.
         // Перерисовка — только на структурных изменениях (добавили, убрали,
         // сменили метод, выбрали хэш).
+        // Поля частей текстовые (type=number терял «86.» на середине ввода),
+        // поэтому разбираем сами: запятая как разделитель и пробелы-разряды
+        function peNum(v) {
+            const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+            return isNaN(n) || n <= 0 ? null : n;
+        }
+
         function payinExtraSet(i, field, value) {
             const num = ['amount_rub', 'rate_rub_usdt', 'amount_usdt'].includes(field);
-            payinExtra[i][field] = num ? (parseFloat(value) || null) : value;
+            payinExtra[i][field] = num ? peNum(value) : value;
 
             const p = payinExtra[i];
             const put = (name, val) => {
@@ -5622,6 +5630,58 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Смена метода меняет набор полей — тут перерисовка нужна
         function payinExtraSetMethod(i, value) {
             payinExtra[i].method = value;
+            // Уходим со сберовского метода — забранные приходы надо отпустить,
+            // иначе они остались бы занятыми за сделкой, которая их не использует
+            if (!methodUsesSberPool(value)) payinExtra[i].sber_parts = [];
+            payinExtraRender();
+            // Пул мог быть не загружен: основной метод не сберовский, а часть — да
+            if (methodUsesSberPool(value) && !sberIncomesCache.length) sberLoadIncomes();
+        }
+
+        // Приходы Сбера, занятые где-либо в этой форме: основной блок + все части
+        function payinSberTakenUuids(exceptIndex) {
+            const taken = new Set(sberParts.filter(p => p.uuid).map(p => p.uuid));
+            payinExtra.forEach((p, i) => {
+                if (i === exceptIndex) return;
+                (p.sber_parts || []).forEach(x => x.uuid && taken.add(x.uuid));
+            });
+            return taken;
+        }
+
+        function payinExtraSberAdd(i, uuid) {
+            const inc = sberIncomesCache.find(x => x.uuid === uuid);
+            const part = payinExtra[i];
+            if (!inc || (part.sber_parts || []).some(x => x.uuid === uuid)) return;
+            // Как в основном блоке: в сделку идёт то, что заплатил КЛИЕНТ.
+            // У эквайринга на счёт падает меньше — банк снимает комиссию сразу
+            part.sber_parts = part.sber_parts || [];
+            part.sber_parts.push({
+                uuid: inc.uuid, amount_rub: inc.gross_rub ?? inc.amount_rub,
+                payer: inc.payer || '', date: (inc.operation_date || '').substring(0, 10),
+                kind: inc.kind || 'transfer', fee_rub: inc.fee_rub || 0,
+                net_rub: inc.amount_rub,
+            });
+            payinExtraSberSync(i);
+        }
+
+        function payinExtraSberRemove(i, k) {
+            payinExtra[i].sber_parts.splice(k, 1);
+            payinExtraSberSync(i);
+        }
+
+        // Рубли части = сумма забранных приходов. Поле остаётся редактируемым:
+        // часть суммы могла прийти мимо выписки, менеджер дополнит руками
+        function payinExtraSberSync(i) {
+            const part = payinExtra[i];
+            const sum = (part.sber_parts || []).reduce((s, x) => s + (+x.amount_rub || 0), 0);
+            if (sum > 0) {
+                part.amount_rub = +sum.toFixed(2);
+                if (part._mode === 'usdt' && part.amount_usdt) {
+                    part.rate_rub_usdt = +(part.amount_rub / part.amount_usdt).toFixed(4);
+                } else if (part.rate_rub_usdt) {
+                    part.amount_usdt = +(part.amount_rub / part.rate_rub_usdt).toFixed(4);
+                }
+            }
             payinExtraRender();
         }
 
@@ -5645,13 +5705,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         ${isCrypto ? '' : `
-                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                        <input type="text" inputmode="decimal" class="form-control" style="max-width:150px;"
                             placeholder="Сумма RUB" value="${p.amount_rub ?? ''}"
                             id="pe-${i}-rub" oninput="payinExtraSet(${i}, 'amount_rub', this.value)">
-                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                        <input type="text" inputmode="decimal" class="form-control" style="max-width:150px;"
                             placeholder="Курс RUB/USDT" value="${p.rate_rub_usdt ?? ''}"
                             id="pe-${i}-rate" oninput="payinExtraSet(${i}, 'rate_rub_usdt', this.value)">`}
-                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                        <input type="text" inputmode="decimal" class="form-control" style="max-width:150px;"
                             placeholder="Пришло USDT" value="${p.amount_usdt ?? ''}"
                             id="pe-${i}-usdt" oninput="payinExtraSet(${i}, 'amount_usdt', this.value)">
                         ${isCash ? `
@@ -5659,6 +5719,28 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             placeholder="Партнёр" value="${p.partner_name || ''}"
                             id="pe-${i}-partner" oninput="payinExtraSet(${i}, 'partner_name', this.value)">` : ''}
                     </div>
+                    ${methodUsesSberPool(p.method) ? `
+                    <div style="margin-top:8px;padding:8px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;">
+                        <div style="font-size:12px;font-weight:700;color:#0369a1;margin-bottom:6px;">🏦 Приходы Сбера</div>
+                        ${(p.sber_parts || []).map((x, k) => `
+                            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;background:white;border:1px solid #bae6fd;border-radius:6px;margin-bottom:4px;font-size:13px;gap:8px;">
+                                <span>${x.kind === 'acquiring' ? '📲' : '🏦'} <b>${rub2(x.amount_rub)} ₽</b>${x.kind === 'acquiring'
+                                    ? ` <span style="color:#64748b;">(на счёт ${rub2(x.net_rub)} + комиссия ${rub2(x.fee_rub)})</span>`
+                                    : (x.payer ? ' · ' + escapeHtml(x.payer) : '')}${x.date ? ' · ' + x.date : ''}</span>
+                                <span onclick="payinExtraSberRemove(${i}, ${k})" style="cursor:pointer;color:#ef4444;font-weight:700;padding:0 4px;">✕</span>
+                            </div>`).join('')}
+                        ${(() => {
+                            const taken = payinSberTakenUuids(i);
+                            const own = new Set((p.sber_parts || []).map(x => x.uuid));
+                            const free = sberIncomesCache.filter(x => !taken.has(x.uuid) && !own.has(x.uuid));
+                            if (!free.length) return '<div style="color:#94a3b8;font-size:12px;padding:2px;">Нет незабранных приходов</div>';
+                            return free.map(x => `
+                                <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
+                                    <span>${sberIncomeLine(x)}</span>
+                                    <button type="button" class="btn btn-success btn-sm" onclick="payinExtraSberAdd(${i}, '${escapeHtml(x.uuid)}')">Забрать</button>
+                                </div>`).join('');
+                        })()}
+                    </div>` : ''}
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center;">
                         ${(() => {
                             const used = payinUsedHashes();
@@ -5704,7 +5786,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     partner_name: p.partner_name || null,
                     tx_hashes: p.tx_hash ? [{ hash: p.tx_hash.trim(),
                                               amount_usdt: p.amount_usdt }] : [],
-                    sber_uuids: [],
+                    sber_uuids: (p.sber_parts || []).map(x => x.uuid).filter(Boolean),
                     note: p.note || '',
                 }));
         }
@@ -5849,6 +5931,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 sberIncomesCache = data.incomes || [];
             } catch (e) { sberIncomesCache = []; }
             sberRender();
+            // Части тоже показывают пул — список приезжает асинхронно, позже них
+            if (typeof payinExtraRender === 'function' && payinExtra.length) payinExtraRender();
         }
 
         function sberAddIncome(uuid) {
