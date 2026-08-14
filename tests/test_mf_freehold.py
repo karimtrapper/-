@@ -396,7 +396,8 @@ class TestExport:
         assert row[0] == 'Layan Green Park B12'
         assert row[7] == '39010.91'          # инвойс застройщику
         assert row[8] == '39373.0'           # отправлено
-        assert row[-1] == str(deal.id)       # CRM ID — якорь upsert
+        assert row[-2] == str(deal.id)       # CRM ID — предпоследняя, за ней «часть»
+        assert row[-1] == '1/1'
 
     def test_upsert_by_crm_id(self, monkeypatch):
         sheet = FakeSheet()

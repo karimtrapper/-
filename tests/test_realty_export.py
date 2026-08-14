@@ -147,10 +147,10 @@ class TestMonthSheet:
 
 class TestRow:
     def test_row_length_matches_headers(self):
-        assert len(A.build_realty_row(make_deal())) == len(GSHEET_REALTY_HEADERS)
+        assert len(A.build_realty_rows(make_deal())[0]) == len(GSHEET_REALTY_HEADERS)
 
     def test_key_columns(self):
-        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_row(make_deal())))
+        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_rows(make_deal())[0]))
         assert row['Назанчение'] == 'Clover Residence B22'
         assert row['дата'] == '04.08.2026'
         assert row['направление'] == 'usdt-thb'
@@ -167,12 +167,12 @@ class TestRow:
 
     def test_percent_as_fraction(self):
         """Процент отдаём долей — лист форматирует его как проценты."""
-        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_row(make_deal())))
+        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_rows(make_deal())[0]))
         assert abs(row['процент на тайскую компанию'] - 0.009) < 1e-6
 
     def test_hashes_joined(self):
         d = make_deal(payin_tx_hashes='[{"hash": "aa", "amount_usdt": 1}, {"hash": "bb"}]')
-        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_row(d)))
+        row = dict(zip(GSHEET_REALTY_HEADERS, A.build_realty_rows(d)[0]))
         assert row['хеш транзакции'] == 'aa, bb'
 
 
@@ -189,7 +189,8 @@ class TestSync:
         assert r['sheet_created'] is True
         ws = fake_sheet.worksheet('август leasehold')
         assert ws.rows[0] == GSHEET_REALTY_HEADERS
-        assert ws.rows[1][-1] == '999'
+        assert ws.rows[1][-2] == '999'
+        assert ws.rows[1][-1] == '1/1'
 
     def test_upsert_updates_instead_of_duplicating(self, fake_sheet):
         A.sync_realty_deal_to_gsheet(make_deal())
@@ -206,7 +207,8 @@ class TestSync:
         A.sync_realty_deal_to_gsheet(make_deal())
         ws = sheet.worksheet('август leasehold')
         assert ws.rows[0] == GSHEET_REALTY_HEADERS
-        assert ws.rows[1][-1] == '999'
+        assert ws.rows[1][-2] == '999'
+        assert ws.rows[1][-1] == '1/1'
 
     def test_second_deal_appends(self, fake_sheet):
         A.sync_realty_deal_to_gsheet(make_deal())

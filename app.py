@@ -2213,7 +2213,7 @@ GSHEET_REALTY_HEADERS = [
     'процент на тайскую компанию', 'отправлено на компанию в thb',
     'Доход в бата тайской компании', 'доход Катики в батах ', 'доход Катики в usdt ',
     'доход', 'выплата агенту', 'доход в usdt на кошельке', 'чистый доход',
-    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID', 'часть',
 ]
 # Фрихолд — свой набор колонок: карман один, зато есть расход на перевод и
 # сумма, которая реально дойдёт до застройщика. Лист «<месяц> freehold».
@@ -2223,8 +2223,11 @@ GSHEET_FREEHOLD_HEADERS = [
     'от кого', 'приход usdt', 'инвойс застройщику usd', 'отправлено usd',
     'комиссия за перевод %', 'фикс за перевод usd', 'комиссия за перевод usd',
     'дойдёт застройщику usd', 'доход', 'выплата агенту', 'чистый доход',
-    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID',
+    'инвойс', 'договор', 'оплата', 'хеш транзакции', 'CRM ID', 'часть',
 ]
+# CRM ID больше не последняя колонка — позицию берём по имени, а не по длине
+GSHEET_REALTY_ID_COL = GSHEET_REALTY_HEADERS.index('CRM ID') + 1
+GSHEET_FREEHOLD_ID_COL = GSHEET_FREEHOLD_HEADERS.index('CRM ID') + 1
 GSHEET_REALTY_MONTHS = [
     'январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
     'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь',
@@ -2303,84 +2306,135 @@ def _realty_find_month_worksheet(sh, name):
     return _find_month_worksheet(sh, name, ('leasehold', 'leeshold'))
 
 
-def build_realty_row(deal):
-    """Строка выгрузки сделки через MF Corp — порядок как в GSHEET_REALTY_HEADERS."""
+def build_realty_rows(deal):
+    """Строки выгрузки сделки через MF Corp — по строке на часть Pay-In.
+
+    Порядок колонок — как в GSHEET_REALTY_HEADERS. Делится всё, что
+    пропорционально приходу; инвойс, курсы, процент компании и ссылки на
+    документы описывают одну отправку и стоят только в первой строке.
+    """
     d = deal
-    direction = ''
-    if d.payin_method:
-        pm = d.payin_method.value
-        direction = 'usdt-thb' if pm == 'crypto_direct' else 'rub-thb'
-    agents_total = d.referrer_payout_usdt or 0
+    parts = _payin_all_parts(d)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+
     agent_names = ', '.join(
         a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
     ) if d.agents else ''
-    return [
-        d.realty_purpose or '',                          # Назначение
-        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
-        direction,
-        d.payin_amount_rub or '',
-        d.payin_rate_rub_usdt or '',
-        agent_names,                                     # от кого
-        d.invoice_amount_thb or '',
-        d.sell_rate_thb_usdt or '',
-        d.buy_rate_thb_usdt or '',
-        d.payin_amount_usdt or '',
-        # «сколько потратили на инвойс» — стоимость самого инвойса, без комиссии
-        round((d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2) if d.buy_rate_thb_usdt else '',
-        d.company_fee_usdt or '',
-        (d.company_percent / 100) if d.company_percent else '',   # процент — как доля, лист форматирует
-        d.company_sent_thb or '',
-        d.company_fee_thb or '',
-        d.katika_fee_thb or '',
-        d.katika_fee_usdt or '',
-        # «доход» в таблице = приход − стоимость инвойса (оба кармана до выплат)
-        round((d.payin_amount_usdt or 0) - (d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2)
-        if d.buy_rate_thb_usdt else '',
-        agents_total or '',
-        d.crypto_remainder_usdt or '',                   # «доход в usdt на кошельке»
-        d.net_profit_usdt or '',                         # чистый доход
-        d.doc_invoice_url or '',
-        d.doc_contract_url or '',
-        d.doc_payment_url or '',
-        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
-        d.id,                                            # CRM ID — якорь upsert
-    ]
+    date_str = d.created_at.strftime('%d.%m.%Y') if d.created_at else ''
+
+    invoice_cost = (round((d.invoice_amount_thb or 0) / d.buy_rate_thb_usdt, 2)
+                    if d.buy_rate_thb_usdt else 0)
+    income = (round((d.payin_amount_usdt or 0) - invoice_cost, 2)
+              if d.buy_rate_thb_usdt else 0)
+
+    # Колонка хэша сверяет ОТПРАВКУ: если переводы в компанию отмечены — их хэши.
+    # Отправка одна на сделку, поэтому они стоят в первой строке; остальные части
+    # показывают свои хэши прихода.
+    payout_hashes = _payout_hash_list(d)
+
+    cost_split = split_by_payin_share(invoice_cost, amounts)
+    fee_usdt_split = split_by_payin_share(d.company_fee_usdt or 0, amounts)
+    sent_thb_split = split_by_payin_share(d.company_sent_thb or 0, amounts)
+    fee_thb_split = split_by_payin_share(d.company_fee_thb or 0, amounts)
+    katika_thb_split = split_by_payin_share(d.katika_fee_thb or 0, amounts)
+    katika_usdt_split = split_by_payin_share(d.katika_fee_usdt or 0, amounts)
+    income_split = split_by_payin_share(income, amounts)
+    agent_split = split_by_payin_share(d.referrer_payout_usdt or 0, amounts)
+    wallet_split = split_by_payin_share(d.crypto_remainder_usdt or 0, amounts)
+    net_split = split_by_payin_share(d.net_profit_usdt or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        first = (i == 0)
+        rows.append([
+            d.realty_purpose or '',                                       # 0 Назначение
+            date_str,                                                     # 1 дата
+            'usdt-thb' if p['method'] == 'crypto_direct' else 'rub-thb',  # 2 направление
+            p['amount_rub'] or '',                                        # 3 сумма руб части
+            p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
+            agent_names,                                                  # 5 от кого
+            (d.invoice_amount_thb or '') if first else '',                # 6 сумма thb
+            (d.sell_rate_thb_usdt or '') if first else '',                # 7 курс продажи
+            (d.buy_rate_thb_usdt or '') if first else '',                 # 8 курс покупкт
+            p['amount_usdt'] or '',                                       # 9 приход usdt части
+            cost_split[i] or '',                                          # 10 потратили на инвойс
+            fee_usdt_split[i] or '',                                      # 11 доход компании usdt
+            ((d.company_percent / 100) if d.company_percent else '') if first else '',  # 12
+            sent_thb_split[i] or '',                                      # 13 отправлено thb
+            fee_thb_split[i] or '',                                       # 14 доход в батах
+            katika_thb_split[i] or '',                                    # 15 Катика баты
+            katika_usdt_split[i] or '',                                   # 16 Катика usdt
+            income_split[i] or '',                                        # 17 доход
+            agent_split[i] or '',                                         # 18 выплата агенту
+            wallet_split[i] or '',                                        # 19 на кошельке
+            net_split[i] or '',                                           # 20 чистый доход
+            (d.doc_invoice_url or '') if first else '',                   # 21 инвойс
+            (d.doc_contract_url or '') if first else '',                  # 22 договор
+            (d.doc_payment_url or '') if first else '',                   # 23 оплата
+            (', '.join(payout_hashes) if (first and payout_hashes)
+             else ', '.join(h['hash'] for h in p['tx_hashes'])),          # 24 хеш
+            d.id,                                                         # 25 CRM ID
+            f'{i + 1}/{n}',                                               # 26 часть
+        ])
+    return rows
 
 
-def build_freehold_row(deal):
-    """Строка выгрузки сделки во фрихолде — порядок как в GSHEET_FREEHOLD_HEADERS."""
+def build_freehold_rows(deal):
+    """Строки выгрузки сделки во фрихолде — по строке на часть Pay-In.
+
+    Делятся приход и всё, что от него пропорционально: отправка, доход, выплата
+    агенту, чистый доход. Инвойс, комиссия за перевод, «дойдёт застройщику» и
+    ссылки на документы описывают один SWIFT — стоят только в первой строке,
+    делить их значило бы придумать переводы, которых не было.
+    """
     d = deal
-    direction = ''
-    if d.payin_method:
-        direction = 'usdt-usd' if d.payin_method.value == 'crypto_direct' else 'rub-usd'
+    parts = _payin_all_parts(d)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+
     agent_names = ', '.join(
         a.name for a in sorted(d.agents, key=lambda x: (x.tier or 1, x.id or 0)) if a.name
     ) if d.agents else ''
-    return [
-        d.realty_purpose or '',
-        d.created_at.strftime('%d.%m.%Y') if d.created_at else '',
-        direction,
-        d.payin_amount_rub or '',
-        d.payin_rate_rub_usdt or '',
-        agent_names,                                     # от кого
-        d.payin_amount_usdt or '',
-        d.invoice_amount_usd or '',
-        d.transfer_sent_usd or '',
-        d.transfer_fee_percent or '',
-        d.transfer_fee_fixed_usd or '',
-        d.transfer_fee_usd or '',
-        d.transfer_arrive_usd or '',
-        # «доход» = приход − отправка, расходы на перевод уже внутри отправки
-        d.profit_usdt or '',
-        d.referrer_payout_usdt or '',
-        d.net_profit_usdt or '',
-        d.doc_invoice_url or '',
-        d.doc_contract_url or '',
-        d.doc_payment_url or '',
-        # Сверяют отправку: если переводы отмечены — их хэши, иначе хэши прихода
-        ', '.join(_payout_hash_list(d) or _payin_hash_list(d)),
-        d.id,                                            # CRM ID — якорь upsert
-    ]
+    date_str = d.created_at.strftime('%d.%m.%Y') if d.created_at else ''
+
+    # Как у лизхолда: сверяют отправку, поэтому хэши переводов — в первой строке
+    payout_hashes = _payout_hash_list(d)
+
+    sent_split = split_by_payin_share(d.transfer_sent_usd or 0, amounts)
+    profit_split = split_by_payin_share(d.profit_usdt or 0, amounts)
+    agent_split = split_by_payin_share(d.referrer_payout_usdt or 0, amounts)
+    net_split = split_by_payin_share(d.net_profit_usdt or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        first = (i == 0)
+        rows.append([
+            d.realty_purpose or '',                                       # 0 Назначение
+            date_str,                                                     # 1 дата
+            'usdt-usd' if p['method'] == 'crypto_direct' else 'rub-usd',  # 2 направление
+            p['amount_rub'] or '',                                        # 3 сумма руб части
+            p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
+            agent_names,                                                  # 5 от кого
+            p['amount_usdt'] or '',                                       # 6 приход usdt части
+            (d.invoice_amount_usd or '') if first else '',                # 7 инвойс
+            sent_split[i] or '',                                          # 8 отправлено — доля
+            (d.transfer_fee_percent or '') if first else '',              # 9 комиссия %
+            (d.transfer_fee_fixed_usd or '') if first else '',            # 10 фикс
+            (d.transfer_fee_usd or '') if first else '',                  # 11 комиссия usd
+            (d.transfer_arrive_usd or '') if first else '',               # 12 дойдёт
+            profit_split[i] or '',                                        # 13 доход — доля
+            agent_split[i] or '',                                         # 14 выплата агенту
+            net_split[i] or '',                                           # 15 чистый доход
+            (d.doc_invoice_url or '') if first else '',                   # 16 инвойс url
+            (d.doc_contract_url or '') if first else '',                  # 17 договор
+            (d.doc_payment_url or '') if first else '',                   # 18 оплата
+            (', '.join(payout_hashes) if (first and payout_hashes)
+             else ', '.join(h['hash'] for h in p['tx_hashes'])),          # 19 хеш
+            d.id,                                                         # 20 CRM ID
+            f'{i + 1}/{n}',                                               # 21 часть
+        ])
+    return rows
 
 
 def sync_realty_deal_to_gsheet(deal):
@@ -2395,17 +2449,32 @@ def sync_realty_deal_to_gsheet(deal):
         return _sync_realty_deal_impl(deal)
 
 
-def _realty_upsert(ws, row, deal_id, id_col=None):
-    """Перезаписывает строку с этим CRM ID либо дописывает новую. True = вставка."""
-    id_col = id_col or len(GSHEET_REALTY_HEADERS)   # CRM ID — последняя колонка
+def _realty_upsert(ws, rows, deal_id, id_col=None):
+    """Перезаписывает блок строк сделки по CRM ID либо дописывает. True = вставка.
+
+    Число частей могло измениться с прошлой выгрузки: лишние строки удаляются
+    снизу вверх (сверху вниз номера ниже съезжают), недостающие вставляются.
+    Без выравнивания update затёр бы соседнюю сделку.
+    """
+    id_col = id_col or GSHEET_REALTY_ID_COL
+    width = len(rows[0])
     ids = ws.col_values(id_col)
-    for idx, val in enumerate(ids, start=1):
-        if val and str(val).strip() == str(deal_id):
-            end = gspread.utils.rowcol_to_a1(idx, id_col)
-            ws.update(f'A{idx}:{end}', [row], value_input_option='USER_ENTERED')
-            return False
-    ws.append_row(row, value_input_option='USER_ENTERED')
-    return True
+    hits = [idx for idx, val in enumerate(ids, start=1)
+            if val and str(val).strip() == str(deal_id)]
+    if not hits:
+        for row in rows:
+            ws.append_row(row, value_input_option='USER_ENTERED')
+        return True
+
+    while len(hits) > len(rows):
+        ws.delete_rows(hits.pop())
+    while len(hits) < len(rows):
+        ws.insert_rows([[''] * width], row=hits[-1] + 1)
+        hits.append(hits[-1] + 1)
+
+    end = gspread.utils.rowcol_to_a1(hits[-1], width)
+    ws.update(f'A{hits[0]}:{end}', rows, value_input_option='USER_ENTERED')
+    return False
 
 
 def _realty_get_or_create_ws(sh, title, rows=200, headers=None):
@@ -2446,17 +2515,17 @@ def _sync_freehold_impl(sh, deal, when):
         if not any(header):
             # Лист завели руками и не заполнили — без шапки строка читалась бы заголовком
             ws.append_row(GSHEET_FREEHOLD_HEADERS, value_input_option='USER_ENTERED')
-        elif header != GSHEET_FREEHOLD_HEADERS:
+        elif GSHEET_FREEHOLD_HEADERS[:len(header)] != header:
             title = f'{title} CRM'
             ws = _realty_get_or_create_ws(sh, title, headers=GSHEET_FREEHOLD_HEADERS)
             created = True
-    row = build_freehold_row(deal)
-    inserted = _realty_upsert(ws, row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+    rows = build_freehold_rows(deal)
+    inserted = _realty_upsert(ws, rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     try:
         _realty_upsert(
             _realty_get_or_create_ws(sh, GSHEET_FREEHOLD_ALL, rows=2000,
                                      headers=GSHEET_FREEHOLD_HEADERS),
-            row, deal.id, id_col=len(GSHEET_FREEHOLD_HEADERS))
+            rows, deal.id, id_col=GSHEET_FREEHOLD_ID_COL)
     except Exception as e:
         print(f'[GSheet freehold] сводный лист: {e}', flush=True)
     return {'ok': True, 'sheet': ws.title, 'sheet_created': created, 'inserted': inserted}
@@ -2481,12 +2550,12 @@ def _sync_realty_deal_impl(deal):
             # Лист месяца есть, но пустой (завели руками и не заполнили) —
             # без шапки строка легла бы в первую строку и читалась как заголовок
             ws.append_row(GSHEET_REALTY_HEADERS, value_input_option='USER_ENTERED')
-        row = build_realty_row(deal)
-        inserted = _realty_upsert(ws, row, deal.id)
+        rows = build_realty_rows(deal)
+        inserted = _realty_upsert(ws, rows, deal.id)
         # Сводный лист — тот же upsert, чтобы правка не плодила дубли
         try:
             _realty_upsert(_realty_get_or_create_ws(sh, GSHEET_REALTY_ALL, rows=2000),
-                           row, deal.id)
+                           rows, deal.id)
         except Exception as e:
             print(f'[GSheet realty] сводный лист: {e}', flush=True)
         return {'ok': True, 'sheet': ws.title, 'sheet_created': created,

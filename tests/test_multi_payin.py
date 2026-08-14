@@ -15,7 +15,8 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 from app import (app, get_session, Deal, Client, AdminUser,
                  PayInMethod, DealType, DealStatus,
                  _normalize_payin_extra, _payin_extra_list, _payin_all_parts,
-                 _apply_payin_extra, _payin_hash_list, split_by_payin_share)
+                 _apply_payin_extra, _payin_hash_list, split_by_payin_share,
+                 compute_mf_freehold, SberIncome)
 
 H_EXTRA = 'cc11dd22ee33ff44aa55bb66cc77dd88ee99ff00aa11bb22cc33dd44ee55ff66'
 
@@ -364,3 +365,57 @@ def test_split_thb_without_decimals():
     """Баты в листе целые — остаток тоже должен уйти в последнюю часть."""
     res = split_by_payin_share(282600, [2365.362, 6920.0], digits=0)
     assert sum(res) == 282600
+
+
+# ============ Регрессы спеки §10 ============
+
+def test_reference_case_end_to_end():
+    """Эталон спеки §4 целиком: реальная сделка elena imaikina от 13.08.
+    Ради этих цифр задача и делалась — поедут они, поедут деньги."""
+    payin = 2365.362 + 6920.0
+    r = compute_mf_freehold(payin, sent_usd=8669.0,
+                            agents=[{'comp_model': 'markup', 'percent': 2, 'tier': 1}])
+    assert r['gross_profit_usdt'] == pytest.approx(616.36, abs=0.01)
+    assert r['agents_total_usdt'] == pytest.approx(185.71, abs=0.01)
+    assert r['net_profit_usdt'] == pytest.approx(430.65, abs=0.01)
+
+
+def test_extra_sber_income_is_claimed(db):
+    """Приход Сбера, забранный ДОПОЛНИТЕЛЬНОЙ частью, помечается claimed_deal_id —
+    иначе его спишут во вторую сделку."""
+    db.query(SberIncome).delete()
+    inc = SberIncome(uuid='uuid-extra-1', amount_rub=200000.0, payer='Иванов И.И.')
+    db.add(inc)
+    d = make_deal()
+    db.add(d)
+    db.commit()
+
+    _apply_payin_extra(db, d, [{
+        'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362,
+        'sber_uuids': ['uuid-extra-1']}], main_usdt=6920.0, main_rub=600000)
+    db.commit()
+
+    got = db.query(SberIncome).filter(SberIncome.uuid == 'uuid-extra-1').first()
+    assert got.claimed_deal_id == d.id
+    db.query(SberIncome).delete()
+    db.commit()
+
+
+def test_custom_deal_supports_extra(tc, db):
+    """Кастомные сделки: части складываются в итог, custom_* не трогаются."""
+    r = tc.post('/api/deals', json=_payload(
+        is_custom=True, custom_payin_currency='RUB', custom_payin_amount=600000))
+    assert r.status_code in (200, 201), r.get_data(as_text=True)
+    d = db.query(Deal).order_by(Deal.id.desc()).first()
+    assert d.payin_amount_usdt == pytest.approx(9285.362, abs=0.001)
+    assert d.custom_payin_amount == 600000
+
+
+def test_referrer_sheet_row_is_not_split():
+    """Лист «рефереры» — одна строка на сделку: выплата партнёру одна,
+    делить её по каналам прихода незачем."""
+    import inspect
+    from app import sync_referrer_reward_to_gsheet
+    src = inspect.getsource(sync_referrer_reward_to_gsheet)
+    assert 'build_deal_rows' not in src
+    assert '_payin_all_parts' not in src

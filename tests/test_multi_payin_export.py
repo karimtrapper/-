@@ -174,3 +174,103 @@ def test_fallback_allowed_for_single_part_deal():
     single = _deal(id=999, payin_extra=None, payin_amount_rub=600000,
                    payin_amount_usdt=6920.0)
     assert find_deal_rows_in_gsheet([legacy], single) == [1]
+
+
+# ============ Task 9: листы недвижимости ============
+
+from app import (build_realty_rows, build_freehold_rows,
+                 MF_REALTY_KIND, MF_FREEHOLD_KIND)
+
+
+def _freehold():
+    return _deal(deal_kind=MF_FREEHOLD_KIND, realty_purpose='Кондо Layan',
+                 invoice_amount_usd=8400.0, transfer_sent_usd=8669.0,
+                 transfer_fee_percent=1.5, transfer_fee_fixed_usd=50.0,
+                 transfer_fee_usd=177.37, transfer_arrive_usd=8491.63,
+                 doc_invoice_url='https://drive/inv')
+
+
+def _leasehold():
+    return _deal(deal_kind=MF_REALTY_KIND, realty_purpose='Кондо Layan',
+                 invoice_amount_thb=290000.0, buy_rate_thb_usdt=32.8,
+                 sell_rate_thb_usdt=32.3, company_percent=2.0,
+                 company_sent_thb=295800.0, company_fee_thb=5800.0,
+                 company_fee_usdt=176.83, crypto_remainder_usdt=81.36,
+                 net_profit_usdt=258.19, doc_invoice_url='https://drive/inv')
+
+
+def test_freehold_two_rows():
+    rows = build_freehold_rows(_freehold())
+    assert len(rows) == 2
+    assert [r[-1] for r in rows] == ['1/2', '2/2']
+    assert [r[-2] for r in rows] == [512, 512]
+
+
+def test_freehold_payin_per_part():
+    rows = build_freehold_rows(_freehold())
+    assert rows[0][3] == 600000
+    assert rows[1][3] == 200000
+    assert rows[0][4] == pytest.approx(86.7052, abs=1e-4)   # курс ЧАСТИ, не средний
+    assert rows[1][4] == pytest.approx(84.5537, abs=1e-4)
+
+
+def test_freehold_sent_is_divided():
+    """Часть 1 — основной приход ($6 920, доля 74.53%), часть 2 — сбер ($2 365)."""
+    rows = build_freehold_rows(_freehold())
+    assert rows[0][8] == pytest.approx(6460.65, abs=0.01)
+    assert rows[1][8] == pytest.approx(2208.35, abs=0.01)
+    assert sum(r[8] for r in rows) == pytest.approx(8669.0, abs=0.01)
+
+
+def test_freehold_indivisible_only_in_first_row():
+    """Инвойс, комиссия перевода, «дойдёт застройщику» и документы описывают
+    единственный SWIFT — во второй строке пусто."""
+    rows = build_freehold_rows(_freehold())
+    for idx in (7, 9, 10, 11, 12, 16, 17, 18):
+        assert rows[1][idx] == '', f'колонка {idx} должна быть пустой во 2-й строке'
+    assert rows[0][7] == 8400.0
+    assert rows[0][12] == 8491.63
+
+
+def test_freehold_single_channel_one_row():
+    """Одноканальная сделка — одна строка, отправка целиком, без разбиения."""
+    d = _deal(deal_kind=MF_FREEHOLD_KIND, realty_purpose='Кондо Layan',
+              payin_extra=None, payin_amount_rub=600000, payin_amount_usdt=6920.0,
+              invoice_amount_usd=8400.0, transfer_sent_usd=8669.0,
+              transfer_arrive_usd=8491.63)
+    rows = build_freehold_rows(d)
+    assert len(rows) == 1
+    assert rows[0][-1] == '1/1'
+    assert rows[0][8] == pytest.approx(8669.0, abs=0.01)
+    assert rows[0][12] == 8491.63
+
+
+def test_leasehold_two_rows_with_part_column():
+    rows = build_realty_rows(_leasehold())
+    assert len(rows) == 2
+    assert [r[-1] for r in rows] == ['1/2', '2/2']
+    assert [r[-2] for r in rows] == [512, 512]
+
+
+def test_leasehold_payin_per_part():
+    rows = build_realty_rows(_leasehold())
+    assert rows[0][3] == 600000
+    assert rows[1][3] == 200000
+    assert rows[0][4] == pytest.approx(86.7052, abs=1e-4)
+    assert rows[1][4] == pytest.approx(84.5537, abs=1e-4)
+
+
+def test_leasehold_company_sent_is_divided():
+    rows = build_realty_rows(_leasehold())
+    assert sum(r[13] for r in rows) == pytest.approx(295800.0, abs=0.01)
+    assert sum(r[20] for r in rows) == pytest.approx(258.19, abs=0.01)
+
+
+def test_leasehold_indivisible_only_in_first_row():
+    """Инвойс, курсы покупки/продажи, процент компании и документы описывают
+    одну отправку в MF Corp, делить их нечего."""
+    rows = build_realty_rows(_leasehold())
+    for idx in (6, 7, 8, 12, 21, 22, 23):
+        assert rows[1][idx] == '', f'колонка {idx} должна быть пустой во 2-й строке'
+    assert rows[0][6] == 290000.0
+    assert rows[0][8] == 32.8
