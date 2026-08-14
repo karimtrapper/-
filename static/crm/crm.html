@@ -1233,6 +1233,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
+                        <!-- Дополнительные приходы: одна сделка, несколько каналов.
+                             Клиент платит частью налом через партнёра, частью по
+                             реквизитам — курсы у частей разные, сводить их в один
+                             нельзя (спека docs/specs/2026-08-14-multi-payin.md) -->
+                        <div id="payinExtraBox" style="margin-bottom:1rem;">
+                            <div id="payinExtraList"></div>
+                            <button type="button" class="btn btn-secondary" onclick="payinExtraAdd()"
+                                style="margin-top:6px;">+ ещё приход</button>
+                            <div id="payinExtraSummary"
+                                style="margin-top:8px;font-size:0.9rem;color:#334155;"></div>
+                        </div>
+
                         <!-- WL Bot Сбер picker -->
                         <div id="wlPickerGroup" style="display:none; margin-bottom: 1rem;">
                             <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
@@ -4041,6 +4053,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <p><strong>Сумма USDT:</strong> $${deal.payin_amount_usdt || '-'}</p>
                         `}
                         ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${escapeHtml(deal.payin_partner_name)}</p>` : ''}
+                        ${(deal.payin_extra && deal.payin_extra.length) ? `
+                            <div style="background: #f8fafc; padding: 0.5rem; border-radius: 6px; border: 1px solid #e2e8f0; margin: 0.5rem 0;">
+                                <p style="margin: 0 0 4px;"><strong>Приход по каналам (${deal.payin_extra.length + 1}):</strong></p>
+                                ${payinAllParts(deal).map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">• ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${p.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>`).join('')}
+                            </div>
+                        ` : ''}
                         ${(deal.payin_parts && deal.payin_parts.length) ? `
                             <div style="background: #f0f9ff; padding: 0.5rem; border-radius: 6px; border: 1px solid #bae6fd; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход частями (${deal.payin_parts.length}):</strong></p>
@@ -4529,6 +4547,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
                         if (deal.doverka_transaction_id) form.doverka_transaction_id.value = deal.doverka_transaction_id;
                         if (deal.payin_partner_name) form.payin_partner_name.value = deal.payin_partner_name;
+                        // Дополнительные приходы. Плоские поля сделки хранят АГРЕГАТЫ,
+                        // поэтому основную часть восстанавливаем вычитанием — иначе в
+                        // главном поле окажется итог, и сохранение удвоит приход
+                        payinExtra = (deal.payin_extra || []).map(p => ({
+                            method: p.method, amount_rub: p.amount_rub,
+                            rate_rub_usdt: p.rate_rub_usdt, amount_usdt: p.amount_usdt,
+                            partner_name: p.partner_name || '',
+                            tx_hash: (p.tx_hashes && p.tx_hashes[0]) ? p.tx_hashes[0].hash : '',
+                            note: p.note || '',
+                        }));
+                        if (payinExtra.length) {
+                            const exUsdt = payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+                            const exRub = payinExtra.reduce((s, p) => s + (p.amount_rub || 0), 0);
+                            const mainUsdt = +((deal.payin_amount_usdt || 0) - exUsdt).toFixed(4);
+                            const mainRub = +((deal.payin_amount_rub || 0) - exRub).toFixed(2);
+                            form.payin_amount_usdt.value = mainUsdt || '';
+                            form.payin_amount_rub.value = mainRub > 0 ? mainRub : '';
+                            form.payin_rate_rub_usdt.value =
+                                (mainRub > 0 && mainUsdt > 0) ? +(mainRub / mainUsdt).toFixed(4) : '';
+                        }
+                        payinExtraRender();
                         if (deal.payout_method) form.payout_method.value = deal.payout_method;
                         if (deal.payout_source) {
                             document.getElementById('payoutSource').value = deal.payout_source;
@@ -5473,6 +5512,122 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             sel.value = value;
         }
 
+        // ==================== Дополнительные приходы (мульти-Pay-In) ====================
+        // payinExtra — части сверх основной: [{method, amount_rub, rate_rub_usdt,
+        // amount_usdt, partner_name, tx_hash, note}]. Основной приход остаётся в
+        // главных полях формы, менеджер вводит его как привык.
+        let payinExtra = [];
+
+        // Лейблы для селекта части. spp_doverka не показываем — провайдер умер,
+        // опция оставлена только для открытия старых сделок
+        const PAYIN_EXTRA_METHODS = [
+            ['sber_wl', 'СБП'],
+            ['sber_reqs', 'Сбер (реквизиты)'],
+            ['crypto_direct', 'Крипта напрямую'],
+            ['partners_cash', 'Партнеры (наличные)'],
+        ];
+
+        function payinExtraAdd() {
+            payinExtra.push({ method: 'crypto_direct', amount_rub: null,
+                              rate_rub_usdt: null, amount_usdt: null,
+                              partner_name: '', tx_hash: '', note: '' });
+            payinExtraRender();
+        }
+
+        function payinExtraRemove(i) { payinExtra.splice(i, 1); payinExtraRender(); }
+
+        function payinExtraSet(i, field, value) {
+            const num = ['amount_rub', 'rate_rub_usdt', 'amount_usdt'].includes(field);
+            payinExtra[i][field] = num ? (parseFloat(value) || null) : value;
+            // Курс и USDT считаются друг из друга — как payinMode у основного прихода
+            const p = payinExtra[i];
+            if (field === 'amount_usdt' && p.amount_rub && p.amount_usdt) {
+                p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
+            } else if ((field === 'rate_rub_usdt' || field === 'amount_rub')
+                       && p.amount_rub && p.rate_rub_usdt) {
+                p.amount_usdt = +(p.amount_rub / p.rate_rub_usdt).toFixed(4);
+            }
+            payinExtraRender();
+        }
+
+        function payinExtraRender() {
+            const box = document.getElementById('payinExtraList');
+            if (!box) return;
+            box.innerHTML = payinExtra.map((p, i) => {
+                const isCrypto = p.method === 'crypto_direct';
+                const isCash = p.method === 'partners_cash';
+                return `
+                <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:6px;background:#fafafa;">
+                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+                        <strong style="white-space:nowrap;">Приход ${i + 2}</strong>
+                        <select class="form-control" style="max-width:220px;"
+                            onchange="payinExtraSet(${i}, 'method', this.value)">
+                            ${PAYIN_EXTRA_METHODS.map(([k, v]) =>
+                                `<option value="${k}" ${p.method === k ? 'selected' : ''}>${v}</option>`).join('')}
+                        </select>
+                        <button type="button" class="btn btn-danger" style="margin-left:auto;"
+                            onclick="payinExtraRemove(${i})">✕</button>
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        ${isCrypto ? '' : `
+                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                            placeholder="Сумма RUB" value="${p.amount_rub ?? ''}"
+                            oninput="payinExtraSet(${i}, 'amount_rub', this.value)">
+                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                            placeholder="Курс RUB/USDT" value="${p.rate_rub_usdt ?? ''}"
+                            oninput="payinExtraSet(${i}, 'rate_rub_usdt', this.value)">`}
+                        <input type="number" step="any" class="form-control" style="max-width:150px;"
+                            placeholder="Пришло USDT" value="${p.amount_usdt ?? ''}"
+                            oninput="payinExtraSet(${i}, 'amount_usdt', this.value)">
+                        ${isCash ? `
+                        <input type="text" class="form-control" style="max-width:150px;"
+                            placeholder="Партнёр" value="${p.partner_name || ''}"
+                            oninput="payinExtraSet(${i}, 'partner_name', this.value)">` : ''}
+                        <input type="text" class="form-control" style="max-width:280px;"
+                            placeholder="TxHash (если крипта)" value="${p.tx_hash || ''}"
+                            oninput="payinExtraSet(${i}, 'tx_hash', this.value)">
+                    </div>
+                </div>`;
+            }).join('');
+            payinExtraSummary();
+        }
+
+        function payinExtraSummary() {
+            const el = document.getElementById('payinExtraSummary');
+            if (!el) return;
+            if (!payinExtra.length) { el.textContent = ''; return; }
+            const main = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || 0;
+            const total = main + payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+            const money = v => '$' + v.toLocaleString('en-US',
+                { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            el.innerHTML = `<strong>Итого приход: ${money(total)}</strong>
+                <span style="color:#64748b;">— основной ${money(main)} + ${payinExtra.length} доп.</span>`;
+            // Прибыль недвижимости считается от ИТОГОВОГО прихода, а не от основной части
+            if (typeof realtyPayinRecalc === 'function') realtyPayinRecalc();
+        }
+
+        function payinExtraSerialize() {
+            return payinExtra
+                .filter(p => p.amount_usdt > 0)
+                .map(p => ({
+                    method: p.method,
+                    amount_rub: p.amount_rub,
+                    rate_rub_usdt: p.rate_rub_usdt,
+                    amount_usdt: p.amount_usdt,
+                    partner_name: p.partner_name || null,
+                    tx_hashes: p.tx_hash ? [{ hash: p.tx_hash.trim(),
+                                              amount_usdt: p.amount_usdt }] : [],
+                    sber_uuids: [],
+                    note: p.note || '',
+                }));
+        }
+
+        // Сумма всех дополнительных приходов — нужна сводке недвижимости,
+        // которая должна считать прибыль от итога, а не от основной части
+        function payinExtraTotalUsdt() {
+            return payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+        }
+
         function applyPayinMethodFields() {
             const method = document.getElementById('payinMethod');
             const partnerGroup = document.getElementById('payinPartnerGroup');
@@ -5706,7 +5861,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        function sberReset() { sberParts = []; sberRender(); }
+        function sberReset() {
+            sberParts = [];
+            payinExtra = [];
+            sberRender();
+            payinExtraRender();
+        }
 
         // Show/hide fields based on payout source
         document.getElementById('payoutSource').addEventListener('change', function () {
@@ -5830,7 +5990,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 invoice_amount_thb: num('mfInvoiceThb'),
                 buy_rate_thb_usdt: num('mfBuyRate'),
                 sell_rate_thb_usdt: num('mfSellRate'),
-                payin_amount_usdt: parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || null,
+                payin_amount_usdt: ((parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || 0)
+                                    + payinExtraTotalUsdt()) || null,
                 company_percent: num('mfPercent'),
                 company_sent_thb: num('mfSentThb'),
                 payout_tx_hashes: mfPayoutTxPool,
@@ -6802,6 +6963,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 payin_tx_hash: payinTxHash || null,
                 payin_amount_usdt: payinUsdt,
                 payin_parts: methodUsesSberPool(payinMethod) ? sberParts : [],
+                payin_extra: payinExtraSerialize(),
 
                 // Кастомные данные Pay-In
                 custom_payin_currency: payinCurrency,
@@ -6902,6 +7064,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             calculateProfit();
             realtyPayinRecalc();
+            payinExtraSummary();
         }
 
         function calculateProfit() {
@@ -9457,6 +9620,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 'sber_reqs': 'Сбер (реквизиты)'
             };
             return labels[method] || method || '-';
+        }
+
+        // Все части прихода сделки, первая — основная. Зеркало _payin_all_parts
+        // на бэкенде: основная часть отдельно не хранится, её суммы
+        // восстанавливаются вычитанием дополнительных из агрегатов.
+        function payinAllParts(deal) {
+            const extra = deal.payin_extra || [];
+            const mainUsdt = (deal.payin_amount_usdt || 0)
+                - extra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
+            const mainRub = (deal.payin_amount_rub || 0)
+                - extra.reduce((s, p) => s + (p.amount_rub || 0), 0);
+            const label = (method, partner) =>
+                getPayinMethodLabel(method) + (partner ? ' ' + partner : '');
+            return [{
+                label: label(deal.payin_method, deal.payin_partner_name),
+                amount_rub: mainRub > 0 ? mainRub : null,
+                rate_rub_usdt: (mainRub > 0 && mainUsdt > 0) ? mainRub / mainUsdt : null,
+                amount_usdt: mainUsdt,
+            }].concat(extra.map(p => ({
+                label: label(p.method, p.partner_name),
+                amount_rub: p.amount_rub,
+                rate_rub_usdt: p.rate_rub_usdt,
+                amount_usdt: p.amount_usdt,
+            })));
         }
 
         function getPayoutMethodLabel(method) {
