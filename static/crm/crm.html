@@ -4077,6 +4077,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
                               ).join('') + `</p>`
                             : (deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
+                        <div id="payinTxSharedBox" style="margin-top:0.25rem;"></div>
                         
                         ${isDoverka ? `
                             <div style="background: #fef3c7; padding: 0.75rem; border-radius: 8px; margin-top: 0.5rem;">
@@ -4268,6 +4269,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     `;
                     document.getElementById('dealModal').classList.add('active');
+                    // Реестр переводов подтягиваем после отрисовки: карточка не
+                    // должна ждать сеть, а «что ещё оплачено этим хэшем» дозагрузится
+                    loadPayinTxShared(deal);
                 }
             } catch (error) {
                 console.error('Error loading deal:', error);
@@ -4551,6 +4555,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payin_tx_hash) form.payin_tx_hash.value = deal.payin_tx_hash;
                         // Приход крипты частями: восстанавливаем пул хэшей
                         resetPayinTxPool(deal.payin_tx_hashes);
+                        payinTxLedger = {};
+                        payinTxPool.forEach(t => loadPayinTxLedger(t.hash));
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
                         if (deal.doverka_transaction_id) form.doverka_transaction_id.value = deal.doverka_transaction_id;
                         if (deal.payin_partner_name) form.payin_partner_name.value = deal.payin_partner_name;
@@ -5277,14 +5283,65 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const box = document.getElementById('payinTxPoolBox');
             if (!box) return;
             if (!payinTxPool.length) { box.innerHTML = ''; return; }
-            box.innerHTML = payinTxPool.map((t, i) => `
-                <div style="display:flex;align-items:center;gap:0.5rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
-                    <strong style="color:#059669;">${t.amount_usdt != null ? '+$' + t.amount_usdt.toFixed(2) : '—'}</strong>
-                    <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
-                    <span style="color:#94a3b8;">${t.date || ''}</span>
-                    <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePayinTx(${i})">✕</button>
-                </div>`).join('') +
+            box.innerHTML = payinTxPool.map((t, i) => {
+                const led = payinTxLedger[t.hash];
+                // Один перевод может обслуживать несколько сделок: показываем,
+                // сколько по нему пришло и сколько уже разобрано другими
+                let hint = '';
+                if (led) {
+                    const others = (led.deal_ids || []).filter(id => id !== editingDealId);
+                    hint = `<div style="font-size:0.78rem;color:#64748b;padding:0 4px 2px 8px;">
+                        в сети $${led.amount_usdt.toFixed(2)}${led.source !== 'tronscan' ? ' <span style="color:#b45309;">(не сверено)</span>' : ''}
+                        · разобрано $${led.used_usdt.toFixed(2)}${others.length ? ' (сделки #' + others.join(', #') + ')' : ''}
+                        · <b style="color:${led.free_usdt > 0.01 ? '#166534' : '#94a3b8'};">остаток $${led.free_usdt.toFixed(2)}</b>
+                    </div>`;
+                }
+                return `
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span style="color:#059669;font-weight:700;">$</span>
+                        <input type="text" inputmode="decimal" class="form-control"
+                            style="max-width:120px;padding:2px 6px;height:auto;font-size:0.85rem;"
+                            value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту сделку"
+                            oninput="payinTxShareChanged(${i}, this.value)">
+                        <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
+                        <span style="color:#94a3b8;">${t.date || ''}</span>
+                        <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePayinTx(${i})">✕</button>
+                    </div>
+                    ${hint}
+                </div>`;
+            }).join('') +
                 `<div style="text-align:right;font-weight:700;color:#166534;">Частей: ${payinTxPool.length} · итого $${payinTxPoolTotal().toFixed(2)}</div>`;
+        }
+
+        // Реестр переводов: хэш → {amount_usdt, used_usdt, free_usdt, source, deal_ids}
+        let payinTxLedger = {};
+
+        // Доля перевода, которая идёт в ЭТУ сделку. Раньше сделка забирала
+        // перевод целиком, и на общем переводе за две оплаты курс выходил
+        // неверным: 200 000 ₽ ÷ $2760 = 72.46 вместо реального
+        function payinTxShareChanged(i, value) {
+            const n = parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+            payinTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
+            const amountInput = document.querySelector('[name="payin_amount_usdt"]');
+            if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
+            payinMode = 'usdt';
+            autoCalcUsdt();
+            const box = document.getElementById('payinTxPoolBox');
+            const total = box?.querySelector('div[style*="text-align:right"]');
+            if (total) total.innerHTML = `Частей: ${payinTxPool.length} · итого $${payinTxPoolTotal().toFixed(2)}`;
+        }
+
+        // Данные реестра подтягиваются лениво: список приходит из сети, а
+        // «сколько уже разобрано» знает только CRM
+        async function loadPayinTxLedger(hash) {
+            if (!hash || payinTxLedger[hash]) return;
+            try {
+                const r = await fetch(`${API_URL}/api/payin-txs/${hash}`);
+                if (!r.ok) return;
+                const d = await r.json();
+                if (d.success) { payinTxLedger[hash] = d.tx; renderPayinTxPool(); }
+            } catch (e) { /* реестр не критичен для сохранения */ }
         }
 
         function syncPayinAmountFromPool() {
@@ -5319,6 +5376,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 date: opt?.dataset?.date || '',
             });
             syncPayinAmountFromPool();
+            loadPayinTxLedger(txHash);
         }
 
         function removePayinTx(index) {
@@ -9815,6 +9873,37 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 rate_rub_usdt: p.rate_rub_usdt,
                 amount_usdt: p.amount_usdt,
             })));
+        }
+
+        // Один перевод может обслуживать несколько сделок. В карточке показываем,
+        // что ещё оплачено этим же хэшем — иначе «почему приход меньше перевода»
+        // остаётся без ответа, и легко списать остаток второй раз
+        async function loadPayinTxShared(deal) {
+            const box = document.getElementById('payinTxSharedBox');
+            if (!box) return;
+            const hashes = (deal.payin_tx_hashes || []).map(t => t.hash)
+                .concat(deal.payin_tx_hash ? [deal.payin_tx_hash] : []);
+            const uniq = [...new Set(hashes.filter(Boolean))];
+            const blocks = [];
+            for (const h of uniq) {
+                try {
+                    const r = await fetch(`${API_URL}/api/payin-txs/${h}`);
+                    if (!r.ok) continue;
+                    const d = await r.json();
+                    if (!d.success) continue;
+                    const others = (d.uses || []).filter(u => u.deal_id !== deal.id);
+                    if (!others.length && d.tx.free_usdt <= 0.01) continue;
+                    blocks.push(`
+                        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;margin-bottom:4px;font-size:0.85rem;">
+                            <div><code style="color:#64748b;">${h.substring(0, 20)}…</code> — пришло <b>$${d.tx.amount_usdt.toFixed(2)}</b>${d.tx.source !== 'tronscan' ? ' <span style="color:#b45309;">(не сверено)</span>' : ''}</div>
+                            ${others.map(u => `<div style="color:#334155;">• сделка #${u.deal_id}${u.client_name ? ' · ' + escapeHtml(u.client_name) : ''}${u.realty_purpose ? ' · ' + escapeHtml(u.realty_purpose) : ''} — $${u.amount_usdt.toFixed(2)}</div>`).join('')}
+                            ${d.tx.free_usdt > 0.01 ? `<div style="color:#166534;font-weight:600;">не распределено: $${d.tx.free_usdt.toFixed(2)}</div>` : ''}
+                        </div>`);
+                } catch (e) { /* реестр не критичен для карточки */ }
+            }
+            box.innerHTML = blocks.length
+                ? `<p style="margin-bottom:4px;"><strong>По этим переводам также:</strong></p>` + blocks.join('')
+                : '';
         }
 
         function getPayoutMethodLabel(method) {

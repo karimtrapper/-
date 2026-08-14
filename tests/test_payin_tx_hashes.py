@@ -13,7 +13,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
-from app import (app, get_session, Deal, Client, AdminUser,
+from app import (app, get_session, Deal, Client, AdminUser, PayinTx, PayinTxUse,
                  _normalize_tx_hashes, _payin_hash_list, get_used_transaction_hashes)
 
 H1 = 'bb99ba6d46a14e814cfcc68b71e80ee0f11f7f69f17adb962c955cc32d0117b9'
@@ -25,6 +25,8 @@ H3 = '11223344556677889900aabbccddeeff11223344556677889900aabbccddeeff'
 def clean_db():
     s = get_session()
     try:
+        s.query(PayinTxUse).delete()
+        s.query(PayinTx).delete()
         s.query(Deal).delete()
         s.query(Client).delete()
         s.commit()
