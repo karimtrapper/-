@@ -4411,6 +4411,92 @@ def _normalize_tx_hashes(raw):
     return out
 
 
+def _normalize_payin_extra(raw):
+    """Дополнительные приходы → список частей одного формата.
+
+    Часть без суммы USDT выбрасывается: строка без денег ничего не описывает,
+    а в выгрузке дала бы пустую строку с чужой долей. Неизвестный метод тоже
+    выбрасываем — на нём упал бы лейбл в Sheet и в Telegram.
+
+    Курс считается из рублей, если его не прислали: форма умеет вводить в обе
+    стороны, интеграции могут прислать только рубли и USDT.
+    """
+    out = []
+    for item in (raw or []):
+        if not isinstance(item, dict):
+            continue
+        method = str(item.get('method') or '').strip()
+        if method not in PAYIN_METHOD_LABELS:
+            continue
+        try:
+            usdt = float(item.get('amount_usdt'))
+        except (TypeError, ValueError):
+            continue
+        if usdt <= 0:
+            continue
+
+        def _pos(key):
+            try:
+                v = float(item.get(key))
+            except (TypeError, ValueError):
+                return None
+            return v if v > 0 else None
+
+        rub = _pos('amount_rub')
+        rate = _pos('rate_rub_usdt')
+        if rub and not rate:
+            rate = round(rub / usdt, 6)
+        out.append({
+            'method': method,
+            'amount_rub': rub,
+            'rate_rub_usdt': rate,
+            'amount_usdt': round(usdt, 6),
+            'partner_name': (str(item.get('partner_name') or '').strip() or None),
+            'tx_hashes': _normalize_tx_hashes(item.get('tx_hashes')),
+            'sber_uuids': [str(u) for u in (item.get('sber_uuids') or []) if u],
+            'note': str(item.get('note') or '').strip(),
+        })
+    return out
+
+
+def _payin_extra_list(deal):
+    """Дополнительные приходы сделки. Битый JSON = пустой список, не падаем."""
+    if not deal.payin_extra:
+        return []
+    try:
+        parsed = json.loads(deal.payin_extra)
+    except (ValueError, TypeError):
+        return []
+    return parsed if isinstance(parsed, list) else []
+
+
+def _payin_all_parts(deal):
+    """Все части прихода, первая — основная, из плоских payin_* полей.
+
+    Основная часть отдельно НЕ хранится: плоские поля после сохранения содержат
+    агрегаты, поэтому её суммы восстанавливаются вычитанием дополнительных.
+    Так у выгрузки и уведомлений один формат, и они не знают про асимметрию.
+    """
+    extra = _payin_extra_list(deal)
+    main_usdt = round((deal.payin_amount_usdt or 0)
+                      - sum(p.get('amount_usdt') or 0 for p in extra), 6)
+    main_rub = round((deal.payin_amount_rub or 0)
+                     - sum(p.get('amount_rub') or 0 for p in extra), 6)
+    main = {
+        'method': deal.payin_method.value if deal.payin_method else '',
+        'amount_rub': main_rub if main_rub > 0 else None,
+        'rate_rub_usdt': (round(main_rub / main_usdt, 6)
+                          if main_rub > 0 and main_usdt > 0 else None),
+        'amount_usdt': main_usdt,
+        'partner_name': deal.payin_partner_name or None,
+        'tx_hashes': _normalize_tx_hashes(
+            json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []),
+        'sber_uuids': [],
+        'note': '',
+    }
+    return [main] + extra
+
+
 def _normalize_payout_transfers(raw):
     """Переводы отправки → [{'hash','amount_usdt','to_address','date'}].
 
