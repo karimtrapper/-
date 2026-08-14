@@ -1183,6 +1183,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div id="standardDealSection">
                         <h3 style="margin-bottom: 1rem; color: #10b981;">Pay-In (Получение)</h3>
 
+                        <!-- Приход 1 — основной канал. Обёрнут в карточку, чтобы его пулы
+                             (хэши, WL, выписка Сбера) визуально принадлежали именно ему:
+                             раньше блок дополнительных приходов стоял между полями и пулами -->
+                        <div id="payin1Card" style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:8px;background:#fafafa;">
+                            <div style="font-weight:700;margin-bottom:8px;">Приход 1</div>
                         <div class="form-row">
                             <div class="form-group">
                                 <label class="form-label">Метод Pay-In</label>
@@ -1233,17 +1238,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         </div>
 
-                        <!-- Дополнительные приходы: одна сделка, несколько каналов.
-                             Клиент платит частью налом через партнёра, частью по
-                             реквизитам — курсы у частей разные, сводить их в один
-                             нельзя (спека docs/specs/2026-08-14-multi-payin.md) -->
-                        <div id="payinExtraBox" style="margin-bottom:1rem;">
-                            <div id="payinExtraList"></div>
-                            <button type="button" class="btn btn-secondary" onclick="payinExtraAdd()"
-                                style="margin-top:6px;">+ ещё приход</button>
-                            <div id="payinExtraSummary"
-                                style="margin-top:8px;font-size:0.9rem;color:#334155;"></div>
-                        </div>
 
                         <!-- WL Bot Сбер picker -->
                         <div id="wlPickerGroup" style="display:none; margin-bottom: 1rem;">
@@ -1286,6 +1280,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <input type="text" class="form-control" name="doverka_transaction_id"
                                     placeholder="47871">
                             </div>
+                        </div>
+                        </div>
+
+                        <!-- Дополнительные приходы: одна сделка, несколько каналов.
+                             Клиент платит частью налом через партнёра, частью по
+                             реквизитам — курсы у частей разные, сводить их в один
+                             нельзя (спека docs/specs/2026-08-14-multi-payin.md) -->
+                        <div id="payinExtraBox" style="margin-bottom:1rem;">
+                            <div id="payinExtraList"></div>
+                            <button type="button" class="btn btn-secondary" onclick="payinExtraAdd()"
+                                style="margin-top:6px;">+ ещё приход</button>
+                            <div id="payinExtraSummary"
+                                style="margin-top:8px;font-size:0.9rem;color:#334155;"></div>
                         </div>
 
                         <hr style="margin: 1.5rem 0; border: none; border-top: 1px solid #eee;">
@@ -4556,6 +4563,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             partner_name: p.partner_name || '',
                             tx_hash: (p.tx_hashes && p.tx_hashes[0]) ? p.tx_hashes[0].hash : '',
                             note: p.note || '',
+                            // У сохранённой части USDT — факт прихода, поэтому
+                            // правка рублей должна двигать курс, а не его
+                            _mode: 'usdt',
                         }));
                         if (payinExtra.length) {
                             const exUsdt = payinExtra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
@@ -5571,23 +5581,47 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function payinExtraAdd() {
             payinExtra.push({ method: 'crypto_direct', amount_rub: null,
                               rate_rub_usdt: null, amount_usdt: null,
-                              partner_name: '', tx_hash: '', note: '' });
+                              partner_name: '', tx_hash: '', note: '', _mode: 'rate' });
             payinExtraRender();
         }
 
         function payinExtraRemove(i) { payinExtra.splice(i, 1); payinExtraRender(); }
 
+        // Ввод текста НЕ перерисовывает карточки: innerHTML заменяется целиком,
+        // и поле теряет фокус после каждого символа. Меняем только состояние,
+        // парное поле правим точечно по id, сводку пересчитываем.
+        // Перерисовка — только на структурных изменениях (добавили, убрали,
+        // сменили метод, выбрали хэш).
         function payinExtraSet(i, field, value) {
             const num = ['amount_rub', 'rate_rub_usdt', 'amount_usdt'].includes(field);
             payinExtra[i][field] = num ? (parseFloat(value) || null) : value;
-            // Курс и USDT считаются друг из друга — как payinMode у основного прихода
+
             const p = payinExtra[i];
-            if (field === 'amount_usdt' && p.amount_rub && p.amount_usdt) {
+            const put = (name, val) => {
+                const el = document.getElementById(`pe-${i}-${name}`);
+                if (el && document.activeElement !== el) el.value = val ?? '';
+            };
+            // Что менеджер задал руками, то и источник истины — как payinMode
+            // у основного прихода. Введён USDT (это факт, сколько реально пришло)
+            // → правка рублей двигает КУРС. Введён курс → правка рублей двигает USDT.
+            // Без этого поправка рублей молча переписывала бы факт прихода:
+            // 6920 превращалось в 6920.0002 из округлённого до 4 знаков курса.
+            if (field === 'amount_usdt') p._mode = 'usdt';
+            if (field === 'rate_rub_usdt') p._mode = 'rate';
+
+            if (p.amount_rub && p.amount_usdt && (field === 'amount_usdt' || p._mode === 'usdt')) {
                 p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
-            } else if ((field === 'rate_rub_usdt' || field === 'amount_rub')
-                       && p.amount_rub && p.rate_rub_usdt) {
+                put('rate', p.rate_rub_usdt);
+            } else if (p.amount_rub && p.rate_rub_usdt) {
                 p.amount_usdt = +(p.amount_rub / p.rate_rub_usdt).toFixed(4);
+                put('usdt', p.amount_usdt);
             }
+            payinExtraSummary();
+        }
+
+        // Смена метода меняет набор полей — тут перерисовка нужна
+        function payinExtraSetMethod(i, value) {
+            payinExtra[i].method = value;
             payinExtraRender();
         }
 
@@ -5602,7 +5636,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
                         <strong style="white-space:nowrap;">Приход ${i + 2}</strong>
                         <select class="form-control" style="max-width:220px;"
-                            onchange="payinExtraSet(${i}, 'method', this.value)">
+                            onchange="payinExtraSetMethod(${i}, this.value)">
                             ${PAYIN_EXTRA_METHODS.map(([k, v]) =>
                                 `<option value="${k}" ${p.method === k ? 'selected' : ''}>${v}</option>`).join('')}
                         </select>
@@ -5613,17 +5647,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${isCrypto ? '' : `
                         <input type="number" step="any" class="form-control" style="max-width:150px;"
                             placeholder="Сумма RUB" value="${p.amount_rub ?? ''}"
-                            oninput="payinExtraSet(${i}, 'amount_rub', this.value)">
+                            id="pe-${i}-rub" oninput="payinExtraSet(${i}, 'amount_rub', this.value)">
                         <input type="number" step="any" class="form-control" style="max-width:150px;"
                             placeholder="Курс RUB/USDT" value="${p.rate_rub_usdt ?? ''}"
-                            oninput="payinExtraSet(${i}, 'rate_rub_usdt', this.value)">`}
+                            id="pe-${i}-rate" oninput="payinExtraSet(${i}, 'rate_rub_usdt', this.value)">`}
                         <input type="number" step="any" class="form-control" style="max-width:150px;"
                             placeholder="Пришло USDT" value="${p.amount_usdt ?? ''}"
-                            oninput="payinExtraSet(${i}, 'amount_usdt', this.value)">
+                            id="pe-${i}-usdt" oninput="payinExtraSet(${i}, 'amount_usdt', this.value)">
                         ${isCash ? `
                         <input type="text" class="form-control" style="max-width:150px;"
                             placeholder="Партнёр" value="${p.partner_name || ''}"
-                            oninput="payinExtraSet(${i}, 'partner_name', this.value)">` : ''}
+                            id="pe-${i}-partner" oninput="payinExtraSet(${i}, 'partner_name', this.value)">` : ''}
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center;">
                         ${(() => {
@@ -5638,7 +5672,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         })()}
                         <input type="text" class="form-control" style="max-width:280px;"
                             placeholder="Или TxHash вручную..." value="${p.tx_hash || ''}"
-                            oninput="payinExtraSet(${i}, 'tx_hash', this.value)">
+                            id="pe-${i}-hash" oninput="payinExtraSet(${i}, 'tx_hash', this.value)">
                     </div>
                 </div>`;
             }).join('');
@@ -6240,6 +6274,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const rate = parseFloat(document.querySelector('[name="payin_rate_rub_usdt"]')?.value);
                 if (rub && rate) payin = rub / rate;
             }
+            // Приход сделки — ИТОГ по всем каналам. Без этого сводка показывала
+            // только основную часть: на сделке 9 285.36 выходило 2 365.36 и
+            // «прибыль» −6 304 при живой отправке 8 669
+            payin = (payin || 0) + payinExtraTotalUsdt() || null;
             return {
                 invoice_amount_usd: num('fhInvoiceUsd'),
                 transfer_sent_usd: num('fhSentUsd'),
