@@ -5810,12 +5810,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const isCryptoDirect = method.value === 'crypto_direct';
             const isSberWL = method.value === 'sber_wl';
             const isSberReqs = method.value === 'sber_reqs';
-            // Недвижимость: чем бы клиент ни платил, застройщику уходит крипта/валюта
-            // с нашей стороны, и приход в USDT надо сверить хэшами. Раньше блок хэшей
-            // прятался на «Сбер (реквизиты)» — приход рублями, а хэш добавить некуда.
-            const isRealty = document.getElementById('mfDealToggle')?.checked
-                || document.getElementById('fhDealToggle')?.checked;
-
             // WL picker (СБП: ссылка WL-бота знает сумму, курс и USDT клиента)
             wlPickerGroup.style.display = isSberWL ? 'block' : 'none';
             if (isSberWL) loadWlTransactions();
@@ -5846,14 +5840,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Курс для клиента
             exchangeRateGroup.style.display = isCryptoDirect ? 'none' : 'block';
 
-            // Доверка / TxHash
-            if (method.value === 'spp_doverka') {
-                doverkaGroup.style.display = 'flex';
-                txHashGroup.style.display = isRealty ? 'block' : 'none';
-            } else {
-                doverkaGroup.style.display = 'none';
-                txHashGroup.style.display = ((isSberWL || isSberReqs) && !isRealty) ? 'none' : 'block';
-            }
+            // Доверка
+            doverkaGroup.style.display = method.value === 'spp_doverka' ? 'flex' : 'none';
+
+            // Блок хэшей виден при ЛЮБОМ методе. Раньше он прятался на сберовских
+            // (кроме недвижимости) — считалось, что при рублёвом приходе крипты нет.
+            // Это неверно: рубли собираются пулом, на них покупается USDT, и хэш
+            // этой покупки — единственный ответ на вопрос «обменяли или лежат».
+            // Плюс в дополнительных приходах пикер хэша есть всегда, и разное
+            // поведение двух блоков одной формы путало больше, чем экономило место
+            txHashGroup.style.display = 'block';
         }
 
         async function loadWlTransactions() {
