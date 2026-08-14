@@ -2505,6 +2505,83 @@ def sync_deals_to_gsheet(deals):
         return _sync_deals_to_gsheet_impl(deals)
 
 
+def build_deal_rows(deal, start_num):
+    """Строки листа «общая сделка» для одной сделки — по строке на часть Pay-In.
+
+    Колонки A–R как раньше, S — «часть» (`1/2`, `2/2`; у одноканальной `1/1`).
+    Номер первой строки обычный, дальше `.2`, `.3` — так видно, что строки
+    принадлежат одной сделке, и счётчик остаётся счётчиком сделок.
+
+    Делится всё, что пропорционально приходу: выдача клиенту, выдача в USDT,
+    выплата партнёру, чистая доходность. Приход, метод и хэши идут построчно
+    от самой части. Остальное дублируется.
+
+    У сделки с одним каналом строка получается ровно такой же, как до
+    появления частей, — плюс «1/1» в новой колонке.
+    """
+    parts = _payin_all_parts(deal)
+    amounts = [p['amount_usdt'] for p in parts]
+    n = len(parts)
+    single = (n == 1)
+
+    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
+    payout_method_str = PAYOUT_METHOD_LABELS.get(
+        deal.payout_method.value if deal.payout_method else '', '')
+    net_profit = (deal.net_profit_usdt
+                  if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
+                  else deal.profit_usdt)
+
+    payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
+    payout_currency = (deal.custom_payout_currency or 'thb').lower()
+    payout_usdt = deal.payout_amount_usdt or 0
+
+    thb_split = split_by_payin_share(payout_thb, amounts, digits=0)
+    usdt_split = split_by_payin_share(payout_usdt, amounts)
+    ref_split = split_by_payin_share(deal.referrer_payout_usdt or 0, amounts)
+    net_split = split_by_payin_share(net_profit or 0, amounts)
+
+    rows = []
+    for i, p in enumerate(parts):
+        # Кастомная одночастная сделка сохраняет прежний вид: приход в своей
+        # валюте из custom_*, а не восстановленный из плоских полей
+        if deal.is_custom and single:
+            currency_in = (deal.custom_payin_currency or '').lower()
+            amount_in = deal.custom_payin_amount or 0
+            amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
+        elif p['amount_rub']:
+            currency_in, amount_in = 'rub', p['amount_rub']
+            amount_in_usdt = p['amount_usdt']
+        else:
+            currency_in, amount_in = 'usdt', p['amount_usdt']
+            amount_in_usdt = p['amount_usdt']
+
+        method_str = ('кастом' if deal.is_custom
+                      else PAYIN_METHOD_LABELS.get(p['method'], ''))
+
+        rows.append([
+            start_num if i == 0 else f'{start_num}.{i + 1}',       # A: номер
+            (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
+            '',                                                    # C: пусто
+            date_str,                                              # D: дата
+            f'{amount_in:,.2f}' if amount_in else '',              # E: сумма части
+            currency_in,                                           # F: валюта
+            f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',   # G: USDT части
+            int(thb_split[i]) if thb_split[i] else '',             # H: доля выдачи
+            payout_currency,                                       # I: валюта выдачи
+            f'${usdt_split[i]:,.2f}' if usdt_split[i] else '',     # J: доля выдачи USDT
+            '',                                                    # K: брокеру
+            deal.referrer_name or '',                              # L: реферал
+            f'${ref_split[i]:,.2f}' if ref_split[i] else '',       # M: доля партнёру
+            f'${net_split[i]:,.2f}' if net_profit is not None else '',  # N: доля чистой
+            payout_method_str,                                     # O: способ выдачи
+            method_str,                                            # P: метод ЧАСТИ
+            ', '.join(h['hash'] for h in p['tx_hashes']),          # Q: хэши части
+            str(deal.id) if deal.id else '',                       # R: якорь upsert
+            f'{i + 1}/{n}',                                        # S: часть
+        ])
+    return rows
+
+
 def _sync_deals_to_gsheet_impl(deals):
     """Добавляет завершённые сделки в Google Sheet 'общая сделка'.
     Идемпотентно: если строка для сделки уже есть (по deal.id в колонке R,
@@ -2526,7 +2603,9 @@ def _sync_deals_to_gsheet_impl(deals):
         deals = list(deals)
         new_deals = []
         for d in deals:
-            existing_row_num = find_deal_row_in_gsheet(ws, all_rows, d)
+            # Тем же поиском, что и перезапись: у многочастной сделки без якоря
+            # он вернёт пусто, и она пойдёт на вставку, а не затрёт чужую строку
+            existing_row_num = find_deal_rows_in_gsheet(all_rows, d)
             if existing_row_num:
                 existing_to_update.append(d)
             else:
@@ -2564,65 +2643,10 @@ def _sync_deals_to_gsheet_impl(deals):
 
         new_rows = []
         for deal in deals:
+            # Номер инкрементируется на СДЕЛКУ, а не на строку: части получают
+            # тот же номер с суффиксом (187, 187.2), счётчик остаётся счётчиком сделок
             last_num += 1
-
-            payin_method_str = PAYIN_METHOD_LABELS.get(
-                deal.payin_method.value if deal.payin_method else '', ''
-            )
-            payout_method_str = PAYOUT_METHOD_LABELS.get(
-                deal.payout_method.value if deal.payout_method else '', ''
-            )
-
-            # Валюта пополнения (кастомные сделки используют custom_* поля)
-            if deal.is_custom:
-                currency_in = (deal.custom_payin_currency or '').lower()
-                amount_in = deal.custom_payin_amount or 0
-                amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-            elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-                currency_in = 'usdt'
-                amount_in = deal.payin_amount_usdt or 0
-                amount_in_usdt = amount_in
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-            else:
-                currency_in = 'rub'
-                amount_in = deal.payin_amount_rub or 0
-                amount_in_usdt = deal.payin_amount_usdt or 0
-                payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-                payout_currency = (deal.custom_payout_currency or 'thb').lower()
-
-            # Значения как числа — Google Sheets сам отформатирует
-            date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-            payout_usdt = deal.payout_amount_usdt or 0
-            tx_hash = ', '.join(_payin_hash_list(deal))
-
-            # Чистая прибыль если есть реферер, иначе обычный profit
-            net_profit = (deal.net_profit_usdt
-                          if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                          else deal.profit_usdt)
-            row = [
-                last_num,                              # A: номер
-                (deal.client.name if deal.client else deal.client_name) or '',  # B: клиент
-                '',                                    # C: пусто
-                date_str,                              # D: дата
-                f'{amount_in:,.2f}' if amount_in else '',  # E: сумма получения
-                currency_in,                           # F: валюта
-                f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',  # G: получение в USDT
-                int(payout_thb) if payout_thb else '',  # H: выдача клиенту
-                payout_currency,                       # I: валюта выдачи
-                f'${payout_usdt:,.2f}' if payout_usdt else '',  # J: выдача в USDT
-                '',                                    # K: брокеру
-                deal.referrer_name or '',              # L: реферал (имя)
-                f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнеру
-                f'${net_profit:,.2f}' if net_profit is not None else '',  # N: чистая доходность
-                payout_method_str,                     # O: способ выдачи
-                payin_method_str if not deal.is_custom else 'кастом',  # P: способ пополнения
-                tx_hash,                               # Q: хеш
-                str(deal.id) if deal.id else '',       # R: служебный deal.id (идемпотентность)
-            ]
-            new_rows.append(row)
+            new_rows.extend(build_deal_rows(deal, last_num))
 
         if new_rows:
             # Находим строку-образец для копирования формата (последняя строка с номером)
@@ -2714,6 +2738,29 @@ def find_deal_row_in_gsheet(ws, all_rows, deal):
     return None
 
 
+def find_deal_rows_in_gsheet(all_rows, deal):
+    """Номера ВСЕХ строк сделки (1-indexed), по порядку сверху вниз.
+
+    Основной путь — `deal.id` в колонке R. Фолбэки по «имя + дата» и
+    «дата + сумма USDT» оставлены только для сделок с ОДНОЙ частью: у
+    многочастной в колонке G лежат суммы частей, а фолбэк сравнивает с итогом —
+    своё он не найдёт никогда, зато может совпасть чужая сделка с близкой суммой
+    в тот же день, и снесётся она.
+    """
+    deal_id_str = str(deal.id) if getattr(deal, 'id', None) else ''
+    if deal_id_str:
+        hits = [i + 1 for i, row in enumerate(all_rows)
+                if len(row) >= 18 and str(row[17]).strip() == deal_id_str]
+        if hits:
+            return hits
+
+    if len(_payin_all_parts(deal)) > 1:
+        return []          # вслепую многочастную не ищем
+
+    row_num = find_deal_row_in_gsheet(None, all_rows, deal)
+    return [row_num] if row_num else []
+
+
 def delete_deal_from_gsheet(deal):
     """Тонкий враппер: сериализует доступ к листу через _gsheet_lock."""
     if getattr(deal, 'is_test', False):
@@ -2723,7 +2770,11 @@ def delete_deal_from_gsheet(deal):
 
 
 def _delete_deal_from_gsheet_impl(deal):
-    """Удаляет строку сделки из Google Sheet"""
+    """Удаляет ВСЕ строки сделки из листа «общая сделка».
+
+    Снизу вверх: после первого delete_rows номера строк ниже съезжают на
+    единицу, и удаление сверху вниз снесло бы соседнюю сделку.
+    """
     try:
         gc = get_gsheet_client()
         if not gc:
@@ -2731,72 +2782,40 @@ def _delete_deal_from_gsheet_impl(deal):
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
-        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-        if row_num:
+        row_nums = find_deal_rows_in_gsheet(all_rows, deal)
+        if not row_nums:
+            print(f'[GSheet] Rows not found for deal #{deal.id} ({deal.client_name})')
+            return
+        for row_num in sorted(row_nums, reverse=True):
             ws.delete_rows(row_num)
-            print(f'[GSheet] Deleted row {row_num} ({deal.client_name})')
-        else:
-            print(f'[GSheet] Row not found for {deal.client_name}')
+        print(f'[GSheet] Deleted {len(row_nums)} row(s) for deal #{deal.id}')
     except Exception as e:
         print(f'[GSheet] Delete error: {e}')
 
 
 def _force_update_deal_row_in_gsheet(ws, all_rows, deal):
-    """Обновляет существующую строку сделки в листе «общая сделка»
-    без проверки reimbursement_id. Используется sync_deals_to_gsheet для
-    идемпотентности."""
-    row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-    if not row_num:
-        return False
-    payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
-    payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
+    """Перезаписывает блок строк сделки в листе «общая сделка» без проверки
+    reimbursement_id. Используется sync_deals_to_gsheet для идемпотентности.
 
-    if deal.is_custom:
-        currency_in = (deal.custom_payin_currency or '').lower()
-        amount_in = deal.custom_payin_amount or 0
-        amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-        currency_in = 'usdt'
-        amount_in = deal.payin_amount_usdt or 0
-        amount_in_usdt = amount_in
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    else:
-        currency_in = 'rub'
-        amount_in = deal.payin_amount_rub or 0
-        amount_in_usdt = deal.payin_amount_usdt or 0
-        payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-        payout_currency = (deal.custom_payout_currency or 'thb').lower()
-    date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-    payout_usdt = deal.payout_amount_usdt or 0
-    existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
-    net_profit = (deal.net_profit_usdt
-                  if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                  else deal.profit_usdt)
-    row = [
-        existing_num,
-        (deal.client.name if deal.client else deal.client_name) or '',
-        '',
-        date_str,
-        f'{amount_in:,.2f}' if amount_in else '',
-        currency_in,
-        f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
-        int(payout_thb) if payout_thb else '',
-        payout_currency,
-        f'${payout_usdt:,.2f}' if payout_usdt else '',
-        '',
-        deal.referrer_name or '',  # L: реферал (имя)
-        f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
-        f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
-        payout_method_str,  # O
-        payin_method_str if not deal.is_custom else 'кастом',  # P
-        ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
-        str(deal.id) if deal.id else '',  # R: служебный deal.id (проставляем и легаси-строкам)
-    ]
-    ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
-    print(f'[GSheet] Force-updated row {row_num} for deal #{deal.id}')
+    Число частей могло измениться с прошлой выгрузки, поэтому блок сначала
+    выравнивается по длине: лишние строки удаляются снизу вверх, недостающие
+    вставляются. Без этого ws.update затёр бы соседнюю сделку.
+    """
+    row_nums = find_deal_rows_in_gsheet(all_rows, deal)
+    if not row_nums:
+        return False
+    existing_num = all_rows[row_nums[0] - 1][0] if all_rows[row_nums[0] - 1] else ''
+    rows = build_deal_rows(deal, existing_num or (deal.id or ''))
+
+    while len(row_nums) > len(rows):
+        ws.delete_rows(row_nums.pop())
+    while len(row_nums) < len(rows):
+        ws.insert_rows([[''] * len(rows[0])], row=row_nums[-1] + 1)
+        row_nums.append(row_nums[-1] + 1)
+
+    ws.update(values=rows, range_name=f'A{row_nums[0]}:S{row_nums[-1]}',
+              value_input_option='USER_ENTERED')
+    print(f'[GSheet] Force-updated {len(rows)} row(s) for deal #{deal.id}')
     return True
 
 
@@ -2809,7 +2828,12 @@ def update_deal_in_gsheet(deal):
 
 
 def _update_deal_in_gsheet_impl(deal):
-    """Обновляет строку сделки в Google Sheet (только если возмещена)"""
+    """Обновляет строки сделки в Google Sheet (только если возмещена).
+
+    Сборка строк — общая с _force_update_deal_row_in_gsheet: раньше здесь
+    лежала её копия, и любая правка формата требовала синхронной правки в двух
+    местах. Заодно отсюда приезжает выравнивание блока по числу частей.
+    """
     if deal.reimbursement_id is None:
         return
     try:
@@ -2819,66 +2843,8 @@ def _update_deal_in_gsheet_impl(deal):
         sh = gc.open_by_key(GSHEET_ID)
         ws = sh.worksheet(GSHEET_WORKSHEET)
         all_rows = ws.get_all_values()
-        row_num = find_deal_row_in_gsheet(ws, all_rows, deal)
-        if not row_num:
+        if not _force_update_deal_row_in_gsheet(ws, all_rows, deal):
             print(f'[GSheet] Row not found for update: {deal.client_name}')
-            return
-
-        payin_method_str = PAYIN_METHOD_LABELS.get(deal.payin_method.value if deal.payin_method else '', '')
-        payout_method_str = PAYOUT_METHOD_LABELS.get(deal.payout_method.value if deal.payout_method else '', '')
-
-        # Кастомные сделки используют custom_* поля
-        if deal.is_custom:
-            currency_in = (deal.custom_payin_currency or '').lower()
-            amount_in = deal.custom_payin_amount or 0
-            amount_in_usdt = deal.payin_amount_usdt or deal.custom_payin_amount or 0
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-        elif deal.payin_method == PayInMethod.CRYPTO_DIRECT:
-            currency_in = 'usdt'
-            amount_in = deal.payin_amount_usdt or 0
-            amount_in_usdt = amount_in
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-        else:
-            currency_in = 'rub'
-            amount_in = deal.payin_amount_rub or 0
-            amount_in_usdt = deal.payin_amount_usdt or 0
-            payout_thb = deal.custom_payout_amount or deal.payout_amount_thb or 0
-            payout_currency = (deal.custom_payout_currency or 'thb').lower()
-
-        date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
-        payout_usdt = deal.payout_amount_usdt or 0
-
-        # Сохраняем номер из колонки A (не перезаписываем)
-        existing_num = all_rows[row_num - 1][0] if len(all_rows[row_num - 1]) > 0 else ''
-        net_profit = (deal.net_profit_usdt
-                      if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
-                      else deal.profit_usdt)
-
-        row = [
-            existing_num,
-            (deal.client.name if deal.client else deal.client_name) or '',
-            '',
-            date_str,
-            f'{amount_in:,.2f}' if amount_in else '',
-            currency_in,
-            f'${amount_in_usdt:,.2f}' if amount_in_usdt else '',
-            int(payout_thb) if payout_thb else '',
-            payout_currency,
-            f'${payout_usdt:,.2f}' if payout_usdt else '',
-            '',
-            deal.referrer_name or '',  # L: реферал (имя)
-            f'${deal.referrer_payout_usdt:,.2f}' if deal.referrer_payout_usdt else '',  # M: партнёру
-            f'${net_profit:,.2f}' if net_profit is not None else '',  # N: доходность
-            payout_method_str,  # O
-            payin_method_str if not deal.is_custom else 'кастом',  # P
-            ', '.join(_payin_hash_list(deal)),  # Q (приход частями — все хэши)
-            str(deal.id) if deal.id else '',  # R: служебный deal.id
-        ]
-
-        ws.update(values=[row], range_name=f'A{row_num}:R{row_num}', value_input_option='USER_ENTERED')
-        print(f'[GSheet] Updated row {row_num} ({(deal.client.name if deal.client else deal.client_name) or ""})')
     except Exception as e:
         print(f'[GSheet] Update error: {e}')
 
