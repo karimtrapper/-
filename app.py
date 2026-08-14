@@ -6272,6 +6272,10 @@ def _tron_tx_usdt_amount(tx_hash):
     лучше записать перевод с пометкой «не сверено», чем подвесить менеджеру
     форму на десятки секунд, пока TronScan отдаёт 429.
     """
+    # Юнит-тесты в сеть не ходят: сохранение сделки с хэшем зовёт эту функцию,
+    # и на прогоне сотни запросов к TronScan вешали сьют на таймаутах
+    if os.environ.get('PYTEST_CURRENT_TEST'):
+        return None
     try:
         r = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
                          headers=_TRONSCAN_HEADERS, timeout=6,

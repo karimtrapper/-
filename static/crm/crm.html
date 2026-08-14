@@ -5317,12 +5317,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Реестр переводов: хэш → {amount_usdt, used_usdt, free_usdt, source, deal_ids}
         let payinTxLedger = {};
 
+        const round2 = v => Math.round((v || 0) * 100) / 100;
+
         // Доля перевода, которая идёт в ЭТУ сделку. Раньше сделка забирала
         // перевод целиком, и на общем переводе за две оплаты курс выходил
         // неверным: 200 000 ₽ ÷ $2760 = 72.46 вместо реального
         function payinTxShareChanged(i, value) {
             const n = parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
             payinTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
+            payinTxPool[i]._auto = false;   // менеджер задал долю сам — не переписываем
             const amountInput = document.querySelector('[name="payin_amount_usdt"]');
             if (amountInput) amountInput.value = payinTxPoolTotal().toFixed(2);
             payinMode = 'usdt';
@@ -5340,7 +5343,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const r = await fetch(`${API_URL}/api/payin-txs/${hash}`);
                 if (!r.ok) return;
                 const d = await r.json();
-                if (d.success) { payinTxLedger[hash] = d.tx; renderPayinTxPool(); }
+                if (!d.success) return;
+                payinTxLedger[hash] = d.tx;
+
+                // Перевод уже частично разобран другими сделками: в долю
+                // подставляем ОСТАТОК, а не всю сумму из сети. Иначе менеджер
+                // вбивал бы $2760 там, где свободно $407, и упирался в отказ
+                const mine = (d.uses || []).find(u => u.deal_id === editingDealId);
+                const forMe = round2(d.tx.free_usdt + (mine ? mine.amount_usdt : 0));
+                payinTxPool.forEach(t => {
+                    if (t.hash === hash && t._auto && forMe > 0 && forMe < (t.amount_usdt || 0)) {
+                        t.amount_usdt = forMe;
+                    }
+                });
+                syncPayinAmountFromPool();
+                renderPayinTxPool();
             } catch (e) { /* реестр не критичен для сохранения */ }
         }
 
@@ -5374,6 +5391,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 hash: txHash,
                 amount_usdt: isNaN(amount) ? null : amount,
                 date: opt?.dataset?.date || '',
+                // Подставлено из сети, руками не трогали: когда приедет реестр,
+                // такую долю можно ужать до остатка перевода
+                _auto: true,
             });
             syncPayinAmountFromPool();
             loadPayinTxLedger(txHash);
@@ -7462,6 +7482,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
             // Приход крипты частями (пустой список = один хэш из поля, как раньше)
             data.payin_tx_hashes = payinTxPool.map(t => ({ hash: t.hash, amount_usdt: t.amount_usdt }));
+
+            // Дополнительные приходы (пустой список = вернуться к одному каналу).
+            // Обязательно ДО отправки и на обоих режимах: без этой строки вторая
+            // часть жила только на экране, а в базу уезжал приход первой части —
+            // сделка #502 показывала −$6304, вычитая всю отправку из одной части
+            data.payin_extra = payinExtraSerialize();
 
             // Недвижимость: свои поля вместо обычной выдачи (у обоих типов её нет)
             if (document.getElementById('mfDealToggle')?.checked) {
