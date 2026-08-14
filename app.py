@@ -382,6 +382,15 @@ class Referrer(Base):
     # Модель вознаграждения: 'revshare' (% от прибыли) или 'markup' (+% к курсу клиента)
     comp_model = Column(String(20), default='revshare')
     markup_percent = Column(Float, default=0.0)
+    # ── Платёжные ссылки (продукт на рельсах Rapira+Bitazza, см. partner_rates.py) ──
+    # Отдельные поля, а не comp_model/markup_percent: там связка Доверки со своей
+    # лестницей комиссий, смешивать экономику двух разных рельсов нельзя.
+    can_create_links = Column(Boolean, default=False)      # доступ к созданию ссылок
+    link_base_markup_percent = Column(Float)               # наша наценка, % (NULL → глобальная 3.5)
+    link_markup_percent = Column(Float, default=0.0)       # наценка партнёра СВЕРХУ нашей (платит клиент)
+    link_revshare_percent = Column(Float, default=0.0)     # доля партнёра от нашей прибыли, %
+    link_logo_url = Column(String(512))                    # логотип на странице оплаты (white label)
+    link_description = Column(String(200))                 # подпись клиенту на странице оплаты
     active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
     auth_mode = Column(String(20), default='link')       # 'link' | 'telegram'
@@ -403,6 +412,12 @@ class Referrer(Base):
             'payout_currency': self.payout_currency or 'USDT',
             'comp_model': self.comp_model or 'revshare',
             'markup_percent': self.markup_percent or 0.0,
+            'can_create_links': bool(self.can_create_links),
+            'link_base_markup_percent': self.link_base_markup_percent,
+            'link_markup_percent': self.link_markup_percent or 0.0,
+            'link_revshare_percent': self.link_revshare_percent or 0.0,
+            'link_logo_url': self.link_logo_url,
+            'link_description': self.link_description,
             'active': self.active,
             'auth_mode': self.auth_mode or 'link',
             'telegram_user_id': self.telegram_user_id,
@@ -921,6 +936,13 @@ class Deal(Base):
     # Части прихода (метод sber_reqs, оплата частями): JSON-список
     # [{uuid|null, amount_rub, payer, date, note}]. uuid → приход из пула sber_incomes.
     payin_parts = Column(Text, nullable=True)
+    # Дополнительные приходы сверх основного: JSON-список
+    # [{method, amount_rub, rate_rub_usdt, amount_usdt, partner_name,
+    #   tx_hashes, sber_uuids, note}]
+    # Основной приход остаётся в плоских payin_* — часть 1 это он. После
+    # сохранения плоские поля хранят АГРЕГАТЫ (итог USDT, сумма рублей,
+    # средневзвешенный курс), поэтому весь остальной код читает их как раньше.
+    payin_extra = Column(Text, nullable=True)
     # LOSE-сделки и revive-логика (конверсия по Красинскому)
     lose_reason = Column(String(300), nullable=True)         # причина отказа из LLM-анализа DealCloser
     bitrix_deal_id = Column(Integer, nullable=True, index=True)  # id сделки Bitrix (дедуп + трейсинг)
@@ -1015,6 +1037,7 @@ class Deal(Base):
             'doc_payment_url': self.doc_payment_url,
             'payin_partner_name': self.payin_partner_name,
             'payin_parts': json.loads(self.payin_parts) if self.payin_parts else None,
+            'payin_extra': json.loads(self.payin_extra) if self.payin_extra else None,
             'doverka_transaction_id': self.doverka_transaction_id,
             'doverka_status': self.doverka_status.value if self.doverka_status else None,
             'doverka_payout_hash': self.doverka_payout_hash,
@@ -1486,6 +1509,13 @@ try:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_comp_model VARCHAR(20)"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_markup_percent FLOAT"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS referrer_paid_at TIMESTAMP"))
+            # Платёжные ссылки партнёра: доступ выключен у всех, прод не меняется
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS can_create_links BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_base_markup_percent FLOAT"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_markup_percent FLOAT DEFAULT 0"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_revshare_percent FLOAT DEFAULT 0"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_logo_url VARCHAR(512)"))
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_description VARCHAR(200)"))
         else:
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
             except: pass
@@ -1502,6 +1532,18 @@ try:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_markup_percent FLOAT"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN referrer_paid_at TIMESTAMP"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN can_create_links BOOLEAN DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_base_markup_percent FLOAT"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_markup_percent FLOAT DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_revshare_percent FLOAT DEFAULT 0"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_logo_url VARCHAR(512)"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_description VARCHAR(200)"))
             except: pass
         # Бэкфилл мультиагентов: старый одиночный реферал → строка deal_agents (ур.1).
         # Идемпотентно (NOT EXISTS) — безопасно выполнять при каждом старте.
@@ -1757,6 +1799,18 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_tx_hashes migration: {e}")
+
+# Дополнительные приходы: несколько способов Pay-In в одной сделке
+try:
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payin_extra TEXT"))
+        else:
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payin_extra TEXT"))
+            except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ payin_extra migration: {e}")
 
 # reimbursements.tx_hash хранит несколько хэшей через запятую, но в БД остался
 # VARCHAR(100) от первой версии — возмещение с 2+ хэшами падало на INSERT
@@ -3202,6 +3256,8 @@ def send_deal_completed_webhook(deal):
 # ==================== CALCULATOR IMPORTS ====================
 from calculator import (ExchangeRateProvider, ExchangeCalculator, playwright_queue,
                         WITHDRAWAL_PCT_BINANCE, WITHDRAWAL_PCT_BITAZZA, WITHDRAWAL_FIXED_THB)
+# Курс партнёрских ссылок — другие рельсы (Rapira + Bitazza), не путать с calculator
+import partner_rates
 
 # ==================== AUTH ====================
 
@@ -9302,6 +9358,9 @@ def referrer_stats(token):
             'default_percent': referrer.default_percent,
             'comp_model': referrer.comp_model or 'revshare',
             'markup_percent': referrer.markup_percent or 0.0,
+            'can_create_links': bool(referrer.can_create_links),
+            'link_logo_url': referrer.link_logo_url,
+            'link_description': referrer.link_description,
             'total_referred_clients': referred_clients,
             'clients_with_deals': clients_with_deals,
             'conversion_rate': conversion_rate,
@@ -9343,6 +9402,84 @@ def ref_payout_quote(token):
         pending, _ = _referrer_balance(db, referrer)
         quote = thb_payout_quote(pending) if pending >= 20 else None
         return jsonify({'success': True, 'usdt': pending, 'quote': quote})
+    finally:
+        db.close()
+
+
+def _link_partner_or_error(db, token):
+    """(referrer, None) если партнёру можно делать ссылки, иначе (None, ответ с ошибкой).
+
+    Флаг проверяется на сервере в каждом эндпоинте ссылок, а не только в UI.
+    """
+    referrer = db.query(Referrer).filter_by(token=token, active=True).first()
+    if not referrer:
+        return None, (jsonify({'success': False, 'error': 'Реферер не найден'}), 404)
+    if not ref_session_authorized(referrer, token):
+        return None, (jsonify({'success': False, 'auth_required': True,
+                               'error': 'Требуется вход через Telegram'}), 401)
+    if not referrer.can_create_links:
+        return None, (jsonify({'success': False, 'error': 'Создание ссылок не подключено'}), 403)
+    # Второй рубеж: даже с поднятым флагом в режиме link кабинет открывает любой,
+    # у кого есть URL с токеном, — платежи от нашего имени так отдавать нельзя.
+    # Флаг мог быть выставлен в обход PUT (миграция, ручной UPDATE), поэтому проверяем здесь.
+    local_stand = os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL
+    if (referrer.auth_mode or 'link') != 'telegram' and not local_stand:
+        return None, (jsonify({'success': False,
+                               'error': 'Нужен вход через Telegram'}), 403)
+    return referrer, None
+
+
+LINK_MIN_RUB, LINK_MAX_RUB = 1000, 1_000_000
+
+
+@app.route('/api/ref/<token>/links/quote', methods=['POST'])
+def ref_link_quote(token):
+    """Котировка платёжной ссылки: партнёр вводит сумму в ₽ или ฿, курс считает сервер.
+
+    Цифрам из браузера не верим — принимаем только сумму и валюту ввода.
+    Наружу отдаём суммы, курс и вознаграждение партнёра; наша прибыль
+    и курсы закупки остаются внутри.
+    """
+    data = request.get_json() or {}
+    db = get_session()
+    try:
+        referrer, err = _link_partner_or_error(db, token)
+        if err:
+            return err
+
+        currency = (data.get('currency') or 'THB').strip().upper()
+        if currency not in ('RUB', 'THB'):
+            return jsonify({'success': False, 'error': 'Валюта: RUB или THB'}), 400
+        try:
+            amount = float(data.get('amount') or 0)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Некорректная сумма'}), 400
+        if amount <= 0:
+            return jsonify({'success': False, 'error': 'Сумма должна быть больше нуля'}), 400
+
+        try:
+            q = partner_rates.quote(
+                thb_amount=amount if currency == 'THB' else None,
+                rub_amount=amount if currency == 'RUB' else None,
+                base_markup=referrer.link_base_markup_percent,
+                partner_markup=referrer.link_markup_percent or 0.0,
+                partner_revshare=referrer.link_revshare_percent or 0.0)
+        except partner_rates.RateError as e:
+            return jsonify({'success': False, 'error': str(e)}), 503
+
+        if not (LINK_MIN_RUB <= q['amount_rub'] <= LINK_MAX_RUB):
+            return jsonify({'success': False,
+                            'error': f'Сумма вне лимитов: {LINK_MIN_RUB:,} – {LINK_MAX_RUB:,} ₽'
+                                     .replace(',', ' ')}), 400
+
+        return jsonify({'success': True, 'quote': {
+            'amount_rub': q['amount_rub'],
+            'amount_thb': q['amount_thb'],
+            'rate': q['rate'],
+            'reward_usdt': q['partner_usdt'],
+            'reward_thb': q['partner_thb'],
+            'expires_in': 900,
+        }})
     finally:
         db.close()
 
@@ -9918,6 +10055,26 @@ def update_referrer(referrer_id):
             referrer.total_paid_usdt = parse_float(data.get('total_paid_usdt'))
         if 'auth_mode' in data:
             referrer.auth_mode = 'telegram' if data['auth_mode'] == 'telegram' else 'link'
+        # Настройки платёжных ссылок
+        if 'can_create_links' in data:
+            want = bool(data['can_create_links'])
+            # В режиме link кабинет пускает любого, у кого есть URL с токеном, а тут
+            # создаются платежи от нашего имени. Пока нет своего логина — только TG.
+            if want and (referrer.auth_mode or 'link') != 'telegram':
+                return jsonify({'success': False,
+                                'error': 'Ссылки можно включить только при входе через Telegram'}), 400
+            referrer.can_create_links = want
+        if 'link_base_markup_percent' in data:
+            raw = data['link_base_markup_percent']
+            referrer.link_base_markup_percent = None if raw in (None, '') else float(raw)
+        if 'link_markup_percent' in data:
+            referrer.link_markup_percent = float(data['link_markup_percent'] or 0)
+        if 'link_revshare_percent' in data:
+            referrer.link_revshare_percent = float(data['link_revshare_percent'] or 0)
+        if 'link_logo_url' in data:
+            referrer.link_logo_url = (data['link_logo_url'] or '').strip() or None
+        if 'link_description' in data:
+            referrer.link_description = (data['link_description'] or '').strip()[:200] or None
 
         db.commit()
         return jsonify({'success': True, 'referrer': referrer.to_dict()})
