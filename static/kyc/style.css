@@ -679,3 +679,117 @@ body {
         gap: 14px;
     }
 }
+
+/* ============================================ */
+/* Видео-заявление (шаг 4)                      */
+/* ============================================ */
+.statement-script {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent-dark);
+    border-radius: var(--radius-sm);
+    padding: 16px 18px;
+    margin-top: 8px;
+    font-size: 16px;
+    line-height: 1.55;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.statement-stage {
+    margin-top: 18px;
+}
+
+.statement-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    max-height: 46vh;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.statement-frame.hidden {
+    display: none;
+}
+
+.statement-frame video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#statementVideo {
+    transform: scaleX(-1); /* зеркало, как в селфи-камере */
+}
+
+.statement-placeholder {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: var(--surface);
+    color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 500;
+    text-align: center;
+    padding: 0 24px;
+}
+
+.statement-placeholder.hidden {
+    display: none;
+}
+
+.statement-rec {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(17, 21, 19, 0.72);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.statement-rec.hidden {
+    display: none;
+}
+
+.statement-rec-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--error);
+    animation: recPulse 1s ease-in-out infinite;
+}
+
+@keyframes recPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
+}
+
+.statement-hint {
+    margin-top: 14px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.statement-hint.is-error {
+    color: var(--error);
+    font-weight: 500;
+}

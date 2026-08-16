@@ -3,7 +3,7 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, request, send_from_directory, redirect, session as flask_session
+from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session
 from flask_cors import CORS
 from datetime import datetime, timedelta
 import os
@@ -32,7 +32,9 @@ app.secret_key = os.environ['SECRET_KEY']  # Без fallback — crash если 
 # На проде переопределяется через env CORS_ORIGINS.
 cors_origins = os.environ.get('CORS_ORIGINS', 'https://grusha.up.railway.app').split(',')
 CORS(app, origins=cors_origins, supports_credentials=True)
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  # 10MB макс размер загрузки
+# 30MB: KYC-сабмит везёт паспорт + селфи + 5 liveness-кадров + видео-заявление
+# одним multipart-запросом. Пофайловые лимиты жёстче и проверяются в kyc_submit.
+app.config['MAX_CONTENT_LENGTH'] = 30 * 1024 * 1024  # макс размер загрузки
 app.permanent_session_lifetime = timedelta(days=30)  # Сессия 30 дней
 app.config['SESSION_COOKIE_SECURE'] = True            # Только HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True           # Нет доступа из JS
@@ -200,9 +202,9 @@ TRONSCAN_CACHE = {
 CACHE_TTL = 300 # 5 минут
 
 # ==================== MODELS ====================
-from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, ForeignKey, Enum as SQLEnum, or_, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from enum import Enum
 
 Base = declarative_base()
@@ -532,22 +534,67 @@ class KycRequest(Base):
     reviewed_at = Column(DateTime, nullable=True)
     reviewed_by = Column(String(100), nullable=True)
     rejection_reason = Column(Text, nullable=True)
+    # Legacy-колонки эпохи файлов на диске. Не пишутся с 2026-08-16, оставлены
+    # чтобы не ронять старые строки; сами файлы по ним давно недостижимы —
+    # контейнер Railway эфемерный, kyc_uploads/ обнулялся каждым деплоем.
     doc_path = Column(String(500), nullable=True)
     selfie_path = Column(String(500), nullable=True)
     liveness_paths = Column(Text, nullable=True)  # JSON-массив путей
 
+    # Видео-заявление: клиент вслух читает текст, заданный менеджером
+    statement_required = Column(Boolean, default=False)
+    statement_text = Column(Text, nullable=True)
+    # Когда ретенция стёрла файлы (сама запись KYC живёт дальше)
+    files_purged_at = Column(DateTime, nullable=True)
+
     client = relationship("Client", backref="kyc_requests")
+    files = relationship("KycFile", backref="kyc", cascade="all, delete-orphan",
+                         lazy="selectin", order_by="KycFile.idx")
 
     def to_dict(self):
+        kinds = {f.kind for f in self.files}
         return {
             'id': self.id, 'token': self.token, 'client_id': self.client_id,
             'client_name': self.client_name, 'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'reviewed_at': self.reviewed_at.isoformat() if self.reviewed_at else None,
             'reviewed_by': self.reviewed_by, 'rejection_reason': self.rejection_reason,
-            'has_doc': bool(self.doc_path), 'has_selfie': bool(self.selfie_path),
-            'has_liveness': bool(self.liveness_paths)
+            'has_doc': 'doc' in kinds, 'has_selfie': 'selfie' in kinds,
+            'has_liveness': 'liveness' in kinds,
+            'liveness_count': sum(1 for f in self.files if f.kind == 'liveness'),
+            'has_statement': 'statement' in kinds,
+            'statement_required': bool(self.statement_required),
+            'statement_text': self.statement_text,
+            'files_purged_at': self.files_purged_at.isoformat() if self.files_purged_at else None,
+            'files_total_bytes': sum(f.size or 0 for f in self.files),
         }
+
+
+class KycFile(Base):
+    """Файл KYC внутри БД: паспорт, селфи, liveness-кадр, видео-заявление.
+
+    Хранится в Postgres, а не на диске сервиса: файловая система контейнера
+    Railway эфемерная, тома у сервиса нет — папка с документами исчезала при
+    каждом деплое. Файлы живут до ретенции (KYC_RETENTION_DAYS), менеджер
+    может открыть и скачать их из CRM в любой момент до этого срока.
+    """
+    __tablename__ = 'kyc_files'
+    id = Column(Integer, primary_key=True)
+    kyc_id = Column(Integer, ForeignKey('kyc_requests.id'), nullable=False, index=True)
+    kind = Column(String(20), nullable=False)   # doc | selfie | liveness | statement
+    idx = Column(Integer, default=0)            # порядок liveness-кадров
+    mime = Column(String(60), nullable=False)
+    ext = Column(String(10), nullable=False)
+    size = Column(Integer, nullable=False)
+    # deferred: список KYC в CRM тянет по 100 записей с файлами — без этого
+    # каждый ответ /api/kyc/list поднимал бы в память все паспорта и видео.
+    data = deferred(Column(LargeBinary, nullable=False))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    @property
+    def slot(self):
+        """Имя слота в API: doc, selfie, statement, liveness_0…"""
+        return f'liveness_{self.idx}' if self.kind == 'liveness' else self.kind
 
 class CashBatch(Base):
     __tablename__ = 'cash_batches'
@@ -1954,6 +2001,24 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ mf_realty migration: {e}")
+
+# KYC: файлы переехали с диска в БД + видео-заявление клиента
+try:
+    Base.metadata.create_all(engine, tables=[KycFile.__table__])
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text("ALTER TABLE kyc_requests ADD COLUMN IF NOT EXISTS statement_required BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE kyc_requests ADD COLUMN IF NOT EXISTS statement_text TEXT"))
+            conn.execute(text("ALTER TABLE kyc_requests ADD COLUMN IF NOT EXISTS files_purged_at TIMESTAMP"))
+        else:
+            for ddl in ("ALTER TABLE kyc_requests ADD COLUMN statement_required BOOLEAN DEFAULT 0",
+                        "ALTER TABLE kyc_requests ADD COLUMN statement_text TEXT",
+                        "ALTER TABLE kyc_requests ADD COLUMN files_purged_at TIMESTAMP"):
+                try: conn.execute(text(ddl))
+                except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ kyc_files migration: {e}")
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
@@ -9164,12 +9229,23 @@ def confirm_doverka(deal_id):
 # ==================== KYC API ====================
 
 import secrets
-import shutil
+import io
+import zipfile
 from werkzeug.utils import secure_filename
 
-# Папка для временного хранения KYC-файлов
-KYC_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'kyc_uploads')
-os.makedirs(KYC_UPLOAD_DIR, exist_ok=True)
+# Сколько дней держим документы после решения менеджера. Дальше фоновый
+# сборщик стирает файлы, сама запись KYC (кто, когда, кем одобрен) остаётся.
+KYC_RETENTION_DAYS = int(os.environ.get('KYC_RETENTION_DAYS', '365'))
+
+
+def kyc_statement_template(client_name=''):
+    """Дефолтный текст видео-заявления. Менеджер правит его перед отправкой ссылки."""
+    who = (client_name or '').strip() or '[фамилия имя]'
+    today = datetime.now().strftime('%d.%m.%Y')
+    return (f'Я, {who}, сегодня {today}, подтверждаю, что провожу обмен '
+            f'добровольно и в своих интересах. Денежные средства принадлежат мне, '
+            f'по просьбе третьих лиц я не действую.')
+
 
 @app.route('/api/kyc/generate', methods=['POST'])
 def kyc_generate_token():
@@ -9179,6 +9255,10 @@ def kyc_generate_token():
         data = request.json or {}
         client_id = data.get('client_id')
         client_name = data.get('client_name', '')
+        statement_required = bool(data.get('statement_required', False))
+        statement_text = (data.get('statement_text') or '').strip()
+        if statement_required and not statement_text:
+            statement_text = kyc_statement_template(client_name)
 
         # Проверяем, нет ли уже активного KYC для клиента
         if client_id:
@@ -9187,13 +9267,20 @@ def kyc_generate_token():
                 KycRequest.status == KycStatus.PENDING
             ).first()
             if existing:
+                # Условия видео-заявления могли поменяться — переносим на живую ссылку,
+                # иначе менеджер думает, что задал текст, а клиент видит старый.
+                existing.statement_required = statement_required
+                existing.statement_text = statement_text or None
+                session.commit()
                 return jsonify({'success': True, 'token': existing.token, 'existing': True})
 
         token = secrets.token_urlsafe(16)
         kyc = KycRequest(
             token=token,
             client_id=client_id,
-            client_name=client_name
+            client_name=client_name,
+            statement_required=statement_required,
+            statement_text=statement_text or None
         )
         session.add(kyc)
         session.commit()
@@ -9214,7 +9301,11 @@ def kyc_status(token):
         if not kyc:
             return jsonify({'success': False, 'error': 'invalid_token'}), 404
 
-        result = {'success': True, 'status': kyc.status}
+        result = {
+            'success': True, 'status': kyc.status,
+            'statement_required': bool(kyc.statement_required),
+            'statement_text': kyc.statement_text or '',
+        }
         if kyc.client_name:
             result['client_name'] = kyc.client_name
         if kyc.status == KycStatus.REJECTED:
@@ -9226,26 +9317,43 @@ def kyc_status(token):
 # ==================== KYC FILE VALIDATION (CR-04) ====================
 # Допустимые MIME-типы фото KYC. SVG/HTML исключены — они исполняют JS при отдаче.
 KYC_ALLOWED_MIME = {'image/jpeg', 'image/png', 'image/webp'}
-KYC_MAX_FILE_BYTES = 5 * 1024 * 1024   # 5 МБ на файл
+KYC_MAX_FILE_BYTES = 5 * 1024 * 1024   # 5 МБ на фото
 KYC_MAX_LIVENESS_FRAMES = 8            # макс. кадров liveness в одном запросе
+# Видео-заявление: webm (Android/Chrome) или mp4 (Safari на iOS).
+# 15 МБ с запасом покрывают 20 сек 480p при битрейте, который ставит страница.
+KYC_ALLOWED_VIDEO_MIME = {'video/webm', 'video/mp4', 'video/quicktime', 'video/x-matroska'}
+KYC_MAX_VIDEO_BYTES = 15 * 1024 * 1024
+
+# Расширение → MIME для отдачи файла обратно менеджеру
+KYC_EXT_MIME = {
+    'jpg': 'image/jpeg', 'png': 'image/png', 'webp': 'image/webp',
+    'webm': 'video/webm', 'mp4': 'video/mp4',
+}
+
+
+def _read_upload(file_storage):
+    """Считать загруженный файл целиком и вернуть (blob, size)."""
+    stream = file_storage.stream
+    stream.seek(0)
+    blob = stream.read()
+    return blob, len(blob)
 
 
 def _validate_kyc_image(file_storage):
     """Валидация загружаемого фото: MIME, magic bytes, размер.
 
-    Возвращает (ok: bool, error: str | None, ext: str | None).
+    Возвращает (ok: bool, error: str | None, ext: str | None, blob: bytes | None).
     ext — нормализованное расширение под фактический magic-bytes тип.
     """
     if file_storage is None or not file_storage.filename:
-        return False, 'empty_file', None
+        return False, 'empty_file', None, None
 
-    mime = (file_storage.mimetype or '').lower()
+    mime = (file_storage.mimetype or '').lower().split(';')[0].strip()
     if mime not in KYC_ALLOWED_MIME:
-        return False, f'unsupported_type:{mime}', None
+        return False, f'unsupported_type:{mime}', None, None
 
-    stream = file_storage.stream
-    head = stream.read(12)
-    stream.seek(0)
+    blob, size = _read_upload(file_storage)
+    head = blob[:12]
 
     if head.startswith(b'\xff\xd8\xff'):
         actual_ext = 'jpg'
@@ -9254,18 +9362,45 @@ def _validate_kyc_image(file_storage):
     elif head[:4] == b'RIFF' and head[8:12] == b'WEBP':
         actual_ext = 'webp'
     else:
-        return False, 'invalid_image_magic', None
+        return False, 'invalid_image_magic', None, None
 
-    # Размер: seek в конец → tell → seek в начало
-    stream.seek(0, 2)
-    size = stream.tell()
-    stream.seek(0)
     if size <= 0:
-        return False, 'empty_file', None
+        return False, 'empty_file', None, None
     if size > KYC_MAX_FILE_BYTES:
-        return False, 'too_large', None
+        return False, 'too_large', None, None
 
-    return True, None, actual_ext
+    return True, None, actual_ext, blob
+
+
+def _validate_kyc_video(file_storage):
+    """Валидация видео-заявления: MIME, magic bytes, размер.
+
+    Возвращает (ok, error, ext, blob). Как и у фото, доверяем magic bytes,
+    а не заголовку и не имени файла: заявленный MIME можно подделать.
+    """
+    if file_storage is None or not file_storage.filename:
+        return False, 'empty_file', None, None
+
+    mime = (file_storage.mimetype or '').lower().split(';')[0].strip()
+    if mime not in KYC_ALLOWED_VIDEO_MIME:
+        return False, f'unsupported_type:{mime}', None, None
+
+    blob, size = _read_upload(file_storage)
+    head = blob[:12]
+
+    if head.startswith(b'\x1a\x45\xdf\xa3'):      # EBML — webm/mkv
+        actual_ext = 'webm'
+    elif head[4:8] == b'ftyp':                     # ISO BMFF — mp4/mov
+        actual_ext = 'mp4'
+    else:
+        return False, 'invalid_video_magic', None, None
+
+    if size <= 0:
+        return False, 'empty_file', None, None
+    if size > KYC_MAX_VIDEO_BYTES:
+        return False, 'too_large', None, None
+
+    return True, None, actual_ext, blob
 
 
 @app.route('/api/kyc/submit', methods=['POST'])
@@ -9276,6 +9411,9 @@ def kyc_submit():
     CR-04: MIME + magic-bytes валидация (whitelist jpeg/png/webp), лимит размера 5МБ,
     rate-limit 10/час по IP, перенумерация имён файлов (имя клиента не доверяем),
     лимит количества liveness-кадров.
+
+    Файлы кладём в БД (таблица kyc_files), а не на диск: контейнер Railway
+    эфемерный, тома нет — папка kyc_uploads/ умирала с каждым деплоем.
     """
     token = request.form.get('token')
     if not token:
@@ -9290,67 +9428,72 @@ def kyc_submit():
         if kyc.status == KycStatus.APPROVED:
             return jsonify({'success': False, 'error': 'already_verified'}), 400
 
-        # Пересабмит: чистим прежние файлы, иначе старые кадры (doc.png,
-        # лишние liveness_*) остаются сиротами с PII, не попав в новый liveness_paths.
-        _delete_kyc_files(token)
+        # Видео-заявление обязательно, если менеджер его затребовал: без него
+        # шаг легко пропустить, отредактировав запрос в обход страницы.
+        statement = request.files.get('statement')
+        if kyc.statement_required and (statement is None or not statement.filename):
+            return jsonify({'success': False, 'error': 'statement_required'}), 400
 
-        # Создаём папку для этого запроса
-        upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
-        os.makedirs(upload_dir, exist_ok=True)
+        # Пересабмит: чистим прежние файлы, иначе старые кадры остаются
+        # сиротами с PII и путаются с новыми в галерее менеджера.
+        new_files = []
 
-        # Сохраняем документ
+        # Документ
         doc = request.files.get('document')
         if doc:
-            ok, err, ext = _validate_kyc_image(doc)
+            ok, err, ext, blob = _validate_kyc_image(doc)
             if not ok:
                 return jsonify({'success': False, 'error': f'document_{err}'}), 400
-            # Имя файла генерируем сами — secure_filename() не защищает от
-            # подделанного расширения, доверяем только magic-bytes.
-            doc_filename = f"doc.{ext}"
-            doc_path = os.path.join(upload_dir, doc_filename)
-            doc.save(doc_path)
-            kyc.doc_path = doc_path
+            new_files.append(KycFile(kind='doc', idx=0, ext=ext,
+                                     mime=KYC_EXT_MIME[ext], size=len(blob), data=blob))
 
-        # Сохраняем селфи
+        # Селфи с документом
         selfie = request.files.get('selfie')
         if selfie:
-            ok, err, ext = _validate_kyc_image(selfie)
+            ok, err, ext, blob = _validate_kyc_image(selfie)
             if not ok:
                 return jsonify({'success': False, 'error': f'selfie_{err}'}), 400
-            selfie_filename = f"selfie.{ext}"
-            selfie_path = os.path.join(upload_dir, selfie_filename)
-            selfie.save(selfie_path)
-            kyc.selfie_path = selfie_path
+            new_files.append(KycFile(kind='selfie', idx=0, ext=ext,
+                                     mime=KYC_EXT_MIME[ext], size=len(blob), data=blob))
 
-        # Сохраняем liveness-кадры
+        # Liveness-кадры
         liveness_files = request.files.getlist('liveness')
         if liveness_files:
             if len(liveness_files) > KYC_MAX_LIVENESS_FRAMES:
                 return jsonify({'success': False, 'error': 'too_many_liveness_frames'}), 400
-            liveness_paths = []
             for i, f in enumerate(liveness_files):
-                ok, err, ext = _validate_kyc_image(f)
+                ok, err, ext, blob = _validate_kyc_image(f)
                 if not ok:
                     return jsonify({'success': False, 'error': f'liveness_{i}_{err}'}), 400
-                liveness_filename = f"liveness_{i}.{ext}"
-                liveness_path = os.path.join(upload_dir, liveness_filename)
-                f.save(liveness_path)
-                liveness_paths.append(liveness_path)
-            kyc.liveness_paths = json.dumps(liveness_paths)
+                new_files.append(KycFile(kind='liveness', idx=i, ext=ext,
+                                         mime=KYC_EXT_MIME[ext], size=len(blob), data=blob))
+
+        # Видео-заявление
+        if statement and statement.filename:
+            ok, err, ext, blob = _validate_kyc_video(statement)
+            if not ok:
+                return jsonify({'success': False, 'error': f'statement_{err}'}), 400
+            new_files.append(KycFile(kind='statement', idx=0, ext=ext,
+                                     mime=KYC_EXT_MIME[ext], size=len(blob), data=blob))
+
+        # Всё провалидировано — только теперь затираем прошлую попытку.
+        # Порядок важен: при ошибке выше старые файлы остаются целы.
+        session.query(KycFile).filter(KycFile.kyc_id == kyc.id).delete(synchronize_session=False)
+        for f in new_files:
+            f.kyc_id = kyc.id
+            session.add(f)
 
         # Сбрасываем статус на pending если клиент перезагружает после отклонения
         kyc.status = KycStatus.PENDING
         kyc.rejection_reason = None
         kyc.reviewed_at = None
         kyc.reviewed_by = None
+        kyc.files_purged_at = None
 
         session.commit()
         return jsonify({'success': True, 'status': 'pending'})
     except Exception as e:
         session.rollback()
-        # БД откатилась → частично сохранённые файлы (напр. паспорт) стали бы
-        # недостижимыми сиротами с PII. Удаляем их.
-        _delete_kyc_files(token)
         app.logger.error(f'Server error: {e}')
         return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
     finally:
@@ -9382,9 +9525,19 @@ def kyc_review(token):
     finally:
         session.close()
 
+def _kyc_safe_name(kyc):
+    """Основа имени файла при скачивании: имя клиента латиницей или id."""
+    raw = secure_filename(kyc.client_name or '') or f'kyc-{kyc.id}'
+    return raw[:40]
+
+
 @app.route('/api/kyc/photo/<token>/<photo_type>', methods=['GET'])
 def kyc_photo(token, photo_type):
-    """CRM: получить фото для просмотра (doc, selfie, liveness_0..4)"""
+    """CRM: файл верификации — doc, selfie, liveness_0..7, statement.
+
+    `?download=1` отдаёт с Content-Disposition: attachment, чтобы менеджер мог
+    сохранить документ, а не только посмотреть его в модалке.
+    """
     if not flask_session.get('user_id'):
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
     session = get_session()
@@ -9393,23 +9546,60 @@ def kyc_photo(token, photo_type):
         if not kyc:
             return '', 404
 
-        if photo_type == 'doc' and kyc.doc_path and os.path.exists(kyc.doc_path):
-            directory = os.path.dirname(kyc.doc_path)
-            filename = os.path.basename(kyc.doc_path)
-            return send_from_directory(directory, filename)
-        elif photo_type == 'selfie' and kyc.selfie_path and os.path.exists(kyc.selfie_path):
-            directory = os.path.dirname(kyc.selfie_path)
-            filename = os.path.basename(kyc.selfie_path)
-            return send_from_directory(directory, filename)
-        elif photo_type.startswith('liveness_') and kyc.liveness_paths:
-            idx = int(photo_type.split('_')[1])
-            paths = json.loads(kyc.liveness_paths)
-            if idx < len(paths) and os.path.exists(paths[idx]):
-                directory = os.path.dirname(paths[idx])
-                filename = os.path.basename(paths[idx])
-                return send_from_directory(directory, filename)
+        f = next((x for x in kyc.files if x.slot == photo_type), None)
+        if not f:
+            return '', 404
 
-        return '', 404
+        as_attachment = request.args.get('download') in ('1', 'true', 'yes')
+        return send_file(
+            io.BytesIO(f.data), mimetype=f.mime,
+            as_attachment=as_attachment,
+            download_name=f'{_kyc_safe_name(kyc)}-{f.slot}.{f.ext}',
+            max_age=0,
+        )
+    finally:
+        session.close()
+
+
+@app.route('/api/kyc/archive/<token>', methods=['GET'])
+def kyc_archive(token):
+    """CRM: все файлы верификации одним zip — паспорт, селфи, кадры, видео.
+
+    Внутрь кладём README.txt с текстом заявления и решением менеджера: без него
+    видео вне контекста бесполезно — непонятно, что человек должен был сказать.
+    """
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        if not kyc.files:
+            return jsonify({'success': False, 'error': 'no_files'}), 404
+
+        base = _kyc_safe_name(kyc)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for f in kyc.files:
+                zf.writestr(f'{base}/{f.slot}.{f.ext}', f.data)
+            info = [
+                f'Клиент: {kyc.client_name or "—"}',
+                f'Запрос создан: {kyc.created_at.strftime("%d.%m.%Y %H:%M") if kyc.created_at else "—"} UTC',
+                f'Статус: {kyc.status}',
+                f'Проверил: {kyc.reviewed_by or "—"}'
+                + (f' {kyc.reviewed_at.strftime("%d.%m.%Y %H:%M")} UTC' if kyc.reviewed_at else ''),
+            ]
+            if kyc.rejection_reason:
+                info.append(f'Причина отклонения: {kyc.rejection_reason}')
+            if kyc.statement_text:
+                info += ['', 'Текст видео-заявления, который клиент должен был произнести:',
+                         kyc.statement_text]
+            zf.writestr(f'{base}/README.txt', '\n'.join(info))
+
+        buf.seek(0)
+        return send_file(buf, mimetype='application/zip', as_attachment=True,
+                         download_name=f'{base}-kyc.zip', max_age=0)
     finally:
         session.close()
 
@@ -9428,9 +9618,8 @@ def kyc_approve(token):
         kyc.reviewed_by = data.get('manager', 'unknown')
         session.commit()
 
-        # Удаляем файлы после одобрения — хранить не нужно
-        _delete_kyc_files(token)
-
+        # Файлы НЕ удаляем: документы нужны потом — вопрос банка, спор с клиентом,
+        # запрос комплаенса. Их стирает ретенция через KYC_RETENTION_DAYS.
         return jsonify({'success': True, 'status': 'approved'})
     except Exception as e:
         session.rollback()
@@ -9455,9 +9644,8 @@ def kyc_reject(token):
         kyc.rejection_reason = data.get('reason', 'Фото не соответствует требованиям')
         session.commit()
 
-        # Удаляем старые файлы — клиент загрузит новые
-        _delete_kyc_files(token)
-
+        # Файлы оставляем: если клиент перезальёт — kyc_submit сам заменит их,
+        # а до тех пор менеджеру видно, что именно было не так.
         return jsonify({'success': True, 'status': 'rejected'})
     except Exception as e:
         session.rollback()
@@ -9475,10 +9663,7 @@ def kyc_cancel(token):
         if not kyc:
             return jsonify({'success': False, 'error': 'not_found'}), 404
 
-        # Удаляем файлы если есть
-        _delete_kyc_files(token)
-
-        # Удаляем запись из БД
+        # Удаляем запись вместе с файлами (cascade на relationship files)
         session.delete(kyc)
         session.commit()
         return jsonify({'success': True})
@@ -9489,11 +9674,78 @@ def kyc_cancel(token):
     finally:
         session.close()
 
-def _delete_kyc_files(token):
-    """Удалить загруженные файлы KYC"""
-    upload_dir = os.path.join(KYC_UPLOAD_DIR, token)
-    if os.path.exists(upload_dir):
-        shutil.rmtree(upload_dir, ignore_errors=True)
+
+@app.route('/api/kyc/files/<token>', methods=['DELETE'])
+def kyc_purge_files(token):
+    """CRM: стереть документы досрочно, оставив саму запись о верификации.
+
+    Нужно, когда клиент просит удалить персональные данные, а факт проверки
+    (кто, когда, кем одобрен) обязан остаться в истории.
+    """
+    session = get_session()
+    try:
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        if not kyc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        removed = session.query(KycFile).filter(KycFile.kyc_id == kyc.id).delete(synchronize_session=False)
+        kyc.files_purged_at = datetime.utcnow()
+        session.commit()
+        return jsonify({'success': True, 'removed': removed})
+    except Exception as e:
+        session.rollback()
+        app.logger.error(f'Server error: {e}')
+        return jsonify({'success': False, 'error': 'Внутренняя ошибка сервера'}), 500
+    finally:
+        session.close()
+
+
+def purge_expired_kyc_files():
+    """Стереть документы старше KYC_RETENTION_DAYS, сохранив записи о верификации.
+
+    Отсчёт от даты решения менеджера, а для незакрытых заявок — от создания.
+    Возвращает число очищенных заявок.
+    """
+    cutoff = datetime.utcnow() - timedelta(days=KYC_RETENTION_DAYS)
+    session = get_session()
+    try:
+        stale = session.query(KycRequest).filter(
+            KycRequest.files_purged_at == None,  # noqa: E711 — SQL IS NULL
+            or_(
+                and_(KycRequest.reviewed_at != None, KycRequest.reviewed_at < cutoff),
+                and_(KycRequest.reviewed_at == None, KycRequest.created_at < cutoff),
+            )
+        ).all()
+        purged = 0
+        for kyc in stale:
+            n = session.query(KycFile).filter(KycFile.kyc_id == kyc.id).delete(synchronize_session=False)
+            kyc.files_purged_at = datetime.utcnow()
+            if n:
+                purged += 1
+        if stale:
+            session.commit()
+        return purged
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+def _kyc_retention_loop():
+    """Раз в сутки чистит просроченные документы KYC. Ошибки глушит — падение
+    сборщика не должно ронять сервис, следующая попытка через сутки."""
+    while True:
+        try:
+            purged = purge_expired_kyc_files()
+            if purged:
+                print(f"🧹 KYC retention: очищено заявок — {purged}", flush=True)
+        except Exception as e:
+            print(f"ℹ️ kyc retention loop: {e}", flush=True)
+        time.sleep(24 * 3600)
+
+
+if os.environ.get('KYC_RETENTION_ENABLED', '1') == '1':
+    threading.Thread(target=_kyc_retention_loop, daemon=True, name='kyc-retention').start()
 
 # ==================== ЗАКРЫТИЕ СДЕЛОК BITRIX (перенос из бота DealCloser) ====
 

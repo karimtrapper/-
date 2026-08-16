@@ -2889,13 +2889,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <form id="kycGenerateForm" onsubmit="event.preventDefault(); generateKYCLink();">
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Клиент</label>
-                    <select class="form-control" id="kycClientSelect">
+                    <select class="form-control" id="kycClientSelect" onchange="refreshKYCStatementText()">
                         <option value="">Выберите клиента</option>
                     </select>
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Или имя нового клиента</label>
-                    <input type="text" class="form-control" id="kycClientName" placeholder="Имя клиента">
+                    <input type="text" class="form-control" id="kycClientName" placeholder="Имя клиента"
+                        oninput="refreshKYCStatementText()">
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.9rem;">
+                        <input type="checkbox" id="kycStatementRequired" checked
+                            onchange="toggleKYCStatementField()" style="width:16px;height:16px;">
+                        <span>Видео-заявление вслух</span>
+                    </label>
+                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.35rem;">
+                        Клиент запишет видео прямо на странице проверки и прочитает текст вслух.
+                        Загрузить заранее снятый ролик нельзя.
+                    </div>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;" id="kycStatementTextGroup">
+                    <label class="form-label">Что клиент должен произнести</label>
+                    <textarea class="form-control" id="kycStatementText" rows="4"
+                        style="resize:vertical;" oninput="this.dataset.edited='1'"></textarea>
+                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:0.35rem;">
+                        Допишите сумму и направление обмена — так запись нельзя переиспользовать в другой сделке.
+                    </div>
                 </div>
                 <button type="submit" class="btn btn-primary" style="width: 100%;">Сгенерировать ссылку</button>
             </form>
@@ -2912,8 +2932,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </button>
                     <div style="font-size: 0.8rem; color: #666; margin-top: 0.75rem;">
                         Скрипт для Telegram:<br>
-                        <em style="color: #444;">"Для безопасного обмена нужна быстрая проверка — займёт 1 минуту. Данные
-                            удалим сразу после подтверждения."</em>
+                        <em style="color: #444;">"Для безопасного обмена нужна быстрая проверка — займёт 1 минуту.
+                            Понадобится документ, камера и микрофон."</em>
                     </div>
                 </div>
             </div>
@@ -3027,6 +3047,32 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             font-weight: 600;
             color: var(--text-sec);
             margin-bottom: 8px;
+        }
+
+        /* Ссылка «скачать» рядом с подписью файла */
+        .kyc-dl {
+            font-weight: 500;
+            font-size: 12px;
+            color: var(--primary, #2563eb);
+            text-decoration: none;
+            margin-left: 6px;
+        }
+
+        .kyc-dl:hover {
+            text-decoration: underline;
+        }
+
+        /* Текст, который клиент должен был произнести на видео */
+        .kyc-statement-script {
+            background: var(--bg-alt, #f8fafc);
+            border: 1px solid var(--border, #e5e7eb);
+            border-left: 3px solid var(--primary, #2563eb);
+            border-radius: var(--r-sm);
+            padding: 10px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--text);
+            margin-bottom: 10px;
         }
 
         .kyc-review-photo img {
@@ -10015,16 +10061,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 - extra.reduce((s, p) => s + (p.amount_rub || 0), 0);
             const label = (method, partner) =>
                 getPayinMethodLabel(method) + (partner ? ' ' + partner : '');
+            // Хэши раскладываем по частям: payin_tx_hashes — слитый список по всей
+            // сделке, поэтому у основной части остаются только не занятые другими.
+            // Одинаковый расчёт в бэке (_payin_all_parts) — карточка и выгрузка
+            // должны показывать одно и то же
+            const taken = new Set(extra.flatMap(p => (p.tx_hashes || []).map(t => t.hash)));
+            const mainHashes = (deal.payin_tx_hashes || []).filter(t => !taken.has(t.hash));
+            if (!mainHashes.length && deal.payin_tx_hash && !taken.has(deal.payin_tx_hash)) {
+                mainHashes.push({ hash: deal.payin_tx_hash, amount_usdt: null });
+            }
             return [{
                 label: label(deal.payin_method, deal.payin_partner_name),
                 amount_rub: mainRub > 0 ? mainRub : null,
                 rate_rub_usdt: (mainRub > 0 && mainUsdt > 0) ? mainRub / mainUsdt : null,
                 amount_usdt: mainUsdt,
+                tx_hashes: mainHashes,
             }].concat(extra.map(p => ({
                 label: label(p.method, p.partner_name),
                 amount_rub: p.amount_rub,
                 rate_rub_usdt: p.rate_rub_usdt,
                 amount_usdt: p.amount_usdt,
+                tx_hashes: p.tx_hashes || [],
             })));
         }
 
@@ -10341,6 +10398,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('kycGenerateModal').classList.add('active');
             document.getElementById('kycLinkResult').style.display = 'none';
             document.getElementById('kycGenerateForm').reset();
+            document.getElementById('kycStatementRequired').checked = true;
+            // form.reset() не трогает data-атрибуты — снимаем метку ручной правки сами
+            document.getElementById('kycStatementText').dataset.edited = '0';
+            refreshKYCStatementText();
+            toggleKYCStatementField();
 
             // Подгружаем список клиентов
             loadKYCClients();
@@ -10348,6 +10410,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         function closeKYCGenerateModal() {
             document.getElementById('kycGenerateModal').classList.remove('active');
+        }
+
+        function toggleKYCStatementField() {
+            const on = document.getElementById('kycStatementRequired').checked;
+            document.getElementById('kycStatementTextGroup').style.display = on ? '' : 'none';
+        }
+
+        function currentKYCClientName() {
+            const typed = document.getElementById('kycClientName').value.trim();
+            if (typed) return typed;
+            const opt = document.getElementById('kycClientSelect').selectedOptions[0];
+            return (opt && opt.value) ? opt.text.split(' (')[0] : '';
+        }
+
+        /** Шаблон видео-заявления. Менеджер дописывает сумму и направление обмена. */
+        function refreshKYCStatementText() {
+            const field = document.getElementById('kycStatementText');
+            if (field.dataset.edited === '1') return;   // менеджер уже правил — не затираем
+            const who = currentKYCClientName() || '[фамилия имя]';
+            const today = new Date().toLocaleDateString('ru-RU');
+            field.value = `Я, ${who}, сегодня ${today}, подтверждаю, что провожу обмен `
+                + `добровольно и в своих интересах. Денежные средства принадлежат мне, `
+                + `по просьбе третьих лиц я не действую.`;
         }
 
         async function loadKYCClients() {
@@ -10380,7 +10465,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         client_id: clientId || null,
-                        client_name: clientName || document.getElementById('kycClientSelect').selectedOptions[0]?.text?.split(' (')[0] || ''
+                        client_name: clientName || document.getElementById('kycClientSelect').selectedOptions[0]?.text?.split(' (')[0] || '',
+                        statement_required: document.getElementById('kycStatementRequired').checked,
+                        statement_text: document.getElementById('kycStatementText').value.trim()
                     })
                 });
                 const data = await res.json();
@@ -10432,24 +10519,34 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const createdDate = new Date(kyc.created_at).toLocaleDateString('ru-RU');
                 const createdTime = new Date(kyc.created_at).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
 
+                const noFile = '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>';
+                const dl = (slot, label) => `<a class="kyc-dl" href="${API_URL}/api/kyc/photo/${token}/${slot}?download=1" download>${label}</a>`;
+                const livenessCount = kyc.liveness_count || 5;
+
                 content.innerHTML = `
                     <div class="kyc-review-header">
                         <div class="kyc-review-client">${escapeHtml(kyc.client_name || 'Клиент #' + (kyc.client_id || kyc.id))}</div>
                         <div class="kyc-review-meta">Загружено: ${createdDate} в ${createdTime}</div>
                     </div>
 
+                    ${kyc.files_purged_at ? `
+                    <div class="kyc-review-warning" style="margin-bottom:1rem;">
+                        <span>🗑</span>
+                        <span>Документы удалены по сроку хранения ${new Date(kyc.files_purged_at).toLocaleDateString('ru-RU')}. Запись о проверке сохранена.</span>
+                    </div>` : ''}
+
                     <div class="kyc-review-photos">
                         <div class="kyc-review-photo">
-                            <div class="kyc-review-photo-label">Документ</div>
+                            <div class="kyc-review-photo-label">Документ ${kyc.has_doc ? dl('doc', 'скачать') : ''}</div>
                             ${kyc.has_doc
                                 ? `<img src="${API_URL}/api/kyc/photo/${token}/doc" style="width:100%;border-radius:8px;border:1px solid #e5e7eb;">`
-                                : '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>'}
+                                : noFile}
                         </div>
                         <div class="kyc-review-photo">
-                            <div class="kyc-review-photo-label">Селфи с документом</div>
+                            <div class="kyc-review-photo-label">Селфи с документом ${kyc.has_selfie ? dl('selfie', 'скачать') : ''}</div>
                             ${kyc.has_selfie
                                 ? `<img src="${API_URL}/api/kyc/photo/${token}/selfie" style="width:100%;border-radius:8px;border:1px solid #e5e7eb;">`
-                                : '<div style="background:#f3f4f6;border-radius:8px;aspect-ratio:3/2;display:flex;align-items:center;justify-content:center;color:#999;">Нет фото</div>'}
+                                : noFile}
                         </div>
                     </div>
 
@@ -10457,10 +10554,31 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div style="margin-top:1rem;">
                         <div class="kyc-review-photo-label" style="margin-bottom:0.5rem;">Liveness-кадры</div>
                         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-                            ${[0,1,2,3,4].map(i => `<img src="${API_URL}/api/kyc/photo/${token}/liveness_${i}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" onerror="this.style.display='none'">`).join('')}
+                            ${Array.from({length: livenessCount}, (_, i) => `<img src="${API_URL}/api/kyc/photo/${token}/liveness_${i}" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid #e5e7eb;" onerror="this.style.display='none'">`).join('')}
                         </div>
                     </div>
                     ` : ''}
+
+                    ${kyc.statement_required || kyc.has_statement ? `
+                    <div style="margin-top:1rem;">
+                        <div class="kyc-review-photo-label" style="margin-bottom:0.5rem;">
+                            Видео-заявление ${kyc.has_statement ? dl('statement', 'скачать') : ''}
+                        </div>
+                        ${kyc.statement_text ? `
+                        <div class="kyc-statement-script">${escapeHtml(kyc.statement_text)}</div>` : ''}
+                        ${kyc.has_statement
+                            ? `<video src="${API_URL}/api/kyc/photo/${token}/statement" controls playsinline
+                                   style="width:100%;max-height:320px;border-radius:8px;border:1px solid #e5e7eb;background:#000;"></video>
+                               <div style="font-size:0.78rem;color:#666;margin-top:0.4rem;">Сверьте: тот же человек, что на документе, и текст произнесён целиком.</div>`
+                            : '<div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:0.75rem;color:#9a3412;font-size:0.85rem;">Видео запрошено, но клиент его не записал</div>'}
+                    </div>
+                    ` : ''}
+
+                    ${kyc.has_doc || kyc.has_selfie || kyc.has_statement ? `
+                    <div style="margin-top:1rem;">
+                        <a class="btn btn-secondary" style="width:100%;text-align:center;display:block;"
+                           href="${API_URL}/api/kyc/archive/${token}" download>Скачать всё архивом</a>
+                    </div>` : ''}
 
                     <div class="kyc-review-actions">
                         <button class="btn btn-success" onclick="approveKYC('${token}')">Одобрить</button>
@@ -10485,8 +10603,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </div>
 
                     <div class="kyc-review-warning">
-                        <span>⚠️</span>
-                        <span>После решения фото будут автоматически удалены</span>
+                        <span>🔒</span>
+                        <span>Документы остаются доступны для скачивания и удаляются автоматически через год после решения</span>
                     </div>
                 `;
 
@@ -10510,7 +10628,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function approveKYC(token) {
-            if (!(await showConfirm('Одобрить верификацию? Фото будут удалены.'))) return;
+            if (!(await showConfirm('Одобрить верификацию?'))) return;
             try {
                 const res = await fetch(`${API_URL}/api/kyc/approve/${token}`, {
                     method: 'POST',
