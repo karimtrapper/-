@@ -4693,6 +4693,14 @@ def _payin_all_parts(deal):
                       - sum(p.get('amount_usdt') or 0 for p in extra), 6)
     main_rub = round((deal.payin_amount_rub or 0)
                      - sum(p.get('amount_rub') or 0 for p in extra), 6)
+    # payin_tx_hashes — слитый список по всей сделке (на нём стоит защита от
+    # двойного учёта). Основной части оставляем только СВОИ хэши: иначе перевод
+    # дополнительной части встаёт и в её строку, и в строку части 1 — в выгрузке
+    # он посчитался бы дважды, а в карточке было бы не понять, чей он.
+    taken = {h['hash'] for p in extra for h in _normalize_tx_hashes(p.get('tx_hashes'))}
+    main_hashes = [h for h in _normalize_tx_hashes(
+        json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else [])
+        if h['hash'] not in taken]
     main = {
         'method': deal.payin_method.value if deal.payin_method else '',
         'amount_rub': main_rub if main_rub > 0 else None,
@@ -4700,8 +4708,7 @@ def _payin_all_parts(deal):
                           if main_rub > 0 and main_usdt > 0 else None),
         'amount_usdt': main_usdt,
         'partner_name': deal.payin_partner_name or None,
-        'tx_hashes': _normalize_tx_hashes(
-            json.loads(deal.payin_tx_hashes) if deal.payin_tx_hashes else []),
+        'tx_hashes': main_hashes,
         'sber_uuids': [],
         'note': '',
     }

@@ -136,6 +136,34 @@ def test_all_parts_derives_main_from_totals(db):
     assert parts[1]['amount_usdt'] == pytest.approx(2365.362, abs=0.01)
 
 
+def test_all_parts_main_hashes_exclude_extra(db):
+    """Хэш дополнительной части не должен числиться и за основной.
+
+    payin_tx_hashes — слитый список по всей сделке (на нём стоит защита от
+    двойного учёта). Если отдать его основной части целиком, в выгрузке и
+    в карточке один перевод встанет в две строки и посчитается дважды.
+    """
+    h_main = 'aa' * 32
+    extra = _normalize_payin_extra([{
+        'method': 'sber_reqs', 'amount_rub': 200000, 'amount_usdt': 2365.362,
+        'tx_hashes': [{'hash': H_EXTRA, 'amount_usdt': 2365.362}],
+    }])
+    d = make_deal(payin_amount_rub=800000, payin_amount_usdt=9285.362,
+                  payin_extra=json.dumps(extra, ensure_ascii=False),
+                  payin_tx_hashes=json.dumps([
+                      {'hash': h_main, 'amount_usdt': 6920.0},
+                      {'hash': H_EXTRA, 'amount_usdt': 2365.362}]))
+    db.add(d)
+    db.commit()
+
+    parts = _payin_all_parts(d)
+    assert [h['hash'] for h in parts[0]['tx_hashes']] == [h_main]
+    assert [h['hash'] for h in parts[1]['tx_hashes']] == [H_EXTRA]
+    # каждый хэш ровно в одной части — иначе сумма по строкам разойдётся
+    all_hashes = [h['hash'] for p in parts for h in p['tx_hashes']]
+    assert len(all_hashes) == len(set(all_hashes))
+
+
 def test_all_parts_single_channel(db):
     """Сделка без дополнительных частей — ровно одна часть из плоских полей."""
     d = make_deal(payin_amount_rub=600000, payin_amount_usdt=6920.0)

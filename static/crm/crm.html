@@ -4063,7 +4063,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ${(deal.payin_extra && deal.payin_extra.length) ? `
                             <div style="background: #f8fafc; padding: 0.5rem; border-radius: 6px; border: 1px solid #e2e8f0; margin: 0.5rem 0;">
                                 <p style="margin: 0 0 4px;"><strong>Приход по каналам (${deal.payin_extra.length + 1}):</strong></p>
-                                ${payinAllParts(deal).map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">• ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${p.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>`).join('')}
+                                ${payinAllParts(deal).map((p, idx) => {
+                                    const hashSum = p.tx_hashes.reduce((s, t) => s + (t.amount_usdt || 0), 0);
+                                    // Расхождение суммы переводов с приходом части — повод
+                                    // проверить, а не тихая деталь: часть закрыта не полностью
+                                    // либо перевод разнесён не туда
+                                    const gap = +(p.amount_usdt - hashSum).toFixed(2);
+                                    return `
+                                    <div style="margin: 0 0 6px;">
+                                        <p style="margin: 0 0 2px; font-size: 0.9rem;">• <strong>${idx + 1}.</strong> ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${p.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        ${p.tx_hashes.length ? `<div style="margin-left: 14px;">
+                                            ${p.tx_hashes.map(t => `<div style="font-size:0.82rem;margin:1px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#e0f2fe;padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:#0369a1;">${String(t.hash).substring(0, 16)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor:pointer;" title="Скопировать">📋</span></div>`).join('')}
+                                            ${Math.abs(gap) > 0.01 ? `<div style="font-size:0.78rem;color:#b45309;">переводами закрыто $${hashSum.toFixed(2)} из $${p.amount_usdt.toFixed(2)} · не хватает $${gap.toFixed(2)}</div>` : ''}
+                                        </div>` : `<div style="margin-left:14px;font-size:0.78rem;color:#94a3b8;">переводы не привязаны</div>`}
+                                    </div>`;
+                                }).join('')}
                             </div>
                         ` : ''}
                         ${(deal.payin_parts && deal.payin_parts.length) ? `
@@ -4072,7 +4086,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 ${deal.payin_parts.map(p => `<p style="margin: 0 0 2px; font-size: 0.9rem;">${p.uuid ? (p.kind === 'acquiring' ? '📲' : '🏦') : '✍️'} ${formatNumber(p.amount_rub)} ₽${p.kind === 'acquiring' ? ` <span style="color:#64748b;">(эквайринг: на счёт ${formatNumber(p.net_rub)} + комиссия ${formatNumber(p.fee_rub)})</span>` : (p.payer ? ' · ' + escapeHtml(p.payer) : '')}${p.date ? ' · ' + p.date : ''}${p.note ? ' · ' + escapeHtml(p.note) : ''}</p>`).join('')}
                             </div>
                         ` : ''}
-                        ${(deal.payin_tx_hashes && deal.payin_tx_hashes.length > 1)
+                        ${(deal.payin_extra && deal.payin_extra.length)
+                            ? ''
+                            : (deal.payin_tx_hashes && deal.payin_tx_hashes.length > 1)
                             ? `<p><strong>Хэши Pay-In (${deal.payin_tx_hashes.length} части):</strong><br>` + deal.payin_tx_hashes.map(t =>
                                 `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
                               ).join('') + `</p>`
@@ -4553,8 +4569,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (deal.payin_amount_usdt) form.payin_amount_usdt.value = deal.payin_amount_usdt;
                         if (deal.payin_amount_rub) form.payin_amount_rub.value = deal.payin_amount_rub;
                         if (deal.payin_tx_hash) form.payin_tx_hash.value = deal.payin_tx_hash;
-                        // Приход крипты частями: восстанавливаем пул хэшей
-                        resetPayinTxPool(deal.payin_tx_hashes);
+                        // Приход крипты частями: восстанавливаем пул хэшей ОСНОВНОЙ части.
+                        // payin_tx_hashes — слитый список по всей сделке, поэтому хэши,
+                        // закреплённые за дополнительными частями, отсюда убираем: иначе
+                        // один перевод стоял бы и в пуле, и в части, а сохранение удвоило
+                        // бы приход
+                        const extraHashes = new Set((deal.payin_extra || [])
+                            .flatMap(p => (p.tx_hashes || []).map(t => t.hash)));
+                        resetPayinTxPool((deal.payin_tx_hashes || [])
+                            .filter(t => !extraHashes.has(t.hash)));
                         payinTxLedger = {};
                         payinTxPool.forEach(t => loadPayinTxLedger(t.hash));
                         if (deal.payin_rate_rub_usdt) form.payin_rate_rub_usdt.value = deal.payin_rate_rub_usdt;
@@ -4567,7 +4590,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             method: p.method, amount_rub: p.amount_rub,
                             rate_rub_usdt: p.rate_rub_usdt, amount_usdt: p.amount_usdt,
                             partner_name: p.partner_name || '',
-                            tx_hash: (p.tx_hashes && p.tx_hashes[0]) ? p.tx_hashes[0].hash : '',
+                            // Все переводы части, а не первый: раньше остальные
+                            // терялись при пересохранении сделки
+                            tx_hashes: (p.tx_hashes || []).map(t => ({
+                                hash: t.hash,
+                                amount_usdt: t.amount_usdt != null ? Number(t.amount_usdt) : null,
+                            })),
                             note: p.note || '',
                             // У сохранённой части USDT — факт прихода, поэтому
                             // правка рублей должна двигать курс, а не его
@@ -5609,9 +5637,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // ==================== Дополнительные приходы (мульти-Pay-In) ====================
         // payinExtra — части сверх основной: [{method, amount_rub, rate_rub_usdt,
-        // amount_usdt, partner_name, tx_hash, note}]. Основной приход остаётся в
-        // главных полях формы, менеджер вводит его как привык.
+        // amount_usdt, partner_name, tx_hashes: [{hash, amount_usdt}], note}].
+        // Основной приход остаётся в главных полях формы, менеджер вводит его как привык.
+        // Хэшей у части может быть несколько: одну часть нередко закрывают
+        // двумя-тремя переводами, и каждый должен считаться отдельно.
         let payinExtra = [];
+
+        function peHashes(p) {
+            // Старые части хранили один tx_hash — открываем их без миграции
+            if (!p.tx_hashes) p.tx_hashes = p.tx_hash ? [{ hash: p.tx_hash, amount_usdt: p.amount_usdt ?? null }] : [];
+            return p.tx_hashes;
+        }
+
+        function peHashTotal(p) {
+            return peHashes(p).reduce((s, t) => s + (t.amount_usdt || 0), 0);
+        }
 
         // Кэш входящих транзакций для пикеров ЧАСТЕЙ (у экрана возмещений
         // свой incomingTxCache — имена не пересекаем). Наполняется
@@ -5625,7 +5665,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const used = new Set(payinTxPool.map(t => t.hash));
             const manual = document.querySelector('[name="payin_tx_hash"]')?.value?.trim();
             if (manual) used.add(manual);
-            payinExtra.forEach(p => { if (p.tx_hash) used.add(p.tx_hash.trim()); });
+            payinExtra.forEach(p => peHashes(p).forEach(t => { if (t.hash) used.add(t.hash.trim()); }));
             return used;
         }
 
@@ -5634,17 +5674,60 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const hash = select.value;
             select.selectedIndex = 0;
             if (!hash) return;
-            payinExtra[i].tx_hash = hash;
             const amount = parseFloat(opt?.dataset?.amount);
-            // Сумма из сети — источник истины: это то, что реально пришло
-            if (!isNaN(amount)) {
-                payinExtra[i].amount_usdt = amount;
-                const p = payinExtra[i];
-                if (p.amount_rub && p.amount_usdt) {
-                    p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
-                }
+            payinExtraHashPush(i, hash, isNaN(amount) ? null : amount);
+        }
+
+        // Добавляет хэш части и подтягивает сумму. Первый хэш задаёт сумму части
+        // (она же курс), последующие — прибавляются: часть закрыта несколькими
+        // переводами, и её приход равен их сумме
+        function payinExtraHashPush(i, hash, amountUsdt) {
+            hash = String(hash || '').trim();
+            if (!hash) return;
+            const p = payinExtra[i];
+            if (payinUsedHashes().has(hash)) {
+                showToast('Этот хэш уже привязан', 'error');
+                return;
+            }
+            peHashes(p).push({ hash, amount_usdt: amountUsdt });
+            const total = peHashTotal(p);
+            if (total > 0) {
+                p.amount_usdt = +total.toFixed(2);
+                if (p.amount_rub) p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
             }
             payinExtraRender();
+        }
+
+        function payinExtraHashManual(i) {
+            const input = document.getElementById(`pe-${i}-hash`);
+            if (!input) return;
+            payinExtraHashPush(i, input.value, null);
+            input.value = '';
+        }
+
+        function payinExtraHashRemove(i, k) {
+            peHashes(payinExtra[i]).splice(k, 1);
+            payinExtraRender();
+        }
+
+        // Доля перевода, идущая в эту часть: один перевод может закрывать
+        // несколько частей или сделок, поэтому сумма правится руками
+        function payinExtraHashShare(i, k, value) {
+            const p = payinExtra[i];
+            const n = parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+            peHashes(p)[k].amount_usdt = isNaN(n) || n <= 0 ? null : n;
+            const total = peHashTotal(p);
+            if (total > 0) {
+                p.amount_usdt = +total.toFixed(2);
+                if (p.amount_rub) p.rate_rub_usdt = +(p.amount_rub / p.amount_usdt).toFixed(4);
+                const usdtInput = document.getElementById(`pe-${i}-usdt`);
+                if (usdtInput) usdtInput.value = p.amount_usdt;
+                const rateInput = document.getElementById(`pe-${i}-rate`);
+                if (rateInput && p.rate_rub_usdt) rateInput.value = p.rate_rub_usdt;
+            }
+            const sum = document.getElementById(`pe-${i}-hashsum`);
+            if (sum) sum.textContent = `${peHashes(p).length} · $${peHashTotal(p).toFixed(2)}`;
+            payinExtraSummary();
         }
 
         // Лейблы для селекта части. spp_doverka не показываем — провайдер умер,
@@ -5659,7 +5742,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function payinExtraAdd() {
             payinExtra.push({ method: 'crypto_direct', amount_rub: null,
                               rate_rub_usdt: null, amount_usdt: null,
-                              partner_name: '', tx_hash: '', note: '', _mode: 'rate',
+                              partner_name: '', tx_hashes: [], note: '', _mode: 'rate',
                               sber_parts: [] });
             payinExtraRender();
         }
@@ -5819,20 +5902,38 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>`).join('');
                         })()}
                     </div>` : ''}
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;align-items:center;">
-                        ${(() => {
-                            const used = payinUsedHashes();
-                            const free = payinExtraTxCache.filter(t => !used.has(t.tx_hash));
-                            if (!free.length) return '';
-                            return `<select class="form-control" style="max-width:340px;"
-                                onchange="payinExtraPickTx(${i}, this)">
-                                <option value="">-- Выбрать хэш из входящих --</option>
-                                ${free.map(t => `<option value="${t.tx_hash}" data-amount="${t.amount_usdt}">+$${t.amount_usdt.toFixed(2)} | ${(t.from_address || '').substring(0, 10)}… | ${formatDate(t.timestamp)}</option>`).join('')}
-                            </select>`;
-                        })()}
-                        <input type="text" class="form-control" style="max-width:280px;"
-                            placeholder="Или TxHash вручную..." value="${p.tx_hash || ''}"
-                            id="pe-${i}-hash" oninput="payinExtraSet(${i}, 'tx_hash', this.value)">
+                    <div style="margin-top:8px;padding:8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;font-weight:700;color:#334155;margin-bottom:6px;">
+                            <span>🔗 Переводы этой части</span>
+                            <span id="pe-${i}-hashsum" style="color:#166534;">${peHashes(p).length} · $${peHashTotal(p).toFixed(2)}</span>
+                        </div>
+                        ${peHashes(p).map((t, k) => `
+                            <div style="display:flex;align-items:center;gap:6px;background:white;border:1px solid #e2e8f0;border-radius:6px;padding:3px 6px;margin-bottom:4px;font-size:0.85rem;">
+                                <span style="color:#059669;font-weight:700;">$</span>
+                                <input type="text" inputmode="decimal" class="form-control"
+                                    style="max-width:110px;padding:2px 6px;height:auto;font-size:0.85rem;"
+                                    value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту часть"
+                                    oninput="payinExtraHashShare(${i}, ${k}, this.value)">
+                                <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(String(t.hash).substring(0, 20))}...</code>
+                                <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;"
+                                    onclick="payinExtraHashRemove(${i}, ${k})">✕</button>
+                            </div>`).join('')}
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                            ${(() => {
+                                const used = payinUsedHashes();
+                                const free = payinExtraTxCache.filter(t => !used.has(t.tx_hash));
+                                if (!free.length) return '';
+                                return `<select class="form-control" style="max-width:340px;"
+                                    onchange="payinExtraPickTx(${i}, this)">
+                                    <option value="">-- Добавить хэш из входящих --</option>
+                                    ${free.map(t => `<option value="${t.tx_hash}" data-amount="${t.amount_usdt}">+$${t.amount_usdt.toFixed(2)} | ${(t.from_address || '').substring(0, 10)}… | ${formatDate(t.timestamp)}</option>`).join('')}
+                                </select>`;
+                            })()}
+                            <input type="text" class="form-control" style="max-width:260px;"
+                                placeholder="Или TxHash вручную..." id="pe-${i}-hash">
+                            <button type="button" class="btn btn-sm btn-secondary"
+                                onclick="payinExtraHashManual(${i})">Добавить</button>
+                        </div>
                     </div>
                 </div>`;
             }).join('');
@@ -5862,8 +5963,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     rate_rub_usdt: p.rate_rub_usdt,
                     amount_usdt: p.amount_usdt,
                     partner_name: p.partner_name || null,
-                    tx_hashes: p.tx_hash ? [{ hash: p.tx_hash.trim(),
-                                              amount_usdt: p.amount_usdt }] : [],
+                    // Сумма пишется по каждому переводу отдельно: приписать всей
+                    // части один хэш нельзя — перевод бывает крупнее части
+                    // (остаток уходит в другую сделку) и мельче (частей несколько)
+                    tx_hashes: peHashes(p)
+                        .filter(t => t.hash && String(t.hash).trim())
+                        .map(t => ({ hash: String(t.hash).trim(),
+                                     amount_usdt: t.amount_usdt ?? null })),
                     sber_uuids: (p.sber_parts || []).map(x => x.uuid).filter(Boolean),
                     note: p.note || '',
                 }));
