@@ -1239,17 +1239,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
 
 
-                        <!-- WL Bot Сбер picker -->
-                        <div id="wlPickerGroup" style="display:none; margin-bottom: 1rem;">
-                            <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
-                                <input type="text" id="wlMerchantFilter" class="form-control" placeholder="Мерчант (grusha)" value="grusha" style="max-width:180px;">
-                                <button type="button" class="btn btn-secondary" onclick="loadWlTransactions()" style="white-space:nowrap;">🔄 Загрузить</button>
-                            </div>
-                            <select class="form-control" id="wlTxSelect" onchange="selectWlTransaction(this)" style="margin-bottom:4px;">
-                                <option value="">-- Выберите транзакцию --</option>
-                            </select>
-                            <div id="wlTxInfo" style="font-size:12px; color:#6b7280;"></div>
-                        </div>
+                        <!-- Пикер транзакций WL-бота убран из СБП: приход берётся
+                             из пула выписки Сбера (эквайринг), а бот дублировал его
+                             вторым списком. Кастомные сделки свой пикер сохранили -->
 
                         <!-- Сбер (реквизиты): пул приходов + части оплаты -->
                         <div id="sberReqsGroup" style="display:none; margin-bottom: 1rem; padding: 0.75rem; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;">
@@ -6038,14 +6030,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const txHashGroup = document.getElementById('payinTxHashGroup');
             const rateGroup = document.getElementById('payinRateGroup');
             const exchangeRateGroup = document.getElementById('exchangeRateGroup');
-            const wlPickerGroup = document.getElementById('wlPickerGroup');
 
             const isCryptoDirect = method.value === 'crypto_direct';
             const isSberWL = method.value === 'sber_wl';
             const isSberReqs = method.value === 'sber_reqs';
-            // WL picker (СБП: ссылка WL-бота знает сумму, курс и USDT клиента)
-            wlPickerGroup.style.display = isSberWL ? 'block' : 'none';
-            if (isSberWL) loadWlTransactions();
 
             // Пул выписки Сбера — для обоих сберовских методов. СБП раньше не имел
             // доступа к пулу: платёж клиента лежал в выписке эквайрингом и не
@@ -6085,53 +6073,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             txHashGroup.style.display = 'block';
         }
 
-        async function loadWlTransactions() {
-            const merchant = document.getElementById('wlMerchantFilter').value || 'grusha';
-            const select = document.getElementById('wlTxSelect');
-            select.innerHTML = '<option value="">Загрузка...</option>';
-            document.getElementById('wlTxInfo').textContent = '';
-            try {
-                const resp = await fetch(`${API_URL}/api/wl-transactions?merchant=${encodeURIComponent(merchant)}`);
-                if (!resp.ok) {
-                    const err = await resp.json();
-                    select.innerHTML = `<option value="">Ошибка: ${err.error || resp.status}</option>`;
-                    return;
-                }
-                const txs = await resp.json();
-                if (!txs.length) {
-                    select.innerHTML = '<option value="">Нет транзакций</option>';
-                    return;
-                }
-                select.innerHTML = '<option value="">-- Выберите транзакцию --</option>';
-                txs.forEach(tx => {
-                    const opt = document.createElement('option');
-                    opt.value = JSON.stringify(tx);
-                    const dateStr = tx.paid_at ? tx.paid_at.substring(0, 10) : '';
-                    opt.textContent = `${tx.display_name} · ${tx.merchant} · ${Number(tx.amount_rub).toLocaleString('ru')} ₽ · ${dateStr}`;
-                    select.appendChild(opt);
-                });
-            } catch (e) {
-                select.innerHTML = `<option value="">Ошибка: ${e.message}</option>`;
-            }
-        }
-
-        function selectWlTransaction(select) {
-            if (!select.value) return;
-            const tx = JSON.parse(select.value);
-            // Сумма RUB
-            const rubInput = document.querySelector('[name="payin_amount_rub"]');
-            if (rubInput) rubInput.value = tx.amount_rub;
-            // Сумма USDT (клиентский USDT из транзакции)
-            const usdtInput = document.querySelector('[name="payin_amount_usdt"]');
-            if (usdtInput) usdtInput.value = parseFloat(tx.amount_usdt).toFixed(4);
-            // Курс RUB/USDT
-            const rateInput = document.querySelector('[name="payin_rate_rub_usdt"]');
-            if (rateInput) rateInput.value = parseFloat(tx.final_rate).toFixed(4);
-
-            document.getElementById('wlTxInfo').textContent =
-                `${tx.display_name} · Rapira: ${parseFloat(tx.rapira_rate).toFixed(2)} · Final: ${parseFloat(tx.final_rate).toFixed(2)}`;
-            autoCalcUsdt();
-        }
 
         // ==================== Сбер (реквизиты): пул приходов + оплата частями ====================
         // sberParts — части прихода текущей сделки: [{uuid|null, amount_rub, payer, date, note}]
