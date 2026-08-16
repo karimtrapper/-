@@ -10053,6 +10053,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const hashes = (deal.payin_tx_hashes || []).map(t => t.hash)
                 .concat(deal.payin_tx_hash ? [deal.payin_tx_hash] : []);
             const uniq = [...new Set(hashes.filter(Boolean))];
+            const parts = payinAllParts(deal);
             const blocks = [];
             for (const h of uniq) {
                 try {
@@ -10060,13 +10061,37 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (!r.ok) continue;
                     const d = await r.json();
                     if (!d.success) continue;
-                    const others = (d.uses || []).filter(u => u.deal_id !== deal.id);
+                    const uses = d.uses || [];
+                    const others = uses.filter(u => u.deal_id !== deal.id);
                     if (!others.length && d.tx.free_usdt <= 0.01) continue;
+                    // Показываем ВСЕ сделки перевода, включая текущую: иначе слагаемые
+                    // не сходятся с суммой перевода и сверить глазами нечего
+                    const used = uses.reduce((s, u) => s + (u.amount_usdt || 0), 0);
+                    const terms = uses.map(u => u.amount_usdt.toFixed(2))
+                        .concat(d.tx.free_usdt > 0.01 ? [d.tx.free_usdt.toFixed(2)] : []);
+                    const ok = Math.abs(d.tx.amount_usdt - used - (d.tx.free_usdt || 0)) <= 0.01;
                     blocks.push(`
                         <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:6px 8px;margin-bottom:4px;font-size:0.85rem;">
                             <div><code style="color:#64748b;">${h.substring(0, 20)}…</code> — пришло <b>$${d.tx.amount_usdt.toFixed(2)}</b>${d.tx.source !== 'tronscan' ? ' <span style="color:#b45309;">(не сверено)</span>' : ''}</div>
-                            ${others.map(u => `<div style="color:#334155;">• сделка #${u.deal_id}${u.client_name ? ' · ' + escapeHtml(u.client_name) : ''}${u.realty_purpose ? ' · ' + escapeHtml(u.realty_purpose) : ''} — $${u.amount_usdt.toFixed(2)}</div>`).join('')}
+                            ${uses.map(u => {
+                                const isThis = u.deal_id === deal.id;
+                                // Для своей сделки подписываем, в какой канал прихода
+                                // лёг перевод — иначе непонятно, к чему он относится
+                                const partIdx = isThis
+                                    ? parts.findIndex(p => (p.tx_hashes || []).some(t => t.hash === h))
+                                    : -1;
+                                const partLabel = partIdx >= 0
+                                    ? ` <span style="color:#64748b;">→ приход ${partIdx + 1}: ${escapeHtml(parts[partIdx].label)}</span>`
+                                    : '';
+                                return `<div style="color:#334155;">• ${isThis
+                                    ? `<b>сделка #${u.deal_id}</b> <span style="color:#64748b;">(эта)</span>`
+                                    : `<a href="#" onclick="event.preventDefault(); showDealDetails(${u.deal_id});" style="color:#0369a1;text-decoration:none;border-bottom:1px dashed #0369a1;">сделка #${u.deal_id}</a>`}${u.client_name ? ' · ' + escapeHtml(u.client_name) : ''}${u.realty_purpose ? ' · ' + escapeHtml(u.realty_purpose) : ''} — <b>$${u.amount_usdt.toFixed(2)}</b>${partLabel}</div>`;
+                            }).join('')}
                             ${d.tx.free_usdt > 0.01 ? `<div style="color:#166534;font-weight:600;">не распределено: $${d.tx.free_usdt.toFixed(2)}</div>` : ''}
+                            <div style="margin-top:4px;padding-top:4px;border-top:1px dashed #cbd5e1;color:${ok ? '#166534' : '#b45309'};">
+                                ${terms.join(' + ')} = <b>$${(used + (d.tx.free_usdt || 0)).toFixed(2)}</b>
+                                ${ok ? ' ✓ сходится с переводом' : ` ⚠ перевод $${d.tx.amount_usdt.toFixed(2)} — расхождение $${Math.abs(d.tx.amount_usdt - used - (d.tx.free_usdt || 0)).toFixed(2)}`}
+                            </div>
                         </div>`);
                 } catch (e) { /* реестр не критичен для карточки */ }
             }
