@@ -4117,10 +4117,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     const gap = +(p.amount_usdt - hashSum).toFixed(2);
                                     return `
                                     <div style="margin: 0 0 6px;">
-                                        <p style="margin: 0 0 2px; font-size: 0.9rem;">• <strong>${idx + 1}.</strong> ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${p.amount_usdt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                        <p style="margin: 0 0 2px; font-size: 0.9rem;">• <strong>${idx + 1}.</strong> ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${(p.amount_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                         ${p.tx_hashes.length ? `<div style="margin-left: 14px;">
                                             ${p.tx_hashes.map(t => `<div style="font-size:0.82rem;margin:1px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#e0f2fe;padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:#0369a1;">${String(t.hash).substring(0, 16)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor:pointer;" title="Скопировать">📋</span></div>`).join('')}
-                                            ${Math.abs(gap) > 0.01 ? `<div style="font-size:0.78rem;color:#b45309;">переводами закрыто $${hashSum.toFixed(2)} из $${p.amount_usdt.toFixed(2)} · не хватает $${gap.toFixed(2)}</div>` : ''}
+                                            ${hashSum > 0 && Math.abs(gap) > 0.01 ? `<div style="font-size:0.78rem;color:#b45309;">переводами закрыто $${hashSum.toFixed(2)} из $${(p.amount_usdt || 0).toFixed(2)} · не хватает $${gap.toFixed(2)}</div>` : (hashSum === 0 ? `<div style="font-size:0.78rem;color:#94a3b8;">суммы по переводам не проставлены</div>` : '')}
                                         </div>` : `<div style="margin-left:14px;font-size:0.78rem;color:#94a3b8;">переводы не привязаны</div>`}
                                     </div>`;
                                 }).join('')}
@@ -4336,7 +4336,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     loadPayinTxShared(deal);
                 }
             } catch (error) {
+                // Молчаливый catch выглядел как «кнопка не нажимается»: модалка
+                // не открывалась, а причина оставалась только в консоли
                 console.error('Error loading deal:', error);
+                showToast('Не удалось открыть карточку: ' + (error?.message || error), 'error');
             } finally {
                 if (btnEl) { btnEl.textContent = 'Детали'; btnEl.disabled = false; }
             }
@@ -10054,7 +10057,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // на бэкенде: основная часть отдельно не хранится, её суммы
         // восстанавливаются вычитанием дополнительных из агрегатов.
         function payinAllParts(deal) {
-            const extra = deal.payin_extra || [];
+            // Части из БД бывают битыми: null в списке, хэши строками вместо
+            // объектов, часть без суммы. Раньше на таких падал весь рендер
+            // карточки — кнопка «Детали» переставала открывать модалку
+            const extra = (deal.payin_extra || [])
+                .filter(p => p && typeof p === 'object')
+                .map(p => ({
+                    ...p,
+                    amount_usdt: Number(p.amount_usdt) || 0,
+                    tx_hashes: (p.tx_hashes || [])
+                        .map(t => (typeof t === 'string'
+                            ? { hash: t, amount_usdt: null }
+                            : { hash: t?.hash, amount_usdt: t?.amount_usdt ?? null }))
+                        .filter(t => t.hash),
+                }));
             const mainUsdt = (deal.payin_amount_usdt || 0)
                 - extra.reduce((s, p) => s + (p.amount_usdt || 0), 0);
             const mainRub = (deal.payin_amount_rub || 0)
@@ -10066,7 +10082,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Одинаковый расчёт в бэке (_payin_all_parts) — карточка и выгрузка
             // должны показывать одно и то же
             const taken = new Set(extra.flatMap(p => (p.tx_hashes || []).map(t => t.hash)));
-            const mainHashes = (deal.payin_tx_hashes || []).filter(t => !taken.has(t.hash));
+            const mainHashes = (deal.payin_tx_hashes || [])
+                .map(t => (typeof t === 'string' ? { hash: t, amount_usdt: null } : t))
+                .filter(t => t && t.hash && !taken.has(t.hash));
             if (!mainHashes.length && deal.payin_tx_hash && !taken.has(deal.payin_tx_hash)) {
                 mainHashes.push({ hash: deal.payin_tx_hash, amount_usdt: null });
             }
