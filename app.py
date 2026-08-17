@@ -1586,6 +1586,27 @@ class SberIncome(Base):
         }
 
 
+class PaymentLinkOrder(Base):
+    """Платёжная ссылка Grusha Exchange (рельс grushab-2-b.ru).
+
+    Вебхук коннектора об оплате теряется (кейс 2026-08-17: клиент оплатил,
+    вебхук не пришёл, команда узнала от клиента), поэтому статус дополнительно
+    поллится фоном (_payment_link_poll_loop). Строка в БД переживает деплои —
+    раньше ссылки жили только в памяти процесса и терялись при каждом рестарте.
+    """
+    __tablename__ = 'payment_link_orders'
+    id = Column(Integer, primary_key=True)
+    order_id = Column(String(64), unique=True, index=True, nullable=False)
+    payment_id = Column(String(64))          # uuid платежа в коннекторе (для GET-статуса)
+    amount = Column(Float, default=0)        # ₽
+    thb = Column(Float)                      # ฿ по курсу на момент выставления
+    comment = Column(String(256), default='')
+    link = Column(String(512), default='')
+    status = Column(String(16), default='PENDING', index=True)  # PENDING/PAID/EXPIRED/FAILED
+    created_at = Column(DateTime, default=datetime.utcnow)
+    paid_at = Column(DateTime)
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -8945,6 +8966,13 @@ def payment_webhook_key():
     return hashlib.sha256(('payment-link:' + str(app.secret_key)).encode()).hexdigest()[:32]
 
 
+def _payment_id_from_link(link):
+    """UUID платежа из ссылки вида https://grushab-2-b.ru/iframe-v2/<uuid>/."""
+    m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})',
+                  str(link or ''), re.I)
+    return m.group(1) if m else None
+
+
 def _remember_payment_link(payload, data):
     if len(_PAYMENT_LINKS) >= _PAYMENT_LINKS_MAX:
         for k in list(_PAYMENT_LINKS)[:_PAYMENT_LINKS_MAX // 5]:
@@ -8956,6 +8984,77 @@ def _remember_payment_link(payload, data):
         'comment': str(meta.get('comment') or '').strip(),
         'link': data.get('public_link') or '',
     }
+    # БД — источник правды для поллера: переживает рестарты и деплои,
+    # из-за которых память процесса терялась. Upsert: повторный order_id —
+    # это новая ссылка, строка возвращается в PENDING.
+    try:
+        link = data.get('public_link') or ''
+        db = get_session()
+        try:
+            fields = dict(
+                payment_id=_payment_id_from_link(link) or str(data.get('payment_id') or '')[:64] or None,
+                amount=float(payload.get('amount') or 0),
+                thb=float(meta.get('thb_amount') or 0) or None,
+                comment=str(meta.get('comment') or '').strip()[:256],
+                link=link[:512],
+            )
+            row = db.query(PaymentLinkOrder).filter_by(order_id=str(payload.get('order_id'))).first()
+            if row:
+                for k, v in fields.items():
+                    setattr(row, k, v)
+                row.status = 'PENDING'
+                row.paid_at = None
+                row.created_at = datetime.utcnow()
+            else:
+                db.add(PaymentLinkOrder(order_id=str(payload.get('order_id')), **fields))
+            db.commit()
+        finally:
+            db.close()
+    except Exception as e:
+        app.logger.warning(f'payment link persist failed: {e}')
+
+
+def _claim_payment_link_paid(order_id):
+    """Атомарно переводит ссылку PENDING→PAID (дедуп вебхука и поллера).
+
+    Возвращает данные строки для уведомления, {'dup': True} если уже оплачена
+    (второе уведомление не нужно), None если строки нет (легаси-ссылка до
+    появления таблицы — уведомляем по старому пути).
+    """
+    db = get_session()
+    try:
+        row = db.query(PaymentLinkOrder).filter_by(order_id=str(order_id)).first()
+        if not row:
+            return None
+        claimed = (db.query(PaymentLinkOrder)
+                   .filter(PaymentLinkOrder.id == row.id,
+                           PaymentLinkOrder.status == 'PENDING')
+                   .update({'status': 'PAID', 'paid_at': datetime.utcnow()}))
+        db.commit()
+        if not claimed:
+            return {'dup': True}
+        return {'amount': row.amount, 'thb': row.thb, 'comment': row.comment or ''}
+    except Exception as e:
+        # БД упала — не глушим оплату: вернём None, уведомление уйдёт по старому пути
+        app.logger.warning(f'payment link claim failed: {e}')
+        return None
+    finally:
+        db.close()
+
+
+def _notify_payment_paid(info, fallback_amount=0):
+    """Уведомление «Оплачено» в рабочий чат — общий текст вебхука и поллера."""
+    amount = (info or {}).get('amount') or fallback_amount or 0
+    thb = (info or {}).get('thb')
+    try:
+        msg = f"💰 <b>Оплачено</b>\n{float(amount):,.0f} ₽"
+        if thb:
+            msg += f" → {float(thb):,.2f} ฿"
+    except (TypeError, ValueError):
+        msg = "💰 <b>Оплачено</b>"
+    if (info or {}).get('comment'):
+        msg += f"\n{info['comment']}"
+    send_telegram_notification(msg)
 
 
 def _notify_payment_link_created(payload, data):
@@ -9161,19 +9260,71 @@ def payment_link_webhook():
     if not order_id or status not in PAYMENT_PAID_STATUSES:
         return jsonify({'ok': True}), 200
 
-    info = _PAYMENT_LINKS.pop(order_id, {})
-    amount = info.get('amount') or data.get('amount') or 0
-    thb = info.get('thb')
-    try:
-        msg = f"💰 <b>Оплачено</b>\n{float(amount):,.0f} ₽"
-        if thb:
-            msg += f" → {float(thb):,.2f} ฿"
-    except (TypeError, ValueError):
-        msg = "💰 <b>Оплачено</b>"
-    if info.get('comment'):
-        msg += f"\n{info['comment']}"
-    send_telegram_notification(msg)
+    row = _claim_payment_link_paid(order_id)
+    mem = _PAYMENT_LINKS.pop(order_id, {})
+    if row and row.get('dup'):
+        # Поллер (или повторный вебхук) уже уведомил — молчим
+        return jsonify({'ok': True}), 200
+    _notify_payment_paid(row or mem, fallback_amount=data.get('amount') or 0)
     return jsonify({'ok': True}), 200
+
+
+# Страховочный поллер оплат: вебхук — быстрый путь, поллер — надёжный.
+PAYMENT_POLL_INTERVAL = int(os.environ.get('PAYMENT_POLL_INTERVAL', '30'))
+PAYMENT_POLL_TTL_HOURS = 24
+_PAYMENT_FINAL_BAD = {'EXPIRED', 'FAILED', 'CANCELED', 'CANCELLED', 'DECLINED'}
+
+
+def _poll_pending_payment_links():
+    """Одна итерация поллера: перепроверить PENDING-ссылки в коннекторе.
+
+    Возвращает число отправленных уведомлений (для тестов).
+    """
+    sent = 0
+    db = get_session()
+    try:
+        rows = db.query(PaymentLinkOrder).filter(PaymentLinkOrder.status == 'PENDING').all()
+        cutoff = datetime.utcnow() - timedelta(hours=PAYMENT_POLL_TTL_HOURS)
+        for row in rows:
+            if row.created_at and row.created_at < cutoff:
+                row.status = 'EXPIRED'
+                db.commit()
+                continue
+            if not row.payment_id:
+                continue
+            try:
+                resp = requests.get(
+                    f'https://grushab-2-b.ru/api/payments/{row.payment_id}',
+                    headers={'X-Provider-Name': CONNECTOR_PROVIDER}, timeout=10)
+                status = str((resp.json() or {}).get('status') or '').upper()
+            except Exception:
+                continue  # коннектор недоступен — попробуем в следующий тик
+            if status in PAYMENT_PAID_STATUSES:
+                info = _claim_payment_link_paid(row.order_id)
+                _PAYMENT_LINKS.pop(row.order_id, None)
+                if info and not info.get('dup'):
+                    _notify_payment_paid(info)
+                    sent += 1
+            elif status in _PAYMENT_FINAL_BAD:
+                row.status = status[:16]
+                db.commit()
+    finally:
+        db.close()
+    return sent
+
+
+def _payment_link_poll_loop():
+    """Фоновый поллер статусов платёжных ссылок (страховка потерянных вебхуков)."""
+    while True:
+        time.sleep(PAYMENT_POLL_INTERVAL)
+        try:
+            _poll_pending_payment_links()
+        except Exception as e:
+            print(f"ℹ️ payment poll loop: {e}", flush=True)
+
+
+if os.environ.get('PAYMENT_POLL_ENABLED', '1') == '1':
+    threading.Thread(target=_payment_link_poll_loop, daemon=True, name='payment-link-poll').start()
 
 
 @app.route('/api/webhook/doverka', methods=['POST'])
