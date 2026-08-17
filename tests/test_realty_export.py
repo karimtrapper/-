@@ -252,7 +252,8 @@ class TestTelegram:
         t = A._mf_realty_telegram_text(make_deal())
         assert 'Чистый доход: $5,089.62' in t
         assert 'на кошельке $551.02' in t
-        assert 'в компании $4,538.60' in t
+        # Доход компании — первично в батах (они и лежат на MF Corp), $ в скобках
+        assert 'в компании 150,682 ฿ ($4,538.60)' in t
 
     def test_text_shows_invoice_not_zero_thb(self):
         """Регресс: общий шаблон писал «Выдано: 0 THB» — инвойс в другом поле."""

@@ -3300,9 +3300,11 @@ def _mf_realty_telegram_text(deal):
             pct = f"{a.percent or 0}% " if a.comp_model != 'fixed' else ''
             msg += f"\n• Ур.{a.tier or 1} {a.name or '-'} · {pct}{lbl} → ${a.payout_usdt or 0:,.2f}"
         msg += f"\nВыплаты партнёрам: ${deal.referrer_payout_usdt or 0:,.2f}"
+    # Доход компании — в батах: именно баты лежат на счёте MF Corp, доллар тут
+    # только пересчёт для сводной цифры (иначе кажется, что всё в крипте)
     msg += (
         f"\n\n💰 <b>Чистый доход: ${deal.net_profit_usdt or 0:,.2f}</b>\n"
-        f"   на кошельке ${crypto:,.2f} · в компании ${fee_usdt:,.2f}"
+        f"   на кошельке ${crypto:,.2f} · в компании {deal.company_fee_thb or 0:,.0f} ฿ (${fee_usdt:,.2f})"
     )
     return msg
 
@@ -7785,6 +7787,12 @@ def get_dashboard():
         # Фильтр по рефереру: all (по умолчанию), none (без реферала), <id>
         referrer_filter = request.args.get('referrer_id', '')
 
+        # Фильтр по направлению: all (по умолчанию), exchange (обычные обмены),
+        # realty (вся недвижимость), mf_realty (лизхолд), mf_freehold (фрихолд)
+        kind_filter = request.args.get('deal_kind', '')
+        if kind_filter not in ('', 'all', 'exchange', 'realty') + REALTY_KINDS:
+            return jsonify({'success': False, 'error': 'Invalid deal_kind'}), 400
+
         cash_batches = session.query(CashBatch).filter(CashBatch.status == CashBatchStatus.ACTIVE).all()
         pending_deals = session.query(Deal).filter(
             Deal.status == DealStatus.PENDING, Deal.is_test.isnot(True)).all()
@@ -7814,6 +7822,14 @@ def get_dashboard():
                 deals_q = deals_q.filter(Deal.referrer_id == int(referrer_filter))
             except ValueError:
                 return jsonify({'success': False, 'error': 'Invalid referrer_id'}), 400
+        # Обычные обмены = всё, что не недвижимость (deal_kind NULL или 'exchange')
+        if kind_filter == 'exchange':
+            deals_q = deals_q.filter(or_(Deal.deal_kind.is_(None),
+                                         Deal.deal_kind.notin_(REALTY_KINDS)))
+        elif kind_filter == 'realty':
+            deals_q = deals_q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+        elif kind_filter in REALTY_KINDS:
+            deals_q = deals_q.filter(Deal.deal_kind == kind_filter)
         period_deals = deals_q.all()
         # USDT-эквивалент объёма/себестоимости каждой сделки (учитывает кастомные)
         usdt = {d.id: _deal_usdt_volume_cost(d) for d in period_deals}
@@ -7828,6 +7844,13 @@ def get_dashboard():
         # Сделки с реферралами и сумма выплат реферралам
         period_referrer_deals = [d for d in period_deals if d.referrer_id]
         period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
+        # Доход лизхолда расходится по двум карманам: комиссия оседает БАТАМИ на
+        # счёте MF Corp, в USDT остаётся только остаток кошелька. Сумма в батах —
+        # отдельно, иначе по дашборду кажется, что весь доход лежит в крипте.
+        realty_fee_thb = round(sum(d.company_fee_thb or 0 for d in period_deals
+                                   if d.deal_kind == MF_REALTY_KIND), 2)
+        realty_fee_usdt = round(sum(d.company_fee_usdt or 0 for d in period_deals
+                                    if d.deal_kind == MF_REALTY_KIND), 2)
 
         # ── Единая идентичность клиента (шапка юнит-экономики И каналы) ──
         # У части WON-сделок нет client_id (карточку не завели), у LOSE его нет
@@ -7941,7 +7964,9 @@ def get_dashboard():
         # 100%). При фильтре по рефереру тоже None: у LOSE нет referrer_id.
         unit_ua = unit_c1 = unit_arpu = None
         channels_block = None
-        if referrer_filter in ('', 'all'):
+        # При фильтре по направлению лиды/каналы тоже не считаем: LOSE-сделки
+        # направлением не размечены, CR вышел бы против всех обращений
+        if referrer_filter in ('', 'all') and kind_filter in ('', 'all'):
             period_loses = session.query(Deal).filter(
                 Deal.created_at >= chart_start,
                 Deal.created_at < chart_end,
@@ -8084,6 +8109,10 @@ def get_dashboard():
                     'avg_check': period_avg_check,
                     'referrer_deals_count': len(period_referrer_deals),
                     'referrer_payout_usdt': period_referrer_payout,
+                    # Карман MF Corp (лизхолд): часть чистой прибыли — баты на компании
+                    'realty_fee_thb': realty_fee_thb,
+                    'realty_fee_usdt': realty_fee_usdt,
+                    'profit_wallet_usdt': round(period_profit - realty_fee_usdt, 2),
                 },
                 'unit_economics': {
                     # ТЕРМИНОЛОГИЯ: ключи легаси. 'ua' = ЛИДЫ (обращения WON+LOSE

@@ -172,6 +172,55 @@ class TestReferrerFilter:
         assert get_dash(tc, period='30d', referrer_id='abc').status_code == 400
 
 
+# ── Фильтр по направлению (deal_kind) ─────────────────────────────────────
+
+class TestDealKindFilter:
+
+    @pytest.fixture
+    def mixed_kinds(self, db):
+        """Обычный обмен + лизхолд + фрихолд в одном периоде."""
+        make_deal(db, profit=30)  # deal_kind NULL — обычный обмен
+        lease = make_deal(db, profit=50, payin=2000)
+        lease.deal_kind = 'mf_realty'
+        lease.company_fee_thb = 33000.0
+        lease.company_fee_usdt = 1000.0
+        lease.crypto_remainder_usdt = 50.0
+        lease.net_profit_usdt = 1050.0  # крипта + комиссия компании
+        fh = make_deal(db, profit=200, payin=5000)
+        fh.deal_kind = 'mf_freehold'
+        db.commit()
+
+    def test_exchange_only(self, tc, mixed_kinds):
+        p = get_dash(tc, period='30d', deal_kind='exchange').get_json()['dashboard']['period']
+        assert p['deals_count'] == 1
+        assert p['profit_usdt'] == 30
+        assert p['realty_fee_thb'] == 0
+
+    def test_mf_realty_only(self, tc, mixed_kinds):
+        p = get_dash(tc, period='30d', deal_kind='mf_realty').get_json()['dashboard']['period']
+        assert p['deals_count'] == 1
+        assert p['profit_usdt'] == 1050
+        assert p['realty_fee_thb'] == 33000
+        assert p['realty_fee_usdt'] == 1000
+        # В USDT-кармане только остаток кошелька — без батов компании
+        assert p['profit_wallet_usdt'] == 50
+
+    def test_realty_combines_both_kinds(self, tc, mixed_kinds):
+        p = get_dash(tc, period='30d', deal_kind='realty').get_json()['dashboard']['period']
+        assert p['deals_count'] == 2
+        assert p['profit_usdt'] == 1250
+
+    def test_all_includes_everything_with_thb_pocket(self, tc, mixed_kinds):
+        p = get_dash(tc, period='30d').get_json()['dashboard']['period']
+        assert p['deals_count'] == 3
+        # Батовый карман виден и без фильтра — иначе кажется, что всё в крипте
+        assert p['realty_fee_thb'] == 33000
+        assert p['profit_wallet_usdt'] == round(p['profit_usdt'] - 1000, 2)
+
+    def test_invalid_kind_returns_400(self, tc, mixed_kinds):
+        assert get_dash(tc, period='30d', deal_kind='bogus').status_code == 400
+
+
 # ── Юнит-экономика ────────────────────────────────────────────────────────
 
 class TestUnitEconomics:

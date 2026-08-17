@@ -721,7 +721,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <input type="date" id="dashTo" class="period-btn" style="padding:6px 8px">
                     <button class="period-btn" id="dashRangeBtn" data-period="custom" onclick="applyDashRange()">Показать</button>
                 </span>
-                <select id="dashReferrer" class="period-btn" style="appearance:auto;margin-left:auto" onchange="loadDashboard()">
+                <select id="dashKind" class="period-btn" style="appearance:auto;margin-left:auto" onchange="loadDashboard()">
+                    <option value="">Все направления</option>
+                    <option value="exchange">Обычные обмены</option>
+                    <option value="realty">Недвижимость — вся</option>
+                    <option value="mf_realty">Недвижимость — лизхолд</option>
+                    <option value="mf_freehold">Недвижимость — фрихолд</option>
+                </select>
+                <select id="dashReferrer" class="period-btn" style="appearance:auto" onchange="loadDashboard()">
                     <option value="">Все клиенты</option>
                     <option value="any">Только рефералы</option>
                     <option value="none">Без реферала</option>
@@ -3493,6 +3500,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
                 const refSel = document.getElementById('dashReferrer').value;
                 if (refSel) params.append('referrer_id', refSel);
+                const kindSel = document.getElementById('dashKind').value;
+                if (kindSel) params.append('deal_kind', kindSel);
 
                 const response = await fetch(`${API_URL}/api/analytics/dashboard?${params}`);
                 const data = await response.json();
@@ -3512,6 +3521,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="stat-card success">
                             <div class="stat-value">$${p.profit_usdt ?? 0}</div>
                             <div class="stat-label">Чистая прибыль ${pl}</div>
+                            ${(p.realty_fee_thb || 0) > 0 ? `
+                            <div style="font-size:11px;color:#059669;margin-top:4px;">
+                                ฿${formatNumber(p.realty_fee_thb)} на MF Corp · $${formatNumber(p.profit_wallet_usdt ?? 0)} в крипте
+                            </div>` : ''}
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
@@ -4179,7 +4192,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </div>`;
                             })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — себестоимость посчитана по курсу.</p>'}
                             <p><strong>Осталось в крипте:</strong> <span style="color:#059669;">$${(deal.crypto_remainder_usdt != null ? deal.crypto_remainder_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>
-                               · <strong>в компании:</strong> <span style="color:#059669;">$${(deal.company_fee_usdt || 0).toFixed(2)}</span></p>
+                               · <strong>в компании:</strong> <span style="color:#059669;">${formatNumber(deal.company_fee_thb || 0)} ฿</span> <span style="color:#9ca3af;">($${(deal.company_fee_usdt || 0).toFixed(2)})</span></p>
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
@@ -4260,7 +4273,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     const gross = crypto + fee;
                                     const pct = deal.payout_amount_usdt ? gross / deal.payout_amount_usdt * 100 : 0;
                                     return `<span style="color: #10b981;">$${gross.toFixed(2)}</span> (${pct.toFixed(1)}%)
-                                        <br><span style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании $${fee.toFixed(2)}</span>`;
+                                        <br><span style="color:#9ca3af;font-size:0.85rem;">в крипте $${crypto.toFixed(2)} · в компании ${formatNumber(deal.company_fee_thb || 0)} ฿ ($${fee.toFixed(2)})</span>`;
                                 })()
                                 : `<span style="color: #10b981;">$${(deal.profit_usdt || 0).toFixed(2)}</span> (${(deal.profit_percent || 0).toFixed(1)}%)`
                                + (deal.deal_kind === 'mf_freehold'
@@ -4305,10 +4318,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                         ` : '')}
 
-                        <p><strong>Чистая прибыль:</strong> 
+                        <p><strong>Чистая прибыль:</strong>
                             ${profitUnknown
                             ? '<span style="color: #f59e0b; font-weight: 600;">Ожидает возмещения</span>'
                             : `<span style="color: #10b981; font-weight: 600; font-size: 1.15rem;">$${(deal.net_profit_usdt != null && (deal.referrer_name || deal.deal_kind === 'mf_realty' || deal.deal_kind === 'mf_freehold') ? deal.net_profit_usdt : (deal.profit_usdt || 0)).toFixed(2)}</span>`
+                            // Лизхолд: доход в двух карманах — комиссия лежит батами
+                            // на MF Corp, в USDT остаётся только остаток кошелька
+                            + (deal.deal_kind === 'mf_realty'
+                                ? `<br><span style="color:#059669;font-size:0.85rem;">= ${formatNumber(deal.company_fee_thb || 0)} ฿ на MF Corp + $${(deal.crypto_remainder_usdt != null ? deal.crypto_remainder_usdt : (deal.profit_usdt || 0)).toFixed(2)} на кошельке</span>` : '')
                         }
                         </p>
                         
