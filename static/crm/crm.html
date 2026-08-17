@@ -5474,9 +5474,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
             const amount = parseFloat(opt?.dataset?.amount);
+            // Доля по умолчанию — приход ЭТОЙ сделки, а не весь перевод: один
+            // перевод часто обслуживает несколько сделок, и сделка на $416
+            // записывала на себя $1402 остатка (#469/#481). Приход берём из
+            // поля USDT, иначе выводим из рублей по курсу; уже добавленные
+            // части пула вычитаем — они закрывают свой кусок прихода.
+            const form = document.getElementById('createDealForm');
+            let expected = parseFloat(form?.payin_amount_usdt?.value) || 0;
+            if (!expected) {
+                const rub = parseFloat(form?.payin_amount_rub?.value) || 0;
+                const rate = parseFloat(form?.payin_rate_rub_usdt?.value) || 0;
+                if (rub > 0 && rate > 0) expected = round2(rub / rate);
+            }
+            expected = round2(expected - payinTxPoolTotal());
+            let share = isNaN(amount) ? null : amount;
+            if (share != null && expected > 0 && expected < share) share = expected;
             payinTxPool.push({
                 hash: txHash,
-                amount_usdt: isNaN(amount) ? null : amount,
+                amount_usdt: share,
                 date: opt?.dataset?.date || '',
                 // Подставлено из сети, руками не трогали: когда приедет реестр,
                 // такую долю можно ужать до остатка перевода
