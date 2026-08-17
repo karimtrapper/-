@@ -77,6 +77,18 @@ READONLY_PATHS = [
     '/api/health',
 ]
 
+# Read-only ключи: имя env-переменной → его белый список путей. У каждого
+# интеграционного ключа свой скоуп — внешним не открывается ни финансы сделок,
+# ни KYC. Отзыв ключа = убрать переменную из env, остальные ключи не замечают.
+READONLY_KEY_SCOPES = {
+    'SERVICE_API_KEY_RO': READONLY_PATHS,   # ключ фаундера — всё чтение
+    'SERVICE_API_KEY_RO_LEADS': [           # внешняя интеграция «лиды/мерчанты»
+        '/api/clients',                     # лиды = клиенты CRM
+        '/api/reestr/',                     # мерчанты WL-реестра (view merchants в /all)
+        '/api/health',
+    ],
+}
+
 
 def _api_key_matches(expected: str) -> bool:
     """Сравнивает заголовок X-Api-Key с ключом из env.
@@ -118,17 +130,18 @@ def check_auth():
     if _api_key_matches(os.environ.get('SERVICE_API_KEY', '')):
         return None
 
-    # Read-only ключ — Claude Code фаундера смотрит сделки, рефералов, возмещения
-    # и балансы. Только GET и только пути из READONLY_PATHS; отзывается сменой
-    # одной переменной, боты на основном ключе этого не замечают.
-    if _api_key_matches(os.environ.get('SERVICE_API_KEY_RO', '')):
+    # Read-only ключи — только GET и только пути из скоупа конкретного ключа
+    # (READONLY_KEY_SCOPES). Боты на основном ключе этой ветки не видят.
+    for ro_env, ro_scope in READONLY_KEY_SCOPES.items():
+        if not _api_key_matches(os.environ.get(ro_env, '')):
+            continue
         if request.method != 'GET':
             return jsonify({'success': False, 'error': 'read_only_key',
                             'detail': 'Ключ только для чтения — запись через CRM'}), 403
-        if not any(path.startswith(p) for p in READONLY_PATHS):
+        if not any(path.startswith(p) for p in ro_scope):
             return jsonify({'success': False, 'error': 'read_only_key_scope',
                             'detail': f'Путь {path} закрыт для read-only ключа'}), 403
-        app.logger.info(f'RO-ключ: GET {path}')
+        app.logger.info(f'RO-ключ {ro_env}: GET {path}')
         return None
 
     # Проверяем сессию

@@ -1,9 +1,10 @@
-"""Read-only сервисный ключ (SERVICE_API_KEY_RO) — доступ Claude Code фаундера.
+"""Read-only сервисные ключи (READONLY_KEY_SCOPES) — у каждого свой скоуп путей.
 
-Ключ даёт смотреть сделки, рефералов, возмещения и балансы и не даёт ничего
-менять. Проверяем именно границы: метод, набор путей, невлияние на основной
-ключ. Отдельно — поиск сделок `?q=`, ради которого этот доступ вообще нужен
-(без него «найди сделки Сергея» = выкачать все страницы).
+SERVICE_API_KEY_RO — ключ фаундера: сделки, рефералы, возмещения, балансы.
+SERVICE_API_KEY_RO_LEADS — внешняя интеграция: только клиенты и WL-реестр.
+Проверяем именно границы: метод, набор путей каждого ключа, невлияние на
+основной ключ. Отдельно — поиск сделок `?q=`, ради которого фаундерский доступ
+вообще нужен (без него «найди сделки Сергея» = выкачать все страницы).
 
 Запуск: cd Dev/CalcCRM && python -m pytest tests/test_readonly_key.py -v
 """
@@ -19,6 +20,7 @@ import pytest
 from app import app as flask_app, Client, Deal, DealStatus, DealType, get_session
 
 RO = 'ro-test-key'
+LEADS = 'leads-test-key'
 FULL = 'full-test-key'
 
 
@@ -29,6 +31,7 @@ def cli(monkeypatch):
     monkeypatch.delenv('LOCAL_NO_AUTH', raising=False)
     monkeypatch.setenv('SERVICE_API_KEY', FULL)
     monkeypatch.setenv('SERVICE_API_KEY_RO', RO)
+    monkeypatch.setenv('SERVICE_API_KEY_RO_LEADS', LEADS)
     with flask_app.test_client() as c:
         yield c
 
@@ -80,6 +83,35 @@ class TestReadOnlyScope:
     def test_no_ro_env_no_access(self, cli, monkeypatch):
         monkeypatch.delenv('SERVICE_API_KEY_RO', raising=False)
         assert ro(cli, '/api/deals').status_code == 401
+
+
+class TestScopedLeadsKey:
+    """SERVICE_API_KEY_RO_LEADS — внешний ключ, скоуп уже фаундерского:
+    открыты клиенты и WL-реестр, финансы сделок и кошельки — нет."""
+
+    def leads(self, cli, path, method='get', **kw):
+        return getattr(cli, method)(path, headers={'X-Api-Key': LEADS}, **kw)
+
+    def test_clients_and_reestr_allowed(self, cli):
+        assert self.leads(cli, '/api/clients').status_code == 200
+        assert self.leads(cli, '/api/reestr/all').status_code == 200
+
+    def test_founder_paths_out_of_scope(self, cli):
+        for path in ('/api/deals', '/api/wallets/summary', '/api/referrers',
+                     '/api/analytics/dashboard', '/api/kyc/list'):
+            resp = self.leads(cli, path)
+            assert resp.status_code == 403, path
+            assert resp.get_json()['error'] == 'read_only_key_scope'
+
+    def test_write_forbidden(self, cli):
+        resp = self.leads(cli, '/api/clients', method='post', json={})
+        assert resp.status_code == 403
+        assert resp.get_json()['error'] == 'read_only_key'
+
+    def test_founder_key_unchanged(self, cli):
+        """Рефакторинг на словарь не сузил фаундерский ключ."""
+        assert ro(cli, '/api/deals').status_code == 200
+        assert ro(cli, '/api/reestr/all').status_code == 200
 
 
 class TestDealSearch:
