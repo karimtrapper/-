@@ -3520,10 +3520,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                         <div class="stat-card success">
                             <div class="stat-value">$${p.profit_usdt ?? 0}</div>
-                            <div class="stat-label">Чистая прибыль ${pl}</div>
+                            <div class="stat-label">Чистая прибыль ${pl}${(p.realty_fee_thb || 0) > 0 ? ' (MF Corp + крипта)' : ''}</div>
                             ${(p.realty_fee_thb || 0) > 0 ? `
-                            <div style="font-size:11px;color:#059669;margin-top:4px;">
-                                ฿${formatNumber(p.realty_fee_thb)} на MF Corp · $${formatNumber(p.profit_wallet_usdt ?? 0)} в крипте
+                            <div style="font-size:11px;color:#059669;margin-top:4px;line-height:1.5;">
+                                Доход MF Corp: ฿${formatNumber(p.realty_fee_thb)} ≈ $${formatNumber(p.realty_fee_usdt ?? 0)}<br>
+                                Чистая прибыль в крипте: $${formatNumber(p.profit_wallet_usdt ?? 0)}
                             </div>` : ''}
                         </div>
                         <div class="stat-card">
