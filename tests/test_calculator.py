@@ -74,10 +74,11 @@ class TestGetLevel:
         name, _ = CommissionCalculator.get_level(50_000_000)
         assert name == 'от_1млн'
 
-    def test_bonus_always_2_4_percent(self):
+    def test_bonus_removed(self):
+        """Бонуса Доверки нет с 17.08.2026 — база RUB-USDT = Рапира+2%."""
         for amount in [100_000, 500_000, 700_000, 1_000_000, 5_000_000]:
             _, params = CommissionCalculator.get_level(amount)
-            assert params['bonus_percent'] == 0.024
+            assert params['bonus_percent'] == 0.0
 
     def test_commission_decreases_with_amount(self):
         _, p1 = CommissionCalculator.get_level(100_000)
@@ -205,22 +206,20 @@ class TestDoverkaUsdtToThb:
 # -- RUB → USDT --
 
 class TestDoverkaRubToUsdt:
-    """Сценарий 7-8: RUB → USDT. Ключевая формула: rub_comm = (profit - bonus*100) / 100"""
+    """Сценарий 7-8: RUB → USDT. Без бонуса rub_comm = profit напрямую."""
 
     def test_rub_comm_formula_at_5_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=5.0)
-        # rub_comm = (5.0 - 2.4) / 100 = 0.026 = 2.6%
-        assert abs(r['rub_usdt_commission'] - 2.6) < 0.01
+        # rub_comm = (5.0 - 0) / 100 = 5.0%
+        assert abs(r['rub_usdt_commission'] - 5.0) < 0.01
 
     def test_rub_comm_formula_at_3_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=3.0)
-        # rub_comm = (3.0 - 2.4) / 100 = 0.006 = 0.6%
-        assert abs(r['rub_usdt_commission'] - 0.6) < 0.01
+        assert abs(r['rub_usdt_commission'] - 3.0) < 0.01
 
     def test_rub_comm_formula_at_2_4_percent(self, calc):
         r = calc.rub_to_usdt_target(1000, custom_profit_margin=2.4)
-        # rub_comm = (2.4 - 2.4) / 100 = 0.0%
-        assert abs(r['rub_usdt_commission'] - 0.0) < 0.01
+        assert abs(r['rub_usdt_commission'] - 2.4) < 0.01
 
     def test_target_1_usdt_withdrawal(self, calc):
         r = calc.rub_to_usdt_target(1000)
@@ -298,3 +297,35 @@ class TestSafeRate:
         b = BrokerCalculatorDetailed(USDT_THB, RUB_USDT, 4.0)
         for amount in (1, 10, 34):
             assert 'final_rate' in b.thb_to_usdt_amount(amount)
+
+
+# -- Профит-мэппинг после перехода на Рапиру+2% (17.08.2026) --
+
+class TestProfitHitsTargetWithoutBonus:
+    """Комиссия c = p/(1+p): фактический профит RUB→THB равен целевому.
+
+    Раньше мэппинг (5% → 2.72%) был откалиброван под бонус Доверки 2.4% —
+    без бонуса он давал заниженный профит (5% → фактических 2.8%).
+    """
+
+    @pytest.fixture
+    def calc(self):
+        return ExchangeCalculator(usdt_thb_rate=32.87, rub_usdt_rate=89.97)
+
+    @pytest.mark.parametrize('rub,target', [
+        (100_000, 5.0),      # тир до 500к
+        (700_000, 4.0),      # тир 500к-1млн
+        (1_500_000, 3.0),    # тир от 1млн
+    ])
+    def test_standard_tiers(self, calc, rub, target):
+        r = calc.rub_to_thb(rub)
+        assert abs(r['profit_percent_actual'] - target) < 0.05
+
+    @pytest.mark.parametrize('target', [1.5, 2.0, 2.4, 3.5, 4.5, 5.0])
+    def test_custom_margin(self, calc, target):
+        r = calc.rub_to_thb(300_000, custom_profit_margin=target)
+        assert abs(r['profit_percent_actual'] - target) < 0.05
+
+    def test_bonus_is_zero_in_result(self, calc):
+        r = calc.rub_to_thb(100_000)
+        assert r['bonus_usdt'] == 0

@@ -8885,9 +8885,12 @@ def lk_bot_webhook():
 
 @app.route('/api/doverka/payments', methods=['GET'])
 def doverka_payments_history():
-    """Прокси для получения истории платежей Доверки"""
-    from calculator import ExchangeRateProvider
-    key = ExchangeRateProvider.DOVERKA_API_KEY
+    """Прокси для получения истории платежей Доверки.
+
+    Курсы с Доверки больше не тянем (RUB-USDT = Рапира+2%), но история
+    платежей нужна для сверки старых сделок — ключ читаем напрямую из env.
+    """
+    key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
     params = {k: v for k, v in request.args.items()}
@@ -9068,8 +9071,7 @@ def proxy_create_payment():
 
     elif provider == 'doverka':
         # Прямой Doverka Partner API
-        from calculator import ExchangeRateProvider
-        key = ExchangeRateProvider.DOVERKA_API_KEY
+        key = os.getenv('DOVERKA_API_KEY', '')
         if not key:
             return jsonify({'success': False, 'message': 'No Doverka API key'}), 500
         try:
@@ -9120,8 +9122,7 @@ def proxy_create_payment():
 @app.route('/api/doverka/currencies', methods=['GET'])
 def doverka_currencies():
     """Прокси для получения валют Доверки (нужен currency_id для создания платежа)"""
-    from calculator import ExchangeRateProvider
-    key = ExchangeRateProvider.DOVERKA_API_KEY
+    key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
     resp = requests.get(

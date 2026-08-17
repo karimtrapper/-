@@ -45,31 +45,32 @@ const CONFIG = {
         rub_usdt: 82.6035
     },
     
-    // Комиссии для Doverka
+    // Комиссии СБП. База RUB-USDT = Рапира+2% (себестоимость), бонуса Доверки
+    // нет: профит целиком в комиссии USDT-THB, c = p/(1+p) под целевой профит p
     DOVERKA_COMMISSIONS: {
         'до_500к': {
             min: 0,
             max: 500000,
-            usdt_thb_commission: 0.0272,
+            usdt_thb_commission: 0.047619,   // профит 5%
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
-            bonus_percent: 0.024
+            bonus_percent: 0.0
         },
         '500к_1млн': {
             min: 500000,
             max: 1000000,
-            usdt_thb_commission: 0.017,
+            usdt_thb_commission: 0.038462,   // профит 4%
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
-            bonus_percent: 0.024
+            bonus_percent: 0.0
         },
         'от_1млн': {
             min: 1000000,
             max: Infinity,
-            usdt_thb_commission: 0.0067,
+            usdt_thb_commission: 0.029126,   // профит 3%
             withdrawal_percent: 0.0025,
             withdrawal_fixed: 20,
-            bonus_percent: 0.024
+            bonus_percent: 0.0
         }
     }
 };
@@ -1146,14 +1147,13 @@ function calculateLocal(amount) {
         else targetProfit = 3.0;
     }
 
-    // Комиссия в USDT-THB (Doverka использует прогрессивную шкалу, но мы привязываем её к профиту)
-    // 5% прибыли -> 2.72% комиссия, 4% -> 1.7%, 3% -> 0.67%
-    const commMap = { 5.0: 0.0272, 4.0: 0.017, 3.0: 0.0067 };
-    const usdt_thb_comm = commMap[targetProfit] || (targetProfit / 100 * 0.6); // Примерная пропорция
+    // Комиссия в USDT-THB: без бонуса Доверки профит собирается только ей,
+    // точная связь c = p/(1+p) — как в _get_commissions на сервере
+    const usdt_thb_comm = (targetProfit / 100) / (1 + targetProfit / 100);
 
     const rub_usdt_rate = state.rates.rub_usdt;
     const usdt_thb_rate = state.rates.usdt_thb;
-    const bonus_pct = 0.024; // 2.4% бонус
+    const bonus_pct = 0.0; // бонуса Доверки больше нет (база — Рапира+2%)
 
     // ПРАВИЛЬНЫЙ расчет для Doverka
     if (state.method === 'doverka' && state.scenario === 'rub-to-thb') {
@@ -1677,7 +1677,8 @@ function displayDetailedSteps(result) {
         html += `<h4>💰 Прибыльность</h4>`;
         
         // Бонус 2.4% (для Доверки)
-        if (result.bonus_usdt !== undefined && state.method === 'doverka') {
+        // Бонуса Доверки больше нет — строка остаётся только для старых расчётов, где он был
+        if (result.bonus_usdt > 0 && state.method === 'doverka') {
             html += `<div class="detail-row"><span class="detail-label">2,4% - бонусное начисление:</span><span class="detail-value">${formatNumber(result.bonus_usdt)} USDT</span></div>`;
         }
         if (result.incoming_usdt !== undefined) {

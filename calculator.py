@@ -1,6 +1,6 @@
 """
 Exchange Calculator Bot - Калькулятор обмена RUB-THB
-Получает реальные курсы от Binance и Doverka API
+Получает реальные курсы от Binance (USDT/THB) и Rapira (RUB/USDT)
 """
 
 import aiohttp
@@ -136,18 +136,20 @@ class ExchangeRateProvider:
     """Провайдер курсов валют"""
     
     BINANCE_API = "https://api.binance.th/api/v1"
-    DOVERKA_API = "https://api.doverkapay.com"
-    
+    RAPIRA_API = "https://api.rapira.net"
+
     # API ключи из переменных окружения
     BINANCE_API_KEY = os.getenv('BINANCE_API_KEY', '')
     BINANCE_API_SECRET = os.getenv('BINANCE_API_SECRET', '')
-    DOVERKA_API_KEY = os.getenv('DOVERKA_API_KEY', '')
-    
-    # Используем курс от Doverka API без маржи
-    DOVERKA_MARGIN = 1.0  # Без маржи - чистый курс от API
-    
-    # Альтернативные источники для RUB-USDT, если Doverka API не работает
-    FALLBACK_RUB_USDT = 92.50  # Фоллбэк курс (обновлен 20.01.2026)
+
+    # RUB-USDT = стакан Рапиры + 2% (решение Карима 17.08.2026): +2% — это
+    # стоимость прогона рублей через биржу, итог = наша себестоимость USDT.
+    # Доверка как источник курса убрана — ей больше не пользуемся, её курс
+    # был на ~5% выше рынка и держал экономику на бонусе 2.4%.
+    RAPIRA_MARKUP = 1.02
+
+    # Фоллбэк, если Рапира недоступна (стакан + тикер): Rapira ~88 + 2%
+    FALLBACK_RUB_USDT = 90.0  # обновлён 17.08.2026
     
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
@@ -200,82 +202,62 @@ class ExchangeRateProvider:
         return None
     
     @staticmethod
-    async def get_doverka_rate() -> float:
+    async def get_rapira_rate() -> float:
         """
-        Получить курс RUB-USDT от Doverka API
+        Курс RUB-USDT: топ ask стакана Рапиры × RAPIRA_MARKUP (+2%).
+
+        Ask — потому что мы ПОКУПАЕМ USDT за рубли клиента; глубина топа
+        обычно шестизначная в USDT, VWAP не нужен. Стакан отдаётся ТОЛЬКО
+        на POST с form-data (28.07.2026 сменили контракт, GET → 500).
+        Фоллбэк — публичный тикер /open/market/rates (askPrice).
         """
-        if not ExchangeRateProvider.DOVERKA_API_KEY:
-            print("⚠️ Doverka API key не найден")
-            return None
-        
+        # 1. Стакан (2 попытки)
+        for attempt in range(2):
+            try:
+                async with aiohttp.ClientSession() as session:
+                    url = f"{ExchangeRateProvider.RAPIRA_API}/market/exchange-plate-mini"
+                    async with session.post(url, data={'symbol': 'USDT/RUB'}, timeout=10) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            items = (data.get('ask') or {}).get('items') or []
+                            if items:
+                                top_ask = float(items[0]['price'])
+                                rate = top_ask * ExchangeRateProvider.RAPIRA_MARKUP
+                                print(f"DEBUG: Rapira ask {top_ask} × {ExchangeRateProvider.RAPIRA_MARKUP} = {rate:.4f}", flush=True)
+                                return rate
+            except Exception as e:
+                print(f"⚠️ Rapira стакан attempt {attempt+1} error: {e}")
+
+        # 2. Фоллбэк: тикер (без глубины)
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
-                headers = {
-                    'Authorization': f'Bearer {ExchangeRateProvider.DOVERKA_API_KEY}',
-                    'accept': 'application/json'
-                }
-                
-                async with session.get(url, headers=headers, timeout=10) as response:
+                url = f"{ExchangeRateProvider.RAPIRA_API}/open/market/rates"
+                async with session.get(url, timeout=10) as response:
                     if response.status == 200:
                         data = await response.json()
-                        currencies = data if isinstance(data, list) else [data]
-                        for currency in currencies:
-                            symbol = currency.get('symbol', '').upper()
-                            rate_to_rub = currency.get('rate_to_rub')
-                            rate_from_rub = currency.get('rate_from_rub')
-                            if symbol in ['USD', 'USDT']:
-                                print(f"DEBUG: Doverka {symbol}: to_rub={rate_to_rub}, from_rub={rate_from_rub}", flush=True)
-                                if rate_from_rub and float(rate_from_rub) > 80:
-                                    return float(rate_from_rub)
-                                if rate_to_rub:
-                                    return float(rate_to_rub)
-                        return None
-                    else:
-                        print(f"⚠️ Doverka API error status: {response.status}")
-                        return None
+                        for row in (data.get('data') or []):
+                            if row.get('symbol') in ('USDT/RUB', 'USDTRUB'):
+                                ask = float(row.get('askPrice') or 0)
+                                if ask > 0:
+                                    print(f"DEBUG: Rapira тикер askPrice {ask}", flush=True)
+                                    return ask * ExchangeRateProvider.RAPIRA_MARKUP
         except Exception as e:
-            print(f"⚠️ Doverka attempt 1 error: {e}")
+            print(f"⚠️ Rapira тикер error: {e}")
 
-        # Retry
-        try:
-            async with aiohttp.ClientSession() as session:
-                url = f"{ExchangeRateProvider.DOVERKA_API}/v1/currencies"
-                headers = {
-                    'Authorization': f'Bearer {ExchangeRateProvider.DOVERKA_API_KEY}',
-                    'accept': 'application/json'
-                }
-                async with session.get(url, headers=headers, timeout=10) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        currencies = data if isinstance(data, list) else [data]
-                        for currency in currencies:
-                            symbol = currency.get('symbol', '').upper()
-                            rate_to_rub = currency.get('rate_to_rub')
-                            rate_from_rub = currency.get('rate_from_rub')
-                            if symbol in ['USD', 'USDT']:
-                                if rate_from_rub and float(rate_from_rub) > 80:
-                                    return float(rate_from_rub)
-                                if rate_to_rub:
-                                    return float(rate_to_rub)
-                        return None
-        except Exception as e:
-            print(f"⚠️ Doverka attempt 2 error: {e}")
-
-        print(f"❌ Doverka недоступна — курс RUB/USDT не получен")
+        print("❌ Rapira недоступна — курс RUB/USDT не получен")
         return None
-    
+
     @staticmethod
     async def get_all_rates() -> Dict[str, float]:
         """
         Получить все необходимые курсы
-        
+
         Returns:
             dict: {"usdt_thb": float, "rub_usdt": float}
         """
         usdt_thb = await ExchangeRateProvider.get_binance_rate("USDTTHB")
-        rub_usdt = await ExchangeRateProvider.get_doverka_rate()
-        
+        rub_usdt = await ExchangeRateProvider.get_rapira_rate()
+
         return {
             "usdt_thb": usdt_thb,
             "rub_usdt": rub_usdt
@@ -435,36 +417,39 @@ WITHDRAWAL_FIXED_THB = 20
 class CommissionCalculator:
     """Расчет комиссий по уровням сумм"""
     
+    # После перехода RUB-USDT на Рапиру+2% (17.08.2026) бонуса Доверки нет:
+    # профит целиком собирается комиссией USDT-THB. Чтобы фактический профит
+    # равнялся целевому p, комиссия c = p/(1+p) — вывод: profit% = c/(1−c).
     LEVELS = {
         'до_500к': {
             'min': 0,
             'max': 500_000,
-            'usdt_thb_commission': 0.0272,  # 2.72%
-            'rub_usdt_commission': 0.0,     # 0%
-            'withdrawal_percent': 0.0025,    # 0.25%
-            'withdrawal_fixed': 20,          # 20 THB
-            'profit_percent': 0.05,          # 5%
-            'bonus_percent': 0.024           # 2.4%
+            'usdt_thb_commission': 0.047619,  # профит 5%: 0.05/1.05
+            'rub_usdt_commission': 0.0,       # 0%
+            'withdrawal_percent': 0.0025,     # 0.25%
+            'withdrawal_fixed': 20,           # 20 THB
+            'profit_percent': 0.05,           # 5%
+            'bonus_percent': 0.0              # бонуса Доверки больше нет
         },
         '500к_1млн': {
             'min': 500_000,
             'max': 1_000_000,
-            'usdt_thb_commission': 0.017,   # 1.70%
-            'rub_usdt_commission': 0.0,     # 0%
-            'withdrawal_percent': 0.0025,   # 0.25%
-            'withdrawal_fixed': 20,         # 20 THB
-            'profit_percent': 0.04,         # 4%
-            'bonus_percent': 0.024          # 2.4%
+            'usdt_thb_commission': 0.038462,  # профит 4%: 0.04/1.04
+            'rub_usdt_commission': 0.0,       # 0%
+            'withdrawal_percent': 0.0025,     # 0.25%
+            'withdrawal_fixed': 20,           # 20 THB
+            'profit_percent': 0.04,           # 4%
+            'bonus_percent': 0.0
         },
         'от_1млн': {
             'min': 1_000_000,
             'max': float('inf'),
-            'usdt_thb_commission': 0.0067,  # 0.67%
-            'rub_usdt_commission': 0.0,     # 0%
-            'withdrawal_percent': 0.0025,   # 0.25%
-            'withdrawal_fixed': 20,         # 20 THB
-            'profit_percent': 0.03,         # 3%
-            'bonus_percent': 0.024          # 2.4%
+            'usdt_thb_commission': 0.029126,  # профит 3%: 0.03/1.03
+            'rub_usdt_commission': 0.0,       # 0%
+            'withdrawal_percent': 0.0025,     # 0.25%
+            'withdrawal_fixed': 20,           # 20 THB
+            'profit_percent': 0.03,           # 3%
+            'bonus_percent': 0.0
         }
     }
     
@@ -488,7 +473,7 @@ class CommissionCalculator:
 
 
 class ExchangeCalculator:
-    """Калькулятор обмена валют для режима Doverka (SBP)"""
+    """Калькулятор обмена валют для режима СБП (бывш. Doverka)"""
     
     def __init__(self, usdt_thb_rate: float, rub_usdt_rate: float,
                  withdrawal_percent: float = WITHDRAWAL_PCT_BINANCE,
@@ -506,37 +491,19 @@ class ExchangeCalculator:
         self.withdrawal_fixed = withdrawal_fixed
     
     def _get_commissions(self, target_profit: float, rub_amount: float = 0):
-        """Расчет комиссий для Doverka с фиксированными значениями"""
+        """Комиссии режима СБП: профит целиком в комиссии USDT-THB.
+
+        Без бонуса Доверки связь точная: фактический профит = c/(1−c),
+        поэтому под целевой p комиссия c = p/(1+p). Старый эмпирический
+        мэппинг (5% → 2.72% и т.д.) был откалиброван под бонус 2.4% —
+        с базой Рапира+2% он занижал бы профит.
+        """
         _, default_comm = CommissionCalculator.get_level(rub_amount)
-        bonus = default_comm['bonus_percent'] # 0.024
-        
+        bonus = default_comm['bonus_percent']  # 0.0 — оставлен для совместимости формул
+
         if target_profit is not None:
-            # Точный маппинг от пользователя: Прибыль -> Комиссия USDT-THB
-            mapping = {
-                5.0: 0.0272,
-                4.5: 0.0225,
-                4.0: 0.0170,
-                3.5: 0.0120,
-                3.0: 0.0067,
-                2.4: 0.0,
-                2.0: -0.003,
-                1.5: -0.007
-            }
-            
-            if target_profit in mapping:
-                usdt_comm = mapping[target_profit]
-            else:
-                # Линейная интерполяция для промежуточных значений
-                pts = sorted(mapping.items())
-                for i in range(len(pts) - 1):
-                    x1, y1 = pts[i]
-                    x2, y2 = pts[i+1]
-                    if x1 <= target_profit <= x2:
-                        usdt_comm = y1 + (y2 - y1) * (target_profit - x1) / (x2 - x1)
-                        break
-                else:
-                    usdt_comm = 0.0272 if target_profit > 5 else -0.007
-                    
+            p = target_profit / 100.0
+            usdt_comm = p / (1 + p)
             return 0.0, usdt_comm, bonus, f"Индивидуальный ({target_profit}%)"
         else:
             return 0.0, default_comm['usdt_thb_commission'], bonus, "Стандартный"
@@ -677,7 +644,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'commission_level': f"СБП ({target_profit}%)"
         }
 
     def thb_to_usdt_target(self, usdt_target: float, custom_profit_margin: float = None) -> dict:
@@ -711,7 +678,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'commission_level': f"СБП ({target_profit}%)"
         }
 
     def usdt_to_thb(self, usdt_amount: float, custom_profit_margin: float = None) -> dict:
@@ -749,7 +716,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'commission_level': f"СБП ({target_profit}%)"
         }
 
     def usdt_to_thb_target(self, thb_target: float, custom_profit_margin: float = None) -> dict:
@@ -787,7 +754,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': target_profit,
-            'commission_level': f"Doverka ({target_profit}%)"
+            'commission_level': f"СБП ({target_profit}%)"
         }
 
     def rub_to_usdt_target(self, usdt_target: float, custom_profit_margin: float = None) -> dict:
@@ -796,7 +763,7 @@ class ExchangeCalculator:
         estimated_rub = usdt_target * self.rub_usdt_rate * 1.05
         _, default_comm = CommissionCalculator.get_level(estimated_rub)
         target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
-        bonus = default_comm['bonus_percent']  # 0.024
+        bonus = default_comm["bonus_percent"]  # 0.0 — бонуса Доверки больше нет
 
         # Комиссия с учётом бонуса: если target_profit=5% и bonus=2.4%, то rub_comm=2.6%
         rub_comm = (target_profit - bonus * 100) / 100.0
@@ -836,7 +803,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': profit_percent,
-            'commission_level': f"Doverka ({target_profit}%)",
+            'commission_level': f"СБП ({target_profit}%)",
             'level_name': level_name
         }
 
@@ -845,7 +812,7 @@ class ExchangeCalculator:
         # Тиры по сумме рублей
         _, default_comm = CommissionCalculator.get_level(rub_amount)
         target_profit = custom_profit_margin if custom_profit_margin is not None else default_comm['profit_percent'] * 100
-        bonus = default_comm['bonus_percent']  # 0.024
+        bonus = default_comm["bonus_percent"]  # 0.0 — бонуса Доверки больше нет
 
         # Комиссия с учётом бонуса
         rub_comm = (target_profit - bonus * 100) / 100.0
@@ -885,7 +852,7 @@ class ExchangeCalculator:
             'outgoing_usdt': outgoing_usdt,
             'profit_usdt': profit_usdt,
             'profit_percent_actual': profit_percent,
-            'commission_level': f"Doverka ({target_profit}%)",
+            'commission_level': f"СБП ({target_profit}%)",
             'level_name': level_name
         }
 
