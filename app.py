@@ -2479,6 +2479,8 @@ def build_realty_rows(deal):
     Порядок колонок — как в GSHEET_REALTY_HEADERS. Делится всё, что
     пропорционально приходу; инвойс, курсы, процент компании и ссылки на
     документы описывают одну отправку и стоят только в первой строке.
+    В остальных строках эти колонки помечаются прочерком «—»: пустая ячейка
+    читается как «данные не подставились», прочерк — как «намеренно пусто».
     """
     d = deal
     parts = _payin_all_parts(d)
@@ -2521,13 +2523,13 @@ def build_realty_rows(deal):
             p['amount_rub'] or '',                                        # 3 сумма руб части
             p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
             agent_names,                                                  # 5 от кого
-            (d.invoice_amount_thb or '') if first else '',                # 6 сумма thb
-            (d.sell_rate_thb_usdt or '') if first else '',                # 7 курс продажи
-            (d.buy_rate_thb_usdt or '') if first else '',                 # 8 курс покупкт
+            (d.invoice_amount_thb or '') if first else '—',               # 6 сумма thb
+            (d.sell_rate_thb_usdt or '') if first else '—',               # 7 курс продажи
+            (d.buy_rate_thb_usdt or '') if first else '—',                # 8 курс покупкт
             p['amount_usdt'] or '',                                       # 9 приход usdt части
             cost_split[i] or '',                                          # 10 потратили на инвойс
             fee_usdt_split[i] or '',                                      # 11 доход компании usdt
-            ((d.company_percent / 100) if d.company_percent else '') if first else '',  # 12
+            ((d.company_percent / 100) if d.company_percent else '') if first else '—',  # 12
             sent_thb_split[i] or '',                                      # 13 отправлено thb
             fee_thb_split[i] or '',                                       # 14 доход в батах
             katika_thb_split[i] or '',                                    # 15 Катика баты
@@ -2553,7 +2555,9 @@ def build_freehold_rows(deal):
     Делятся приход и всё, что от него пропорционально: отправка, доход, выплата
     агенту, чистый доход. Инвойс, комиссия за перевод, «дойдёт застройщику» и
     ссылки на документы описывают один SWIFT — стоят только в первой строке,
-    делить их значило бы придумать переводы, которых не было.
+    делить их значило бы придумать переводы, которых не было. В остальных
+    строках эти колонки помечаются прочерком «—»: пустая ячейка читается как
+    «данные не подставились», прочерк — как «намеренно пусто, см. строку ч.1».
     """
     d = deal
     parts = _payin_all_parts(d)
@@ -2584,12 +2588,12 @@ def build_freehold_rows(deal):
             p['rate_rub_usdt'] or '',                                     # 4 курс ЧАСТИ
             agent_names,                                                  # 5 от кого
             p['amount_usdt'] or '',                                       # 6 приход usdt части
-            (d.invoice_amount_usd or '') if first else '',                # 7 инвойс
+            (d.invoice_amount_usd or '') if first else '—',               # 7 инвойс
             sent_split[i] or '',                                          # 8 отправлено — доля
-            (d.transfer_fee_percent or '') if first else '',              # 9 комиссия %
-            (d.transfer_fee_fixed_usd or '') if first else '',            # 10 фикс
-            (d.transfer_fee_usd or '') if first else '',                  # 11 комиссия usd
-            (d.transfer_arrive_usd or '') if first else '',               # 12 дойдёт
+            (d.transfer_fee_percent or '') if first else '—',             # 9 комиссия %
+            (d.transfer_fee_fixed_usd or '') if first else '—',           # 10 фикс
+            (d.transfer_fee_usd or '') if first else '—',                 # 11 комиссия usd
+            (d.transfer_arrive_usd or '') if first else '—',              # 12 дойдёт
             profit_split[i] or '',                                        # 13 доход — доля
             agent_split[i] or '',                                         # 14 выплата агенту
             net_split[i] or '',                                           # 15 чистый доход
