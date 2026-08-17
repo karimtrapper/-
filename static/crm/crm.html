@@ -3549,7 +3549,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                     // Юнит-экономика — таблица в формате шаблона Красинского (когорты v5)
                     const ue = d.unit_economics || {};
-                    document.getElementById('unitEconTitle').textContent = `Юнит-экономика ${pl} (шаблон Красинского)`;
+                    document.getElementById('unitEconTitle').textContent = `Юнит-экономика ${pl}`;
                     renderUnitEconTable(ue);
                     document.getElementById('unitEconFormula').textContent =
                         `CM = B × APC × (AvP − COGS) = ${ue.buyers ?? 0} × ${ue.apc ?? 0} × $${formatNumber(ue.profit_per_deal ?? 0)} ≈ $${formatNumber(ue.cm ?? 0)}. UA, C1, CPA, ARPU появятся, когда начнём считать трафик и расходы на привлечение.`;
