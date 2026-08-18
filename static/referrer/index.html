@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru"><!-- перезаписывается из lang реферера в setLang() -->
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -166,6 +166,32 @@
             box-shadow: 0 1px 2px rgba(15,23,42,0.04);
         }
         .ref-row { display: flex; align-items: center; gap: 10px; }
+        /* Ссылка на оплату */
+        .cur-btn {
+            flex: 1; padding: 8px 10px; border-radius: 8px; cursor: pointer;
+            border: 1px solid var(--navy-200); background: white; color: var(--navy-600);
+            font-size: 12px; font-weight: 600; font-family: inherit; transition: all .15s;
+        }
+        .cur-btn.active { background: var(--navy-800); border-color: var(--navy-800); color: white; }
+        .link-input {
+            width: 100%; padding: 11px 12px; border-radius: 10px; box-sizing: border-box;
+            border: 1px solid var(--navy-200); font-size: 15px; font-family: inherit;
+            color: var(--navy-900); outline: none;
+        }
+        .link-input:focus { border-color: var(--navy-400); }
+        .link-quote {
+            margin: 10px 0; font-size: 13px; line-height: 1.5; color: var(--navy-500);
+            min-height: 20px;
+        }
+        .link-quote b { color: var(--navy-900); font-weight: 700; }
+        .link-quote .reward { color: var(--green-dark); font-weight: 600; }
+        .link-quote.err { color: var(--coral-dark); }
+        .link-btn {
+            width: 100%; padding: 12px; border-radius: 10px; border: none;
+            background: var(--navy-800); color: white; font-size: 14px; font-weight: 600;
+            font-family: inherit; cursor: pointer; transition: opacity .15s;
+        }
+        .link-btn:disabled { background: var(--navy-200); color: var(--navy-400); cursor: not-allowed; }
         .ref-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
         .ref-url { flex: 1; min-width: 0; font-size: 12px; color: var(--navy-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'SF Mono', monospace; }
         .ref-copy {
@@ -381,7 +407,7 @@
 </head>
 <body>
     <div class="container" id="app">
-        <div class="loading" id="loading">Загрузка...</div>
+        <div class="loading" id="loading">…</div>
     </div>
 
     <script>
@@ -392,6 +418,296 @@
             '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '/': '&#x2F;'
         }[c]));
     }
+
+    // ============== i18n ==============
+    // Язык кабинета — поле lang реферера (приходит в /stats, в т.ч. в 401-ответе
+    // экрана входа). Партнёр может быть англоязычным застройщиком, поэтому текста
+    // в разметке нет: статика размечена data-i18n, динамика идёт через t().
+    const I18N = {
+        ru: {
+            title: 'Grusha — Партнёрская программа',
+            invalid_link: 'Неверная ссылка',
+            not_found: 'Реферер не найден',
+            load_error: 'Ошибка загрузки',
+            net_error: 'Сетевая ошибка',
+            net_error_short: 'Ошибка сети',
+            error: 'Ошибка',
+            login_creating: 'Создаю код входа…',
+            login_opened: '⏳ Открылся Telegram — выберите нужный аккаунт и нажмите <b>Start</b>.',
+            login_open_again: 'Открыть бота ещё раз',
+            login_timeout: 'Время истекло. Нажмите кнопку ещё раз.',
+            login_ok: '✅ Вход подтверждён…',
+            login_denied: 'Этот аккаунт не подходит для кабинета',
+            login_expired: 'Код устарел. Нажмите кнопку ещё раз.',
+            login_off_title: 'Вход временно недоступен',
+            login_off_sub: 'Авторизация через Telegram сейчас не работает.<br>Попробуйте позже.',
+            login_welcome: 'Добро пожаловать!',
+            login_sub: 'Партнёрский кабинет Grusha.<br>Подтвердите вход в приложении Telegram.',
+            login_btn: 'Войти через Telegram',
+            login_hint: '📱 Откроется Telegram — выберите аккаунт и нажмите Start',
+            logout: 'Выйти',
+            logout_title: 'Выйти из кабинета',
+            badge_markup: p => '+' + p + '% к курсу',
+            balance_label: 'Доступно к выводу',
+            req_pending: 'на рассмотрении',
+            req_progress: 'в работе',
+            balance_sub_req: (id, amt, st) => 'Заявка #' + id + ' на $' + amt + ' — ' + st,
+            balance_sub_terms: 'По запросу · от $20 · USDT TRC-20',
+            cta_sent: 'Заявка уже отправлена',
+            cta_request: 'Запросить выплату',
+            paid_title: amt => 'Выплата $' + amt + ' отправлена',
+            req_no: 'Заявка',
+            active_title: (amt, st) => 'Заявка на $' + amt + ' — ' + st,
+            active_body_progress: 'Менеджер обрабатывает выплату. После отправки получите хеш транзакции.',
+            active_body_new: 'Менеджер свяжется с вами в ближайшее время.',
+            cancel_request: 'Отменить заявку',
+            cancel_confirm: 'Отменить заявку?',
+            cancel_failed: 'Не удалось отменить',
+            sec_30d: 'За 30 дней',
+            sec_all: 'За всё время',
+            st_volume: 'Объём клиентов',
+            st_deals: 'Сделок',
+            st_new_clients: 'Новых клиентов',
+            st_paid_you: 'Выплачено вам',
+            st_leads: 'Обращений',
+            st_conversion: 'Конверсия',
+            st_earned: 'Заработано',
+            sec_links: 'Ваши ссылки',
+            copy: 'Копировать',
+            copied: 'Скопировано!',
+            sec_paylink: 'Ссылка на оплату',
+            cur_thb: 'Клиент получит ฿',
+            cur_rub: 'Клиент заплатит ₽',
+            amount_ph: 'Сумма',
+            quote_hint: 'Введите сумму — покажу курс',
+            quote_calc: 'Считаю курс…',
+            quote_failed: 'Не удалось посчитать курс',
+            quote_line: (rub, thb, rate, reward) =>
+                'Клиент платит <b>' + rub + ' ₽</b> → получает <b>' + thb + ' ฿</b><br>' +
+                'Курс ' + rate + ' ₽ за 1 ฿ · ваше вознаграждение <span class="reward">' + reward + ' ฿</span>',
+            link_create: 'Создать ссылку',
+            link_create_title: 'Платёжный коннектор подключается на следующем этапе',
+            sec_payouts: 'Мои запросы на выплату',
+            sec_deals: 'Последние сделки',
+            deals_empty: 'Пока нет завершённых сделок',
+            sec_terms: 'Условия программы',
+            cond_model: 'Ваша модель',
+            model_markup: p => 'Markup +' + p + '% к курсу клиента',
+            model_revshare: p => 'Revshare ' + p + '% от прибыли',
+            cond_currency: 'Валюта выплат',
+            cond_min: 'Минимум для вывода',
+            cond_payout: 'Выплата',
+            cond_payout_val: 'По запросу менеджеру',
+            client: 'Клиент',
+            deal_paid: 'Выплачено',
+            deal_pending: 'К выплате',
+            comp_markup: (p, vol) => 'markup +' + p + '% × объём' + vol,
+            comp_fixed: 'фикс',
+            comp_revshare: (p, base) => p + '% × прибыль' + base,
+            status: { new: 'На рассмотрении', in_progress: 'В работе', paid: 'Выплачено', cancelled: 'Отменено' },
+            payout_thb_sub: 'Баты на банк',
+            prev_wallets: 'Прошлые кошельки:',
+            rate_loading: 'курс загружается…',
+            rate_unavailable: 'временно недоступно',
+            rate_small: r => 'курс ' + r + ' ฿/$',
+            rate_big: r => 'Курс ' + r + ' ฿/$',
+            contact_ph: '@username или +66...',
+            err_bank: 'Укажите банк',
+            err_acc_name: 'Укажите имя получателя',
+            err_acc_num: 'Укажите номер счёта',
+            err_contact: 'Укажите контакт для связи',
+            err_wallet: 'Укажите кошелёк для выплаты',
+            sending: 'Отправляем...',
+            send_failed: 'Ошибка отправки',
+            submit: 'Отправить заявку',
+            success_thb: (amt, bank) => 'Выплата ' + amt + ' ฿ на ' + bank + '. Менеджер свяжется с вами в ближайшее время.',
+            success_usdt: 'Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.',
+            bank_fallback: 'банк',
+            net_retry: 'Сетевая ошибка. Попробуйте ещё раз.',
+            m_title: 'Вывод средств',
+            m_available: 'Доступно:',
+            m_pick: '· выберите способ',
+            m_crypto: 'Криптовалютой',
+            m_crypto_sub: 'USDT · сеть TRC-20',
+            m_thb: 'Батами на банк',
+            m_cancel: 'Отмена',
+            m_back: '‹ Способ вывода',
+            m_usdt_title: 'Вывод в USDT',
+            m_amount: 'Сумма:',
+            m_wallet: 'Кошелёк для выплаты',
+            m_contact_method: 'Способ связи',
+            m_contact: 'Контакт',
+            m_notes: 'Комментарий (необязательно)',
+            m_notes_ph: 'Доп. информация для менеджера',
+            m_disc_usdt: 'Свяжемся с вами, если возникнут вопросы по оплате. Выплата USDT TRC-20 на указанный кошелёк.',
+            m_thb_title: 'Вывод в батах',
+            m_balance: 'Баланс:',
+            m_rate_note: 'Курс фиксируется в момент отправки заявки',
+            m_bank: 'Банк',
+            m_bank_ph: 'Выберите или впишите свой банк',
+            m_acc_name: 'Имя получателя (как в банке)',
+            m_acc_num: 'Номер счёта',
+            m_disc_thb: 'Перевод на тайский банковский счёт. Свяжемся с вами, если возникнут вопросы по оплате.',
+            m_sent: 'Заявка отправлена',
+            m_done: 'Готово',
+        },
+        en: {
+            title: 'Grusha — Partner Program',
+            invalid_link: 'Invalid link',
+            not_found: 'Partner not found',
+            load_error: 'Failed to load',
+            net_error: 'Network error',
+            net_error_short: 'Network error',
+            error: 'Error',
+            login_creating: 'Creating a login code…',
+            login_opened: '⏳ Telegram is open — pick the right account and press <b>Start</b>.',
+            login_open_again: 'Open the bot again',
+            login_timeout: 'Timed out. Press the button again.',
+            login_ok: '✅ Login confirmed…',
+            login_denied: 'This account cannot access the dashboard',
+            login_expired: 'The code expired. Press the button again.',
+            login_off_title: 'Sign-in is temporarily unavailable',
+            login_off_sub: 'Telegram sign-in is not working right now.<br>Please try again later.',
+            login_welcome: 'Welcome!',
+            login_sub: 'Grusha partner dashboard.<br>Confirm the sign-in in your Telegram app.',
+            login_btn: 'Sign in with Telegram',
+            login_hint: '📱 Telegram will open — pick your account and press Start',
+            logout: 'Log out',
+            logout_title: 'Log out of the dashboard',
+            badge_markup: p => '+' + p + '% on rate',
+            balance_label: 'Available to withdraw',
+            req_pending: 'under review',
+            req_progress: 'in progress',
+            balance_sub_req: (id, amt, st) => 'Request #' + id + ' for $' + amt + ' — ' + st,
+            balance_sub_terms: 'On request · from $20 · USDT TRC-20',
+            cta_sent: 'Request already sent',
+            cta_request: 'Request a payout',
+            paid_title: amt => 'Payout of $' + amt + ' sent',
+            req_no: 'Request',
+            active_title: (amt, st) => 'Request for $' + amt + ' — ' + st,
+            active_body_progress: 'Your manager is processing the payout. You will get the transaction hash once it is sent.',
+            active_body_new: 'Your manager will contact you shortly.',
+            cancel_request: 'Cancel request',
+            cancel_confirm: 'Cancel this request?',
+            cancel_failed: 'Could not cancel the request',
+            sec_30d: 'Last 30 days',
+            sec_all: 'All time',
+            st_volume: 'Client volume',
+            st_deals: 'Deals',
+            st_new_clients: 'New clients',
+            st_paid_you: 'Paid to you',
+            st_leads: 'Referrals',
+            st_conversion: 'Conversion',
+            st_earned: 'Earned',
+            sec_links: 'Your links',
+            copy: 'Copy',
+            copied: 'Copied!',
+            sec_paylink: 'Payment link',
+            cur_thb: 'Client receives ฿',
+            cur_rub: 'Client pays ₽',
+            amount_ph: 'Amount',
+            quote_hint: 'Enter an amount to see the rate',
+            quote_calc: 'Calculating the rate…',
+            quote_failed: 'Could not calculate the rate',
+            quote_line: (rub, thb, rate, reward) =>
+                'Client pays <b>' + rub + ' ₽</b> → receives <b>' + thb + ' ฿</b><br>' +
+                'Rate ' + rate + ' ₽ per 1 ฿ · your reward <span class="reward">' + reward + ' ฿</span>',
+            link_create: 'Create link',
+            link_create_title: 'The payment connector is being wired up in the next stage',
+            sec_payouts: 'My payout requests',
+            sec_deals: 'Recent deals',
+            deals_empty: 'No completed deals yet',
+            sec_terms: 'Program terms',
+            cond_model: 'Your model',
+            model_markup: p => 'Markup +' + p + '% on the client rate',
+            model_revshare: p => 'Revshare ' + p + '% of profit',
+            cond_currency: 'Payout currency',
+            cond_min: 'Minimum withdrawal',
+            cond_payout: 'Payout',
+            cond_payout_val: 'On request to your manager',
+            client: 'Client',
+            deal_paid: 'Paid',
+            deal_pending: 'Pending',
+            comp_markup: (p, vol) => 'markup +' + p + '% × volume' + vol,
+            comp_fixed: 'fixed',
+            comp_revshare: (p, base) => p + '% × profit' + base,
+            status: { new: 'Under review', in_progress: 'In progress', paid: 'Paid', cancelled: 'Cancelled' },
+            payout_thb_sub: 'THB to bank',
+            prev_wallets: 'Previous wallets:',
+            rate_loading: 'loading rate…',
+            rate_unavailable: 'temporarily unavailable',
+            rate_small: r => 'rate ' + r + ' ฿/$',
+            rate_big: r => 'Rate ' + r + ' ฿/$',
+            contact_ph: '@username or +66...',
+            err_bank: 'Enter the bank',
+            err_acc_name: 'Enter the recipient name',
+            err_acc_num: 'Enter the account number',
+            err_contact: 'Enter a contact',
+            err_wallet: 'Enter the payout wallet',
+            sending: 'Sending...',
+            send_failed: 'Could not submit the request',
+            submit: 'Submit request',
+            success_thb: (amt, bank) => 'Payout of ' + amt + ' ฿ to ' + bank + '. Your manager will contact you shortly.',
+            success_usdt: 'Your manager will contact you shortly to confirm the details and send the payout.',
+            bank_fallback: 'your bank',
+            net_retry: 'Network error. Please try again.',
+            m_title: 'Withdraw funds',
+            m_available: 'Available:',
+            m_pick: '· choose a method',
+            m_crypto: 'Crypto',
+            m_crypto_sub: 'USDT · TRC-20 network',
+            m_thb: 'THB to a bank account',
+            m_cancel: 'Cancel',
+            m_back: '‹ Payout method',
+            m_usdt_title: 'Withdraw in USDT',
+            m_amount: 'Amount:',
+            m_wallet: 'Payout wallet',
+            m_contact_method: 'Contact method',
+            m_contact: 'Contact',
+            m_notes: 'Comment (optional)',
+            m_notes_ph: 'Extra details for the manager',
+            m_disc_usdt: 'We will get in touch if there are any questions about the payment. USDT TRC-20 goes to the wallet you enter.',
+            m_thb_title: 'Withdraw in THB',
+            m_balance: 'Balance:',
+            m_rate_note: 'The rate is locked when you submit the request',
+            m_bank: 'Bank',
+            m_bank_ph: 'Pick your bank or type it in',
+            m_acc_name: 'Recipient name (as in the bank)',
+            m_acc_num: 'Account number',
+            m_disc_thb: 'Transfer to a Thai bank account. We will get in touch if there are any questions about the payment.',
+            m_sent: 'Request sent',
+            m_done: 'Done',
+        },
+    };
+
+    let LANG = 'ru';
+    function t(key, ...args) {
+        const v = (I18N[LANG] || I18N.ru)[key];
+        const val = (v === undefined) ? I18N.ru[key] : v;
+        return typeof val === 'function' ? val(...args) : (val === undefined ? key : val);
+    }
+    // Разделители тысяч и формат дат — по языку партнёра
+    const locale = () => (LANG === 'en' ? 'en-US' : 'ru-RU');
+    const fmtInt = n => Math.round(Number(n) || 0).toLocaleString(locale());
+
+    function setLang(lang) {
+        LANG = (lang === 'en') ? 'en' : 'ru';
+        document.documentElement.lang = LANG;
+        document.title = t('title');
+        applyStaticI18n();
+    }
+
+    // Статичная разметка (модалка выплаты) — переводится по data-атрибутам
+    function applyStaticI18n() {
+        document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+        document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+        // Модалка выплаты лежит в разметке НИЖЕ этого скрипта: если stats вернулись
+        // до конца парсинга страницы, querySelectorAll её ещё не видит — добираем позже.
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', applyStaticI18n, { once: true });
+        }
+    }
+
     let statsData = null;
     const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
 
@@ -413,7 +729,7 @@
         if (ch) ch.style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
     }
     if (!token) {
-        document.getElementById('app').innerHTML = '<div class="error">Неверная ссылка</div>';
+        document.getElementById('app').innerHTML = '<div class="error">' + t('invalid_link') + '</div>';
     } else {
         loadStats();
     }
@@ -424,33 +740,33 @@
     async function startBotLogin() {
         const st = document.getElementById('tg-login-error');
         if (botPollTimer) { clearInterval(botPollTimer); botPollTimer = null; }
-        st.textContent = 'Создаю код входа…';
+        st.textContent = t('login_creating');
         let start;
         try { start = await (await fetch(`/api/ref/${token}/tg-start`, { method: 'POST' })).json(); }
-        catch (e) { st.textContent = 'Ошибка сети'; return; }
-        if (!start.success) { st.textContent = start.error || 'Ошибка'; return; }
+        catch (e) { st.textContent = t('net_error_short'); return; }
+        if (!start.success) { st.textContent = start.error || t('error'); return; }
         window.open(start.link, '_blank');  // клик = user gesture, не блокируется
-        st.innerHTML = '⏳ Открылся Telegram — выберите нужный аккаунт и нажмите <b>Start</b>.<br>' +
-            '<a href="' + start.link + '" target="_blank" style="color:var(--green-dark);">Открыть бота ещё раз</a>';
+        st.innerHTML = t('login_opened') + '<br>' +
+            '<a href="' + start.link + '" target="_blank" style="color:var(--green-dark);">' + t('login_open_again') + '</a>';
         const deadline = Date.now() + 5 * 60 * 1000;
         botPollTimer = setInterval(async function () {
             if (Date.now() > deadline) {
                 clearInterval(botPollTimer); botPollTimer = null;
-                st.textContent = 'Время истекло. Нажмите кнопку ещё раз.';
+                st.textContent = t('login_timeout');
                 return;
             }
             try {
                 const d = await (await fetch(`/api/ref/${token}/tg-poll?nonce=` + encodeURIComponent(start.nonce))).json();
                 if (d.status === 'ok') {
                     clearInterval(botPollTimer); botPollTimer = null;
-                    st.textContent = '✅ Вход подтверждён…';
+                    st.textContent = t('login_ok');
                     location.reload();
                 } else if (d.status === 'denied') {
                     clearInterval(botPollTimer); botPollTimer = null;
-                    st.textContent = '❌ ' + (d.error || 'Этот аккаунт не подходит для кабинета');
+                    st.textContent = '❌ ' + (d.error || t('login_denied'));
                 } else if (d.status === 'expired' || d.status === 'invalid') {
                     clearInterval(botPollTimer); botPollTimer = null;
-                    st.textContent = 'Код устарел. Нажмите кнопку ещё раз.';
+                    st.textContent = t('login_expired');
                 }
             } catch (e) { /* сеть мигнула — продолжаем поллить */ }
         }, 2000);
@@ -468,8 +784,8 @@
             app.innerHTML = `
               <div class="login-wrap"><div class="login-card">
                 <img class="login-logo-img" src="/static/kyc/grusha-logo.png" alt="Grusha">
-                <div class="login-welcome">Вход временно недоступен</div>
-                <p class="login-sub">Авторизация через Telegram сейчас не работает.<br>Попробуйте позже.</p>
+                <div class="login-welcome">${t('login_off_title')}</div>
+                <p class="login-sub">${t('login_off_sub')}</p>
               </div></div>`;
             return;
         }
@@ -479,14 +795,14 @@
           <div class="login-wrap">
             <div class="login-card">
               <img class="login-logo-img" src="/static/kyc/grusha-logo.png" alt="Grusha">
-              <div class="login-welcome">Добро пожаловать!</div>
+              <div class="login-welcome">${t('login_welcome')}</div>
               ${nameLine}
-              <p class="login-sub">Партнёрский кабинет Grusha.<br>Подтвердите вход в приложении Telegram.</p>
+              <p class="login-sub">${t('login_sub')}</p>
               <button class="login-btn" id="tg-login-btn">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
-                Войти через Telegram
+                ${t('login_btn')}
               </button>
-              <div class="login-hint">📱 Откроется Telegram — выберите аккаунт и нажмите Start</div>
+              <div class="login-hint">${t('login_hint')}</div>
               <div class="login-error" id="tg-login-error"></div>
             </div>
           </div>`;
@@ -498,12 +814,13 @@
             const resp = await fetch(`/api/ref/${token}/stats`);
             const d = await resp.json();
             statsData = d;
+            setLang(d.lang);
             if (resp.status === 401 && d.auth_required) {
                 renderTelegramLogin(d.bot_username, d.referrer_name, d.bot_id);
                 return;
             }
             if (!d.success) {
-                document.getElementById('app').innerHTML = '<div class="error">Реферер не найден</div>';
+                document.getElementById('app').innerHTML = '<div class="error">' + t('not_found') + '</div>';
                 return;
             }
 
@@ -534,16 +851,16 @@
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;">
                             <div class="badge">${d.comp_model === 'markup'
-                                ? '+' + esc(d.markup_percent || 0) + '% к курсу'
+                                ? esc(t('badge_markup', d.markup_percent || 0))
                                 : esc(d.default_percent) + '% · ' + esc(d.payout_currency || 'USDT')}</div>
-                            ${d.auth_mode === 'telegram' ? `<button onclick="refLogout()" title="Выйти из кабинета"
+                            ${d.auth_mode === 'telegram' ? `<button onclick="refLogout()" title="${t('logout_title')}"
                                 style="border:1px solid var(--navy-200);background:#fff;color:var(--navy-500);
                                 border-radius:999px;padding:6px 10px;font-size:12px;font-weight:600;
-                                cursor:pointer;font-family:inherit;">Выйти</button>` : ''}
+                                cursor:pointer;font-family:inherit;">${t('logout')}</button>` : ''}
                         </div>
                     </div>
 
-                    <div class="balance-label">Доступно к выводу</div>
+                    <div class="balance-label">${t('balance_label')}</div>
                     <div class="balance-amount">
                         <span class="sign">$</span>
                         <span class="value">${whole}</span>
@@ -551,9 +868,12 @@
                     </div>
                     <div class="balance-sub">
                         <div class="dot"></div>
-                        <span>${activeReq ? 'Заявка #' + maskId(activeReq.id) + ' на $' + (activeReq.amount_usdt||0).toFixed(2) + ' — ' + (activeReq.status === 'in_progress' ? 'в работе' : 'на рассмотрении') : 'По запросу · от $20 · USDT TRC-20'}</span>
+                        <span>${activeReq
+                            ? t('balance_sub_req', maskId(activeReq.id), (activeReq.amount_usdt||0).toFixed(2),
+                                t(activeReq.status === 'in_progress' ? 'req_progress' : 'req_pending'))
+                            : t('balance_sub_terms')}</span>
                     </div>
-                    <button class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>${activeReq ? 'Заявка уже отправлена' : 'Запросить выплату'}</button>
+                    <button class="cta-btn" onclick="openPayoutModal()" ${canRequest ? '' : 'disabled style="opacity:0.5;cursor:not-allowed;"'}>${activeReq ? t('cta_sent') : t('cta_request')}</button>
                 </div>
                 <div class="hero-fade"></div>
             </div>
@@ -566,8 +886,8 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </div>
                     <div class="banner-body">
-                        <div class="banner-title">Выплата $${(recentPaid.amount_usdt||0).toFixed(2)} отправлена</div>
-                        <div>Заявка #${recentPaid.id} · ${recentPaid.processed_at ? new Date(recentPaid.processed_at).toLocaleDateString('ru-RU') : ''}</div>
+                        <div class="banner-title">${t('paid_title', (recentPaid.amount_usdt||0).toFixed(2))}</div>
+                        <div>${t('req_no')} #${maskId(recentPaid.id)} · ${recentPaid.processed_at ? new Date(recentPaid.processed_at).toLocaleDateString(locale()) : ''}</div>
                         ${recentPaid.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(recentPaid.tx_hash)}" target="_blank">TX: ${esc(recentPaid.tx_hash)}</a>` : ''}
                     </div>
                 </div>` : ''}
@@ -577,86 +897,87 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                     </div>
                     <div class="banner-body">
-                        <div class="banner-title">Заявка на $${(activeReq.amount_usdt||0).toFixed(2)} ${activeReq.status === 'in_progress' ? '— в работе' : '— на рассмотрении'}</div>
-                        <div>${activeReq.status === 'in_progress' ? 'Менеджер обрабатывает выплату. После отправки получите хеш транзакции.' : 'Менеджер свяжется с вами в ближайшее время.'}</div>
-                        ${activeReq.status === 'new' ? `<button class="banner-action" onclick="cancelActiveRequest(${activeReq.id})">Отменить заявку</button>` : ''}
+                        <div class="banner-title">${t('active_title', (activeReq.amount_usdt||0).toFixed(2),
+                            t(activeReq.status === 'in_progress' ? 'req_progress' : 'req_pending'))}</div>
+                        <div>${activeReq.status === 'in_progress' ? t('active_body_progress') : t('active_body_new')}</div>
+                        ${activeReq.status === 'new' ? `<button class="banner-action" onclick="cancelActiveRequest(${activeReq.id})">${t('cancel_request')}</button>` : ''}
                     </div>
                 </div>` : ''}
                 <!-- За 30 дней -->
-                <div class="section-title" style="margin-top:0;">За 30 дней</div>
+                <div class="section-title" style="margin-top:0;">${t('sec_30d')}</div>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(59,130,246,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         </div>
-                        <div class="stat-value">$${Math.round(d.volume_30d_usdt || 0).toLocaleString('ru-RU')}</div>
-                        <div class="stat-label">Объём клиентов</div>
+                        <div class="stat-value">$${fmtInt(d.volume_30d_usdt)}</div>
+                        <div class="stat-label">${t('st_volume')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(34,197,94,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                         </div>
                         <div class="stat-value">${d.deals_30d || 0}</div>
-                        <div class="stat-label">Сделок</div>
+                        <div class="stat-label">${t('st_deals')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(249,115,22,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         </div>
                         <div class="stat-value">${d.clients_30d || 0}</div>
-                        <div class="stat-label">Новых клиентов</div>
+                        <div class="stat-label">${t('st_new_clients')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(139,92,246,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                         </div>
                         <div class="stat-value" style="color:var(--green)">$${(d.paid_to_referrer_30d_usdt || 0).toFixed(0)}</div>
-                        <div class="stat-label">Выплачено вам</div>
+                        <div class="stat-label">${t('st_paid_you')}</div>
                     </div>
                 </div>
 
                 <!-- Всё время -->
-                <div class="section-title">За всё время</div>
+                <div class="section-title">${t('sec_all')}</div>
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(59,130,246,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         </div>
                         <div class="stat-value">${d.total_referred_clients}</div>
-                        <div class="stat-label">Обращений</div>
+                        <div class="stat-label">${t('st_leads')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(34,197,94,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                         </div>
                         <div class="stat-value">${d.total_deals}</div>
-                        <div class="stat-label">Сделок</div>
+                        <div class="stat-label">${t('st_deals')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(249,115,22,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                         </div>
                         <div class="stat-value">${d.conversion_rate || 0}%</div>
-                        <div class="stat-label">Конверсия</div>
+                        <div class="stat-label">${t('st_conversion')}</div>
                     </div>
                     <div class="stat-card">
                         <div class="stat-icon" style="background:rgba(139,92,246,0.1)">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         </div>
                         <div class="stat-value" style="color:var(--green)">$${(d.total_earned_usdt || 0).toFixed(0)}</div>
-                        <div class="stat-label">Заработано</div>
+                        <div class="stat-label">${t('st_earned')}</div>
                     </div>
                 </div>
 
                 <!-- Links (первые — партнёр приходит чтобы скинуть ссылку) -->
-                <div class="section-title">Ваши ссылки</div>
+                <div class="section-title">${t('sec_links')}</div>
                 <div class="ref-card">
                     <div class="ref-row">
                         <div class="ref-icon" style="background:var(--navy-800)">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         </div>
                         <div class="ref-url" id="url-site">${esc(d.referral_link)}</div>
-                        <button class="ref-copy" onclick="copyUrl('url-site',this)">Копировать</button>
+                        <button class="ref-copy" onclick="copyUrl('url-site',this)">${t('copy')}</button>
                     </div>
                 </div>
                 <div class="ref-card">
@@ -665,7 +986,7 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
                         </div>
                         <div class="ref-url" id="url-bot">${esc(d.bot_link)}</div>
-                        <button class="ref-copy" onclick="copyUrl('url-bot',this)">Копировать</button>
+                        <button class="ref-copy" onclick="copyUrl('url-bot',this)">${t('copy')}</button>
                     </div>
                 </div>
                 <div class="ref-card">
@@ -674,15 +995,31 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
                         </div>
                         <div class="ref-url" id="url-wa">${esc(d.wa_link)}</div>
-                        <button class="ref-copy" onclick="copyUrl('url-wa',this)">Копировать</button>
+                        <button class="ref-copy" onclick="copyUrl('url-wa',this)">${t('copy')}</button>
                     </div>
                 </div>
+
+                <!-- Ссылки на оплату (только у партнёров с доступом) -->
+                ${d.can_create_links ? `
+                <div class="section-title" style="margin-top:18px;">${t('sec_paylink')}</div>
+                <div class="ref-card" style="display:block;padding:14px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <button class="cur-btn active" id="cur-THB" onclick="setLinkCur('THB')">${t('cur_thb')}</button>
+                        <button class="cur-btn" id="cur-RUB" onclick="setLinkCur('RUB')">${t('cur_rub')}</button>
+                    </div>
+                    <input class="link-input" id="link-amount" type="number" inputmode="decimal"
+                           placeholder="${t('amount_ph')}" oninput="queueLinkQuote()">
+                    <div class="link-quote" id="link-quote">${t('quote_hint')}</div>
+                    <button class="link-btn" id="link-create" disabled
+                            title="${t('link_create_title')}">${t('link_create')}</button>
+                </div>
+                ` : ''}
 
                 <!-- Заявки на выплату (свёрнуто по умолчанию) -->
                 ${(d.payout_requests && d.payout_requests.length) ? `
                 <div id="payouts-section" data-expanded="${d.active_request ? '1' : '0'}" style="margin-top:12px;margin-bottom:20px;">
                     <div class="section-title" style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;user-select:none;" onclick="togglePayouts()">
-                        <span>Мои запросы на выплату <span style="color:var(--navy-500);font-weight:500;">(${d.payout_requests.length})</span></span>
+                        <span>${t('sec_payouts')} <span style="color:var(--navy-500);font-weight:500;">(${d.payout_requests.length})</span></span>
                         <span id="payouts-chevron" style="font-size:12px;color:var(--navy-500);transition:transform .15s;${d.active_request ? 'transform:rotate(90deg);' : ''}">▸</span>
                     </div>
                     <div id="payouts-body" style="display:${d.active_request ? 'block' : 'none'};margin-top:10px;">
@@ -693,45 +1030,45 @@
                 ` : ''}
 
                 <!-- Сделки -->
-                <div class="section-title" style="margin-top:12px;">Последние сделки</div>
+                <div class="section-title" style="margin-top:12px;">${t('sec_deals')}</div>
                 <div id="deals-list" style="margin-bottom:12px;"></div>
                 <div id="deals-pager" class="pager" style="margin-bottom:20px;"></div>
 
                 <!-- Условия -->
-                <div class="section-title">Условия программы</div>
+                <div class="section-title">${t('sec_terms')}</div>
                 <div class="conditions-card" style="margin-bottom:20px;">
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(249,115,22,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>
                         </div>
-                        <div><div class="cond-label">Ваша модель</div><div class="cond-value">${d.comp_model === 'markup'
-                            ? 'Markup +' + esc(d.markup_percent || 0) + '% к курсу клиента'
-                            : 'Revshare ' + esc(d.default_percent) + '% от прибыли'}</div></div>
+                        <div><div class="cond-label">${t('cond_model')}</div><div class="cond-value">${d.comp_model === 'markup'
+                            ? esc(t('model_markup', d.markup_percent || 0))
+                            : esc(t('model_revshare', d.default_percent))}</div></div>
                     </div>
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(59,130,246,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                         </div>
-                        <div><div class="cond-label">Валюта выплат</div><div class="cond-value">${esc(d.payout_currency || 'USDT')} (TRC-20)</div></div>
+                        <div><div class="cond-label">${t('cond_currency')}</div><div class="cond-value">${esc(d.payout_currency || 'USDT')} (TRC-20)</div></div>
                     </div>
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(34,197,94,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         </div>
-                        <div><div class="cond-label">Минимум для вывода</div><div class="cond-value">$20</div></div>
+                        <div><div class="cond-label">${t('cond_min')}</div><div class="cond-value">$20</div></div>
                     </div>
                     <div class="cond-row">
                         <div class="cond-icon" style="background:rgba(139,92,246,0.1)">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                         </div>
-                        <div><div class="cond-label">Выплата</div><div class="cond-value">По запросу менеджеру</div></div>
+                        <div><div class="cond-label">${t('cond_payout')}</div><div class="cond-value">${t('cond_payout_val')}</div></div>
                     </div>
                 </div>
             </div>`;
             renderDeals(1);
             renderPayouts(1);
         } catch(e) {
-            document.getElementById('app').innerHTML = '<div class="error">Ошибка загрузки</div>';
+            document.getElementById('app').innerHTML = '<div class="error">' + t('load_error') + '</div>';
         }
     }
 
@@ -755,13 +1092,23 @@
         el.innerHTML = html;
     }
 
+    // Дата сделки в формате языка партнёра. Сервер шлёт ISO; 'date' (дд.мм.гггг) —
+    // фолбэк для старых ответов, иначе в англ. кабинете даты разъезжались с баннерами.
+    function dealDate(deal) {
+        if (deal.date_iso) {
+            const d = new Date(deal.date_iso);
+            if (!isNaN(d)) return d.toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+        return deal.date || '—';
+    }
+
     // Сумма сделки в её реальной валюте: USDT-сделки показываем как $, THB — как ฿
     function dealAmount(deal) {
         const cur = (deal.payout_currency || '').toLowerCase();
         const amt = deal.payout_amount || 0;
         if (!amt) return '$' + (deal.volume_usdt || 0).toFixed(0);
         const sym = { thb: '฿', usd: '$', usdt: '$', rub: '₽' }[cur] || '';
-        const num = Math.round(amt).toLocaleString('ru-RU');
+        const num = fmtInt(amt);
         return sym ? sym + num : num + ' ' + cur.toUpperCase();
     }
 
@@ -770,15 +1117,15 @@
     // тогда components содержит все строки, соединяем через « + ».
     function compLabel(deal) {
         const one = (m, pct, base) =>
-            m === 'markup' ? 'markup +' + (pct || 0) + '% × объём' + (deal.volume_usdt ? ' ($' + deal.volume_usdt.toFixed(0) + ')' : '')
-            : m === 'fixed' ? 'фикс'
-            : (pct || 0) + '% × прибыль' + (base != null ? ' ($' + base.toFixed(2) + ')' : '');
+            m === 'markup' ? t('comp_markup', pct || 0, deal.volume_usdt ? ' ($' + deal.volume_usdt.toFixed(0) + ')' : '')
+            : m === 'fixed' ? t('comp_fixed')
+            : t('comp_revshare', pct || 0, base != null ? ' ($' + base.toFixed(2) + ')' : '');
         const comps = deal.components || [];
         if (comps.length > 1) {
             return comps.map(c => one(c.comp_model, c.percent, c.base_usdt) + ' = $' + (c.payout_usdt || 0).toFixed(2)).join(' + ');
         }
         return deal.comp_model === 'fixed'
-            ? 'фикс $' + (deal.commission_usdt || 0).toFixed(2)
+            ? t('comp_fixed') + ' $' + (deal.commission_usdt || 0).toFixed(2)
             : one(deal.comp_model, deal.percent, deal.profit_usdt);
     }
 
@@ -786,7 +1133,7 @@
         const list = document.getElementById('deals-list');
         if (!list || !statsData) return;
         const all = statsData.recent_deals || [];
-        if (!all.length) { list.innerHTML = '<div class="empty-state">Пока нет завершённых сделок</div>'; return; }
+        if (!all.length) { list.innerHTML = '<div class="empty-state">' + t('deals_empty') + '</div>'; return; }
         const start = (page - 1) * PAGE_SIZE;
         const items = all.slice(start, start + PAGE_SIZE);
         const avatarColors = [
@@ -802,8 +1149,8 @@
                     <div class="deal-left">
                         <div class="deal-avatar" style="background:${avatarColors[(start + i) % avatarColors.length]}">${esc(deal.client_initials || '??')}</div>
                         <div>
-                            <div class="deal-name">${esc(deal.client_masked || 'Клиент')}</div>
-                            <div class="deal-date">${esc(deal.date || '—')}</div>
+                            <div class="deal-name">${esc(deal.client_masked || t('client'))}</div>
+                            <div class="deal-date">${esc(dealDate(deal))}</div>
                         </div>
                     </div>
                     <div>
@@ -816,7 +1163,7 @@
                 </div>
                 <div class="deal-status ${deal.paid ? 'paid' : 'pending'}">
                     <span class="dot"></span>
-                    ${deal.paid ? 'Выплачено' + (deal.paid_note ? ' · ' + esc(deal.paid_note) : '') : 'К выплате'}
+                    ${deal.paid ? t('deal_paid') + (deal.paid_note ? ' · ' + esc(deal.paid_note) : '') : t('deal_pending')}
                 </div>
             </div>
         `).join('');
@@ -828,22 +1175,21 @@
         if (!list || !statsData) return;
         const all = statsData.payout_requests || [];
         if (!all.length) { list.innerHTML = ''; return; }
-        const STATUS_RU = { new: 'На рассмотрении', in_progress: 'В работе', paid: 'Выплачено', cancelled: 'Отменено' };
+        const STATUS = t('status');
         const start = (page - 1) * PAGE_SIZE;
         const items = all.slice(start, start + PAGE_SIZE);
-        const fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
         list.innerHTML = items.map(r => {
-            const date = r.created_at ? new Date(r.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
+            const date = r.created_at ? new Date(r.created_at).toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—';
             const isThb = r.payout_method === 'thb';
             const amountLabel = isThb
-                ? `${fmtThb(r.thb_amount || 0)} ฿`
+                ? `${fmtInt(r.thb_amount || 0)} ฿`
                 : `$${(r.amount_usdt || 0).toFixed(2)}`;
-            const sub = isThb ? 'Баты на банк' : 'USDT · TRC-20';
+            const sub = isThb ? t('payout_thb_sub') : 'USDT · TRC-20';
             return `
                 <div class="payout-card">
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
                         <div style="font-size:13px;font-weight:600;color:var(--navy-900);">${amountLabel}</div>
-                        <span class="payout-status ${r.status}">${STATUS_RU[r.status] || r.status}</span>
+                        <span class="payout-status ${r.status}">${STATUS[r.status] || r.status}</span>
                     </div>
                     <div style="font-size:11px;color:var(--navy-500);margin-top:4px;">#${maskId(r.id)} · ${date} · ${sub}</div>
                     ${r.tx_hash ? `<a class="tx-link" href="https://tronscan.org/#/transaction/${esc(r.tx_hash)}" target="_blank">TX: ${esc(r.tx_hash)}</a>` : ''}
@@ -854,27 +1200,82 @@
     }
 
     async function cancelActiveRequest(reqId) {
-        if (!confirm('Отменить заявку?')) return;
+        if (!confirm(t('cancel_confirm'))) return;
         try {
             const resp = await fetch(`/api/ref/${token}/payout-request/${reqId}/cancel`, { method: 'POST' });
             const data = await resp.json();
-            if (!data.success) { alert(data.error || 'Не удалось отменить'); return; }
+            if (!data.success) { alert(data.error || t('cancel_failed')); return; }
             loadStats();
-        } catch (e) { alert('Сетевая ошибка'); }
+        } catch (e) { alert(t('net_error')); }
     }
 
     function copyUrl(elId, btn) {
         const text = document.getElementById(elId).textContent;
         navigator.clipboard.writeText(text).then(() => {
-            btn.textContent = 'Скопировано!';
+            btn.textContent = t('copied');
             btn.classList.add('copied');
-            setTimeout(() => { btn.textContent = 'Копировать'; btn.classList.remove('copied'); }, 2000);
+            setTimeout(() => { btn.textContent = t('copy'); btn.classList.remove('copied'); }, 2000);
         });
+    }
+
+    // ============== Ссылка на оплату ==============
+    // Курс считает только сервер: сюда уходит сумма и валюта ввода, обратно — готовые числа.
+    let _linkCur = 'THB';
+    let _linkTimer = null;
+    let _linkSeq = 0;                // ответ устаревшего запроса игнорируем
+
+    function setLinkCur(cur) {
+        _linkCur = cur;
+        document.getElementById('cur-THB').classList.toggle('active', cur === 'THB');
+        document.getElementById('cur-RUB').classList.toggle('active', cur === 'RUB');
+        queueLinkQuote();
+    }
+
+    function queueLinkQuote() {
+        clearTimeout(_linkTimer);
+        _linkTimer = setTimeout(fetchLinkQuote, 500);
+    }
+
+    async function fetchLinkQuote() {
+        const box = document.getElementById('link-quote');
+        const btn = document.getElementById('link-create');
+        if (!box) return;
+        const amount = parseFloat(document.getElementById('link-amount').value);
+        if (!amount || amount <= 0) {
+            box.className = 'link-quote';
+            box.textContent = t('quote_hint');
+            return;
+        }
+        const seq = ++_linkSeq;
+        box.className = 'link-quote';
+        box.textContent = t('quote_calc');
+        try {
+            const resp = await fetch(`/api/ref/${token}/links/quote`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount, currency: _linkCur })
+            });
+            const d = await resp.json();
+            if (seq !== _linkSeq) return;
+            if (!d.success) {
+                box.className = 'link-quote err';
+                box.textContent = d.error || t('quote_failed');
+                return;
+            }
+            const q = d.quote;
+            box.className = 'link-quote';
+            box.innerHTML = t('quote_line', fmtInt(q.amount_rub), fmtInt(q.amount_thb),
+                              q.rate.toFixed(4), fmtInt(q.reward_thb));
+        } catch (e) {
+            if (seq !== _linkSeq) return;
+            box.className = 'link-quote err';
+            box.textContent = t('net_error');
+        }
     }
 
     // ============== Модалка заявки на выплату ==============
     let _thbQuote = null;            // снапшот котировки батов (индикативный, для UI)
-    const _fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
+    const _fmtThb = n => fmtInt(n);
 
     function _showPayoutStage(id) {
         ['payoutMethodBox', 'payoutFormBox', 'payoutThbBox', 'payoutSuccessBox']
@@ -914,7 +1315,7 @@
         const chips = document.getElementById('pmWalletChips');
         dl.innerHTML = wallets.map(w => `<option value="${esc(w)}">`).join('');
         if (wallets.length) {
-            chips.innerHTML = '<div style="font-size:11px;color:var(--navy-500);width:100%;margin-bottom:2px;">Прошлые кошельки:</div>' +
+            chips.innerHTML = '<div style="font-size:11px;color:var(--navy-500);width:100%;margin-bottom:2px;">' + t('prev_wallets') + '</div>' +
                 wallets.map(w => `<button type="button" onclick="document.getElementById('pmWallet').value='${esc(w)}'" style="background:var(--navy-100);border:1px solid var(--navy-200);border-radius:8px;padding:6px 10px;font-size:11px;font-family:'SF Mono',monospace;color:var(--navy-700);cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(w.length > 16 ? w.slice(0,8)+'...'+w.slice(-6) : w)}</button>`).join('');
         } else {
             chips.innerHTML = '';
@@ -931,7 +1332,7 @@
         const hint = document.getElementById('pmThbHint');
         const amt = document.getElementById('pmThbAmt');
         const thbOpt = amt.closest('.pm-option');
-        hint.textContent = 'курс загружается…';
+        hint.textContent = t('rate_loading');
         amt.textContent = '…';
         thbOpt.style.opacity = '';
         thbOpt.onclick = () => pickPayoutMethod('thb');
@@ -941,17 +1342,17 @@
             const q = data.success ? data.quote : null;
             if (q) {
                 _thbQuote = q;
-                hint.textContent = 'курс ' + q.client_rate.toFixed(2) + ' ฿/$';
+                hint.textContent = t('rate_small', q.client_rate.toFixed(2));
                 amt.textContent = _fmtThb(q.thb_amount) + ' ฿';
                 amt.classList.remove('muted');
             } else {
-                hint.textContent = 'временно недоступно';
+                hint.textContent = t('rate_unavailable');
                 amt.textContent = '—';
                 thbOpt.style.opacity = '.55';
                 thbOpt.onclick = () => {};
             }
         } catch (err) {
-            hint.textContent = 'временно недоступно';
+            hint.textContent = t('rate_unavailable');
             amt.textContent = '—';
             thbOpt.style.opacity = '.55';
             thbOpt.onclick = () => {};
@@ -964,7 +1365,7 @@
             const box = document.getElementById('thbRateBox');
             box.classList.remove('loading');
             document.getElementById('thbBigAmount').textContent = _fmtThb(_thbQuote.thb_amount) + ' ฿';
-            document.getElementById('thbRateLine').textContent = 'Курс ' + _thbQuote.client_rate.toFixed(2) + ' ฿/$';
+            document.getElementById('thbRateLine').textContent = t('rate_big', _thbQuote.client_rate.toFixed(2));
             _showPayoutStage('payoutThbBox');
         } else {
             _showPayoutStage('payoutFormBox');
@@ -981,7 +1382,7 @@
             el.classList.toggle('active', el.dataset.method === method);
         });
         const inp = document.getElementById('pmContactValue');
-        inp.placeholder = method === 'telegram' ? '@username или +66...' : '+66 81 234 56 78';
+        inp.placeholder = method === 'telegram' ? t('contact_ph') : '+66 81 234 56 78';
         inp.dataset.method = method;
     }
     function setThbContactMethod(method) {
@@ -989,7 +1390,7 @@
             el.classList.toggle('active', el.dataset.method === method);
         });
         const inp = document.getElementById('pmThbContact');
-        inp.placeholder = method === 'telegram' ? '@username или +66...' : '+66 81 234 56 78';
+        inp.placeholder = method === 'telegram' ? t('contact_ph') : '+66 81 234 56 78';
         inp.dataset.method = method;
     }
     function showPayoutError(msg) {
@@ -1016,10 +1417,10 @@
             const accNum = document.getElementById('pmThbAccNum').value.trim();
             const method = document.getElementById('pmThbContact').dataset.method || 'telegram';
             const contact = document.getElementById('pmThbContact').value.trim();
-            if (!bank) { errFn('Укажите банк'); return; }
-            if (!accName) { errFn('Укажите имя получателя'); return; }
-            if (!accNum) { errFn('Укажите номер счёта'); return; }
-            if (!contact) { errFn('Укажите контакт для связи'); return; }
+            if (!bank) { errFn(t('err_bank')); return; }
+            if (!accName) { errFn(t('err_acc_name')); return; }
+            if (!accNum) { errFn(t('err_acc_num')); return; }
+            if (!contact) { errFn(t('err_contact')); return; }
             body = { payout_method: 'thb', bank_name: bank, account_name: accName,
                      account_number: accNum, contact_method: method, contact_value: contact };
         } else {
@@ -1029,12 +1430,12 @@
             const method = document.getElementById('pmContactValue').dataset.method || 'telegram';
             const contact = document.getElementById('pmContactValue').value.trim();
             const notes = document.getElementById('pmNotes').value.trim();
-            if (!wallet) { errFn('Укажите кошелёк для выплаты'); return; }
-            if (!contact) { errFn('Укажите контакт для связи'); return; }
+            if (!wallet) { errFn(t('err_wallet')); return; }
+            if (!contact) { errFn(t('err_contact')); return; }
             body = { payout_method: 'usdt', wallet, contact_method: method, contact_value: contact, notes };
         }
 
-        btn.disabled = true; btn.textContent = 'Отправляем...';
+        btn.disabled = true; btn.textContent = t('sending');
         try {
             const resp = await fetch(`/api/ref/${token}/payout-request`, {
                 method: 'POST',
@@ -1043,18 +1444,18 @@
             });
             const data = await resp.json();
             if (!data.success) {
-                errFn(data.error || 'Ошибка отправки');
-                btn.disabled = false; btn.textContent = 'Отправить заявку';
+                errFn(data.error || t('send_failed'));
+                btn.disabled = false; btn.textContent = t('submit');
                 return;
             }
             const r = data.request || {};
             document.getElementById('payoutSuccessText').textContent = (r.payout_method === 'thb')
-                ? `Выплата ${_fmtThb(r.thb_amount || 0)} ฿ на ${r.bank_name || 'банк'}. Менеджер свяжется с вами в ближайшее время.`
-                : 'Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.';
+                ? t('success_thb', _fmtThb(r.thb_amount || 0), r.bank_name || t('bank_fallback'))
+                : t('success_usdt');
             _showPayoutStage('payoutSuccessBox');
         } catch (err) {
-            errFn('Сетевая ошибка. Попробуйте ещё раз.');
-            btn.disabled = false; btn.textContent = 'Отправить заявку';
+            errFn(t('net_retry'));
+            btn.disabled = false; btn.textContent = t('submit');
         }
     }
     </script>
@@ -1066,41 +1467,41 @@
 
             <!-- Стадия 1: выбор способа вывода -->
             <div id="payoutMethodBox">
-                <div class="modal-title">Вывод средств</div>
-                <div class="modal-sub">Доступно: <b id="payoutAmount">$0.00</b> · выберите способ</div>
+                <div class="modal-title" data-i18n="m_title">Вывод средств</div>
+                <div class="modal-sub"><span data-i18n="m_available">Доступно:</span> <b id="payoutAmount">$0.00</b> <span data-i18n="m_pick">· выберите способ</span></div>
                 <button type="button" class="pm-option" onclick="pickPayoutMethod('usdt')">
                     <div class="pm-ico usdt">🪙</div>
-                    <div class="pm-t"><b>Криптовалютой</b><span>USDT · сеть TRC-20</span></div>
+                    <div class="pm-t"><b data-i18n="m_crypto">Криптовалютой</b><span data-i18n="m_crypto_sub">USDT · сеть TRC-20</span></div>
                     <div class="pm-amt" id="pmUsdtAmt">$0.00</div>
                 </button>
                 <button type="button" class="pm-option" onclick="pickPayoutMethod('thb')">
                     <div class="pm-ico thb">🏦</div>
-                    <div class="pm-t"><b>Батами на банк</b><span id="pmThbHint">курс загружается…</span></div>
+                    <div class="pm-t"><b data-i18n="m_thb">Батами на банк</b><span id="pmThbHint">…</span></div>
                     <div class="pm-amt muted" id="pmThbAmt">…</div>
                 </button>
                 <div class="modal-actions">
-                    <button type="button" class="modal-btn modal-btn-cancel" style="width:100%;" onclick="closePayoutModal()">Отмена</button>
+                    <button type="button" class="modal-btn modal-btn-cancel" style="width:100%;" onclick="closePayoutModal()" data-i18n="m_cancel">Отмена</button>
                 </div>
             </div>
 
             <!-- Стадия 2а: USDT -->
             <div id="payoutFormBox" style="display:none;">
-                <button type="button" class="pm-back" onclick="backToPayoutMethod()">‹ Способ вывода</button>
-                <div class="modal-title">Вывод в USDT</div>
-                <div class="modal-sub">Сумма: <b id="payoutAmountUsdt">$0.00</b> · TRC-20</div>
+                <button type="button" class="pm-back" onclick="backToPayoutMethod()" data-i18n="m_back">‹ Способ вывода</button>
+                <div class="modal-title" data-i18n="m_usdt_title">Вывод в USDT</div>
+                <div class="modal-sub"><span data-i18n="m_amount">Сумма:</span> <b id="payoutAmountUsdt">$0.00</b> · TRC-20</div>
 
                 <div class="modal-error" id="payoutError"></div>
 
                 <form onsubmit="submitPayoutRequest(event)">
                     <div class="modal-field">
-                        <label class="modal-label">Кошелёк для выплаты</label>
+                        <label class="modal-label" data-i18n="m_wallet">Кошелёк для выплаты</label>
                         <input type="text" class="modal-input" id="pmWallet" placeholder="TXXXXXXXXXXXXXXXXXXXXXXXXX" autocomplete="off" list="pmWalletList" required>
                         <datalist id="pmWalletList"></datalist>
                         <div id="pmWalletChips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Способ связи</label>
+                        <label class="modal-label" data-i18n="m_contact_method">Способ связи</label>
                         <div class="modal-radio-group">
                             <label class="modal-radio active" data-method="telegram" onclick="setContactMethod('telegram')">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87z"/></svg>
@@ -1114,44 +1515,44 @@
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Контакт</label>
-                        <input type="text" class="modal-input" id="pmContactValue" placeholder="@username или +66..." autocomplete="off" required>
+                        <label class="modal-label" data-i18n="m_contact">Контакт</label>
+                        <input type="text" class="modal-input" id="pmContactValue" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Комментарий (необязательно)</label>
-                        <textarea class="modal-textarea" id="pmNotes" placeholder="Доп. информация для менеджера"></textarea>
+                        <label class="modal-label" data-i18n="m_notes">Комментарий (необязательно)</label>
+                        <textarea class="modal-textarea" id="pmNotes" placeholder="Доп. информация для менеджера" data-i18n-ph="m_notes_ph"></textarea>
                     </div>
 
-                    <div class="modal-disclaimer">
+                    <div class="modal-disclaimer" data-i18n="m_disc_usdt">
                         Свяжемся с вами, если возникнут вопросы по оплате. Выплата USDT TRC-20 на указанный кошелёк.
                     </div>
 
                     <div class="modal-actions">
-                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()">Отмена</button>
-                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmit">Отправить заявку</button>
+                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()" data-i18n="m_cancel">Отмена</button>
+                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmit" data-i18n="submit">Отправить заявку</button>
                     </div>
                 </form>
             </div>
 
             <!-- Стадия 2б: баты на тайский банк -->
             <div id="payoutThbBox" style="display:none;">
-                <button type="button" class="pm-back" onclick="backToPayoutMethod()">‹ Способ вывода</button>
-                <div class="modal-title">Вывод в батах</div>
-                <div class="modal-sub">Баланс: <b id="payoutAmountThb">$0.00</b></div>
+                <button type="button" class="pm-back" onclick="backToPayoutMethod()" data-i18n="m_back">‹ Способ вывода</button>
+                <div class="modal-title" data-i18n="m_thb_title">Вывод в батах</div>
+                <div class="modal-sub"><span data-i18n="m_balance">Баланс:</span> <b id="payoutAmountThb">$0.00</b></div>
 
                 <div class="thb-rate-box" id="thbRateBox">
                     <div class="thb-big" id="thbBigAmount">…</div>
-                    <div class="thb-rate" id="thbRateLine">курс загружается…</div>
-                    <div class="thb-note">Курс фиксируется в момент отправки заявки</div>
+                    <div class="thb-rate" id="thbRateLine">…</div>
+                    <div class="thb-note" data-i18n="m_rate_note">Курс фиксируется в момент отправки заявки</div>
                 </div>
 
                 <div class="modal-error" id="payoutErrorThb"></div>
 
                 <form onsubmit="submitPayoutRequest(event)">
                     <div class="modal-field">
-                        <label class="modal-label">Банк</label>
-                        <input type="text" class="modal-input" id="pmThbBank" placeholder="Выберите или впишите свой банк" autocomplete="off" list="pmThbBankList" required>
+                        <label class="modal-label" data-i18n="m_bank">Банк</label>
+                        <input type="text" class="modal-input" id="pmThbBank" placeholder="Выберите или впишите свой банк" data-i18n-ph="m_bank_ph" autocomplete="off" list="pmThbBankList" required>
                         <datalist id="pmThbBankList">
                             <option value="Kasikorn (KBank)"></option>
                             <option value="SCB (Siam Commercial)"></option>
@@ -1166,17 +1567,17 @@
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Имя получателя (как в банке)</label>
+                        <label class="modal-label" data-i18n="m_acc_name">Имя получателя (как в банке)</label>
                         <input type="text" class="modal-input" id="pmThbAccName" placeholder="LIDIA IVANOVA" autocomplete="off" required>
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Номер счёта</label>
+                        <label class="modal-label" data-i18n="m_acc_num">Номер счёта</label>
                         <input type="text" class="modal-input" id="pmThbAccNum" placeholder="123-4-56789-0" autocomplete="off" inputmode="numeric" required>
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Способ связи</label>
+                        <label class="modal-label" data-i18n="m_contact_method">Способ связи</label>
                         <div class="modal-radio-group">
                             <label class="modal-radio active" data-method="telegram" onclick="setThbContactMethod('telegram')">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87z"/></svg>
@@ -1190,17 +1591,17 @@
                     </div>
 
                     <div class="modal-field">
-                        <label class="modal-label">Контакт</label>
-                        <input type="text" class="modal-input" id="pmThbContact" placeholder="@username или +66..." autocomplete="off" required>
+                        <label class="modal-label" data-i18n="m_contact">Контакт</label>
+                        <input type="text" class="modal-input" id="pmThbContact" placeholder="@username или +66..." data-i18n-ph="contact_ph" autocomplete="off" required>
                     </div>
 
-                    <div class="modal-disclaimer">
+                    <div class="modal-disclaimer" data-i18n="m_disc_thb">
                         Перевод на тайский банковский счёт. Свяжемся с вами, если возникнут вопросы по оплате.
                     </div>
 
                     <div class="modal-actions">
-                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()">Отмена</button>
-                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmitThb">Отправить заявку</button>
+                        <button type="button" class="modal-btn modal-btn-cancel" onclick="closePayoutModal()" data-i18n="m_cancel">Отмена</button>
+                        <button type="submit" class="modal-btn modal-btn-submit" id="pmSubmitThb" data-i18n="submit">Отправить заявку</button>
                     </div>
                 </form>
             </div>
@@ -1210,9 +1611,9 @@
                     <div class="icon">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#16A34A" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </div>
-                    <h3>Заявка отправлена</h3>
-                    <p id="payoutSuccessText">Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.</p>
-                    <button type="button" class="modal-btn modal-btn-submit" onclick="closePayoutModal()" style="width:100%;">Готово</button>
+                    <h3 data-i18n="m_sent">Заявка отправлена</h3>
+                    <p id="payoutSuccessText" data-i18n="success_usdt">Менеджер свяжется с вами в ближайшее время для подтверждения деталей и проведения выплаты.</p>
+                    <button type="button" class="modal-btn modal-btn-submit" onclick="closePayoutModal()" style="width:100%;" data-i18n="m_done">Готово</button>
                 </div>
             </div>
         </div>

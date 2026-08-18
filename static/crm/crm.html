@@ -2668,6 +2668,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </small>
                 </div>
                 <div class="form-group" style="margin-bottom: 1rem;">
+                    <label class="form-label">Язык кабинета</label>
+                    <select class="form-control" id="referrerLang">
+                        <option value="ru">🇷🇺 Русский</option>
+                        <option value="en">🇬🇧 English</option>
+                    </select>
+                    <small style="color: var(--text-muted); font-size: 12px; margin-top: 4px; display: block;">
+                        На этом языке партнёр видит кабинет и получает уведомления в Telegram.
+                    </small>
+                </div>
+                <div class="form-group" style="margin-bottom: 1rem;">
                     <label class="form-label">Заметки</label>
                     <textarea class="form-control" id="referrerNotes" rows="2" placeholder="Доп. информация"></textarea>
                 </div>
@@ -11033,7 +11043,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 list.innerHTML = data.referrers.map(r => `
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div style="flex:1;min-width:0;">
-                            <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span></div>
+                            <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
                             <div style="font-size:12px;color:#64748b;margin-top:2px;">
                                 ${r.comp_model === 'markup'
                                     ? `<span style="color:#7c3aed;font-weight:600;">Markup +${r.markup_percent || 0}%</span> к курсу`
@@ -11142,6 +11152,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('referrerMarkupPercent').value = '0.2';
             document.getElementById('referrerPayoutCurrency').value = 'USDT';
             document.getElementById('referrerAuthMode').value = 'link';
+            document.getElementById('referrerLang').value = 'ru';
             document.getElementById('referrerNotes').value = '';
             onReferrerModelChange();
             document.getElementById('referrerModalTitle').textContent = 'Добавить реферера';
@@ -11160,6 +11171,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('referrerMarkupPercent').value = r.markup_percent || 0;
             document.getElementById('referrerPayoutCurrency').value = r.payout_currency || 'USDT';
             document.getElementById('referrerAuthMode').value = r.auth_mode || 'link';
+            document.getElementById('referrerLang').value = r.lang || 'ru';
             document.getElementById('referrerNotes').value = r.notes || '';
             onReferrerModelChange();
             document.getElementById('referrerModalTitle').textContent = 'Редактировать реферера';
@@ -11183,6 +11195,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 markup_percent: parseFloat(document.getElementById('referrerMarkupPercent').value) || 0,
                 notes: document.getElementById('referrerNotes').value.trim(),
                 auth_mode: document.getElementById('referrerAuthMode').value || 'link',
+                lang: document.getElementById('referrerLang').value || 'ru',
             };
 
             try {

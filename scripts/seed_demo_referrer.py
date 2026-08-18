@@ -11,8 +11,13 @@ TG-уведомлениях их нет. Реферер тоже `is_test` → �
 (заявки/сделки/клиентов) и раскладывает заново. Токен кабинета сохраняется —
 ссылка на витрину не протухает.
 
+Две витрины — русская и английская (англоязычные застройщики видят кабинет
+на английском, поле `lang` реферера). Это РАЗНЫЕ рефереры с разными кодами и
+токенами, поэтому ссылки можно раздавать параллельно.
+
 Запуск:
     DATABASE_URL=postgresql://... python3 scripts/seed_demo_referrer.py
+    DATABASE_URL=... python3 scripts/seed_demo_referrer.py --lang en
     DATABASE_URL=... python3 scripts/seed_demo_referrer.py --wipe   # только снести
 """
 import os
@@ -33,15 +38,13 @@ from app import (  # noqa: E402
     DealType, DealStatus, PayInMethod, PayOutMethod,
 )
 
-CODE = 'GR-TEODOR'
-NAME = 'Теодор'
 PERCENT = 30.0          # revshare: 30% от прибыли сделки
 MANAGER = 'Валера'
 BASE_URL = os.environ.get('CALCCRM_URL', 'https://grusha.up.railway.app')
 
 # Клиенты витрины. Последние двое — без сделок: приведены, но пока не обменивали
 # (иначе конверсия в кабинете была бы бутафорскими 100%).
-CLIENTS = [
+CLIENTS_RU = [
     ('Александр Ковалёв', '@a_kovalev'),
     ('Мария Тихонова', '@m_tikhonova'),
     ('Дмитрий Соколов', '@dsokolov'),
@@ -52,18 +55,52 @@ CLIENTS = [
     ('Ольга Ким', '@olga_kim'),
 ]
 
-# Сделки: (дней назад, клиент, приход ₽, приход USDT, выдача ฿, прибыль $, выплачено ли)
-DEALS = [
-    (75, 'Александр Ковалёв',   850_000,  10_470.0,   337_000.0,  210.50, True),
-    (67, 'Мария Тихонова',         None,   4_200.0,   136_000.0,   88.60, True),
-    (58, 'Дмитрий Соколов',   1_450_000,  17_900.0,   577_000.0,  372.40, True),
-    (45, 'Ирина Белова',           None,  25_000.0,   806_000.0,  494.00, True),
-    (34, 'Александр Ковалёв', 3_300_000,  39_544.0, 1_274_000.0, 1336.35, True),
-    (23, 'Сергей Ефимов',          None,   8_600.0,   277_000.0,  198.70, True),
-    (12, 'Дмитрий Соколов',     620_000,   7_620.0,   245_000.0,  165.20, False),
-    (7,  'Наталья Гринёва',        None,  52_000.0, 1_675_000.0, 1004.00, False),
-    (2,  'Сергей Ефимов',       980_000,  12_050.0,   388_000.0,  265.40, False),
+# Английская витрина: имена клиентов тоже английские — реферал видит их
+# замаскированными в кабинете, кириллица там выдала бы подделку.
+CLIENTS_EN = [
+    ('Alexander Kovalev', '@a_kovalev'),
+    ('Maria Tikhonova', '@m_tikhonova'),
+    ('Dmitry Sokolov', '@dsokolov'),
+    ('Irina Belova', '@irina_b'),
+    ('Sergey Efimov', '@sefimov'),
+    ('Natalia Grineva', '@n_grineva'),
+    ('Pavel Dorokhov', '@pdorokhov'),
+    ('Olga Kim', '@olga_kim'),
 ]
+
+# Сделки: (дней назад, индекс клиента в CLIENTS, приход ₽, приход USDT, выдача ฿, прибыль $, выплачено ли)
+DEALS = [
+    (75, 0,   850_000,  10_470.0,   337_000.0,  210.50, True),
+    (67, 1,      None,   4_200.0,   136_000.0,   88.60, True),
+    (58, 2, 1_450_000,  17_900.0,   577_000.0,  372.40, True),
+    (45, 3,      None,  25_000.0,   806_000.0,  494.00, True),
+    (34, 0, 3_300_000,  39_544.0, 1_274_000.0, 1336.35, True),
+    (23, 4,      None,   8_600.0,   277_000.0,  198.70, True),
+    (12, 2,   620_000,   7_620.0,   245_000.0,  165.20, False),
+    (7,  5,      None,  52_000.0, 1_675_000.0, 1004.00, False),
+    (2,  4,   980_000,  12_050.0,   388_000.0,  265.40, False),
+]
+
+# Профили витрин: русская и английская — независимые рефереры
+PROFILES = {
+    'ru': {
+        'code': 'GR-TEODOR',
+        'name': 'Теодор',
+        'clients': CLIENTS_RU,
+        'contact': '@teodor_demo',
+        'acc_name': 'THEODOR DEMO',
+        'notes': 'Демо-витрина реферального кабинета. Сделки помечены is_test — в CRM их нет.',
+    },
+    'en': {
+        'code': 'GR-THEODORE',
+        'name': 'Theodore',
+        'clients': CLIENTS_EN,
+        'contact': '@theodore_demo',
+        'acc_name': 'THEODORE DEMO',
+        'notes': 'Demo dashboard in English (for English-speaking developers). '
+                 'Deals flagged is_test — hidden from CRM.',
+    },
+}
 
 # История выплат: (дней назад, способ, индексы покрытых сделок в DEALS).
 # Сумма считается из фактических начислений — расхождения с балансом кабинета быть не может.
@@ -109,8 +146,21 @@ def wipe(db, referrer):
     return len(deal_ids)
 
 
+def _arg_lang():
+    """Язык витрины из --lang (ru по умолчанию)."""
+    if '--lang' in sys.argv:
+        val = sys.argv[sys.argv.index('--lang') + 1].strip().lower()
+        if val not in PROFILES:
+            sys.exit(f'Неизвестный язык: {val}. Доступно: {", ".join(PROFILES)}')
+        return val
+    return 'ru'
+
+
 def main():
     Base.metadata.create_all(engine)
+    lang = _arg_lang()
+    prof = PROFILES[lang]
+    CODE, NAME, CLIENTS = prof['code'], prof['name'], prof['clients']
     db = get_session()
     try:
         referrer = db.query(Referrer).filter(Referrer.code == CODE).first()
@@ -119,20 +169,22 @@ def main():
                 name=NAME, code=CODE, token=secrets.token_hex(16),
                 default_percent=PERCENT, payout_currency='USDT',
                 comp_model='revshare', markup_percent=0.0,
+                lang=lang,
                 active=True, is_test=True, auth_mode='link',
-                notes='Демо-витрина реферального кабинета. Сделки помечены is_test — в CRM их нет.',
+                notes=prof['notes'],
                 created_at=_dt(90),
             )
             db.add(referrer)
             db.commit()
             db.refresh(referrer)
-            print(f'✅ Реферер создан: #{referrer.id} {NAME} ({CODE})')
+            print(f'✅ Реферер создан: #{referrer.id} {NAME} ({CODE}, lang={lang})')
         else:
             referrer.is_test = True
             referrer.active = True
             referrer.default_percent = PERCENT
             referrer.comp_model = 'revshare'
             referrer.auth_mode = 'link'
+            referrer.lang = lang
             db.commit()
             removed = wipe(db, referrer)
             print(f'♻️  Реферер #{referrer.id} уже был — снёс {removed} демо-сделок')
@@ -159,8 +211,8 @@ def main():
 
         # ── Сделки + начисления агенту ──
         deals = []
-        for days, client_name, rub, usdt, thb, profit, paid in DEALS:
-            client = clients[client_name]
+        for days, client_idx, rub, usdt, thb, profit, paid in DEALS:
+            client = clients[CLIENTS[client_idx][0]]
             when = _dt(days)
             commission = round(profit * PERCENT / 100, 2)
             rate_thb = round(thb / usdt, 4) if thb and usdt else None
@@ -215,7 +267,7 @@ def main():
                 amount_usdt=amount,
                 wallet=DEMO_WALLET if method == 'usdt' else 'Kasikorn Bank',
                 contact_method='telegram',
-                contact_value='@teodor_demo',
+                contact_value=prof['contact'],
                 status='paid',
                 payout_method=method,
                 deal_ids=json.dumps([deals[i]['deal'].id for i in idxs]),
@@ -231,7 +283,7 @@ def main():
                 req.client_rate = client_rate
                 req.thb_amount = round(amount * client_rate - 20, 2)
                 req.bank_name = 'Kasikorn Bank'
-                req.account_name = 'THEODOR DEMO'
+                req.account_name = prof['acc_name']
                 req.account_number = '123-4-56789-0'
                 req.receipt_tg_file_id = 'demo-receipt'
             db.add(req)

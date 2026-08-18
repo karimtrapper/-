@@ -383,6 +383,22 @@ class Partner(Base):
         }
 
 
+def referral_links(code, lang='ru'):
+    """Реферальные ссылки партнёра. Предзаполненный текст WhatsApp — на языке партнёра:
+    англоязычный застройщик пересылает ссылку своему клиенту, русский текст там мусор."""
+    from urllib.parse import quote as _q
+    flat = (code or '').replace('-', '')
+    wa_text = ('Здравствуйте! Хочу уточнить детали обмена.\n\n(Источник: ref_%s)' % flat
+               if (lang or 'ru') != 'en'
+               else 'Hello! I would like to check the exchange details.\n\n(Source: ref_%s)' % flat)
+    return {
+        'referral_link': f'https://grusha.space/?ref={code}',
+        'bot_link': f'https://t.me/Grushath_bot?start=ref__{flat}',
+        'wa_link': ('https://api.whatsapp.com/send/?phone=66818429939&text='
+                    + _q(wa_text, safe='') + '&type=phone_number&app_absent=0'),
+    }
+
+
 class Referrer(Base):
     """Реферер — B2C клиент, который приводит новых клиентов за комиссию"""
     __tablename__ = 'referrers'
@@ -406,6 +422,7 @@ class Referrer(Base):
     link_revshare_percent = Column(Float, default=0.0)     # доля партнёра от нашей прибыли, %
     link_logo_url = Column(String(512))                    # логотип на странице оплаты (white label)
     link_description = Column(String(200))                 # подпись клиенту на странице оплаты
+    lang = Column(String(5), default='ru')                  # язык кабинета и уведомлений: 'ru' | 'en'
     active = Column(Boolean, default=True)
     is_test = Column(Boolean, default=False)  # Тестовый реферер: не слать TG-уведомления о заявках
     auth_mode = Column(String(20), default='link')       # 'link' | 'telegram'
@@ -434,6 +451,7 @@ class Referrer(Base):
             'link_logo_url': self.link_logo_url,
             'link_description': self.link_description,
             'active': self.active,
+            'lang': self.lang or 'ru',
             'auth_mode': self.auth_mode or 'link',
             'telegram_user_id': self.telegram_user_id,
             'total_referred_clients': self.total_referred_clients,
@@ -443,9 +461,7 @@ class Referrer(Base):
             'pending_usdt': round((self.total_earned_usdt or 0) - (self.total_paid_usdt or 0), 2),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'notes': self.notes,
-            'referral_link': f'https://grusha.space/?ref={self.code}',
-            'bot_link': f'https://t.me/Grushath_bot?start=ref__{self.code.replace("-", "")}',
-            'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{self.code.replace("-", "")}%29&type=phone_number&app_absent=0',
+            **referral_links(self.code, self.lang or 'ru'),
         }
 
 
@@ -1659,6 +1675,8 @@ try:
             conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_revshare_percent FLOAT DEFAULT 0"))
             conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_logo_url VARCHAR(512)"))
             conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS link_description VARCHAR(200)"))
+            # Язык кабинета партнёра (англоязычные застройщики)
+            conn.execute(text("ALTER TABLE referrers ADD COLUMN IF NOT EXISTS lang VARCHAR(5) DEFAULT 'ru'"))
         else:
             try: conn.execute(text("ALTER TABLE clients ADD COLUMN referrer_id INTEGER"))
             except: pass
@@ -1687,6 +1705,8 @@ try:
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_logo_url VARCHAR(512)"))
             except: pass
             try: conn.execute(text("ALTER TABLE referrers ADD COLUMN link_description VARCHAR(200)"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE referrers ADD COLUMN lang VARCHAR(5) DEFAULT 'ru'"))
             except: pass
         # Бэкфилл мультиагентов: старый одиночный реферал → строка deal_agents (ур.1).
         # Идемпотентно (NOT EXISTS) — безопасно выполнять при каждом старте.
@@ -8719,9 +8739,21 @@ def thb_payout_quote(amount_usdt, bids=None):
             'thb_amount': thb_amount}
 
 
-def _cancel_button(req_id):
+def ref_lang(referrer):
+    """Язык партнёра: 'ru' | 'en'. Реферер может быть None (защитный дефолт)."""
+    return 'en' if (referrer is not None and (getattr(referrer, 'lang', None) or 'ru') == 'en') else 'ru'
+
+
+def ref_t(referrer, ru, en):
+    """Текст сообщения партнёру на его языке. Кабинет и уведомления должны совпадать:
+    англоязычный партнёр не должен получать русские пуши после английского кабинета."""
+    return en if ref_lang(referrer) == 'en' else ru
+
+
+def _cancel_button(req_id, referrer=None):
     """Inline-клавиатура с кнопкой отмены заявки."""
-    return [[{'text': '❌ Отменить заявку', 'callback_data': f'cancel:{req_id}'}]]
+    label = ref_t(referrer, '❌ Отменить заявку', '❌ Cancel request')
+    return [[{'text': label, 'callback_data': f'cancel:{req_id}'}]]
 
 
 def send_referrer_dm(referrer, text, buttons=None):
@@ -8784,11 +8816,16 @@ def notify_agents_new_deal(db, deal):
             if not referrer or not referrer.telegram_user_id:
                 continue
             available, _ = _referrer_balance(db, referrer)
-            msg = (f"🎉 <b>Новая сделка!</b>\n\n"
-                   f"Начислено к выводу: <b>${ag.payout_usdt:.2f}</b>\n"
-                   f"Всего доступно: <b>${available:.2f}</b>")
+            msg = ref_t(referrer,
+                        f"🎉 <b>Новая сделка!</b>\n\n"
+                        f"Начислено к выводу: <b>${ag.payout_usdt:.2f}</b>\n"
+                        f"Всего доступно: <b>${available:.2f}</b>",
+                        f"🎉 <b>New deal!</b>\n\n"
+                        f"Added to your balance: <b>${ag.payout_usdt:.2f}</b>\n"
+                        f"Total available: <b>${available:.2f}</b>")
             url = f"https://grusha.up.railway.app/ref/{referrer.token}"
-            send_referrer_dm(referrer, msg, buttons=[[{'text': '💸 Вывести', 'url': url}]])
+            btn = ref_t(referrer, '💸 Вывести', '💸 Withdraw')
+            send_referrer_dm(referrer, msg, buttons=[[{'text': btn, 'url': url}]])
     except Exception as e:
         print(f'[ReferrerDM] new deal notify error: {e}')
 
@@ -8850,21 +8887,29 @@ def lk_bot_webhook():
                 if ok:
                     ln.tg_id = int(frm.get('id'))
                     db.commit()
-                    reply = ('✅ Вход подтверждён!\n'
-                             'Вернитесь в браузер — кабинет откроется автоматически.')
+                    reply = ref_t(referrer,
+                                  '✅ Вход подтверждён!\n'
+                                  'Вернитесь в браузер — кабинет откроется автоматически.',
+                                  '✅ Login confirmed!\n'
+                                  'Go back to the browser — your dashboard will open automatically.')
                 else:
                     ln.denied = True
                     db.commit()
-                    reply = f'❌ {err or "Этот Telegram-аккаунт не подходит для этого кабинета."}'
+                    reply = f'❌ {err or ref_t(referrer, "Этот Telegram-аккаунт не подходит для этого кабинета.", "This Telegram account cannot access this dashboard.")}'
                     # Security-уведомление владельцу кабинета о чужой попытке входа
                     try:
                         if referrer and referrer.telegram_user_id:
-                            who = ('@' + frm['username']) if frm.get('username') else (frm.get('first_name') or 'неизвестный аккаунт')
-                            send_referrer_dm(referrer,
+                            who = ('@' + frm['username']) if frm.get('username') else (
+                                frm.get('first_name') or ref_t(referrer, 'неизвестный аккаунт', 'unknown account'))
+                            send_referrer_dm(referrer, ref_t(referrer,
                                 f"⚠️ <b>Попытка входа в ваш кабинет</b>\n\n"
                                 f"По вашей ссылке пытались войти с другого Telegram-аккаунта "
                                 f"({who}) — вход отклонён.\n\n"
-                                f"Если это были вы — войдите со своего привязанного аккаунта.")
+                                f"Если это были вы — войдите со своего привязанного аккаунта.",
+                                f"⚠️ <b>Login attempt on your account</b>\n\n"
+                                f"Someone tried to open your dashboard from a different Telegram "
+                                f"account ({who}) — the attempt was rejected.\n\n"
+                                f"If that was you, sign in with your linked account."))
                     except Exception as e:
                         print(f'[LKBot] attempt notify error: {e}')
             else:
@@ -8906,13 +8951,18 @@ def lk_bot_webhook():
             # Авторизация: колбэк только от владельца заявки
             if (not req or not referrer or not referrer.telegram_user_id
                     or int(referrer.telegram_user_id) != int(from_id or 0)):
-                _tg_answer_callback(token, cq.get('id'), 'Нет доступа')
+                _tg_answer_callback(token, cq.get('id'),
+                                    ref_t(referrer, 'Нет доступа', 'No access'))
                 return jsonify({'ok': True})
             if _cancel_payout(db, req):
-                _tg_answer_callback(token, cq.get('id'), 'Заявка отменена')
-                _tg_edit_message(token, cq, '❌ Заявка на выплату отменена')
+                _tg_answer_callback(token, cq.get('id'),
+                                    ref_t(referrer, 'Заявка отменена', 'Request cancelled'))
+                _tg_edit_message(token, cq, ref_t(referrer,
+                                                  '❌ Заявка на выплату отменена',
+                                                  '❌ Withdrawal request cancelled'))
             else:
-                _tg_answer_callback(token, cq.get('id'), 'Заявка уже обработана')
+                _tg_answer_callback(token, cq.get('id'),
+                                    ref_t(referrer, 'Заявка уже обработана', 'Request already processed'))
         finally:
             db.close()
     return jsonify({'ok': True})
@@ -10137,13 +10187,19 @@ def _send_referrer_login_summary(referrer_id):
             active = db2.query(PayoutRequest).filter(
                 PayoutRequest.referrer_id == ref2.id,
                 PayoutRequest.status.in_(['new', 'in_progress'])).first()
-            msg = (f"👋 <b>Вы вошли в кабинет</b>\n\n"
-                   f"💰 Доступно к выводу: <b>${available:.2f}</b>\n"
-                   f"✅ Всего выплачено: ${total_paid:.2f}")
+            msg = ref_t(ref2,
+                        f"👋 <b>Вы вошли в кабинет</b>\n\n"
+                        f"💰 Доступно к выводу: <b>${available:.2f}</b>\n"
+                        f"✅ Всего выплачено: ${total_paid:.2f}",
+                        f"👋 <b>You are signed in</b>\n\n"
+                        f"💰 Available to withdraw: <b>${available:.2f}</b>\n"
+                        f"✅ Paid out in total: ${total_paid:.2f}")
             buttons = None
             if active:
-                msg += f"\n\n📋 Активная заявка #{active.id} на ${active.amount_usdt:.2f} — на обработке."
-                buttons = _cancel_button(active.id)
+                msg += ref_t(ref2,
+                             f"\n\n📋 Активная заявка #{active.id} на ${active.amount_usdt:.2f} — на обработке.",
+                             f"\n\n📋 Request #{active.id} for ${active.amount_usdt:.2f} is being processed.")
+                buttons = _cancel_button(active.id, ref2)
             send_referrer_dm(ref2, msg, buttons=buttons)
         finally:
             db2.close()
@@ -10231,6 +10287,7 @@ def referrer_stats(token):
             return jsonify({'success': False, 'auth_required': True,
                             'bot_username': get_bot_username(),
                             'bot_id': get_login_bot_id(),
+                            'lang': referrer.lang or 'ru',
                             'referrer_name': referrer.name}), 401
 
         # Мультиагенты: сделки, где этот реферал участвует (любой уровень), читаем из deal_agents.
@@ -10276,6 +10333,9 @@ def referrer_stats(token):
                 payout_cur = 'thb'
             recent_deals.append({
                 'date': deal.created_at.strftime('%d.%m.%Y') if deal.created_at else None,
+                # ISO — чтобы кабинет отформатировал дату по языку партнёра
+                # ('date' оставлен как есть: на него смотрят старые кэши страниц)
+                'date_iso': deal.created_at.isoformat() if deal.created_at else None,
                 'volume_usdt': max(deal.payin_amount_usdt or 0, deal.payout_amount_usdt or 0),
                 'payout_amount': payout_amount,
                 'payout_currency': payout_cur,
@@ -10363,9 +10423,8 @@ def referrer_stats(token):
             'success': True,
             'name': referrer.name,
             'code': referrer.code,
-            'referral_link': f'https://grusha.space/?ref={referrer.code}',
-            'bot_link': f'https://t.me/Grushath_bot?start=ref__{referrer.code.replace("-", "")}',
-            'wa_link': f'https://api.whatsapp.com/send/?phone=66818429939&text=%D0%97%D0%B4%D1%80%D0%B0%D0%B2%D1%81%D1%82%D0%B2%D1%83%D0%B9%D1%82%D0%B5%21+%D0%A5%D0%BE%D1%87%D1%83+%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D1%82%D1%8C+%D0%B4%D0%B5%D1%82%D0%B0%D0%BB%D0%B8+%D0%BE%D0%B1%D0%BC%D0%B5%D0%BD%D0%B0.%0A%0A%28%D0%98%D1%81%D1%82%D0%BE%D1%87%D0%BD%D0%B8%D0%BA%3A+ref_{referrer.code.replace("-", "")}%29&type=phone_number&app_absent=0',
+            'lang': referrer.lang or 'ru',
+            **referral_links(referrer.code, referrer.lang or 'ru'),
             'payout_currency': referrer.payout_currency or 'USDT',
             'telegram': referrer.telegram or '',
             'auth_mode': referrer.auth_mode or 'link',
@@ -10658,16 +10717,26 @@ def create_payout_request(token):
         try:
             if payout_method == 'thb':
                 thb_fmt = f"{quote['thb_amount']:,.0f}".replace(',', ' ')
-                msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
-                       f"Сумма: <b>{thb_fmt} ฿</b> (курс {round(quote['client_rate'], 2)})\n"
-                       f"Банк: {bank_name} · <code>{account_number}</code>\n\n"
-                       f"Заявка #{req.id} принята в обработку.")
+                msg = ref_t(referrer,
+                            f"💸 <b>Заявка на выплату создана</b>\n\n"
+                            f"Сумма: <b>{thb_fmt} ฿</b> (курс {round(quote['client_rate'], 2)})\n"
+                            f"Банк: {bank_name} · <code>{account_number}</code>\n\n"
+                            f"Заявка #{req.id} принята в обработку.",
+                            f"💸 <b>Withdrawal request created</b>\n\n"
+                            f"Amount: <b>{thb_fmt} ฿</b> (rate {round(quote['client_rate'], 2)})\n"
+                            f"Bank: {bank_name} · <code>{account_number}</code>\n\n"
+                            f"Request #{req.id} is now being processed.")
             else:
-                msg = (f"💸 <b>Заявка на выплату создана</b>\n\n"
-                       f"Сумма: <b>${pending:.2f}</b>\n"
-                       f"Кошелёк: <code>{wallet}</code>\n\n"
-                       f"Заявка #{req.id} принята в обработку.")
-            send_referrer_dm(referrer, msg, buttons=_cancel_button(req.id))
+                msg = ref_t(referrer,
+                            f"💸 <b>Заявка на выплату создана</b>\n\n"
+                            f"Сумма: <b>${pending:.2f}</b>\n"
+                            f"Кошелёк: <code>{wallet}</code>\n\n"
+                            f"Заявка #{req.id} принята в обработку.",
+                            f"💸 <b>Withdrawal request created</b>\n\n"
+                            f"Amount: <b>${pending:.2f}</b>\n"
+                            f"Wallet: <code>{wallet}</code>\n\n"
+                            f"Request #{req.id} is now being processed.")
+            send_referrer_dm(referrer, msg, buttons=_cancel_button(req.id, referrer))
         except Exception as e:
             print(f'[ReferrerDM] create notify error: {e}')
 
@@ -10830,8 +10899,9 @@ def update_payout_request(req_id):
                 referrer2 = db.query(Referrer).get(req.referrer_id)
                 if referrer2:
                     tx = f"\nTx: <code>{req.tx_hash}</code>" if req.tx_hash else ""
-                    send_referrer_dm(referrer2,
-                        f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>${req.amount_usdt:.2f}</b>{tx}")
+                    send_referrer_dm(referrer2, ref_t(referrer2,
+                        f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>${req.amount_usdt:.2f}</b>{tx}",
+                        f"✅ <b>Payout sent</b>\n\nAmount: <b>${req.amount_usdt:.2f}</b>{tx}"))
             except Exception as e:
                 print(f'[ReferrerDM] paid notify error: {e}')
         return jsonify({'success': True, 'request': req.to_dict(with_referrer=True)})
@@ -10868,7 +10938,9 @@ def payout_request_receipt(req_id):
         if referrer and referrer.telegram_user_id and get_login_bot_token():
             dm_file_id = _tg_send_document(
                 get_login_bot_token(), int(referrer.telegram_user_id), blob, f.filename,
-                f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>{thb_fmt} ฿</b>")
+                ref_t(referrer,
+                      f"✅ <b>Выплата отправлена</b>\n\nСумма: <b>{thb_fmt} ฿</b>",
+                      f"✅ <b>Payout sent</b>\n\nAmount: <b>{thb_fmt} ฿</b>"))
 
         # 2) Чек в рабочий топик «Задачи»
         team_file_id = None
@@ -10991,6 +11063,9 @@ def create_referrer():
     if comp_model not in ('revshare', 'markup'):
         comp_model = 'revshare'
     markup_percent = float(data.get('markup_percent') or 0)
+    lang = (data.get('lang') or 'ru').strip().lower()
+    if lang not in ('ru', 'en'):
+        lang = 'ru'
 
     if not name:
         return jsonify({'success': False, 'error': 'Укажите имя'}), 400
@@ -11017,6 +11092,7 @@ def create_referrer():
             payout_currency=payout_currency,
             comp_model=comp_model,
             markup_percent=markup_percent,
+            lang=lang,
             client_id=data.get('client_id'),
             is_test=bool(data.get('is_test', False)),
             auth_mode=('telegram' if (data.get('auth_mode') == 'telegram') else 'link'),
@@ -11055,6 +11131,10 @@ def update_referrer(referrer_id):
                 referrer.comp_model = cm
         if 'markup_percent' in data:
             referrer.markup_percent = float(data['markup_percent'] or 0)
+        if 'lang' in data:
+            lg = (data['lang'] or 'ru').strip().lower()
+            if lg in ('ru', 'en'):
+                referrer.lang = lg
         if 'active' in data:
             referrer.active = bool(data['active'])
         if 'telegram' in data:
