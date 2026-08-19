@@ -679,9 +679,11 @@ def test_кошелёк_дозаполняется_для_старых_хеше�
     cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
     assert cli.get(f"/api/conversions/{conv['id']}").get_json()['txs'][0]['to_address'] is None
 
-    # Сеть снова отвечает — адрес должен подтянуться и сохраниться
+    # Сеть снова отвечает — адрес добирается ФОНОМ, а не внутри чтения:
+    # карточка не должна зависеть от доступности TronScan
     monkeypatch.setattr(appmod, '_tron_tx_to_address',
                         lambda h: 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ')
+    assert appmod.payin_address_backfill_once() >= 1
     card = cli.get(f"/api/conversions/{conv['id']}").get_json()
     assert card['txs'][0]['to_address'] == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
 
@@ -821,6 +823,63 @@ def test_реестр_обменников_видит_конвертацию(cli
         db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
         db.query(SberIncome).filter(SberIncome.id == inc_id).delete()
         db.query(ReestrSnapshot).filter(ReestrSnapshot.view.in_(('deals', 'requests'))).delete(
+            synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_доля_считается_одинаково_во_всех_экранах(cli, incomes, monkeypatch):
+    """Одна и та же доля не должна расходиться между экранами.
+
+    Раньше расчёт был скопирован в четыре места: список приходов, карточка пачки,
+    разнос по сделкам и реестр обменников. Любая правка формулы в одном месте
+    расходилась с остальными — и заметить это можно было только глазами.
+    """
+    from app import ReestrSnapshot
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 1732.8791)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    db = get_session()
+    try:
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').delete(
+            synchronize_session=False)
+        db.add(ReestrSnapshot(view='deals', payload=json.dumps([
+            {'wl': 'WL-TEST', 'dt': '11.08 10:00', 'merchant': 'M', 'rub': 35000,
+             'usdt': 400, 'status': 'paid'}])))
+        db.query(SberIncome).filter(SberIncome.id == incomes[1]).update(
+            {'operation_date': '2026-08-11',
+             'purpose': 'Зачисление средств по операциям эквайринга. '
+                        'Мерчант №781003872118. Комиссия 0.00.'})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 83.35, 'sent_at': '2026-08-11',
+        'sources': [{'sber_income_id': i, 'amount_rub': a} for i, a in
+                    zip(incomes, (27786.44, 35000.0, 83000.0))],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
+
+    # 1. Карточка пачки
+    card = cli.get(f"/api/conversions/{conv['id']}").get_json()
+    from_card = {x['sber_income_id']: x['usdt'] for x in card['composition']}
+    # 2. Список приходов
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    from_list = {i['id']: i['usdt'] for i in body['incomes'] if i['id'] in incomes}
+    # 3. Реестр обменников
+    reestr = cli.get('/api/reestr/all').get_json()
+    wl = next((d for d in reestr['deals'] if d['wl'] == 'WL-TEST'), None)
+
+    assert from_card[incomes[1]] == from_list[incomes[1]]
+    assert wl and wl['conversion']['usdt'] == from_card[incomes[1]]
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').delete(
             synchronize_session=False)
         db.commit()
     finally:

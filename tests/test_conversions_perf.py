@@ -125,3 +125,50 @@ def test_реестр_обменников_в_бюджете(cli, bulk):
         r = cli.get('/api/reestr/all')
     assert r.status_code == 200
     assert c.n <= 15, f'запросов {c.n} — вернулся N+1'
+
+
+def test_карточка_пачки_не_ходит_в_сеть(cli, monkeypatch):
+    """Чтение не должно зависеть от доступности TronScan.
+
+    Карточка дотягивала адрес кошелька прямо в GET: при недоступном TronScan
+    экран висел на таймауте запроса к чужому сервису.
+    """
+    import uuid as _u
+    from app import Conversion, ConversionTx, PayinTx, ConversionStatus
+
+    calls = {'n': 0}
+
+    def _boom(h):
+        calls['n'] += 1
+        raise AssertionError('сетевой вызов внутри чтения')
+
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', _boom)
+
+    db = get_session()
+    try:
+        conv = Conversion(broker='tradex', rate_rub_usdt=86.15,
+                          status=ConversionStatus.RECEIVED)
+        db.add(conv)
+        db.flush()
+        tx = PayinTx(tx_hash=_u.uuid4().hex * 2, amount_usdt=100, source='manual')
+        db.add(tx)
+        db.flush()
+        db.add(ConversionTx(conversion_id=conv.id, payin_tx_id=tx.id, amount_usdt=100))
+        db.commit()
+        cid, tid = conv.id, tx.id
+    finally:
+        db.close()
+
+    r = cli.get(f'/api/conversions/{cid}')
+    assert r.status_code == 200
+    assert calls['n'] == 0, 'GET карточки ходил в сеть'
+    assert r.get_json()['txs'][0]['to_address'] is None
+
+    db = get_session()
+    try:
+        db.query(ConversionTx).filter(ConversionTx.conversion_id == cid).delete()
+        db.query(Conversion).filter(Conversion.id == cid).delete()
+        db.query(PayinTx).filter(PayinTx.id == tid).delete()
+        db.commit()
+    finally:
+        db.close()

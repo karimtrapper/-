@@ -1755,7 +1755,8 @@ class SberIncome(Base):
     __tablename__ = 'sber_incomes'
     id = Column(Integer, primary_key=True)
     uuid = Column(String(64), unique=True, nullable=False, index=True)
-    operation_date = Column(String(40))     # ISO-дата операции из выписки Сбера
+    # Индекс: списки всегда сортируются по дате, а отсечка истории фильтрует по ней
+    operation_date = Column(String(40), index=True)   # ISO-дата операции из выписки Сбера
     amount_rub = Column(Float, nullable=False)
     payer = Column(String(255))             # плательщик (rurTransfer.payerName)
     purpose = Column(Text)                  # назначение платежа
@@ -1858,7 +1859,7 @@ class SberDebit(Base):
     __tablename__ = 'sber_debits'
     id = Column(Integer, primary_key=True)
     uuid = Column(String(64), unique=True, nullable=False, index=True)
-    operation_date = Column(String(40))
+    operation_date = Column(String(40), index=True)
     amount_rub = Column(Float, nullable=False)
     payee = Column(String(255))             # получатель (rurTransfer.payeeName)
     payee_inn = Column(String(20))
@@ -1941,6 +1942,8 @@ try:
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS to_address VARCHAR(100)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS excluded BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
@@ -1954,7 +1957,9 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
             except: pass
-            for _sql in ("ALTER TABLE payin_txs ADD COLUMN to_address VARCHAR(100)",
+            for _sql in ("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)",
+                         "CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)",
+                         "ALTER TABLE payin_txs ADD COLUMN to_address VARCHAR(100)",
                          "ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
                          "ALTER TABLE sber_incomes ADD COLUMN note TEXT",
                          "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)"):
@@ -2420,8 +2425,7 @@ def _conversions_by_wl(session, wl_deals):
         usdt = None
         if conv.status == ConversionStatus.RECEIVED:
             if conv.id not in shares_cache:
-                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-                shares_cache[conv.id] = _conversion_shares(pairs, conv.received_usdt())
+                shares_cache[conv.id] = conversion_shares_for(conv)
             usdt = shares_cache[conv.id].get(inc.id)
         out[deal['wl']] = {
             'id': conv.id, 'display_name': conv.display_name, 'broker': conv.broker,
@@ -5162,6 +5166,24 @@ def _clear_conversion_payin_uses(db, conv):
     db.flush()
 
 
+def conversion_shares_for(conv, expected_if_pending=False):
+    """Доли USDT по приходам пачки: {sber_income_id: usdt}.
+
+    Единственное место, где доля выводится из пачки. Раньше эти две строки были
+    скопированы в четырёх местах (список приходов, карточка, разнос по сделкам,
+    реестр обменников) — правка формулы в одном расходилась с остальными.
+
+    expected_if_pending=True — для неполученной пачки вернуть ожидание по курсу
+    (менеджер заводит сделку раньше, чем брокер отдаст USDT).
+    """
+    pairs = [(x.sber_income_id, x.amount_rub) for x in (conv.sources or [])]
+    if conv.status == ConversionStatus.RECEIVED:
+        return _conversion_shares(pairs, conv.received_usdt())
+    if expected_if_pending:
+        return _conversion_shares(pairs, conv.expected_usdt())
+    return {}
+
+
 def _apply_conversion_shares(db, conv):
     """Разнести полученный USDT по сделкам поступлений пачки.
 
@@ -5170,8 +5192,9 @@ def _apply_conversion_shares(db, conv):
     ещё нет, разрешено (порядок «приход → конвертация → USDT → сделка»).
     """
     _clear_conversion_payin_uses(db, conv)
-    pairs = [(src.sber_income_id, src.amount_rub) for src in conv.sources]
-    shares = _conversion_shares(pairs, conv.received_usdt())
+    shares = _conversion_shares(
+        [(src.sber_income_id, src.amount_rub) for src in conv.sources],
+        conv.received_usdt())
     per_deal = {}
     for sid, usdt in shares.items():
         inc = db.query(SberIncome).get(sid)
@@ -5257,8 +5280,7 @@ def deal_conversions(deal_id):
                 ConversionSource.sber_income_id == inc.id,
                 Conversion.status != ConversionStatus.CANCELLED).all()
             for src, conv in links:
-                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-                shares = _conversion_shares(pairs, conv.received_usdt())
+                shares = conversion_shares_for(conv)
                 out.append({
                     'conversion_id': conv.id, 'display_name': conv.display_name,
                     'broker': conv.broker, 'rate_rub_usdt': conv.rate_rub_usdt,
@@ -5347,6 +5369,49 @@ def update_sber_debit(debit_id):
         db.close()
 
 
+def payin_address_backfill_once(limit=20):
+    """Один проход: проставить кошелёк-получатель переводам, где его нет.
+
+    Вынесено из цикла, чтобы проверяться тестом без потока и таймеров.
+    Возвращает, скольким переводам адрес проставлен.
+    """
+    db = get_session()
+    try:
+        rows = db.query(PayinTx).filter(PayinTx.to_address.is_(None)).limit(limit).all()
+        done = 0
+        for tx in rows:
+            addr = _tron_tx_to_address(tx.tx_hash)
+            if addr:
+                tx.to_address = addr
+                done += 1
+        if done:
+            db.commit()
+        return done
+    finally:
+        db.close()
+
+
+def _payin_address_backfill_loop():
+    """Фоном проставляет кошелёк-получатель у переводов, где его нет.
+
+    Раньше адрес дотягивался прямо в GET карточки — чтение зависело от чужого
+    сервиса. Теперь это фоновая работа: экран открывается всегда, адрес
+    появляется в течение минуты.
+    """
+    while True:
+        time.sleep(PAYIN_ADDR_BACKFILL_INTERVAL)
+        try:
+            payin_address_backfill_once()
+        except Exception as e:  # noqa: BLE001 — фон не должен ронять процесс
+            app.logger.warning(f'payin address backfill: {str(e)[:120]}')
+
+
+PAYIN_ADDR_BACKFILL_INTERVAL = int(os.environ.get('PAYIN_ADDR_BACKFILL_INTERVAL', '60'))
+if os.environ.get('PAYIN_ADDR_BACKFILL', '1') == '1' and not app.config.get('TESTING'):
+    threading.Thread(target=_payin_address_backfill_loop, daemon=True,
+                     name='payin-addr-backfill').start()
+
+
 @app.route('/api/conversions', methods=['GET'])
 def list_conversions():
     """Список пачек конвертации, свежие сверху."""
@@ -5366,8 +5431,7 @@ def get_conversion(conv_id):
         conv = db.query(Conversion).get(conv_id)
         if not conv:
             return jsonify({'success': False, 'error': 'not_found'}), 404
-        pairs = [(s.sber_income_id, s.amount_rub) for s in conv.sources]
-        shares = _conversion_shares(pairs, conv.received_usdt())
+        shares = conversion_shares_for(conv)
         # Сделки обменника: по пачке должно быть видно, чьи выплаты она обеспечивает
         wl_deals = []
         snap = db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').first()
@@ -5398,14 +5462,9 @@ def get_conversion(conv_id):
         wallet_labels = {w.address: w.label for w in db.query(Wallet).all()}
         for t in conv.txs:
             tx = db.query(PayinTx).get(t.payin_tx_id)
-            # Хеши, привязанные до появления поля, адреса не имеют. Перепривязать
-            # их нельзя — сумма уже разнесена по сделкам, поэтому дотягиваем здесь
-            # и сохраняем: в сводке нужен кошелёк, а не пустая строка
-            if tx is not None and not tx.to_address:
-                addr = _tron_tx_to_address(tx.tx_hash)
-                if addr:
-                    tx.to_address = addr
-                    db.commit()
+            # Адрес НЕ дотягиваем здесь: чтение не должно зависеть от доступности
+            # TronScan — при его недоступности экран висел на таймауте чужого
+            # сервиса. Хеши без адреса добирает фоновый _payin_address_backfill
             txs.append({'tx_hash': tx.tx_hash if tx else '',
                         'to_address': tx.to_address if tx else None,
                         'to_label': wallet_labels.get(tx.to_address) if tx else None,
@@ -5565,13 +5624,9 @@ def list_sber_incomes():
                 # сделку раньше, чем брокер отдаст USDT, и без этой цифры вбивает
                 # её руками (так в #501 появился курс 126,70 при рынке 87,93)
                 if conv.id not in shares_cache:
-                    conv_pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-                    received = conv.status == ConversionStatus.RECEIVED
                     shares_cache[conv.id] = (
-                        received,
-                        _conversion_shares(conv_pairs,
-                                           conv.received_usdt() if received
-                                           else conv.expected_usdt()))
+                        conv.status == ConversionStatus.RECEIVED,
+                        conversion_shares_for(conv, expected_if_pending=True))
                 received, shares = shares_cache[conv.id]
                 val = shares.get(src.sber_income_id)
                 if val is not None:
