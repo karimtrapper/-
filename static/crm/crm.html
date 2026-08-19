@@ -9539,7 +9539,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 d.txs.forEach(t => {
                     L.push(`  ${money(t.amount_usdt)} USDT`);
                     L.push(`  хеш:     ${t.tx_hash}`);
-                    if (t.to_address) L.push(`  кошелёк: ${t.to_address}`);
+                    if (t.to_address) {
+                        L.push(`  кошелёк: ${t.to_address}${t.to_label ? ' (' + t.to_label + ')' : ''}`);
+                    }
                 });
             }
             return L.join('\n');
@@ -9578,7 +9580,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // если брокер дробит выдачу, а открытое поле провоцирует лишний ввод
             const done = c.status === 'received';
             const txs = d.txs.map(t => `<div style="font-family:monospace; font-size:0.85rem">
-                ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT</div>`).join('');
+                ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT${
+                t.to_address ? `<div style="color:#64748b">→ ${t.to_address.slice(0, 12)}…${
+                    t.to_label ? ' · ' + t.to_label : ''}</div>` : ''}</div>`).join('');
             // Сводку часто нужно переслать текстом — чтобы ставить задачи
             // по следующей конвертации, не пересказывая цифры руками
             window._convSummary = buildConversionSummary(c, d);

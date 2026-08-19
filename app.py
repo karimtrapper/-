@@ -5309,10 +5309,20 @@ def get_conversion(conv_id):
                 'author': wl.get('author') if wl else None,
             })
         txs = []
+        wallet_labels = {w.address: w.label for w in db.query(Wallet).all()}
         for t in conv.txs:
             tx = db.query(PayinTx).get(t.payin_tx_id)
+            # Хеши, привязанные до появления поля, адреса не имеют. Перепривязать
+            # их нельзя — сумма уже разнесена по сделкам, поэтому дотягиваем здесь
+            # и сохраняем: в сводке нужен кошелёк, а не пустая строка
+            if tx is not None and not tx.to_address:
+                addr = _tron_tx_to_address(tx.tx_hash)
+                if addr:
+                    tx.to_address = addr
+                    db.commit()
             txs.append({'tx_hash': tx.tx_hash if tx else '',
                         'to_address': tx.to_address if tx else None,
+                        'to_label': wallet_labels.get(tx.to_address) if tx else None,
                         'amount_usdt': round(t.amount_usdt or 0, 4),
                         'tx_total_usdt': round((tx.amount_usdt or 0) if tx else 0, 4),
                         'tx_free_usdt': tx.free_usdt() if tx else 0})

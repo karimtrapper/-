@@ -659,3 +659,40 @@ def test_кошелёк_получателя_сохраняется_по_хеш�
         db.commit()
     finally:
         db.close()
+
+
+def test_кошелёк_дозаполняется_для_старых_хешей(cli, incomes, monkeypatch):
+    """Хеши, привязанные до появления поля, адреса не имеют — подтягиваем при открытии.
+
+    Иначе в сводке навсегда пустая строка «кошелёк», а перепривязывать хеш
+    руками ради этого нельзя: сумма уже разнесена по сделкам.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 2265.0)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)   # старое поведение
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 86.15, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
+    assert cli.get(f"/api/conversions/{conv['id']}").get_json()['txs'][0]['to_address'] is None
+
+    # Сеть снова отвечает — адрес должен подтянуться и сохраниться
+    monkeypatch.setattr(appmod, '_tron_tx_to_address',
+                        lambda h: 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ')
+    card = cli.get(f"/api/conversions/{conv['id']}").get_json()
+    assert card['txs'][0]['to_address'] == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
+
+    db = get_session()
+    try:
+        tx = db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
+        assert tx.to_address == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'   # сохранился, не разово
+    finally:
+        db.close()
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()
