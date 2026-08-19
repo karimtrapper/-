@@ -8386,11 +8386,24 @@ def create_reimbursement():
 
             free = tx.free_usdt()
             if take > free + 0.01 and not data.get('force'):
+                # Куда перевод уже ушёл. Без этого «доступно $0.00» читается как
+                # поломка, хотя чаще всего это повторный клик по устаревшей форме:
+                # возмещение уже создано, сделка из списка ожидающих ушла.
+                with session.no_autoflush:
+                    prev = session.query(ReimbursementTxUse, Reimbursement).join(
+                        Reimbursement, ReimbursementTxUse.reimbursement_id == Reimbursement.id
+                    ).filter(ReimbursementTxUse.tx_id == tx.id).all()
+                where = '; '.join(
+                    f'возмещение #{r.id} от {r.created_at.strftime("%d.%m")} на ${u.amount_usdt:.2f}'
+                    for u, r in prev)
                 return jsonify({
                     'success': False,
-                    'error': f'Из перевода {h[:16]}… доступно ${free:.2f} '
-                             f'(всего ${(tx.amount_usdt or 0):.2f}), запрошено ${take:.2f}',
+                    'error': (f'Из перевода {h[:16]}… доступно ${free:.2f} '
+                              f'(всего ${(tx.amount_usdt or 0):.2f}), запрошено ${take:.2f}'
+                              + (f'. Уже учтён: {where} — обнови страницу.' if where else '')),
                     'tx_hash': h, 'tx_free_usdt': free,
+                    'used_in': [{'reimbursement_id': r.id, 'amount_usdt': u.amount_usdt}
+                                for u, r in prev],
                 }), 409
             prepared_uses.append((tx, take))
 

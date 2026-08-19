@@ -130,3 +130,37 @@ def test_deal_completed_and_payout_set(tc, deal):
     updated = tc.get(f"/api/deals/{deal['id']}").json['deal']
     assert updated['status'] == 'completed'
     assert updated['payout_amount_usdt'] == 504289
+
+
+def _mk_deal(tc, payout_thb, payout_usdt):
+    """Ещё одна сделка того же фаундера, ждущая возмещения."""
+    return tc.post('/api/deals', json={
+        'client_name': 'Zakharov Vyacheslav - Grusha', 'deal_type': 'pay_in',
+        'payin_method': 'crypto_direct', 'payin_amount_usdt': 330.28,
+        'payout_amount_thb': payout_thb, 'payout_amount_usdt': payout_usdt,
+        'payout_method': 'transfer', 'payout_source': 'founder_personal',
+        'payout_founder_name': 'Андрей',
+    }).json['deal']['id']
+
+
+def test_reused_hash_error_names_previous_reimbursement(tc):
+    """Повторный клик по устаревшей форме: ошибка говорит, где перевод уже учтён.
+
+    Голое «доступно $0.00» читается как поломка CRM, хотя перевод просто
+    полностью ушёл в созданное раньше возмещение (#469 / cbb092…, 19.08).
+    """
+    deal_a = _mk_deal(tc, 10000, 305.4)
+    deal_b = _mk_deal(tc, 10000, 305.4)
+    h = 'cbb092e5bc772b7e171ef078c3eb967b08f83bd59e38b3c7bf668207746a027a'
+    body = {'founder_name': 'Андрей', 'amount_usdt': 305.4, 'tx_hashes': [h],
+            'tx_uses': [{'tx_hash': h, 'amount_usdt': 305.4}]}
+
+    first = tc.post('/api/reimbursements', json={**body, 'deal_ids': [deal_a]})
+    assert first.status_code == 200
+    rid = first.json['reimbursement']['id']
+
+    again = tc.post('/api/reimbursements', json={**body, 'deal_ids': [deal_b]})
+    assert again.status_code == 409
+    assert f'#{rid}' in again.json['error']
+    assert 'обнови страницу' in again.json['error']
+    assert again.json['used_in'] == [{'reimbursement_id': rid, 'amount_usdt': 305.4}]

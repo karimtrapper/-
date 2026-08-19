@@ -9512,6 +9512,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     loadDashboard();
                 } else {
                     showToast('Ошибка: ' + result.error, 'error');
+                    // Перевод уже разобран (409) — форма на экране устарела:
+                    // возмещение прошло раньше, сделка из ожидающих ушла.
+                    // Перерисовываем, иначе оператор будет жать по кругу.
+                    if (response.status === 409) {
+                        loadReimbursements();
+                        return;
+                    }
                     if (btn) {
                         btn.disabled = false;
                         btn.textContent = 'Создать возмещение и рассчитать прибыль';
