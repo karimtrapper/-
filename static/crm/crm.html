@@ -2182,7 +2182,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <span id="rxFltCnt" class="rx-muted" style="font-size:12px;margin-left:auto"></span>
               </div>
               <div class="rx-scroll"><table>
-                <thead><tr><th>WL</th><th>Дата</th><th>Мерчант</th><th style="text-align:right">Сумма ₽</th><th style="text-align:right">Отдали клиенту</th><th style="text-align:right">Получили</th><th style="text-align:right">Маржа $ (%)</th><th>Статус</th></tr></thead>
+                <thead><tr><th>WL</th><th>Дата</th><th>Мерчант</th><th style="text-align:right">Сумма ₽</th><th style="text-align:right">Отдали клиенту</th><th style="text-align:right">Получили</th><th style="text-align:right">Маржа $ (%)</th><th>Конвертация</th><th>Статус</th></tr></thead>
                 <tbody id="rx-deals-body"></tbody>
               </table></div>
             </div>
@@ -2310,6 +2310,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     }
     function rxResetFilter(){ ['rxFltMer','rxFltStt','rxFltSf','rxFltSt'].forEach(id=>document.getElementById(id).value=''); document.getElementById('rxFltSort').value='new'; rxRenderDeals(rxData.deals); }
 
+    // Конвертация рублей по сделке: без неё в реестре сделка выглядит
+    // необеспеченной, хотя рубли уже ушли брокеру и вернулись в USDT
+    function rxConvCell(c){
+      if(!c) return '<span class="rx-muted">—</span>';
+      const label = c.status==='received' ? '✅' : '🚚';
+      const usdt = c.usdt!=null ? ` · $ ${rxFmt(c.usdt)}` : '';
+      return `<span class="num" style="font-size:12px" title="${c.broker||''} ${c.request_no||''} @ ${c.rate_rub_usdt||'—'}">`
+           + `${label} ${c.display_name}${usdt}</span>`;
+    }
+
     function rxRenderDeals(list){
       const tb=document.getElementById('rx-deals-body');
       tb.innerHTML=list.map(d=>{
@@ -2319,6 +2329,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         return `<tr><td class="num" style="font-weight:600">${d.wl}</td><td class="num rx-muted">${d.dt||''}</td><td>${d.merchant}</td>
           <td class="num" style="text-align:right">${rxFmt(d.rub)}</td><td class="num" style="text-align:right">${rxFmt(otdal)}</td>
           <td class="num" style="text-align:right">${recv}</td><td class="num" style="text-align:right">${marg}</td>
+          <td>${rxConvCell(d.conversion)}</td>
           <td>${rxBadge(d.status)}</td></tr>`;
       }).join('');
       const cnt=document.getElementById('rxFltCnt'); if(cnt) cnt.textContent=`${list.length} из ${rxData.deals.length}`;
@@ -2533,7 +2544,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         const txs=x.txs||[];
         const rows=txs.map(t=>{
           const src=t.broker?`<span class="rx-tx" style="cursor:pointer" onclick="event.stopPropagation();rxGoInflow('${t.broker.n}')">${t.broker.n}</span> · <a class="rx-tx" href="${rxTron(t.broker.h)}" target="_blank" onclick="event.stopPropagation()">${(t.broker.h||'').slice(0,8)}… ↗</a>`:'<span class="rx-muted">— ждём выкупа</span>';
-          return `<tr><td class="num" style="font-weight:600">${t.wl}</td><td class="num" style="text-align:right">${rxFmt(t.rub)}</td><td class="num" style="text-align:right">${rxFmt(t.usdt)}</td><td class="num" style="text-align:right">${t.mKnown===false?'<span class="rx-muted">— ждём</span>':(t.margin!=null?`<span style="color:var(--green-dark)">$ ${rxFmt(t.margin)}</span>`:'—')}</td><td class="num rx-muted">${t.sber||''}</td><td>${src}</td><td>${rxBadge(t.st||x.status)}</td></tr>`;
+          return `<tr><td class="num" style="font-weight:600">${t.wl}</td><td class="num" style="text-align:right">${rxFmt(t.rub)}</td><td class="num" style="text-align:right">${rxFmt(t.usdt)}</td><td class="num" style="text-align:right">${t.mKnown===false?'<span class="rx-muted">— ждём</span>':(t.margin!=null?`<span style="color:var(--green-dark)">$ ${rxFmt(t.margin)}</span>`:'—')}</td><td class="num rx-muted">${t.sber||''}</td><td>${t.conversion?rxConvCell(t.conversion):src}</td><td>${rxBadge(t.st||x.status)}</td></tr>`;
         }).join('');
         const reco=x.reco?`<div style="margin-bottom:10px;padding:10px;border-radius:var(--r-sm);background:${x.status==='closed'?'#F0FDF4;color:#065F46':'#EFF6FF;color:#1E40AF'}">${x.reco}</div>`:'';
         // группировка по приходам: за какие сделки, с какого кошелька/TronScan, с каким доходом

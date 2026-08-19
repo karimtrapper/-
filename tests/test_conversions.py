@@ -14,6 +14,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 os.environ['REESTR_SYNC_ENABLED'] = '0'
 
+import json
+
 import pytest
 
 import app as appmod
@@ -758,6 +760,68 @@ def test_пачку_можно_поправить_не_пересоздавая(
     db = get_session()
     try:
         db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_реестр_обменников_видит_конвертацию(cli, monkeypatch):
+    """WL-сделка вошла в пачку — реестр должен это показывать.
+
+    Иначе в «Обменниках» и в заявке на вывод сделка выглядит необеспеченной,
+    хотя рубли по ней уже конвертированы и USDT получен.
+    """
+    from app import ReestrSnapshot
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 1290.68)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    db = get_session()
+    inc_id = None
+    try:
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view.in_(('deals', 'requests'))).delete(
+            synchronize_session=False)
+        db.add(ReestrSnapshot(view='deals', payload=json.dumps([
+            {'wl': 'WL-0393', 'dt': '17.08 16:00', 'merchant': 'Four exchange',
+             'author': 'Artyom', 'rub': 112600, 'usdt': 1255.45, 'margin': 25.11,
+             'status': 'requested'}])))
+        db.add(ReestrSnapshot(view='requests', payload=json.dumps([
+            {'id': '56', 'merchant': 'Four exchange', 'usdt': 1255.45, 'status': 'requested',
+             'txs': [{'wl': 'WL-0393', 'rub': 112600, 'usdt': 1255.45}]}])))
+        inc = SberIncome(uuid=_uid(), operation_date='2026-08-17', amount_rub=111811.80,
+                         payer='Московский банк Сбербанка России',
+                         purpose='Зачисление средств по операциям эквайринга. '
+                                 'Мерчант №781003872118. Комиссия 788.20.')
+        db.add(inc)
+        db.flush()
+        inc_id = inc.id
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'request_no': '93', 'rate_rub_usdt': 86.15,
+        'sent_at': '2026-08-17',
+        'sources': [{'sber_income_id': inc_id, 'amount_rub': 111811.80}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
+
+    r = cli.get('/api/reestr/all').get_json()
+    deal = next(d for d in r['deals'] if d['wl'] == 'WL-0393')
+    assert deal['conversion']['display_name'] == conv['display_name']
+    assert deal['conversion']['broker'] == 'tradex'
+    assert deal['conversion']['usdt'] == 1290.68     # доля этой сделки в пачке
+    assert deal['covered'] is True                   # рубли обменяны — сделка обеспечена
+
+    req = next(x for x in r['requests'] if x['id'] == '56')
+    assert req['txs'][0]['conversion']['display_name'] == conv['display_name']
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(SberIncome).filter(SberIncome.id == inc_id).delete()
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view.in_(('deals', 'requests'))).delete(
+            synchronize_session=False)
         db.commit()
     finally:
         db.close()

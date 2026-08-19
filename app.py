@@ -2389,6 +2389,38 @@ WL_BOT_API_KEY = os.environ.get('WL_BOT_API_KEY', '')
 
 
 # ==================== РЕЕСТР ОБМЕННИКОВ ====================
+def _conversions_by_wl(session, wl_deals):
+    """Карта «WL-сделка → её конвертация» для реестра обменников.
+
+    Реестр знает только про ручные приходы брокера и потому показывает сделку
+    необеспеченной, хотя рубли по ней уже конвертированы. Мост тот же, что во
+    вкладке «Поступления»: приход на счёт ↔ WL-сделка по сумме и дате.
+    """
+    if not wl_deals:
+        return {}
+    rows = session.query(ConversionSource, Conversion, SberIncome).join(
+        Conversion, ConversionSource.conversion_id == Conversion.id).join(
+        SberIncome, ConversionSource.sber_income_id == SberIncome.id).filter(
+        Conversion.status != ConversionStatus.CANCELLED).all()
+    out = {}
+    for src, conv, inc in rows:
+        deal = _match_wl_deal(inc.to_dict(), wl_deals)
+        if not deal:
+            continue
+        usdt = None
+        if conv.status == ConversionStatus.RECEIVED:
+            pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
+            usdt = _conversion_shares(pairs, conv.received_usdt()).get(inc.id)
+        out[deal['wl']] = {
+            'id': conv.id, 'display_name': conv.display_name, 'broker': conv.broker,
+            'request_no': conv.request_no, 'rate_rub_usdt': conv.rate_rub_usdt,
+            'status': conv.status.value if conv.status else None,
+            'sent_at': conv.sent_at.isoformat() if conv.sent_at else None,
+            'amount_rub': round(src.amount_rub or 0, 2), 'usdt': usdt,
+        }
+    return out
+
+
 @app.route('/api/reestr/all', methods=['GET'])
 def get_reestr_all():
     """Все данные реестра одним чтением из Postgres CalcCRM (без внешних вызовов → без лага).
@@ -2426,9 +2458,14 @@ def get_reestr_all():
                 wl = it.get('wl')
                 if wl and not str(wl).startswith('#'):
                     inflow_by_wl[wl] = {'n': b.get('n'), 'h': h0, 'w': b.get('w', ''), 'br': b.get('br', '')}
+        # Конвертации из «Поступлений»: сделка, чьи рубли ушли брокеру и вернулись
+        # в USDT, обеспечена — даже если ручной приход по ней не заводили
+        conv_by_wl = _conversions_by_wl(session, out['deals'])
         covered_wls = set(inflow_by_wl.keys())
         for d in out['deals']:
-            cov = d['wl'] in covered_wls
+            conv = conv_by_wl.get(d['wl'])
+            d['conversion'] = conv
+            cov = d['wl'] in covered_wls or bool(conv and conv['status'] == 'received')
             d['covered'] = cov
             # маржа/получили/отдали — остаются из синка (таблица). Статус — по покрытию.
             base = d.get('status')
@@ -2442,8 +2479,12 @@ def get_reestr_all():
             txs = r.get('txs', [])
             for t in txs:
                 src = inflow_by_wl.get(t['wl'])
+                conv = conv_by_wl.get(t['wl'])
+                t['conversion'] = conv
                 if src:
                     t['broker'] = src
+                    cov += 1
+                elif conv and conv['status'] == 'received':
                     cov += 1
             n = len(txs)
             all_cov = bool(n) and cov == n
