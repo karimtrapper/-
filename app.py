@@ -7095,7 +7095,7 @@ def _dedupe_transfers(transfers):
 
 def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, end_ts=None,
                              result_limit=None, with_errors=False):
-    """Обход TronScan: исходящие TRC20-USDT переводы (без внутренних между monitored).
+    """Обход TronScan: исходящие TRC20-USDT переводы, внутренние помечены is_internal.
 
     Вынесено из эндпоинта — общая логика для запроса и фонового прогрева кэша.
     Возвращает дедуплицированный список по времени ↓; с with_errors=True —
@@ -7150,8 +7150,12 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
                         if end_ts and tx_ts > end_ts:
                             continue
 
-                        # Только исходящие (from_address == наш кошелёк), исключая внутренние переводы между monitored-кошельками
-                        if tx.get('from_address') == wallet.address and tx.get('to_address') not in internal_wallet_addresses:
+                        # Только исходящие (from_address == наш кошелёк). Переводы на
+                        # другой monitored-кошелёк раньше выбрасывались здесь — и перевод
+                        # фаундеру на адрес, заведённый у нас, молча пропадал из подбора
+                        # возмещений (кошелёк Виталия → #21/#17, 18.08). Теперь помечаем
+                        # флагом, а прячет их уже выдача эндпоинта.
+                        if tx.get('from_address') == wallet.address:
                             amount = float(tx.get('quant', 0)) / 1_000_000
                             all_outgoing.append({
                                 'tx_hash': tx.get('transaction_id'),
@@ -7159,7 +7163,8 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
                                 'to_address': tx.get('to_address'),
                                 'amount_usdt': amount,
                                 'timestamp': datetime.fromtimestamp(tx_ts / 1000).isoformat(),
-                                'confirmed': tx.get('confirmed', False)
+                                'confirmed': tx.get('confirmed', False),
+                                'is_internal': tx.get('to_address') in internal_wallet_addresses
                             })
 
                     if reached_start_ts:
@@ -7188,7 +7193,11 @@ def get_outgoing_transactions():
         start_date_str = request.args.get('start_date')
         end_date_str = request.args.get('end_date')
         result_limit = request.args.get('limit', type=int)  # Ограничить кол-во результатов
-        
+        # Переводы на свои же monitored-кошельки. По умолчанию скрыты (подбор выплаты
+        # клиенту), но форма возмещений просит их показать: возмещение фаундеру может
+        # уйти на адрес, который заведён у нас, и без флага перевод не найти.
+        include_internal = request.args.get('include_internal', 'false').lower() in ('1', 'true')
+
         start_ts = None
         if start_date_str:
             try:
@@ -7209,7 +7218,9 @@ def get_outgoing_transactions():
             cached_data = TRONSCAN_CACHE['outgoing']['data']
             if wallet_filter:
                 cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
-            
+            if not include_internal:
+                cached_data = [tx for tx in cached_data if not tx.get('is_internal')]
+
             return jsonify({
                 'success': True,
                 'available': cached_data[:result_limit or 1000],
@@ -7244,9 +7255,11 @@ def get_outgoing_transactions():
             TRONSCAN_CACHE['outgoing'] = {'data': all_outgoing, 'timestamp': ts}
 
         final_limit = result_limit or 1000
+        visible = all_outgoing if include_internal else [
+            tx for tx in all_outgoing if not tx.get('is_internal')]
         return jsonify({
             'success': True,
-            'available': all_outgoing[:final_limit],
+            'available': visible[:final_limit],
             'wallets_errors': [{'address': a, 'error': 'rate limit'} for a in sorted(failed_out)],
             'cached': False
         })

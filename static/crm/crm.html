@@ -9072,7 +9072,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const [pendingResult, historyResult, outgoingResult] = await Promise.all([
                 fetch(`${API_URL}/api/reimbursements/pending`).then(r => r.json()).catch(() => ({ success: false })),
                 fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({ success: false })),
-                fetch(`${API_URL}/api/transactions/outgoing`).then(r => r.json()).catch(() => ({ success: false })),
+                // include_internal: возмещение фаундеру может уйти на адрес, заведённый
+                // у нас как monitored — без этого флага перевод не попадёт в список
+                fetch(`${API_URL}/api/transactions/outgoing?include_internal=1`).then(r => r.json()).catch(() => ({ success: false })),
             ]);
             outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
             outgoingWalletsFailed = (outgoingResult.wallets_errors || []).length;
@@ -9141,7 +9143,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <option value="">-- Выбрать из списка или ввести вручную --</option>
                                     ${outgoingTransactionsCache.map(tx => `
                                         <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">
-                                            ${usedTxHashes.has(tx.tx_hash) ? '⚠️ уже учтён · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
+                                            ${usedTxHashes.has(tx.tx_hash) ? '⚠️ уже учтён · ' : ''}${tx.is_internal ? '🔁 на свой кошелёк · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
                                         </option>
                                     `).join('')}
                                 </select>
