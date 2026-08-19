@@ -853,6 +853,9 @@ class PayinTx(Base):
     amount_usdt = Column(Float, nullable=False, default=0)
     source = Column(String(20), default='manual')     # tronscan | manual
     tx_time = Column(DateTime, nullable=True)
+    # Кошелёк-получатель: в сводке по конвертации нужно «сколько пришло,
+    # хеш, какого кошелька». Берём из сети, а не с рук
+    to_address = Column(String(100), nullable=True)
     notes = Column(Text)
     created_at = Column(DateTime, default=datetime.utcnow)
     uses = relationship('PayinTxUse', back_populates='tx', cascade='all, delete-orphan')
@@ -879,7 +882,7 @@ class PayinTx(Base):
         return round((self.amount_usdt or 0) - self.used_usdt(), 2)
 
     def to_dict(self):
-        return {'id': self.id, 'tx_hash': self.tx_hash,
+        return {'id': self.id, 'tx_hash': self.tx_hash, 'to_address': self.to_address,
                 'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
                 'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
                 'deal_ids': sorted({u.deal_id for u in (self.uses or []) if u.deal_id}),
@@ -1930,6 +1933,7 @@ try:
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
+            conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS to_address VARCHAR(100)"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS excluded BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
@@ -1943,7 +1947,8 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
             except: pass
-            for _sql in ("ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
+            for _sql in ("ALTER TABLE payin_txs ADD COLUMN to_address VARCHAR(100)",
+                         "ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
                          "ALTER TABLE sber_incomes ADD COLUMN note TEXT",
                          "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)"):
                 try: conn.execute(text(_sql))
@@ -5122,7 +5127,8 @@ def attach_conversion_tx(conv_id):
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'error': 'Некорректная сумма прихода'}), 400
             tx = PayinTx(tx_hash=h, amount_usdt=onchain if onchain is not None else manual,
-                         source='tronscan' if onchain is not None else 'manual')
+                         source='tronscan' if onchain is not None else 'manual',
+                         to_address=_tron_tx_to_address(h))
             db.add(tx)
             db.flush()
         try:
@@ -5306,6 +5312,7 @@ def get_conversion(conv_id):
         for t in conv.txs:
             tx = db.query(PayinTx).get(t.payin_tx_id)
             txs.append({'tx_hash': tx.tx_hash if tx else '',
+                        'to_address': tx.to_address if tx else None,
                         'amount_usdt': round(t.amount_usdt or 0, 4),
                         'tx_total_usdt': round((tx.amount_usdt or 0) if tx else 0, 4),
                         'tx_free_usdt': tx.free_usdt() if tx else 0})
@@ -9155,6 +9162,24 @@ def _tron_tx_amount(tx_hash):
         return round(float(trc[0].get('amount_str', 0)) / 1_000_000, 2) or None
     except Exception as e:
         app.logger.warning(f'tron tx amount {tx_hash[:16]}: {e}')
+        return None
+
+
+def _tron_tx_to_address(tx_hash):
+    """Кошелёк-получатель перевода по хэшу. None — если не прочиталось.
+
+    Отдельно от _tron_tx_amount: та функция мокается в тестах и используется
+    возмещениями, её контракт не трогаем.
+    """
+    try:
+        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                         timeout=10)
+        if r.status_code != 200:
+            return None
+        trc = (r.json() or {}).get('trc20TransferInfo') or []
+        return (trc[0].get('to_address') or None) if trc else None
+    except Exception as e:
+        app.logger.warning(f'tron tx to_address {tx_hash[:16]}: {e}')
         return None
 
 

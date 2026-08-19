@@ -630,3 +630,32 @@ def test_приход_отдаёт_ожидаемый_usdt_до_подтверж
         db.commit()
     finally:
         db.close()
+
+
+def test_кошелёк_получателя_сохраняется_по_хешу(cli, incomes, monkeypatch):
+    """В сводке по пачке нужен кошелёк: «сколько пришло, хеш, какого кошелька».
+
+    Адрес берём из сети вместе с суммой — с рук его не вводят.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 401.19)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address',
+                        lambda h: 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn')
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 86.15, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
+
+    card = cli.get(f"/api/conversions/{conv['id']}").get_json()
+    tx = card['txs'][0]
+    assert tx['amount_usdt'] == 401.19          # сумма из сети
+    assert tx['to_address'] == 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()

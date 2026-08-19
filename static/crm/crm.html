@@ -9513,6 +9513,54 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (document.getElementById('incomes').classList.contains('active')) loadIncomes();
         }
 
+        // Текстовая сводка по пачке: рубли, клиенты, USDT, хеш и кошелёк —
+        // ровно то, что нужно, чтобы поставить задачу по следующей конвертации
+        function buildConversionSummary(c, d) {
+            const money = n => Number(n || 0).toLocaleString('ru-RU',
+                {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const L = [];
+            L.push(`${c.display_name} · ${c.broker || '—'}${c.request_no ? ' · ' + c.request_no : ''}` +
+                   `${c.sent_at ? ' · ' + c.sent_at.slice(0, 10) : ''}`);
+            L.push('');
+            L.push(`Пришло на счёт: ${money(c.sources_rub)} ₽`);
+            (d.composition || []).forEach(x => {
+                const who = x.wl ? `${x.wl} ${x.merchant || ''}${x.author ? ' · ' + x.author : ''}`
+                          : (x.deal_id ? `#${x.deal_id} ${x.client_name || ''}` : 'сделка не привязана');
+                L.push(`  ${(x.operation_date || '').slice(0, 10)}  ${money(x.amount_rub)} ₽` +
+                       `  →  ${money(x.usdt)} USDT   ${who.trim()}`);
+            });
+            L.push('');
+            L.push(`Удержано:   ${money(c.held_rub)} ₽`);
+            L.push(`Отправлено: ${money(c.sent_rub)} ₽ по курсу ${c.rate_rub_usdt || '—'}`);
+            L.push(`Ожидали:    ${money(c.expected_usdt)} USDT`);
+            L.push(`Получили:   ${money(c.received_usdt)} USDT   (Δ ${money(c.delta_usdt)})`);
+            if ((d.txs || []).length) {
+                L.push('');
+                L.push('Приход USDT:');
+                d.txs.forEach(t => {
+                    L.push(`  ${money(t.amount_usdt)} USDT`);
+                    L.push(`  хеш:     ${t.tx_hash}`);
+                    if (t.to_address) L.push(`  кошелёк: ${t.to_address}`);
+                });
+            }
+            return L.join('\n');
+        }
+
+        async function copyConversionSummary(btn) {
+            const text = window._convSummary || '';
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch (e) {
+                // clipboard недоступен без https/жеста — падать не должны
+                const ta = document.createElement('textarea');
+                ta.value = text; document.body.appendChild(ta); ta.select();
+                document.execCommand('copy'); ta.remove();
+            }
+            const was = btn.textContent;
+            btn.textContent = '✅ Скопировано';
+            setTimeout(() => { btn.textContent = was; }, 1500);
+        }
+
         async function showConversion(id) {
             const d = await (await fetch(`/api/conversions/${id}`)).json();
             if (!d.success) return;
@@ -9532,8 +9580,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const done = c.status === 'received';
             const txs = d.txs.map(t => `<div style="font-family:monospace; font-size:0.85rem">
                 ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT</div>`).join('');
+            // Сводку часто нужно переслать текстом — чтобы ставить задачи
+            // по следующей конвертации, не пересказывая цифры руками
+            window._convSummary = buildConversionSummary(c, d);
             document.getElementById('conversionModalBody').innerHTML = `
-                <div class="card-title">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                <div style="display:flex; align-items:center; gap:10px">
+                    <div class="card-title" style="flex:1">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                    <button class="btn btn-secondary btn-sm" onclick="copyConversionSummary(this)">📋 Копировать</button>
+                </div>
                 <pre style="background:#f8fafc; padding:12px; border-radius:8px; font-size:0.9rem">Поступления   ${cnvNum(c.sources_rub)} ₽
 Удержано      ${cnvNum(c.held_rub)} ₽   ${cnvHeldLabel(c)}
 Отправлено    ${cnvNum(c.sent_rub)} ₽   @ ${c.rate_rub_usdt || '—'}
