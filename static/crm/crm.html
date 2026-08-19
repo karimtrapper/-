@@ -2315,9 +2315,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     function rxConvCell(c){
       if(!c) return '<span class="rx-muted">—</span>';
       const label = c.status==='received' ? '✅' : '🚚';
-      const usdt = c.usdt!=null ? ` · $ ${rxFmt(c.usdt)}` : '';
-      return `<span class="num" style="font-size:12px" title="${c.broker||''} ${c.request_no||''} @ ${c.rate_rub_usdt||'—'}">`
-           + `${label} ${c.display_name}${usdt}</span>`;
+      const usdt = c.usdt!=null ? `$ ${rxFmt(c.usdt)}` : 'ждём USDT';
+      // Кликабельно: «обеспечено» без росписи не проверить — по клику
+      // открывается пачка целиком (состав, курс, хеш, кошелёк)
+      return `<a href="#" class="num" style="font-size:12px; text-decoration:none"
+                 onclick="event.stopPropagation(); rxOpenConversion(${c.id}); return false"
+                 title="Открыть пачку: ${c.broker||''} ${c.request_no||''} @ ${c.rate_rub_usdt||'—'}">
+                ${label} ${c.display_name}</a>
+              <div class="rx-muted" style="font-size:11px">${c.broker||''} @ ${c.rate_rub_usdt||'—'} · ${usdt}</div>`;
+    }
+
+    // Карточка пачки живёт в секции «Конвертации», но модалка глобальная —
+    // из реестра открываем её же, чтобы роспись была одна и та же
+    function rxOpenConversion(id){
+      if (typeof showConversion === 'function') showConversion(id);
     }
 
     function rxRenderDeals(list){
