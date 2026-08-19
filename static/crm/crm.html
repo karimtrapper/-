@@ -9527,6 +9527,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             : (x.deal_id ? '#' + x.deal_id + ' ' + (x.client_name || '')
                                 : '<span style="color:#94a3b8">⏳ сделки нет</span>')}</td>
             </tr>`).join('');
+            // Пачка получена — форму привязки прячем: второй хеш здесь нужен только
+            // если брокер дробит выдачу, а открытое поле провоцирует лишний ввод
+            const done = c.status === 'received';
             const txs = d.txs.map(t => `<div style="font-family:monospace; font-size:0.85rem">
                 ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT</div>`).join('');
             document.getElementById('conversionModalBody').innerHTML = `
@@ -9544,14 +9547,26 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <th>Дата</th><th>Плательщик</th><th>₽</th><th>USDT</th><th>Сделка</th>
                 </tr></thead><tbody>${comp}</tbody></table>
                 ${txs ? '<div class="form-label">Приходы USDT</div>' + txs : ''}
-                <div class="form-group" style="margin-top:1rem">
-                    <label class="form-label">Привязать приход USDT</label>
-                    <input class="form-control" id="convTxHash" placeholder="Хеш транзакции">
-                    <input class="form-control" id="convTxAmt" type="number" step="0.0001"
-                           placeholder="Сумма USDT (пусто — возьмём из TronScan)" style="margin-top:6px">
+                ${done ? `
+                <div style="margin-top:1rem; padding:10px; background:#ecfdf5; border-radius:8px; color:#065f46">
+                    ✅ Пачка закрыта: USDT получен и разнесён по сделкам${
+                        Math.abs(c.delta_usdt) > 0.01
+                            ? ` <span style="color:#b45309">(Δ ${cnvNum(c.delta_usdt)} USDT —
+                                брокер отдал ${c.delta_usdt < 0 ? 'меньше' : 'больше'} ожидаемого)</span>` : ''}
                 </div>
-                <button class="btn btn-primary" style="width:100%" onclick="attachConvTx(${id})">
-                    Привязать и разнести по сделкам</button>`;
+                <button class="btn btn-secondary" style="width:100%; margin-top:8px"
+                        onclick="document.getElementById('convAttachBox').style.display='block'; this.style.display='none'">
+                    ➕ Брокер дослал ещё приход</button>` : ''}
+                <div id="convAttachBox" style="display:${done ? 'none' : 'block'}">
+                    <div class="form-group" style="margin-top:1rem">
+                        <label class="form-label">Привязать приход USDT</label>
+                        <input class="form-control" id="convTxHash" placeholder="Хеш транзакции">
+                        <input class="form-control" id="convTxAmt" type="number" step="0.0001"
+                               placeholder="Сумма USDT (пусто — возьмём из TronScan)" style="margin-top:6px">
+                    </div>
+                    <button class="btn btn-primary" style="width:100%" onclick="attachConvTx(${id})">
+                        Привязать и разнести по сделкам</button>
+                </div>`;
             document.getElementById('conversionModal').classList.add('active');
         }
 
