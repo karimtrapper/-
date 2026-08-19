@@ -722,3 +722,42 @@ def test_дата_отправки_берётся_из_списания(cli, inc
     }).get_json()['conversion']
     assert conv['sent_at'][:10] == '2026-08-11'   # operation_date списания
     cli.delete(f"/api/conversions/{conv['id']}")
+
+
+def test_пачку_можно_поправить_не_пересоздавая(cli, incomes, monkeypatch):
+    """Опечатка в курсе или дате не должна стоить пересоздания пачки.
+
+    Пересоздание снимает доли USDT со сделок и обнуляет привязку прихода —
+    цена опечатки несоразмерна.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 2265.0)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 86.15, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash})
+
+    r = cli.put(f"/api/conversions/{conv['id']}", json={
+        'sent_at': '2026-08-17', 'rate_rub_usdt': 86.20, 'request_no': '93'})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    upd = r.get_json()['conversion']
+    assert upd['sent_at'][:10] == '2026-08-17'
+    assert upd['rate_rub_usdt'] == 86.20
+    assert upd['request_no'] == '93'
+    # Привязка прихода и статус не пострадали
+    assert upd['received_usdt'] == 2265.0
+    assert upd['status'] == 'received'
+
+    # Приход остался привязан именно к этой пачке
+    card = cli.get(f"/api/conversions/{conv['id']}").get_json()
+    assert card['txs'][0]['tx_hash'] == tx_hash
+    assert card['txs'][0]['amount_usdt'] == 2265.0
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()

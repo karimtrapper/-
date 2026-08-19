@@ -5391,6 +5391,47 @@ def create_conversion():
         db.close()
 
 
+@app.route('/api/conversions/<int:conv_id>', methods=['PUT'])
+def update_conversion(conv_id):
+    """Правка пачки: брокер, заявка, курс, дата, отправленная сумма, кошелёк.
+
+    Состав не трогаем — для него есть отдельные ручки. Пересоздавать пачку
+    из-за опечатки в курсе нельзя: удаление снимает доли USDT со сделок.
+    """
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        data = request.get_json(silent=True) or {}
+        try:
+            if 'broker' in data:
+                conv.broker = (data['broker'] or '').strip()[:100] or None
+            if 'request_no' in data:
+                conv.request_no = (data['request_no'] or '').strip()[:60] or None
+            if 'rate_rub_usdt' in data:
+                conv.rate_rub_usdt = float(data['rate_rub_usdt']) if data['rate_rub_usdt'] else None
+            if 'amount_rub_sent' in data:
+                conv.amount_rub_sent = float(data['amount_rub_sent']) if data['amount_rub_sent'] else None
+            if 'held_percent' in data:
+                conv.held_percent = float(data['held_percent'])
+            if 'held_fixed_rub' in data:
+                conv.held_fixed_rub = float(data['held_fixed_rub'])
+            if 'wallet_id' in data:
+                conv.wallet_id = data['wallet_id'] or None
+            if 'notes' in data:
+                conv.notes = (data['notes'] or '').strip() or None
+            if 'sent_at' in data:
+                conv.sent_at = _parse_sent_at(data['sent_at'])
+        except (TypeError, ValueError) as e:
+            return jsonify({'success': False, 'error': f'Некорректные данные: {e}'}), 400
+        db.commit()
+        db.refresh(conv)
+        return jsonify({'success': True, 'conversion': conv.to_dict()})
+    finally:
+        db.close()
+
+
 @app.route('/api/conversions/<int:conv_id>', methods=['DELETE'])
 def delete_conversion(conv_id):
     """Удалить пачку — поступления возвращаются в несконвертированные."""

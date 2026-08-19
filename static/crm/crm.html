@@ -9553,6 +9553,29 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             return L.join('\n');
         }
 
+        // Правка пачки без пересоздания: удаление сняло бы доли USDT со сделок
+        async function editConversion(id) {
+            const d = await (await fetch(`/api/conversions/${id}`)).json();
+            if (!d.success) return;
+            const c = d.conversion;
+            const date = prompt('Дата отправки брокеру (ГГГГ-ММ-ДД):',
+                                (c.sent_at || '').slice(0, 10));
+            if (date === null) return;
+            const rate = prompt('Курс ₽/USDT:', c.rate_rub_usdt || '');
+            if (rate === null) return;
+            const req = prompt('Заявка / поручение:', c.request_no || '');
+            if (req === null) return;
+            const r = await fetch(`/api/conversions/${id}`, {method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({sent_at: date || null,
+                                      rate_rub_usdt: Number(rate) || null,
+                                      request_no: req})});
+            const res = await r.json();
+            if (!res.success) return alert(res.error || 'Не удалось сохранить');
+            showConversion(id);
+            loadConversions();
+        }
+
         async function copyConversionSummary(btn) {
             const text = window._convSummary || '';
             try {
@@ -9595,6 +9618,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('conversionModalBody').innerHTML = `
                 <div style="display:flex; align-items:center; gap:10px">
                     <div class="card-title" style="flex:1">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                    <button class="btn btn-secondary btn-sm" onclick="editConversion(${id})">✏️</button>
                     <button class="btn btn-secondary btn-sm" onclick="copyConversionSummary(this)">📋 Копировать</button>
                 </div>
                 <pre style="background:#f8fafc; padding:12px; border-radius:8px; font-size:0.9rem">Поступления   ${cnvNum(c.sources_rub)} ₽
