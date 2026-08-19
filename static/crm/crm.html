@@ -687,6 +687,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="closing">🔒 Закрытие</button>
             <button class="nav-tab" data-section="exchangers">🔁 Обменники</button>
             <button class="nav-tab" data-section="balance">Баланс</button>
+            <button class="nav-tab" data-section="incomes">💵 Поступления</button>
+            <button class="nav-tab" data-section="conversions">🔄 Конвертации</button>
             <button class="nav-tab" data-section="reimbursements">Возмещения</button>
             <button class="nav-tab" data-section="transactions">Транзакции</button>
             <button class="nav-tab" data-section="managers">Менеджеры</button>
@@ -1829,6 +1831,38 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         </section>
 
         <!-- Transactions Section -->
+        <!-- Поступления: рублёвые приходы на счёт и их конвертация -->
+        <section id="incomes" class="section">
+            <div class="card">
+                <div class="card-title">Поступления на счёт</div>
+                <div id="incomesSummary" style="margin-bottom:1rem; font-size:1.05rem;"></div>
+                <table class="table">
+                    <thead><tr>
+                        <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th>
+                        <th>Сделка</th><th>Конвертация</th>
+                    </tr></thead>
+                    <tbody id="incomesTable"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Конвертации: пачки «рубли → брокер → USDT» -->
+        <section id="conversions" class="section">
+            <div class="card">
+                <div class="card-title">Конвертации</div>
+                <button class="btn btn-primary" onclick="openConversionForm()"
+                        style="margin-bottom:1rem;">+ Новая пачка</button>
+                <table class="table">
+                    <thead><tr>
+                        <th>CNV</th><th>Дата</th><th>Брокер</th><th>Заявка</th>
+                        <th>Отправлено ₽</th><th>Курс</th><th>Ожидали</th>
+                        <th>Получили</th><th>Δ</th><th>Статус</th>
+                    </tr></thead>
+                    <tbody id="conversionsTable"></tbody>
+                </table>
+            </div>
+        </section>
+
         <section id="transactions" class="section">
             <div class="card">
                 <div class="card-title">Мониторинг кошельков (TronScan API)</div>
@@ -2713,6 +2747,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     </div>
 
     <!-- Add Wallet Modal -->
+    <!-- Конвертация: создание пачки и её карточка -->
+    <div id="conversionModal" class="modal">
+        <div class="modal-content" style="max-width:820px;">
+            <span class="close" onclick="document.getElementById('conversionModal').classList.remove('active')">&times;</span>
+            <div id="conversionModalBody"></div>
+        </div>
+    </div>
+
     <div id="addWalletModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeAddWalletModal()">&times;</span>
@@ -3190,7 +3232,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         if (editingDealId !== null) cancelEditMode();
                         loadCreateForm();
                         break;
-                    case 'reimbursements': loadReimbursements(); break;
+                    case 'incomes': loadIncomes(); break;
+                case 'conversions': loadConversions(); break;
+                case 'reimbursements': loadReimbursements(); break;
                     case 'transactions': loadTransactions(); break;
                     case 'managers': loadManagers(); loadWebhookConfig(); break;
                     case 'kyc': loadKYCSection(); break;
@@ -4154,7 +4198,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             ? `<p><strong>Хэши Pay-In (${deal.payin_tx_hashes.length} части):</strong><br>` + deal.payin_tx_hashes.map(t =>
                                 `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
                               ).join('') + `</p>`
-                            : (deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
+                            : ''}
+                            <div id="dealConversionRow"></div>
+                            ${(deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
                         <div id="payinTxSharedBox" style="margin-top:0.25rem;"></div>
                         
                         ${isDoverka ? `
@@ -4351,6 +4397,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     `;
                     document.getElementById('dealModal').classList.add('active');
+                    loadDealConversion(dealId);
                     // Реестр переводов подтягиваем после отрисовки: карточка не
                     // должна ждать сеть, а «что ещё оплачено этим хэшем» дозагрузится
                     loadPayinTxShared(deal);
@@ -9100,6 +9147,234 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // Хэши, уже учтённые в прошлых возмещениях — помечаем, чтобы не взять дважды
         let usedTxHashes = new Set();
         let outgoingWalletsFailed = 0;   // кошельки, не ответившие из-за лимита TronScan
+
+        // ── Поступления и конвертации ──────────────────────────────────────
+        // Ядро: по каждому рублёвому приходу видно, сконвертирован он или лежит,
+        // а по пачке — какие приходы в неё вошли и сколько USDT пришлось на каждый.
+
+        const cnvNum = v => (v === null || v === undefined || isNaN(v)) ? '—'
+            : Number(v).toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+        // Когда отправка известна фактом, ставка выводится обратным счётом:
+        // по выписке она гуляла (0,2006 % 11.08 против 0,4005 % 13.08)
+        // Откуда взято удержание: строки выписки → расчёт по ставке → разница
+        const cnvHeldLabel = c => {
+            if (c.has_debits) return '(строки выписки)';
+            if (c.amount_rub_sent) return '(факт выписки, ' + cnvHeldPct(c) + ')';
+            return '(' + c.held_percent + '% + ' + c.held_fixed_rub + ')';
+        };
+
+        const cnvHeldPct = c => {
+            const base = c.sources_rub || 0;
+            if (!base) return '—';
+            const pct = (c.held_rub - (c.held_fixed_rub || 0)) / base * 100;
+            return pct.toFixed(4) + '% + ' + (c.held_fixed_rub || 0);
+        };
+
+        // Конвертация в карточке сделки: либо пачка с курсом и долей USDT,
+        // либо «ждёт конвертации» — это и объясняет пустую прибыль
+        async function loadDealConversion(dealId) {
+            const box = document.getElementById('dealConversionRow');
+            if (!box) return;
+            try {
+                const d = await (await fetch(`/api/deals/${dealId}/conversions`)).json();
+                if (!d.success || !d.has_incomes) return;
+                if (!d.conversions.length) {
+                    box.innerHTML = '<p><strong>Конвертация:</strong> ' +
+                        '<span style="color:#f59e0b">⏳ ждёт конвертации</span></p>';
+                    return;
+                }
+                box.innerHTML = '<p><strong>Конвертация:</strong> ' + d.conversions.map(c =>
+                    `<a href="#" onclick="showConversion(${c.conversion_id});return false">` +
+                    `${c.display_name}</a> · ${c.broker || ''} · курс ${c.rate_rub_usdt || '—'} · ` +
+                    `<strong style="color:#059669">${cnvNum(c.usdt)} USDT</strong>`
+                ).join('<br>') + '</p>';
+            } catch (e) { /* карточку это ломать не должно */ }
+        }
+
+        async function loadIncomes() {
+            const d = await (await fetch('/api/sber-incomes?all=1&with_conversion=1')).json();
+            if (!d.success) return;
+            document.getElementById('incomesSummary').innerHTML =
+                `<b>На счёте не сконвертировано: ${cnvNum(d.unconverted_rub)} ₽</b>`;
+            document.getElementById('incomesTable').innerHTML = d.incomes.map(i => {
+                const c = Array.isArray(i.conversion) ? i.conversion[0] : i.conversion;
+                let conv;
+                if (!c) {
+                    conv = '<span style="color:#94a3b8">⏳ не сконвертировано</span>';
+                } else if ((i.free_rub || 0) > 0.01) {
+                    conv = `<a href="#" onclick="showConversion(${c.id});return false">` +
+                           `🔄 частично: ${cnvNum(i.converted_rub)} из ${cnvNum(i.amount_rub)} ₽</a>`;
+                } else {
+                    conv = `<a href="#" onclick="showConversion(${c.id});return false">` +
+                           `✅ ${c.display_name} · ${c.broker || ''} · ${c.rate_rub_usdt || ''}</a>`;
+                }
+                // Конвертируется зачисленное на счёт, а не то, что заплатил клиент:
+                // у СБП банк удерживает комиссию эквайринга до зачисления
+                const acq = (i.gross_rub || 0) - (i.amount_rub || 0);
+                const sum = `${cnvNum(i.amount_rub)} ₽` + (acq > 0.01
+                    ? `<div style="font-size:0.8rem;color:#94a3b8">клиент платил ${cnvNum(i.gross_rub)}</div>` : '');
+                return `<tr>
+                    <td>${(i.operation_date || '').slice(0, 10)}</td>
+                    <td>${i.payer || '—'}</td>
+                    <td>${sum}</td>
+                    <td>${i.kind === 'acquiring' ? 'СБП' : 'реквизиты'}</td>
+                    <td>${i.claimed_deal_id ? '#' + i.claimed_deal_id : '—'}</td>
+                    <td>${conv}</td></tr>`;
+            }).join('');
+        }
+
+        async function loadConversions() {
+            const d = await (await fetch('/api/conversions')).json();
+            if (!d.success) return;
+            document.getElementById('conversionsTable').innerHTML = d.conversions.map(c => `
+                <tr onclick="showConversion(${c.id})" style="cursor:pointer">
+                    <td>${c.display_name}</td>
+                    <td>${(c.sent_at || c.created_at || '').slice(0, 10)}</td>
+                    <td>${c.broker || '—'}</td><td>${c.request_no || '—'}</td>
+                    <td>${cnvNum(c.sent_rub)} ₽</td><td>${c.rate_rub_usdt || '—'}</td>
+                    <td>${cnvNum(c.expected_usdt)}</td><td>${cnvNum(c.received_usdt)}</td>
+                    <td>${c.delta_usdt ? cnvNum(c.delta_usdt) : '—'}</td>
+                    <td>${c.status || '—'}</td></tr>`).join('')
+                || '<tr><td colspan="10">Пачек пока нет</td></tr>';
+        }
+
+        async function openConversionForm() {
+            const [d, dd] = await Promise.all([
+                (await fetch('/api/sber-incomes?all=1&with_conversion=1')).json(),
+                (await fetch('/api/sber-debits')).json(),
+            ]);
+            const free = (d.incomes || []).filter(i => (i.free_rub || 0) > 0.01);
+            // Расход по конвертации уходит тремя строками — отправка брокеру,
+            // комиссия процентом и фикс. Отмечаем все три: тогда и отправка,
+            // и удержание берутся фактом, а не считаются по ставке
+            const debitRows = (dd.debits || []).map(x => `
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                    <input type="checkbox" class="convDeb" value="${x.id}">
+                    <span style="flex:1">${(x.operation_date || '').slice(0, 10)} ·
+                        ${x.payee || '—'} · ${cnvNum(x.free_rub)} ₽
+                        ${x.doc_number ? '· поруч. ' + x.doc_number : ''}
+                        <b style="color:${x.kind === 'fee' ? '#b45309' : '#0369a1'}">
+                            ${x.kind === 'fee' ? 'комиссия' : 'брокеру'}</b></span>
+                </label>`).join('');
+            const rows = free.map(i => `
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+                    <input type="checkbox" class="convSrc" value="${i.id}">
+                    <span style="flex:1">${(i.operation_date || '').slice(0, 10)} ·
+                        ${i.payer || '—'} · свободно ${cnvNum(i.free_rub)} ₽
+                        ${i.claimed_deal_id ? '· сделка #' + i.claimed_deal_id : '· ⏳ сделки нет'}</span>
+                    <input type="number" step="0.01" class="form-control convSrcAmt"
+                           value="${i.free_rub}" style="width:140px">
+                </label>`).join('');
+            document.getElementById('conversionModalBody').innerHTML = `
+                <div class="card-title">Новая пачка конвертации</div>
+                <div class="form-group"><label class="form-label">Брокер</label>
+                    <input class="form-control" id="convBroker" placeholder="БРАЙТУМ/TRADEX"></div>
+                <div class="form-group"><label class="form-label">Заявка / поручение</label>
+                    <input class="form-control" id="convRequest" placeholder="заявка №46"></div>
+                <div class="form-group"><label class="form-label">Курс ₽/USDT</label>
+                    <input class="form-control" id="convRate" type="number" step="0.0001" placeholder="83.35"></div>
+                <div class="form-group" style="display:flex; gap:8px;">
+                    <div style="flex:1"><label class="form-label">Удержание, %</label>
+                        <input class="form-control" id="convHeldPct" type="number" step="0.01" value="0.3"></div>
+                    <div style="flex:1"><label class="form-label">Фикс, ₽</label>
+                        <input class="form-control" id="convHeldFix" type="number" step="1" value="40"></div>
+                </div>
+                <div class="form-group"><label class="form-label">Отправлено брокеру, ₽ (факт выписки — главнее расчёта)</label>
+                    <input class="form-control" id="convSent" type="number" step="0.01" placeholder="можно оставить пустым"></div>
+                <div class="form-group"><label class="form-label">Поступления в пачку</label>
+                    ${rows || '<div style="color:#94a3b8">Несконвертированных приходов нет</div>'}</div>
+                <div class="form-group"><label class="form-label">Списания со счёта (отправка + комиссии)</label>
+                    ${debitRows || '<div style="color:#94a3b8">Свободных списаний нет — заполни «Отправлено» вручную</div>'}</div>
+                <button class="btn btn-primary" style="width:100%" onclick="saveConversion()">Создать пачку</button>`;
+            document.getElementById('conversionModal').classList.add('active');
+        }
+
+        async function saveConversion() {
+            const sources = [...document.querySelectorAll('.convSrc:checked')].map(cb => ({
+                sber_income_id: Number(cb.value),
+                amount_rub: Number(cb.parentElement.querySelector('.convSrcAmt').value),
+            }));
+            if (!sources.length) return alert('Отметь хотя бы одно поступление');
+            const body = {
+                broker: document.getElementById('convBroker').value,
+                request_no: document.getElementById('convRequest').value,
+                rate_rub_usdt: Number(document.getElementById('convRate').value) || null,
+                held_percent: Number(document.getElementById('convHeldPct').value),
+                held_fixed_rub: Number(document.getElementById('convHeldFix').value),
+                amount_rub_sent: Number(document.getElementById('convSent').value) || null,
+                sources, sent_at: true,
+                debits: [...document.querySelectorAll('.convDeb:checked')]
+                    .map(cb => ({sber_debit_id: Number(cb.value)})),
+            };
+            let r = await fetch('/api/conversions', {method: 'POST',
+                headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+            let d = await r.json();
+            if (!d.success && r.status === 409) {
+                // Перебор над остатком счёта бывает осознанным (кейс 14.08) — спрашиваем
+                if (!confirm(d.error + '\n\nВсё равно создать?')) return;
+                body.force = true;
+                r = await fetch('/api/conversions', {method: 'POST',
+                    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+                d = await r.json();
+            }
+            if (!d.success) return alert(d.error || 'Не удалось создать пачку');
+            document.getElementById('conversionModal').classList.remove('active');
+            loadConversions();
+        }
+
+        async function showConversion(id) {
+            const d = await (await fetch(`/api/conversions/${id}`)).json();
+            if (!d.success) return;
+            const c = d.conversion;
+            const comp = d.composition.map(x => `<tr>
+                <td>${(x.operation_date || '').slice(0, 10)}</td>
+                <td>${x.payer || '—'}</td>
+                <td>${cnvNum(x.amount_rub)} ₽</td>
+                <td>${cnvNum(x.usdt)} USDT</td>
+                <td>${x.deal_id ? '#' + x.deal_id + ' ' + (x.client_name || '')
+                                : '<span style="color:#94a3b8">⏳ сделки нет</span>'}</td>
+            </tr>`).join('');
+            const txs = d.txs.map(t => `<div style="font-family:monospace; font-size:0.85rem">
+                ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT</div>`).join('');
+            document.getElementById('conversionModalBody').innerHTML = `
+                <div class="card-title">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                <pre style="background:#f8fafc; padding:12px; border-radius:8px; font-size:0.9rem">Поступления   ${cnvNum(c.sources_rub)} ₽
+Удержано      ${cnvNum(c.held_rub)} ₽   ${cnvHeldLabel(c)}
+Отправлено    ${cnvNum(c.sent_rub)} ₽   @ ${c.rate_rub_usdt || '—'}
+Ожидали       ${cnvNum(c.expected_usdt)} USDT
+Получили      ${cnvNum(c.received_usdt)} USDT
+Δ             ${cnvNum(c.delta_usdt)} USDT${c.has_debits ? `
+${Math.abs(c.debits_delta_rub) < 0.01
+    ? '✅ приходы сошлись со списаниями по счёту'
+    : '⚠️ расхождение по счёту: ' + cnvNum(c.debits_delta_rub) + ' ₽'}` : ''}</pre>
+                <table class="table"><thead><tr>
+                    <th>Дата</th><th>Плательщик</th><th>₽</th><th>USDT</th><th>Сделка</th>
+                </tr></thead><tbody>${comp}</tbody></table>
+                ${txs ? '<div class="form-label">Приходы USDT</div>' + txs : ''}
+                <div class="form-group" style="margin-top:1rem">
+                    <label class="form-label">Привязать приход USDT</label>
+                    <input class="form-control" id="convTxHash" placeholder="Хеш транзакции">
+                    <input class="form-control" id="convTxAmt" type="number" step="0.0001"
+                           placeholder="Сумма USDT (пусто — возьмём из TronScan)" style="margin-top:6px">
+                </div>
+                <button class="btn btn-primary" style="width:100%" onclick="attachConvTx(${id})">
+                    Привязать и разнести по сделкам</button>`;
+            document.getElementById('conversionModal').classList.add('active');
+        }
+
+        async function attachConvTx(id) {
+            const hash = document.getElementById('convTxHash').value.trim();
+            if (!hash) return alert('Нужен хеш прихода');
+            const r = await fetch(`/api/conversions/${id}/txs`, {method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({tx_hash: hash,
+                    amount_usdt: Number(document.getElementById('convTxAmt').value) || null})});
+            const d = await r.json();
+            if (!d.success) return alert(d.error || 'Не удалось привязать приход');
+            showConversion(id);
+            loadConversions();
+        }
 
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';

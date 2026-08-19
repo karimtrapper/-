@@ -900,6 +900,185 @@ class PayinTxUse(Base):
     tx = relationship('PayinTx', back_populates='uses')
 
 
+class ConversionStatus(str, Enum):
+    DRAFT = 'draft'          # состав собираем, рубли ещё не ушли
+    SENT = 'sent'            # рубли ушли брокеру, ждём USDT
+    RECEIVED = 'received'    # USDT пришёл, доли разнесены
+    CANCELLED = 'cancelled'  # не состоялась — поступления вернулись в свободные
+
+
+class Conversion(Base):
+    """Пачка конвертации: рублёвые поступления → рубли брокеру → USDT на кошелёк.
+
+    Зеркало Reimbursement, только на входе: возмещение раздаёт исходящий перевод
+    по сделкам, конвертация собирает входящие рубли и раздаёт полученный USDT.
+
+    Без неё связь «эти рубли → этот приход USDT» жила только в голове операциониста.
+    Доли PayinTxUse вбивались руками, и один перевод дважды съедал остаток: 1733 USDT
+    записались целиком на #469 (её доля 330,28), реестр решил, что перевод разобран,
+    и спрятал хеш; следом #481 забрала остаток 1402,72 вместо своих 416,02.
+    """
+    __tablename__ = 'conversions'
+    id = Column(Integer, primary_key=True)
+    broker = Column(String(100))
+    request_no = Column(String(60))            # «заявка №46», «поруч. 67»
+    sent_at = Column(DateTime)
+    # Удержание — наша комиссия с конвертации (налоги + вознаграждение реферала,
+    # который провёл сделку), а НЕ расход. Внутрь здесь не раскладываем.
+    # Ставка правится: по факту выписки сверх фикса выходило и 0,2006 % (11.08),
+    # и 0,4005 % (13.08), формулой это не выводится.
+    held_percent = Column(Float, default=0.3)
+    held_fixed_rub = Column(Float, default=40.0)
+    amount_rub_sent = Column(Float)            # факт из выписки; пусто → считаем по ставке
+    rate_rub_usdt = Column(Float)
+    wallet_id = Column(Integer, ForeignKey('wallets.id'), nullable=True)
+    status = Column(SQLEnum(ConversionStatus), default=ConversionStatus.DRAFT)
+    notes = Column(Text)
+    created_by = Column(String(100))
+    created_at = Column(DateTime, default=datetime.utcnow)
+    received_at = Column(DateTime)
+    sources = relationship('ConversionSource', back_populates='conversion',
+                           cascade='all, delete-orphan')
+    txs = relationship('ConversionTx', back_populates='conversion',
+                       cascade='all, delete-orphan')
+    debits = relationship('ConversionDebit', back_populates='conversion',
+                          cascade='all, delete-orphan')
+
+    @property
+    def display_name(self):
+        return f'CNV-{self.id:04d}' if self.id else 'CNV-новая'
+
+    def sources_rub(self):
+        """Σ привязанных поступлений (G)."""
+        return round(sum(s.amount_rub or 0 for s in (self.sources or [])), 2)
+
+    def _debits_by_kind(self, kind):
+        """Σ привязанных списаний нужного вида. Вид берём у самого платежа."""
+        total = 0.0
+        for link in (self.debits or []):
+            deb = link.debit
+            if deb is not None and (deb.kind or 'broker') == kind:
+                total += link.amount_rub or 0
+        return round(total, 2)
+
+    def has_debits(self):
+        return bool(self.debits)
+
+    def held_rub(self):
+        """Удержано нами: Σ списаний-комиссий из выписки.
+
+        Пока списания не привязаны — падаем на расчёт по ставке (дефолт 0,3 % + 40)
+        или на разницу, если отправка задана вручную.
+        """
+        if self.has_debits():
+            return self._debits_by_kind('fee')
+        g = self.sources_rub()
+        if not g:
+            return 0.0   # пустая пачка: фикс без состава давал «отправлено −40 ₽»
+        if self.amount_rub_sent:
+            return round(g - self.amount_rub_sent, 2)
+        return round(g * (self.held_percent or 0) / 100 + (self.held_fixed_rub or 0), 2)
+
+    def sent_rub(self):
+        """Отправлено брокеру (S). Факт выписки главнее любого расчёта."""
+        if self.has_debits():
+            return self._debits_by_kind('broker')
+        if self.amount_rub_sent:
+            return round(self.amount_rub_sent, 2)
+        return round(self.sources_rub() - self.held_rub(), 2)
+
+    def debits_delta_rub(self):
+        """Приходы минус всё, что ушло со счёта. Должно сходиться в ноль."""
+        if not self.has_debits():
+            return 0.0
+        spent = round(sum(l.amount_rub or 0 for l in self.debits), 2)
+        return round(self.sources_rub() - spent, 2)
+
+    def expected_usdt(self):
+        rate = self.rate_rub_usdt or 0
+        return round(self.sent_rub() / rate, 4) if rate else 0.0
+
+    def received_usdt(self):
+        """Σ привязанных приходов USDT (R)."""
+        return round(sum(t.amount_usdt or 0 for t in (self.txs or [])), 4)
+
+    def delta_usdt(self):
+        return round(self.received_usdt() - self.expected_usdt(), 4)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'display_name': self.display_name,
+            'broker': self.broker, 'request_no': self.request_no,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None,
+            'held_percent': self.held_percent, 'held_fixed_rub': self.held_fixed_rub,
+            'held_rub': self.held_rub(),
+            'sources_rub': self.sources_rub(), 'sent_rub': self.sent_rub(),
+            # Отдаём отдельно: по нему фронт понимает, что удержание — факт
+            # выписки, а не расчёт по ставке
+            'amount_rub_sent': self.amount_rub_sent,
+            'has_debits': self.has_debits(),
+            'debits_delta_rub': self.debits_delta_rub(),
+            'rate_rub_usdt': self.rate_rub_usdt,
+            'expected_usdt': self.expected_usdt(),
+            'received_usdt': self.received_usdt(),
+            'delta_usdt': self.delta_usdt(),
+            'wallet_id': self.wallet_id,
+            'status': self.status.value if self.status else None,
+            'notes': self.notes, 'created_by': self.created_by,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'received_at': self.received_at.isoformat() if self.received_at else None,
+        }
+
+
+class ConversionSource(Base):
+    """Какой долей рублёвое поступление вошло в пачку.
+
+    Долями, а не целиком: 200 000 от Имайкиной закрывали часть сделки на 800 000,
+    а 14.08 конвертировали больше, чем пришло, добирая из буфера счёта.
+    """
+    __tablename__ = 'conversion_sources'
+    __table_args__ = (UniqueConstraint('conversion_id', 'sber_income_id',
+                                       name='uq_conversion_source'),)
+    id = Column(Integer, primary_key=True)
+    conversion_id = Column(Integer, ForeignKey('conversions.id'), nullable=False, index=True)
+    sber_income_id = Column(Integer, ForeignKey('sber_incomes.id'), nullable=False, index=True)
+    amount_rub = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    conversion = relationship('Conversion', back_populates='sources')
+
+
+class ConversionTx(Base):
+    """Каким приходом USDT закрыта пачка. Брокер может дробить выдачу на несколько."""
+    __tablename__ = 'conversion_txs'
+    __table_args__ = (UniqueConstraint('conversion_id', 'payin_tx_id',
+                                       name='uq_conversion_tx'),)
+    id = Column(Integer, primary_key=True)
+    conversion_id = Column(Integer, ForeignKey('conversions.id'), nullable=False, index=True)
+    payin_tx_id = Column(Integer, ForeignKey('payin_txs.id'), nullable=False, index=True)
+    amount_usdt = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    conversion = relationship('Conversion', back_populates='txs')
+
+
+class ConversionDebit(Base):
+    """Какие списания со счёта относятся к этой пачке.
+
+    Расход приходит частями: отправка брокеру, комиссия процентом, фикс —
+    три отдельные строки выписки. Плюс саму отправку могут дробить на несколько
+    платежей. Поэтому связь «многие ко многим» долями, а не одно поле.
+    """
+    __tablename__ = 'conversion_debits'
+    __table_args__ = (UniqueConstraint('conversion_id', 'sber_debit_id',
+                                       name='uq_conversion_debit'),)
+    id = Column(Integer, primary_key=True)
+    conversion_id = Column(Integer, ForeignKey('conversions.id'), nullable=False, index=True)
+    sber_debit_id = Column(Integer, ForeignKey('sber_debits.id'), nullable=False, index=True)
+    amount_rub = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    conversion = relationship('Conversion', back_populates='debits')
+    debit = relationship('SberDebit')
+
+
 class CashAllocation(Base):
     __tablename__ = 'cash_allocations'
     id = Column(Integer, primary_key=True)
@@ -1582,6 +1761,29 @@ class SberIncome(Base):
     claimed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    def converted_rub(self):
+        """Сколько из прихода уже ушло в конвертации (отменённые не считаются).
+
+        Считаем запросом, а не по коллекции: доли добавляются и читаются в рамках
+        одного запроса, коллекция в памяти к этому моменту не перечитана —
+        остаток показывался бы старый (та же причина, что в ReimbursementTx.used_usdt).
+        """
+        from sqlalchemy import func as _f
+        from sqlalchemy.orm import object_session
+        s = object_session(self)
+        if s is not None and self.id:
+            with s.no_autoflush:
+                val = s.query(_f.sum(ConversionSource.amount_rub)).join(
+                    Conversion, ConversionSource.conversion_id == Conversion.id
+                ).filter(ConversionSource.sber_income_id == self.id,
+                         Conversion.status != ConversionStatus.CANCELLED).scalar()
+            return round(val or 0, 2)
+        return 0.0
+
+    def free_rub(self):
+        """Не сконвертировано по этому приходу."""
+        return round((self.amount_rub or 0) - self.converted_rub(), 2)
+
     def to_dict(self):
         acq = parse_sber_acquiring(self.purpose)
         net = self.amount_rub or 0
@@ -1596,9 +1798,89 @@ class SberIncome(Base):
             # Разметка потока: 'acquiring' — СБП через эквайринг, 'transfer' — реквизиты
             'kind': acq['kind'],
             'merchant': acq['merchant'],
+            # Сколько из прихода уже сконвертировано и сколько ещё лежит на счёте
+            'converted_rub': self.converted_rub(),
+            'free_rub': self.free_rub(),
             'fee_rub': round(acq['fee_rub'], 2),
             # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
             'gross_rub': round(net + acq['fee_rub'], 2),
+        }
+
+
+_FEE_PURPOSE_RE = re.compile(r'комисси', re.IGNORECASE)
+
+
+def parse_sber_debit_kind(purpose, payee=None):
+    """Что это за списание: отправка брокеру или удержанная нами комиссия.
+
+    Расход по конвертации уходит со счёта ТРЕМЯ строками — сама сумма брокеру,
+    комиссия процентом и фиксированная. Проверено на выписке: 11.08
+    144 435,47 + 290,46 + 40 = 144 765,93 (ровно зачисленное), 13.08
+    232 681 + 935,79 + 40 = 233 656,79. Поэтому «удержание» не считается
+    формулой — оно лежит в выписке отдельными платежами.
+
+    Комиссии узнаём по слову «комисси» в назначении; вид правится руками.
+    """
+    if _FEE_PURPOSE_RE.search(purpose or ''):
+        return 'fee'
+    return 'broker'
+
+
+class SberDebit(Base):
+    """Списание со счёта Сбера. Зеркало SberIncome для расходной стороны.
+
+    SberNotifier читает выписку с полем direction и уже шлёт расходы в Telegram,
+    но в CalcCRM отдавал только CREDIT. Между тем в DEBIT есть всё, что оператор
+    иначе вбивает руками: сумма, получатель (БРАЙТУМ, Кей Ту Эй), ИНН, назначение
+    и номер платёжного поручения («поруч. 67»).
+    """
+    __tablename__ = 'sber_debits'
+    id = Column(Integer, primary_key=True)
+    uuid = Column(String(64), unique=True, nullable=False, index=True)
+    operation_date = Column(String(40))
+    amount_rub = Column(Float, nullable=False)
+    payee = Column(String(255))             # получатель (rurTransfer.payeeName)
+    payee_inn = Column(String(20))
+    purpose = Column(Text)
+    doc_number = Column(String(40))         # номер платёжного поручения
+    kind = Column(String(20), default='broker')   # broker | fee
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    def __init__(self, **kw):
+        # Вид определяем сразу по назначению, если его не задали явно:
+        # иначе каждый потребитель должен помнить про парсер
+        if not kw.get('kind'):
+            kw['kind'] = parse_sber_debit_kind(kw.get('purpose'), kw.get('payee'))
+        super().__init__(**kw)
+
+    def used_rub(self):
+        """Сколько из списания уже отнесено на конвертации (кроме отменённых)."""
+        from sqlalchemy import func as _f
+        from sqlalchemy.orm import object_session
+        s = object_session(self)
+        if s is not None and self.id:
+            with s.no_autoflush:
+                val = s.query(_f.sum(ConversionDebit.amount_rub)).join(
+                    Conversion, ConversionDebit.conversion_id == Conversion.id
+                ).filter(ConversionDebit.sber_debit_id == self.id,
+                         Conversion.status != ConversionStatus.CANCELLED).scalar()
+            return round(val or 0, 2)
+        return 0.0
+
+    def free_rub(self):
+        """Не привязано к пачкам — защита от двойного учёта расхода."""
+        return round((self.amount_rub or 0) - self.used_rub(), 2)
+
+    def to_dict(self):
+        return {
+            'id': self.id, 'uuid': self.uuid,
+            'operation_date': self.operation_date,
+            'amount_rub': self.amount_rub,
+            'payee': self.payee, 'payee_inn': self.payee_inn,
+            'purpose': self.purpose, 'doc_number': self.doc_number,
+            'kind': self.kind,
+            'used_rub': self.used_rub(), 'free_rub': self.free_rub(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -4625,7 +4907,12 @@ def ingest_sber_incomes():
         return jsonify({'success': False, 'error': 'unauthorized'}), 401
     data = request.get_json(silent=True) or {}
     incomes = data.get('incomes') or []
+    # Расходы приходят тем же тиком нотификатора: списание на брокера и две
+    # комиссии — это те самые цифры, которые иначе вбиваются в пачку руками
+    debits = data.get('debits') or []
     if not isinstance(incomes, list) or len(incomes) > 500:
+        return jsonify({'success': False, 'error': 'bad payload'}), 400
+    if not isinstance(debits, list) or len(debits) > 500:
         return jsonify({'success': False, 'error': 'bad payload'}), 400
     db = get_session()
     try:
@@ -4647,8 +4934,27 @@ def ingest_sber_incomes():
                 doc_number=str(inc.get('doc_number') or '')[:40],
             ))
             created += 1
+        created_debits = 0
+        for dbt in debits:
+            uid = str(dbt.get('uuid') or '').strip()
+            amount = dbt.get('amount_rub')
+            if not uid or not amount:
+                continue
+            if db.query(SberDebit).filter(SberDebit.uuid == uid).first():
+                continue  # списание неизменяемо — обновлять нечего
+            db.add(SberDebit(
+                uuid=uid[:64],
+                operation_date=str(dbt.get('operation_date') or '')[:40],
+                amount_rub=float(amount),
+                payee=str(dbt.get('payee') or '')[:255],
+                payee_inn=str(dbt.get('payee_inn') or '')[:20],
+                purpose=str(dbt.get('purpose') or '')[:1000],
+                doc_number=str(dbt.get('doc_number') or '')[:40],
+            ))
+            created_debits += 1
         db.commit()
-        return jsonify({'success': True, 'created': created, 'received': len(incomes)})
+        return jsonify({'success': True, 'created': created, 'received': len(incomes),
+                        'created_debits': created_debits, 'received_debits': len(debits)})
     finally:
         db.close()
 
@@ -4693,6 +4999,340 @@ def get_payin_tx(tx_hash):
         session.close()
 
 
+# ── Конвертации рублёвых поступлений ────────────────────────────────────────
+
+def _attach_sources(db, conv, sources_req, force=False):
+    """Привязать поступления к пачке долями. Бросает ValueError при переборе.
+
+    Перебор над остатком счёта бывает осознанным — 14.08 конвертировали больше,
+    чем пришло, добирая из буфера, — поэтому force снимает запрет. Но молча
+    это не проходит: без флага пачка не создастся.
+    """
+    db.query(ConversionSource).filter(ConversionSource.conversion_id == conv.id).delete()
+    db.flush()
+    for item in sources_req or []:
+        try:
+            sid = int(item.get('sber_income_id'))
+        except (TypeError, ValueError):
+            raise ValueError('Некорректный id прихода')
+        inc = db.query(SberIncome).filter(SberIncome.id == sid).with_for_update().first()
+        if not inc:
+            raise ValueError(f'Приход #{sid} не найден')
+        try:
+            take = round(float(item.get('amount_rub') or 0), 2)
+        except (TypeError, ValueError):
+            raise ValueError(f'Некорректная сумма по приходу #{sid}')
+        free = inc.free_rub()
+        if not take:
+            # Сумму не задали — берём остаток. Если его нет, приход уже разнесён
+            # целиком: молча привязать ноль значит потерять ошибку оператора
+            take = free
+            if take <= 0.01 and not force:
+                raise ValueError(
+                    f'Приход {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) '
+                    f'уже сконвертирован полностью')
+        if take > free + 0.01 and not force:
+            raise ValueError(
+                f'По приходу {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) '
+                f'доступно {free:,.2f} ₽, запрошено {take:,.2f} ₽')
+        db.add(ConversionSource(conversion_id=conv.id, sber_income_id=sid, amount_rub=take))
+    db.flush()
+
+
+def _clear_conversion_payin_uses(db, conv):
+    """Снять доли PayinTxUse, проставленные этой пачкой (перед пересчётом/удалением)."""
+    tx_ids = [t.payin_tx_id for t in conv.txs]
+    if not tx_ids:
+        return
+    db.query(PayinTxUse).filter(PayinTxUse.tx_id.in_(tx_ids)).delete(synchronize_session=False)
+    db.flush()
+
+
+def _apply_conversion_shares(db, conv):
+    """Разнести полученный USDT по сделкам поступлений пачки.
+
+    Одна сделка может забрать несколько поступлений — доли суммируются.
+    Поступление без сделки пропускается: конвертировать приход, у которого сделки
+    ещё нет, разрешено (порядок «приход → конвертация → USDT → сделка»).
+    """
+    _clear_conversion_payin_uses(db, conv)
+    pairs = [(src.sber_income_id, src.amount_rub) for src in conv.sources]
+    shares = _conversion_shares(pairs, conv.received_usdt())
+    per_deal = {}
+    for sid, usdt in shares.items():
+        inc = db.query(SberIncome).get(sid)
+        if not inc or not inc.claimed_deal_id:
+            continue
+        per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 4)
+    if not per_deal or not conv.txs:
+        return
+    # Доли вешаем на первый перевод пачки: брокер обычно шлёт одним, а при дроблении
+    # разбивка по переводам роли не играет — важна сумма, пришедшаяся на сделку.
+    tx_id = conv.txs[0].payin_tx_id
+    for deal_id, amount in per_deal.items():
+        db.add(PayinTxUse(tx_id=tx_id, deal_id=deal_id, amount_usdt=amount))
+    db.flush()
+
+
+@app.route('/api/conversions/<int:conv_id>/txs', methods=['POST'])
+def attach_conversion_tx(conv_id):
+    """Привязать приход USDT к пачке и разнести доли по сделкам.
+
+    Это и есть то, ради чего сущность заводилась: доли PayinTxUse больше
+    не вводятся руками, а выводятся из состава пачки.
+    """
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        data = request.get_json(silent=True) or {}
+        h = str(data.get('tx_hash') or '').strip()
+        if not h:
+            return jsonify({'success': False, 'error': 'Нужен хеш прихода'}), 400
+        tx = db.query(PayinTx).filter(PayinTx.tx_hash == h).first()
+        if tx is None:
+            # Первый раз видим перевод — сумму берём из блокчейна, а не с рук
+            onchain = _tron_tx_amount(h)
+            try:
+                manual = float(data.get('amount_usdt') or 0)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Некорректная сумма прихода'}), 400
+            tx = PayinTx(tx_hash=h, amount_usdt=onchain if onchain is not None else manual,
+                         source='tronscan' if onchain is not None else 'manual')
+            db.add(tx)
+            db.flush()
+        try:
+            take = round(float(data.get('amount_usdt') or tx.amount_usdt or 0), 4)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Некорректная сумма прихода'}), 400
+        existing = db.query(ConversionTx).filter(
+            ConversionTx.conversion_id == conv.id,
+            ConversionTx.payin_tx_id == tx.id).first()
+        if existing:
+            existing.amount_usdt = take
+        else:
+            db.add(ConversionTx(conversion_id=conv.id, payin_tx_id=tx.id, amount_usdt=take))
+        db.flush()
+        db.refresh(conv)
+        conv.status = ConversionStatus.RECEIVED
+        conv.received_at = datetime.utcnow()
+        _apply_conversion_shares(db, conv)
+        db.commit()
+        db.refresh(conv)
+        return jsonify({'success': True, 'conversion': conv.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/deals/<int:deal_id>/conversions', methods=['GET'])
+def deal_conversions(deal_id):
+    """Конвертации, через которые прошёл приход этой сделки.
+
+    Отвечает на «эта сделка вообще сконвертирована?» прямо в карточке —
+    и объясняет пустую прибыль, пока курс прихода неизвестен.
+    """
+    db = get_session()
+    try:
+        incs = db.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).all()
+        out = []
+        for inc in incs:
+            links = db.query(ConversionSource, Conversion).join(
+                Conversion, ConversionSource.conversion_id == Conversion.id).filter(
+                ConversionSource.sber_income_id == inc.id,
+                Conversion.status != ConversionStatus.CANCELLED).all()
+            for src, conv in links:
+                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
+                shares = _conversion_shares(pairs, conv.received_usdt())
+                out.append({
+                    'conversion_id': conv.id, 'display_name': conv.display_name,
+                    'broker': conv.broker, 'rate_rub_usdt': conv.rate_rub_usdt,
+                    'amount_rub': round(src.amount_rub or 0, 2),
+                    'usdt': shares.get(inc.id, 0.0),
+                    'status': conv.status.value if conv.status else None,
+                })
+        return jsonify({'success': True, 'conversions': out,
+                        'has_incomes': bool(incs)})
+    finally:
+        db.close()
+
+
+def _attach_debits(db, conv, debits_req, force=False):
+    """Привязать списания со счёта к пачке. Бросает ValueError при двойном учёте.
+
+    Расход приходит частями — отправка брокеру, комиссия процентом, фикс, —
+    поэтому список, а не одно поле. Один платёж не должен закрывать две пачки:
+    иначе расход учтётся дважды, как это было с приходами USDT.
+    """
+    db.query(ConversionDebit).filter(ConversionDebit.conversion_id == conv.id).delete()
+    db.flush()
+    for item in debits_req or []:
+        try:
+            did = int(item.get('sber_debit_id'))
+        except (TypeError, ValueError):
+            raise ValueError('Некорректный id списания')
+        deb = db.query(SberDebit).filter(SberDebit.id == did).with_for_update().first()
+        if not deb:
+            raise ValueError(f'Списание #{did} не найдено')
+        try:
+            take = round(float(item.get('amount_rub') or 0), 2)
+        except (TypeError, ValueError):
+            raise ValueError(f'Некорректная сумма по списанию #{did}')
+        free = deb.free_rub()
+        if not take:
+            take = free
+            if take <= 0.01 and not force:
+                raise ValueError(
+                    f'Списание {deb.amount_rub:,.2f} ₽ ({deb.payee or did}) '
+                    f'уже привязано к другой пачке')
+        if take > free + 0.01 and not force:
+            raise ValueError(
+                f'Списание {deb.amount_rub:,.2f} ₽ ({deb.payee or did}) уже разнесено: '
+                f'свободно {free:,.2f} ₽, запрошено {take:,.2f} ₽')
+        db.add(ConversionDebit(conversion_id=conv.id, sber_debit_id=did, amount_rub=take))
+    db.flush()
+
+
+@app.route('/api/sber-debits', methods=['GET'])
+def list_sber_debits():
+    """Списания со счёта для привязки к пачке.
+
+    По умолчанию — только с непривязанным остатком (?all=1 — все).
+    ?kind=broker|fee — только отправки либо только комиссии.
+    """
+    db = get_session()
+    try:
+        q = db.query(SberDebit).order_by(SberDebit.operation_date.desc(), SberDebit.id.desc())
+        rows = [d.to_dict() for d in q.limit(600).all()]
+        if request.args.get('all') != '1':
+            rows = [r for r in rows if r['free_rub'] > 0.01]
+        kind = (request.args.get('kind') or '').strip()
+        if kind in ('broker', 'fee'):
+            rows = [r for r in rows if r['kind'] == kind]
+        return jsonify({'success': True, 'debits': rows[:300]})
+    finally:
+        db.close()
+
+
+@app.route('/api/sber-debits/<int:debit_id>', methods=['PUT'])
+def update_sber_debit(debit_id):
+    """Поправить вид списания: парсер по назначению угадывает не всегда."""
+    db = get_session()
+    try:
+        deb = db.query(SberDebit).get(debit_id)
+        if not deb:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        kind = (request.get_json(silent=True) or {}).get('kind')
+        if kind not in ('broker', 'fee'):
+            return jsonify({'success': False, 'error': 'kind должен быть broker или fee'}), 400
+        deb.kind = kind
+        db.commit()
+        return jsonify({'success': True, 'debit': deb.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/conversions', methods=['GET'])
+def list_conversions():
+    """Список пачек конвертации, свежие сверху."""
+    db = get_session()
+    try:
+        rows = db.query(Conversion).order_by(Conversion.id.desc()).limit(200).all()
+        return jsonify({'success': True, 'conversions': [c.to_dict() for c in rows]})
+    finally:
+        db.close()
+
+
+@app.route('/api/conversions/<int:conv_id>', methods=['GET'])
+def get_conversion(conv_id):
+    """Пачка с составом: какие поступления вошли, сколько USDT на каждое, чьи сделки."""
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        pairs = [(s.sber_income_id, s.amount_rub) for s in conv.sources]
+        shares = _conversion_shares(pairs, conv.received_usdt())
+        composition = []
+        for src in conv.sources:
+            inc = db.query(SberIncome).get(src.sber_income_id)
+            deal = (db.query(Deal).get(inc.claimed_deal_id)
+                    if inc and inc.claimed_deal_id else None)
+            composition.append({
+                'sber_income_id': src.sber_income_id,
+                'amount_rub': round(src.amount_rub or 0, 2),
+                'usdt': shares.get(src.sber_income_id, 0.0),
+                'payer': inc.payer if inc else None,
+                'operation_date': inc.operation_date if inc else None,
+                'deal_id': deal.id if deal else None,
+                'client_name': (deal.client_name if deal else None),
+            })
+        txs = []
+        for t in conv.txs:
+            tx = db.query(PayinTx).get(t.payin_tx_id)
+            txs.append({'tx_hash': tx.tx_hash if tx else '',
+                        'amount_usdt': round(t.amount_usdt or 0, 4),
+                        'tx_total_usdt': round((tx.amount_usdt or 0) if tx else 0, 4),
+                        'tx_free_usdt': tx.free_usdt() if tx else 0})
+        return jsonify({'success': True, 'conversion': conv.to_dict(),
+                        'composition': composition, 'txs': txs})
+    finally:
+        db.close()
+
+
+@app.route('/api/conversions', methods=['POST'])
+def create_conversion():
+    """Создать пачку: брокер, курс, ставка удержания, состав поступлений."""
+    db = get_session()
+    try:
+        data = request.get_json(silent=True) or {}
+        try:
+            conv = Conversion(
+                broker=(data.get('broker') or '').strip()[:100] or None,
+                request_no=(data.get('request_no') or '').strip()[:60] or None,
+                rate_rub_usdt=float(data['rate_rub_usdt']) if data.get('rate_rub_usdt') else None,
+                held_percent=float(data.get('held_percent') if data.get('held_percent') is not None else 0.3),
+                held_fixed_rub=float(data.get('held_fixed_rub') if data.get('held_fixed_rub') is not None else 40.0),
+                amount_rub_sent=float(data['amount_rub_sent']) if data.get('amount_rub_sent') else None,
+                wallet_id=data.get('wallet_id') or None,
+                notes=(data.get('notes') or '').strip() or None,
+                created_by=flask_session.get('username'),
+                status=ConversionStatus.SENT if data.get('sent_at') else ConversionStatus.DRAFT,
+                sent_at=datetime.utcnow() if data.get('sent_at') else None,
+            )
+        except (TypeError, ValueError) as e:
+            return jsonify({'success': False, 'error': f'Некорректные данные пачки: {e}'}), 400
+        db.add(conv)
+        db.flush()
+        try:
+            _attach_sources(db, conv, data.get('sources'), force=bool(data.get('force')))
+            _attach_debits(db, conv, data.get('debits'), force=bool(data.get('force')))
+        except ValueError as e:
+            db.rollback()
+            return jsonify({'success': False, 'error': str(e)}), 409
+        db.commit()
+        db.refresh(conv)
+        return jsonify({'success': True, 'conversion': conv.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/conversions/<int:conv_id>', methods=['DELETE'])
+def delete_conversion(conv_id):
+    """Удалить пачку — поступления возвращаются в несконвертированные."""
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        _clear_conversion_payin_uses(db, conv)
+        db.delete(conv)
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 @app.route('/api/sber-incomes', methods=['GET'])
 def list_sber_incomes():
     """Пул приходов Сбера для пикера в форме сделки.
@@ -4708,9 +5348,55 @@ def list_sber_incomes():
         rows = [i.to_dict() for i in q.limit(600).all()]
         if kind in ('acquiring', 'transfer'):
             rows = [r for r in rows if r['kind'] == kind]
-        return jsonify({'success': True, 'incomes': rows[:300]})
+        rows = rows[:300]
+        total_free = 0.0
+        if request.args.get('with_conversion') == '1':
+            # Одним запросом: в какие пачки ушёл каждый приход. Отменённые не в счёт.
+            by_income = {}
+            for src, conv in db.query(ConversionSource, Conversion).join(
+                    Conversion, ConversionSource.conversion_id == Conversion.id).filter(
+                    Conversion.status != ConversionStatus.CANCELLED).all():
+                by_income.setdefault(src.sber_income_id, []).append({
+                    'id': conv.id, 'display_name': conv.display_name,
+                    'broker': conv.broker, 'rate_rub_usdt': conv.rate_rub_usdt,
+                    'amount_rub': round(src.amount_rub or 0, 2),
+                    'status': conv.status.value if conv.status else None,
+                })
+            for row in rows:
+                links = by_income.get(row['id']) or []
+                # Одна пачка — объектом (частый случай), несколько — списком
+                row['conversion'] = links[0] if len(links) == 1 else (links or None)
+                total_free += row.get('free_rub') or 0
+        return jsonify({'success': True, 'incomes': rows,
+                        'unconverted_rub': round(total_free, 2)})
     finally:
         db.close()
+
+
+def _conversion_shares(sources, received_usdt):
+    """Разнести полученный USDT по поступлениям пропорционально рублям.
+
+    U_i = R × доля_i / G. Пропорция сама размазывает и удержание, и расхождение
+    с брокером (Δ), и всегда даёт Σ U_i = R — то есть один приход физически
+    не может быть учтён дважды, как это случилось с хешем 2783…494.
+
+    sources — [(sber_income_id, amount_rub)], возвращает {sber_income_id: usdt}.
+    """
+    if not sources:
+        return {}
+    total_rub = round(sum(a or 0 for _, a in sources), 2)
+    if total_rub <= 0:
+        return {sid: 0.0 for sid, _ in sources}
+    got = received_usdt or 0
+    shares = {sid: round(got * (amt or 0) / total_rub, 2) for sid, amt in sources}
+    # Хвост округления добираем в наибольшую долю: иначе Σ долей меньше перевода
+    # на копейки, PayinTx.free_usdt() не обнуляется и хеш висит «частично
+    # свободным» — тот самый след, который прятал перевод из выбора.
+    tail = round(got - sum(shares.values()), 4)
+    if tail and shares:
+        biggest = max(shares, key=lambda k: shares[k])
+        shares[biggest] = round(shares[biggest] + tail, 4)
+    return shares
 
 
 def _sync_sber_claims(session, deal, parts):
