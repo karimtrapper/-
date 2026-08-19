@@ -154,3 +154,30 @@ def test_explicit_status_wins(client, sent):
     r = client.put(f'/api/deals/{deal_id}',
                    json={'payin_amount_usdt': 350.5, 'status': 'pending'})
     assert r.get_json()['deal']['status'] == 'pending'
+
+
+def test_profit_not_saved_as_minus(client, sent):
+    """Форма прислала «0 − выдача» — сервер такую прибыль не сохраняет.
+
+    Регресс #519 (−319.20) и #522 (−700.96): profit_percent −100 и минусовые
+    базы у агентов появлялись из payload, хотя приход в USDT неизвестен.
+    """
+    card_id = _mk_card()
+    r = client.post('/api/deals', json=_payload(card_id, profit_usdt=-319.2,
+                                                profit_percent=-100.0,
+                                                net_profit_usdt=-319.2))
+    deal = r.get_json()['deal']
+    assert deal['profit_usdt'] is None
+    assert deal['profit_percent'] is None
+    assert deal['net_profit_usdt'] is None
+
+
+def test_existing_minus_cleared_on_update(client, sent):
+    """PUT по сделке с сохранённым минусом чистит его, а не тащит дальше."""
+    card_id = _mk_card()
+    deal_id = client.post('/api/deals', json=_payload(card_id)).get_json()['deal']['id']
+    client.put(f'/api/deals/{deal_id}', json={'profit_usdt': -700.96, 'profit_percent': -100.0})
+
+    deal = client.put(f'/api/deals/{deal_id}', json={'notes': 'касание'}).get_json()['deal']
+    assert deal['profit_usdt'] is None
+    assert deal['status'] == 'pending'

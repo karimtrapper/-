@@ -4422,6 +4422,22 @@ def _sync_card_allocation(session, deal):
     return None
 
 
+def _clear_profit_if_payin_unknown(deal):
+    """Приход ещё не пересчитан в USDT — прибыли не существует, а не «минус».
+
+    Форма (и любой старый клиент из кэша) присылает profit_usdt = 0 − выдача:
+    по #519 это −319.20, по #522 −700.96, оба с profit_percent −100. Выглядит
+    как проваленная сделка, хотя неизвестна одна нога: рубли по СБП уходят
+    в USDT позже. Держим пусто, пока приход не проставят — тогда
+    _recalculate_deal_financials посчитает по-настоящему.
+    """
+    if deal.payout_amount_usdt and not deal.payin_amount_usdt:
+        deal.profit_usdt = None
+        deal.profit_percent = None
+        deal.net_profit_usdt = None
+        deal.referrer_payout_usdt = None
+
+
 def _recalculate_deal_financials(deal, data):
     """Пересчитывает прибыль, выплату рефереру и чистую прибыль сделки.
 
@@ -5379,6 +5395,8 @@ def create_deal():
             else:
                 _mirror_legacy_agent(session, deal)
 
+        _clear_profit_if_payin_unknown(deal)
+
         # Выдача с карты завершена в момент создания: возмещения ждать не надо.
         # Но «прибыль известна» — только когда приход тоже посчитан в USDT.
         # У СБП приход рублёвый, USDT появляется после конвертации: закрыть
@@ -5662,6 +5680,8 @@ def update_deal(deal_id):
         if realty_error:
             session.rollback()
             return jsonify({'success': False, 'error': realty_error}), 400
+
+        _clear_profit_if_payin_unknown(deal)
 
         # Выдача с карты: пересобираем расход под текущее состояние сделки
         card_warning = _sync_card_allocation(session, deal)
