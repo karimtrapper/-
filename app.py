@@ -1754,6 +1754,13 @@ def parse_sber_acquiring(purpose):
     return {'kind': 'acquiring', 'merchant': mer.group(1) if mer else None, 'fee_rub': fee}
 
 
+# Учёт конвертаций запущен 19.08.2026. Сделки, закрытые раньше, менялись вне
+# системы: пачек по ним нет и не будет, и предупреждение «пачка не оформлена»
+# на них — шум, из-за которого не видно настоящих пропусков после запуска.
+# Через env можно сдвинуть, если разбор истории пойдёт глубже.
+CONVERSIONS_LAUNCH_DATE = os.environ.get('CONVERSIONS_LAUNCH_DATE', '2026-08-19')
+
+
 class SberIncome(Base):
     """Приход на счёт Сбера (реквизиты). Пушится SberNotifier'ом с VPS
     (POST /api/sber-incomes/ingest, идемпотентный upsert по uuid выписки).
@@ -5675,14 +5682,20 @@ def list_sber_incomes():
                 elif links:
                     row['conv_state'] = 'in_progress'
                 elif (row.get('deal') or {}).get('payin_amount_usdt'):
-                    row['conv_state'] = 'in_deal'
-                    in_deal_total += free
+                    # До запуска учёта — не долг по учёту, а история: пачки по
+                    # таким приходам никто не заведёт, и в счётчик они не идут
+                    if (row.get('operation_date') or '') < CONVERSIONS_LAUNCH_DATE:
+                        row['conv_state'] = 'legacy'
+                    else:
+                        row['conv_state'] = 'in_deal'
+                        in_deal_total += free
                 else:
                     row['conv_state'] = 'pending'
                     total_free += free
         return jsonify({'success': True, 'incomes': rows,
                         'unconverted_rub': round(total_free, 2),
-                        'in_deal_rub': round(in_deal_total, 2)})
+                        'in_deal_rub': round(in_deal_total, 2),
+                        'launch_date': CONVERSIONS_LAUNCH_DATE})
     finally:
         db.close()
 

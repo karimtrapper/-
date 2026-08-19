@@ -461,7 +461,7 @@ def test_массовая_отсечка_старых_приходов(cli, inco
         assert 'до запуска' in (row['note'] or '')
 
 
-def test_приход_с_usdt_в_сделке_не_считается_несконвертированным(cli, incomes):
+def test_приход_с_usdt_в_сделке_не_считается_несконвертированным(cli, incomes, monkeypatch):
     """Если у сделки проставлен USDT прихода — конвертация была, просто без пачки.
 
     Замечание Карима на проде: «всё не сконвертировано, хотя ты это к сделкам
@@ -469,6 +469,9 @@ def test_приход_с_usdt_в_сделке_не_считается_неско
     не меняли. Такие приходы — не «лежат на счёте», а «учтены в сделке, пачка
     не оформлена»: долг по учёту, а не деньги.
     """
+    # Приходы фикстуры от 11.08 — сдвигаем запуск учёта в прошлое, иначе они
+    # уедут в историю (см. тест ниже) и предупреждения по ним не будет
+    monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-01-01')
     db = get_session()
     deal_id = None
     try:
@@ -497,6 +500,45 @@ def test_приход_с_usdt_в_сделке_не_считается_неско
 
     other = next(i for i in body['incomes'] if i['id'] == incomes[1])
     assert other['conv_state'] == 'pending'
+
+    db = get_session()
+    try:
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_приход_до_запуска_учёта_уходит_в_историю(cli, incomes, monkeypatch):
+    """Сделка закрыта до запуска учёта — это история, а не долг по учёту.
+
+    Рубли по ней меняли вне системы: пачки нет и не будет. Пока такие приходы
+    висели как «учтено в сделке, пачка не оформлена», предупреждение занимало
+    весь экран и настоящие пропуски после запуска в нём терялись.
+    """
+    monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-08-19')
+    db = get_session()
+    deal_id = None
+    try:
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Roman', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=35000.0, payin_amount_usdt=416.02)
+        db.add(d)
+        db.flush()
+        deal_id = d.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[1]).update({'claimed_deal_id': d.id})
+        db.commit()
+    finally:
+        db.close()
+
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    row = next(i for i in body['incomes'] if i['id'] == incomes[1])
+    assert row['conv_state'] == 'legacy'          # 11.08 — раньше запуска 19.08
+    assert body['launch_date'] == '2026-08-19'    # фронт подписывает дату в подсказке
+    # Ни в остаток на счёте, ни в «пачка не оформлена» такой приход не идёт
+    mine = {i['id']: i for i in body['incomes'] if i['id'] in incomes}
+    assert sum(i['free_rub'] for i in mine.values() if i['conv_state'] == 'pending') == 110786.44
+    assert not [i for i in mine.values() if i['conv_state'] == 'in_deal']
 
     db = get_session()
     try:

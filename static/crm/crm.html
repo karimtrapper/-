@@ -1843,7 +1843,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <button class="btn btn-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
                     <button class="btn btn-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
                     <label style="display:flex; align-items:center; gap:6px; margin-left:auto;">
-                        <input type="checkbox" id="incomesShowExcluded" onchange="loadIncomes()">
+                        <input type="checkbox" id="incomesShowExcluded" onchange="setIncomesPerPage()">
                         показывать исключённые</label>
                 </div>
                 <table class="table">
@@ -1854,6 +1854,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </tr></thead>
                     <tbody id="incomesTable"></tbody>
                 </table>
+                <div style="display:flex; align-items:center; gap:10px; margin-top:0.75rem;
+                            flex-wrap:wrap; font-size:0.9rem;">
+                    <label style="display:flex; align-items:center; gap:6px;">Строк на странице:
+                        <select id="incomesPerPage" onchange="setIncomesPerPage()">
+                            <option value="20">20</option>
+                            <option value="30">30</option>
+                            <option value="50">50</option>
+                            <option value="0">все</option>
+                        </select></label>
+                    <button class="btn btn-secondary" style="padding:5px 12px; font-size:0.85rem"
+                            onclick="incomesPageStep(-1)">← Назад</button>
+                    <span id="incomesPageInfo" style="color:#64748b"></span>
+                    <button class="btn btn-secondary" style="padding:5px 12px; font-size:0.85rem"
+                            onclick="incomesPageStep(1)">Вперёд →</button>
+                </div>
             </div>
         </section>
 
@@ -9270,11 +9285,37 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (e) { /* карточку это ломать не должно */ }
         }
 
+        // Реестр листается: три сотни приходов одной простынёй не читаются.
+        // Выбор под конвертацию живёт в Map, а не в чекбоксах, — иначе пачку
+        // из приходов с разных страниц не собрать: перелистнул и всё слетело
+        let incomesPage = 1;
+        const incomeSel = new Map();   // id прихода → сколько рублей из него берём
+
+        function incomesPerPage() {
+            return Number(document.getElementById('incomesPerPage')?.value ?? 20);
+        }
+
+        function setIncomesPerPage() {
+            incomesPage = 1;
+            renderIncomes();
+        }
+
+        function incomesPageStep(step) {
+            incomesPage += step;
+            renderIncomes();
+        }
+
         async function loadIncomes() {
-            const showExcluded = document.getElementById('incomesShowExcluded')?.checked;
             const d = await (await fetch('/api/sber-incomes?all=1&with_conversion=1')).json();
             if (!d.success) return;
             window._incomes = d.incomes;
+            window._incomesLaunch = d.launch_date || '';
+            // Приход мог уйти в пачку в другой вкладке — снимаем его с выбора,
+            // иначе форма пачки утащит сумму, которой уже нет
+            const free = new Map(d.incomes.map(i => [i.id, i.excluded ? 0 : (i.free_rub || 0)]));
+            for (const id of [...incomeSel.keys()]) {
+                if (!((free.get(id) || 0) > 0.01)) incomeSel.delete(id);
+            }
             document.getElementById('incomesSummary').innerHTML =
                 `<b>На счёте не сконвертировано: ${cnvNum(d.unconverted_rub)} ₽</b>` +
                 (d.in_deal_rub > 0.01
@@ -9282,7 +9323,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                          ⚠️ учтено в сделках, но пачка не оформлена: ${cnvNum(d.in_deal_rub)} ₽
                          <span style="color:#94a3b8">— рубли обменяли, в системе следа нет</span></div>`
                     : '');
-            const rows = d.incomes.filter(i => showExcluded || !i.excluded);
+            renderIncomes();
+        }
+
+        // Рисует текущую страницу реестра из уже загруженных данных
+        function renderIncomes() {
+            const showExcluded = document.getElementById('incomesShowExcluded')?.checked;
+            const all = (window._incomes || []).filter(i => showExcluded || !i.excluded);
+            const per = incomesPerPage();
+            const pages = per ? Math.max(1, Math.ceil(all.length / per)) : 1;
+            incomesPage = Math.min(Math.max(1, incomesPage), pages);
+            const from = per ? (incomesPage - 1) * per : 0;
+            const rows = per ? all.slice(from, from + per) : all;
+            const info = document.getElementById('incomesPageInfo');
+            if (info) info.textContent = all.length
+                ? `${from + 1}–${from + rows.length} из ${all.length}` +
+                  (per ? ` · страница ${incomesPage} из ${pages}` : '')
+                : 'приходов нет';
             document.getElementById('incomesTable').innerHTML = rows.map(i => {
                 const c = Array.isArray(i.conversion) ? i.conversion[0] : i.conversion;
                 let conv;
@@ -9293,6 +9350,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     // это долг по учёту, а не деньги на счёте
                     conv = `<span style="color:#b45309" title="В сделке проставлен USDT — значит конвертация была">` +
                            `⚠️ учтено в сделке (${cnvNum(i.deal.payin_amount_usdt)} USDT), пачки нет</span>`;
+                } else if (i.conv_state === 'legacy') {
+                    // Сделка закрыта до запуска учёта — рубли меняли вне системы,
+                    // пачки по такому приходу нет и не будет, ругаться не на что
+                    conv = `<span style="color:#94a3b8" title="Поступление старше ` +
+                           `${window._incomesLaunch} — учёта конвертаций тогда ещё не было">` +
+                           `🗄 было до запуска учёта конвертаций</span>`;
                 } else if (i.conv_state === 'pending') {
                     conv = '<span style="color:#94a3b8">⏳ лежит на счёте</span>';
                 } else if (i.conv_state === 'partial') {
@@ -9319,12 +9382,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const selectable = !i.excluded && (i.free_rub || 0) > 0.01;
                 return `<tr${i.excluded ? ' style="opacity:0.55"' : ''}>
                     <td>${selectable ? `<input type="checkbox" class="incSel" value="${i.id}"
-                          data-free="${i.free_rub}" onchange="syncIncomeSelection()">` : ''}</td>
+                          ${incomeSel.has(i.id) ? 'checked' : ''}
+                          data-free="${i.free_rub}" onchange="toggleIncome(this)">` : ''}</td>
                     <td>${(i.operation_date || '').slice(0, 10)}</td>
                     <td>${i.payer || '—'}</td>
                     <td>${sum}</td>
                     <td>${selectable ? `<input type="number" step="0.01" class="incAmt"
-                          data-id="${i.id}" value="${i.free_rub}" style="width:130px"
+                          data-id="${i.id}" value="${incomeSel.get(i.id) ?? i.free_rub}"
+                          style="width:130px" onchange="syncIncomeAmount(this)"
                           title="Сколько из этого прихода конвертируем — можно частично">` : '—'}</td>
                     <td>${i.kind === 'acquiring' ? 'СБП' : 'реквизиты'}</td>
                     <td>${incomeSource(i)}</td>
@@ -9354,16 +9419,32 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             return '<span style="color:#cbd5e1">—</span>';
         }
 
+        // Галка в шапке — только по видимой странице: «выделить всё» на 300 строк
+        // молча собрало бы пачку из приходов, которых менеджер даже не видел
         function toggleAllIncomes(master) {
-            document.querySelectorAll('.incSel').forEach(cb => cb.checked = master.checked);
+            document.querySelectorAll('.incSel').forEach(cb => {
+                cb.checked = master.checked;
+                toggleIncome(cb);
+            });
+        }
+
+        function toggleIncome(cb) {
+            const id = Number(cb.value);
+            if (!cb.checked) { incomeSel.delete(id); return syncIncomeSelection(); }
+            const amt = document.querySelector(`.incAmt[data-id="${id}"]`);
+            incomeSel.set(id, Number(amt?.value || cb.dataset.free || 0));
+            syncIncomeSelection();
+        }
+
+        function syncIncomeAmount(inp) {
+            const id = Number(inp.dataset.id);
+            if (incomeSel.has(id)) incomeSel.set(id, Number(inp.value || 0));
             syncIncomeSelection();
         }
 
         function selectedIncomes() {
-            return [...document.querySelectorAll('.incSel:checked')].map(cb => {
-                const amt = document.querySelector(`.incAmt[data-id="${cb.value}"]`);
-                return {sber_income_id: Number(cb.value), amount_rub: Number(amt?.value || 0)};
-            });
+            return [...incomeSel.entries()]
+                .map(([id, amount]) => ({sber_income_id: id, amount_rub: amount}));
         }
 
         function syncIncomeSelection() {
@@ -9396,6 +9477,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({excluded: true, note})});
             }
+            incomeSel.clear();
             loadIncomes();
         }
 
@@ -9537,6 +9619,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
             if (!d.success) return alert(d.error || 'Не удалось создать пачку');
             document.getElementById('conversionModal').classList.remove('active');
+            incomeSel.clear();
             loadConversions();
             if (document.getElementById('incomes').classList.contains('active')) loadIncomes();
         }
