@@ -5379,11 +5379,16 @@ def create_deal():
             else:
                 _mirror_legacy_agent(session, deal)
 
-        # Выдача с карты завершена в момент создания: возмещения ждать не надо,
-        # себестоимость и прибыль уже известны — держать её в pending незачем
+        # Выдача с карты завершена в момент создания: возмещения ждать не надо.
+        # Но «прибыль известна» — только когда приход тоже посчитан в USDT.
+        # У СБП приход рублёвый, USDT появляется после конвертации: закрыть
+        # такую сделку сразу = прибыль равна минус всей выплате (#519: −319.20
+        # при 30 750.72 ₽ прихода) и уведомление с этим минусом уходит в TG.
+        # Пока payin_amount_usdt пуст — держим pending, закроется в PUT.
         if (deal.payout_source == PayOutSource.BANK_CARD
                 and deal.status == DealStatus.PENDING
-                and deal.payout_amount_usdt):
+                and deal.payout_amount_usdt
+                and deal.payin_amount_usdt):
             deal.status = DealStatus.COMPLETED
 
         # Тип недвижимости без своих полей — протёкшее состояние формы, не сделка
@@ -5660,6 +5665,17 @@ def update_deal(deal_id):
 
         # Выдача с карты: пересобираем расход под текущее состояние сделки
         card_warning = _sync_card_allocation(session, deal)
+
+        # Приход досчитали в USDT — себестоимость известна, сделка закрывается
+        # сама, а webhook / DM агентам / GSheet / Telegram уходят общей веткой
+        # ниже (по переходу old_status → COMPLETED). Явный status в payload
+        # приоритетнее: решение оператора не перебиваем.
+        if ('status' not in data
+                and deal.payout_source == PayOutSource.BANK_CARD
+                and deal.status == DealStatus.PENDING
+                and deal.payin_amount_usdt
+                and deal.payout_amount_usdt):
+            deal.status = DealStatus.COMPLETED
 
         session.commit()
 
