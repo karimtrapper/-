@@ -9269,9 +9269,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             syncIncomeSelection();
         }
 
-        // Откуда деньги: ручная метка важнее, иначе выводим из сделки
+        // Откуда деньги: ручная метка важнее, потом сделка обменника из WL-бота,
+        // потом сделка CalcCRM. По СБП без разметки было не понять, чей это клиент
         function incomeSource(i) {
             if (i.source_tag) return i.source_tag;
+            if (i.wl) {
+                // Мерчант отвечает «чей обменник», автор — «кто завёл сделку»:
+                // на счёте все оплаты по СБП выглядят одинаково
+                return `<b>${i.wl.wl}</b><div style="font-size:0.8rem;color:#64748b">
+                        ${i.wl.merchant || ''}${i.wl.author ? ' · ' + i.wl.author : ''}
+                        ${i.wl.usdt ? '<br>' + cnvNum(i.wl.usdt) + ' USDT' : ''}</div>`;
+            }
             if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
             if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
             if (i.deal) return 'обмен';
@@ -9394,8 +9402,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <input type="checkbox" class="convSrc" value="${i.id}"
                            ${pre.has(i.id) ? 'checked' : ''}>
                     <span style="flex:1">${(i.operation_date || '').slice(0, 10)} ·
-                        ${i.payer || '—'} · свободно ${cnvNum(i.free_rub)} ₽
-                        ${i.claimed_deal_id ? '· сделка #' + i.claimed_deal_id : '· ⏳ сделки нет'}</span>
+                        ${i.wl ? i.wl.wl + ' (' + (i.wl.merchant || '') + ')' : (i.payer || '—')} ·
+                        свободно ${cnvNum(i.free_rub)} ₽
+                        ${i.claimed_deal_id ? '· сделка #' + i.claimed_deal_id
+                            : (i.wl ? '' : '· ⏳ сделки нет')}</span>
                     <input type="number" step="0.01" class="form-control convSrcAmt"
                            value="${pre.has(i.id) ? pre.get(i.id) : i.free_rub}" style="width:140px">
                 </label>`).join('');
@@ -9466,8 +9476,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <td>${x.payer || '—'}</td>
                 <td>${cnvNum(x.amount_rub)} ₽</td>
                 <td>${cnvNum(x.usdt)} USDT</td>
-                <td>${x.deal_id ? '#' + x.deal_id + ' ' + (x.client_name || '')
-                                : '<span style="color:#94a3b8">⏳ сделки нет</span>'}</td>
+                <td>${x.wl ? '<b>' + x.wl + '</b> ' + (x.merchant || '') +
+                             (x.author ? ' · ' + x.author : '')
+                            : (x.deal_id ? '#' + x.deal_id + ' ' + (x.client_name || '')
+                                : '<span style="color:#94a3b8">⏳ сделки нет</span>')}</td>
             </tr>`).join('');
             const txs = d.txs.map(t => `<div style="font-family:monospace; font-size:0.85rem">
                 ${t.tx_hash.slice(0, 20)}… · ${cnvNum(t.amount_usdt)} USDT</div>`).join('');

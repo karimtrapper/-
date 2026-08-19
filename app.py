@@ -5,7 +5,7 @@ Unified Service: Calculator + CRM
 
 from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session
 from flask_cors import CORS
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import os
 import sys
 import requests
@@ -5276,11 +5276,20 @@ def get_conversion(conv_id):
             return jsonify({'success': False, 'error': 'not_found'}), 404
         pairs = [(s.sber_income_id, s.amount_rub) for s in conv.sources]
         shares = _conversion_shares(pairs, conv.received_usdt())
+        # Сделки обменника: по пачке должно быть видно, чьи выплаты она обеспечивает
+        wl_deals = []
+        snap = db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').first()
+        if snap:
+            try:
+                wl_deals = json.loads(snap.payload) or []
+            except (ValueError, TypeError):
+                wl_deals = []
         composition = []
         for src in conv.sources:
             inc = db.query(SberIncome).get(src.sber_income_id)
             deal = (db.query(Deal).get(inc.claimed_deal_id)
                     if inc and inc.claimed_deal_id else None)
+            wl = _match_wl_deal(inc.to_dict(), wl_deals) if inc else None
             composition.append({
                 'sber_income_id': src.sber_income_id,
                 'amount_rub': round(src.amount_rub or 0, 2),
@@ -5289,6 +5298,9 @@ def get_conversion(conv_id):
                 'operation_date': inc.operation_date if inc else None,
                 'deal_id': deal.id if deal else None,
                 'client_name': (deal.client_name if deal else None),
+                'wl': wl.get('wl') if wl else None,
+                'merchant': wl.get('merchant') if wl else None,
+                'author': wl.get('author') if wl else None,
             })
         txs = []
         for t in conv.txs:
@@ -5396,6 +5408,17 @@ def list_sber_incomes():
                     if got is not None:
                         usdt_by_income[src.sber_income_id] = round(
                             usdt_by_income.get(src.sber_income_id, 0) + got, 2)
+            # Сделки обменника из снапшота WL-бота: приход по СБП — это оплата
+            # клиента мерчанта, и по ней надо видеть WL-номер и мерчанта, иначе
+            # непонятно, откуда деньги и чью выплату они обеспечивают
+            wl_deals = []
+            snap = db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').first()
+            if snap:
+                try:
+                    wl_deals = json.loads(snap.payload) or []
+                except (ValueError, TypeError):
+                    wl_deals = []
+
             # Инфа о сделке: без неё в таблице виден только номер, а нужно понимать,
             # откуда деньги — обмен, недвижка или что-то ещё
             deal_ids = {r['claimed_deal_id'] for r in rows if r.get('claimed_deal_id')}
@@ -5410,6 +5433,7 @@ def list_sber_incomes():
                     }
             for row in rows:
                 row['deal'] = deals_map.get(row.get('claimed_deal_id'))
+                row['wl'] = _match_wl_deal(row, wl_deals) if row['kind'] == 'acquiring' else None
                 links = by_income.get(row['id']) or []
                 # Одна пачка — объектом (частый случай), несколько — списком
                 row['conversion'] = links[0] if len(links) == 1 else (links or None)
@@ -5444,6 +5468,41 @@ def list_sber_incomes():
                         'in_deal_rub': round(in_deal_total, 2)})
     finally:
         db.close()
+
+
+def _match_wl_deal(income, wl_deals, day_window=2):
+    """Найти WL-сделку обменника, породившую этот приход на счёт.
+
+    Клиент мерчанта платит по ссылке WL-бота → QR НСПК → эквайринг Сбера, и на
+    счёт падает сумма за вычетом комиссии. В реестре бота сумма хранится как
+    gross, поэтому сопоставляем именно с `gross_rub` прихода.
+
+    Матчим только однозначно: две сделки на ту же сумму в те же дни — не гадаем,
+    иначе припишем приход чужому мерчанту и сломаем расчёт выплат.
+    Возвращает dict сделки либо None.
+    """
+    gross = round(income.get('gross_rub') or 0, 2)
+    if gross <= 0:
+        return None
+    raw_date = (income.get('operation_date') or '')[:10]
+    try:
+        inc_date = datetime.strptime(raw_date, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+    hits = []
+    for d in wl_deals or []:
+        if abs(round(float(d.get('rub') or 0), 2) - gross) > 1.0:
+            continue
+        # dt в снапшоте — «17.08 14:20», без года: берём год прихода
+        dt = str(d.get('dt') or '')[:5]
+        try:
+            day, month = int(dt[:2]), int(dt[3:5])
+            wl_date = date(inc_date.year, month, day)
+        except (ValueError, TypeError):
+            continue
+        if abs((wl_date - inc_date).days) <= day_window:
+            hits.append(d)
+    return hits[0] if len(hits) == 1 else None
 
 
 def _conversion_shares(sources, received_usdt):

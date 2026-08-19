@@ -546,3 +546,43 @@ def test_статусная_модель_прихода(cli, incomes, monkeypatc
         db.commit()
     finally:
         db.close()
+
+
+# ── Связка прихода с WL-сделкой обменника ───────────────────────────────────
+
+def test_приход_сопоставляется_с_wl_сделкой():
+    """Приход по СБП — это оплата клиента мерчанта через WL-бот.
+
+    Кейс: 111 811,80 ₽ на счёте от 17.08 = WL-0393 (Four exchange), клиент
+    заплатил 112 600, эквайринг съел 0,7 %. Сумма в реестре бота хранится как
+    gross, поэтому совпадает копейка в копейку.
+    """
+    from app import _match_wl_deal
+    wl = [
+        {'wl': 'WL-0393', 'dt': '17.08 14:20', 'merchant': 'Four exchange',
+         'rub': 112600, 'usdt': 1255.45, 'status': 'paid'},
+        {'wl': 'WL-0392', 'dt': '10.08 09:00', 'merchant': 'RUBLEV',
+         'rub': 27786.44, 'usdt': 330.28, 'status': 'closed'},
+    ]
+    inc = {'operation_date': '2026-08-17T12:00:00', 'gross_rub': 112600.0, 'kind': 'acquiring'}
+    m = _match_wl_deal(inc, wl)
+    assert m['wl'] == 'WL-0393'
+    assert m['merchant'] == 'Four exchange'
+
+    # Другая дата — не матчим, даже если сумма совпала
+    assert _match_wl_deal({'operation_date': '2026-08-01T00:00:00',
+                           'gross_rub': 112600.0, 'kind': 'acquiring'}, wl) is None
+    # Нет совпадения по сумме
+    assert _match_wl_deal({'operation_date': '2026-08-17T12:00:00',
+                           'gross_rub': 999.0, 'kind': 'acquiring'}, wl) is None
+
+
+def test_неоднозначный_матч_не_привязывается():
+    """Две сделки на одну сумму в один день — гадать нельзя, иначе припишем чужое."""
+    from app import _match_wl_deal
+    wl = [
+        {'wl': 'WL-0400', 'dt': '17.08 10:00', 'merchant': 'A', 'rub': 35000, 'usdt': 1, 'status': 'paid'},
+        {'wl': 'WL-0401', 'dt': '17.08 18:00', 'merchant': 'B', 'rub': 35000, 'usdt': 1, 'status': 'paid'},
+    ]
+    inc = {'operation_date': '2026-08-17T12:00:00', 'gross_rub': 35000.0, 'kind': 'acquiring'}
+    assert _match_wl_deal(inc, wl) is None
