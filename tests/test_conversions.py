@@ -696,3 +696,29 @@ def test_кошелёк_дозаполняется_для_старых_хеше�
         db.commit()
     finally:
         db.close()
+
+
+def test_дата_отправки_задаётся_явно(cli, incomes):
+    """Пачку заводят задним числом — дата платежа не равна дате создания.
+
+    В сводке «CNV-0001 · tradex · 93 · 2026-08-19» стояла дата создания,
+    хотя деньги ушли 17-го: по такой сводке задачу не поставишь.
+    """
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 86.15, 'sent_at': '2026-08-17',
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    assert conv['sent_at'][:10] == '2026-08-17'
+    assert conv['status'] == 'sent'
+    cli.delete(f"/api/conversions/{conv['id']}")
+
+
+def test_дата_отправки_берётся_из_списания(cli, incomes, debits):
+    """Если списание из выписки привязано — дату берём из него, а не с рук."""
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': 86.15, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+        'debits': [{'sber_debit_id': debits[0]}],
+    }).get_json()['conversion']
+    assert conv['sent_at'][:10] == '2026-08-11'   # operation_date списания
+    cli.delete(f"/api/conversions/{conv['id']}")

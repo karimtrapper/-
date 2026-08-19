@@ -5025,6 +5025,22 @@ def get_payin_tx(tx_hash):
 
 # ── Конвертации рублёвых поступлений ────────────────────────────────────────
 
+def _parse_sent_at(value):
+    """Дата отправки брокеру. Пачку заводят задним числом, поэтому дата создания
+    не годится: платёж мог уйти позавчера, а сводка должна называть его день.
+
+    Принимаем 'ГГГГ-ММ-ДД' (или ISO), True — «сегодня», пусто — черновик.
+    """
+    if not value:
+        return None
+    if value is True:
+        return datetime.utcnow()
+    try:
+        return datetime.strptime(str(value)[:10], '%Y-%m-%d')
+    except ValueError:
+        return datetime.utcnow()
+
+
 def _attach_sources(db, conv, sources_req, force=False):
     """Привязать поступления к пачке долями. Бросает ValueError при переборе.
 
@@ -5350,7 +5366,7 @@ def create_conversion():
                 notes=(data.get('notes') or '').strip() or None,
                 created_by=flask_session.get('username'),
                 status=ConversionStatus.SENT if data.get('sent_at') else ConversionStatus.DRAFT,
-                sent_at=datetime.utcnow() if data.get('sent_at') else None,
+                sent_at=_parse_sent_at(data.get('sent_at')),
             )
         except (TypeError, ValueError) as e:
             return jsonify({'success': False, 'error': f'Некорректные данные пачки: {e}'}), 400
@@ -5359,6 +5375,12 @@ def create_conversion():
         try:
             _attach_sources(db, conv, data.get('sources'), force=bool(data.get('force')))
             _attach_debits(db, conv, data.get('debits'), force=bool(data.get('force')))
+            # Списание из выписки знает дату платежа точно — она главнее введённой
+            if conv.debits:
+                dates = [d.debit.operation_date for d in conv.debits
+                         if d.debit and d.debit.operation_date]
+                if dates:
+                    conv.sent_at = _parse_sent_at(min(dates))
         except ValueError as e:
             db.rollback()
             return jsonify({'success': False, 'error': str(e)}), 409
