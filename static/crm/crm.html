@@ -1835,11 +1835,21 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <section id="incomes" class="section">
             <div class="card">
                 <div class="card-title">Поступления на счёт</div>
-                <div id="incomesSummary" style="margin-bottom:1rem; font-size:1.05rem;"></div>
+                <div id="incomesSummary" style="margin-bottom:0.75rem; font-size:1.05rem;"></div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem;">
+                    <button class="btn btn-primary" id="convertSelectedBtn"
+                            onclick="convertSelectedIncomes()" disabled>Конвертировать выбранное</button>
+                    <button class="btn btn-secondary" onclick="excludeSelectedIncomes()">Исключить выбранное</button>
+                    <button class="btn btn-secondary" onclick="cutoffIncomes()">Отсечь историю до даты</button>
+                    <label style="display:flex; align-items:center; gap:6px; margin-left:auto;">
+                        <input type="checkbox" id="incomesShowExcluded" onchange="loadIncomes()">
+                        показывать исключённые</label>
+                </div>
                 <table class="table">
                     <thead><tr>
-                        <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th>
-                        <th>Сделка</th><th>Конвертация</th>
+                        <th style="width:34px"><input type="checkbox" onclick="toggleAllIncomes(this)"></th>
+                        <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Конвертировать</th>
+                        <th>Вид</th><th>Источник</th><th>Сделка</th><th>Конвертация</th><th></th>
                     </tr></thead>
                     <tbody id="incomesTable"></tbody>
                 </table>
@@ -9193,35 +9203,153 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function loadIncomes() {
+            const showExcluded = document.getElementById('incomesShowExcluded')?.checked;
             const d = await (await fetch('/api/sber-incomes?all=1&with_conversion=1')).json();
             if (!d.success) return;
+            window._incomes = d.incomes;
             document.getElementById('incomesSummary').innerHTML =
-                `<b>На счёте не сконвертировано: ${cnvNum(d.unconverted_rub)} ₽</b>`;
-            document.getElementById('incomesTable').innerHTML = d.incomes.map(i => {
+                `<b>На счёте не сконвертировано: ${cnvNum(d.unconverted_rub)} ₽</b>` +
+                (d.in_deal_rub > 0.01
+                    ? `<div style="font-size:0.9rem;color:#b45309;margin-top:4px">
+                         ⚠️ учтено в сделках, но пачка не оформлена: ${cnvNum(d.in_deal_rub)} ₽
+                         <span style="color:#94a3b8">— рубли обменяли, в системе следа нет</span></div>`
+                    : '');
+            const rows = d.incomes.filter(i => showExcluded || !i.excluded);
+            document.getElementById('incomesTable').innerHTML = rows.map(i => {
                 const c = Array.isArray(i.conversion) ? i.conversion[0] : i.conversion;
                 let conv;
-                if (!c) {
-                    conv = '<span style="color:#94a3b8">⏳ не сконвертировано</span>';
-                } else if ((i.free_rub || 0) > 0.01) {
+                if (i.excluded) {
+                    conv = `<span style="color:#94a3b8">🚫 исключён${i.note ? ': ' + i.note : ''}</span>`;
+                } else if (i.conv_state === 'in_deal') {
+                    // Рубли уже обменяли (в сделке стоит USDT), но пачки нет:
+                    // это долг по учёту, а не деньги на счёте
+                    conv = `<span style="color:#b45309" title="В сделке проставлен USDT — значит конвертация была">` +
+                           `⚠️ учтено в сделке (${cnvNum(i.deal.payin_amount_usdt)} USDT), пачки нет</span>`;
+                } else if (i.conv_state === 'pending') {
+                    conv = '<span style="color:#94a3b8">⏳ лежит на счёте</span>';
+                } else if (i.conv_state === 'partial') {
                     conv = `<a href="#" onclick="showConversion(${c.id});return false">` +
                            `🔄 частично: ${cnvNum(i.converted_rub)} из ${cnvNum(i.amount_rub)} ₽</a>`;
+                } else if (i.conv_state === 'in_progress') {
+                    // Рубли ушли брокеру, USDT ещё не подтверждён — связь уже
+                    // зафиксирована, вспоминать вечером ничего не придётся
+                    conv = `<a href="#" onclick="showConversion(${c.id});return false"
+                              style="color:#b45309">🚚 на конвертации · ${c.display_name} ·
+                              ${c.broker || ''} @ ${c.rate_rub_usdt || '—'}</a>
+                            <div style="font-size:0.8rem;color:#94a3b8">ждём подтверждения USDT</div>`;
                 } else {
                     conv = `<a href="#" onclick="showConversion(${c.id});return false">` +
-                           `✅ ${c.display_name} · ${c.broker || ''} · ${c.rate_rub_usdt || ''}</a>`;
+                           `✅ ${c.display_name} · ${c.broker || ''} @ ${c.rate_rub_usdt || ''}</a>` +
+                           (i.usdt ? `<div style="font-size:0.85rem;color:#059669">
+                                        получено ${cnvNum(i.usdt)} USDT</div>` : '');
                 }
-                // Конвертируется зачисленное на счёт, а не то, что заплатил клиент:
-                // у СБП банк удерживает комиссию эквайринга до зачисления
+                // Конвертируется зачисленное, а не то, что заплатил клиент:
+                // у СБП банк снимает эквайринг до зачисления
                 const acq = (i.gross_rub || 0) - (i.amount_rub || 0);
                 const sum = `${cnvNum(i.amount_rub)} ₽` + (acq > 0.01
                     ? `<div style="font-size:0.8rem;color:#94a3b8">клиент платил ${cnvNum(i.gross_rub)}</div>` : '');
-                return `<tr>
+                const selectable = !i.excluded && (i.free_rub || 0) > 0.01;
+                return `<tr${i.excluded ? ' style="opacity:0.55"' : ''}>
+                    <td>${selectable ? `<input type="checkbox" class="incSel" value="${i.id}"
+                          data-free="${i.free_rub}" onchange="syncIncomeSelection()">` : ''}</td>
                     <td>${(i.operation_date || '').slice(0, 10)}</td>
                     <td>${i.payer || '—'}</td>
                     <td>${sum}</td>
+                    <td>${selectable ? `<input type="number" step="0.01" class="incAmt"
+                          data-id="${i.id}" value="${i.free_rub}" style="width:130px"
+                          title="Сколько из этого прихода конвертируем — можно частично">` : '—'}</td>
                     <td>${i.kind === 'acquiring' ? 'СБП' : 'реквизиты'}</td>
-                    <td>${i.claimed_deal_id ? '#' + i.claimed_deal_id : '—'}</td>
-                    <td>${conv}</td></tr>`;
-            }).join('');
+                    <td>${incomeSource(i)}</td>
+                    <td>${i.claimed_deal_id ? '#' + i.claimed_deal_id +
+                          (i.deal?.client_name ? ' ' + i.deal.client_name : '') : '—'}</td>
+                    <td>${conv}</td>
+                    <td><a href="#" onclick="editIncome(${i.id});return false" title="Разметить">✏️</a></td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="10">Приходов нет</td></tr>';
+            syncIncomeSelection();
+        }
+
+        // Откуда деньги: ручная метка важнее, иначе выводим из сделки
+        function incomeSource(i) {
+            if (i.source_tag) return i.source_tag;
+            if (i.deal?.deal_kind === 'mf_realty') return 'недвижка (лизхолд)';
+            if (i.deal?.deal_kind === 'mf_freehold') return 'недвижка (фрихолд)';
+            if (i.deal) return 'обмен';
+            return '<span style="color:#cbd5e1">—</span>';
+        }
+
+        function toggleAllIncomes(master) {
+            document.querySelectorAll('.incSel').forEach(cb => cb.checked = master.checked);
+            syncIncomeSelection();
+        }
+
+        function selectedIncomes() {
+            return [...document.querySelectorAll('.incSel:checked')].map(cb => {
+                const amt = document.querySelector(`.incAmt[data-id="${cb.value}"]`);
+                return {sber_income_id: Number(cb.value), amount_rub: Number(amt?.value || 0)};
+            });
+        }
+
+        function syncIncomeSelection() {
+            const sel = selectedIncomes();
+            const btn = document.getElementById('convertSelectedBtn');
+            if (!btn) return;
+            const total = sel.reduce((a, x) => a + (x.amount_rub || 0), 0);
+            btn.disabled = !sel.length;
+            btn.textContent = sel.length
+                ? `Конвертировать выбранное (${sel.length} · ${cnvNum(total)} ₽)`
+                : 'Конвертировать выбранное';
+        }
+
+        // Пачка собирается прямо из таблицы: отметил приходы — открылась форма
+        // с уже проставленным составом, включая частичные суммы
+        function convertSelectedIncomes() {
+            const sel = selectedIncomes();
+            if (!sel.length) return;
+            openConversionForm(sel);
+        }
+
+        async function excludeSelectedIncomes() {
+            const sel = selectedIncomes();
+            if (!sel.length) return alert('Отметь приходы, которые не идут в конвертацию');
+            const note = prompt(`Исключить ${sel.length} приход(ов) из учёта конвертаций.\n` +
+                                'Комментарий (например: арбитраж, обменная сделка):', '');
+            if (note === null) return;
+            for (const x of sel) {
+                await fetch(`/api/sber-incomes/${x.sber_income_id}`, {method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({excluded: true, note})});
+            }
+            loadIncomes();
+        }
+
+        async function editIncome(id) {
+            const i = (window._incomes || []).find(x => x.id === id);
+            if (!i) return;
+            const note = prompt('Комментарий к приходу:', i.note || '');
+            if (note === null) return;
+            const tag = prompt('Источник (WL, инвойс, обмен, арбитраж — пусто чтобы убрать):',
+                               i.source_tag || '');
+            if (tag === null) return;
+            const excluded = confirm('Исключить этот приход из «не сконвертировано»?\n' +
+                                     'ОК — исключить, Отмена — оставить в учёте');
+            await fetch(`/api/sber-incomes/${id}`, {method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({note, source_tag: tag, excluded})});
+            loadIncomes();
+        }
+
+        async function cutoffIncomes() {
+            const date = prompt('Пометить все приходы РАНЬШЕ этой даты как конвертированные ' +
+                                'до запуска учёта (ГГГГ-ММ-ДД):', '2026-08-19');
+            if (!date) return;
+            const r = await fetch('/api/sber-incomes/bulk', {method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'converted_earlier', before_date: date})});
+            const d = await r.json();
+            if (!d.success) return alert(d.error || 'Не получилось');
+            alert(`Помечено приходов: ${d.updated}`);
+            loadIncomes();
         }
 
         async function loadConversions() {
@@ -9239,12 +9367,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 || '<tr><td colspan="10">Пачек пока нет</td></tr>';
         }
 
-        async function openConversionForm() {
+        async function openConversionForm(preselected) {
             const [d, dd] = await Promise.all([
                 (await fetch('/api/sber-incomes?all=1&with_conversion=1')).json(),
                 (await fetch('/api/sber-debits')).json(),
             ]);
-            const free = (d.incomes || []).filter(i => (i.free_rub || 0) > 0.01);
+            // Пришли из таблицы с отмеченными приходами — подставляем их суммы,
+            // в том числе частичные: «мне из предыдущих нужны не все целиком»
+            const pre = new Map((preselected || []).map(x => [x.sber_income_id, x.amount_rub]));
+            const free = (d.incomes || []).filter(
+                i => !i.excluded && ((i.free_rub || 0) > 0.01 || pre.has(i.id)));
             // Расход по конвертации уходит тремя строками — отправка брокеру,
             // комиссия процентом и фикс. Отмечаем все три: тогда и отправка,
             // и удержание берутся фактом, а не считаются по ставке
@@ -9259,12 +9391,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 </label>`).join('');
             const rows = free.map(i => `
                 <label style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
-                    <input type="checkbox" class="convSrc" value="${i.id}">
+                    <input type="checkbox" class="convSrc" value="${i.id}"
+                           ${pre.has(i.id) ? 'checked' : ''}>
                     <span style="flex:1">${(i.operation_date || '').slice(0, 10)} ·
                         ${i.payer || '—'} · свободно ${cnvNum(i.free_rub)} ₽
                         ${i.claimed_deal_id ? '· сделка #' + i.claimed_deal_id : '· ⏳ сделки нет'}</span>
                     <input type="number" step="0.01" class="form-control convSrcAmt"
-                           value="${i.free_rub}" style="width:140px">
+                           value="${pre.has(i.id) ? pre.get(i.id) : i.free_rub}" style="width:140px">
                 </label>`).join('');
             document.getElementById('conversionModalBody').innerHTML = `
                 <div class="card-title">Новая пачка конвертации</div>
@@ -9321,6 +9454,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!d.success) return alert(d.error || 'Не удалось создать пачку');
             document.getElementById('conversionModal').classList.remove('active');
             loadConversions();
+            if (document.getElementById('incomes').classList.contains('active')) loadIncomes();
         }
 
         async function showConversion(id) {

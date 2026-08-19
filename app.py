@@ -1759,6 +1759,14 @@ class SberIncome(Base):
     doc_number = Column(String(40))
     claimed_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=True, index=True)
     claimed_at = Column(DateTime, nullable=True)
+    # Приход, который к конвертации отношения не имеет: арбитраж, обменная сделка,
+    # либо всё, что конвертировали до запуска учёта. Из «не сконвертировано»
+    # такие исключаются, иначе экран показывает сотни миллионов и не читается
+    excluded = Column(Boolean, default=False)
+    note = Column(Text)
+    # Откуда пришли деньги: WL-обменник, инвойс, обмен, арбитраж. Проставляется
+    # руками либо подсказывается по привязанной сделке
+    source_tag = Column(String(30))
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def converted_rub(self):
@@ -1801,6 +1809,9 @@ class SberIncome(Base):
             # Сколько из прихода уже сконвертировано и сколько ещё лежит на счёте
             'converted_rub': self.converted_rub(),
             'free_rub': self.free_rub(),
+            'excluded': bool(self.excluded),
+            'note': self.note,
+            'source_tag': self.source_tag,
             'fee_rub': round(acq['fee_rub'], 2),
             # Сколько заплатил клиент: у реквизитов = зачислено, у СБП = +комиссия
             'gross_rub': round(net + acq['fee_rub'], 2),
@@ -1919,6 +1930,9 @@ try:
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
+            conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS excluded BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
+            conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
         # Для SQLite
         else:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
@@ -1929,6 +1943,11 @@ try:
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
             except: pass
+            for _sql in ("ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
+                         "ALTER TABLE sber_incomes ADD COLUMN note TEXT",
+                         "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)"):
+                try: conn.execute(text(_sql))
+                except: pass
         # Выдача с карты (THB-счёта): какой картой закрыли сделку
         if 'postgresql' in DATABASE_URL:
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS bank_card_id INTEGER REFERENCES bank_cards(id)"))
@@ -5018,6 +5037,10 @@ def _attach_sources(db, conv, sources_req, force=False):
         inc = db.query(SberIncome).filter(SberIncome.id == sid).with_for_update().first()
         if not inc:
             raise ValueError(f'Приход #{sid} не найден')
+        if inc.excluded and not force:
+            raise ValueError(
+                f'Приход {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) исключён '
+                f'из конвертаций{": " + inc.note if inc.note else ""}')
         try:
             take = round(float(item.get('amount_rub') or 0), 2)
         except (TypeError, ValueError):
@@ -5350,9 +5373,11 @@ def list_sber_incomes():
             rows = [r for r in rows if r['kind'] == kind]
         rows = rows[:300]
         total_free = 0.0
+        in_deal_total = 0.0
         if request.args.get('with_conversion') == '1':
             # Одним запросом: в какие пачки ушёл каждый приход. Отменённые не в счёт.
             by_income = {}
+            usdt_by_income = {}
             for src, conv in db.query(ConversionSource, Conversion).join(
                     Conversion, ConversionSource.conversion_id == Conversion.id).filter(
                     Conversion.status != ConversionStatus.CANCELLED).all():
@@ -5362,13 +5387,61 @@ def list_sber_incomes():
                     'amount_rub': round(src.amount_rub or 0, 2),
                     'status': conv.status.value if conv.status else None,
                 })
+                # Сколько USDT пришлось на этот приход — известно только после
+                # подтверждения прихода USDT, до него доля не существует
+                if conv.status == ConversionStatus.RECEIVED:
+                    pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
+                    shares = _conversion_shares(pairs, conv.received_usdt())
+                    got = shares.get(src.sber_income_id)
+                    if got is not None:
+                        usdt_by_income[src.sber_income_id] = round(
+                            usdt_by_income.get(src.sber_income_id, 0) + got, 2)
+            # Инфа о сделке: без неё в таблице виден только номер, а нужно понимать,
+            # откуда деньги — обмен, недвижка или что-то ещё
+            deal_ids = {r['claimed_deal_id'] for r in rows if r.get('claimed_deal_id')}
+            deals_map = {}
+            if deal_ids:
+                for d in db.query(Deal).filter(Deal.id.in_(deal_ids)).all():
+                    deals_map[d.id] = {
+                        'client_name': d.client_name,
+                        'deal_kind': d.deal_kind or 'exchange',
+                        'payin_method': d.payin_method.value if d.payin_method else None,
+                        'payin_amount_usdt': d.payin_amount_usdt,
+                    }
             for row in rows:
+                row['deal'] = deals_map.get(row.get('claimed_deal_id'))
                 links = by_income.get(row['id']) or []
                 # Одна пачка — объектом (частый случай), несколько — списком
                 row['conversion'] = links[0] if len(links) == 1 else (links or None)
-                total_free += row.get('free_rub') or 0
+                # Три состояния вместо двух. Приход, у которого в сделке уже стоит
+                # USDT, не «лежит на счёте» — рубли обменяли, просто пачку никто
+                # не оформил. Считать его несконвертированным значит завышать
+                # остаток на счёте и не видеть, где учёт отстал от факта.
+                row['usdt'] = usdt_by_income.get(row['id'])
+                free = row.get('free_rub') or 0
+                # Статусная модель прихода: лежит → на конвертации → сконвертирован.
+                # Средний статус нужен, чтобы связь фиксировалась В МОМЕНТ отправки
+                # брокеру, а не когда придёт USDT: иначе к вечеру снова гадать,
+                # какие сделки ушли в эту пачку
+                any_received = any(l['status'] == 'received' for l in links)
+                if row.get('excluded'):
+                    row['conv_state'] = 'excluded'
+                elif links and free > 0.01:
+                    row['conv_state'] = 'partial'
+                    total_free += free
+                elif links and any_received:
+                    row['conv_state'] = 'converted'
+                elif links:
+                    row['conv_state'] = 'in_progress'
+                elif (row.get('deal') or {}).get('payin_amount_usdt'):
+                    row['conv_state'] = 'in_deal'
+                    in_deal_total += free
+                else:
+                    row['conv_state'] = 'pending'
+                    total_free += free
         return jsonify({'success': True, 'incomes': rows,
-                        'unconverted_rub': round(total_free, 2)})
+                        'unconverted_rub': round(total_free, 2),
+                        'in_deal_rub': round(in_deal_total, 2)})
     finally:
         db.close()
 
@@ -5397,6 +5470,56 @@ def _conversion_shares(sources, received_usdt):
         biggest = max(shares, key=lambda k: shares[k])
         shares[biggest] = round(shares[biggest] + tail, 4)
     return shares
+
+
+@app.route('/api/sber-incomes/<int:income_id>', methods=['PUT'])
+def update_sber_income(income_id):
+    """Разметка прихода: исключить из конвертаций, комментарий, источник."""
+    db = get_session()
+    try:
+        inc = db.query(SberIncome).get(income_id)
+        if not inc:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        data = request.get_json(silent=True) or {}
+        if 'excluded' in data:
+            inc.excluded = bool(data['excluded'])
+        if 'note' in data:
+            inc.note = (str(data['note'] or '').strip() or None)
+        if 'source_tag' in data:
+            inc.source_tag = (str(data['source_tag'] or '').strip()[:30] or None)
+        db.commit()
+        return jsonify({'success': True, 'income': inc.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/sber-incomes/bulk', methods=['POST'])
+def bulk_sber_incomes():
+    """Массовая разметка. Пока одно действие — отсечка истории.
+
+    До запуска учёта конвертации уже сделаны, но система о них не знает, поэтому
+    «не сконвертировано» показывает всю историю счёта. Отсечка помечает всё
+    до даты как учтённое ранее и убирает из счётчика.
+    """
+    db = get_session()
+    try:
+        data = request.get_json(silent=True) or {}
+        action = data.get('action')
+        if action != 'converted_earlier':
+            return jsonify({'success': False, 'error': 'unknown action'}), 400
+        before = str(data.get('before_date') or '').strip()
+        if not before:
+            return jsonify({'success': False, 'error': 'нужна дата отсечки'}), 400
+        rows = db.query(SberIncome).filter(
+            SberIncome.operation_date < before,
+            SberIncome.excluded.isnot(True)).all()
+        for inc in rows:
+            inc.excluded = True
+            inc.note = inc.note or f'конвертировано до запуска учёта ({before})'
+        db.commit()
+        return jsonify({'success': True, 'updated': len(rows)})
+    finally:
+        db.close()
 
 
 def _sync_sber_claims(session, deal, parts):

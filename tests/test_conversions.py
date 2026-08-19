@@ -419,3 +419,130 @@ def test_пустая_пачка_не_даёт_минус(cli):
     assert c['sent_rub'] == 0.0
     assert c['expected_usdt'] == 0.0
     cli.delete(f"/api/conversions/{c['id']}")
+
+
+# ── Разметка приходов: что не идёт в конвертацию ────────────────────────────
+
+def test_исключённый_приход_не_в_счётчике(cli, incomes):
+    """Арбитраж и прочее «не наше» не должно раздувать «не сконвертировано».
+
+    Кейс: приход 9,1 млн по реквизитам — обменная сделка, к конвертации
+    отношения не имеет, но висела в сумме и мешала читать экран.
+    """
+    before = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()['unconverted_rub']
+    r = cli.put(f'/api/sber-incomes/{incomes[2]}', json={
+        'excluded': True, 'note': 'арбитраж, не обменная сделка'})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    assert body['unconverted_rub'] == round(before - 83000.0, 2)
+    row = next(i for i in body['incomes'] if i['id'] == incomes[2])
+    assert row['excluded'] is True
+    assert row['note'] == 'арбитраж, не обменная сделка'
+    # Исключённый не предлагается в пачку
+    r2 = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[2], 'amount_rub': 83000.0}]})
+    assert r2.status_code == 409
+    assert 'исключ' in r2.get_json()['error'].lower()
+
+
+def test_массовая_отсечка_старых_приходов(cli, incomes):
+    """До запуска учёта всё уже конвертировали — иначе экран показывает 428 млн."""
+    r = cli.post('/api/sber-incomes/bulk', json={
+        'before_date': '2026-08-12', 'action': 'converted_earlier'})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()['updated'] >= 3
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    for iid in incomes:
+        row = next(i for i in body['incomes'] if i['id'] == iid)
+        assert row['excluded'] is True
+        assert 'до запуска' in (row['note'] or '')
+
+
+def test_приход_с_usdt_в_сделке_не_считается_несконвертированным(cli, incomes):
+    """Если у сделки проставлен USDT прихода — конвертация была, просто без пачки.
+
+    Замечание Карима на проде: «всё не сконвертировано, хотя ты это к сделкам
+    подцепил — странно». И правда: откуда бы взялся USDT в сделке, если рубли
+    не меняли. Такие приходы — не «лежат на счёте», а «учтены в сделке, пачка
+    не оформлена»: долг по учёту, а не деньги.
+    """
+    db = get_session()
+    deal_id = None
+    try:
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Кирилл', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=27786.44, payin_amount_usdt=330.28)
+        db.add(d)
+        db.flush()
+        deal_id = d.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[0]).update({'claimed_deal_id': d.id})
+        db.commit()
+    finally:
+        db.close()
+
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    row = next(i for i in body['incomes'] if i['id'] == incomes[0])
+    assert row['conv_state'] == 'in_deal'
+    assert row['deal']['payin_amount_usdt'] == 330.28
+    # В «не сконвертировано» такой приход не попадает — он уже обменян,
+    # зато виден отдельной цифрой: пачку по нему ещё предстоит оформить.
+    # Считаем по своим строкам: база общая на прогон, чужие приходы в сумме тоже
+    mine = {i['id']: i for i in body['incomes'] if i['id'] in incomes}
+    assert sum(i['free_rub'] for i in mine.values() if i['conv_state'] == 'pending') == 118000.0
+    assert sum(i['free_rub'] for i in mine.values() if i['conv_state'] == 'in_deal') == 27786.44
+    assert body['in_deal_rub'] >= 27786.44
+
+    other = next(i for i in body['incomes'] if i['id'] == incomes[1])
+    assert other['conv_state'] == 'pending'
+
+    db = get_session()
+    try:
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_статусная_модель_прихода(cli, incomes, monkeypatch):
+    """Приход проходит стадии: лежит → на конвертации → сконвертирован.
+
+    Смысл среднего статуса — фиксировать связь В МОМЕНТ отправки брокеру.
+    Если ждать подтверждения USDT, то к вечеру опять придётся вспоминать,
+    какие сделки уходили в эту пачку.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+
+    def state(iid):
+        body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+        return next(i for i in body['incomes'] if i['id'] == iid)
+
+    assert state(incomes[0])['conv_state'] == 'pending'
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'request_no': '№46', 'rate_rub_usdt': 83.35, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    assert conv['status'] == 'sent'
+
+    row = state(incomes[0])
+    assert row['conv_state'] == 'in_progress'      # рубли ушли, USDT ещё не подтверждён
+    assert row['conversion']['status'] == 'sent'
+    assert row['usdt'] is None
+
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs",
+             json={'tx_hash': tx_hash, 'amount_usdt': 333.37})
+
+    row = state(incomes[0])
+    assert row['conv_state'] == 'converted'
+    assert row['usdt'] == 333.37                   # сколько USDT пришлось на этот приход
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    assert state(incomes[0])['conv_state'] == 'pending'   # отмена вернула в свободные
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()
