@@ -1866,7 +1866,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <table class="table">
                     <thead><tr>
                         <th>CNV</th><th>Дата</th><th>Брокер</th><th>Заявка</th>
-                        <th>Отправлено ₽</th><th>Курс</th><th>Ожидали</th>
+                        <th>Отправлено ₽</th><th>Курс</th>
                         <th>Получили</th><th>Δ</th><th>Статус</th>
                     </tr></thead>
                     <tbody id="conversionsTable"></tbody>
@@ -9415,10 +9415,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <td>${(c.sent_at || c.created_at || '').slice(0, 10)}</td>
                     <td>${c.broker || '—'}</td><td>${c.request_no || '—'}</td>
                     <td>${cnvNum(c.sent_rub)} ₽</td><td>${c.rate_rub_usdt || '—'}</td>
-                    <td>${cnvNum(c.expected_usdt)}</td><td>${cnvNum(c.received_usdt)}</td>
+                    <td>${cnvNum(c.received_usdt)}</td>
                     <td>${c.delta_usdt ? cnvNum(c.delta_usdt) : '—'}</td>
                     <td>${c.status || '—'}</td></tr>`).join('')
-                || '<tr><td colspan="10">Пачек пока нет</td></tr>';
+                || '<tr><td colspan="9">Пачек пока нет</td></tr>';
         }
 
         async function openConversionForm(preselected) {
@@ -9530,9 +9530,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                        `  →  ${money(x.usdt)} USDT   ${who.trim()}`);
             });
             L.push('');
-            L.push(`Удержано:   ${money(c.held_rub)} ₽`);
+            L.push(`Удержано:   ${money(c.held_rub)} ₽ (не ушло брокеру)`);
             L.push(`Отправлено: ${money(c.sent_rub)} ₽ по курсу ${c.rate_rub_usdt || '—'}`);
-            L.push(`Ожидали:    ${money(c.expected_usdt)} USDT`);
             L.push(`Получили:   ${money(c.received_usdt)} USDT   (Δ ${money(c.delta_usdt)})`);
             if ((d.txs || []).length) {
                 L.push('');
@@ -9589,9 +9588,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <button class="btn btn-secondary btn-sm" onclick="copyConversionSummary(this)">📋 Копировать</button>
                 </div>
                 <pre style="background:#f8fafc; padding:12px; border-radius:8px; font-size:0.9rem">Поступления   ${cnvNum(c.sources_rub)} ₽
-Удержано      ${cnvNum(c.held_rub)} ₽   ${cnvHeldLabel(c)}
+Удержано      ${cnvNum(c.held_rub)} ₽   ${cnvHeldLabel(c)} — не ушло брокеру
 Отправлено    ${cnvNum(c.sent_rub)} ₽   @ ${c.rate_rub_usdt || '—'}
-Ожидали       ${cnvNum(c.expected_usdt)} USDT
 Получили      ${cnvNum(c.received_usdt)} USDT
 Δ             ${cnvNum(c.delta_usdt)} USDT${c.has_debits ? `
 ${Math.abs(c.debits_delta_rub) < 0.01
