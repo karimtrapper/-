@@ -45,7 +45,7 @@ const CONFIG = {
         rub_usdt: 82.6035
     },
     
-    // Комиссии СБП. База RUB-USDT = Рапира+2% (себестоимость), бонуса Доверки
+    // Комиссии СБП. База RUB-USDT = стакан Рапиры без наценки, бонуса Доверки
     // нет: профит целиком в комиссии USDT-THB, c = p/(1+p) под целевой профит p
     DOVERKA_COMMISSIONS: {
         'до_500к': {
@@ -1153,7 +1153,7 @@ function calculateLocal(amount) {
 
     const rub_usdt_rate = state.rates.rub_usdt;
     const usdt_thb_rate = state.rates.usdt_thb;
-    const bonus_pct = 0.0; // бонуса Доверки больше нет (база — Рапира+2%)
+    const bonus_pct = 0.0; // бонуса Доверки больше нет (база — стакан Рапиры)
 
     // ПРАВИЛЬНЫЙ расчет для Doverka
     if (state.method === 'doverka' && state.scenario === 'rub-to-thb') {
