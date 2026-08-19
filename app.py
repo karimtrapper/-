@@ -1772,13 +1772,20 @@ class SberIncome(Base):
     source_tag = Column(String(30))
     created_at = Column(DateTime, default=datetime.utcnow)
 
-    def converted_rub(self):
+    def converted_rub(self, agg=None):
         """Сколько из прихода уже ушло в конвертации (отменённые не считаются).
 
-        Считаем запросом, а не по коллекции: доли добавляются и читаются в рамках
-        одного запроса, коллекция в памяти к этому моменту не перечитана —
-        остаток показывался бы старый (та же причина, что в ReimbursementTx.used_usdt).
+        `agg` — заранее посчитанная карта {income_id: сумма}. Без неё метод делает
+        свой запрос, и на списке это превращалось в запрос на строку: 300 приходов
+        давали 601 обращение к БД и 2,7 с на живом экране. Списки обязаны
+        передавать agg (см. `_converted_by_income`), одиночные карточки — могут не.
+
+        Запросом, а не по коллекции: доли добавляются и читаются в рамках одного
+        запроса, коллекция в памяти к этому моменту не перечитана — остаток
+        показывался бы старый (та же причина, что в ReimbursementTx.used_usdt).
         """
+        if agg is not None:
+            return round(agg.get(self.id, 0) or 0, 2)
         from sqlalchemy import func as _f
         from sqlalchemy.orm import object_session
         s = object_session(self)
@@ -1791,11 +1798,11 @@ class SberIncome(Base):
             return round(val or 0, 2)
         return 0.0
 
-    def free_rub(self):
+    def free_rub(self, agg=None):
         """Не сконвертировано по этому приходу."""
-        return round((self.amount_rub or 0) - self.converted_rub(), 2)
+        return round((self.amount_rub or 0) - self.converted_rub(agg), 2)
 
-    def to_dict(self):
+    def to_dict(self, agg=None):
         acq = parse_sber_acquiring(self.purpose)
         net = self.amount_rub or 0
         return {
@@ -1810,8 +1817,8 @@ class SberIncome(Base):
             'kind': acq['kind'],
             'merchant': acq['merchant'],
             # Сколько из прихода уже сконвертировано и сколько ещё лежит на счёте
-            'converted_rub': self.converted_rub(),
-            'free_rub': self.free_rub(),
+            'converted_rub': self.converted_rub(agg),
+            'free_rub': self.free_rub(agg),
             'excluded': bool(self.excluded),
             'note': self.note,
             'source_tag': self.source_tag,
@@ -2398,19 +2405,24 @@ def _conversions_by_wl(session, wl_deals):
     """
     if not wl_deals:
         return {}
+    from sqlalchemy.orm import selectinload
     rows = session.query(ConversionSource, Conversion, SberIncome).join(
         Conversion, ConversionSource.conversion_id == Conversion.id).join(
-        SberIncome, ConversionSource.sber_income_id == SberIncome.id).filter(
+        SberIncome, ConversionSource.sber_income_id == SberIncome.id).options(
+        selectinload(Conversion.sources), selectinload(Conversion.txs)).filter(
         Conversion.status != ConversionStatus.CANCELLED).all()
     out = {}
+    shares_cache = {}
     for src, conv, inc in rows:
-        deal = _match_wl_deal(inc.to_dict(), wl_deals)
+        deal = _match_wl_deal(inc.to_dict(agg={}), wl_deals)
         if not deal:
             continue
         usdt = None
         if conv.status == ConversionStatus.RECEIVED:
-            pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-            usdt = _conversion_shares(pairs, conv.received_usdt()).get(inc.id)
+            if conv.id not in shares_cache:
+                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
+                shares_cache[conv.id] = _conversion_shares(pairs, conv.received_usdt())
+            usdt = shares_cache[conv.id].get(inc.id)
         out[deal['wl']] = {
             'id': conv.id, 'display_name': conv.display_name, 'broker': conv.broker,
             'request_no': conv.request_no, 'rate_rub_usdt': conv.rate_rub_usdt,
@@ -5066,6 +5078,23 @@ def get_payin_tx(tx_hash):
 
 # ── Конвертации рублёвых поступлений ────────────────────────────────────────
 
+def _converted_by_income(session, income_ids):
+    """Σ сконвертированного по приходам — одним запросом вместо запроса на строку.
+
+    Ключевая функция бюджета запросов: см. tests/test_conversions_perf.py.
+    """
+    if not income_ids:
+        return {}
+    from sqlalchemy import func as _f
+    rows = session.query(
+        ConversionSource.sber_income_id, _f.sum(ConversionSource.amount_rub)
+    ).join(Conversion, ConversionSource.conversion_id == Conversion.id).filter(
+        ConversionSource.sber_income_id.in_(income_ids),
+        Conversion.status != ConversionStatus.CANCELLED
+    ).group_by(ConversionSource.sber_income_id).all()
+    return {iid: round(val or 0, 2) for iid, val in rows}
+
+
 def _parse_sent_at(value):
     """Дата отправки брокеру. Пачку заводят задним числом, поэтому дата создания
     не годится: платёж мог уйти позавчера, а сводка должна называть его день.
@@ -5501,7 +5530,10 @@ def list_sber_incomes():
         if request.args.get('all') != '1':
             q = q.filter(SberIncome.claimed_deal_id.is_(None))
         kind = (request.args.get('kind') or '').strip()
-        rows = [i.to_dict() for i in q.limit(600).all()]
+        items = q.limit(600).all()
+        # Один запрос на весь список вместо запроса на строку
+        agg = _converted_by_income(db, [i.id for i in items])
+        rows = [i.to_dict(agg) for i in items]
         if kind in ('acquiring', 'transfer'):
             rows = [r for r in rows if r['kind'] == kind]
         rows = rows[:300]
@@ -5512,9 +5544,16 @@ def list_sber_incomes():
             by_income = {}
             usdt_by_income = {}
             expected_by_income = {}
-            for src, conv in db.query(ConversionSource, Conversion).join(
-                    Conversion, ConversionSource.conversion_id == Conversion.id).filter(
-                    Conversion.status != ConversionStatus.CANCELLED).all():
+            # sources/txs каждой пачки грузим сразу: обращение к ним в цикле
+            # давало ленивый запрос на пачку — тот же N+1, только этажом выше
+            from sqlalchemy.orm import selectinload
+            pairs = db.query(ConversionSource, Conversion).join(
+                Conversion, ConversionSource.conversion_id == Conversion.id).options(
+                selectinload(Conversion.sources), selectinload(Conversion.txs)).filter(
+                Conversion.status != ConversionStatus.CANCELLED).all()
+            # Доли считаются один раз на пачку, а не на каждый её приход
+            shares_cache = {}
+            for src, conv in pairs:
                 by_income.setdefault(src.sber_income_id, []).append({
                     'id': conv.id, 'display_name': conv.display_name,
                     'broker': conv.broker, 'rate_rub_usdt': conv.rate_rub_usdt,
@@ -5525,17 +5564,20 @@ def list_sber_incomes():
                 # до него — ожидание по согласованному курсу: менеджер заводит
                 # сделку раньше, чем брокер отдаст USDT, и без этой цифры вбивает
                 # её руками (так в #501 появился курс 126,70 при рынке 87,93)
-                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-                if conv.status == ConversionStatus.RECEIVED:
-                    got = _conversion_shares(pairs, conv.received_usdt()).get(src.sber_income_id)
-                    if got is not None:
-                        usdt_by_income[src.sber_income_id] = round(
-                            usdt_by_income.get(src.sber_income_id, 0) + got, 2)
-                else:
-                    exp = _conversion_shares(pairs, conv.expected_usdt()).get(src.sber_income_id)
-                    if exp is not None:
-                        expected_by_income[src.sber_income_id] = round(
-                            expected_by_income.get(src.sber_income_id, 0) + exp, 2)
+                if conv.id not in shares_cache:
+                    conv_pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
+                    received = conv.status == ConversionStatus.RECEIVED
+                    shares_cache[conv.id] = (
+                        received,
+                        _conversion_shares(conv_pairs,
+                                           conv.received_usdt() if received
+                                           else conv.expected_usdt()))
+                received, shares = shares_cache[conv.id]
+                val = shares.get(src.sber_income_id)
+                if val is not None:
+                    target = usdt_by_income if received else expected_by_income
+                    target[src.sber_income_id] = round(
+                        target.get(src.sber_income_id, 0) + val, 2)
             # Сделки обменника из снапшота WL-бота: приход по СБП — это оплата
             # клиента мерчанта, и по ней надо видеть WL-номер и мерчанта, иначе
             # непонятно, откуда деньги и чью выплату они обеспечивают
