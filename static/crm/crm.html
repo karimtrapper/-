@@ -1220,6 +1220,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <input type="number" step="any" class="form-control" name="payin_amount_usdt" placeholder="1000"
                                     oninput="payinUsdtChanged()">
                                 <small style="color:#6b7280;">введи сколько USDT реально пришло — курс посчитается из рублей</small>
+                                <div id="payinUsdtConvHint" style="display:none; margin-top:4px; font-size:0.85rem;"></div>
                             </div>
                         </div>
 
@@ -6195,7 +6196,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         async function sberLoadIncomes() {
             try {
-                const url = `${API_URL}/api/sber-incomes` + (sberKindFilter ? `?kind=${sberKindFilter}` : '');
+                // with_conversion — чтобы у прихода была доля USDT из пачки:
+                // если рубли уже конвертированы, вводить сумму руками не нужно
+                const url = `${API_URL}/api/sber-incomes?with_conversion=1`
+                          + (sberKindFilter ? `&kind=${sberKindFilter}` : '');
                 const resp = await fetch(url);
                 const data = await resp.json();
                 sberIncomesCache = data.incomes || [];
@@ -6216,6 +6220,40 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                              note: '', kind: inc.kind || 'transfer',
                              fee_rub: inc.fee_rub || 0, net_rub: inc.amount_rub });
             sberRender();
+            applyConversionUsdt(inc);
+        }
+
+        // Приход уже прошёл через пачку конвертации — значит его доля в USDT
+        // посчитана, и вбивать её руками нечего. Так в #501 появился курс
+        // 126,70 ₽/USDT при рынке 87,93: цифру вводили на глаз.
+        function applyConversionUsdt(inc) {
+            const hint = document.getElementById('payinUsdtConvHint');
+            const c = Array.isArray(inc.conversion) ? inc.conversion[0] : inc.conversion;
+            const usdt = inc.usdt ?? inc.usdt_expected;
+            const el = document.querySelector('[name="payin_amount_usdt"]');
+
+            // Доля известна — подставляем, но введённое руками не трогаем
+            if (usdt && el && !(parseFloat(el.value) > 0)) {
+                el.value = usdt;
+                el.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+            if (!hint) return;
+            hint.style.display = 'block';
+            if (usdt && inc.usdt) {
+                hint.innerHTML = `✅ подставлено из конвертации <b>${c.display_name}</b> ·
+                                  ${c.broker || ''} @ ${c.rate_rub_usdt || '—'}`;
+                hint.style.color = '#059669';
+            } else if (usdt) {
+                hint.innerHTML = `🚚 ожидание по <b>${c.display_name}</b> · ${c.broker || ''}
+                                  @ ${c.rate_rub_usdt || '—'}
+                                  <span style="color:#94a3b8">— уточнится, когда придёт USDT</span>`;
+                hint.style.color = '#b45309';
+            } else {
+                // Конвертации по этому приходу ещё не было: сумму не выдумываем,
+                // просто фиксируем, что приход привязан к сделке
+                hint.innerHTML = '⏳ приход ещё не сконвертирован — USDT появится после пачки';
+                hint.style.color = '#94a3b8';
+            }
         }
 
         function sberAddManual(sfx) {

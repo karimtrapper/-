@@ -5390,6 +5390,7 @@ def list_sber_incomes():
             # Одним запросом: в какие пачки ушёл каждый приход. Отменённые не в счёт.
             by_income = {}
             usdt_by_income = {}
+            expected_by_income = {}
             for src, conv in db.query(ConversionSource, Conversion).join(
                     Conversion, ConversionSource.conversion_id == Conversion.id).filter(
                     Conversion.status != ConversionStatus.CANCELLED).all():
@@ -5399,15 +5400,21 @@ def list_sber_incomes():
                     'amount_rub': round(src.amount_rub or 0, 2),
                     'status': conv.status.value if conv.status else None,
                 })
-                # Сколько USDT пришлось на этот приход — известно только после
-                # подтверждения прихода USDT, до него доля не существует
+                # Сколько USDT пришлось на этот приход. После подтверждения — факт,
+                # до него — ожидание по согласованному курсу: менеджер заводит
+                # сделку раньше, чем брокер отдаст USDT, и без этой цифры вбивает
+                # её руками (так в #501 появился курс 126,70 при рынке 87,93)
+                pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
                 if conv.status == ConversionStatus.RECEIVED:
-                    pairs = [(x.sber_income_id, x.amount_rub) for x in conv.sources]
-                    shares = _conversion_shares(pairs, conv.received_usdt())
-                    got = shares.get(src.sber_income_id)
+                    got = _conversion_shares(pairs, conv.received_usdt()).get(src.sber_income_id)
                     if got is not None:
                         usdt_by_income[src.sber_income_id] = round(
                             usdt_by_income.get(src.sber_income_id, 0) + got, 2)
+                else:
+                    exp = _conversion_shares(pairs, conv.expected_usdt()).get(src.sber_income_id)
+                    if exp is not None:
+                        expected_by_income[src.sber_income_id] = round(
+                            expected_by_income.get(src.sber_income_id, 0) + exp, 2)
             # Сделки обменника из снапшота WL-бота: приход по СБП — это оплата
             # клиента мерчанта, и по ней надо видеть WL-номер и мерчанта, иначе
             # непонятно, откуда деньги и чью выплату они обеспечивают
@@ -5442,6 +5449,7 @@ def list_sber_incomes():
                 # не оформил. Считать его несконвертированным значит завышать
                 # остаток на счёте и не видеть, где учёт отстал от факта.
                 row['usdt'] = usdt_by_income.get(row['id'])
+                row['usdt_expected'] = expected_by_income.get(row['id'])
                 free = row.get('free_rub') or 0
                 # Статусная модель прихода: лежит → на конвертации → сконвертирован.
                 # Средний статус нужен, чтобы связь фиксировалась В МОМЕНТ отправки

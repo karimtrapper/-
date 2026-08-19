@@ -586,3 +586,47 @@ def test_неоднозначный_матч_не_привязывается():
     ]
     inc = {'operation_date': '2026-08-17T12:00:00', 'gross_rub': 35000.0, 'kind': 'acquiring'}
     assert _match_wl_deal(inc, wl) is None
+
+
+def test_приход_отдаёт_ожидаемый_usdt_до_подтверждения(cli, incomes, monkeypatch):
+    """Пока USDT не подтверждён, у прихода уже есть ожидаемая доля.
+
+    Менеджер заводит сделку раньше, чем брокер пришлёт USDT, и вбивает сумму
+    руками — так в #501 появился курс 126,70 ₽/USDT при рынке 87,93.
+    Если пачка собрана, доля считается из неё, и вводить нечего.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    rate, sent = 86.15, 145186.00
+    conv = cli.post('/api/conversions', json={
+        'broker': 'tradex', 'rate_rub_usdt': rate, 'sent_at': True,
+        'amount_rub_sent': sent,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44},
+                    {'sber_income_id': incomes[1], 'amount_rub': 35000.0},
+                    {'sber_income_id': incomes[2], 'amount_rub': 83000.0}],
+    }).get_json()['conversion']
+    expected = round(sent / rate, 4)
+    assert conv['expected_usdt'] == expected
+
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    row = next(i for i in body['incomes'] if i['id'] == incomes[1])
+    assert row['conv_state'] == 'in_progress'
+    assert row['usdt'] is None                        # фактического ещё нет
+    assert row['usdt_expected'] == round(expected * 35000.0 / 145786.44, 2)
+
+    # Пришёл USDT — ожидание сменяется фактом
+    tx_hash = _uid() + _uid()
+    got = 1680.0
+    cli.post(f"/api/conversions/{conv['id']}/txs",
+             json={'tx_hash': tx_hash, 'amount_usdt': got})
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    row = next(i for i in body['incomes'] if i['id'] == incomes[1])
+    assert row['conv_state'] == 'converted'
+    assert row['usdt'] == round(got * 35000.0 / 145786.44, 2)
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+    finally:
+        db.close()
