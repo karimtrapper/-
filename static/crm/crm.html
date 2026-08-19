@@ -7517,11 +7517,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     // Прибыль/курс + агенты (каскад) считают net
                     const volume = Math.max(payinUsdt, binanceUsdt);
                     const exchangeRate = payinUsdt > 0 && payoutThb > 0 ? payoutThb / payinUsdt : 0;
+                    document.getElementById('cashBatchCostUsdt').value = '$' + binanceUsdt.toFixed(2);
+                    document.getElementById('exchangeRateCalc').value = exchangeRate.toFixed(2);
+                    if (payinUsdt <= 0) { markProfitPending(binanceUsdt); return; }
                     document.getElementById('profitUsdt').value = profit.toFixed(2);
                     document.getElementById('profitUsdt').style.color = profit >= 0 ? '#10b981' : '#ef4444';
                     document.getElementById('profitPercent').value = profitPercent.toFixed(2);
-                    document.getElementById('cashBatchCostUsdt').value = '$' + binanceUsdt.toFixed(2);
-                    document.getElementById('exchangeRateCalc').value = exchangeRate.toFixed(2);
                     _stdApplyAgents(profit, volume);
                     return;
                 }
@@ -7532,15 +7533,49 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const profit = payinUsdt - payoutUsdt;
             const profitPercent = payoutUsdt > 0 ? (profit / payoutUsdt) * 100 : 0;
 
+            document.getElementById('cashBatchCostUsdt').value = '$' + payoutUsdt.toFixed(2);
+
+            // Приход ещё не пересчитан в USDT — прибыли пока нет
+            if (payinUsdt <= 0) { markProfitPending(payoutUsdt); return; }
+
             // Обновляем поля прибыли
             document.getElementById('profitUsdt').value = profit.toFixed(2);
             document.getElementById('profitUsdt').placeholder = 'Авто';
+            document.getElementById('profitUsdt').style.color = profit >= 0 ? '#10b981' : '#ef4444';
             document.getElementById('profitPercent').value = profitPercent.toFixed(1);
             document.getElementById('profitPercent').placeholder = '%';
-            document.getElementById('cashBatchCostUsdt').value = '$' + payoutUsdt.toFixed(2);
 
             // Агенты (каскад) считают выплаты и чистую прибыль
             _stdApplyAgents(profit, Math.max(payinUsdt, payoutUsdt));
+        }
+
+        /**
+         * Приход по СБП ещё в рублях: себестоимость выдачи известна, а сколько
+         * USDT реально купили — нет. Считать прибыль как «0 − выдача» нельзя:
+         * −700.96 и −100% выглядят как проваленная сделка, хотя это просто
+         * незаполненная нога. Показываем ожидание, поля оставляем пустыми —
+         * пустые в payload не уходят, прибыль досчитает сервер.
+         */
+        function markProfitPending(payoutUsdt) {
+            const profitEl = document.getElementById('profitUsdt');
+            profitEl.value = '';
+            profitEl.placeholder = 'После конвертации';
+            profitEl.style.color = '';
+            const pctEl = document.getElementById('profitPercent');
+            pctEl.value = '';
+            pctEl.placeholder = '—';
+            const net = document.getElementById('netProfit');
+            if (net) {
+                net.value = 'Ждём курс прихода';
+                net.style.color = '#f59e0b';
+            }
+            const ref = document.getElementById('referrerPayout');
+            if (ref) ref.value = 'После конвертации';
+            // hidden-поля чистим, иначе в сделку уедет минус с прошлого пересчёта
+            const netRaw = document.getElementById('netProfitRaw');
+            if (netRaw) netRaw.value = '';
+            const refRaw = document.getElementById('referrerPayoutRaw');
+            if (refRaw) refRaw.value = '';
         }
 
         // Auto-calculate on input change
