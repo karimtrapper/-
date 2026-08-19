@@ -5965,6 +5965,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 net_rub: inc.amount_rub,
             });
             payinExtraSberSync(i);
+            // Доля USDT из пачки — как в основном блоке: если рубли уже
+            // конвертированы, считать нечего
+            const usdt = inc.usdt ?? inc.usdt_expected;
+            if (usdt && !(payinExtra[i].amount_usdt > 0)) {
+                payinExtraSet(i, 'amount_usdt', usdt);
+                const el = document.getElementById(`pe-${i}-usdt`);
+                if (el) el.value = usdt;
+            }
         }
 
         function payinExtraSberRemove(i, k) {
