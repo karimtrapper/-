@@ -3653,6 +3653,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="stat-card">
                             <div class="stat-value">${d.margins?.unique_referrers ?? 0}</div>
                             <div class="stat-label">Уникальных рефералов ${pl}</div>
+                            ${(d.margins?.unique_agents_l2 ?? 0) > 0 ? `
+                            <div style="font-size:11px;color:#64748b;margin-top:4px">
+                                + ${d.margins.unique_agents_l2} агент(ов) 2-го уровня
+                            </div>` : ''}
                         </div>
                         <div class="stat-card warning">
                             <div class="stat-value">$${formatNumber(p.referrer_payout_usdt ?? 0)}</div>
@@ -3854,9 +3858,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                           c => `${c.loss_deals ?? 0} из ${c.rated_deals ?? 0}`)}
                     <tr>
                         <th class="ue-name" style="text-align:left">Уникальных рефералов
-                            <span class="ue-sub">включая агентов второго уровня</span></th>
+                            <span class="ue-sub">привели сделку (первый уровень)</span></th>
                         <td><span class="ue-val">${m.unique_referrers ?? 0}</span></td>
                         <td><span class="ue-val">${m.unique_referrers ?? 0}</span></td>
+                        <td><span class="ue-val na">—</span></td>
+                    </tr>
+                    <tr>
+                        <th class="ue-name" style="text-align:left">Агентов 2-го уровня
+                            <span class="ue-sub">в доле от выплаты реферера, клиента не приводили</span></th>
+                        <td><span class="ue-val">${m.unique_agents_l2 ?? 0}</span></td>
+                        <td><span class="ue-val">${m.unique_agents_l2 ?? 0}</span></td>
                         <td><span class="ue-val na">—</span></td>
                     </tr>
                 </tbody>`;

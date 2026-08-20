@@ -9045,18 +9045,23 @@ def get_dashboard():
 
         _ref_deals = [d for d in period_deals if d.referrer_id]
         _own_deals = [d for d in period_deals if not d.referrer_id]
-        # Уникальные рефереры: и «главный» на сделке, и агенты каскада — иначе
-        # партнёр второго уровня в счёт не попадёт. Одним запросом, не в цикле
-        _agent_ref_ids = set()
+        # Уровни считаем врозь: реферер привёл сделку, агент второго уровня сидит
+        # в доле от его выплаты и клиента не приводил. Смешивать их в одной цифре
+        # значит завышать «сколько партнёров работает». Одним запросом, не в цикле
+        _agents_l1, _agents_l2 = set(), set()
         if period_deals:
-            _agent_ref_ids = {rid for (rid,) in session.query(DealAgent.referrer_id).filter(
-                DealAgent.deal_id.in_([d.id for d in period_deals]),
-                DealAgent.referrer_id.isnot(None)).distinct().all()}
+            for rid, tier in session.query(DealAgent.referrer_id, DealAgent.tier).filter(
+                    DealAgent.deal_id.in_([d.id for d in period_deals]),
+                    DealAgent.referrer_id.isnot(None)).distinct().all():
+                (_agents_l2 if (tier or 1) >= 2 else _agents_l1).add(rid)
         margin_block = {
             'all': _margin_slice(period_deals),
             'with_referrer': _margin_slice(_ref_deals),
             'own': _margin_slice(_own_deals),
-            'unique_referrers': len({d.referrer_id for d in _ref_deals} | _agent_ref_ids),
+            # Первый уровень — кто привёл сделку (реферер сделки + агенты tier 1)
+            'unique_referrers': len({d.referrer_id for d in _ref_deals} | _agents_l1),
+            # Второй уровень и глубже — каскад: доля от выплаты реферера
+            'unique_agents_l2': len(_agents_l2),
         }
 
         # Доход лизхолда расходится по двум карманам: комиссия оседает БАТАМИ на

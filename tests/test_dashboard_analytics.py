@@ -328,19 +328,26 @@ class TestMargins:
         assert m['own']['margin_net'] == 30.0
         assert m['all']['profit_per_deal'] == 200.0              # (100 + 300) / 2
 
-    def test_уникальные_рефералы_считают_агентов_второго_уровня(self, db, tc):
-        """Партнёр второго уровня — тоже реферал периода, хотя на сделке не главный."""
+    def test_уровни_рефералов_считаются_врозь(self, db, tc):
+        """Второй уровень — не реферал: он в доле от выплаты, клиента не приводил.
+
+        Пока обе роли лежали в одной цифре, «уникальных рефералов» показывало
+        больше, чем людей, реально приносящих сделки.
+        """
         r1 = Referrer(name='Eduard', code='GR-ED8', token='tm2')
         r2 = Referrer(name='Malik', code='GR-ML8', token='tm3')
         db.add_all([r1, r2]); db.commit()
         d1 = make_deal(db, referrer=r1, profit=100, payin=1000)
+        db.add(DealAgent(deal_id=d1.id, referrer_id=r1.id, name='Eduard', tier=1,
+                         comp_model='revshare', percent=50, payout_usdt=50))
         db.add(DealAgent(deal_id=d1.id, referrer_id=r2.id, name='Malik', tier=2,
                          comp_model='revshare', percent=10, payout_usdt=10))
         make_deal(db, referrer=r1, profit=50, payin=500)   # тот же реферер — не дубль
         make_deal(db, profit=20, payin=200)                # своя сделка
         db.commit()
         m = get_dash(tc, period='30d').get_json()['dashboard']['margins']
-        assert m['unique_referrers'] == 2
+        assert m['unique_referrers'] == 1          # только Eduard привёл сделки
+        assert m['unique_agents_l2'] == 1          # Malik сидит в доле
         assert m['with_referrer']['deals'] == 2
 
     def test_пустой_период_без_деления_на_ноль(self, tc):
@@ -349,6 +356,7 @@ class TestMargins:
         assert m['all']['margin_gross'] is None
         assert m['all']['avg_margin_deal'] is None
         assert m['unique_referrers'] == 0
+        assert m['unique_agents_l2'] == 0
 
 
 # ── UA/C1 из эпизодов WON+LOSE ────────────────────────────────────────────
