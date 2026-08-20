@@ -3650,6 +3650,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="stat-value">${p.referrer_deals_count ?? 0}</div>
                             <div class="stat-label">Сделок с рефералами ${pl}</div>
                         </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${d.margins?.unique_referrers ?? 0}</div>
+                            <div class="stat-label">Уникальных рефералов ${pl}</div>
+                        </div>
                         <div class="stat-card warning">
                             <div class="stat-value">$${formatNumber(p.referrer_payout_usdt ?? 0)}</div>
                             <div class="stat-label">Выплачено рефералам ${pl}</div>
@@ -3810,8 +3814,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         // реально забрали). Плюс срез «с рефералом / без» — видно, во что
         // обходится партнёрский поток
         function renderMargins(m, pl) {
-            if (!m) return;
             document.getElementById('marginsTitle').textContent = `Маржа ${pl}`;
+            if (!m) {
+                // Старый ответ API (кэш страницы) — молча пустая карточка выглядит
+                // как поломка вёрстки, а не как «нечего показать»
+                document.getElementById('marginsTable').innerHTML = '';
+                document.getElementById('marginsNote').textContent =
+                    'Нет данных по марже — обновите страницу (Cmd+Shift+R).';
+                return;
+            }
             const cols = [['all', 'Все сделки'], ['with_referrer', 'С рефералом'], ['own', 'Свои (без реферала)']];
             const money = v => v == null ? '—' : '$' + formatNumber(v);
             const row = (name, sub, fn, cls = '') => `
