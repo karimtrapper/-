@@ -3841,11 +3841,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     ${row('Прибыль на сделку', 'чистая ÷ сделки', c => money(c.profit_per_deal))}
                     ${row('Сделок в минусе', 'из тех, где маржа посчитана',
                           c => `${c.loss_deals ?? 0} из ${c.rated_deals ?? 0}`)}
+                    <tr>
+                        <th class="ue-name" style="text-align:left">Уникальных рефералов
+                            <span class="ue-sub">включая агентов второго уровня</span></th>
+                        <td><span class="ue-val">${m.unique_referrers ?? 0}</span></td>
+                        <td><span class="ue-val">${m.unique_referrers ?? 0}</span></td>
+                        <td><span class="ue-val na">—</span></td>
+                    </tr>
                 </tbody>`;
             const a = m.all || {};
             document.getElementById('marginsNote').innerHTML =
-                `Уникальных рефералов за период: <b>${m.unique_referrers ?? 0}</b> ` +
-                `(с учётом агентов второго уровня). ` +
                 `Две маржи расходятся не по ошибке: «по сделкам» — простое среднее, ` +
                 `где сделка на $500 весит столько же, сколько на $200 000; ` +
                 `«по деньгам» — ${money(a.gross_profit_usdt)} ÷ ${money(a.volume_usdt)}. ` +
@@ -3949,10 +3954,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         // Таблица «По рефералам» — показывается только в режиме «Только рефералы»
+        // Поимённо, всегда когда рефералы в периоде есть. Раньше карточка ждала
+        // режима «Только рефералы» — из-за этого на обычном дашборде не было
+        // видно даже того, сколько партнёров вообще принесли сделки
         function renderRefBreakdown(rows, pl) {
             const card = document.getElementById('refBreakdownCard');
-            const isAnyMode = document.getElementById('dashReferrer').value === 'any';
-            if (!isAnyMode || !rows.length) { card.style.display = 'none'; return; }
+            if (!rows.length) { card.style.display = 'none'; return; }
             card.style.display = '';
             document.getElementById('refBreakdownTitle').textContent = `По рефералам ${pl}`;
             document.getElementById('refBreakdownBody').innerHTML = rows.map(r => `
