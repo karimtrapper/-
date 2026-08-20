@@ -280,6 +280,77 @@ class TestReferrerBreakdown:
         assert bd[1]['name'] == 'Malik'
 
 
+# ── Маржа в разрезах ──────────────────────────────────────────────────────
+
+class TestMargins:
+    """Блок margins: среднее по сделкам против доли от объёма, срез по рефералам.
+
+    Запрос Карима: «мне нужен инструмент, где я почти всё вижу — сколько маржи
+    закладываем, сколько реально забираем, сколько с реферала и сколько без».
+    Одна плитка «ср. маржа» отвечала только на первый вопрос и делала это молча.
+    """
+
+    def test_среднее_по_сделкам_не_равно_доле_от_объёма(self, db, tc):
+        """Невзвешенное среднее задирает маржу: мелкая сделка весит как крупная."""
+        make_deal(db, profit=50, payin=500)        # 10% на $500
+        make_deal(db, profit=2000, payin=200000)   # 1% на $200 000
+        m = get_dash(tc, period='30d').get_json()['dashboard']['margins']['all']
+        assert m['avg_margin_deal'] == 5.5                       # (10 + 1) / 2
+        assert m['margin_gross'] == 1.02                         # 2050 / 200500
+        assert m['volume_usdt'] == 200500
+        assert m['gross_profit_usdt'] == 2050
+
+    def test_убыточная_сделка_попадает_в_среднее(self, db, tc):
+        """Старая плитка avg_margin режет всё, что <= 0, и показывает only-профит."""
+        make_deal(db, profit=100, payin=1000)      # +10%
+        make_deal(db, profit=-100, payin=1000)     # −10%
+        d = get_dash(tc, period='30d').get_json()['dashboard']
+        assert d['margins']['all']['avg_margin_deal'] == 0.0     # (10 − 10) / 2
+        assert d['margins']['all']['loss_deals'] == 1
+        assert d['margins']['all']['rated_deals'] == 2
+        assert d['period']['avg_margin'] == 10.0                 # легаси-плитка: только плюс
+
+    def test_срез_с_рефералом_и_без(self, db, tc):
+        """Партнёрский поток отдельно от своего — видно, во что обходятся выплаты."""
+        r = Referrer(name='Eduard', code='GR-ED9', token='tm1')
+        db.add(r); db.commit()
+        d1 = make_deal(db, referrer=r, profit=200, payin=2000)
+        d1.net_profit_usdt = 100.0                  # 100 ушло рефереру
+        make_deal(db, profit=300, payin=1000)       # своя сделка
+        db.commit()
+        m = get_dash(tc, period='30d').get_json()['dashboard']['margins']
+        assert m['with_referrer']['deals'] == 1
+        assert m['with_referrer']['margin_gross'] == 10.0        # 200 / 2000
+        assert m['with_referrer']['margin_net'] == 5.0           # 100 / 2000
+        assert m['with_referrer']['referrer_payout_usdt'] == 100
+        assert m['own']['deals'] == 1
+        assert m['own']['margin_gross'] == 30.0                  # выплат нет
+        assert m['own']['margin_net'] == 30.0
+        assert m['all']['profit_per_deal'] == 200.0              # (100 + 300) / 2
+
+    def test_уникальные_рефералы_считают_агентов_второго_уровня(self, db, tc):
+        """Партнёр второго уровня — тоже реферал периода, хотя на сделке не главный."""
+        r1 = Referrer(name='Eduard', code='GR-ED8', token='tm2')
+        r2 = Referrer(name='Malik', code='GR-ML8', token='tm3')
+        db.add_all([r1, r2]); db.commit()
+        d1 = make_deal(db, referrer=r1, profit=100, payin=1000)
+        db.add(DealAgent(deal_id=d1.id, referrer_id=r2.id, name='Malik', tier=2,
+                         comp_model='revshare', percent=10, payout_usdt=10))
+        make_deal(db, referrer=r1, profit=50, payin=500)   # тот же реферер — не дубль
+        make_deal(db, profit=20, payin=200)                # своя сделка
+        db.commit()
+        m = get_dash(tc, period='30d').get_json()['dashboard']['margins']
+        assert m['unique_referrers'] == 2
+        assert m['with_referrer']['deals'] == 2
+
+    def test_пустой_период_без_деления_на_ноль(self, tc):
+        m = get_dash(tc, period='today').get_json()['dashboard']['margins']
+        assert m['all']['deals'] == 0
+        assert m['all']['margin_gross'] is None
+        assert m['all']['avg_margin_deal'] is None
+        assert m['unique_referrers'] == 0
+
+
 # ── UA/C1 из эпизодов WON+LOSE ────────────────────────────────────────────
 
 def make_lose(db, name, created_at=None):

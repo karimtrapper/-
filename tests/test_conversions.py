@@ -558,6 +558,33 @@ def test_приход_до_запуска_учёта_уходит_в_истор�
         db.close()
 
 
+def test_старый_приход_можно_вернуть_на_счёт(cli, incomes, monkeypatch):
+    """Отсечка по дате слепая: приход #519 (30 535,46 ₽, СБП) реально лежал на счёте.
+
+    Двигать ради одной строки дату запуска учёта нельзя — уедут все остальные,
+    поэтому у прихода есть личное исключение `keep_active`.
+    """
+    monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-08-19')
+
+    def state(iid):
+        body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+        return next(i for i in body['incomes'] if i['id'] == iid)
+
+    assert state(incomes[0])['conv_state'] == 'legacy'      # 11.08 — до запуска
+
+    r = cli.put(f'/api/sber-incomes/{incomes[0]}', json={'keep_active': True}).get_json()
+    assert r['success']
+    row = state(incomes[0])
+    assert row['conv_state'] == 'pending'                   # снова «лежит на счёте»
+    assert row['keep_active'] is True
+    # И в остаток на счёте вернулся — иначе конвертировать было бы нечего
+    body = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    assert body['unconverted_rub'] >= row['free_rub']
+
+    cli.put(f'/api/sber-incomes/{incomes[0]}', json={'keep_active': False})
+    assert state(incomes[0])['conv_state'] == 'legacy'      # и обратно в историю
+
+
 def test_статусная_модель_прихода(cli, incomes, monkeypatch):
     """Приход проходит стадии: лежит → на конвертации → сконвертирован.
 

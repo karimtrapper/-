@@ -740,6 +740,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <!-- Метрики -->
             <div class="stats-grid" id="statsGrid"></div>
 
+            <!-- Маржа в разрезах: закладываем vs забираем, с рефералом и без -->
+            <div class="card" style="padding:20px;margin-bottom:16px">
+                <div class="card-title" style="margin-bottom:12px" id="marginsTitle">Маржа</div>
+                <div class="table-container" style="overflow-x:auto">
+                    <table class="unit-econ-table" id="marginsTable"></table>
+                </div>
+                <div id="marginsNote" style="font-size:12px;color:#666;margin-top:10px"></div>
+            </div>
+
             <!-- Юнит-экономика (Красинский, формат шаблона Product Heroes) -->
             <div class="card" style="padding:20px;margin-bottom:16px">
                 <div class="card-title" style="margin-bottom:12px" id="unitEconTitle">Юнит-экономика</div>
@@ -3648,6 +3657,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="stat-card ${(p.avg_margin ?? 0) > 0 ? '' : 'warning'}">
                             <div class="stat-value">${p.avg_margin ?? 0}%</div>
                             <div class="stat-label">Ср. маржа ${pl}</div>
+                            ${d.margins?.all?.margin_net != null ? `
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">
+                                по деньгам ${fmtPct(d.margins.all.margin_gross)} ·
+                                после рефералов ${fmtPct(d.margins.all.margin_net)}
+                            </div>` : ''}
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">$${formatNumber(p.avg_check ?? 0)}</div>
@@ -3662,6 +3676,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="stat-label">Не возмещено</div>
                         </div>
                     `;
+
+                    renderMargins(d.margins, pl);
 
                     // Юнит-экономика — таблица в формате шаблона Красинского (когорты v5)
                     const ue = d.unit_economics || {};
@@ -3785,6 +3801,57 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Таблица юнит-экономики в формате шаблона Красинского:
         // воронка продаж → доход на 1 платящего → на 1 привлечённого → финансы
+        const fmtPct = v => v == null ? '—'
+            : Number(v).toLocaleString('ru-RU', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
+
+        // Маржа в трёх разрезах. Смысл таблицы — развести две разные цифры,
+        // которые раньше жили под одной подписью «ср. маржа»: среднее по
+        // сделкам (сколько закладываем в прайс) и долю от объёма (сколько
+        // реально забрали). Плюс срез «с рефералом / без» — видно, во что
+        // обходится партнёрский поток
+        function renderMargins(m, pl) {
+            if (!m) return;
+            document.getElementById('marginsTitle').textContent = `Маржа ${pl}`;
+            const cols = [['all', 'Все сделки'], ['with_referrer', 'С рефералом'], ['own', 'Свои (без реферала)']];
+            const money = v => v == null ? '—' : '$' + formatNumber(v);
+            const row = (name, sub, fn, cls = '') => `
+                <tr>
+                    <th class="ue-name" style="text-align:left">${name}
+                        ${sub ? `<span class="ue-sub">${sub}</span>` : ''}</th>
+                    ${cols.map(([k]) => `<td><span class="ue-val ${cls}">${fn(m[k] || {})}</span></td>`).join('')}
+                </tr>`;
+            document.getElementById('marginsTable').innerHTML = `
+                <thead><tr>
+                    <th class="ue-group fin" style="text-align:left">Показатель</th>
+                    ${cols.map(([, label]) => `<th class="ue-group payer">${label}</th>`).join('')}
+                </tr></thead>
+                <tbody>
+                    ${row('Сделок', '', c => c.deals ?? 0)}
+                    ${row('Объём', 'приход клиентов в USDT', c => money(c.volume_usdt))}
+                    ${row('Средний чек', 'объём ÷ сделки', c => money(c.avg_check))}
+                    ${row('Ср. маржа по сделкам', 'среднее % сделки, база — себестоимость. Сколько закладываем',
+                          c => fmtPct(c.avg_margin_deal))}
+                    ${row('Маржа по деньгам', 'прибыль ÷ объём, до выплат рефералам. Сколько реально забрали',
+                          c => fmtPct(c.margin_gross), 'good')}
+                    ${row('Маржа после рефералов', 'чистая прибыль ÷ объём',
+                          c => fmtPct(c.margin_net), 'good')}
+                    ${row('Прибыль до выплат', '', c => money(c.gross_profit_usdt))}
+                    ${row('Выплачено рефералам', '', c => money(c.referrer_payout_usdt))}
+                    ${row('Чистая прибыль', 'после выплат агентам', c => money(c.net_profit_usdt), 'good')}
+                    ${row('Прибыль на сделку', 'чистая ÷ сделки', c => money(c.profit_per_deal))}
+                    ${row('Сделок в минусе', 'из тех, где маржа посчитана',
+                          c => `${c.loss_deals ?? 0} из ${c.rated_deals ?? 0}`)}
+                </tbody>`;
+            const a = m.all || {};
+            document.getElementById('marginsNote').innerHTML =
+                `Уникальных рефералов за период: <b>${m.unique_referrers ?? 0}</b> ` +
+                `(с учётом агентов второго уровня). ` +
+                `Две маржи расходятся не по ошибке: «по сделкам» — простое среднее, ` +
+                `где сделка на $500 весит столько же, сколько на $200 000; ` +
+                `«по деньгам» — ${money(a.gross_profit_usdt)} ÷ ${money(a.volume_usdt)}. ` +
+                `Сделки без посчитанной маржи (не проставлен приход в USDT) в среднее не идут.`;
+        }
+
         function renderUnitEconTable(ue) {
             const na = '<span class="ue-val na">—</span>';
             const num = (v, pre = '', cls = '') => v == null ? na : `<span class="ue-val ${cls}">${pre}${formatNumber(v)}</span>`;
@@ -9358,13 +9425,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     conv = `<span style="color:#b45309" title="В сделке проставлен USDT — значит конвертация была">` +
                            `⚠️ учтено в сделке (${cnvNum(i.deal.payin_amount_usdt)} USDT), пачки нет</span>`;
                 } else if (i.conv_state === 'legacy') {
-                    // Сделка закрыта до запуска учёта — рубли меняли вне системы,
-                    // пачки по такому приходу нет и не будет, ругаться не на что
+                    // Рубли меняли вне системы, пачки не будет — но отсечка по дате
+                    // слепая, и приход, который правда лежит на счёте, из неё
+                    // вынимается одной ссылкой, а не сдвигом даты запуска
                     conv = `<span style="color:#94a3b8" title="Поступление старше ` +
                            `${window._incomesLaunch} — учёта конвертаций тогда ещё не было">` +
-                           `🗄 было до запуска учёта конвертаций</span>`;
+                           `🗄 было до запуска учёта конвертаций</span>` +
+                           `<div style="font-size:0.8rem"><a href="#" style="color:#64748b"
+                              onclick="setIncomeActive(${i.id}, true);return false">вернуть на счёт</a></div>`;
                 } else if (i.conv_state === 'pending') {
-                    conv = '<span style="color:#94a3b8">⏳ лежит на счёте</span>';
+                    conv = '<span style="color:#94a3b8">⏳ лежит на счёте</span>' +
+                           (i.keep_active
+                             ? `<div style="font-size:0.8rem"><a href="#" style="color:#94a3b8"
+                                  onclick="setIncomeActive(${i.id}, false);return false">вернуть в историю</a></div>`
+                             : '');
                 } else if (i.conv_state === 'partial') {
                     conv = `<a href="#" onclick="showConversion(${c.id});return false">` +
                            `🔄 частично: ${cnvNum(i.converted_rub)} из ${cnvNum(i.amount_rub)} ₽</a>`;
@@ -9501,6 +9575,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             await fetch(`/api/sber-incomes/${id}`, {method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({note, source_tag: tag, excluded})});
+            loadIncomes();
+        }
+
+        // Ручное исключение из отсечки: дата у прихода старая, но деньги на счёте
+        async function setIncomeActive(id, active) {
+            await fetch(`/api/sber-incomes/${id}`, {method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({keep_active: active})});
             loadIncomes();
         }
 

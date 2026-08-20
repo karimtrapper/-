@@ -1785,6 +1785,10 @@ class SberIncome(Base):
     # Откуда пришли деньги: WL-обменник, инвойс, обмен, арбитраж. Проставляется
     # руками либо подсказывается по привязанной сделке
     source_tag = Column(String(30))
+    # Исключение из отсечки истории: приход старый, но деньги реально лежат
+    # на счёте и ждут конвертации. Без него единственный способ вернуть такой
+    # приход в работу — двигать дату запуска учёта, а это ломает все остальные
+    keep_active = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     def converted_rub(self, agg=None):
@@ -1835,6 +1839,7 @@ class SberIncome(Base):
             'converted_rub': self.converted_rub(agg),
             'free_rub': self.free_rub(agg),
             'excluded': bool(self.excluded),
+            'keep_active': bool(self.keep_active),
             'note': self.note,
             'source_tag': self.source_tag,
             'fee_rub': round(acq['fee_rub'], 2),
@@ -1961,6 +1966,7 @@ try:
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS excluded BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
+            conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS keep_active BOOLEAN DEFAULT FALSE"))
         # Для SQLite
         else:
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
@@ -1976,7 +1982,8 @@ try:
                          "ALTER TABLE payin_txs ADD COLUMN to_address VARCHAR(100)",
                          "ALTER TABLE sber_incomes ADD COLUMN excluded BOOLEAN DEFAULT 0",
                          "ALTER TABLE sber_incomes ADD COLUMN note TEXT",
-                         "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)"):
+                         "ALTER TABLE sber_incomes ADD COLUMN source_tag VARCHAR(30)",
+                         "ALTER TABLE sber_incomes ADD COLUMN keep_active BOOLEAN DEFAULT 0"):
                 try: conn.execute(text(_sql))
                 except: pass
         # Выдача с карты (THB-счёта): какой картой закрыли сделку
@@ -5682,7 +5689,8 @@ def list_sber_incomes():
                     row['conv_state'] = 'converted'
                 elif links:
                     row['conv_state'] = 'in_progress'
-                elif (row.get('operation_date') or '') < CONVERSIONS_LAUNCH_DATE:
+                elif ((row.get('operation_date') or '') < CONVERSIONS_LAUNCH_DATE
+                      and not row.get('keep_active')):
                     # До запуска учёта — история, а не остаток и не долг по учёту:
                     # пачки по таким приходам никто уже не заведёт. Со сделкой или
                     # без — рубли по ним разошлись, когда системы ещё не было
@@ -5718,6 +5726,8 @@ def update_sber_income(income_id):
             inc.note = (str(data['note'] or '').strip() or None)
         if 'source_tag' in data:
             inc.source_tag = (str(data['source_tag'] or '').strip()[:30] or None)
+        if 'keep_active' in data:
+            inc.keep_active = bool(data['keep_active'])
         db.commit()
         return jsonify({'success': True, 'income': inc.to_dict()})
     finally:
@@ -8991,6 +9001,64 @@ def get_dashboard():
         # Сделки с реферралами и сумма выплат реферралам
         period_referrer_deals = [d for d in period_deals if d.referrer_id]
         period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
+        # ── Маржа в разрезах: сколько закладываем vs сколько реально забираем ──
+        # Одна цифра «ср. маржа» врала сразу тремя способами: среднее по сделкам
+        # не взвешено (сделка на $500 весит как сделка на $200k), считается от
+        # себестоимости и ничего не знает про выплаты рефералам. Держим оба
+        # взгляда рядом — среднее по сделкам («сколько закладываем») и по
+        # деньгам («сколько реально забрали»), до и после выплат.
+        def _gross_of(d):
+            """Прибыль до выплат агентам. У лизхолда MF два кармана: крипта в
+            profit_usdt и комиссия батами — без неё gross вышел бы меньше net."""
+            g = d.profit_usdt or 0
+            if d.deal_kind == MF_REALTY_KIND:
+                g += d.company_fee_usdt or 0
+            return g
+
+        def _margin_slice(deals):
+            volume = sum(usdt[d.id][0] for d in deals)
+            gross = sum(_gross_of(d) for d in deals)
+            payout = sum(d.referrer_payout_usdt or 0 for d in deals)
+            net = sum((d.net_profit_usdt if d.net_profit_usdt is not None else d.profit_usdt) or 0
+                      for d in deals)
+            # В среднее по сделкам идут только сделки с обеими известными ногами:
+            # без прихода в USDT процента не существует, а не «минус сто»
+            rated = [d for d in deals if d.profit_percent is not None
+                     and d.payin_amount_usdt and d.payout_amount_usdt]
+            return {
+                'deals': len(deals),
+                'volume_usdt': round(volume, 2),
+                'avg_check': round(volume / len(deals), 2) if deals else 0,
+                # Среднее по сделкам, база — себестоимость (как в карточке сделки)
+                'avg_margin_deal': round(sum(d.profit_percent for d in rated) / len(rated), 2)
+                                   if rated else None,
+                'rated_deals': len(rated),
+                'loss_deals': len([d for d in rated if d.profit_percent <= 0]),
+                # По деньгам — доля от объёма, взвешивается сама собой
+                'margin_gross': round(gross / volume * 100, 2) if volume else None,
+                'margin_net': round(net / volume * 100, 2) if volume else None,
+                'gross_profit_usdt': round(gross, 2),
+                'referrer_payout_usdt': round(payout, 2),
+                'net_profit_usdt': round(net, 2),
+                'profit_per_deal': round(net / len(deals), 2) if deals else 0,
+            }
+
+        _ref_deals = [d for d in period_deals if d.referrer_id]
+        _own_deals = [d for d in period_deals if not d.referrer_id]
+        # Уникальные рефереры: и «главный» на сделке, и агенты каскада — иначе
+        # партнёр второго уровня в счёт не попадёт. Одним запросом, не в цикле
+        _agent_ref_ids = set()
+        if period_deals:
+            _agent_ref_ids = {rid for (rid,) in session.query(DealAgent.referrer_id).filter(
+                DealAgent.deal_id.in_([d.id for d in period_deals]),
+                DealAgent.referrer_id.isnot(None)).distinct().all()}
+        margin_block = {
+            'all': _margin_slice(period_deals),
+            'with_referrer': _margin_slice(_ref_deals),
+            'own': _margin_slice(_own_deals),
+            'unique_referrers': len({d.referrer_id for d in _ref_deals} | _agent_ref_ids),
+        }
+
         # Доход лизхолда расходится по двум карманам: комиссия оседает БАТАМИ на
         # счёте MF Corp, в USDT остаётся только остаток кошелька. Сумма в батах —
         # отдельно, иначе по дашборду кажется, что весь доход лежит в крипте.
@@ -9282,6 +9350,7 @@ def get_dashboard():
                     'cm': period_profit,
                     'revenue': period_volume,
                 },
+                'margins': margin_block,
                 'referrer_breakdown': referrer_breakdown,
                 # Воронка по каналам (None при фильтре по рефереру)
                 'channels': channels_block,
