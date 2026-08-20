@@ -5596,6 +5596,7 @@ def list_sber_incomes():
         rows = rows[:300]
         total_free = 0.0
         in_deal_total = 0.0
+        legacy_total = 0.0
         if request.args.get('with_conversion') == '1':
             # Одним запросом: в какие пачки ушёл каждый приход. Отменённые не в счёт.
             by_income = {}
@@ -5681,20 +5682,22 @@ def list_sber_incomes():
                     row['conv_state'] = 'converted'
                 elif links:
                     row['conv_state'] = 'in_progress'
+                elif (row.get('operation_date') or '') < CONVERSIONS_LAUNCH_DATE:
+                    # До запуска учёта — история, а не остаток и не долг по учёту:
+                    # пачки по таким приходам никто уже не заведёт. Со сделкой или
+                    # без — рубли по ним разошлись, когда системы ещё не было
+                    row['conv_state'] = 'legacy'
+                    legacy_total += free
                 elif (row.get('deal') or {}).get('payin_amount_usdt'):
-                    # До запуска учёта — не долг по учёту, а история: пачки по
-                    # таким приходам никто не заведёт, и в счётчик они не идут
-                    if (row.get('operation_date') or '') < CONVERSIONS_LAUNCH_DATE:
-                        row['conv_state'] = 'legacy'
-                    else:
-                        row['conv_state'] = 'in_deal'
-                        in_deal_total += free
+                    row['conv_state'] = 'in_deal'
+                    in_deal_total += free
                 else:
                     row['conv_state'] = 'pending'
                     total_free += free
         return jsonify({'success': True, 'incomes': rows,
                         'unconverted_rub': round(total_free, 2),
                         'in_deal_rub': round(in_deal_total, 2),
+                        'legacy_rub': round(legacy_total, 2),
                         'launch_date': CONVERSIONS_LAUNCH_DATE})
     finally:
         db.close()

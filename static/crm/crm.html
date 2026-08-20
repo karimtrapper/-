@@ -9322,6 +9322,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     ? `<div style="font-size:0.9rem;color:#b45309;margin-top:4px">
                          ⚠️ учтено в сделках, но пачка не оформлена: ${cnvNum(d.in_deal_rub)} ₽
                          <span style="color:#94a3b8">— рубли обменяли, в системе следа нет</span></div>`
+                    : '') +
+                // Отдельной строкой, чтобы падение главной цифры не выглядело
+                // потерей денег: история никуда не делась, она просто не остаток
+                (d.legacy_rub > 0.01
+                    ? `<div style="font-size:0.9rem;color:#94a3b8;margin-top:4px">
+                         🗄 до запуска учёта (раньше ${d.launch_date}):
+                         ${cnvNum(d.legacy_rub)} ₽ — конвертировались вне системы</div>`
                     : '');
             renderIncomes();
         }

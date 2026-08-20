@@ -38,6 +38,16 @@ def cli(monkeypatch):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def launch_date(monkeypatch):
+    """Учёт конвертаций «запущен» задолго до приходов фикстуры (они от 11.08).
+
+    Без этого каждый приход тестов уезжал бы в историю (conv_state='legacy'):
+    отсечку проверяет отдельный тест, он ставит дату сам.
+    """
+    monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-01-01')
+
+
 @pytest.fixture
 def incomes():
     """Три поступления пачки 11.08 — Захаров, Roman, Olya."""
@@ -461,7 +471,7 @@ def test_массовая_отсечка_старых_приходов(cli, inco
         assert 'до запуска' in (row['note'] or '')
 
 
-def test_приход_с_usdt_в_сделке_не_считается_несконвертированным(cli, incomes, monkeypatch):
+def test_приход_с_usdt_в_сделке_не_считается_несконвертированным(cli, incomes):
     """Если у сделки проставлен USDT прихода — конвертация была, просто без пачки.
 
     Замечание Карима на проде: «всё не сконвертировано, хотя ты это к сделкам
@@ -469,9 +479,6 @@ def test_приход_с_usdt_в_сделке_не_считается_неско
     не меняли. Такие приходы — не «лежат на счёте», а «учтены в сделке, пачка
     не оформлена»: долг по учёту, а не деньги.
     """
-    # Приходы фикстуры от 11.08 — сдвигаем запуск учёта в прошлое, иначе они
-    # уедут в историю (см. тест ниже) и предупреждения по ним не будет
-    monkeypatch.setattr(appmod, 'CONVERSIONS_LAUNCH_DATE', '2026-01-01')
     db = get_session()
     deal_id = None
     try:
@@ -535,10 +542,13 @@ def test_приход_до_запуска_учёта_уходит_в_истор�
     row = next(i for i in body['incomes'] if i['id'] == incomes[1])
     assert row['conv_state'] == 'legacy'          # 11.08 — раньше запуска 19.08
     assert body['launch_date'] == '2026-08-19'    # фронт подписывает дату в подсказке
-    # Ни в остаток на счёте, ни в «пачка не оформлена» такой приход не идёт
+    # Приход без сделки — тоже история: 200 000 ₽ от 13.08 в реестре («эту тоже»)
+    # висели как «лежит на счёте», хотя рубли по ним разошлись до запуска учёта
+    assert next(i for i in body['incomes'] if i['id'] == incomes[0])['conv_state'] == 'legacy'
+    # Ни в остаток на счёте, ни в «пачка не оформлена» история не идёт
     mine = {i['id']: i for i in body['incomes'] if i['id'] in incomes}
-    assert sum(i['free_rub'] for i in mine.values() if i['conv_state'] == 'pending') == 110786.44
-    assert not [i for i in mine.values() if i['conv_state'] == 'in_deal']
+    assert not [i for i in mine.values() if i['conv_state'] in ('pending', 'in_deal')]
+    assert body['legacy_rub'] >= sum(i['free_rub'] for i in mine.values())
 
     db = get_session()
     try:
