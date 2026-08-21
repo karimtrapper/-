@@ -5247,6 +5247,60 @@ def _apply_conversion_shares(db, conv):
     db.flush()
 
 
+def _income_conversion_usdt(db, income_ids):
+    """USDT по рублёвым приходам из ПОЛУЧЕННЫХ пачек: {sber_income_id: usdt}.
+
+    Считаем от пачек, а не от payin_tx_uses: доли в реестр переводов пишутся
+    в момент разноса и только по приходам, у которых уже есть сделка. Порядок
+    «приход → пачка → USDT → сделка» разрешён, и в нём строк реестра нет —
+    сумма всё равно известна.
+    """
+    ids = [i for i in income_ids if i]
+    if not ids:
+        return {}
+    rows = db.query(ConversionSource, Conversion).join(
+        Conversion, ConversionSource.conversion_id == Conversion.id).filter(
+        ConversionSource.sber_income_id.in_(ids),
+        Conversion.status == ConversionStatus.RECEIVED).all()
+    cache, out = {}, {}
+    for src, conv in rows:
+        if conv.id not in cache:
+            cache[conv.id] = conversion_shares_for(conv)
+        share = cache[conv.id].get(src.sber_income_id)
+        if share:
+            out[src.sber_income_id] = round(out.get(src.sber_income_id, 0) + share, 4)
+    return out
+
+
+def _fill_payin_usdt_from_conversion(db, deal):
+    """Проставляет сделке приход в USDT по её доле в пачке конвертации.
+
+    Зовётся и при разносе пачки, и при сохранении сделки: сумма становится
+    известна в разный момент — пачку могут собрать раньше, чем заведут сделку.
+    Ничего не пересчитывает и не шлёт, это дело вызывающего.
+
+    Не трогаем: сделку со своим USDT, сделку с частями прихода (там USDT —
+    агрегат по частям) и приход, сконвертированный ЧАСТИЧНО: доля пачки в этом
+    случае меньше прихода, и прибыль вышла бы заниженной.
+    """
+    if deal.payin_amount_usdt or deal.payin_extra:
+        return False
+    # autoflush выключен: захват прихода сделкой сделан парой строк выше и
+    # без flush в запрос не попадёт — сделка «не видит» свой же приход
+    db.flush()
+    incomes = db.query(SberIncome).filter(SberIncome.claimed_deal_id == deal.id).all()
+    if not incomes or any(inc.free_rub() > 0.01 for inc in incomes):
+        return False
+    shares = _income_conversion_usdt(db, [inc.id for inc in incomes])
+    usdt = round(sum(shares.get(inc.id, 0) for inc in incomes), 2)
+    if usdt <= 0:
+        return False
+    deal.payin_amount_usdt = usdt
+    if deal.payin_amount_rub:
+        deal.payin_rate_rub_usdt = round(deal.payin_amount_rub / usdt, 6)
+    return True
+
+
 def _close_deals_after_conversion(db, conv):
     """Проставляет сделкам приход в USDT после разноса пачки и закрывает их.
 
@@ -5269,25 +5323,11 @@ def _close_deals_after_conversion(db, conv):
                 if inc.claimed_deal_id}
     if not deal_ids:
         return []
-    shares = _converted_payin_usdt(db, list(deal_ids))
     completed = []
     for deal_id in sorted(deal_ids):
         deal = db.query(Deal).get(deal_id)
-        if not deal or deal.payin_amount_usdt:
+        if not deal or not _fill_payin_usdt_from_conversion(db, deal):
             continue
-        usdt = shares.get(deal_id) or 0
-        if usdt <= 0:
-            continue
-        # Сделка с несколькими приходами (крипта + рубли) — там payin_amount_usdt
-        # это агрегат по частям, доля пачки его не заменяет: оставляем оператору
-        if deal.payin_extra:
-            continue
-        rest = db.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).all()
-        if any(inc.free_rub() > 0.01 for inc in rest):
-            continue
-        deal.payin_amount_usdt = round(usdt, 2)
-        if deal.payin_amount_rub:
-            deal.payin_rate_rub_usdt = round(deal.payin_amount_rub / deal.payin_amount_usdt, 6)
         _recalculate_deal_financials(deal, {})
         _refresh_deal_agents(db, deal)
         # Тот же порядок, что в PUT /api/deals/<id>: выдача с карты закрывается,
@@ -6541,6 +6581,10 @@ def create_deal():
         # Забор приходов Сбера из пула под части сделки (sber_reqs)
         if data.get('payin_parts'):
             _sync_sber_claims(session, deal, data['payin_parts'])
+            # Пачку могли собрать раньше сделки — тогда приход в USDT известен
+            # уже сейчас, и держать сделку в pending не за чем
+            if not data.get('payin_extra'):
+                _fill_payin_usdt_from_conversion(session, deal)
 
         # Дополнительные приходы: плоские поля выше приняли суммы ОСНОВНОЙ части,
         # здесь они превращаются в агрегаты по всей сделке. Должно идти ДО
@@ -6823,6 +6867,11 @@ def update_deal(deal_id):
         # Автоматический пересчёт прибыли и выплаты рефереру.
         # Недвижимость — по своим формулам (лизхолд: два кармана; фрихолд: расходы
         # на перевод внутри отправки), обычный расчёт для них не подходит.
+        # Рубли этой сделки уже сконвертированы, а USDT никто не проставил:
+        # так остаются сделки, чью пачку разнесли до появления автозаписи
+        if 'payin_amount_usdt' not in data:
+            _fill_payin_usdt_from_conversion(session, deal)
+
         if deal.deal_kind in REALTY_KINDS:
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
