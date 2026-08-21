@@ -4590,7 +4590,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         function closeModal() {
-            document.getElementById('dealModal').classList.remove('active');
+            const m = document.getElementById('dealModal');
+            m.classList.remove('active');
+            m.style.display = '';  // часть открывашек ставила inline display — без сброса модалка остаётся на экране
         }
 
         async function updateDealWallet(dealId, walletId) {
@@ -5438,7 +5440,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const modal = document.getElementById('dealModal');
                 modal.querySelector('.modal-title').textContent = 'Заявки на выплату: ' + referrerName;
                 document.getElementById('dealModalContent').innerHTML = rows;
-                modal.style.display = 'flex';
+                modal.classList.add('active');
             } catch (e) {
                 alert('Ошибка загрузки заявок: ' + e);
             }
@@ -5469,7 +5471,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const modal = document.getElementById('dealModal');
                 modal.querySelector('.modal-title').textContent = 'Сделки: ' + referrerName;
                 document.getElementById('dealModalContent').innerHTML = rows;
-                modal.style.display = 'flex';
+                modal.classList.add('active');
             } catch(e) {
                 alert('Ошибка загрузки сделок: ' + e);
             }
@@ -12109,7 +12111,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 <div id="payModalTotal" style="font-weight:700;margin:10px 0;color:#16a34a;"></div>
                 <button class="btn btn-success" onclick="payReferrerSelected(${id}, '${name.replace(/'/g, "\\'")}')">Выплатить выбранные</button>
             `;
-            modal.style.display = 'flex';
+            modal.classList.add('active');
             payModalRecalc();
         }
 
@@ -12135,7 +12137,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const data = await res.json();
                 if (data.success) {
                     showToast(`Выплачено $${data.amount_usdt.toFixed(2)} (${data.deals_paid} сделок)`);
-                    document.getElementById('dealModal').style.display = 'none';
+                    closeModal();
                     loadReferrers();
                 } else {
                     showToast(data.error || 'Ошибка', 'error');
