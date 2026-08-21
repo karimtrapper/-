@@ -1180,11 +1180,10 @@ def test_put_добирает_usdt_зависшей_сделке(cli, incomes, m
         db.close()
 
 
-def test_массовый_добор_зависших_сделок(cli, incomes, monkeypatch):
-    """Уборка за сделками, чьи пачки разнесли до автозаписи: dry_run → apply."""
+def test_добор_зависших_при_следующей_пачке(cli, incomes, monkeypatch):
+    """Сделка, чью пачку разнесли раньше правки, досчитывается на следующей пачке."""
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
-    sent = []
-    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda deal, *a, **kw: sent.append(deal.id))
+    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, 'notify_agents_new_deal', lambda *a, **kw: None)
     monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
 
@@ -1200,13 +1199,13 @@ def test_массовый_добор_зависших_сделок(cli, incomes,
     finally:
         db.close()
 
-    conv = cli.post('/api/conversions', json={
+    conv1 = cli.post('/api/conversions', json={
         'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
         'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
     }).get_json()['conversion']
-    tx_hash = _uid() + _uid()
-    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash, 'amount_usdt': 333.37})
-    # Имитируем состояние «до правки»
+    h1 = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv1['id']}/txs", json={'tx_hash': h1, 'amount_usdt': 333.37})
+    # Имитируем состояние «до правки»: доли разнесены, у сделки USDT пуст
     db = get_session()
     try:
         db.query(Deal).filter(Deal.id == deal_id).update(
@@ -1215,30 +1214,120 @@ def test_массовый_добор_зависших_сделок(cli, incomes,
     finally:
         db.close()
 
-    dry = cli.post('/api/deals/backfill-converted-payin', json={'dry_run': True}).get_json()
-    assert dry['count'] == 1 and dry['deals'][0]['deal_id'] == deal_id
-    assert dry['deals'][0]['payin_amount_usdt'] == 333.37
-    db = get_session()
-    try:
-        # Предпросмотр ничего не сохранил
-        assert db.query(Deal).get(deal_id).payin_amount_usdt is None
-    finally:
-        db.close()
+    # Следующая пачка — вообще про другой приход, но зависшую сделку тоже досчитает
+    conv2 = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[1], 'amount_rub': 35000.0}],
+    }).get_json()['conversion']
+    h2 = _uid() + _uid()
+    r = cli.post(f"/api/conversions/{conv2['id']}/txs", json={'tx_hash': h2, 'amount_usdt': 419.86})
+    assert r.status_code == 200, r.get_data(as_text=True)
 
-    res = cli.post('/api/deals/backfill-converted-payin', json={}).get_json()
-    assert res['count'] == 1
     db = get_session()
     try:
         assert db.query(Deal).get(deal_id).payin_amount_usdt == 333.37
     finally:
         db.close()
-    # Второй прогон уже нечего досчитывать
-    assert cli.post('/api/deals/backfill-converted-payin', json={}).get_json()['count'] == 0
+
+    cli.delete(f"/api/conversions/{conv1['id']}")
+    cli.delete(f"/api/conversions/{conv2['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash.in_([h1, h2])).delete(synchronize_session=False)
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_сделка_взяла_часть_большого_прихода(cli, incomes, monkeypatch):
+    """Регресс #501: сделка на 50 000 ₽ из прихода 4,8 млн не забирает всю пачку.
+
+    Поступление метится claimed_deal_id целиком, но сделка взяла из него
+    только часть — доля считается по payin_parts, а не по поступлению.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
+    monkeypatch.setattr(appmod, 'notify_agents_new_deal', lambda *a, **kw: None)
+    monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
+
+    db = get_session()
+    try:
+        big = SberIncome(uuid=_uid(), operation_date='2026-08-14', amount_rub=4873105.0,
+                         payer='Крупный приход', purpose='тест доли')
+        db.add(big); db.flush()
+        big_id, big_uuid = big.id, big.uuid
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Roman - Grusha', payin_method=PayInMethod.SBER_REQS,
+                 payin_amount_rub=50000.0,
+                 payin_parts=json.dumps([{'uuid': big_uuid, 'amount_rub': 50000.0}]))
+        db.add(d); db.flush()
+        deal_id = d.id
+        big.claimed_deal_id = deal_id
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 85.03,
+        'sources': [{'sber_income_id': big_id, 'amount_rub': 4873105.0}],
+    }).get_json()['conversion']
+    h = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': h, 'amount_usdt': 57313.0})
+
+    db = get_session()
+    try:
+        deal = db.query(Deal).get(deal_id)
+        # 50 000 из 4 873 105 → 57 313 × доля ≈ 588, а не 57 313
+        assert 550 < deal.payin_amount_usdt < 620, deal.payin_amount_usdt
+        assert 80 < (50000.0 / deal.payin_amount_usdt) < 90
+    finally:
+        db.close()
 
     cli.delete(f"/api/conversions/{conv['id']}")
     db = get_session()
     try:
-        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(PayinTx).filter(PayinTx.tx_hash == h).delete()
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.query(SberIncome).filter(SberIncome.id == big_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_бредовый_курс_не_подставляется(cli, incomes, monkeypatch):
+    """Страховка: если доля даёт курс вне коридора — сделку не трогаем."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    db = get_session()
+    try:
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Курс мимо', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=27786.44)
+        db.add(d); db.flush()
+        deal_id = d.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[0]).update({'claimed_deal_id': deal_id})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    h = _uid() + _uid()
+    # Оператор ошибся полем: 27 786 «USDT» вместо 333 — курс 1,0
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': h, 'amount_usdt': 27786.44})
+
+    db = get_session()
+    try:
+        assert db.query(Deal).get(deal_id).payin_amount_usdt is None
+    finally:
+        db.close()
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == h).delete()
         db.query(Deal).filter(Deal.id == deal_id).delete()
         db.commit()
     finally:

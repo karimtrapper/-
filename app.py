@@ -5272,6 +5272,15 @@ def _income_conversion_usdt(db, income_ids):
     return out
 
 
+# Допустимый коридор курса RUB/USDT для автоподстановки. Не «рыночный» —
+# грубая отсечка бреда: сделка #501 получила 57 313 USDT на приход 50 000 ₽
+# (курс 0,87), потому что ей досталась доля ВСЕГО поступления, из которого она
+# взяла только часть. Считаем правильно, но подстраховка всё равно нужна:
+# ошибка в этом месте уходит клиенту в Telegram и в выгрузку.
+PAYIN_AUTOFILL_RATE_MIN = 40.0
+PAYIN_AUTOFILL_RATE_MAX = 200.0
+
+
 def _fill_payin_usdt_from_conversion(db, deal):
     """Проставляет сделке приход в USDT по её доле в пачке конвертации.
 
@@ -5279,11 +5288,17 @@ def _fill_payin_usdt_from_conversion(db, deal):
     известна в разный момент — пачку могут собрать раньше, чем заведут сделку.
     Ничего не пересчитывает и не шлёт, это дело вызывающего.
 
-    Не трогаем: сделку со своим USDT, сделку с частями прихода (там USDT —
-    агрегат по частям) и приход, сконвертированный ЧАСТИЧНО: доля пачки в этом
-    случае меньше прихода, и прибыль вышла бы заниженной.
+    Считаем по ЧАСТЯМ сделки, а не по поступлению целиком: приход на 4,8 млн ₽
+    обслуживает несколько сделок, `claimed_deal_id` метит его целиком, и доля
+    поступления к доле сделки отношения не имеет. Сколько рублей сделка взяла
+    из поступления — в payin_parts.
+
+    Не трогаем: сделку со своим USDT, сделку с частями прихода (payin_extra —
+    там USDT агрегат), приход, сконвертированный ЧАСТИЧНО (доля пачки меньше
+    прихода — прибыль вышла бы заниженной), сделку без суммы в рублях и
+    результат с бредовым курсом.
     """
-    if deal.payin_amount_usdt or deal.payin_extra:
+    if deal.payin_amount_usdt or deal.payin_extra or not deal.payin_amount_rub:
         return False
     # autoflush выключен: захват прихода сделкой сделан парой строк выше и
     # без flush в запрос не попадёт — сделка «не видит» свой же приход
@@ -5292,45 +5307,78 @@ def _fill_payin_usdt_from_conversion(db, deal):
     if not incomes or any(inc.free_rub() > 0.01 for inc in incomes):
         return False
     shares = _income_conversion_usdt(db, [inc.id for inc in incomes])
-    usdt = round(sum(shares.get(inc.id, 0) for inc in incomes), 2)
+
+    try:
+        parts = json.loads(deal.payin_parts) if deal.payin_parts else []
+    except (ValueError, TypeError):
+        parts = []
+    taken_by_uuid = {}
+    for part in parts:
+        if isinstance(part, dict) and part.get('uuid'):
+            taken_by_uuid[str(part['uuid'])] = (taken_by_uuid.get(str(part['uuid']), 0)
+                                                + float(part.get('amount_rub') or 0))
+
+    usdt = 0.0
+    for inc in incomes:
+        share = shares.get(inc.id)
+        if not share:
+            return False              # хоть один приход не в полученной пачке
+        taken = taken_by_uuid.get(inc.uuid)
+        if taken is None:
+            # Части не записаны: доверяем целому поступлению, только если оно
+            # и есть приход сделки. Иначе не гадаем — пусть проставят руками
+            if abs((inc.amount_rub or 0) - (deal.payin_amount_rub or 0)) > 1:
+                return False
+            taken = inc.amount_rub or 0
+        if not inc.amount_rub:
+            return False
+        usdt += share * (taken / inc.amount_rub)
+
+    usdt = round(usdt, 2)
     if usdt <= 0:
         return False
+    rate = deal.payin_amount_rub / usdt
+    if not (PAYIN_AUTOFILL_RATE_MIN <= rate <= PAYIN_AUTOFILL_RATE_MAX):
+        print(f'[Payin] Deal #{deal.id}: не подставляю {usdt} USDT '
+              f'на {deal.payin_amount_rub} ₽ — курс {rate:.4f} вне коридора')
+        return False
     deal.payin_amount_usdt = usdt
-    if deal.payin_amount_rub:
-        deal.payin_rate_rub_usdt = round(deal.payin_amount_rub / usdt, 6)
+    deal.payin_rate_rub_usdt = round(rate, 6)
     return True
 
 
-def _close_deals_after_conversion(db, conv):
-    """Проставляет сделкам приход в USDT после разноса пачки и закрывает их.
+def _close_deals_after_conversion(db):
+    """Досчитывает все сделки, чьи рубли сконвертированы, а USDT не проставлен.
 
     Сделка по СБП намеренно висит в pending, пока приход не пересчитан в USDT
-    (#519: иначе прибыль = минус всей выдаче). Но проставить USDT было некому —
-    пачка писала доли в payin_tx_uses и на сделку их не переносила. Итог: рубли
-    сконвертированы, сумма известна, а сделка «Ожидает», уведомление в TG и DM
-    агентам не ушло и в выгрузку она не попала.
+    (#519: иначе прибыль = минус всей выдаче). Проставить его должна пачка —
+    раньше она писала доли только в payin_tx_uses, и сделка так и оставалась
+    «Ожидает» без уведомления и без строки в выгрузке.
 
-    Трогаем только сделки, чьи рубли сконвертированы ПОЛНОСТЬЮ: у прихода,
+    Проход идёт по ВСЕМ зависшим сделкам, а не только по приходам этой пачки:
+    сделку могли завести после разноса, и своего момента у неё уже не будет.
+    Трогаем только те, чьи рубли сконвертированы ПОЛНОСТЬЮ: у прихода,
     закрытого пачкой частично, доля — не весь приход, и прибыль вышла бы
-    заниженной. Остальные ждут следующей пачки. Возвращает сделки, которые
-    именно этим вызовом перешли в completed.
+    заниженной.
+
+    Возвращает (closed, updated): первые перешли в completed этим вызовом и
+    ждут уведомлений, вторым нужно только обновить строку в выгрузке.
     """
-    income_ids = [src.sber_income_id for src in (conv.sources or [])]
-    if not income_ids:
-        return []
-    deal_ids = {inc.claimed_deal_id for inc in
-                db.query(SberIncome).filter(SberIncome.id.in_(income_ids)).all()
-                if inc.claimed_deal_id}
-    if not deal_ids:
-        return []
-    completed = []
-    for deal_id in sorted(deal_ids):
-        deal = db.query(Deal).get(deal_id)
-        if not deal or not _fill_payin_usdt_from_conversion(db, deal):
+    claimed = db.query(SberIncome.claimed_deal_id).filter(
+        SberIncome.claimed_deal_id.isnot(None)).distinct()
+    deals = db.query(Deal).filter(
+        Deal.payin_amount_usdt.is_(None),
+        Deal.id.in_(claimed),
+        Deal.status.notin_(NON_DEAL_STATUSES),
+        Deal.is_test.isnot(True),
+    ).order_by(Deal.id).all()
+
+    closed, updated = [], []
+    for deal in deals:
+        if not _fill_payin_usdt_from_conversion(db, deal):
             continue
-        if _recalc_after_payin_filled(db, deal):
-            completed.append(deal)
-    return completed
+        (closed if _recalc_after_payin_filled(db, deal) else updated).append(deal)
+    return closed, updated
 
 
 def _recalc_after_payin_filled(db, deal):
@@ -5440,60 +5488,19 @@ def attach_conversion_tx(conv_id):
         conv.received_at = datetime.utcnow()
         _apply_conversion_shares(db, conv)
         # Рубли пересчитаны в USDT — сделкам больше нечего ждать
-        closed = _close_deals_after_conversion(db, conv)
+        closed, updated = _close_deals_after_conversion(db)
         db.commit()
         _notify_deals_completed(db, closed)
+        # Уже закрытым уведомления не шлём — им нужна только строка в выгрузке
+        for deal in updated:
+            try:
+                sync_deals_to_gsheet([deal])
+            except Exception as e:
+                print(f'[GSheet] sync error after backfill: {e}')
         db.refresh(conv)
         return jsonify({'success': True, 'conversion': conv.to_dict(),
-                        'deals_closed': [d.id for d in closed]})
-    finally:
-        db.close()
-
-
-@app.route('/api/deals/backfill-converted-payin', methods=['POST'])
-def backfill_converted_payin():
-    """Досчитывает сделки, чьи рубли сконвертированы, а приход в USDT пуст.
-
-    Уборка за сделками, чьи пачки разнесли до автозаписи: по одной их пришлось
-    бы открывать руками. `dry_run` — только показать, что затронет, ничего не
-    сохраняя: закрытие сделки шлёт уведомления, и оператор должен видеть
-    список до, а не после.
-    """
-    dry = bool((request.get_json(silent=True) or {}).get('dry_run'))
-    db = get_session()
-    try:
-        claimed = db.query(SberIncome.claimed_deal_id).filter(
-            SberIncome.claimed_deal_id.isnot(None)).distinct()
-        deals = db.query(Deal).filter(
-            Deal.payin_amount_usdt.is_(None),
-            Deal.id.in_(claimed),
-            Deal.status.notin_(NON_DEAL_STATUSES),
-            Deal.is_test.isnot(True),
-        ).order_by(Deal.id).all()
-
-        touched, completed = [], []
-        for deal in deals:
-            if not _fill_payin_usdt_from_conversion(db, deal):
-                continue
-            closed = _recalc_after_payin_filled(db, deal)
-            touched.append({
-                'deal_id': deal.id,
-                'client_name': deal.client_name,
-                'payin_amount_usdt': deal.payin_amount_usdt,
-                'profit_usdt': deal.profit_usdt,
-                'will_close': closed,
-            })
-            if closed:
-                completed.append(deal)
-
-        if dry:
-            db.rollback()
-            return jsonify({'success': True, 'dry_run': True, 'deals': touched,
-                            'count': len(touched)})
-        db.commit()
-        _notify_deals_completed(db, completed)
-        return jsonify({'success': True, 'dry_run': False, 'deals': touched,
-                        'count': len(touched), 'closed': len(completed)})
+                        'deals_closed': [d.id for d in closed],
+                        'deals_updated': [d.id for d in updated]})
     finally:
         db.close()
 

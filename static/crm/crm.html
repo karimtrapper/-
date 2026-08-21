@@ -947,11 +947,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             </div>
 
             <div class="card">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-                    <span>Список сделок</span>
-                    <button class="btn btn-sm btn-secondary" onclick="backfillConvertedPayin(this)"
-                        title="Проставить приход в USDT сделкам, чьи рубли уже сконвертированы">Досчитать приходы из пачек</button>
-                </div>
+                <div class="card-title">Список сделок</div>
                 <div class="table-container">
                     <table>
                         <thead>
@@ -4286,40 +4282,6 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
             } catch (e) {
                 showToast('Ошибка сети: ' + e, 'error');
-            }
-        }
-
-        // Разовая уборка: сделки, чьи пачки разнесли до автозаписи, остались
-        // с пустым приходом в USDT и прочерком в прибыли. Сначала показываем
-        // список — закрытие сделки шлёт уведомления, вслепую этого делать нельзя
-        async function backfillConvertedPayin(btn) {
-            const label = btn ? btn.textContent : '';
-            if (btn) { btn.disabled = true; btn.textContent = 'Считаю…'; }
-            try {
-                const preview = await (await fetch(`${API_URL}/api/deals/backfill-converted-payin`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dry_run: true }),
-                })).json();
-                if (!preview.success) { showToast(preview.error || 'Ошибка', 'error'); return; }
-                if (!preview.count) { showToast('Нечего досчитывать — все приходы на месте'); return; }
-                const lines = preview.deals.map(d =>
-                    `#${d.deal_id} · ${d.client_name || '—'} · $${(d.payin_amount_usdt || 0).toFixed(2)}` +
-                    (d.will_close ? ' → закроется, уйдёт уведомление' : '')).join('\n');
-                if (!confirm(`Досчитать ${preview.count} сделок?\n\n${lines}`)) return;
-                const res = await (await fetch(`${API_URL}/api/deals/backfill-converted-payin`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({}),
-                })).json();
-                if (res.success) {
-                    showToast(`Досчитано сделок: ${res.count}, закрыто: ${res.closed}`);
-                    loadDeals();
-                } else {
-                    showToast(res.error || 'Ошибка', 'error');
-                }
-            } catch (e) {
-                showToast('Ошибка сети: ' + e, 'error');
-            } finally {
-                if (btn) { btn.disabled = false; btn.textContent = label; }
             }
         }
 
