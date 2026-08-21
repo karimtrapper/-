@@ -229,3 +229,33 @@ def tc():
         with c.session_transaction() as sess:
             sess['user_id'] = aid
         yield c
+
+
+def test_deal_without_own_usdt_shows_conversion_share(tc, db):
+    """Сделка по СБП: своего USDT нет, но доля из пачки уже разнесена.
+
+    В таблице и карточке раньше стоял прочерк — оператор читал это как
+    «деньги не пришли», хотя сумма известна.
+    """
+    d = Deal(client_name='Екатерина', deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+             payin_method=PayInMethod.SBER_WL, payin_amount_rub=63767.0)
+    db.add(d); db.commit()
+    tx = PayinTx(tx_hash=H2, amount_usdt=743.42, source='manual')
+    db.add(tx); db.commit()
+    db.add(PayinTxUse(tx_id=tx.id, deal_id=d.id, amount_usdt=743.42))
+    db.commit()
+
+    one = tc.get(f'/api/deals/{d.id}').json['deal']
+    assert one['payin_amount_usdt'] is None
+    assert one['payin_usdt_converted'] == 743.42
+
+    row = [x for x in tc.get('/api/deals').json['deals'] if x['id'] == d.id][0]
+    assert row['payin_usdt_converted'] == 743.42
+
+
+def test_deal_with_own_usdt_has_no_conversion_field(tc, db):
+    """Свой USDT приоритетнее: подмешивать долю пачки не надо."""
+    d = make_deal(db, 2353.0, [{'hash': H, 'amount_usdt': 2353.0}])
+    row = tc.get(f'/api/deals/{d.id}').json['deal']
+    assert row['payin_amount_usdt'] == 2353.0
+    assert 'payin_usdt_converted' not in row

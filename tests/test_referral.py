@@ -564,6 +564,68 @@ class TestPayReferrer:
         assert resp.json['amount_usdt'] == 4.5
 
 
+class TestReferrerDealsCard:
+    """GET /api/referrers/<id>/deals — сделки для карточки реферера в CRM."""
+
+    def _create_completed_deal(self, tc, client_id, payin=500, payout=485):
+        resp = tc.post('/api/deals', json={
+            'client_id': client_id, 'deal_type': 'pay_in',
+            'payin_method': 'crypto_direct',
+            'payin_amount_usdt': payin, 'payout_amount_usdt': payout,
+            'payout_method': 'transfer',
+        })
+        deal_id = resp.json['deal']['id']
+        tc.put(f'/api/deals/{deal_id}', json={'status': 'completed'})
+        return deal_id
+
+    def test_lists_deals_with_payout(self, tc, client_with_referrer, referrer):
+        deal_id = self._create_completed_deal(tc, client_with_referrer.id)
+        resp = tc.get(f'/api/referrers/{referrer.id}/deals')
+        assert resp.json['success']
+        assert resp.json['count'] == 1
+        row = resp.json['deals'][0]
+        assert row['deal_id'] == deal_id
+        assert row['volume_usdt'] == 500
+        assert row['payout_usdt'] == 1.5      # 15 прибыли × 10%
+        assert row['paid'] is False
+        assert resp.json['unpaid_usdt'] == 1.5
+
+    def test_paid_note_visible(self, tc, client_with_referrer, referrer):
+        """«Куда отправили» — комментарий выплаты приезжает в карточку."""
+        self._create_completed_deal(tc, client_with_referrer.id)
+        tc.post(f'/api/referrers/{referrer.id}/pay', json={'note': 'по SCB 12345'})
+        row = tc.get(f'/api/referrers/{referrer.id}/deals').json['deals'][0]
+        assert row['paid'] is True
+        assert row['paid_note'] == 'по SCB 12345'
+        assert row['paid_at']
+
+    def test_second_tier_agent_sees_own_deals(self, tc, db):
+        """Агент 2-го уровня не записан в Deal.referrer_id — но сделку видит."""
+        a1 = Referrer(name='Первый', code='GR-T1', token=secrets.token_hex(8), default_percent=20)
+        a2 = Referrer(name='Второй', code='GR-T2', token=secrets.token_hex(8), default_percent=50)
+        c = Client(name='Клиент каскада')
+        db.add_all([a1, a2, c]); db.commit()
+        a1_id, a2_id, cid = a1.id, a2.id, c.id
+        tc.post('/api/deals', json={
+            'client_id': cid, 'deal_type': 'pay_in', 'is_custom': True,
+            'payin_method': 'crypto_direct',
+            'payin_amount_usdt': 58409.06, 'payout_amount_usdt': 55615.91,
+            'payout_method': 'transfer', 'profit_usdt': 2793.15,
+            'agents': [
+                {'referrer_id': a1_id, 'name': 'Первый', 'tier': 1, 'comp_model': 'revshare', 'percent': 20},
+                {'referrer_id': a2_id, 'name': 'Второй', 'tier': 2, 'comp_model': 'revshare', 'percent': 50},
+            ],
+        })
+        rows = tc.get(f'/api/referrers/{a2_id}/deals').json['deals']
+        assert len(rows) == 1
+        assert rows[0]['payout_usdt'] == 1117.26
+        assert rows[0]['tier'] == 2
+
+    def test_empty_for_unknown_referrer(self, tc):
+        resp = tc.get('/api/referrers/999999/deals')
+        assert resp.json['success'] and resp.json['count'] == 0
+
+
 class TestMultiAgentAPI:
     """Мультиагенты через реальный API создания сделки (каскад)."""
 

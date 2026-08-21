@@ -2148,7 +2148,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         + Добавить реферера
                     </button>
                 </div>
-                <div id="referrersList" style="margin-top: 1rem;">
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px;">
+                    <input id="refSearch" placeholder="Поиск: имя, код, Telegram" oninput="renderReferrers()"
+                        style="flex:1;min-width:200px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                    <input id="refMinPending" type="number" placeholder="Долг от $" oninput="renderReferrers()"
+                        style="width:120px;padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                    <select id="refSort" onchange="renderReferrers()"
+                        style="padding:7px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        <option value="pending">Сначала кому должны</option>
+                        <option value="earned">По заработку ↓</option>
+                        <option value="deals">По числу сделок ↓</option>
+                        <option value="name">По имени</option>
+                    </select>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#475569;cursor:pointer;">
+                        <input type="checkbox" id="refOnlyDebt" onchange="renderReferrers()"> есть долг
+                    </label>
+                    <label style="display:flex;align-items:center;gap:5px;font-size:13px;color:#475569;cursor:pointer;">
+                        <input type="checkbox" id="refOnlyActive" onchange="renderReferrers()"> только активные
+                    </label>
+                </div>
+                <div id="refListSummary" style="font-size:12px;color:#64748b;margin-top:8px;"></div>
+                <div id="referrersList" style="margin-top: 0.5rem;">
                     <div style="color: #999; font-style: italic; padding: 1rem; text-align: center;">
                         Загрузка...
                     </div>
@@ -3731,7 +3751,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>#${deal.id}</td>
                             <td>${formatDate(deal.created_at)}</td>
                             <td>${escapeHtml(deal.client_name) || '-'}</td>
-                            <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
+                            <td>${payinUsdtCell(deal)}</td>
                             <td>${deal.custom_payout_currency
                             ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                             : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
@@ -4187,7 +4207,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <td>${escapeHtml(deal.client_name) || '-'}</td>
                             <td>${escapeHtml(deal.referrer_name) || '—'}</td>
                             <td>${deal.is_custom ? 'Кастомная' : getPayinMethodLabel(deal.payin_method)}</td>
-                            <td>${deal.payin_amount_usdt ? '$' + deal.payin_amount_usdt.toFixed(2) : '-'}</td>
+                            <td>${payinUsdtCell(deal)}</td>
                             <td>${deal.custom_payout_currency
                                 ? (deal.custom_payout_amount ? formatNumber(deal.custom_payout_amount) + ' ' + deal.custom_payout_currency : '-')
                                 : (deal.payout_amount_thb ? formatNumber(deal.payout_amount_thb) + ' ฿'
@@ -4225,6 +4245,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error loading deals:', error);
             }
+        }
+
+        // Приход в USDT: у сделок по СБП/эквайрингу своего USDT нет — он
+        // появляется только после конвертации пачки, и до правки в таблице
+        // стоял прочерк при уже известной сумме
+        function payinUsdtCell(deal) {
+            if (deal.payin_amount_usdt) return '$' + deal.payin_amount_usdt.toFixed(2);
+            if (deal.payin_usdt_converted) {
+                return `<span style="color:#059669;" title="Доля сделки в пачке конвертации">$${deal.payin_usdt_converted.toFixed(2)}</span>`;
+            }
+            return '-';
         }
 
         async function showDealDetails(dealId, btnEl) {
@@ -4303,11 +4334,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <p><strong>Валюта:</strong> ${deal.custom_payin_currency}</p>
                             <p><strong>Сумма:</strong> ${formatNumber(deal.custom_payin_amount)} ${deal.custom_payin_currency}</p>
                             ${deal.custom_payin_rate ? `<p><strong>Курс к USDT:</strong> ${deal.custom_payin_rate}</p>` : ''}
-                            <p><strong>= USDT:</strong> $${deal.payin_amount_usdt?.toFixed(2) || '-'}</p>
+                            <p><strong>= USDT:</strong> ${payinUsdtCell(deal)}</p>
                         ` : `
                             <p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
-                            <p><strong>Сумма USDT:</strong> $${deal.payin_amount_usdt || '-'}</p>
+                            <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ' <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>' : ''}</p>
                         `}
                         ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${escapeHtml(deal.payin_partner_name)}</p>` : ''}
                         ${(deal.payin_extra && deal.payin_extra.length) ? `
@@ -5407,82 +5438,166 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             calcCustomProfit();
         }
 
-        // Просмотр и удаление сделок реферера
-        async function showReferrerPayoutRequests(referrerId, referrerName) {
-            try {
-                const res = await fetch(`${API_URL}/api/referrers/${referrerId}/payout-requests`);
-                const data = await res.json();
-                const items = data.requests || [];
-                let rows;
-                if (items.length === 0) {
-                    rows = '<div style="text-align:center;color:#999;padding:1rem;">Нет заявок на выплату</div>';
-                } else {
-                    rows = items.map(r => {
-                        const meta = (typeof PAYOUT_STATUS_LABELS !== 'undefined' && PAYOUT_STATUS_LABELS[r.status]) || { label: r.status, color: '#64748B', bg: '#F1F5F9' };
-                        const date = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
-                        const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
-                        return `
-                            <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
-                                <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-                                    <div style="font-size:13px;">
-                                        <strong>#${r.id}</strong> · ${date}
-                                        <span style="background:${meta.bg};color:${meta.color};padding:1px 6px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;">${meta.label}</span>
-                                    </div>
-                                    <strong style="color:#16A34A;">$${(r.amount_usdt || 0).toFixed(2)}</strong>
-                                </div>
-                                <div style="font-size:12px;color:#64748b;margin-top:4px;">
-                                    ${contactLabel}: ${escapeHtml(r.contact_value)} · Кошелёк: <code style="font-size:11px;">${escapeHtml(r.wallet)}</code>
-                                </div>
-                                ${r.notes ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">«${escapeHtml(r.notes)}»</div>` : ''}
-                            </div>`;
-                    }).join('');
-                }
-                const modal = document.getElementById('dealModal');
-                modal.querySelector('.modal-title').textContent = 'Заявки на выплату: ' + referrerName;
-                document.getElementById('dealModalContent').innerHTML = rows;
-                modal.classList.add('active');
-            } catch (e) {
-                alert('Ошибка загрузки заявок: ' + e);
-            }
+        // ===== Карточка реферера: сделки + заявки на выплату в одной модалке =====
+        // Раньше это были две разные модалки без фильтров: непонятно, за что
+        // именно долг и куда деньги уходили. Теперь всё в одном месте.
+        let _refCard = { id: null, name: '', deals: [], requests: [], tab: 'deals' };
+
+        async function showReferrerCard(referrerId, referrerName, tab) {
+            _refCard = { id: referrerId, name: referrerName, deals: [], requests: [], tab: tab || 'deals' };
+            const modal = document.getElementById('dealModal');
+            modal.querySelector('.modal-title').textContent = 'Реферер: ' + referrerName;
+            document.getElementById('dealModalContent').innerHTML =
+                '<div style="text-align:center;color:#999;padding:1rem;">Загрузка…</div>';
+            modal.classList.add('active');
+            const [dRes, pRes] = await Promise.all([
+                fetch(`${API_URL}/api/referrers/${referrerId}/deals`).then(r => r.json()).catch(() => ({})),
+                fetch(`${API_URL}/api/referrers/${referrerId}/payout-requests`).then(r => r.json()).catch(() => ({})),
+            ]);
+            _refCard.deals = dRes.deals || [];
+            _refCard.requests = pRes.requests || [];
+            renderRefCard();
         }
 
-        async function showReferrerDeals(referrerId, referrerName) {
-            try {
-                const res = await fetch(`${API_URL}/api/deals?referrer_id=${referrerId}`);
-                const data = await res.json();
-                const deals = data.deals || data.data || data || [];
+        // Совместимость: кнопки списка ведут в нужную вкладку карточки
+        function showReferrerDeals(id, name) { return showReferrerCard(id, name, 'deals'); }
+        function showReferrerPayoutRequests(id, name) { return showReferrerCard(id, name, 'requests'); }
 
-                let rows = '';
-                if (deals.length === 0) {
-                    rows = '<div style="text-align:center;color:#999;padding:1rem;">Нет сделок</div>';
-                } else {
-                    rows = deals.map(d => `
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
-                            <div>
-                                <div style="font-size:13px;font-weight:600;">#${d.id} · ${d.client_name || '—'}</div>
-                                <div style="font-size:11px;color:#64748b;">${d.created_at ? d.created_at.split('T')[0] : '—'} · $${(d.payin_amount_usdt || 0).toFixed(0)} · Комиссия: $${(d.referrer_payout_usdt || 0).toFixed(0)}</div>
-                            </div>
-                            <button onclick="deleteReferrerDeal(${d.id},${referrerId},'${referrerName.replace(/'/g,"\\'")}')"
+        function refCardTab(tab) { _refCard.tab = tab; renderRefCard(); }
+
+        function renderRefCard() {
+            const deals = _refCard.deals;
+            const totalPayout = deals.reduce((s, d) => s + (d.payout_usdt || 0), 0);
+            const unpaid = deals.filter(d => !d.paid).reduce((s, d) => s + (d.payout_usdt || 0), 0);
+            const volume = deals.reduce((s, d) => s + (d.volume_usdt || 0), 0);
+            const tabBtn = (key, label) => `<button onclick="refCardTab('${key}')" style="background:${_refCard.tab === key ? '#1e293b' : '#f1f5f9'};color:${_refCard.tab === key ? '#fff' : '#475569'};border:none;padding:6px 14px;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;">${label}</button>`;
+
+            const body = _refCard.tab === 'requests' ? refCardRequestsHtml() : `
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+                    <input id="refCardSearch" placeholder="Поиск: №, клиент, куда отправили" oninput="renderRefCardRows()"
+                        style="flex:1;min-width:180px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                    <input id="refCardMin" type="number" placeholder="Комиссия от $" oninput="renderRefCardRows()"
+                        style="width:130px;padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                    <select id="refCardPaid" onchange="renderRefCardRows()"
+                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        <option value="">Все выплаты</option>
+                        <option value="unpaid">Только должны</option>
+                        <option value="paid">Только выплаченные</option>
+                    </select>
+                    <select id="refCardSort" onchange="renderRefCardRows()"
+                        style="padding:6px 10px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;">
+                        <option value="date">Сначала новые</option>
+                        <option value="payout">По комиссии ↓</option>
+                        <option value="volume">По объёму ↓</option>
+                    </select>
+                </div>
+                <div id="refCardRows"></div>`;
+
+            document.getElementById('dealModalContent').innerHTML = `
+                <div style="display:flex;gap:8px;margin-bottom:12px;">
+                    ${tabBtn('deals', `Сделки (${deals.length})`)}
+                    ${tabBtn('requests', `Заявки (${_refCard.requests.length})`)}
+                </div>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
+                    <span style="color:#64748b;">Объём: <b style="color:#0f172a;">$${Number(volume).toLocaleString('ru-RU', {maximumFractionDigits: 0})}</b></span>
+                    <span style="color:#64748b;">Комиссия всего: <b style="color:#22c55e;">$${totalPayout.toFixed(2)}</b></span>
+                    <span style="color:#64748b;">Должны: <b style="color:#f97316;">$${unpaid.toFixed(2)}</b></span>
+                </div>
+                ${body}`;
+            if (_refCard.tab === 'deals') renderRefCardRows();
+        }
+
+        function renderRefCardRows() {
+            const box = document.getElementById('refCardRows');
+            if (!box) return;
+            const q = (document.getElementById('refCardSearch')?.value || '').trim().toLowerCase();
+            const min = parseFloat(document.getElementById('refCardMin')?.value) || 0;
+            const paidF = document.getElementById('refCardPaid')?.value || '';
+            const sort = document.getElementById('refCardSort')?.value || 'date';
+
+            let rows = _refCard.deals.filter(d => {
+                if (min && (d.payout_usdt || 0) < min) return false;
+                if (paidF === 'unpaid' && d.paid) return false;
+                if (paidF === 'paid' && !d.paid) return false;
+                if (q) {
+                    const hay = `#${d.deal_id} ${d.client_name || ''} ${d.paid_note || ''}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                return true;
+            });
+            if (sort === 'payout') rows.sort((a, b) => (b.payout_usdt || 0) - (a.payout_usdt || 0));
+            else if (sort === 'volume') rows.sort((a, b) => (b.volume_usdt || 0) - (a.volume_usdt || 0));
+
+            if (!rows.length) {
+                box.innerHTML = '<div style="text-align:center;color:#999;padding:1rem;">Ничего не найдено</div>';
+                return;
+            }
+            const sum = rows.reduce((s, d) => s + (d.payout_usdt || 0), 0);
+            box.innerHTML = `<div style="font-size:12px;color:#64748b;margin-bottom:6px;">Показано ${rows.length} сделок · комиссия $${sum.toFixed(2)}</div>` +
+                rows.map(d => {
+                    const date = d.date ? d.date.split('T')[0] : '—';
+                    const paidAt = d.paid_at ? d.paid_at.split('T')[0] : '';
+                    const badge = d.paid
+                        ? `<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Выплачено${paidAt ? ' ' + paidAt : ''}</span>`
+                        : `<span style="background:#fff7ed;color:#ea580c;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Должны</span>`;
+                    return `
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
+                        <div style="min-width:0;">
+                            <div style="font-size:13px;font-weight:600;">#${d.deal_id} · ${escapeHtml(d.client_name || '—')} ${badge}${d.tier > 1 ? ` <span style="font-size:11px;color:#7c3aed;">ур.${d.tier}</span>` : ''}</div>
+                            <div style="font-size:11px;color:#64748b;">${date} · Объём: $${(d.volume_usdt || 0).toFixed(0)} · Комиссия: <b style="color:#16a34a;">$${(d.payout_usdt || 0).toFixed(2)}</b></div>
+                            ${d.paid_note ? `<div style="font-size:11px;color:#64748b;">Куда отправили: ${escapeHtml(d.paid_note)}</div>` : ''}
+                        </div>
+                        <div style="display:flex;gap:4px;flex-shrink:0;">
+                            <button onclick="openDealFromRefCard(${d.deal_id})"
+                                style="background:#eff6ff;color:#3b82f6;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Детали</button>
+                            <button onclick="deleteReferrerDeal(${d.deal_id})"
                                 style="background:#fef2f2;color:#ef4444;border:none;padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">Удалить</button>
                         </div>
-                    `).join('');
-                }
-
-                const modal = document.getElementById('dealModal');
-                modal.querySelector('.modal-title').textContent = 'Сделки: ' + referrerName;
-                document.getElementById('dealModalContent').innerHTML = rows;
-                modal.classList.add('active');
-            } catch(e) {
-                alert('Ошибка загрузки сделок: ' + e);
-            }
+                    </div>`;
+                }).join('');
         }
 
-        async function deleteReferrerDeal(dealId, referrerId, referrerName) {
+        function refCardRequestsHtml() {
+            const items = _refCard.requests;
+            if (!items.length) return '<div style="text-align:center;color:#999;padding:1rem;">Нет заявок на выплату</div>';
+            return items.map(r => {
+                const meta = (typeof PAYOUT_STATUS_LABELS !== 'undefined' && PAYOUT_STATUS_LABELS[r.status]) || { label: r.status, color: '#64748B', bg: '#F1F5F9' };
+                const date = r.created_at ? new Date(r.created_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+                const contactLabel = r.contact_method === 'whatsapp' ? 'WhatsApp' : 'Telegram';
+                return `
+                    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;margin-bottom:6px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <div style="font-size:13px;">
+                                <strong>#${r.id}</strong> · ${date}
+                                <span style="background:${meta.bg};color:${meta.color};padding:1px 6px;border-radius:999px;font-size:11px;font-weight:600;margin-left:6px;">${meta.label}</span>
+                            </div>
+                            <strong style="color:#16A34A;">$${(r.amount_usdt || 0).toFixed(2)}</strong>
+                        </div>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;">
+                            ${contactLabel}: ${escapeHtml(r.contact_value)} · Кошелёк: <code style="font-size:11px;">${escapeHtml(r.wallet)}</code>
+                        </div>
+                        ${r.notes ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">«${escapeHtml(r.notes)}»</div>` : ''}
+                    </div>`;
+            }).join('');
+        }
+
+        // Карточка сделки открывается в той же модалке — добавляем возврат к рефереру
+        async function openDealFromRefCard(dealId) {
+            const backTab = _refCard.tab;
+            await showDealDetails(dealId);
+            const modal = document.getElementById('dealModal');
+            modal.querySelector('.modal-title').textContent = 'Сделка #' + dealId;
+            document.getElementById('dealModalContent').insertAdjacentHTML('afterbegin',
+                `<button onclick="showReferrerCard(_refCard.id, _refCard.name, '${backTab}')"
+                    style="background:#f1f5f9;color:#475569;border:none;padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:10px;">← К рефереру</button>`);
+        }
+
+        async function deleteReferrerDeal(dealId) {
             if (!confirm('Удалить сделку #' + dealId + '? Это необратимо.')) return;
             try {
                 await fetch(`${API_URL}/api/deals/${dealId}`, { method: 'DELETE' });
                 showToast('Сделка #' + dealId + ' удалена');
-                showReferrerDeals(referrerId, referrerName);
+                showReferrerCard(_refCard.id, _refCard.name, _refCard.tab);
                 loadReferrers();
             } catch(e) {
                 alert('Ошибка: ' + e);
@@ -11876,8 +11991,51 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 }
 
                 _referrersCache = data.referrers;
-                const baseUrl = window.location.origin;
-                list.innerHTML = data.referrers.map(r => `
+                renderReferrers();
+            } catch (e) {
+                console.error('Ошибка загрузки рефереров:', e);
+            }
+        }
+
+        // Отрисовка списка с фильтрами: поиск, порог долга, сортировка.
+        // Данные не перезапрашиваем — фильтруем кэш.
+        function renderReferrers() {
+            const list = document.getElementById('referrersList');
+            if (!list || !_referrersCache) return;
+            const q = (document.getElementById('refSearch')?.value || '').trim().toLowerCase();
+            const minPending = parseFloat(document.getElementById('refMinPending')?.value) || 0;
+            const sort = document.getElementById('refSort')?.value || 'pending';
+            const onlyDebt = document.getElementById('refOnlyDebt')?.checked;
+            const onlyActive = document.getElementById('refOnlyActive')?.checked;
+
+            let rows = _referrersCache.filter(r => {
+                const pending = r.pending_usdt || 0;
+                if (onlyActive && !r.active) return false;
+                if (onlyDebt && pending <= 0) return false;
+                if (minPending && pending < minPending) return false;
+                if (q) {
+                    const hay = `${r.name || ''} ${r.code || ''} ${r.telegram || ''}`.toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                return true;
+            });
+            if (sort === 'pending') rows.sort((a, b) => (b.pending_usdt || 0) - (a.pending_usdt || 0));
+            else if (sort === 'earned') rows.sort((a, b) => (b.total_earned_usdt || 0) - (a.total_earned_usdt || 0));
+            else if (sort === 'deals') rows.sort((a, b) => (b.total_deals || 0) - (a.total_deals || 0));
+            else if (sort === 'name') rows.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ru'));
+
+            const sumEl = document.getElementById('refListSummary');
+            if (sumEl) {
+                const debt = rows.reduce((s, r) => s + (r.pending_usdt || 0), 0);
+                sumEl.textContent = `Показано ${rows.length} из ${_referrersCache.length} · к выплате по ним: $${debt.toFixed(2)}`;
+            }
+            if (!rows.length) {
+                list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Никто не подошёл под фильтры</div>';
+                return;
+            }
+
+            const baseUrl = window.location.origin;
+            list.innerHTML = rows.map(r => `
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
@@ -11925,9 +12083,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         </div>
                     </div>
                 `).join('');
-            } catch (e) {
-                console.error('Ошибка загрузки рефереров:', e);
-            }
         }
 
         // Поиск контактов Bitrix с debounce

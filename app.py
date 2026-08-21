@@ -4654,6 +4654,23 @@ def calculate():
 
 # ==================== CRM API - DEALS ====================
 
+def _converted_payin_usdt(session, deal_ids):
+    """USDT, разнесённый на сделки пачками конвертации: {deal_id: usdt}.
+
+    У сделки по СБП/эквайрингу свой payin_amount_usdt пустой — рубли приходят
+    сразу, а USDT появляется только после конвертации пачки. Сумма при этом
+    известна и лежит в payin_tx_uses, поэтому в списке и в карточке показываем
+    её вместо прочерка: оператор видел «-» и считал, что деньги не дошли.
+    """
+    ids = [i for i in deal_ids if i]
+    if not ids:
+        return {}
+    from sqlalchemy import func as _func
+    rows = session.query(PayinTxUse.deal_id, _func.sum(PayinTxUse.amount_usdt)).filter(
+        PayinTxUse.deal_id.in_(ids)).group_by(PayinTxUse.deal_id).all()
+    return {did: round(total or 0, 2) for did, total in rows if total}
+
+
 @app.route('/api/deals', methods=['GET'])
 def get_deals():
     from sqlalchemy.orm import joinedload, selectinload
@@ -4715,6 +4732,15 @@ def get_deals():
         per_page = int(request.args.get('per_page', 50))
         total = query.count()
         deals = query.offset((page - 1) * per_page).limit(per_page).all()
+        # Сделкам без своего USDT подставляем долю из пачки конвертации
+        conv_usdt = _converted_payin_usdt(
+            session, [d.id for d in deals if not d.payin_amount_usdt])
+        out = []
+        for d in deals:
+            row = d.to_dict()
+            if not row.get('payin_amount_usdt') and conv_usdt.get(d.id):
+                row['payin_usdt_converted'] = conv_usdt[d.id]
+            out.append(row)
         return jsonify({
             'success': True,
             'count': len(deals),
@@ -4722,7 +4748,7 @@ def get_deals():
             'page': page,
             'per_page': per_page,
             'total_pages': (total + per_page - 1) // per_page,
-            'deals': [d.to_dict() for d in deals]
+            'deals': out
         })
     finally:
         session.close()
@@ -4735,7 +4761,12 @@ def get_deal(deal_id):
         deal = session.query(Deal).options(joinedload(Deal.reimbursement)).filter(Deal.id == deal_id).first()
         if not deal:
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
-        return jsonify({'success': True, 'deal': deal.to_dict()})
+        row = deal.to_dict()
+        if not row.get('payin_amount_usdt'):
+            conv = _converted_payin_usdt(session, [deal.id]).get(deal.id)
+            if conv:
+                row['payin_usdt_converted'] = conv
+        return jsonify({'success': True, 'deal': row})
     finally:
         session.close()
 
@@ -12507,6 +12538,79 @@ def referrer_unpaid_deals(referrer_id):
             })
             e['payout_usdt'] = round(e['payout_usdt'] + (ag.payout_usdt or 0), 2)
         return jsonify({'success': True, 'deals': list(by_deal.values())})
+    finally:
+        db.close()
+
+
+@app.route('/api/referrers/<int:referrer_id>/deals', methods=['GET'])
+def referrer_deals(referrer_id):
+    """Сделки реферера с его строкой вознаграждения — для карточки в CRM.
+
+    Идём от deal_agents, а не от Deal.referrer_id: тот же человек бывает
+    агентом второго уровня, и по полю сделки такие строки не находятся —
+    в модалке было «нет сделок» при ненулевом долге. Legacy-сделки без строк
+    агента добираем по Deal.referrer_id.
+    """
+    db = get_session()
+    try:
+        include_test = request.args.get('include_test') == '1'
+
+        def base_row(deal):
+            return {
+                'deal_id': deal.id,
+                'date': deal.created_at.isoformat() if deal.created_at else None,
+                'client_name': deal.client_name or (deal.client.name if deal.client else ''),
+                'volume_usdt': deal.payin_amount_usdt or 0,
+                'status': deal.status.value if hasattr(deal.status, 'value') else deal.status,
+                'payout_usdt': 0.0,
+                'paid': True,          # снимется первой же неоплаченной строкой
+                'paid_at': None,
+                'paid_note': None,
+                'tier': None,
+            }
+
+        by_deal = {}
+        q = db.query(DealAgent, Deal).join(Deal, DealAgent.deal_id == Deal.id).filter(
+            DealAgent.referrer_id == referrer_id
+        )
+        if not include_test:
+            q = q.filter(Deal.is_test.isnot(True))
+        for ag, deal in q.order_by(Deal.created_at.desc(), Deal.id.desc()).all():
+            e = by_deal.get(deal.id) or by_deal.setdefault(deal.id, base_row(deal))
+            e['payout_usdt'] = round((e['payout_usdt'] or 0) + (ag.payout_usdt or 0), 2)
+            if ag.payout_usdt and not ag.paid:
+                e['paid'] = False
+            if ag.paid_at and (e['paid_at'] is None or ag.paid_at.isoformat() > e['paid_at']):
+                e['paid_at'] = ag.paid_at.isoformat()
+            if ag.paid_note and not e['paid_note']:
+                e['paid_note'] = ag.paid_note
+            tier = ag.tier or 1
+            e['tier'] = tier if e['tier'] is None else min(e['tier'], tier)
+
+        # Legacy: реферал записан только полем сделки, строк в deal_agents нет
+        lq = db.query(Deal).filter(Deal.referrer_id == referrer_id)
+        if by_deal:
+            lq = lq.filter(Deal.id.notin_(list(by_deal.keys())))
+        if not include_test:
+            lq = lq.filter(Deal.is_test.isnot(True))
+        for deal in lq.all():
+            if not deal.referrer_payout_usdt:
+                continue
+            e = base_row(deal)
+            e['payout_usdt'] = round(deal.referrer_payout_usdt, 2)
+            e['paid'] = bool(deal.referrer_paid)
+            e['paid_at'] = deal.referrer_paid_at.isoformat() if getattr(deal, 'referrer_paid_at', None) else None
+            e['tier'] = 1
+            by_deal[deal.id] = e
+
+        deals = sorted(by_deal.values(), key=lambda d: (d['date'] or '', d['deal_id']), reverse=True)
+        return jsonify({
+            'success': True,
+            'deals': deals,
+            'count': len(deals),
+            'total_payout_usdt': round(sum(d['payout_usdt'] or 0 for d in deals), 2),
+            'unpaid_usdt': round(sum(d['payout_usdt'] or 0 for d in deals if not d['paid']), 2),
+        })
     finally:
         db.close()
 
