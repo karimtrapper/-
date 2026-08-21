@@ -5247,6 +5247,103 @@ def _apply_conversion_shares(db, conv):
     db.flush()
 
 
+def _close_deals_after_conversion(db, conv):
+    """Проставляет сделкам приход в USDT после разноса пачки и закрывает их.
+
+    Сделка по СБП намеренно висит в pending, пока приход не пересчитан в USDT
+    (#519: иначе прибыль = минус всей выдаче). Но проставить USDT было некому —
+    пачка писала доли в payin_tx_uses и на сделку их не переносила. Итог: рубли
+    сконвертированы, сумма известна, а сделка «Ожидает», уведомление в TG и DM
+    агентам не ушло и в выгрузку она не попала.
+
+    Трогаем только сделки, чьи рубли сконвертированы ПОЛНОСТЬЮ: у прихода,
+    закрытого пачкой частично, доля — не весь приход, и прибыль вышла бы
+    заниженной. Остальные ждут следующей пачки. Возвращает сделки, которые
+    именно этим вызовом перешли в completed.
+    """
+    income_ids = [src.sber_income_id for src in (conv.sources or [])]
+    if not income_ids:
+        return []
+    deal_ids = {inc.claimed_deal_id for inc in
+                db.query(SberIncome).filter(SberIncome.id.in_(income_ids)).all()
+                if inc.claimed_deal_id}
+    if not deal_ids:
+        return []
+    shares = _converted_payin_usdt(db, list(deal_ids))
+    completed = []
+    for deal_id in sorted(deal_ids):
+        deal = db.query(Deal).get(deal_id)
+        if not deal or deal.payin_amount_usdt:
+            continue
+        usdt = shares.get(deal_id) or 0
+        if usdt <= 0:
+            continue
+        # Сделка с несколькими приходами (крипта + рубли) — там payin_amount_usdt
+        # это агрегат по частям, доля пачки его не заменяет: оставляем оператору
+        if deal.payin_extra:
+            continue
+        rest = db.query(SberIncome).filter(SberIncome.claimed_deal_id == deal_id).all()
+        if any(inc.free_rub() > 0.01 for inc in rest):
+            continue
+        deal.payin_amount_usdt = round(usdt, 2)
+        if deal.payin_amount_rub:
+            deal.payin_rate_rub_usdt = round(deal.payin_amount_rub / deal.payin_amount_usdt, 6)
+        _recalculate_deal_financials(deal, {})
+        _refresh_deal_agents(db, deal)
+        # Тот же порядок, что в PUT /api/deals/<id>: выдача с карты закрывается,
+        # как только известны обе ноги
+        if (deal.payout_source == PayOutSource.BANK_CARD
+                and deal.status == DealStatus.PENDING
+                and deal.payout_amount_usdt):
+            deal.status = DealStatus.COMPLETED
+            if deal.referrer_id:
+                referrer = db.query(Referrer).get(deal.referrer_id)
+                if referrer:
+                    referrer.total_deals = (referrer.total_deals or 0) + 1
+                    referrer.total_earned_usdt = round(
+                        (referrer.total_earned_usdt or 0) + (deal.referrer_payout_usdt or 0), 2)
+            completed.append(deal)
+    return completed
+
+
+def _notify_deals_completed(db, deals):
+    """Уведомления по сделкам, закрытым разносом пачки.
+
+    Повторяет ветку завершения из PUT /api/deals/<id>: webhook, DM агентам,
+    Google Sheets, Telegram. Каждая отправка в своём try — упавший Telegram
+    не должен отменять уже сохранённое закрытие сделки.
+    """
+    for deal in deals:
+        if deal.deal_kind in REALTY_KINDS:
+            try:
+                _send_deal_telegram(deal)
+            except Exception as e:
+                print(f'[Telegram] realty error after conversion: {e}')
+            continue
+        try:
+            send_deal_completed_webhook(deal)
+        except Exception as e:
+            print(f'[Webhook] error after conversion: {e}')
+        try:
+            notify_agents_new_deal(db, deal)
+        except Exception as e:
+            print(f'[Telegram] agents error after conversion: {e}')
+        if deal.profit_usdt is None or deal.reimbursement_id is not None:
+            continue
+        try:
+            sync_deals_to_gsheet([deal])
+        except Exception as e:
+            print(f'[GSheet] sync error after conversion: {e}')
+        try:
+            sync_referrer_reward_to_gsheet(deal)
+        except Exception as e:
+            print(f'[GSheet] referrer sync error after conversion: {e}')
+        try:
+            _send_deal_telegram(deal)
+        except Exception as e:
+            print(f'[Telegram] error after conversion: {e}')
+
+
 @app.route('/api/conversions/<int:conv_id>/txs', methods=['POST'])
 def attach_conversion_tx(conv_id):
     """Привязать приход USDT к пачке и разнести доли по сделкам.
@@ -5292,9 +5389,13 @@ def attach_conversion_tx(conv_id):
         conv.status = ConversionStatus.RECEIVED
         conv.received_at = datetime.utcnow()
         _apply_conversion_shares(db, conv)
+        # Рубли пересчитаны в USDT — сделкам больше нечего ждать
+        closed = _close_deals_after_conversion(db, conv)
         db.commit()
+        _notify_deals_completed(db, closed)
         db.refresh(conv)
-        return jsonify({'success': True, 'conversion': conv.to_dict()})
+        return jsonify({'success': True, 'conversion': conv.to_dict(),
+                        'deals_closed': [d.id for d in closed]})
     finally:
         db.close()
 

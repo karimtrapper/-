@@ -963,3 +963,110 @@ def test_доля_считается_одинаково_во_всех_экран
         db.commit()
     finally:
         db.close()
+
+
+def test_разнос_закрывает_сделку_и_шлёт_уведомление(cli, incomes, monkeypatch):
+    """Регресс #519: рубли сконвертированы → сделка получает USDT и закрывается.
+
+    Раньше пачка писала доли только в payin_tx_uses: сделка оставалась
+    «Ожидает» с пустым приходом в USDT, уведомление в Telegram и DM агентам
+    не уходило, хотя сумма уже была известна.
+    """
+    from app import BankCard, CardTopup, CashBatchStatus, PayOutSource
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    sent = {'tg': [], 'agents': [], 'webhook': []}
+    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda deal, *a, **kw: sent['tg'].append(deal.id))
+    monkeypatch.setattr(appmod, 'notify_agents_new_deal', lambda db, deal, *a, **kw: sent['agents'].append(deal.id))
+    monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda deal, *a, **kw: sent['webhook'].append(deal.id))
+
+    db = get_session()
+    try:
+        card = BankCard(bank_name='IPPS', card_name='e-money', holder_name='MF',
+                        balance_thb=261466.06, status=CashBatchStatus.ACTIVE)
+        db.add(card); db.flush()
+        db.add(CardTopup(card_id=card.id, amount_thb=261466.06, cost_usdt=7800.0,
+                         purchase_rate=33.5213, source_type='separate'))
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='grusha & радимир', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=27786.44, payout_source=PayOutSource.BANK_CARD,
+                 bank_card_id=card.id, payout_amount_thb=10700.0, payout_amount_usdt=319.2)
+        db.add(d); db.flush()
+        deal_id, card_id = d.id, card.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[0]).update({'claimed_deal_id': deal_id})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    r = cli.post(f"/api/conversions/{conv['id']}/txs", json={
+        'tx_hash': tx_hash, 'amount_usdt': 333.37})
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.get_json()['deals_closed'] == [deal_id]
+
+    db = get_session()
+    try:
+        deal = db.query(Deal).get(deal_id)
+        assert deal.payin_amount_usdt == 333.37
+        assert deal.status == DealStatus.COMPLETED
+        assert deal.profit_usdt == round(333.37 - 319.2, 2)
+        assert deal.payin_rate_rub_usdt == round(27786.44 / 333.37, 6)
+    finally:
+        db.close()
+    assert sent['tg'] == [deal_id] and sent['agents'] == [deal_id] and sent['webhook'] == [deal_id]
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.query(CardTopup).filter(CardTopup.card_id == card_id).delete()
+        db.query(BankCard).filter(BankCard.id == card_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_частично_сконвертированный_приход_сделку_не_трогает(cli, incomes, monkeypatch):
+    """Пачка закрыла только часть прихода — доля ≠ весь приход, сделка ждёт."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    db = get_session()
+    try:
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Половинка', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=35000.0)
+        db.add(d); db.flush()
+        deal_id = d.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[1]).update({'claimed_deal_id': deal_id})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[1], 'amount_rub': 15000.0}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    r = cli.post(f"/api/conversions/{conv['id']}/txs", json={
+        'tx_hash': tx_hash, 'amount_usdt': 179.96})
+    assert r.get_json()['deals_closed'] == []
+
+    db = get_session()
+    try:
+        deal = db.query(Deal).get(deal_id)
+        assert deal.payin_amount_usdt is None
+        assert deal.status == DealStatus.PENDING
+    finally:
+        db.close()
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()

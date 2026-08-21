@@ -4258,6 +4258,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             return '-';
         }
 
+        // Приход из пачки → в саму сделку. Нужна для сделок, чью пачку разнесли
+        // до появления автозаписи: сделка висит «Ожидает» с пустым USDT, и по
+        // ней не ушло ни уведомление, ни строка в выгрузку
+        async function applyConvertedPayin(dealId, usdt, rub) {
+            if (!confirm(`Записать приход $${usdt.toFixed(2)} в сделку #${dealId}?\n` +
+                         'Сделка закроется и уйдут уведомления.')) return;
+            try {
+                const res = await fetch(`${API_URL}/api/deals/${dealId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(rub
+                        ? { payin_amount_usdt: usdt, payin_rate_rub_usdt: +(rub / usdt).toFixed(6) }
+                        : { payin_amount_usdt: usdt }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast('Приход записан, сделка пересчитана');
+                    showDealDetails(dealId);
+                    if (typeof loadDeals === 'function') loadDeals();
+                } else {
+                    showToast(data.error || 'Не сохранилось', 'error');
+                }
+            } catch (e) {
+                showToast('Ошибка сети: ' + e, 'error');
+            }
+        }
+
         async function showDealDetails(dealId, btnEl) {
             if (btnEl) { btnEl.textContent = '...'; btnEl.disabled = true; }
             try {
@@ -4338,7 +4365,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         ` : `
                             <p><strong>Метод:</strong> ${getPayinMethodLabel(deal.payin_method)}</p>
                             ${deal.payin_amount_rub ? `<p><strong>Сумма RUB:</strong> ${formatNumber(deal.payin_amount_rub)} ₽</p>` : ''}
-                            <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ' <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>' : ''}</p>
+                            <p><strong>Сумма USDT:</strong> ${payinUsdtCell(deal)}${(!deal.payin_amount_usdt && deal.payin_usdt_converted) ? ` <span style="font-size:0.8rem;color:#64748b;">(из пачки)</span>
+                                <button class="btn btn-sm btn-success" style="margin-left:8px;font-size:11px;padding:3px 8px;"
+                                    onclick="applyConvertedPayin(${deal.id}, ${deal.payin_usdt_converted}, ${deal.payin_amount_rub || 0})">Записать в сделку</button>` : ''}</p>
                         `}
                         ${deal.payin_partner_name ? `<p><strong>Партнер:</strong> ${escapeHtml(deal.payin_partner_name)}</p>` : ''}
                         ${(deal.payin_extra && deal.payin_extra.length) ? `
