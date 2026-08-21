@@ -1178,3 +1178,68 @@ def test_put_добирает_usdt_зависшей_сделке(cli, incomes, m
         db.commit()
     finally:
         db.close()
+
+
+def test_массовый_добор_зависших_сделок(cli, incomes, monkeypatch):
+    """Уборка за сделками, чьи пачки разнесли до автозаписи: dry_run → apply."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    sent = []
+    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda deal, *a, **kw: sent.append(deal.id))
+    monkeypatch.setattr(appmod, 'notify_agents_new_deal', lambda *a, **kw: None)
+    monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
+
+    db = get_session()
+    try:
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Зависшая', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=27786.44)
+        db.add(d); db.flush()
+        deal_id = d.id
+        db.query(SberIncome).filter(SberIncome.id == incomes[0]).update({'claimed_deal_id': deal_id})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+    tx_hash = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash, 'amount_usdt': 333.37})
+    # Имитируем состояние «до правки»
+    db = get_session()
+    try:
+        db.query(Deal).filter(Deal.id == deal_id).update(
+            {'payin_amount_usdt': None, 'payin_rate_rub_usdt': None, 'profit_usdt': None})
+        db.commit()
+    finally:
+        db.close()
+
+    dry = cli.post('/api/deals/backfill-converted-payin', json={'dry_run': True}).get_json()
+    assert dry['count'] == 1 and dry['deals'][0]['deal_id'] == deal_id
+    assert dry['deals'][0]['payin_amount_usdt'] == 333.37
+    db = get_session()
+    try:
+        # Предпросмотр ничего не сохранил
+        assert db.query(Deal).get(deal_id).payin_amount_usdt is None
+    finally:
+        db.close()
+
+    res = cli.post('/api/deals/backfill-converted-payin', json={}).get_json()
+    assert res['count'] == 1
+    db = get_session()
+    try:
+        assert db.query(Deal).get(deal_id).payin_amount_usdt == 333.37
+    finally:
+        db.close()
+    # Второй прогон уже нечего досчитывать
+    assert cli.post('/api/deals/backfill-converted-payin', json={}).get_json()['count'] == 0
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()

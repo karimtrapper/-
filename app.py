@@ -5328,22 +5328,32 @@ def _close_deals_after_conversion(db, conv):
         deal = db.query(Deal).get(deal_id)
         if not deal or not _fill_payin_usdt_from_conversion(db, deal):
             continue
-        _recalculate_deal_financials(deal, {})
-        _refresh_deal_agents(db, deal)
-        # Тот же порядок, что в PUT /api/deals/<id>: выдача с карты закрывается,
-        # как только известны обе ноги
-        if (deal.payout_source == PayOutSource.BANK_CARD
-                and deal.status == DealStatus.PENDING
-                and deal.payout_amount_usdt):
-            deal.status = DealStatus.COMPLETED
-            if deal.referrer_id:
-                referrer = db.query(Referrer).get(deal.referrer_id)
-                if referrer:
-                    referrer.total_deals = (referrer.total_deals or 0) + 1
-                    referrer.total_earned_usdt = round(
-                        (referrer.total_earned_usdt or 0) + (deal.referrer_payout_usdt or 0), 2)
+        if _recalc_after_payin_filled(db, deal):
             completed.append(deal)
     return completed
+
+
+def _recalc_after_payin_filled(db, deal):
+    """Пересчёт сделки, которой только что проставили приход в USDT.
+
+    Возвращает True, если сделка этим переходом закрылась — по ней ещё нужны
+    уведомления. Условие закрытия то же, что в PUT /api/deals/<id>: выдача с
+    карты закрывается, как только известны обе ноги.
+    """
+    _recalculate_deal_financials(deal, {})
+    _refresh_deal_agents(db, deal)
+    if not (deal.payout_source == PayOutSource.BANK_CARD
+            and deal.status == DealStatus.PENDING
+            and deal.payout_amount_usdt):
+        return False
+    deal.status = DealStatus.COMPLETED
+    if deal.referrer_id:
+        referrer = db.query(Referrer).get(deal.referrer_id)
+        if referrer:
+            referrer.total_deals = (referrer.total_deals or 0) + 1
+            referrer.total_earned_usdt = round(
+                (referrer.total_earned_usdt or 0) + (deal.referrer_payout_usdt or 0), 2)
+    return True
 
 
 def _notify_deals_completed(db, deals):
@@ -5436,6 +5446,54 @@ def attach_conversion_tx(conv_id):
         db.refresh(conv)
         return jsonify({'success': True, 'conversion': conv.to_dict(),
                         'deals_closed': [d.id for d in closed]})
+    finally:
+        db.close()
+
+
+@app.route('/api/deals/backfill-converted-payin', methods=['POST'])
+def backfill_converted_payin():
+    """Досчитывает сделки, чьи рубли сконвертированы, а приход в USDT пуст.
+
+    Уборка за сделками, чьи пачки разнесли до автозаписи: по одной их пришлось
+    бы открывать руками. `dry_run` — только показать, что затронет, ничего не
+    сохраняя: закрытие сделки шлёт уведомления, и оператор должен видеть
+    список до, а не после.
+    """
+    dry = bool((request.get_json(silent=True) or {}).get('dry_run'))
+    db = get_session()
+    try:
+        claimed = db.query(SberIncome.claimed_deal_id).filter(
+            SberIncome.claimed_deal_id.isnot(None)).distinct()
+        deals = db.query(Deal).filter(
+            Deal.payin_amount_usdt.is_(None),
+            Deal.id.in_(claimed),
+            Deal.status.notin_(NON_DEAL_STATUSES),
+            Deal.is_test.isnot(True),
+        ).order_by(Deal.id).all()
+
+        touched, completed = [], []
+        for deal in deals:
+            if not _fill_payin_usdt_from_conversion(db, deal):
+                continue
+            closed = _recalc_after_payin_filled(db, deal)
+            touched.append({
+                'deal_id': deal.id,
+                'client_name': deal.client_name,
+                'payin_amount_usdt': deal.payin_amount_usdt,
+                'profit_usdt': deal.profit_usdt,
+                'will_close': closed,
+            })
+            if closed:
+                completed.append(deal)
+
+        if dry:
+            db.rollback()
+            return jsonify({'success': True, 'dry_run': True, 'deals': touched,
+                            'count': len(touched)})
+        db.commit()
+        _notify_deals_completed(db, completed)
+        return jsonify({'success': True, 'dry_run': False, 'deals': touched,
+                        'count': len(touched), 'closed': len(completed)})
     finally:
         db.close()
 
