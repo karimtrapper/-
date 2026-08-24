@@ -6446,12 +6446,14 @@ def _normalize_payout_transfers(raw):
     out, seen = [], set()
     for item in (raw or []):
         if isinstance(item, str):
-            h, amt, addr, date = item.strip(), None, '', ''
+            h, amt, addr, date, src = item.strip(), None, '', '', ''
         elif isinstance(item, dict):
             h = str(item.get('hash') or item.get('tx_hash') or '').strip()
             amt = item.get('amount_usdt')
             addr = str(item.get('to_address') or '').strip()
             date = str(item.get('date') or '').strip()
+            # Откуда ушло — кошелёк, на который придёт возврат
+            src = str(item.get('from_address') or '').strip()
         else:
             continue
         if not h or h in seen:
@@ -6461,7 +6463,8 @@ def _normalize_payout_transfers(raw):
             amt = float(amt) if amt not in (None, '') else None
         except (TypeError, ValueError):
             amt = None
-        out.append({'hash': h, 'amount_usdt': amt, 'to_address': addr, 'date': date})
+        out.append({'hash': h, 'amount_usdt': amt, 'to_address': addr, 'date': date,
+                    'from_address': src})
     return out
 
 
@@ -6910,6 +6913,7 @@ def create_deal():
         # свои переводы внутри _apply_mf_* — здесь только обмен.
         if 'payout_tx_hashes' in data and deal.deal_kind not in REALTY_KINDS:
             _apply_payout_transfers(deal, data)
+            _enrich_payout_transfers(session, deal)
 
         # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
         # карты. Обязательно до пересчёта финансов — прибыль считается из неё
@@ -7227,6 +7231,7 @@ def update_deal(deal_id):
         else:
             if 'payout_tx_hashes' in data:
                 _apply_payout_transfers(deal, data)
+                _enrich_payout_transfers(session, deal)
             _apply_payout_cost_from_transfers(deal)
             _recalculate_deal_financials(deal, data)
 
@@ -9920,6 +9925,74 @@ def _tron_tx_amount(tx_hash):
         return None
 
 
+def _tron_tx_info(tx_hash):
+    """Разбор TRC20-перевода: сумма, откуда и куда. {} — если не прочиталось.
+
+    По хешу выдачи видно и КАКОЙ кошелёк её оплатил, и СКОЛЬКО на него вернуть.
+    Менеджеру достаточно вставить хеш: сумму и фаундера подставит сеть, а не память.
+    """
+    try:
+        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                         timeout=10)
+        if r.status_code != 200:
+            return {}
+        trc = (r.json() or {}).get('trc20TransferInfo') or []
+        if not trc:
+            return {}
+        t = trc[0]
+        try:
+            amount = round(int(t.get('amount_str') or t.get('quant') or 0)
+                           / (10 ** int(t.get('decimals') or 6)), 2)
+        except (TypeError, ValueError):
+            amount = None
+        return {'amount_usdt': amount or None,
+                'from_address': t.get('from_address') or None,
+                'to_address': t.get('to_address') or None}
+    except Exception as e:
+        app.logger.warning(f'tron tx info {tx_hash[:16]}: {e}')
+        return {}
+
+
+def _enrich_payout_transfers(session, deal):
+    """Достаёт из сети то, чего менеджер не вводил: сумму перевода и кошелёк-плательщик.
+
+    Сумма с рук главнее сети: один перевод бывает общим на две сделки, и тогда
+    доли проставляются руками. Кошелёк выдачи ставим, только если он не выбран —
+    это и есть адрес, на который придёт возврат.
+    """
+    if not deal.payout_tx_hashes:
+        return
+    try:
+        parts = json.loads(deal.payout_tx_hashes)
+    except (ValueError, TypeError):
+        return
+    changed = False
+    for part in parts:
+        if part.get('amount_usdt') is not None and part.get('from_address'):
+            continue
+        info = _tron_tx_info(part.get('hash') or '')
+        if not info:
+            continue
+        if part.get('amount_usdt') is None and info.get('amount_usdt'):
+            part['amount_usdt'] = info['amount_usdt']
+            changed = True
+        for field in ('from_address', 'to_address'):
+            if not part.get(field) and info.get(field):
+                part[field] = info[field]
+                changed = True
+    if changed:
+        deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False)
+    if not deal.payout_wallet_id:
+        for part in parts:
+            addr = (part.get('from_address') or '').strip()
+            if not addr:
+                continue
+            wallet = session.query(Wallet).filter(Wallet.address == addr).first()
+            if wallet:
+                deal.payout_wallet_id = wallet.id
+                break
+
+
 def _tron_tx_to_address(tx_hash):
     """Кошелёк-получатель перевода по хэшу. None — если не прочиталось.
 
@@ -9936,6 +10009,31 @@ def _tron_tx_to_address(tx_hash):
     except Exception as e:
         app.logger.warning(f'tron tx to_address {tx_hash[:16]}: {e}')
         return None
+
+
+@app.route('/api/tron/payout-tx', methods=['GET'])
+def lookup_payout_tx():
+    """Разбор хеша выдачи для формы: сколько ушло и с какого нашего кошелька.
+
+    Показывается до сохранения сделки — менеджер сразу видит, что вставил
+    правильный перевод, а не хеш прихода клиента.
+    """
+    h = (request.args.get('hash') or '').strip()
+    if not h:
+        return jsonify({'success': False, 'error': 'Нужен хеш'}), 400
+    info = _tron_tx_info(h)
+    if not info:
+        return jsonify({'success': False, 'error': 'Перевод не найден в сети'}), 404
+    db = get_session()
+    try:
+        wallet = None
+        if info.get('from_address'):
+            wallet = db.query(Wallet).filter(Wallet.address == info['from_address']).first()
+        return jsonify({'success': True, **info,
+                        'wallet_id': wallet.id if wallet else None,
+                        'wallet_label': (wallet.label if wallet else None)})
+    finally:
+        db.close()
 
 
 @app.route('/api/reimbursements/tx', methods=['GET'])

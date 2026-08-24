@@ -141,3 +141,70 @@ def test_выдача_не_с_кошелька_оунера_не_трогает�
                                      'payout_tx_hashes': _transfers(383.14)}).get_json()
     assert r['success'] is True
     assert r['deal']['payout_amount_usdt'] != 383.14
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Хеш выдачи: по нему видно, С КАКОГО кошелька ушло и СКОЛЬКО вернуть
+# ─────────────────────────────────────────────────────────────────────────────
+
+ANDREY_WALLET = 'TWyLcjJzyQmiT1nt7gEn8BVoNSN94RGcHb'
+
+
+@pytest.fixture
+def chain(monkeypatch):
+    """Сеть не дёргаем: перевод на 383,14 с кошелька Андрея."""
+    monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
+        'amount_usdt': 383.14, 'from_address': ANDREY_WALLET, 'to_address': 'TClientAddress'})
+    return ANDREY_WALLET
+
+
+@pytest.fixture
+def andrey_wallet():
+    from app import Wallet
+    db = get_session()
+    try:
+        w = db.query(Wallet).filter(Wallet.address == ANDREY_WALLET).first()
+        if not w:
+            w = Wallet(address=ANDREY_WALLET, label='Андрей')
+            db.add(w)
+            db.commit()
+        return w.id
+    finally:
+        db.close()
+
+
+def test_хеш_выдачи_даёт_сумму_и_кошелёк(cli, chain, andrey_wallet):
+    """Менеджер вставил один хеш — сумма возврата и кошелёк подтянулись из сети."""
+    r = cli.post('/api/deals', json={
+        **ROMAN, 'payout_tx_hashes': [{'hash': _hash()}]}).get_json()
+    assert r['success'] is True
+    assert r['deal']['payout_amount_usdt'] == 383.14
+    assert r['deal']['payout_wallet_id'] == andrey_wallet
+    assert r['deal']['profit_usdt'] == 24.90
+
+
+def test_подсказка_по_хешу_до_сохранения(cli, chain, andrey_wallet):
+    """Форма показывает разбор хеша сразу, не дожидаясь сохранения сделки."""
+    r = cli.get(f'/api/tron/payout-tx?hash={_hash()}').get_json()
+    assert r['success'] is True
+    assert r['amount_usdt'] == 383.14
+    assert r['from_address'] == ANDREY_WALLET
+    assert r['wallet_id'] == andrey_wallet
+    assert r['wallet_label'] == 'Андрей'
+
+
+def test_неизвестный_кошелёк_не_ломает_сделку(cli, monkeypatch):
+    """Перевод с кошелька, которого нет в справочнике: сумма есть, привязки нет."""
+    monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
+        'amount_usdt': 387.78, 'from_address': 'TНеизвестныйКошелёк', 'to_address': 'TClient'})
+    r = cli.post('/api/deals', json={
+        **ROMAN, 'payout_tx_hashes': [{'hash': _hash()}]}).get_json()
+    assert r['deal']['payout_amount_usdt'] == 387.78
+    assert r['deal']['payout_wallet_id'] is None
+
+
+def test_сумму_с_рук_сеть_не_перебивает(cli, chain, andrey_wallet):
+    """Если сумма указана явно — верим ей: бывает, что перевод общий на две сделки."""
+    r = cli.post('/api/deals', json={
+        **ROMAN, 'payout_tx_hashes': [{'hash': _hash(), 'amount_usdt': 350.0}]}).get_json()
+    assert r['deal']['payout_amount_usdt'] == 350.0

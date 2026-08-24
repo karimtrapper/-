@@ -1578,12 +1578,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 </select>
                             </div>
                             <div class="form-group" style="grid-column: span 2;">
-                                <label class="form-label">Прибыль</label>
-                                <div
-                                    style="padding: 0.75rem; background: #fef3c7; border-radius: 8px; color: #92400e; font-size: 0.9rem;">
-                                    <strong>Неизвестна до возмещения.</strong><br>
-                                    <small>Курс станет известен когда вернём деньги фаундеру. Создайте возмещение после
-                                        сделки.</small>
+                                <label class="form-label">Хеш выдачи (перевод с кошелька фаундера)</label>
+                                <input class="form-control" id="payoutFounderHash"
+                                       placeholder="Хеш перевода, которым выдали клиенту"
+                                       oninput="lookupPayoutFounderTx()">
+                                <div id="payoutFounderTxInfo"
+                                     style="padding: 0.6rem 0.75rem; margin-top: 6px; background: #fef3c7; border-radius: 8px; color: #92400e; font-size: 0.85rem;">
+                                    По хешу подтянем кошелёк и сумму — это и есть себестоимость выдачи
+                                    и то, что вернём фаундеру. Без него прибыль будет неизвестна до возмещения.
                                 </div>
                             </div>
                         </div>
@@ -4963,6 +4965,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         // Для личных фаундера
                         if (deal.payout_source === 'founder_personal' && deal.payout_founder_name) {
                             form.payout_founder_name.value = deal.payout_founder_name;
+                            const t = (deal.payout_tx_hashes || [])[0];
+                            const hashInput = document.getElementById('payoutFounderHash');
+                            if (hashInput) {
+                                hashInput.value = t?.hash || '';
+                                if (t?.hash) lookupPayoutFounderTx();
+                            }
                         }
 
                         // Пересчитываем прибыль
@@ -8045,6 +8053,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // сделка #502 показывала −$6304, вычитая всю отправку из одной части
             data.payin_extra = payinExtraSerialize();
 
+            // Выдача с кошелька фаундера: из хеша вытащим сумму возврата и кошелёк.
+            // Сумму сеть подставит сама, поэтому в payload уходит хотя бы хеш.
+            const founderHash = (document.getElementById('payoutFounderHash')?.value || '').trim();
+            if (data.payout_source === 'founder_personal' && founderHash) {
+                data.payout_tx_hashes = [
+                    (payoutFounderTx && payoutFounderTx.hash === founderHash)
+                        ? payoutFounderTx : { hash: founderHash }];
+                if (payoutFounderTx?.wallet_id) data.payout_wallet_id = payoutFounderTx.wallet_id;
+            }
+
             // Недвижимость: свои поля вместо обычной выдачи (у обоих типов её нет)
             if (document.getElementById('mfDealToggle')?.checked) {
                 Object.assign(data, mfFormData());
@@ -9183,6 +9201,48 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (error) {
                 console.error('Error deleting batch:', error);
             }
+        }
+
+        // Хеш выдачи: по нему видно, С КАКОГО кошелька ушли деньги и СКОЛЬКО вернуть.
+        // Раньше и то и другое держалось в голове и всплывало только на возмещении.
+        let payoutFounderTx = null;
+        let payoutFounderTimer = null;
+
+        function lookupPayoutFounderTx() {
+            const el = document.getElementById('payoutFounderHash');
+            const box = document.getElementById('payoutFounderTxInfo');
+            const hash = (el.value || '').trim();
+            payoutFounderTx = null;
+            clearTimeout(payoutFounderTimer);
+            if (hash.length < 40) {
+                box.style.background = '#fef3c7'; box.style.color = '#92400e';
+                box.innerHTML = 'По хешу подтянем кошелёк и сумму — это и есть себестоимость выдачи и то, что вернём фаундеру.';
+                return;
+            }
+            box.innerHTML = 'Читаю перевод в сети…';
+            payoutFounderTimer = setTimeout(async () => {
+                try {
+                    const r = await (await fetch(`${API_URL}/api/tron/payout-tx?hash=${encodeURIComponent(hash)}`)).json();
+                    if (!r.success) {
+                        box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
+                        box.innerHTML = r.error || 'Перевод не найден';
+                        return;
+                    }
+                    payoutFounderTx = {hash, amount_usdt: r.amount_usdt, wallet_id: r.wallet_id,
+                                       from_address: r.from_address, to_address: r.to_address};
+                    const thb = parseFloat(document.querySelector('[name=payout_amount_thb]')?.value) || 0;
+                    const rate = (thb && r.amount_usdt) ? (thb / r.amount_usdt) : null;
+                    box.style.background = '#ecfdf5'; box.style.color = '#065f46';
+                    box.innerHTML = `Ушло <b>${r.amount_usdt} USDT</b> с кошелька
+                        <b>${escapeHtml(r.wallet_label || 'не из справочника')}</b>
+                        <span style="font-family:monospace">${(r.from_address || '').slice(0, 14)}…</span>
+                        ${rate ? ` · курс выдачи ${rate.toFixed(2)} ฿/USDT` : ''}
+                        <br>Возврат пойдёт на этот же кошелёк.`;
+                } catch (e) {
+                    box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
+                    box.innerHTML = 'Не удалось прочитать перевод';
+                }
+            }, 600);
         }
 
         document.getElementById('addCashBatchForm').addEventListener('submit', async function (e) {

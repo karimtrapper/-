@@ -40,8 +40,10 @@ class TestNormalize:
         """Адрес и дата нужны в UI — иначе видно «сколько», но не «куда»."""
         out = _normalize_payout_transfers([
             {'hash': 'aa', 'amount_usdt': 100, 'to_address': 'TAddr', 'date': '04.08.2026'}])
-        assert out == [{'hash': 'aa', 'amount_usdt': 100.0,
-                        'to_address': 'TAddr', 'date': '04.08.2026'}]
+        # from_address добавлен 21.08: по нему видно, с какого кошелька ушла выдача,
+        # то есть куда придёт возврат оунеру
+        assert out == [{'hash': 'aa', 'amount_usdt': 100.0, 'to_address': 'TAddr',
+                        'date': '04.08.2026', 'from_address': ''}]
 
     def test_accepts_tx_hash_key(self):
         out = _normalize_payout_transfers([{'tx_hash': 'bb', 'amount_usdt': '50'}])
@@ -49,8 +51,8 @@ class TestNormalize:
 
     def test_plain_strings(self):
         assert _normalize_payout_transfers(['aa', ' bb ']) == [
-            {'hash': 'aa', 'amount_usdt': None, 'to_address': '', 'date': ''},
-            {'hash': 'bb', 'amount_usdt': None, 'to_address': '', 'date': ''}]
+            {'hash': 'aa', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''},
+            {'hash': 'bb', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''}]
 
     def test_duplicates_dropped(self):
         assert len(_normalize_payout_transfers([{'hash': 'aa'}, {'hash': 'aa'}])) == 1
