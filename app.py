@@ -738,6 +738,12 @@ class Reimbursement(Base):
     amount_usdt = Column(Float, nullable=False)
     tx_hash = Column(Text)  # Несколько хэшей через запятую
     tx_verified = Column(Boolean, default=False)
+    # 'manual' — реальный перевод оунеру; 'auto' — приход от брокера упал прямо
+    # на кошелёк, с которого платили за сделку, и двигать деньги не пришлось.
+    kind = Column(String(10), default='manual')
+    # Каким ВХОДЯЩИМ приходом закрыт долг при автозачёте. Исходящего перевода
+    # там нет, и подделывать его хешем клиента нельзя — показываем этот.
+    settled_by_payin_tx_id = Column(Integer, ForeignKey('payin_txs.id'), nullable=True)
     notes = Column(Text)
     deals = relationship("Deal", back_populates="reimbursement")
     tx_uses = relationship('ReimbursementTxUse', back_populates='reimbursement',
@@ -776,6 +782,8 @@ class Reimbursement(Base):
             })
         return {'id': self.id, 'founder_name': self.founder_name, 'amount_usdt': total,
                 'tx_hash': self.tx_hash, 'tx_hashes': hashes, 'tx_verified': self.tx_verified,
+                'kind': self.kind or 'manual',
+                'settled_by_payin_tx_id': self.settled_by_payin_tx_id,
                 'created_at': self.created_at.isoformat() if self.created_at else None,
                 'deals_breakdown': breakdown,
                 'deals_count': len(breakdown),
@@ -2364,6 +2372,21 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ reimbursements.tx_hash migration: {e}")
+
+# Автозачёт возмещений: вид возврата и приход, которым он закрыт
+try:
+    with engine.connect() as conn:
+        is_pg = 'postgresql' in DATABASE_URL
+        for col, coltype in (('kind', 'VARCHAR(10)'), ('settled_by_payin_tx_id', 'INTEGER')):
+            if is_pg:
+                conn.execute(text(
+                    f"ALTER TABLE reimbursements ADD COLUMN IF NOT EXISTS {col} {coltype}"))
+            else:
+                try: conn.execute(text(f"ALTER TABLE reimbursements ADD COLUMN {col} {coltype}"))
+                except Exception: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ reimbursements auto-settle migration: {e}")
 
 # Сделки по недвижимости через MF Corporation (leasehold)
 _MF_REALTY_COLUMNS = [
@@ -5442,6 +5465,76 @@ def _notify_deals_completed(db, deals):
             print(f'[Telegram] error after conversion: {e}')
 
 
+def _conversion_deal_ids(db, conv):
+    """Сделки, чьи рубли вошли в пачку (через claimed_deal_id поступлений)."""
+    ids = set()
+    for src in (conv.sources or []):
+        inc = db.query(SberIncome).get(src.sber_income_id)
+        if inc and inc.claimed_deal_id:
+            ids.add(inc.claimed_deal_id)
+    return sorted(ids)
+
+
+def _auto_settle_conversion(db, conv):
+    """Гасит долги перед оунерами, если приход упал на их же кошелёк.
+
+    По схеме флоу деньги от брокера приходят на кошелёк, а дальше уходят на тот,
+    с которого платили за сделку. Кошелёк-получатель — переменная: брокер может
+    отдать сразу на нужный, и тогда переводить нечего, обязательство закрыто самим
+    приходом. Раньше такую сделку приходилось либо держать в «ожидает возмещения»
+    вечно, либо заводить фиктивное возмещение руками.
+
+    Сумма — себестоимость выдачи, а НЕ доля из пачки: в CNV-0002 доля 408,04 против
+    себестоимости 383,14, разница 45,16 наша маржа, и отдавать её оунеру не за что.
+
+    Возвращает сделки, закрытые автозачётом — им нужны уведомления.
+    """
+    # Куда пришли деньги этой пачки: адрес → id прихода
+    addrs = {}
+    for link in (conv.txs or []):
+        tx = db.query(PayinTx).get(link.payin_tx_id)
+        if tx and tx.to_address:
+            addrs[tx.to_address.strip()] = tx.id
+    deal_ids = _conversion_deal_ids(db, conv)
+    if not addrs or not deal_ids:
+        return []
+
+    groups = {}
+    for deal in db.query(Deal).filter(Deal.id.in_(deal_ids)).order_by(Deal.id).all():
+        if deal.reimbursement_id is not None:
+            continue                      # долг уже закрыт
+        if deal.needs_reimbursement is False:
+            continue                      # платили не с кошелька (счёт IPPS) — возвращать некому
+        if deal.payout_source != PayOutSource.FOUNDER_PERSONAL:
+            continue
+        wallet = deal.payout_wallet
+        if not wallet or not wallet.address:
+            continue                      # неизвестно, куда возвращать
+        tx_id = addrs.get(wallet.address.strip())
+        if not tx_id:
+            continue                      # приход упал на другой кошелёк — нужен перевод
+        cost = deal.payout_amount_usdt or _payout_cost_from_transfers(deal)
+        if not cost:
+            continue                      # себестоимость неизвестна — гадать нельзя
+        key = (wallet.id, tx_id, deal.payout_founder_name or wallet.label or 'оунер')
+        groups.setdefault(key, []).append((deal, round(cost, 2)))
+
+    settled = []
+    for (_wallet_id, tx_id, founder), rows in groups.items():
+        tx = db.query(PayinTx).get(tx_id)
+        reimb = Reimbursement(
+            founder_name=founder,
+            amount_usdt=round(sum(c for _, c in rows), 2),
+            tx_hash=tx.tx_hash if tx else None,
+            kind='auto', settled_by_payin_tx_id=tx_id,
+            notes=f'Возмещено приходом {conv.display_name} — перевод не потребовался')
+        db.add(reimb)
+        db.flush()
+        _settle_reimbursement(db, reimb, [d for d, _ in rows], {d.id: c for d, c in rows})
+        settled.extend(d for d, _ in rows)
+    return settled
+
+
 @app.route('/api/conversions/<int:conv_id>/txs', methods=['POST'])
 def attach_conversion_tx(conv_id):
     """Привязать приход USDT к пачке и разнести доли по сделкам.
@@ -5489,8 +5582,12 @@ def attach_conversion_tx(conv_id):
         _apply_conversion_shares(db, conv)
         # Рубли пересчитаны в USDT — сделкам больше нечего ждать
         closed, updated = _close_deals_after_conversion(db)
+        # Приход упал на кошелёк, с которого платили за сделку → долг закрыт им же
+        auto_settled = _auto_settle_conversion(db, conv)
         db.commit()
         _notify_deals_completed(db, closed)
+        if auto_settled:
+            _notify_reimbursed(auto_settled)
         # Уже закрытым уведомления не шлём — им нужна только строка в выгрузке
         for deal in updated:
             try:
@@ -5500,7 +5597,8 @@ def attach_conversion_tx(conv_id):
         db.refresh(conv)
         return jsonify({'success': True, 'conversion': conv.to_dict(),
                         'deals_closed': [d.id for d in closed],
-                        'deals_updated': [d.id for d in updated]})
+                        'deals_updated': [d.id for d in updated],
+                        'deals_auto_settled': [d.id for d in auto_settled]})
     finally:
         db.close()
 
@@ -9755,6 +9853,69 @@ def get_reimbursement_txs():
         session.close()
 
 
+def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
+    """Раскладывает возмещение по сделкам: аллокации → прибыль → агенты → статус.
+
+    Общий хвост ручного и автоматического пути. Автозачёт обязан проходить ровно
+    те же шаги: скопируй их — и через месяц ветки разойдутся (в одной пересчитаны
+    агенты и ушли уведомления, в другой нет).
+
+    Возвращает сумму выдач в батах, вошедших в возмещение.
+    """
+    alloc_req = alloc_req or {}
+    amount_usdt = reimbursement.amount_usdt or 0
+    total_thb = 0
+    # Для пропорционального распределения USDT учитываем custom_payout_amount
+    total_payout = sum((d.payout_amount_thb or d.custom_payout_amount or 0) for d in deals)
+    for deal in deals:
+        deal.reimbursement_id = reimbursement.id
+        deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
+        if deal.id in alloc_req:
+            # Сказали явно, сколько этой сделке — верим этому, а не пропорции
+            deal.payout_amount_usdt = alloc_req[deal.id]
+        else:
+            deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
+        total_thb += deal_payout
+
+        # Прибыль считается только сейчас — себестоимость выдачи стала известна
+        if deal.payin_amount_usdt and deal.payout_amount_usdt:
+            deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
+            deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
+
+            # Пересчёт выплат агентам + net от новой прибыли И синхронизация
+            # строк deal_agents (источник Telegram-уведомления). Раньше тут
+            # пересчитывался только legacy-реферер, а строки deal_agents
+            # оставались со стартовым payout=0 → уведомление расходилось с net.
+            _refresh_deal_agents(session, deal)
+
+        # Возмещение = автозавершение сделки. Прибыль посчитана, деньги
+        # оунеру вернули (или они и так на его кошельке) — pending некорректен.
+        if deal.status == DealStatus.PENDING:
+            deal.status = DealStatus.COMPLETED
+    return total_thb
+
+
+def _notify_reimbursed(deals):
+    """Выгрузка, Telegram и вебхук после возмещения. Ошибка одного канала не рвёт остальные."""
+    try:
+        sync_deals_to_gsheet(deals)
+    except Exception as gsheet_err:
+        import traceback
+        print(f'[GSheet] Error after reimbursement: {gsheet_err}', flush=True)
+        print(f'[GSheet] Traceback: {traceback.format_exc()}', flush=True)
+    for deal in deals:
+        try:
+            _send_deal_telegram(deal)
+        except Exception as tg_err:
+            print(f'[Telegram] Error on reimbursement: {tg_err}')
+        # Webhook в DealCloser/Bitrix — как в update_deal при завершении. Без него
+        # возмещённые сделки не долетали до внешних систем.
+        try:
+            send_deal_completed_webhook(deal)
+        except Exception as wh_err:
+            print(f'[Webhook] Error on reimbursement: {wh_err}')
+
+
 @app.route('/api/reimbursements/pending', methods=['GET'])
 def get_pending_reimbursements():
     """Get deals awaiting reimbursement, grouped by founder"""
@@ -9917,59 +10078,9 @@ def create_reimbursement():
             .with_for_update()
             .all()
         )
-        total_thb = 0
-        # Для пропорционального распределения USDT учитываем custom_payout_amount
-        total_payout = sum((d.payout_amount_thb or d.custom_payout_amount or 0) for d in deals)
-        for deal in deals:
-            deal.reimbursement_id = reimbursement.id
-            deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
-            if deal.id in alloc_req:
-                # Менеджер сказал явно, сколько этой сделке — верим ему, а не пропорции
-                deal.payout_amount_usdt = alloc_req[deal.id]
-            else:
-                deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
-            total_thb += deal_payout
-            
-            # Recalculate profit now that we know payout USDT
-            if deal.payin_amount_usdt and deal.payout_amount_usdt:
-                deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
-                deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
-
-                # Пересчёт выплат агентам + net от новой прибыли И синхронизация
-                # строк deal_agents (источник Telegram-уведомления). Раньше тут
-                # пересчитывался только legacy-реферер, а строки deal_agents
-                # оставались со стартовым payout=0 → уведомление расходилось с net.
-                _refresh_deal_agents(session, deal)
-
-            # Возмещение = автозавершение сделки. Прибыль посчитана, деньги
-            # фаундеру вернули — pending на этом этапе уже некорректен.
-            if deal.status == DealStatus.PENDING:
-                deal.status = DealStatus.COMPLETED
-
+        total_thb = _settle_reimbursement(session, reimbursement, deals, alloc_req)
         session.commit()
-
-        # Синк в Google Sheets после возмещения
-        try:
-            sync_deals_to_gsheet(deals)
-        except Exception as gsheet_err:
-            import traceback
-            print(f'[GSheet] Error after reimbursement: {gsheet_err}', flush=True)
-            print(f'[GSheet] Traceback: {traceback.format_exc()}', flush=True)
-
-        # Уведомление в Telegram
-        try:
-            for deal in deals:
-                _send_deal_telegram(deal)
-        except Exception as tg_err:
-            print(f'[Telegram] Error on reimbursement: {tg_err}')
-
-        # Webhook в DealCloser/Bitrix — как в update_deal при завершении. Без него
-        # возмещённые сделки не долетали до внешних систем (несогласованность путей).
-        for deal in deals:
-            try:
-                send_deal_completed_webhook(deal)
-            except Exception as wh_err:
-                print(f'[Webhook] Error on reimbursement: {wh_err}')
+        _notify_reimbursed(deals)
 
         return jsonify({
             'success': True,
