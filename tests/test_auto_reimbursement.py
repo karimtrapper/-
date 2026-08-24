@@ -385,3 +385,53 @@ def test_раскладка_показывает_автозачёт(cli):
     assert d['settled'][0]['amount_usdt'] == 383.14
     assert d['stays_usdt'] == 24.90         # приход 408,04 минус долг 383,14
     assert d['balanced'] is True
+
+
+def test_раскладка_показывает_wl_сделку_обменника(cli):
+    """Приход по WL-сделке — не «без сделки» и не наша маржа.
+
+    Клиент мерчанта платит по ссылке WL-бота, эквайринг Сбера кладёт деньги нам,
+    а клиенту выдаёт мерчант. Возврата оунеру тут нет, но и в «остаётся у нас»
+    эти деньги записывать нельзя — они уйдут мерчанту заявкой в боте.
+    """
+    from app import ReestrSnapshot
+    import json as _json
+
+    db = get_session()
+    try:
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').delete()
+        db.add(ReestrSnapshot(view='deals', payload=_json.dumps([
+            {'wl': 'WL-0393', 'merchant': 'Four exchange', 'author': 'Artyom',
+             'rub': 112600.0, 'usdt': 1265.45, 'dt': '19.08 14:20'}])))
+        # 111 811,80 на счёте = 112 600 минус эквайринг 0,7 %
+        inc = SberIncome(uuid=_uid(), operation_date='2026-08-19', amount_rub=111811.80,
+                         payer='Московский банк Сбербанка России',
+                         purpose=('Зачисление средств по операциям эквайринга. '
+                                  'Мерчант №781003872118. Комиссия 788.20.'))
+        db.add(inc)
+        db.commit()
+        iid = inc.id
+    finally:
+        db.close()
+
+    conv_id = _batch(cli, [iid], VITALY, 1290.68)
+    d = cli.get(f'/api/conversions/{conv_id}/distribution').get_json()
+    assert d['success'] is True
+    assert d['unassigned_usdt'] == 0, 'WL-сделка не должна попадать в «приходы без сделки»'
+    assert len(d['wl_deals']) == 1
+    assert d['wl_deals'][0]['wl'] == 'WL-0393'
+    assert d['wl_deals'][0]['merchant'] == 'Four exchange'
+    assert d['wl_deals'][0]['share_usdt'] == 1290.68
+    # К выплате мерчанту — из реестра бота, а не доля пачки: доля включает нашу маржу
+    assert d['wl_deals'][0]['to_pay_usdt'] == 1265.45
+    assert d['wl_deals'][0]['margin_usdt'] == 25.23
+    assert d['wl_usdt'] == 1265.45
+    assert d['stays_usdt'] == 25.23, 'нам остаётся только маржа, выплата уйдёт мерчанту'
+    assert d['balanced'] is True
+
+    db = get_session()
+    try:
+        db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').delete()
+        db.commit()
+    finally:
+        db.close()

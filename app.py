@@ -5616,16 +5616,47 @@ def conversion_distribution(db, conv):
     """
     received = conv.received_usdt()
     shares = conversion_shares_for(conv, expected_if_pending=True)
-    per_deal = {}
+
+    # Сделки обменников (WL): клиент мерчанта платит по ссылке бота, эквайринг
+    # кладёт деньги нам, а выдаёт клиенту мерчант. Возврата оунеру тут нет, но
+    # и «нашими» эти деньги называть нельзя — их выплатят мерчанту заявкой в боте.
+    wl_deals_snapshot = []
+    snap = db.query(ReestrSnapshot).filter(ReestrSnapshot.view == 'deals').first()
+    if snap:
+        try:
+            wl_deals_snapshot = json.loads(snap.payload) or []
+        except (ValueError, TypeError):
+            wl_deals_snapshot = []
+
+    per_deal, wl_rows = {}, []
+    wl_to_pay = wl_margin = 0.0
     for sid, usdt in shares.items():
         inc = db.query(SberIncome).get(sid)
-        if not inc or not inc.claimed_deal_id:
+        if not inc:
             continue
-        per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 2)
+        if inc.claimed_deal_id:
+            per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 2)
+            continue
+        wl = _match_wl_deal(inc.to_dict(), wl_deals_snapshot)
+        if not wl:
+            continue
+        share = round(usdt, 2)
+        to_pay = round(float(wl.get('usdt') or 0), 2) or None
+        wl_rows.append({
+            'wl': wl.get('wl'), 'merchant': wl.get('merchant') or '',
+            'author': wl.get('author') or '', 'share_usdt': share,
+            'to_pay_usdt': to_pay,
+            'margin_usdt': round(share - to_pay, 2) if to_pay else None,
+        })
+        if to_pay:
+            wl_to_pay += to_pay
+            wl_margin += share - to_pay
 
     to_return, settled, no_return_deals = {}, {}, []
     obligations = margin = no_return = 0.0
     needs_input = False
+    if any(r['to_pay_usdt'] is None for r in wl_rows):
+        needs_input = True          # в реестре бота нет суммы к выплате
 
     for deal_id, share in sorted(per_deal.items()):
         deal = db.query(Deal).get(deal_id)
@@ -5678,10 +5709,11 @@ def conversion_distribution(db, conv):
         if not wallet:
             needs_input = True          # некуда возвращать
 
-    unassigned = round(received - sum(per_deal.values()), 2)
-    stays = round(received - obligations, 2)
+    wl_share_total = round(sum(r['share_usdt'] for r in wl_rows), 2)
+    unassigned = round(received - sum(per_deal.values()) - wl_share_total, 2)
+    stays = round(received - obligations - wl_to_pay, 2)
     balanced = (not needs_input
-                and abs(stays - round(margin + no_return + unassigned, 2)) < 0.02)
+                and abs(stays - round(margin + wl_margin + no_return + unassigned, 2)) < 0.02)
     return {
         'conversion': conv.display_name,
         'received_usdt': round(received, 2),
@@ -5689,8 +5721,10 @@ def conversion_distribution(db, conv):
         'settled': sorted(settled.values(), key=lambda x: -x['amount_usdt']),
         'no_return_usdt': round(no_return, 2),
         'no_return_deals': no_return_deals,
+        'wl_deals': wl_rows,
+        'wl_usdt': round(wl_to_pay, 2),
         'unassigned_usdt': unassigned,
-        'margin_usdt': round(margin, 2),
+        'margin_usdt': round(margin + wl_margin, 2),
         'stays_usdt': stays,
         'balanced': balanced,
         'needs_input': needs_input,

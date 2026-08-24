@@ -10004,6 +10004,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         `${x.cost_usdt === null ? '?' : money(x.cost_usdt)} · доход ` +
                         `${x.margin_usdt === null ? '?' : money(x.margin_usdt)}`));
                 });
+                if ((dist.wl_deals || []).length) {
+                    L.push('');
+                    L.push(`Выплатить мерчантам (заявками в боте): ${money(dist.wl_usdt)} USDT`);
+                    dist.wl_deals.forEach(x => L.push(
+                        `  ${x.wl || ''} ${x.merchant || ''}${x.author ? ' · ' + x.author : ''}`.padEnd(34).slice(0, 34) +
+                        (x.to_pay_usdt === null
+                            ? ' к выплате: нет в реестре'
+                            : ` к выплате ${money(x.to_pay_usdt)} · доля ${money(x.share_usdt)} · маржа ${money(x.margin_usdt)}`)));
+                }
                 if (dist.no_return_usdt) {
                     L.push('');
                     L.push(`Без возмещения (платили не с кошелька, через счёт): ${money(dist.no_return_usdt)} USDT`);
@@ -10178,6 +10187,16 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 <div class="form-label" style="margin-bottom:6px">Раскладка прихода</div>
                 <div>Получили <b style="float:right">${money(dist.received_usdt)} USDT</b></div>
                 ${ret}${done}
+                ${(dist.wl_deals || []).length ? `<div style="margin-top:8px">
+                    Выплатить мерчантам (заявками в боте)
+                    <b style="float:right">${money(dist.wl_usdt)} USDT</b>
+                    ${dist.wl_deals.map(x => `<div style="color:#64748b; font-size:0.85rem; margin-left:14px">
+                        <b>${escapeHtml(x.wl || '')}</b> ${escapeHtml(x.merchant || '')}${
+                            x.author ? ' · ' + escapeHtml(x.author) : ''} —
+                        ${x.to_pay_usdt === null ? '<span style="color:#dc2626">суммы к выплате нет в реестре</span>'
+                            : `${money(x.to_pay_usdt)} <span style="color:#94a3b8">(доля ${money(x.share_usdt)}, маржа ${money(x.margin_usdt)})</span>`}
+                    </div>`).join('')}
+                </div>` : ''}
                 ${dist.no_return_usdt ? `<div style="margin-top:8px">
                     Оплачено не с кошелька — возвращать некому
                     <b style="float:right">${money(dist.no_return_usdt)} USDT</b>
