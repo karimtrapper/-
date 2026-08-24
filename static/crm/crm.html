@@ -9950,7 +9950,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Текстовая сводка по пачке: рубли, клиенты, USDT, хеш и кошелёк —
         // ровно то, что нужно, чтобы поставить задачу по следующей конвертации
-        function buildConversionSummary(c, d) {
+        function buildConversionSummary(c, d, dist) {
             const money = n => Number(n || 0).toLocaleString('ru-RU',
                 {minimumFractionDigits: 2, maximumFractionDigits: 2});
             const L = [];
@@ -9978,6 +9978,48 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         L.push(`  кошелёк: ${t.to_address}${t.to_label ? ' (' + t.to_label + ')' : ''}`);
                     }
                 });
+            }
+            // Хвост про возврат: раньше его дописывали руками в чат финансистам —
+            // «нужно возместить на кошелёк Андрея за 2 сделки Романа 383,14+387,78».
+            // Всё это уже посчитано в раскладке, пересказывать цифры незачем.
+            if (dist && dist.success) {
+                const deal = x => `#${x.deal_id} ${(x.client_name || '').trim()}`.padEnd(28).slice(0, 28);
+                (dist.to_return || []).forEach(g => {
+                    L.push('');
+                    L.push(`Возместить ${g.label || g.founder || 'оунеру'}: ${money(g.amount_usdt)} USDT`);
+                    L.push(`  кошелёк: ${g.address || '— не указан'}`);
+                    g.deals.forEach(x => L.push(
+                        `  ${deal(x)} получили ${money(x.share_usdt)} · выдали ` +
+                        `${x.cost_usdt === null ? '?' : money(x.cost_usdt)} · доход ` +
+                        `${x.margin_usdt === null ? '?' : money(x.margin_usdt)}`));
+                });
+                (dist.settled || []).forEach(g => {
+                    L.push('');
+                    L.push(g.kind === 'auto'
+                        ? `Возмещать не пришлось: ${money(g.amount_usdt)} USDT пришли сразу на нужный кошелёк`
+                        : `Уже возвращено переводом: ${money(g.amount_usdt)} USDT`);
+                    if (g.tx_hash) L.push(`  хеш: ${g.tx_hash}`);
+                    g.deals.forEach(x => L.push(
+                        `  ${deal(x)} получили ${money(x.share_usdt)} · выдали ` +
+                        `${x.cost_usdt === null ? '?' : money(x.cost_usdt)} · доход ` +
+                        `${x.margin_usdt === null ? '?' : money(x.margin_usdt)}`));
+                });
+                if (dist.no_return_usdt) {
+                    L.push('');
+                    L.push(`Без возмещения (платили не с кошелька, через счёт): ${money(dist.no_return_usdt)} USDT`);
+                    (dist.no_return_deals || []).forEach(x =>
+                        L.push(`  ${deal(x)} получили ${money(x.share_usdt)}`));
+                }
+                if (dist.unassigned_usdt) {
+                    L.push('');
+                    L.push(`Приходы без сделки: ${money(dist.unassigned_usdt)} USDT`);
+                }
+                L.push('');
+                L.push(`Остаётся у нас: ${money(dist.stays_usdt)} USDT` +
+                       (dist.margin_usdt ? ` (маржа ${money(dist.margin_usdt)})` : ''));
+                if (dist.needs_input) {
+                    L.push('⚠️ по части сделок не отмечены переводы выдачи — суммы возврата неизвестны');
+                }
             }
             return L.join('\n');
         }
@@ -10046,7 +10088,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     t.to_label ? ' · ' + t.to_label : ''}</div>` : ''}</div>`).join('');
             // Сводку часто нужно переслать текстом — чтобы ставить задачи
             // по следующей конвертации, не пересказывая цифры руками
-            window._convSummary = buildConversionSummary(c, d);
+            window._convSummary = buildConversionSummary(c, d, dist);
             document.getElementById('conversionModalBody').innerHTML = `
                 <div style="display:flex; align-items:center; gap:10px">
                     <div class="card-title" style="flex:1">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
