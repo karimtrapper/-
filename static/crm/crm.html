@@ -9350,18 +9350,28 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!select) return;
             try {
                 const [txResp, wResp] = await Promise.all([
-                    fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&limit=150`).then(r => r.json()),
+                    // all_wallets: фаундер выдаёт и со своего balance-кошелька
+                    // (кошелёк Теодора именно такой), а обычная выборка берёт
+                    // только monitored — его переводов в списке не было вовсе
+                    fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200`).then(r => r.json()),
                     fetch(`${API_URL}/api/wallets`).then(r => r.json()).catch(() => ({success: false})),
                 ]);
                 if (!txResp.success || !txResp.available) return;
                 const labels = {};
-                (wResp.wallets || []).forEach(w => { labels[w.address] = w.label || ''; });
+                (wResp.wallets || []).forEach(w => {
+                    // Подпись = адрес считается отсутствующей: у кошелька Теодора
+                    // в label лежит его же адрес, и список читался как каша
+                    const lbl = (w.label || '').trim();
+                    labels[w.address] = (lbl && lbl !== w.address) ? lbl : '';
+                });
+                const who = a => labels[a] || (a || '').substring(0, 10) + '…';
                 select.innerHTML = '<option value="">-- Выбрать из исходящих --</option>' +
-                    txResp.available.slice(0, 150).map(tx =>
+                    txResp.available.slice(0, 200).map(tx =>
                         `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}"
                                  data-date="${formatDate(tx.timestamp)}" data-from="${tx.from_address || ''}"
                                  data-to="${tx.to_address || ''}" data-label="${escapeHtml(labels[tx.from_address] || '')}">
-                            −$${Number(tx.amount_usdt).toFixed(2)} | ${labels[tx.from_address] || (tx.from_address || '').substring(0, 10) + '…'} → ${(tx.to_address || '').substring(0, 10)}… | ${formatDate(tx.timestamp)}</option>`
+                            −$${Number(tx.amount_usdt).toFixed(2)} | ${who(tx.from_address)} → ${who(tx.to_address)}${
+                                tx.is_internal ? ' · между своими' : ''} | ${formatDate(tx.timestamp)}</option>`
                     ).join('');
             } catch (e) {
                 console.error('Error loading outgoing transactions:', e);

@@ -217,6 +217,11 @@ def parse_float(value, default=0.0):
 TRONSCAN_CACHE = {
     'incoming': {'data': None, 'timestamp': 0},
     'outgoing': {'data': None, 'timestamp': 0},
+    # Выдачи фаундеров уходят и с balance-кошельков (is_monitored=False), которых
+    # нет в основном наборе: кошелёк Теодора TRgncc… именно такой, и его переводы
+    # в пикер выдачи не попадали вовсе. Отдельный слот — иначе два набора
+    # перетирали бы друг друга в общем кэше.
+    'outgoing_all': {'data': None, 'timestamp': 0},
     'balances': {} # address -> {'data': data, 'timestamp': 0}
 }
 CACHE_TTL = 300 # 5 минут
@@ -8846,6 +8851,11 @@ def get_outgoing_transactions():
         # клиенту), но форма возмещений просит их показать: возмещение фаундеру может
         # уйти на адрес, который заведён у нас, и без флага перевод не найти.
         include_internal = request.args.get('include_internal', 'false').lower() in ('1', 'true')
+        # Пикер выдачи: нужны ВСЕ активные кошельки, а не только monitored —
+        # фаундер выдаёт и со своего balance-кошелька, и такой перевод в списке
+        # не показывался (кейс Теодора, 21.08)
+        all_wallets = request.args.get('all_wallets', 'false').lower() in ('1', 'true')
+        cache_key = 'outgoing_all' if all_wallets else 'outgoing'
 
         start_ts = None
         if start_date_str:
@@ -8863,8 +8873,8 @@ def get_outgoing_transactions():
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         current_time = time.time()
         
-        if not force_refresh and TRONSCAN_CACHE['outgoing']['data'] and (current_time - TRONSCAN_CACHE['outgoing']['timestamp'] < CACHE_TTL):
-            cached_data = TRONSCAN_CACHE['outgoing']['data']
+        if not force_refresh and TRONSCAN_CACHE[cache_key]['data'] and (current_time - TRONSCAN_CACHE[cache_key]['timestamp'] < CACHE_TTL):
+            cached_data = TRONSCAN_CACHE[cache_key]['data']
             if wallet_filter:
                 cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
             if not include_internal:
@@ -8874,11 +8884,13 @@ def get_outgoing_transactions():
                 'success': True,
                 'available': cached_data[:result_limit or 1000],
                 'cached': True,
-                'cache_time': TRONSCAN_CACHE['outgoing']['timestamp']
+                'cache_time': TRONSCAN_CACHE[cache_key]['timestamp']
             })
 
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
+        elif all_wallets:
+            wallets = session.query(Wallet).filter(Wallet.active == True).all()
         else:
             wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).all()
 
@@ -8895,13 +8907,13 @@ def get_outgoing_transactions():
             wallets, internal_wallet_addresses,
             start_ts=start_ts, end_ts=end_ts, result_limit=result_limit, with_errors=True)
         failed_out = set(failed_out)
-        all_outgoing = _merge_partial_with_cache(all_outgoing, 'outgoing', failed_out, 'from_address')
+        all_outgoing = _merge_partial_with_cache(all_outgoing, cache_key, failed_out, 'from_address')
 
         # Обновляем кэш (полный набор, без limit-фильтра). Атомарно — см. incoming.
         if not wallet_filter and not result_limit:
             ts = current_time if not failed_out else (
-                TRONSCAN_CACHE['outgoing'].get('timestamp') or current_time)
-            TRONSCAN_CACHE['outgoing'] = {'data': all_outgoing, 'timestamp': ts}
+                TRONSCAN_CACHE[cache_key].get('timestamp') or current_time)
+            TRONSCAN_CACHE[cache_key] = {'data': all_outgoing, 'timestamp': ts}
 
         final_limit = result_limit or 1000
         visible = all_outgoing if include_internal else [
