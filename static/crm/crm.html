@@ -9961,7 +9961,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function showConversion(id) {
-            const d = await (await fetch(`/api/conversions/${id}`)).json();
+            const [d, dist] = await Promise.all([
+                fetch(`/api/conversions/${id}`).then(r => r.json()),
+                fetch(`/api/conversions/${id}/distribution`).then(r => r.json()).catch(() => null),
+            ]);
             if (!d.success) return;
             const c = d.conversion;
             const comp = d.composition.map(x => `<tr>
@@ -9998,6 +10001,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 ${Math.abs(c.debits_delta_rub) < 0.01
     ? '✅ приходы сошлись со списаниями по счёту'
     : '⚠️ расхождение по счёту: ' + cnvNum(c.debits_delta_rub) + ' ₽'}` : ''}</pre>
+                ${renderConvDistribution(id, dist)}
                 <table class="table"><thead><tr>
                     <th>Дата</th><th>Плательщик</th><th>₽</th><th>USDT</th><th>Сделка</th>
                 </tr></thead><tbody>${comp}</tbody></table>
@@ -10023,6 +10027,90 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         Привязать и разнести по сделкам</button>
                 </div>`;
             document.getElementById('conversionModal').classList.add('active');
+        }
+
+        // Раскладка прихода: пачка не закрыта, пока приход не разложен до нуля.
+        // Возврат оунеру считается по СЕБЕСТОИМОСТИ выдачи, а не по доле пачки —
+        // доля включает нашу маржу (CNV-0002: 408,04 против 383,14).
+        function renderConvDistribution(convId, dist) {
+            if (!dist || !dist.success || !dist.received_usdt) return '';
+            const money = v => (v === null || v === undefined) ? '—' : cnvNum(v);
+            const dealLine = x => `<div style="color:#64748b; font-size:0.85rem; margin-left:14px">
+                #${x.deal_id} ${escapeHtml(x.client_name || '')} — ${money(x.cost_usdt)}
+                ${x.cost_usdt === null ? '<span style="color:#dc2626">себестоимость неизвестна</span>'
+                    : `<span style="color:#94a3b8">(доля ${money(x.share_usdt)}, маржа ${money(x.margin_usdt)})</span>`}</div>`;
+
+            const ret = (dist.to_return || []).map(g => `
+                <div style="margin-top:8px">
+                    <div><b>Вернуть · ${escapeHtml(g.label || g.founder || 'оунеру')}</b>
+                        <b style="float:right">${money(g.amount_usdt)} USDT</b></div>
+                    <div style="font-family:monospace; font-size:0.8rem; color:#64748b">
+                        ${g.address ? g.address : '<span style="color:#dc2626">кошелёк у сделки не указан</span>'}</div>
+                    ${g.deals.map(dealLine).join('')}
+                    ${g.address && g.amount_usdt ? `
+                    <div style="display:flex; gap:6px; margin-top:6px">
+                        <input class="form-control" id="convRetHash${g.wallet_id}"
+                               placeholder="Хеш перевода оунеру" style="flex:1">
+                        <button class="btn btn-primary btn-sm"
+                                onclick="returnFromConversion(${convId}, ${g.wallet_id})">Вернуть</button>
+                    </div>` : ''}
+                </div>`).join('');
+
+            const done = (dist.settled || []).map(g => `
+                <div style="margin-top:8px; color:#065f46">
+                    <b>${g.kind === 'auto' ? 'Возмещено приходом — перевод не потребовался'
+                                           : 'Возвращено переводом'}</b>
+                    <b style="float:right">${money(g.amount_usdt)} USDT</b>
+                    ${g.tx_hash ? `<div style="font-family:monospace; font-size:0.8rem; color:#64748b">
+                        ${g.incoming ? 'входящий' : 'исходящий'} ${g.tx_hash.slice(0, 20)}…</div>` : ''}
+                    ${g.deals.map(dealLine).join('')}
+                </div>`).join('');
+
+            const flag = dist.needs_input
+                ? '<div style="margin-top:8px; padding:8px; background:#fef2f2; border-radius:6px; color:#b91c1c">⚠️ Раскладка неполная: отметьте переводы выдачи по сделкам выше</div>'
+                : (dist.balanced
+                    ? '<div style="margin-top:8px; padding:8px; background:#ecfdf5; border-radius:6px; color:#065f46">✅ приход разложен полностью</div>'
+                    : '<div style="margin-top:8px; padding:8px; background:#fef2f2; border-radius:6px; color:#b91c1c">⚠️ раскладка не сходится с приходом</div>');
+
+            return `<div style="margin-top:1rem; border:1px solid #e2e8f0; border-radius:8px; padding:12px">
+                <div class="form-label" style="margin-bottom:6px">Раскладка прихода</div>
+                <div>Получили <b style="float:right">${money(dist.received_usdt)} USDT</b></div>
+                ${ret}${done}
+                ${dist.no_return_usdt ? `<div style="margin-top:8px">
+                    Оплачено не с кошелька — возвращать некому
+                    <b style="float:right">${money(dist.no_return_usdt)} USDT</b>
+                    ${(dist.no_return_deals || []).map(x =>
+                        `<div style="color:#64748b; font-size:0.85rem; margin-left:14px">
+                            #${x.deal_id} ${escapeHtml(x.client_name || '')} — ${money(x.share_usdt)}</div>`).join('')}
+                </div>` : ''}
+                ${dist.unassigned_usdt ? `<div style="margin-top:8px; color:#b45309">
+                    Приходы без сделки <b style="float:right">${money(dist.unassigned_usdt)} USDT</b></div>` : ''}
+                <div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px">
+                    Остаётся у нас <b style="float:right">${money(dist.stays_usdt)} USDT</b>
+                    ${dist.margin_usdt ? `<div style="color:#64748b; font-size:0.85rem">из них маржа ${money(dist.margin_usdt)}</div>` : ''}
+                </div>
+                ${flag}</div>`;
+        }
+
+        async function returnFromConversion(convId, walletId) {
+            const dist = await (await fetch(`/api/conversions/${convId}/distribution`)).json();
+            const g = (dist.to_return || []).find(x => x.wallet_id === walletId);
+            if (!g) return showToast('Долг уже закрыт', 'error');
+            const hash = (document.getElementById(`convRetHash${walletId}`).value || '').trim();
+            if (!hash) return showToast('Нужен хеш перевода оунеру', 'error');
+            const r = await fetch(`${API_URL}/api/reimbursements`, {method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    founder_name: g.founder || g.label,
+                    deal_ids: g.deals.map(x => x.deal_id),
+                    amount_usdt: g.amount_usdt,
+                    tx_hashes: [hash],
+                    deal_allocations: g.deals.map(x => ({deal_id: x.deal_id, amount_usdt: x.cost_usdt})),
+                })});
+            const res = await r.json();
+            if (!res.success) return showToast(res.error || 'Не удалось создать возмещение', 'error');
+            showToast(`Возврат на ${g.amount_usdt} USDT записан`);
+            showConversion(convId);
         }
 
         async function attachConvTx(id) {

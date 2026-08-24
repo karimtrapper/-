@@ -276,3 +276,112 @@ def test_сделка_без_долга_не_попадает_в_автозач�
         assert db.query(Reimbursement).count() == 0
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Раскладка прихода: пачка не закрыта, пока приход не разложен до нуля
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_раскладка_cnv_0002(cli):
+    """Боевой кейс: 1 918 USDT = 770,92 вернуть + 1 101,92 без возврата + 45,16 маржа.
+
+    Возврат считается по себестоимости выдачи (383,14 + 387,78), а доли пачки
+    у сделок Романа 408,04 + 408,04 — разница и есть наша маржа.
+    """
+    wid = _wallet(ANDREY, 'Андрей')
+    d1, i1 = _deal_with_income(cli, wid, rub=34755.0, cost=383.14, thb=12500.0)
+    d2, i2 = _deal_with_income(cli, wid, rub=34755.0, cost=387.78, thb=12650.0)
+
+    # Две сделки оплачены со счёта IPPS — возвращать некому
+    ipps = []
+    for rub, cost, thb in ((63320.76, 743.42, 24000.0), (30535.46, 358.50, 11500.0)):
+        db = get_session()
+        try:
+            inc = SberIncome(uuid=_uid(), operation_date='2026-08-19', amount_rub=rub,
+                             payer='клиент', purpose='ipps')
+            db.add(inc)
+            db.commit()
+            iid = inc.id
+        finally:
+            db.close()
+        deal = cli.post('/api/deals', json={
+            'client_name': 'Клиент IPPS', 'status': 'pending',
+            'payin_method': 'sber_reqs', 'payin_amount_rub': rub,
+            'payout_method': 'transfer', 'payout_source': 'founder_personal',
+            'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
+            'payout_amount_thb': thb, 'needs_reimbursement': False, 'skip_sync': True,
+        }).get_json()['deal']
+        db = get_session()
+        try:
+            db.query(SberIncome).filter(SberIncome.id == iid).update(
+                {'claimed_deal_id': deal['id']})
+            db.commit()
+        finally:
+            db.close()
+        ipps.append(iid)
+
+    # Приход упал на чужой кошелёк — автозачёта быть не должно, только раскладка
+    conv_id = _batch(cli, [i1, i2] + ipps, VITALY, 1918.00)
+
+    d = cli.get(f'/api/conversions/{conv_id}/distribution').get_json()
+    assert d['success'] is True
+    assert d['received_usdt'] == 1918.00
+    assert len(d['to_return']) == 1
+    ret = d['to_return'][0]
+    assert ret['address'] == ANDREY
+    assert ret['amount_usdt'] == 770.92
+    assert sorted(x['deal_id'] for x in ret['deals']) == sorted([d1, d2])
+    assert d['no_return_usdt'] == 1101.92
+    assert d['margin_usdt'] == 45.16
+    assert d['stays_usdt'] == 1147.08
+    assert d['balanced'] is True
+    assert d['needs_input'] is False
+
+
+def test_раскладка_без_себестоимости_не_сходится(cli):
+    """Переводы выдачи не отмечены — сумма возврата неизвестна, «сошлось» соврало бы."""
+    wid = _wallet(ANDREY, 'Андрей')
+    db = get_session()
+    try:
+        inc = SberIncome(uuid=_uid(), operation_date='2026-08-19', amount_rub=34755.0,
+                         payer='Roman', purpose='тест')
+        db.add(inc)
+        db.commit()
+        iid = inc.id
+    finally:
+        db.close()
+    deal = cli.post('/api/deals', json={
+        'client_name': 'Roman - Grusha', 'status': 'pending',
+        'payin_method': 'sber_reqs', 'payin_amount_rub': 34755.0,
+        'payout_method': 'transfer', 'payout_source': 'founder_personal',
+        'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
+        'payout_amount_thb': 12500.0, 'skip_sync': True,
+    }).get_json()['deal']
+    db = get_session()
+    try:
+        db.query(SberIncome).filter(SberIncome.id == iid).update(
+            {'claimed_deal_id': deal['id']})
+        db.commit()
+    finally:
+        db.close()
+
+    conv_id = _batch(cli, [iid], VITALY, 408.04)
+    d = cli.get(f'/api/conversions/{conv_id}/distribution').get_json()
+    assert d['needs_input'] is True
+    assert d['balanced'] is False
+    assert d['to_return'][0]['deals'][0]['cost_usdt'] is None
+
+
+def test_раскладка_показывает_автозачёт(cli):
+    """Долг закрыт приходом — в раскладке он в «уже закрыто», а не в «вернуть»."""
+    wid = _wallet(ANDREY, 'Андрей')
+    _d, iid = _deal_with_income(cli, wid)
+    conv_id = _batch(cli, [iid], ANDREY, 408.04)
+
+    d = cli.get(f'/api/conversions/{conv_id}/distribution').get_json()
+    assert d['to_return'] == []
+    assert len(d['settled']) == 1
+    assert d['settled'][0]['kind'] == 'auto'
+    assert d['settled'][0]['amount_usdt'] == 383.14
+    assert d['stays_usdt'] == 24.90         # приход 408,04 минус долг 383,14
+    assert d['balanced'] is True

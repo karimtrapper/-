@@ -5603,6 +5603,113 @@ def attach_conversion_tx(conv_id):
         db.close()
 
 
+def conversion_distribution(db, conv):
+    """Раскладка прихода пачки до нуля: кому вернуть, что остаётся, сходится ли.
+
+    Пока приход не разложен, пачка не закрыта: деньги от брокера падают на кошелёк,
+    а сделку оплачивали с другого, и вернуть туда надо СЕБЕСТОИМОСТЬ выдачи, а не
+    долю из пачки — доля включает нашу маржу (CNV-0002: 408,04 против 383,14).
+
+    Сделки, оплаченные не с кошелька (счёт IPPS), показываем отдельной строкой:
+    возвращать по ним некому, но без них сумма не сойдётся и деньги выглядят
+    потерянными.
+    """
+    received = conv.received_usdt()
+    shares = conversion_shares_for(conv, expected_if_pending=True)
+    per_deal = {}
+    for sid, usdt in shares.items():
+        inc = db.query(SberIncome).get(sid)
+        if not inc or not inc.claimed_deal_id:
+            continue
+        per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 2)
+
+    to_return, settled, no_return_deals = {}, {}, []
+    obligations = margin = no_return = 0.0
+    needs_input = False
+
+    for deal_id, share in sorted(per_deal.items()):
+        deal = db.query(Deal).get(deal_id)
+        if not deal:
+            continue
+        row = {'deal_id': deal.id,
+               'client_name': (deal.client.name if deal.client else deal.client_name) or '',
+               'share_usdt': share, 'cost_usdt': None, 'margin_usdt': None}
+        has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
+                    and deal.needs_reimbursement is not False)
+        if not has_debt:
+            no_return += share
+            no_return_deals.append(row)
+            continue
+
+        cost = deal.payout_amount_usdt or _payout_cost_from_transfers(deal)
+        if cost:
+            cost = round(cost, 2)
+            row['cost_usdt'] = cost
+            row['margin_usdt'] = round(share - cost, 2)
+            obligations += cost
+            margin += share - cost
+        else:
+            # Сумму возврата не знаем — «сошлось» тут было бы враньём
+            needs_input = True
+
+        if deal.reimbursement_id:
+            reimb = db.query(Reimbursement).get(deal.reimbursement_id)
+            key = deal.reimbursement_id
+            grp = settled.setdefault(key, {
+                'reimbursement_id': key,
+                'kind': (reimb.kind if reimb else None) or 'manual',
+                'tx_hash': reimb.tx_hash if reimb else None,
+                'incoming': bool(reimb and reimb.settled_by_payin_tx_id),
+                'amount_usdt': 0.0, 'deals': []})
+            grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+            grp['deals'].append(row)
+            continue
+
+        wallet = deal.payout_wallet
+        key = wallet.id if wallet else 0
+        grp = to_return.setdefault(key, {
+            'wallet_id': wallet.id if wallet else None,
+            'address': wallet.address if wallet else None,
+            'label': (wallet.label if wallet else None) or deal.payout_founder_name or '',
+            'founder': deal.payout_founder_name or '',
+            'amount_usdt': 0.0, 'deals': []})
+        grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+        grp['deals'].append(row)
+        if not wallet:
+            needs_input = True          # некуда возвращать
+
+    unassigned = round(received - sum(per_deal.values()), 2)
+    stays = round(received - obligations, 2)
+    balanced = (not needs_input
+                and abs(stays - round(margin + no_return + unassigned, 2)) < 0.02)
+    return {
+        'conversion': conv.display_name,
+        'received_usdt': round(received, 2),
+        'to_return': sorted(to_return.values(), key=lambda x: -x['amount_usdt']),
+        'settled': sorted(settled.values(), key=lambda x: -x['amount_usdt']),
+        'no_return_usdt': round(no_return, 2),
+        'no_return_deals': no_return_deals,
+        'unassigned_usdt': unassigned,
+        'margin_usdt': round(margin, 2),
+        'stays_usdt': stays,
+        'balanced': balanced,
+        'needs_input': needs_input,
+    }
+
+
+@app.route('/api/conversions/<int:conv_id>/distribution', methods=['GET'])
+def conversion_distribution_api(conv_id):
+    """Куда разложить приход пачки. Ноль в остатке — пачку можно закрывать."""
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        return jsonify({'success': True, **conversion_distribution(db, conv)})
+    finally:
+        db.close()
+
+
 @app.route('/api/deals/<int:deal_id>/conversions', methods=['GET'])
 def deal_conversions(deal_id):
     """Конвертации, через которые прошёл приход этой сделки.
