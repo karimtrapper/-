@@ -226,6 +226,19 @@ TRONSCAN_CACHE = {
 }
 CACHE_TTL = 300 # 5 минут
 
+
+def invalidate_tronscan_cache():
+    """Сбрасывает кэш переводов при изменении справочника кошельков.
+
+    Кэш собран по ТОМУ набору кошельков, что был на момент сбора: добавили
+    кошелёк — его переводов в списке не будет ещё пять минут, и человек решает,
+    что перевода не было (кейс 21.08, кошелёк Теодора). Подпись тоже отсюда:
+    список показывает имена, а не адреса.
+    """
+    for key in ('incoming', 'outgoing', 'outgoing_all'):
+        TRONSCAN_CACHE[key] = {'data': None, 'timestamp': 0}
+    TRONSCAN_CACHE['balances'] = {}
+
 # ==================== MODELS ====================
 from sqlalchemy import Column, Integer, BigInteger, String, Float, DateTime, Boolean, Text, LargeBinary, ForeignKey, Enum as SQLEnum, or_, and_, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
@@ -7916,6 +7929,7 @@ def add_wallet():
             if data.get('is_balance'): existing.is_balance = True
             if data.get('label'): existing.label = data['label']
             session.commit()
+            invalidate_tronscan_cache()
             return jsonify({'success': True, 'wallet': existing.to_dict()})
         
         wallet = Wallet(
@@ -7927,6 +7941,7 @@ def add_wallet():
         )
         session.add(wallet)
         session.commit()
+        invalidate_tronscan_cache()
         
         # Frontend ожидает usdt_balance и trx_balance
         wallet_data = wallet.to_dict()
@@ -8266,6 +8281,7 @@ def delete_wallet(wallet_id):
         
         session.delete(wallet)
         session.commit()
+        invalidate_tronscan_cache()
         return jsonify({'success': True})
     except Exception as e:
         session.rollback()
@@ -8288,7 +8304,13 @@ def update_wallet(wallet_id):
 
         if 'label' in data:
             wallet.label = (data.get('label') or '').strip()[:100]
+        # Флаги правятся здесь же: balance-кошелёк фаундера не попадал в списки
+        # переводов, а чтобы это исправить, приходилось удалять и заводить заново
+        for flag in ('is_monitored', 'is_balance', 'active'):
+            if flag in data:
+                setattr(wallet, flag, bool(data.get(flag)))
         session.commit()
+        invalidate_tronscan_cache()
         return jsonify({'success': True, 'wallet': wallet.to_dict()})
     except Exception as e:
         session.rollback()

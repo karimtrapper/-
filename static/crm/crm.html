@@ -1580,10 +1580,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div class="form-group" style="grid-column: span 2;">
                                 <label class="form-label">Переводы выдачи с кошелька фаундера
                                     <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
-                                <select class="form-control" id="payoutTxSelect" onchange="selectPayoutTx(this)"
-                                        style="margin-bottom: 0.5rem;">
-                                    <option value="">-- Выбрать из исходящих --</option>
-                                </select>
+                                <div style="display:flex; gap:6px; margin-bottom:0.5rem;">
+                                    <select class="form-control" id="payoutTxSelect" onchange="selectPayoutTx(this)"
+                                            style="flex:1; margin:0;">
+                                        <option value="">-- Выбрать из исходящих --</option>
+                                    </select>
+                                    <button type="button" class="btn btn-secondary" id="payoutTxRefreshBtn"
+                                            title="Перечитать переводы из сети (список кэшируется на 5 минут)"
+                                            onclick="loadOutgoingTxForSelect(true)">↻</button>
+                                </div>
+                                <div id="payoutTxWarn" style="display:none;margin-bottom:0.5rem;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;"></div>
                                 <div id="payoutTxPoolBox" style="margin-bottom: 0.5rem;"></div>
                                 <input class="form-control" id="payoutFounderHash"
                                        placeholder="Или введите хеш вручную…"
@@ -9345,17 +9351,32 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Список исходящих — тот же источник, что у формы возмещений
         // (include_internal: выдача может уйти на адрес, заведённый у нас).
-        async function loadOutgoingTxForSelect() {
+        async function loadOutgoingTxForSelect(force) {
             const select = document.getElementById('payoutTxSelect');
             if (!select) return;
+            const btn = document.getElementById('payoutTxRefreshBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '…'; }
             try {
                 const [txResp, wResp] = await Promise.all([
                     // all_wallets: фаундер выдаёт и со своего balance-кошелька
                     // (кошелёк Теодора именно такой), а обычная выборка берёт
-                    // только monitored — его переводов в списке не было вовсе
-                    fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200`).then(r => r.json()),
+                    // только monitored — его переводов в списке не было вовсе.
+                    // force_refresh — кэш живёт 5 минут и собран по ТОМУ набору
+                    // кошельков, что был на момент сбора: только что добавленный
+                    // кошелёк без него не появится.
+                    fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200${force ? '&force_refresh=true' : ''}`).then(r => r.json()),
                     fetch(`${API_URL}/api/wallets`).then(r => r.json()).catch(() => ({success: false})),
                 ]);
+                // Кошелёк мог не ответить (лимит TronScan) — молчать нельзя:
+                // менеджер ищет свою выдачу, не находит и решает, что её не было
+                const warnEl = document.getElementById('payoutTxWarn');
+                const failed = (txResp.wallets_errors || []).length;
+                if (warnEl) {
+                    warnEl.innerHTML = failed
+                        ? `⚠️ TronScan ответил не по всем кошелькам (${failed}) — список неполный. Нажми ↻ через минуту или введи хеш вручную.`
+                        : '';
+                    warnEl.style.display = failed ? 'block' : 'none';
+                }
                 if (!txResp.success || !txResp.available) return;
                 const labels = {};
                 (wResp.wallets || []).forEach(w => {
@@ -9375,6 +9396,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     ).join('');
             } catch (e) {
                 console.error('Error loading outgoing transactions:', e);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '↻'; }
             }
         }
 
