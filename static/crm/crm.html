@@ -9356,28 +9356,53 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!select) return;
             const btn = document.getElementById('payoutTxRefreshBtn');
             if (btn) { btn.disabled = true; btn.textContent = '…'; }
+            // Пустой селект читается как «переводов нет», хотя на холодном кэше
+            // обход TronScan по всем кошелькам занимает под минуту (кейс 21.08:
+            // «в начале не было, в итоге всё было»)
+            if (!select.dataset.loaded) {
+                select.innerHTML = '<option value="">Читаю переводы из сети…</option>';
+            }
             try {
-                const [txResp, wResp] = await Promise.all([
-                    // all_wallets: фаундер выдаёт и со своего balance-кошелька
-                    // (кошелёк Теодора именно такой), а обычная выборка берёт
-                    // только monitored — его переводов в списке не было вовсе.
-                    // force_refresh — кэш живёт 5 минут и собран по ТОМУ набору
-                    // кошельков, что был на момент сбора: только что добавленный
-                    // кошелёк без него не появится.
-                    fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200${force ? '&force_refresh=true' : ''}`).then(r => r.json()),
-                    fetch(`${API_URL}/api/wallets`).then(r => r.json()).catch(() => ({success: false})),
+                // ВАЖНО: не ждём /api/wallets вместе с переводами — он тянет
+                // балансы из TronScan и держал список пустым лишние секунды.
+                // Подписи приезжают следом и просто перерисовывают тексты.
+                // all_wallets: фаундер выдаёт и со своего balance-кошелька
+                // (кошелёк Теодора именно такой), а обычная выборка берёт
+                // только monitored — его переводов в списке не было вовсе.
+                // stale_ok: отдать то, что есть в кэше, не дожидаясь обхода
+                // TronScan (на холодном кэше это ~40 секунд). ↻ идёт в сеть.
+                // no_balances: подписи нужны сразу, балансы стоят 24 секунд сети.
+                // all: подписать надо и balance-кошельки — с них тоже выдают.
+                const walletsPromise = fetch(`${API_URL}/api/wallets?no_balances=1&all=1`)
+                    .then(r => r.json()).catch(() => ({success: false}));
+                const txResp = await fetch(
+                    `${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200${force ? '&force_refresh=true' : '&stale_ok=1'}`
+                ).then(r => r.json());
+                const wResp = await Promise.race([
+                    walletsPromise,
+                    new Promise(res => setTimeout(() => res({success: false, pending: true}), 1200)),
                 ]);
                 // Кошелёк мог не ответить (лимит TronScan) — молчать нельзя:
                 // менеджер ищет свою выдачу, не находит и решает, что её не было
                 const warnEl = document.getElementById('payoutTxWarn');
                 const failed = (txResp.wallets_errors || []).length;
                 if (warnEl) {
+                    const age = txResp.cache_time
+                        ? Math.round((Date.now() / 1000 - txResp.cache_time) / 60) : null;
+                    const stale = txResp.stale && age !== null && age > 10;
                     warnEl.innerHTML = failed
-                        ? `⚠️ TronScan ответил не по всем кошелькам (${failed}) — список неполный. Нажми ↻ через минуту или введи хеш вручную.`
-                        : '';
-                    warnEl.style.display = failed ? 'block' : 'none';
+                        ? `⚠️ TronScan ответил не по всем кошелькам (${failed}) — список неполный. Нажми ↻ или введи хеш вручную.`
+                        : (stale ? `Список из кэша, обновлялся ${age} мин назад. Свежего перевода может не быть — нажми ↻.` : '');
+                    warnEl.style.display = (failed || stale) ? 'block' : 'none';
                 }
-                if (!txResp.success || !txResp.available) return;
+                if (txResp.warming) {
+                    select.innerHTML = '<option value="">Собираю переводы из сети, обнови через минуту (↻)</option>';
+                    return;
+                }
+                if (!txResp.success || !txResp.available) {
+                    select.innerHTML = '<option value="">Не удалось прочитать переводы — введите хеш вручную</option>';
+                    return;
+                }
                 const labels = {};
                 (wResp.wallets || []).forEach(w => {
                     // Подпись = адрес считается отсутствующей: у кошелька Теодора
@@ -9394,8 +9419,18 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             −$${Number(tx.amount_usdt).toFixed(2)} | ${who(tx.from_address)} → ${who(tx.to_address)}${
                                 tx.is_internal ? ' · между своими' : ''} | ${formatDate(tx.timestamp)}</option>`
                     ).join('');
+                select.dataset.loaded = '1';
+                // Подписи опоздали — дорисуем, когда придут
+                if (wResp.pending) {
+                    walletsPromise.then(() => {
+                        if (document.getElementById('payoutTxSelect') === select) {
+                            loadOutgoingTxForSelect(false);
+                        }
+                    });
+                }
             } catch (e) {
                 console.error('Error loading outgoing transactions:', e);
+                select.innerHTML = '<option value="">Не удалось прочитать переводы — введите хеш вручную</option>';
             } finally {
                 if (btn) { btn.disabled = false; btn.textContent = '↻'; }
             }

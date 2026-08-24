@@ -236,7 +236,10 @@ def invalidate_tronscan_cache():
     список показывает имена, а не адреса.
     """
     for key in ('incoming', 'outgoing', 'outgoing_all'):
-        TRONSCAN_CACHE[key] = {'data': None, 'timestamp': 0}
+        # Данные оставляем: с ними список сразу показывает прошлые переводы,
+        # а нулевой timestamp заставляет прогрев перечитать набор. Обнулять
+        # data нельзя — тогда до следующего прохода список пуст.
+        TRONSCAN_CACHE[key] = {'data': TRONSCAN_CACHE[key].get('data'), 'timestamp': 0}
     TRONSCAN_CACHE['balances'] = {}
 
 # ==================== MODELS ====================
@@ -7829,10 +7832,23 @@ def get_wallets():
     try:
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         current_time = time.time()
-        
-        # Возвращаем только те, что для мониторинга
-        wallets = session.query(Wallet).filter(Wallet.active == True, Wallet.is_monitored == True).order_by(Wallet.created_at.desc()).all()
+        # Подписи кошельков нужны спискам переводов, а балансы там ни к чему:
+        # с ними ответ идёт 24 секунды (обход TronScan по каждому кошельку),
+        # и пикер выдачи всё это время показывал адреса вместо имён.
+        no_balances = request.args.get('no_balances', 'false').lower() in ('1', 'true')
+        # По умолчанию — только мониторинговые (так было всегда), но подписи
+        # нужны и для balance-кошельков: с них тоже уходят выдачи фаундеров.
+        want_all = request.args.get('all', 'false').lower() in ('1', 'true')
+
+        q = session.query(Wallet).filter(Wallet.active == True)
+        if not want_all:
+            q = q.filter(Wallet.is_monitored == True)
+        wallets = q.order_by(Wallet.created_at.desc()).all()
         wallets_with_balance = []
+
+        if no_balances:
+            return jsonify({'success': True,
+                            'wallets': [w.to_dict() for w in wallets]})
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -8406,6 +8422,11 @@ USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
 _TRONSCAN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
+# Без ключа TronScan режет нас лимитом: обход девяти кошельков ловил 429 у восьми
+# (21.08), список переводов приходил неполным и медленно. Ключ бесплатный,
+# заводится на tronscan.org; не задан — работаем как раньше.
+if os.environ.get('TRONSCAN_API_KEY'):
+    _TRONSCAN_HEADERS['TRON-PRO-API-KEY'] = os.environ['TRONSCAN_API_KEY']
 
 
 def _merge_partial_with_cache(fresh, cache_key, failed_addresses, addr_field):
@@ -8878,6 +8899,10 @@ def get_outgoing_transactions():
         # не показывался (кейс Теодора, 21.08)
         all_wallets = request.args.get('all_wallets', 'false').lower() in ('1', 'true')
         cache_key = 'outgoing_all' if all_wallets else 'outgoing'
+        # Форма не должна ждать обхода TronScan: на холодном кэше это ~40 секунд,
+        # и селект стоит пустым, будто переводов нет. Отдаём, что есть, а свежесть
+        # догоняет фоновый прогрев. Кнопка ↻ ходит в сеть принудительно.
+        stale_ok = request.args.get('stale_ok', 'false').lower() in ('1', 'true')
 
         start_ts = None
         if start_date_str:
@@ -8895,7 +8920,8 @@ def get_outgoing_transactions():
         force_refresh = request.args.get('force_refresh', 'false').lower() == 'true'
         current_time = time.time()
         
-        if not force_refresh and TRONSCAN_CACHE[cache_key]['data'] and (current_time - TRONSCAN_CACHE[cache_key]['timestamp'] < CACHE_TTL):
+        cache_fresh = (current_time - TRONSCAN_CACHE[cache_key]['timestamp'] < CACHE_TTL)
+        if not force_refresh and TRONSCAN_CACHE[cache_key]['data'] and (cache_fresh or stale_ok):
             cached_data = TRONSCAN_CACHE[cache_key]['data']
             if wallet_filter:
                 cached_data = [tx for tx in cached_data if tx['from_address'] == wallet_filter]
@@ -8906,8 +8932,16 @@ def get_outgoing_transactions():
                 'success': True,
                 'available': cached_data[:result_limit or 1000],
                 'cached': True,
+                'stale': not cache_fresh,
                 'cache_time': TRONSCAN_CACHE[cache_key]['timestamp']
             })
+
+        # Кэш пуст (первый запуск или только что почистили) — обход TronScan
+        # займёт минуты, и всё это время форма стоит пустой. Отвечаем сразу:
+        # список соберёт фоновый прогрев.
+        if stale_ok and not force_refresh and not TRONSCAN_CACHE[cache_key]['data']:
+            return jsonify({'success': True, 'available': [], 'warming': True,
+                            'cached': False, 'stale': True})
 
         if wallet_filter:
             wallets = session.query(Wallet).filter(Wallet.address == wallet_filter, Wallet.active == True).all()
@@ -8991,6 +9025,32 @@ def _tronscan_warm_loop():
                     'data': outgoing,
                     'timestamp': (TRONSCAN_CACHE['outgoing'].get('timestamp') or 0)
                     if failed_out else time.time()}
+
+                # Расширенный набор для пикера выдачи: фаундер платит и с
+                # balance-кошелька. Без прогрева форма собирала его прямо в
+                # запросе — 39 секунд на девяти кошельках, и список наливался
+                # у менеджера на глазах (кейс 21.08). Догружаем только тех,
+                # кого нет в основном наборе, чтобы не ходить дважды.
+                session = get_session()
+                try:
+                    extra = session.query(Wallet).filter(
+                        Wallet.active == True, Wallet.is_monitored == False).all()
+                finally:
+                    session.close()
+                out_all, failed_all = outgoing, set(failed_out)
+                if extra:
+                    extra_out, extra_failed = _tronscan_fetch_outgoing(
+                        extra, internal, start_ts=start_ts, with_errors=True)
+                    failed_all = failed_out | set(extra_failed)
+                    seen = {t.get('tx_hash') for t in outgoing}
+                    out_all = outgoing + [t for t in extra_out if t.get('tx_hash') not in seen]
+                    out_all.sort(key=lambda x: x.get('timestamp') or '', reverse=True)
+                out_all = _merge_partial_with_cache(out_all, 'outgoing_all', failed_all, 'from_address')
+                TRONSCAN_CACHE['outgoing_all'] = {
+                    'data': out_all,
+                    'timestamp': (TRONSCAN_CACHE['outgoing_all'].get('timestamp') or 0)
+                    if failed_all else time.time()}
+
                 if failed_in or failed_out:
                     print(f'[TronScan] прогрев неполный: 429 у {len(failed_in)} вх. / '
                           f'{len(failed_out)} исх. кошельков', flush=True)
