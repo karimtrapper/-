@@ -263,3 +263,27 @@ def test_realty_payout_block_is_shared_not_duplicated(html):
         assert f'id="{slot}"' in html, f'нет слота {slot} для переезда блока переводов'
     body = _function_body(html, 'moveRealtyPayoutBlock')
     assert 'appendChild' in body, 'блок переводов должен переезжать в активную форму'
+
+
+def test_conversion_return_has_tx_picker(html):
+    """Возврат оунеру из раскладки пачки выбирается из списка, а не вбивается.
+
+    Возмещение создаётся одним и тем же POST /api/reimbursements из двух мест —
+    вкладки «Возмещения» и раскладки прихода. Во вкладке список исходящих был,
+    в раскладке оставался только ручной хеш: одно действие двумя способами,
+    причём в неудобном хеш переписывали глазами.
+    """
+    render = _function_body(html, 'renderConvDistribution')
+    assert 'convRetSel${g.wallet_id}' in render, 'в группе возврата нет селекта переводов'
+    assert 'convRetTxOptions(g.address)' in render, \
+        'список переводов должен строиться от адреса кошелька группы'
+    assert 'convRetHash${g.wallet_id}' in render, 'ручной ввод хеша остаётся запасным путём'
+
+    options = _function_body(html, 'convRetTxOptions')
+    assert 'На этот кошелёк' in options, 'переводы на кошелёк оунера должны идти первыми'
+
+    pick = _function_body(html, 'pickConvRetTx')
+    assert 'convRetHash' in pick, 'выбор из списка должен подставлять хеш в поле возврата'
+
+    show = _function_body(html, 'showConversion')
+    assert '/api/transactions/outgoing' in show, 'список переводов не грузится при открытии пачки'

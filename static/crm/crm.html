@@ -10460,10 +10460,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         }
 
         async function showConversion(id) {
-            const [d, dist] = await Promise.all([
+            // Возврат оунеру можно записать и здесь, и во вкладке «Возмещения» —
+            // это один и тот же POST /api/reimbursements. Значит и список
+            // переводов должен быть тем же: вбивать хеш руками незачем.
+            const [d, dist, outgoing, history] = await Promise.all([
                 fetch(`/api/conversions/${id}`).then(r => r.json()),
                 fetch(`/api/conversions/${id}/distribution`).then(r => r.json()).catch(() => null),
+                fetch(`${API_URL}/api/transactions/outgoing?include_internal=1`)
+                    .then(r => r.json()).catch(() => ({success: false})),
+                fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({success: false})),
             ]);
+            convOutgoingTx = outgoing.success ? (outgoing.available || []) : [];
+            convUsedTx = new Set((history.success ? history.reimbursements : [])
+                .flatMap(r => r.tx_hashes || []));
             if (!d.success) return;
             const c = d.conversion;
             const comp = d.composition.map(x => `<tr>
@@ -10528,6 +10537,56 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             document.getElementById('conversionModal').classList.add('active');
         }
 
+        // Исходящие переводы для возврата оунеру прямо из раскладки пачки.
+        // Тот же источник, что во вкладке «Возмещения»: там уже был выбор из
+        // списка, а здесь оставался только ручной хеш — одно и то же действие
+        // двумя разными способами.
+        let convOutgoingTx = [];
+        let convUsedTx = new Set();
+
+        function convRetTxOptions(address) {
+            if (!convOutgoingTx.length) {
+                return '<option value="">Переводы не прочитались — впишите хеш ниже</option>';
+            }
+            const opt = t => {
+                const used = convUsedTx.has(t.tx_hash) ? '⚠️ уже учтён · ' : '';
+                return `<option value="${t.tx_hash}" data-amount="${t.amount_usdt}">
+                    ${used}−$${Number(t.amount_usdt).toFixed(2)} · ${formatDate(t.timestamp)} · ${
+                    (t.to_address || '').substring(0, 10)}…</option>`;
+            };
+            // Переводы НА кошелёк этого оунера — сверху: возврат уходит именно
+            // туда, и в общем списке нужный тонет среди чужих выдач
+            const mine = convOutgoingTx.filter(t => (t.to_address || '') === address);
+            const rest = convOutgoingTx.filter(t => (t.to_address || '') !== address);
+            return '<option value="">-- Выбрать перевод оунеру --</option>' +
+                (mine.length ? `<optgroup label="На этот кошелёк">${mine.map(opt).join('')}</optgroup>` : '') +
+                (rest.length ? `<optgroup label="Остальные исходящие">${rest.map(opt).join('')}</optgroup>` : '');
+        }
+
+        function pickConvRetTx(walletId, needUsdt) {
+            const sel = document.getElementById(`convRetSel${walletId}`);
+            const input = document.getElementById(`convRetHash${walletId}`);
+            const note = document.getElementById(`convRetNote${walletId}`);
+            const opt = sel.selectedOptions[0];
+            if (!sel.value) { if (note) note.textContent = ''; return; }
+            input.value = sel.value;
+            const amount = parseFloat(opt?.dataset?.amount);
+            if (!note) return;
+            // Суммы не обязаны совпадать (перевод бывает общим на две пачки),
+            // но расхождение должно быть видно ДО записи возмещения
+            if (isNaN(amount)) { note.textContent = ''; return; }
+            const diff = Math.round((amount - needUsdt) * 100) / 100;
+            if (Math.abs(diff) < 0.01) {
+                note.style.color = '#065f46';
+                note.textContent = `Перевод на $${amount.toFixed(2)} — сходится с суммой возврата.`;
+            } else {
+                note.style.color = '#b45309';
+                note.textContent = `Перевод на $${amount.toFixed(2)}, вернуть нужно $${needUsdt.toFixed(2)}` +
+                    ` (${diff > 0 ? 'в переводе больше на' : 'не хватает'} $${Math.abs(diff).toFixed(2)}).` +
+                    ' Запишется сумма возврата, остаток перевода останется свободным.';
+            }
+        }
+
         // Раскладка прихода: пачка не закрыта, пока приход не разложен до нуля.
         // Возврат оунеру считается по СЕБЕСТОИМОСТИ выдачи, а не по доле пачки —
         // доля включает нашу маржу (CNV-0002: 408,04 против 383,14).
@@ -10548,11 +10607,18 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     ${g.deals.map(dealLine).join('')}
                     ${g.address && g.amount_usdt ? `
                     <div style="display:flex; gap:6px; margin-top:6px">
+                        <select class="form-control" id="convRetSel${g.wallet_id}" style="flex:1"
+                                onchange="pickConvRetTx(${g.wallet_id}, ${g.amount_usdt})">
+                            ${convRetTxOptions(g.address)}
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:6px; margin-top:6px">
                         <input class="form-control" id="convRetHash${g.wallet_id}"
-                               placeholder="Хеш перевода оунеру" style="flex:1">
+                               placeholder="Или хеш перевода вручную" style="flex:1">
                         <button class="btn btn-primary btn-sm"
                                 onclick="returnFromConversion(${convId}, ${g.wallet_id})">Вернуть</button>
-                    </div>` : ''}
+                    </div>
+                    <div id="convRetNote${g.wallet_id}" style="font-size:0.8rem; color:#64748b; margin-top:4px"></div>` : ''}
                 </div>`).join('');
 
             const done = (dist.settled || []).map(g => `
