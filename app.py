@@ -1271,6 +1271,11 @@ class Deal(Base):
     bank_card_id = Column(Integer, ForeignKey('bank_cards.id'), nullable=True)
     bank_card = relationship("BankCard", foreign_keys=[bank_card_id])
     payout_founder_name = Column(String(100))
+    # Фаундер выдал баты из своих — конвертации USDT→THB не было, значит с
+    # кошельков ничего не уходило и хеша выдачи не существует. Себестоимость
+    # (сколько ему вернуть) в этом случае ставит менеджер руками в
+    # payout_amount_usdt, а не выводится из отмеченных переводов.
+    payout_no_conversion = Column(Boolean, default=False)
     reimbursement_id = Column(Integer, ForeignKey('reimbursements.id'), nullable=True)
     reimbursement = relationship("Reimbursement", back_populates="deals")
     profit_usdt = Column(Float)
@@ -1406,6 +1411,7 @@ class Deal(Base):
             'cash_batch_rate': self.cash_batch_rate,
             'bank_card_id': self.bank_card_id,
             'payout_founder_name': self.payout_founder_name,
+            'payout_no_conversion': bool(self.payout_no_conversion),
             'profit_usdt': self.profit_usdt,
             'profit_percent': self.profit_percent,
             'net_profit_usdt': self.net_profit_usdt,
@@ -1989,6 +1995,7 @@ try:
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_monitored BOOLEAN DEFAULT TRUE"))
             conn.execute(text("ALTER TABLE wallets ADD COLUMN IF NOT EXISTS is_balance BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS needs_reimbursement BOOLEAN DEFAULT TRUE"))
+            conn.execute(text("ALTER TABLE deals ADD COLUMN IF NOT EXISTS payout_no_conversion BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS to_address VARCHAR(100)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)"))
@@ -2005,6 +2012,8 @@ try:
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_balance BOOLEAN DEFAULT FALSE"))
             except: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN needs_reimbursement BOOLEAN DEFAULT 1"))
+            except: pass
+            try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_no_conversion BOOLEAN DEFAULT 0"))
             except: pass
             for _sql in ("CREATE INDEX IF NOT EXISTS ix_sber_incomes_operation_date ON sber_incomes (operation_date)",
                          "CREATE INDEX IF NOT EXISTS ix_sber_debits_operation_date ON sber_debits (operation_date)",
@@ -3265,6 +3274,10 @@ def build_deal_rows(deal, start_num):
     date_str = deal.created_at.strftime('%d.%m.%Y') if deal.created_at else ''
     payout_method_str = PAYOUT_METHOD_LABELS.get(
         deal.payout_method.value if deal.payout_method else '', '')
+    # Выдал свои баты: хеша выдачи в колонке Q не будет никогда. Без пометки
+    # пустая ячейка читается как «забыли внести»
+    if deal.payout_no_conversion:
+        payout_method_str = (payout_method_str + ' · свои ฿').strip(' ·')
     net_profit = (deal.net_profit_usdt
                   if (deal.referrer_payout_usdt and deal.net_profit_usdt is not None)
                   else deal.profit_usdt)
@@ -3917,6 +3930,8 @@ def _send_deal_telegram(deal):
         source_note = f" · с карты {deal.bank_card.bank_name}"
     elif deal.payout_source == PayOutSource.FOUNDER_PERSONAL and deal.payout_founder_name:
         source_note = f" · личные {deal.payout_founder_name}"
+        if deal.payout_no_conversion:
+            source_note += ' (свои баты, конвертации не было)'
     elif deal.payout_source == PayOutSource.CASH_BATCH:
         source_note = ' · из кассы'
 
@@ -5701,7 +5716,10 @@ def conversion_distribution(db, conv):
             continue
         row = {'deal_id': deal.id,
                'client_name': (deal.client.name if deal.client else deal.client_name) or '',
-               'share_usdt': share, 'cost_usdt': None, 'margin_usdt': None}
+               'share_usdt': share, 'cost_usdt': None, 'margin_usdt': None,
+               # Хеша выдачи у такой сделки нет и не будет — иначе в сводке её
+               # читают как «перевод потеряли» и идут искать несуществующее
+               'no_conversion': bool(deal.payout_no_conversion)}
         has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
                     and deal.needs_reimbursement is not False)
         if not has_debt:
@@ -5728,8 +5746,9 @@ def conversion_distribution(db, conv):
                 'kind': (reimb.kind if reimb else None) or 'manual',
                 'tx_hash': reimb.tx_hash if reimb else None,
                 'incoming': bool(reimb and reimb.settled_by_payin_tx_id),
-                'amount_usdt': 0.0, 'deals': []})
+                'amount_usdt': 0.0, 'no_conversion': False, 'deals': []})
             grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+            grp['no_conversion'] = grp['no_conversion'] or row['no_conversion']
             grp['deals'].append(row)
             continue
 
@@ -5740,8 +5759,9 @@ def conversion_distribution(db, conv):
             'address': wallet.address if wallet else None,
             'label': (wallet.label if wallet else None) or deal.payout_founder_name or '',
             'founder': deal.payout_founder_name or '',
-            'amount_usdt': 0.0, 'deals': []})
+            'amount_usdt': 0.0, 'no_conversion': False, 'deals': []})
         grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+        grp['no_conversion'] = grp['no_conversion'] or row['no_conversion']
         grp['deals'].append(row)
         if not wallet:
             needs_input = True          # некуда возвращать
@@ -6568,7 +6588,16 @@ PAYOUT_RATE_CORRIDOR = (25.0, 45.0)
 
 
 def _apply_payout_transfers(deal, data):
-    """Сохраняет фактические переводы выдачи: сумма, адрес, дата."""
+    """Сохраняет фактические переводы выдачи: сумма, адрес, дата.
+
+    Выдал свои баты — переводов нет по определению. Чистим оба поля: сделку
+    могли сначала завести с хешем, а потом поправить, и старый перевод остался
+    бы висеть себестоимостью поверх суммы, которую поставил менеджер.
+    """
+    if deal.payout_no_conversion:
+        deal.payout_tx_hashes = None
+        deal.payout_tx_hash = None
+        return
     parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
     deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
     if parts and parts[0].get('hash'):
@@ -6603,6 +6632,34 @@ def _payout_cost_from_transfers(deal):
     return cost
 
 
+def _no_conversion_error(no_conv, amount_usdt, wallet_id, payout_thb):
+    """Что не так с выдачей своими батами. None — всё в порядке.
+
+    Переводов с кошелька тут нет, значит сумму возврата неоткуда взять и нечем
+    сверить: её ставит менеджер. Единственная защита от опечатки — курс, поэтому
+    18 100 ฿ за 46,30 USDT (391 ฿/USDT) в возмещение не пропускаем.
+
+    Кошелёк обязателен: по нему `_auto_settle_conversion` понимает, что приход
+    пачки упал фаундеру и долг закрыт сам. Без кошелька сделка молча зависнет
+    в очереди, хотя деньги фаундер уже забрал.
+    """
+    if not no_conv:
+        return None
+    if not amount_usdt or amount_usdt <= 0:
+        return ('Укажи, сколько USDT вернуть фаундеру — при выдаче своими '
+                'батами сумму ставит менеджер')
+    if not wallet_id:
+        return ('Выбери кошелёк фаундера: без него возмещение не закроется само, '
+                'когда приход конвертации упадёт на его кошелёк')
+    if payout_thb:
+        rate = payout_thb / amount_usdt
+        lo, hi = PAYOUT_RATE_CORRIDOR
+        if not (lo <= rate <= hi):
+            return (f'Курс выдачи {rate:.2f} ฿/USDT вне рабочего коридора '
+                    f'{lo:.0f}–{hi:.0f} — проверь сумму USDT')
+    return None
+
+
 def _apply_payout_cost_from_transfers(deal):
     """Ставит себестоимость выдачи обменной сделке, оплаченной с кошелька оунера.
 
@@ -6616,6 +6673,8 @@ def _apply_payout_cost_from_transfers(deal):
         return False
     if deal.deal_kind in REALTY_KINDS:
         return False
+    if deal.payout_no_conversion:
+        return False        # выдал свои баты: сумму поставил менеджер, переводов нет
     cost = _payout_cost_from_transfers(deal)
     if cost is None:
         return False
@@ -6911,6 +6970,14 @@ def create_deal():
                     if ref_markup_percent is None:
                         ref_markup_percent = ref_obj.markup_percent
 
+        # Выдал свои баты: конвертации не было, сумму возврата ставит менеджер
+        no_conversion = (bool(data.get('payout_no_conversion'))
+                         and data.get('payout_source') == PayOutSource.FOUNDER_PERSONAL.value)
+        err = _no_conversion_error(no_conversion, data.get('payout_amount_usdt'),
+                                   data.get('payout_wallet_id'), data.get('payout_amount_thb'))
+        if err:
+            return jsonify({'success': False, 'error': err}), 400
+
         # Умный дефолт needs_reimbursement:
         # если payout не в THB (USDT/RUB/USD) — возмещение не нужно
         # (фаундер не тратил наличные THB из кармана)
@@ -6948,6 +7015,7 @@ def create_deal():
             payout_amount_usdt=data.get('payout_amount_usdt'),
             payout_tx_hash=data.get('payout_tx_hash'),
             payout_founder_name=data.get('payout_founder_name'),
+            payout_no_conversion=no_conversion,
             referrer_id=ref_id,
             referrer_name=ref_name,
             referrer_percent=ref_percent,
@@ -7212,6 +7280,14 @@ def update_deal(deal_id):
                 and deal.reimbursement_id is None):
                 deal.status = DealStatus.PENDING
 
+        # Выдал свои баты — конвертации не было. Флаг живёт только у выдачи с
+        # личных фаундера: сменили источник (карта, касса, Binance) — переводы
+        # снова обязательны, иначе себестоимость осталась бы ручной навсегда.
+        if 'payout_no_conversion' in data:
+            deal.payout_no_conversion = bool(data['payout_no_conversion'])
+        if deal.payout_source != PayOutSource.FOUNDER_PERSONAL:
+            deal.payout_no_conversion = False
+
         if 'bank_card_id' in data:
             # Пустое значение при неизменном источнике «карта» не трогает привязку:
             # карта с нулевым остатком выпадает из дропдауна (/api/cards/balance
@@ -7330,6 +7406,15 @@ def update_deal(deal_id):
         if realty_error:
             session.rollback()
             return jsonify({'success': False, 'error': realty_error}), 400
+
+        # Проверяем итоговое состояние, а не payload: сумму или кошелёк могли
+        # прислать прошлым сохранением, а сейчас поменять только галку
+        no_conv_error = _no_conversion_error(
+            deal.payout_no_conversion, deal.payout_amount_usdt,
+            deal.payout_wallet_id, deal.payout_amount_thb)
+        if no_conv_error:
+            session.rollback()
+            return jsonify({'success': False, 'error': no_conv_error}), 400
 
         _clear_profit_if_payin_unknown(deal)
 
