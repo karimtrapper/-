@@ -10211,15 +10211,21 @@ def _enrich_payout_transfers(session, deal):
                 changed = True
     if changed:
         deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False)
-    if not deal.payout_wallet_id:
-        for part in parts:
-            addr = (part.get('from_address') or '').strip()
-            if not addr:
-                continue
-            wallet = session.query(Wallet).filter(Wallet.address == addr).first()
-            if wallet:
-                deal.payout_wallet_id = wallet.id
-                break
+    # Возврат идёт туда, откуда выдали, — это же обещает форма («туда же пойдёт
+    # возврат»). Раньше адрес ставился только в пустое поле, а форма всегда
+    # присылала payout_wallet_id из скрытого селекта Binance (первый кошелёк
+    # списка), поэтому 162 сделки с 27.01 уехали возвращаться на TRgncc…
+    # вместо своих кошельков выдачи. Возмещённые не трогаем — там история.
+    if deal.reimbursement_id is not None:
+        return
+    for part in parts:
+        addr = (part.get('from_address') or '').strip()
+        if not addr:
+            continue
+        wallet = session.query(Wallet).filter(Wallet.address == addr).first()
+        if wallet:
+            deal.payout_wallet_id = wallet.id
+            break
 
 
 def _tron_tx_to_address(tx_hash):

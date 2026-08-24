@@ -8137,6 +8137,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Мультиагенты стандартной формы
             data.agents = stdAgentsSerialize();
 
+            // Селект «Кошелёк списания» живёт в блоке Binance и всегда имеет
+            // выбранное значение, даже когда блок скрыт — FormData забирает его
+            // в любую сделку. Для остальных источников это чужой кошелёк
+            if (data.payout_source !== 'binance') delete data.payout_wallet_id;
+
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts : [];
 
@@ -8171,8 +8176,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (manual && !parts.some(x => x.hash === manual)) parts.push({ hash: manual });
                     if (parts.length) {
                         data.payout_tx_hashes = parts;
+                        // Кошелёк возврата = кошелёк выдачи. wallet_id есть только
+                        // у хешей, введённых руками; у выбранных из списка его нет,
+                        // и раньше в сделку уезжало значение скрытого селекта
+                        // Binance (первый кошелёк) — возврат обещали на один адрес,
+                        // а записывали другой. Пустое значение = бэк возьмёт кошелёк
+                        // из from_address перевода
                         const wid = payoutTxPool.find(t => t.wallet_id)?.wallet_id;
-                        if (wid) data.payout_wallet_id = wid;
+                        data.payout_wallet_id = wid || null;
                     }
                 }
             }
