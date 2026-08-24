@@ -37,7 +37,7 @@ from openai import AsyncOpenAI
 # Фаундеры — по номеру телефона, которым подписаны выдачи в чате.
 FOUNDER_BY_PHONE = {
     "0818429939": "Андрей",
-    "0991971701": "Тёда",
+    "0991971701": "Теодор",
 }
 DOVERKA_BONUS = 1.024
 OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "google/gemini-3-flash-preview")
@@ -96,7 +96,7 @@ Grusha — обмен RUB→THB, USDT→THB для русскоязычных в
 
 ## Фаундеры (кто выдал THB)
 - Номер 0818429939 → "Андрей"
-- Номер 0991971701 → "Тёда"
+- Номер 0991971701 → "Теодор"
 - Если номер не найден — по умолчанию "Андрей"
 
 ## WON/LOSE/UNKNOWN
@@ -140,7 +140,7 @@ USER_PROMPT_TEMPLATE = """Проанализируй сделку "{deal_title}"
   "payout_amount_thb": число или null,
   "payout_amount_usdt": число или null,
   "payout_method": "atm" | "transfer" | "office" | "courier",
-  "payout_founder_name": "Андрей" | "Тёда",
+  "payout_founder_name": "Андрей" | "Теодор",
   "payment_time": "HH:MM" или null,
   "lose_reason": "причина если LOSE, иначе пустая строка",
   "referral_code": "GR-XXX или null",

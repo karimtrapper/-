@@ -2388,6 +2388,22 @@ try:
 except Exception as e:
     print(f"ℹ️ reimbursements auto-settle migration: {e}")
 
+# Фаундера зовут Теодор. «Тёда» приехало из маппинга по номеру телефона в
+# разборе чата (DealCloser → deal_chat_analyzer) и разошлось по сделкам
+# и возмещениям — в интерфейсе рядом жили два имени одного человека.
+try:
+    with engine.connect() as conn:
+        for table, col in (('deals', 'payout_founder_name'),
+                           ('reimbursements', 'founder_name'),
+                           ('reimbursement_txs', 'founder_name')):
+            r = conn.execute(text(
+                f"UPDATE {table} SET {col} = 'Теодор' WHERE {col} = 'Тёда'"))
+            if r.rowcount:
+                print(f"✅ {table}.{col}: Тёда → Теодор ({r.rowcount})")
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ founder rename migration: {e}")
+
 # Сделки по недвижимости через MF Corporation (leasehold)
 _MF_REALTY_COLUMNS = [
     ('deal_kind', 'VARCHAR(20)'), ('realty_purpose', 'VARCHAR(200)'),

@@ -208,3 +208,10 @@ def test_сумму_с_рук_сеть_не_перебивает(cli, chain, and
     r = cli.post('/api/deals', json={
         **ROMAN, 'payout_tx_hashes': [{'hash': _hash(), 'amount_usdt': 350.0}]}).get_json()
     assert r['deal']['payout_amount_usdt'] == 350.0
+
+
+def test_фаундер_по_телефону_теодор():
+    """Фаундера зовут Теодор. «Тёда» приезжало из маппинга по номеру телефона."""
+    from deal_chat_analyzer import FOUNDER_BY_PHONE
+    assert FOUNDER_BY_PHONE['0991971701'] == 'Теодор'
+    assert 'Тёда' not in FOUNDER_BY_PHONE.values()
