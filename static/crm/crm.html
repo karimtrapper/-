@@ -11619,6 +11619,47 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const dl = (slot, label) => `<a class="kyc-dl" href="${API_URL}/api/kyc/photo/${token}/${slot}?download=1" download>${label}</a>`;
                 const livenessCount = kyc.liveness_count || 5;
 
+                // Решённый KYC открывается в режиме просмотра: документы видны, кнопок решения нет
+                const decided = kyc.status && kyc.status !== 'pending';
+                const reviewedInfo = [
+                    kyc.reviewed_at ? new Date(kyc.reviewed_at).toLocaleDateString('ru-RU') : '',
+                    // 'manager' — технический плейсхолдер из approveKYC, в UI не показываем
+                    kyc.reviewed_by && kyc.reviewed_by !== 'manager' ? escapeHtml(kyc.reviewed_by) : ''
+                ].filter(Boolean).join(' · ');
+                document.querySelector('#kycReviewModal .modal-title').textContent =
+                    decided ? 'Документы клиента' : 'Проверка KYC';
+
+                const decisionBlock = `
+                    <div style="margin-top:1rem;padding:0.75rem 1rem;border-radius:8px;font-size:0.85rem;${kyc.status === 'approved'
+                        ? 'background:#f0fdf4;border:1px solid #86efac;color:#15803d;'
+                        : 'background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;'}">
+                        <strong>${kyc.status === 'approved' ? '✓ Верификация одобрена' : '✕ Верификация отклонена'}</strong>${reviewedInfo ? ' — ' + reviewedInfo : ''}
+                        ${kyc.rejection_reason ? `<div style="margin-top:4px;">Причина: ${escapeHtml(kyc.rejection_reason)}</div>` : ''}
+                    </div>`;
+
+                const actionsBlock = `
+                    <div class="kyc-review-actions">
+                        <button class="btn btn-success" onclick="approveKYC('${token}')">Одобрить</button>
+                        <button class="btn btn-outline-danger" onclick="toggleRejectReason()">Отклонить</button>
+                    </div>
+
+                    <div class="kyc-reject-reason" id="kycRejectReason">
+                        <div class="form-group" style="margin-bottom: 0.75rem;">
+                            <label class="form-label">Причина отклонения</label>
+                            <select class="form-control" id="kycRejectReasonSelect">
+                                <option value="Фото документа размыто — пожалуйста, сделайте чёткий снимок">Фото размыто</option>
+                                <option value="На селфи не видно документ — поднесите ближе к лицу">Не видно документ на селфи</option>
+                                <option value="Документ обрезан — загрузите полный разворот">Документ обрезан</option>
+                                <option value="Лицо на селфи не совпадает с фото в документе">Лицо не совпадает</option>
+                                <option value="other">Другая причина...</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="kycCustomReasonGroup" style="display: none; margin-bottom: 0.75rem;">
+                            <input type="text" class="form-control" id="kycCustomReason" placeholder="Опишите причину">
+                        </div>
+                        <button class="btn btn-danger" onclick="rejectKYC('${token}')" style="width: 100%;">Отклонить и отправить причину клиенту</button>
+                    </div>`;
+
                 content.innerHTML = `
                     <div class="kyc-review-header">
                         <div class="kyc-review-client">${escapeHtml(kyc.client_name || 'Клиент #' + (kyc.client_id || kyc.id))}</div>
@@ -11676,32 +11717,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                            href="${API_URL}/api/kyc/archive/${token}" download>Скачать всё архивом</a>
                     </div>` : ''}
 
-                    <div class="kyc-review-actions">
-                        <button class="btn btn-success" onclick="approveKYC('${token}')">Одобрить</button>
-                        <button class="btn btn-outline-danger" onclick="toggleRejectReason()">Отклонить</button>
-                    </div>
+                    ${decided ? decisionBlock : actionsBlock}
 
-                    <div class="kyc-reject-reason" id="kycRejectReason">
-                        <div class="form-group" style="margin-bottom: 0.75rem;">
-                            <label class="form-label">Причина отклонения</label>
-                            <select class="form-control" id="kycRejectReasonSelect">
-                                <option value="Фото документа размыто — пожалуйста, сделайте чёткий снимок">Фото размыто</option>
-                                <option value="На селфи не видно документ — поднесите ближе к лицу">Не видно документ на селфи</option>
-                                <option value="Документ обрезан — загрузите полный разворот">Документ обрезан</option>
-                                <option value="Лицо на селфи не совпадает с фото в документе">Лицо не совпадает</option>
-                                <option value="other">Другая причина...</option>
-                            </select>
-                        </div>
-                        <div class="form-group" id="kycCustomReasonGroup" style="display: none; margin-bottom: 0.75rem;">
-                            <input type="text" class="form-control" id="kycCustomReason" placeholder="Опишите причину">
-                        </div>
-                        <button class="btn btn-danger" onclick="rejectKYC('${token}')" style="width: 100%;">Отклонить и отправить причину клиенту</button>
-                    </div>
-
+                    ${kyc.files_purged_at ? '' : `
                     <div class="kyc-review-warning">
                         <span>🔒</span>
                         <span>Документы остаются доступны для скачивания и удаляются автоматически через год после решения</span>
-                    </div>
+                    </div>`}
                 `;
 
                 setTimeout(() => {
@@ -11824,15 +11846,27 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const verifiedList = document.getElementById('kycVerifiedList');
 
                 if (approvedData.success && approvedData.kyc_requests.length > 0) {
-                    verifiedList.innerHTML = approvedData.kyc_requests.map(k => `
-                        <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
-                            <div>
+                    verifiedList.innerHTML = approvedData.kyc_requests.map(k => {
+                        const safeToken = escapeHtml(k.token);
+                        // Документы живут до ретенции; после неё остаётся только запись о проверке
+                        const purged = !!k.files_purged_at;
+                        const icons = `${k.has_doc ? '📄' : ''}${k.has_selfie ? '🤳' : ''}${k.has_liveness ? '🎥' : ''}${k.has_statement ? '🎬' : ''}`;
+                        const subtitle = purged
+                            ? `🗑 документы стёрты по сроку хранения ${new Date(k.files_purged_at).toLocaleDateString('ru-RU')}`
+                            : `${icons} документы сохранены`;
+                        return `
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:0.5rem 1rem;border:1px solid #d1fae5;border-radius:8px;margin-bottom:0.5rem;background:#f0fdf4;">
+                            <div style="min-width:0;">
                                 <strong>${escapeHtml(k.client_name || 'Клиент #' + k.id)}</strong>
                                 <span style="color:#16a34a;margin-left:0.5rem;">✓</span>
+                                <div style="font-size:0.78rem;color:#4d7c0f;margin-top:2px;">${subtitle}</div>
                             </div>
-                            <div style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</div>
+                            <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                                <span style="font-size:0.8rem;color:#999;">${k.reviewed_at ? new Date(k.reviewed_at).toLocaleDateString('ru-RU') : ''}</span>
+                                <button class="btn btn-sm" style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:5px 12px;border-radius:6px;font-size:0.78rem;cursor:pointer;" onclick="openKYCReview('${safeToken}')">Документы</button>
+                            </div>
                         </div>
-                    `).join('');
+                    `;}).join('');
                 } else {
                     verifiedList.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Пока нет верифицированных клиентов</div>';
                 }
