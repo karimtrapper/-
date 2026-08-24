@@ -6282,6 +6282,68 @@ def _payout_transfers_total(deal):
     return round(sum(amounts), 2) if amounts else None
 
 
+# Коридор правдоподобия для курса выдачи, ฿/USDT. Урок инцидента #501 (21.08):
+# автоподстановку денег нельзя пускать без проверки результата — ошибка уходит
+# клиенту в Telegram и в выгрузку раньше, чем её замечают.
+PAYOUT_RATE_CORRIDOR = (25.0, 45.0)
+
+
+def _apply_payout_transfers(deal, data):
+    """Сохраняет фактические переводы выдачи: сумма, адрес, дата."""
+    parts = _normalize_payout_transfers(data.get('payout_tx_hashes'))
+    deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
+    if parts and parts[0].get('hash'):
+        deal.payout_tx_hash = parts[0]['hash']
+
+
+def _payout_cost_from_transfers(deal):
+    """Себестоимость выдачи по фактическим переводам с кошелька оунера.
+
+    Выдача идёт РАНЬШЕ конвертации и с кошелька оунера, поэтому сумма известна
+    уже в момент выплаты. Раньше `payout_amount_usdt` рождался только внутри
+    `create_reimbursement`: до возврата прибыль сделки была неизвестна, а возврату
+    неоткуда было взять сумму, кроме доли из пачки — и тогда оунеру уходила наша
+    маржа (CNV-0002: доля 408,04 против себестоимости 383,14).
+
+    None, если переводы не отмечены или курс вне коридора — молчать в таком
+    случае нельзя, но и записывать бред тоже.
+    """
+    cost = _payout_transfers_total(deal)
+    if not cost or cost <= 0:
+        return None
+    thb = deal.payout_amount_thb or 0
+    if not thb and deal.custom_payout_currency == 'THB':
+        thb = deal.custom_payout_amount or 0
+    if thb:
+        rate = thb / cost
+        lo, hi = PAYOUT_RATE_CORRIDOR
+        if not (lo <= rate <= hi):
+            print(f'[payout-cost] сделка {deal.id}: курс {rate:.2f} ฿/USDT вне '
+                  f'коридора {lo}-{hi}, себестоимость не подставлена', flush=True)
+            return None
+    return cost
+
+
+def _apply_payout_cost_from_transfers(deal):
+    """Ставит себестоимость выдачи обменной сделке, оплаченной с кошелька оунера.
+
+    Возмещённую сделку не трогаем: там сумма зафиксирована аллокацией возврата,
+    и переводы её перебивать не должны. Недвижимость считается своими формулами
+    (`_apply_mf_realty` / `_apply_mf_freehold`) — у неё свой путь к той же цифре.
+    """
+    if deal.reimbursement_id is not None:
+        return False
+    if deal.payout_source != PayOutSource.FOUNDER_PERSONAL:
+        return False
+    if deal.deal_kind in REALTY_KINDS:
+        return False
+    cost = _payout_cost_from_transfers(deal)
+    if cost is None:
+        return False
+    deal.payout_amount_usdt = cost
+    return True
+
+
 def _payin_hash_list(deal):
     """Все хэши Pay-In сделки: из JSON-списка, иначе одиночный payin_tx_hash."""
     if deal.payin_tx_hashes:
@@ -6639,6 +6701,11 @@ def create_deal():
         session.add(deal)
         session.flush()
 
+        # Фактические переводы выдачи с кошелька оунера. Недвижимость разбирает
+        # свои переводы внутри _apply_mf_* — здесь только обмен.
+        if 'payout_tx_hashes' in data and deal.deal_kind not in REALTY_KINDS:
+            _apply_payout_transfers(deal, data)
+
         # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
         # карты. Обязательно до пересчёта финансов — прибыль считается из неё
         card_warning = _sync_card_allocation(session, deal)
@@ -6675,6 +6742,9 @@ def create_deal():
             elif deal.deal_kind == MF_FREEHOLD_KIND:
                 _apply_mf_freehold(deal, data)
             else:
+                # Себестоимость выдачи — из отмеченных переводов, до пересчёта
+                # прибыли: иначе она была бы известна только после возврата оунеру
+                _apply_payout_cost_from_transfers(deal)
                 _recalculate_deal_financials(deal, data)
 
             # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
@@ -6950,6 +7020,9 @@ def update_deal(deal_id):
                     for r in sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0))
                 ])
         else:
+            if 'payout_tx_hashes' in data:
+                _apply_payout_transfers(deal, data)
+            _apply_payout_cost_from_transfers(deal)
             _recalculate_deal_financials(deal, data)
 
         # Мультиагенты: явный массив agents → каскадный пересчёт (пустой = убрать всех);
