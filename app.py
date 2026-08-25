@@ -323,6 +323,21 @@ PAYOUT_METHOD_LABELS = {
     'transfer': 'перевод',
 }
 
+# Откуда физически взяли баты на выдачу
+PAYOUT_SOURCE_LABELS = {
+    'cash_batch': 'касса (партия налички)',
+    'bank_card': 'карта / тайский счёт',
+    'binance': 'Binance',
+    'founder_personal': 'из своих (фаундер)',
+}
+
+# Тип сделки. Значения совпадают с deal_kind, 'exchange' = обычный обмен
+DEAL_KIND_LABELS = {
+    'exchange': 'обычный обмен',
+    'mf_realty': 'недвижимость: лизхолд (через MF Corp)',
+    'mf_freehold': 'недвижимость: фрихолд (SWIFT застройщику)',
+}
+
 class PayOutMethod(str, Enum):
     OFFICE = "office"
     COURIER = "courier"
@@ -7675,6 +7690,408 @@ def unrevive_loses(won_id):
     except Exception as e:
         session.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        session.close()
+
+
+# ==================== ЛЕДЖЕР СДЕЛОК (сводная выгрузка) ====================
+# Одна ручка, по которой видно ВСЮ сделку целиком: чем и сколько пришло,
+# чем и сколько выдали, какой это тип (обмен / лизхолд / фрихолд) и сколько
+# из прибыли ушло рефералам. Существующий /api/deals отдаёт сырую модель —
+# 90 плоских полей, где приход недвижимости и приход обмена лежат в разных
+# колонках, а методы приходят кодами. Здесь всё нормализовано и подписано.
+
+LEDGER_DONE_STATUSES = (DealStatus.COMPLETED, DealStatus.VERIFIED)
+
+
+def _ledger_payin(deal, converted_usdt=None):
+    """Приход: сумма, метод и части (оплата в несколько заходов/методов).
+
+    Части восстанавливаются тем же `_payin_all_parts`, что и выгрузка в
+    таблицу, — иначе леджер и GSheet разошлись бы на сделках с доплатами.
+    """
+    parts = []
+    for p in _payin_all_parts(deal):
+        code = p.get('method') or None
+        parts.append({
+            'method': code,
+            'method_label': PAYIN_METHOD_LABELS.get(code, code),
+            'amount_rub': p.get('amount_rub'),
+            'amount_usdt': p.get('amount_usdt'),
+            'rate_rub_usdt': p.get('rate_rub_usdt'),
+            'partner_name': p.get('partner_name'),
+            'tx_hashes': [h['hash'] for h in _normalize_tx_hashes(p.get('tx_hashes'))],
+            'note': p.get('note') or None,
+        })
+    methods = []
+    for p in parts:
+        if p['method'] and p['method'] not in methods:
+            methods.append(p['method'])
+    code = deal.payin_method.value if deal.payin_method else None
+    # У СБП/эквайринга свой USDT появляется только после конвертации пачки —
+    # без подстановки доли из пачки приход выглядел бы нулевым
+    amount_usdt = deal.payin_amount_usdt or (converted_usdt or None)
+    return {
+        'method': code,
+        'method_label': PAYIN_METHOD_LABELS.get(code, code),
+        'methods': methods,
+        'methods_label': ' + '.join(PAYIN_METHOD_LABELS.get(m, m) for m in methods) or None,
+        'amount_rub': deal.payin_amount_rub,
+        'amount_thb': deal.payin_amount_thb,
+        'amount_usdt': amount_usdt,
+        'usdt_from_conversion': bool(not deal.payin_amount_usdt and converted_usdt),
+        'rate_rub_usdt': deal.payin_rate_rub_usdt,
+        'rate_usdt_thb': deal.payin_rate_usdt_thb,
+        'partner_name': deal.payin_partner_name,
+        'verified': bool(deal.payin_tx_verified),
+        'tx_hashes': _payin_hash_list(deal),
+        'parts': parts,
+    }
+
+
+def _ledger_payout(deal, wallet_names, card_names):
+    """Выдача: чем выдали, откуда взяли баты и во сколько это обошлось."""
+    code = deal.payout_method.value if deal.payout_method else None
+    src = deal.payout_source.value if deal.payout_source else None
+    target = None
+    if src == PayOutSource.CASH_BATCH.value and deal.cash_batch_id:
+        target = f'партия наличных #{deal.cash_batch_id}'
+    elif src == PayOutSource.BANK_CARD.value and deal.bank_card_id:
+        target = card_names.get(deal.bank_card_id)
+    elif src == PayOutSource.FOUNDER_PERSONAL.value:
+        target = deal.payout_founder_name
+    if not target and deal.payout_wallet_id:
+        target = wallet_names.get(deal.payout_wallet_id)
+    thb, usdt = deal.payout_amount_thb, deal.payout_amount_usdt
+    return {
+        'method': code,
+        'method_label': PAYOUT_METHOD_LABELS.get(code, code),
+        'source': src,
+        'source_label': PAYOUT_SOURCE_LABELS.get(src, src),
+        'source_name': target,
+        'amount_thb': thb,
+        'cost_usdt': usdt,
+        'rate_thb_usdt': round(thb / usdt, 4) if thb and usdt else None,
+        # Фаундер выдал свои баты — конвертации не было, себестоимость ручная
+        'no_conversion': bool(deal.payout_no_conversion),
+        'transfers_usdt': _payout_transfers_total(deal),
+        'tx_hashes': _payout_hash_list(deal),
+        'wallet_id': deal.payout_wallet_id,
+        'cash_batch_id': deal.cash_batch_id,
+        'bank_card_id': deal.bank_card_id,
+        'founder_name': deal.payout_founder_name,
+    }
+
+
+def _ledger_realty(deal):
+    """Ноги недвижимости: куда и сколько ушло застройщику. У обмена — None."""
+    if deal.deal_kind == MF_REALTY_KIND:
+        # Лизхолд: два кармана — комиссия батами на счёте MF Corp + остаток в USDT
+        return {
+            'purpose': deal.realty_purpose,
+            'invoice_thb': deal.invoice_amount_thb,
+            'sent_to_company_thb': deal.company_sent_thb,
+            'buy_rate_thb_usdt': deal.buy_rate_thb_usdt,
+            'sell_rate_thb_usdt': deal.sell_rate_thb_usdt,
+            'client_spread_percent': deal.client_spread_percent,
+            'company_percent': deal.company_percent,
+            'company_fee_thb': deal.company_fee_thb,
+            'company_fee_usdt': deal.company_fee_usdt,
+            'katika_fee_thb': deal.katika_fee_thb,
+            'katika_fee_usdt': deal.katika_fee_usdt,
+            'crypto_remainder_usdt': deal.crypto_remainder_usdt,
+        }
+    if deal.deal_kind == MF_FREEHOLD_KIND:
+        # Фрихолд: карман один, комиссию банка съедает сама отправка
+        return {
+            'purpose': deal.realty_purpose,
+            'invoice_usd': deal.invoice_amount_usd,
+            'transfer_sent_usd': deal.transfer_sent_usd,
+            'transfer_fee_percent': deal.transfer_fee_percent,
+            'transfer_fee_fixed_usd': deal.transfer_fee_fixed_usd,
+            'transfer_fee_usd': deal.transfer_fee_usd,
+            'transfer_arrive_usd': deal.transfer_arrive_usd,
+        }
+    return None
+
+
+def _ledger_referral(deal):
+    """Траты на рефералов. Источник истины — deal_agents: одиночный реферер
+    туда зеркалится (`_mirror_legacy_agent`), поэтому суммировать И массив,
+    И плоское `referrer_payout_usdt` нельзя — это одни и те же деньги."""
+    agents = [{
+        'referrer_id': a.referrer_id,
+        'name': a.name,
+        'tier': a.tier or 1,
+        'comp_model': a.comp_model or 'revshare',
+        'percent': a.percent or 0.0,
+        'fixed_usdt': a.fixed_usdt or 0.0,
+        'payout_usdt': a.payout_usdt,
+        'base_usdt': a.base_usdt,
+        'paid': bool(a.paid),
+        'paid_at': a.paid_at.isoformat() if a.paid_at else None,
+        'paid_note': a.paid_note,
+    } for a in sorted(deal.agents, key=lambda x: (x.tier or 1, x.id or 0))]
+    if agents:
+        total = round(sum(a['payout_usdt'] or 0 for a in agents), 2)
+        unpaid = round(sum(a['payout_usdt'] or 0 for a in agents if not a['paid']), 2)
+    else:
+        total = round(deal.referrer_payout_usdt or 0, 2)
+        unpaid = 0.0 if deal.referrer_paid else total
+    return {
+        'referrer_id': deal.referrer_id,
+        'referrer_name': deal.referrer_name,
+        'comp_model': deal.referrer_comp_model,
+        'percent': deal.referrer_percent,
+        'markup_percent': deal.referrer_markup_percent,
+        'fixed_usdt': deal.referrer_fixed_usdt,
+        'paid': bool(deal.referrer_paid),
+        'paid_at': deal.referrer_paid_at.isoformat() if deal.referrer_paid_at else None,
+        'total_usdt': total,
+        'unpaid_usdt': unpaid,
+        'agents': agents,
+    }
+
+
+def _ledger_row(deal, wallet_names, card_names, converted_usdt=None):
+    kind = deal.deal_kind or 'exchange'
+    payin_usdt, payout_usdt = _deal_usdt_volume_cost(deal)
+    if not payin_usdt and converted_usdt:
+        payin_usdt = converted_usdt
+    referral = _ledger_referral(deal)
+    # Валовая прибыль лизхолда живёт в двух карманах: крипта в profit_usdt +
+    # комиссия батами. Без второго слагаемого gross оказался бы меньше net.
+    gross = (deal.profit_usdt or 0)
+    if kind == MF_REALTY_KIND:
+        gross += deal.company_fee_usdt or 0
+    net = deal.net_profit_usdt if deal.net_profit_usdt is not None else deal.profit_usdt
+    return {
+        'id': deal.id,
+        'date': deal.created_at.isoformat() if deal.created_at else None,
+        'status': deal.status.value if deal.status else None,
+        'manager': deal.manager_name,
+        'client': deal.client.name if deal.client else deal.client_name,
+        'client_id': deal.client_id,
+        'kind': kind,
+        'kind_label': DEAL_KIND_LABELS.get(kind, kind),
+        'direction': deal.deal_type.value if deal.deal_type else None,
+        'is_custom': bool(deal.is_custom),
+        'source_channel': deal.source_channel,
+        'pay_in': _ledger_payin(deal, converted_usdt),
+        'pay_out': _ledger_payout(deal, wallet_names, card_names),
+        'realty': _ledger_realty(deal),
+        'referral': referral,
+        'money': {
+            'volume_usdt': round(payin_usdt, 2),
+            'cost_usdt': round(payout_usdt, 2),
+            'gross_profit_usdt': round(gross, 2),
+            'referral_cost_usdt': referral['total_usdt'],
+            'net_profit_usdt': round(net or 0, 2),
+            'margin_percent': deal.profit_percent,
+            'net_margin_percent': (round(net / payin_usdt * 100, 2)
+                                   if net and payin_usdt else None),
+        },
+        'reimbursed': deal.reimbursement_id is not None or not (
+            deal.needs_reimbursement if deal.needs_reimbursement is not None else True),
+        'notes': deal.notes,
+    }
+
+
+# Плоская таблица для CSV: (заголовок, как достать из строки леджера)
+LEDGER_CSV_COLUMNS = [
+    ('id', lambda r: r['id']),
+    ('дата', lambda r: (r['date'] or '')[:10]),
+    ('статус', lambda r: r['status']),
+    ('тип сделки', lambda r: r['kind_label']),
+    ('клиент', lambda r: r['client']),
+    ('менеджер', lambda r: r['manager']),
+    ('метод прихода', lambda r: r['pay_in']['methods_label'] or r['pay_in']['method_label']),
+    ('приход RUB', lambda r: r['pay_in']['amount_rub']),
+    ('приход THB', lambda r: r['pay_in']['amount_thb']),
+    ('приход USDT', lambda r: r['pay_in']['amount_usdt']),
+    ('курс RUB/USDT', lambda r: r['pay_in']['rate_rub_usdt']),
+    ('способ выдачи', lambda r: r['pay_out']['method_label']),
+    ('источник выдачи', lambda r: r['pay_out']['source_label']),
+    ('откуда', lambda r: r['pay_out']['source_name']),
+    ('выдано THB', lambda r: r['pay_out']['amount_thb']),
+    ('себестоимость USDT', lambda r: r['pay_out']['cost_usdt']),
+    ('инвойс THB (лизхолд)', lambda r: (r['realty'] or {}).get('invoice_thb')),
+    ('инвойс USD (фрихолд)', lambda r: (r['realty'] or {}).get('invoice_usd')),
+    ('объект', lambda r: (r['realty'] or {}).get('purpose')),
+    ('реферер', lambda r: r['referral']['referrer_name']),
+    ('траты на рефералов USDT', lambda r: r['money']['referral_cost_usdt']),
+    ('не выплачено рефералам USDT', lambda r: r['referral']['unpaid_usdt']),
+    ('объём USDT', lambda r: r['money']['volume_usdt']),
+    ('валовая прибыль USDT', lambda r: r['money']['gross_profit_usdt']),
+    ('чистая прибыль USDT', lambda r: r['money']['net_profit_usdt']),
+]
+
+
+def _ledger_totals(rows):
+    """Итоги по всей выборке + разрезы: тип сделки, метод прихода, способ выдачи."""
+    def blank():
+        return {'deals': 0, 'volume_usdt': 0.0, 'cost_usdt': 0.0,
+                'gross_profit_usdt': 0.0, 'referral_cost_usdt': 0.0,
+                'net_profit_usdt': 0.0}
+
+    def add(acc, r):
+        acc['deals'] += 1
+        acc['volume_usdt'] += r['money']['volume_usdt']
+        acc['cost_usdt'] += r['money']['cost_usdt']
+        acc['gross_profit_usdt'] += r['money']['gross_profit_usdt']
+        acc['referral_cost_usdt'] += r['money']['referral_cost_usdt']
+        acc['net_profit_usdt'] += r['money']['net_profit_usdt']
+
+    def finish(acc, label=None):
+        out = {k: (round(v, 2) if isinstance(v, float) else v) for k, v in acc.items()}
+        if label is not None:
+            out['label'] = label
+        return out
+
+    total, by_kind, by_payin, by_payout = blank(), {}, {}, {}
+    unpaid_referral = 0.0
+    for r in rows:
+        add(total, r)
+        unpaid_referral += r['referral']['unpaid_usdt']
+        add(by_kind.setdefault(r['kind'], blank()), r)
+        # Сделка с доплатой другим методом попадает в разрез каждого своего
+        # метода — поэтому суммы разрезов по приходу могут превышать итог
+        for m in (r['pay_in']['methods'] or [r['pay_in']['method']]):
+            if m:
+                add(by_payin.setdefault(m, blank()), r)
+        pm = r['pay_out']['method']
+        if pm:
+            add(by_payout.setdefault(pm, blank()), r)
+    return {
+        'all': finish(total),
+        'referral_unpaid_usdt': round(unpaid_referral, 2),
+        'by_kind': {k: finish(v, DEAL_KIND_LABELS.get(k, k)) for k, v in by_kind.items()},
+        'by_payin_method': {k: finish(v, PAYIN_METHOD_LABELS.get(k, k))
+                            for k, v in by_payin.items()},
+        'by_payout_method': {k: finish(v, PAYOUT_METHOD_LABELS.get(k, k))
+                             for k, v in by_payout.items()},
+    }
+
+
+@app.route('/api/deals/ledger', methods=['GET'])
+def deals_ledger():
+    """Сводный леджер сделок: приход, выдача, тип, траты на рефералов.
+
+    Фильтры: `date_from`, `date_to` (YYYY-MM-DD), `status` (через запятую;
+    по умолчанию completed+verified), `deal_kind` (all|exchange|realty|
+    mf_realty|mf_freehold), `referrer_id` (id|none|any), `manager`,
+    `include_test=1`, `limit`/`offset` (строки; итоги считаются по всей
+    выборке), `format=csv`.
+    """
+    from sqlalchemy.orm import joinedload, selectinload
+    session = get_session()
+    try:
+        q = session.query(Deal).options(
+            joinedload(Deal.client), selectinload(Deal.agents)
+        ).order_by(Deal.created_at.desc(), Deal.id.desc())
+
+        statuses = (request.args.get('status') or '').strip()
+        if statuses and statuses != 'all':
+            try:
+                q = q.filter(Deal.status.in_([DealStatus(s.strip())
+                                              for s in statuses.split(',') if s.strip()]))
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid status'}), 400
+        elif not statuses:
+            # По умолчанию — только состоявшиеся сделки: в отчёте о деньгах
+            # pending-у и отказам делать нечего (нужны — status=all)
+            q = q.filter(Deal.status.in_(LEDGER_DONE_STATUSES))
+        else:
+            q = q.filter(Deal.status.notin_(NON_DEAL_STATUSES))
+
+        if request.args.get('include_test') != '1':
+            q = q.filter(Deal.is_test.isnot(True))
+
+        kind = request.args.get('deal_kind', '')
+        if kind not in ('', 'all', 'exchange', 'realty') + REALTY_KINDS:
+            return jsonify({'success': False, 'error': 'Invalid deal_kind'}), 400
+        if kind == 'exchange':
+            q = q.filter(or_(Deal.deal_kind.is_(None), Deal.deal_kind.notin_(REALTY_KINDS)))
+        elif kind == 'realty':
+            q = q.filter(Deal.deal_kind.in_(REALTY_KINDS))
+        elif kind in REALTY_KINDS:
+            q = q.filter(Deal.deal_kind == kind)
+
+        referrer = (request.args.get('referrer_id') or '').strip()
+        if referrer == 'none':
+            q = q.filter(Deal.referrer_id.is_(None))
+        elif referrer == 'any':
+            q = q.filter(Deal.referrer_id.isnot(None))
+        elif referrer and referrer != 'all':
+            try:
+                q = q.filter(Deal.referrer_id == int(referrer))
+            except ValueError:
+                return jsonify({'success': False, 'error': 'Invalid referrer_id'}), 400
+
+        manager = request.args.get('manager')
+        if manager:
+            q = q.filter(Deal.manager_name.ilike(f'%{manager}%'))
+
+        try:
+            date_from = request.args.get('date_from')
+            if date_from:
+                q = q.filter(Deal.created_at >= datetime.strptime(date_from, '%Y-%m-%d'))
+            date_to = request.args.get('date_to')
+            if date_to:
+                q = q.filter(Deal.created_at < datetime.strptime(date_to, '%Y-%m-%d')
+                             + timedelta(days=1))
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+
+        deals = q.all()
+        wallet_names = {w.id: (w.label or w.address)
+                        for w in session.query(Wallet).all()}
+        card_names = {c.id: ' '.join(x for x in (c.bank_name, c.card_name) if x)
+                      for c in session.query(BankCard).all()}
+        conv_usdt = _converted_payin_usdt(
+            session, [d.id for d in deals if not d.payin_amount_usdt])
+        rows = [_ledger_row(d, wallet_names, card_names, conv_usdt.get(d.id))
+                for d in deals]
+        totals = _ledger_totals(rows)
+
+        if request.args.get('format') == 'csv':
+            import csv, io
+            buf = io.StringIO()
+            w = csv.writer(buf, delimiter=';')
+            w.writerow([c[0] for c in LEDGER_CSV_COLUMNS])
+            for r in rows:
+                w.writerow(['' if (v := get(r)) is None else v
+                            for _, get in LEDGER_CSV_COLUMNS])
+            # BOM — иначе Excel открывает кириллицу кракозябрами
+            return app.response_class(
+                '﻿' + buf.getvalue(),
+                mimetype='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=deals-ledger.csv'})
+
+        total_rows = len(rows)
+        try:
+            offset = max(int(request.args.get('offset', 0)), 0)
+            limit = request.args.get('limit')
+            if limit is not None:
+                rows = rows[offset:offset + max(int(limit), 0)]
+            elif offset:
+                rows = rows[offset:]
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid limit/offset'}), 400
+
+        return jsonify({
+            'success': True,
+            'total': total_rows,
+            'count': len(rows),
+            'totals': totals,
+            'labels': {
+                'deal_kind': DEAL_KIND_LABELS,
+                'payin_method': PAYIN_METHOD_LABELS,
+                'payout_method': PAYOUT_METHOD_LABELS,
+                'payout_source': PAYOUT_SOURCE_LABELS,
+            },
+            'deals': rows,
+        })
     finally:
         session.close()
 
