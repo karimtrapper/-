@@ -144,6 +144,31 @@ class TestSources:
         assert e['flow'] == 'in' and e['deal_id'] == d.id
         assert e['product'] == 'exchange'
 
+    def test_payin_tx_without_time_falls_back_to_deal_date(self, tc):
+        """Таблицу payin_txs наполняли задним числом: created_at у 110 переводов
+        это день бэкфилла. Ставить его в ДДС нельзя — квартал схлопнется в сутки."""
+        d = deal(created_at=datetime(2026, 6, 3, 12, 0))
+        add(d)
+        tx = PayinTx(tx_hash='hn', amount_usdt=1000, tx_time=None,
+                     created_at=datetime(2026, 8, 14, 9, 0))
+        add(tx)
+        add(PayinTxUse(tx_id=tx.id, deal_id=d.id, amount_usdt=1000))
+        e = by_article(tc)['payin_client_usdt'][0]
+        assert e['date'] == '2026-06-03'
+        assert e['date_estimated'] is True
+
+    def test_payin_tx_with_time_is_exact(self, tc):
+        d = deal(created_at=datetime(2026, 6, 3, 12, 0))
+        add(d)
+        tx = PayinTx(tx_hash='he', amount_usdt=1000,
+                     tx_time=datetime(2026, 6, 4, 9, 0),
+                     created_at=datetime(2026, 8, 14, 9, 0))
+        add(tx)
+        add(PayinTxUse(tx_id=tx.id, deal_id=d.id, amount_usdt=1000))
+        e = by_article(tc)['payin_client_usdt'][0]
+        assert e['date'] == '2026-06-04'
+        assert e['date_estimated'] is False
+
     def test_cash_purchase_and_card_topup_are_transfers(self, tc):
         card = BankCard(bank_name='SCB')
         add(card)
@@ -291,6 +316,14 @@ class TestBreakdownsAndFilters:
         t = tc.get('/api/finance/cashflow').get_json()['totals']
         assert t['events_date_estimated'] >= 1
         assert t['events_total'] == len(tc.get('/api/finance/cashflow').get_json()['events'])
+
+    def test_coverage_shows_unassigned_money(self, tc):
+        """Счёт Сбера общий с другими потоками компании: приход без привязки
+        к сделке — не выручка продукта, и это должно быть видно сразу."""
+        self._seed()
+        cov = tc.get('/api/finance/cashflow').get_json()['totals']['coverage']
+        assert cov['unassigned']['in']['RUB'] == 350000
+        assert cov['events_total'] > cov['unassigned']['events']
 
     def test_bad_params(self, tc):
         assert tc.get('/api/finance/cashflow?date_from=05.08.2026').status_code == 400

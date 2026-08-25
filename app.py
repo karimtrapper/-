@@ -8260,11 +8260,17 @@ def _finance_events(session, date_from=None, date_to=None):
     for use in session.query(PayinTxUse).all():
         payin_uses.setdefault(use.tx_id, []).append(use)
     for tx in session.query(PayinTx).all():
-        day = _fin_day(tx.tx_time or tx.created_at)
-        if not in_range(day):
-            continue
         uses = payin_uses.get(tx.id) or []
         first_deal = deal_of(uses[0].deal_id) if uses else None
+        # tx_time есть не у всех: таблицу payin_txs наполняли задним числом, и
+        # created_at у 110 переводов — день бэкфилла (14.08), а не день денег.
+        # Ставить такую дату в ДДС нельзя: весь квартал схлопнется в одни сутки.
+        estimated_date = not tx.tx_time
+        day = _fin_day(tx.tx_time
+                       or (first_deal.created_at if first_deal else None)
+                       or tx.created_at)
+        if not in_range(day):
+            continue
         if tx.id in conv_tx_ids:
             # Вторая нога обмена рублей: рубли ушли брокеру отдельным списанием
             # (п.2), сюда вернулся USDT. Две ноги — два документа, две строки;
@@ -8273,6 +8279,7 @@ def _finance_events(session, date_from=None, date_to=None):
             events.append(_fin_event(
                 day, 'broker_usdt_in', tx.amount_usdt, 'USDT', 'usdt',
                 counterparty=broker, ref=f'payin_tx:{tx.tx_hash}',
+                date_estimated=estimated_date,
                 note=f'пачка CNV-{conv_id:04d}' if conv_id else None))
         else:
             events.append(_fin_event(
@@ -8280,6 +8287,7 @@ def _finance_events(session, date_from=None, date_to=None):
                 counterparty=(first_deal.client_name if first_deal else None),
                 deal_id=(uses[0].deal_id if uses else None),
                 product=_fin_deal_product(first_deal),
+                date_estimated=estimated_date,
                 ref=f'payin_tx:{tx.tx_hash}'))
 
     # ── 4. Наличные от клиента: своего документа нет, дата от сделки ──────
@@ -8442,15 +8450,26 @@ def _finance_totals(events):
         return out
 
     total, by_article, by_product, by_account = blank(), {}, {}, {}
-    estimated = 0
+    estimated, unassigned = 0, blank()
     for ev in events:
         add(total, ev)
         if ev['date_estimated']:
             estimated += 1
+        if ev['product'] == 'unassigned':
+            add(unassigned, ev)
         add(by_article.setdefault(ev['article'], blank()), ev)
         add(by_product.setdefault(ev['product'], blank()), ev)
         add(by_account.setdefault(ev['account'], blank()), ev)
     return {
+        # Честная рамка отчёта. Счета общие с другими потоками компании
+        # (WL-обменник, арбитраж): приход на счёт Сбера без привязки к сделке
+        # к продуктам Grusha отношения не имеет, и складывать его в выручку
+        # нельзя. Здесь видно, какая часть журнала осталась неразнесённой.
+        'coverage': {
+            'unassigned': net(unassigned),
+            'events_date_estimated': estimated,
+            'events_total': len(events),
+        },
         'all': net(total),
         'by_article': {k: dict(net(v), label=FINANCE_ARTICLES[k][0],
                                flow=FINANCE_ARTICLES[k][1])
