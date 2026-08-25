@@ -9411,8 +9411,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 sel.innerHTML = '<option value="">-- Выбрать кошелёк --</option>' +
                     (d.wallets || []).map(w => {
                         const lbl = (w.label || '').trim();
-                        const name = (lbl && lbl !== w.address) ? lbl : (w.address || '').substring(0, 12) + '…';
-                        return `<option value="${w.id}">${escapeHtml(name)}</option>`;
+                        const addr = (w.address || '').trim();
+                        // Адрес показываем всегда: у нескольких кошельков одинаковые
+                        // подписи, а обрезка «первые 12 символов» их не различает
+                        const shortAddr = addr.length > 14 ? `${addr.slice(0, 6)}…${addr.slice(-6)}` : addr;
+                        const name = (lbl && lbl !== addr) ? `${lbl} — ${shortAddr}` : addr;
+                        return `<option value="${w.id}" title="${escapeHtml(addr)}">${escapeHtml(name)}</option>`;
                     }).join('');
                 if (keep) sel.value = keep;
             } catch (e) { console.error('Error loading wallets for founder payout:', e); }
