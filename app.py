@@ -80,7 +80,18 @@ READONLY_PATHS = [
     '/api/transactions/',         # приходы и расходы по кошелькам
     '/api/sber-incomes', '/api/wl-transactions',
     '/api/analytics/',            # дашборд, юнит-экономика, конверсия
+    '/api/finance/',              # ДДС по кассовому методу
     '/api/reestr/',
+    '/api/health',
+]
+
+# Что видит финансист. Отдельный ключ, а не фаундерский: ему нужны деньги и
+# направления, а не клиентская база, KYC и переписка. Леджер сделок открыт
+# точечно (`/api/deals/ledger`), весь `/api/deals` — нет: там имена, заметки
+# менеджеров и хэши, которые в бухгалтерии не нужны.
+FINANCE_READONLY_PATHS = [
+    '/api/finance/',
+    '/api/deals/ledger',
     '/api/health',
 ]
 
@@ -89,6 +100,7 @@ READONLY_PATHS = [
 # ни KYC. Отзыв ключа = убрать переменную из env, остальные ключи не замечают.
 READONLY_KEY_SCOPES = {
     'SERVICE_API_KEY_RO': READONLY_PATHS,   # ключ фаундера — всё чтение
+    'SERVICE_API_KEY_RO_FINANCE': FINANCE_READONLY_PATHS,  # финансист
     'SERVICE_API_KEY_RO_LEADS': [           # внешняя интеграция «лиды/мерчанты»
         '/api/clients',                     # лиды = клиенты CRM
         '/api/reestr/',                     # мерчанты WL-реестра (view merchants в /all)
@@ -8092,6 +8104,496 @@ def deals_ledger():
             },
             'deals': rows,
         })
+    finally:
+        session.close()
+
+
+# ==================== ДДС: ЖУРНАЛ ДВИЖЕНИЯ ДЕНЕГ ====================
+# Для финансиста. Леджер выше считает по НАЧИСЛЕНИЮ (дата сделки), здесь —
+# по КАССЕ: каждое событие берётся из документа, у которого есть собственная
+# дата (выписка Сбера, TRON-перевод, пополнение карты, отметка о выплате).
+# Где такого документа нет, дата берётся у сделки и событие помечается
+# `date_estimated` — финансист должен видеть, что цифра приблизительная,
+# а не узнавать это через полгода при сверке остатков.
+
+FINANCE_ACCOUNTS = {
+    'sber_rub': 'Расчётный счёт Сбера, ₽',
+    'usdt': 'USDT-кошельки',
+    'cash_thb': 'Касса, наличные ฿',
+    'card_thb': 'Тайские счета и карты, ฿',
+    'mf_corp': 'Счёт MF Corporation',
+    'founder': 'Личные деньги фаундера',
+    'client': 'Вне наших счетов',
+}
+
+# Статья → (подпись, тип потока). Тип: in/out — операционные деньги приходят
+# и уходят; transfer — перекладываем между своими счетами (в итог не идёт,
+# иначе один и тот же рубль посчитается дважды); external — деньги двигались
+# мимо наших счетов (фаундер платил из своих), показываем, но не считаем.
+FINANCE_ARTICLES = {
+    'payin_client_rub':      ('Приход от клиента, ₽', 'in'),
+    'payin_client_usdt':     ('Приход от клиента, USDT', 'in'),
+    'payin_client_cash':     ('Приход от клиента наличными', 'in'),
+    'broker_usdt_in':        ('USDT от брокера (конвертация)', 'transfer'),
+    'broker_rub_out':        ('Рубли брокеру (конвертация)', 'transfer'),
+    'bank_fee_rub':          ('Банковская комиссия, ₽', 'out'),
+    'cash_purchase':         ('Закупка наличных ฿', 'transfer'),
+    'card_topup':            ('Пополнение тайского счёта', 'transfer'),
+    'realty_send':           ('Отправка по сделке недвижимости', 'transfer'),
+    'payout_client_thb':     ('Выдача клиенту, ฿', 'out'),
+    'payout_developer':      ('Оплата застройщику', 'out'),
+    'referral_payout':       ('Выплата реферальному партнёру', 'out'),
+    'founder_reimbursement': ('Возврат фаундеру', 'out'),
+}
+
+FINANCE_PRODUCTS = {
+    'exchange': 'Обмен',
+    'mf_realty': 'Недвижимость: лизхолд',
+    'mf_freehold': 'Недвижимость: фрихолд',
+    'unassigned': 'Без привязки к сделке',
+}
+
+
+def _fin_day(value):
+    """Дата события строкой YYYY-MM-DD. Понимает datetime и ISO-строку."""
+    if not value:
+        return None
+    if isinstance(value, str):
+        return value[:10]
+    return value.strftime('%Y-%m-%d')
+
+
+def _fin_event(day, article, amount, currency, account, **extra):
+    """Одно событие журнала. `to_*` заполняется только у перекладываний."""
+    label, flow = FINANCE_ARTICLES[article]
+    product = extra.pop('product', None) or 'unassigned'
+    return {
+        'date': day,
+        'article': article,
+        'article_label': label,
+        'flow': extra.pop('flow', None) or flow,
+        'amount': round(amount or 0, 2),
+        'currency': currency,
+        'account': account,
+        'account_label': FINANCE_ACCOUNTS.get(account, account),
+        'to_amount': None,
+        'to_currency': None,
+        'to_account': None,
+        'counterparty': extra.pop('counterparty', None),
+        'deal_id': extra.pop('deal_id', None),
+        'product': product,
+        'product_label': FINANCE_PRODUCTS.get(product, product),
+        'ref': extra.pop('ref', None),
+        'date_estimated': bool(extra.pop('date_estimated', False)),
+        'note': extra.pop('note', None),
+    }
+
+
+def _fin_transfer(day, article, out_amount, out_currency, out_account,
+                  in_amount, in_currency, in_account, **extra):
+    """Перекладывание между своими счетами — одной строкой, а не двумя.
+
+    Двумя строками финансист неизбежно посчитал бы и списание, и поступление
+    в операционный итог, хотя денег у компании не прибавилось и не убавилось.
+    """
+    ev = _fin_event(day, article, out_amount, out_currency, out_account, **extra)
+    ev['to_amount'] = round(in_amount or 0, 2)
+    ev['to_currency'] = in_currency
+    ev['to_account'] = in_account
+    return ev
+
+
+def _fin_deal_product(deal):
+    kind = (deal.deal_kind or 'exchange') if deal else 'unassigned'
+    return kind if kind in FINANCE_PRODUCTS else 'exchange'
+
+
+def _finance_events(session, date_from=None, date_to=None):
+    """Собирает журнал движения денег из всех источников с датами."""
+    events = []
+    lo = date_from or '0000-01-01'
+    hi = date_to or '9999-12-31'
+
+    def in_range(day):
+        return bool(day) and lo <= day <= hi
+
+    # Сделки нужны почти каждому источнику — тянем один раз
+    deals = {d.id: d for d in session.query(Deal).filter(
+        Deal.is_test.isnot(True)).all()}
+
+    def deal_of(deal_id):
+        return deals.get(deal_id) if deal_id else None
+
+    # ── 1. Приходы рублями на счёт Сбера (дата из выписки) ────────────────
+    for inc in session.query(SberIncome).all():
+        day = _fin_day(inc.operation_date)
+        if not in_range(day):
+            continue
+        d = deal_of(inc.claimed_deal_id)
+        events.append(_fin_event(
+            day, 'payin_client_rub', inc.amount_rub, 'RUB', 'sber_rub',
+            counterparty=inc.payer, deal_id=inc.claimed_deal_id,
+            product=_fin_deal_product(d), ref=f'sber_income:{inc.id}',
+            note=inc.purpose))
+
+    # ── 2. Списания со счёта: рубли брокеру и банковские комиссии ─────────
+    for deb in session.query(SberDebit).all():
+        day = _fin_day(deb.operation_date)
+        if not in_range(day):
+            continue
+        article = 'bank_fee_rub' if deb.kind == 'fee' else 'broker_rub_out'
+        events.append(_fin_event(
+            day, article, deb.amount_rub, 'RUB', 'sber_rub',
+            counterparty=deb.payee, ref=f'sber_debit:{deb.id}', note=deb.purpose))
+
+    # ── 3. Приходы USDT на кошельки ───────────────────────────────────────
+    # Перевод, закрывающий пачку конвертации, — не выручка, а вторая нога
+    # обмена рублей: рубли ушли брокеру (п.2), USDT вернулся сюда.
+    conv_tx_ids = {
+        tx_id for (tx_id,) in session.query(ConversionTx.payin_tx_id).all()}
+    conv_broker = {}
+    for conv_id, broker, tx_id in session.query(
+            Conversion.id, Conversion.broker, ConversionTx.payin_tx_id).join(
+            ConversionTx, ConversionTx.conversion_id == Conversion.id).all():
+        conv_broker[tx_id] = (conv_id, broker)
+    payin_uses = {}
+    for use in session.query(PayinTxUse).all():
+        payin_uses.setdefault(use.tx_id, []).append(use)
+    for tx in session.query(PayinTx).all():
+        day = _fin_day(tx.tx_time or tx.created_at)
+        if not in_range(day):
+            continue
+        uses = payin_uses.get(tx.id) or []
+        first_deal = deal_of(uses[0].deal_id) if uses else None
+        if tx.id in conv_tx_ids:
+            # Вторая нога обмена рублей: рубли ушли брокеру отдельным списанием
+            # (п.2), сюда вернулся USDT. Две ноги — два документа, две строки;
+            # склеивать их в один transfer нельзя, даты у них разные.
+            conv_id, broker = conv_broker.get(tx.id, (None, None))
+            events.append(_fin_event(
+                day, 'broker_usdt_in', tx.amount_usdt, 'USDT', 'usdt',
+                counterparty=broker, ref=f'payin_tx:{tx.tx_hash}',
+                note=f'пачка CNV-{conv_id:04d}' if conv_id else None))
+        else:
+            events.append(_fin_event(
+                day, 'payin_client_usdt', tx.amount_usdt, 'USDT', 'usdt',
+                counterparty=(first_deal.client_name if first_deal else None),
+                deal_id=(uses[0].deal_id if uses else None),
+                product=_fin_deal_product(first_deal),
+                ref=f'payin_tx:{tx.tx_hash}'))
+
+    # ── 4. Наличные от клиента: своего документа нет, дата от сделки ──────
+    for d in deals.values():
+        if d.status in NON_DEAL_STATUSES:
+            continue
+        day = _fin_day(d.created_at)
+        if not in_range(day):
+            continue
+        for part in _payin_all_parts(d):
+            if part.get('method') != PayInMethod.PARTNERS_CASH.value:
+                continue
+            if not part.get('amount_usdt'):
+                continue
+            events.append(_fin_event(
+                day, 'payin_client_cash', part['amount_usdt'], 'USDT', 'client',
+                counterparty=part.get('partner_name') or d.client_name,
+                deal_id=d.id, product=_fin_deal_product(d),
+                ref=f'deal:{d.id}', date_estimated=True))
+
+    # ── 5. Закупка батов: партии налички и пополнения карт ────────────────
+    for b in session.query(CashBatch).all():
+        day = _fin_day(b.created_at)
+        if not in_range(day):
+            continue
+        events.append(_fin_transfer(
+            day, 'cash_purchase', b.cost_usdt, 'USDT', 'usdt',
+            b.amount_thb, 'THB', 'cash_thb',
+            counterparty=b.founder_name, ref=f'cash_batch:{b.id}',
+            note=b.purchase_method))
+    for t in session.query(CardTopup).all():
+        day = _fin_day(t.created_at)
+        if not in_range(day):
+            continue
+        events.append(_fin_transfer(
+            day, 'card_topup', t.cost_usdt, 'USDT', 'usdt',
+            t.amount_thb, 'THB', 'card_thb',
+            ref=f'card_topup:{t.id}', note=t.reference))
+
+    # ── 6. Выдача клиенту батами ──────────────────────────────────────────
+    # Приоритет у аллокаций: у них своя дата и точная привязка к счёту.
+    # Сделки без аллокаций добираем плоской суммой с датой сделки.
+    covered = set()
+    for alloc, account in ((CashAllocation, 'cash_thb'), (CardAllocation, 'card_thb')):
+        for a in session.query(alloc).all():
+            covered.add(a.deal_id)
+            day = _fin_day(a.created_at)
+            if not in_range(day):
+                continue
+            d = deal_of(a.deal_id)
+            events.append(_fin_event(
+                day, 'payout_client_thb', a.amount_thb, 'THB', account,
+                counterparty=(d.client_name if d else None), deal_id=a.deal_id,
+                product=_fin_deal_product(d), ref=f'{alloc.__tablename__}:{a.id}'))
+    for d in deals.values():
+        if d.id in covered or d.status in NON_DEAL_STATUSES:
+            continue
+        if not d.payout_amount_thb or d.deal_kind in REALTY_KINDS:
+            continue
+        day = _fin_day(d.created_at)
+        if not in_range(day):
+            continue
+        src = d.payout_source.value if d.payout_source else None
+        # Фаундер выдал свои баты — с наших счетов не ушло ничего. Реальный
+        # отток компании случится позже, когда ему возместят (п.8).
+        if src == PayOutSource.FOUNDER_PERSONAL.value:
+            account, flow = 'founder', 'external'
+        elif src == PayOutSource.BANK_CARD.value:
+            account, flow = 'card_thb', None
+        else:
+            account, flow = 'cash_thb', None
+        events.append(_fin_event(
+            day, 'payout_client_thb', d.payout_amount_thb, 'THB', account,
+            counterparty=d.client_name, deal_id=d.id, product=_fin_deal_product(d),
+            ref=f'deal:{d.id}', date_estimated=True, flow=flow,
+            note=d.payout_founder_name if flow == 'external' else None))
+
+    # ── 7. Недвижимость: отправка с кошелька и платёж застройщику ─────────
+    for d in deals.values():
+        if d.deal_kind not in REALTY_KINDS or d.status in NON_DEAL_STATUSES:
+            continue
+        product = _fin_deal_product(d)
+        try:
+            transfers = json.loads(d.payout_tx_hashes) if d.payout_tx_hashes else []
+        except (ValueError, TypeError):
+            transfers = []
+        for i, t in enumerate(transfers):
+            day = _fin_day(t.get('date')) or _fin_day(d.created_at)
+            if not in_range(day):
+                continue
+            events.append(_fin_transfer(
+                day, 'realty_send', t.get('amount_usdt'), 'USDT', 'usdt',
+                t.get('amount_usdt'), 'USDT', 'mf_corp',
+                deal_id=d.id, product=product,
+                ref=f"payout_tx:{t.get('hash') or f'{d.id}-{i}'}",
+                date_estimated=not t.get('date')))
+        day = _fin_day(d.created_at)
+        if not in_range(day):
+            continue
+        if d.deal_kind == MF_REALTY_KIND and d.invoice_amount_thb:
+            events.append(_fin_event(
+                day, 'payout_developer', d.invoice_amount_thb, 'THB', 'mf_corp',
+                counterparty=d.realty_purpose, deal_id=d.id, product=product,
+                ref=f'deal:{d.id}', date_estimated=True))
+        elif d.deal_kind == MF_FREEHOLD_KIND and d.transfer_sent_usd:
+            events.append(_fin_event(
+                day, 'payout_developer', d.transfer_sent_usd, 'USD', 'mf_corp',
+                counterparty=d.realty_purpose, deal_id=d.id, product=product,
+                ref=f'deal:{d.id}', date_estimated=True))
+
+    # ── 8. Возврат фаундеру ───────────────────────────────────────────────
+    # kind='auto' — приход брокера упал прямо на кошелёк, с которого платили:
+    # долг закрылся зачётом, деньги никуда не двигались, в кассу не идёт.
+    for r in session.query(Reimbursement).filter(
+            or_(Reimbursement.kind != 'auto', Reimbursement.kind.is_(None))).all():
+        day = _fin_day(r.created_at)
+        if not in_range(day):
+            continue
+        first = (r.deals or [None])[0]
+        events.append(_fin_event(
+            day, 'founder_reimbursement', r.amount_usdt, 'USDT', 'usdt',
+            counterparty=r.founder_name, deal_id=(first.id if first else None),
+            product=_fin_deal_product(first), ref=f'reimbursement:{r.id}'))
+
+    # ── 9. Выплаты реферальным партнёрам (дата отметки о выплате) ─────────
+    for a in session.query(DealAgent).filter(DealAgent.paid.is_(True),
+                                             DealAgent.paid_at.isnot(None)).all():
+        day = _fin_day(a.paid_at)
+        if not in_range(day) or not a.payout_usdt:
+            continue
+        d = deal_of(a.deal_id)
+        if d is None:
+            continue
+        events.append(_fin_event(
+            day, 'referral_payout', a.payout_usdt, 'USDT', 'usdt',
+            counterparty=a.name, deal_id=a.deal_id, product=_fin_deal_product(d),
+            ref=f'deal_agent:{a.id}', note=a.paid_note))
+
+    events.sort(key=lambda e: (e['date'], e['article']), reverse=True)
+    return events
+
+
+def _finance_totals(events):
+    """Итоги. Операционные деньги отдельно от перекладываний между счетами."""
+    def blank():
+        return {'events': 0, 'in': {}, 'out': {}}
+
+    def add(acc, ev):
+        acc['events'] += 1
+        if ev['flow'] in ('in', 'out'):
+            bucket = acc[ev['flow']]
+            bucket[ev['currency']] = round(
+                bucket.get(ev['currency'], 0) + ev['amount'], 2)
+
+    def net(acc):
+        out = dict(acc)
+        cur = set(acc['in']) | set(acc['out'])
+        out['net'] = {c: round(acc['in'].get(c, 0) - acc['out'].get(c, 0), 2)
+                      for c in cur}
+        return out
+
+    total, by_article, by_product, by_account = blank(), {}, {}, {}
+    estimated = 0
+    for ev in events:
+        add(total, ev)
+        if ev['date_estimated']:
+            estimated += 1
+        add(by_article.setdefault(ev['article'], blank()), ev)
+        add(by_product.setdefault(ev['product'], blank()), ev)
+        add(by_account.setdefault(ev['account'], blank()), ev)
+    return {
+        'all': net(total),
+        'by_article': {k: dict(net(v), label=FINANCE_ARTICLES[k][0],
+                               flow=FINANCE_ARTICLES[k][1])
+                       for k, v in by_article.items()},
+        'by_product': {k: dict(net(v), label=FINANCE_PRODUCTS.get(k, k))
+                       for k, v in by_product.items()},
+        'by_account': {k: dict(net(v), label=FINANCE_ACCOUNTS.get(k, k))
+                       for k, v in by_account.items()},
+        'events_total': len(events),
+        'events_date_estimated': estimated,
+    }
+
+
+FINANCE_CSV_COLUMNS = [
+    ('дата', lambda e: e['date']),
+    ('статья', lambda e: e['article_label']),
+    ('поток', lambda e: e['flow']),
+    ('сумма', lambda e: e['amount']),
+    ('валюта', lambda e: e['currency']),
+    ('счёт', lambda e: e['account_label']),
+    ('сумма (куда)', lambda e: e['to_amount']),
+    ('валюта (куда)', lambda e: e['to_currency']),
+    ('счёт (куда)', lambda e: FINANCE_ACCOUNTS.get(e['to_account'], e['to_account'])),
+    ('контрагент', lambda e: e['counterparty']),
+    ('направление', lambda e: e['product_label']),
+    ('сделка', lambda e: e['deal_id']),
+    ('дата приблизительная', lambda e: 'да' if e['date_estimated'] else ''),
+    ('документ', lambda e: e['ref']),
+    ('примечание', lambda e: e['note']),
+]
+
+
+@app.route('/api/finance/cashflow', methods=['GET'])
+def finance_cashflow():
+    """ДДС по кассовому методу: journal всех движений денег с датами документов.
+
+    Фильтры: `date_from`, `date_to` (YYYY-MM-DD), `product`
+    (exchange|mf_realty|mf_freehold|unassigned), `flow` (in|out|transfer|external),
+    `article`, `format=csv`.
+
+    `flow=transfer` — перекладывание между своими счетами (рубли брокеру и
+    возврат USDT, закупка батов, отправка в MF Corp). В операционный итог не
+    входит: денег у компании от этого не прибавляется. `flow=external` —
+    движение мимо наших счетов (фаундер платил из своих), реальный отток
+    появится строкой «Возврат фаундеру».
+    """
+    session = get_session()
+    try:
+        for param in ('date_from', 'date_to'):
+            v = request.args.get(param)
+            if v:
+                try:
+                    datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    return jsonify({'success': False,
+                                    'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+        events = _finance_events(session, request.args.get('date_from'),
+                                 request.args.get('date_to'))
+
+        product = request.args.get('product')
+        if product:
+            if product not in FINANCE_PRODUCTS:
+                return jsonify({'success': False, 'error': 'Invalid product'}), 400
+            events = [e for e in events if e['product'] == product]
+        flow = request.args.get('flow')
+        if flow:
+            if flow not in ('in', 'out', 'transfer', 'external'):
+                return jsonify({'success': False, 'error': 'Invalid flow'}), 400
+            events = [e for e in events if e['flow'] == flow]
+        article = request.args.get('article')
+        if article:
+            if article not in FINANCE_ARTICLES:
+                return jsonify({'success': False, 'error': 'Invalid article'}), 400
+            events = [e for e in events if e['article'] == article]
+
+        totals = _finance_totals(events)
+
+        if request.args.get('format') == 'csv':
+            import csv, io
+            buf = io.StringIO()
+            w = csv.writer(buf, delimiter=';')
+            w.writerow([c[0] for c in FINANCE_CSV_COLUMNS])
+            for e in events:
+                w.writerow(['' if (v := get(e)) is None else v
+                            for _, get in FINANCE_CSV_COLUMNS])
+            return app.response_class(
+                '﻿' + buf.getvalue(),
+                mimetype='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=cashflow.csv'})
+
+        return jsonify({
+            'success': True,
+            'period': {'from': request.args.get('date_from'),
+                       'to': request.args.get('date_to')},
+            'count': len(events),
+            'totals': totals,
+            'labels': {'articles': {k: {'label': v[0], 'flow': v[1]}
+                                    for k, v in FINANCE_ARTICLES.items()},
+                       'accounts': FINANCE_ACCOUNTS,
+                       'products': FINANCE_PRODUCTS},
+            'events': events,
+        })
+    finally:
+        session.close()
+
+
+@app.route('/api/finance/summary', methods=['GET'])
+def finance_summary():
+    """Тот же ДДС, свёрнутый по месяцам: период × статья × направление.
+
+    Фильтры те же, что у `/api/finance/cashflow`, плюс `group` = `month`
+    (по умолчанию) или `day`.
+    """
+    session = get_session()
+    try:
+        group = request.args.get('group', 'month')
+        if group not in ('month', 'day'):
+            return jsonify({'success': False, 'error': 'Invalid group'}), 400
+        for param in ('date_from', 'date_to'):
+            v = request.args.get(param)
+            if v:
+                try:
+                    datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    return jsonify({'success': False,
+                                    'error': 'Invalid date format, expected YYYY-MM-DD'}), 400
+        events = _finance_events(session, request.args.get('date_from'),
+                                 request.args.get('date_to'))
+        product = request.args.get('product')
+        if product:
+            if product not in FINANCE_PRODUCTS:
+                return jsonify({'success': False, 'error': 'Invalid product'}), 400
+            events = [e for e in events if e['product'] == product]
+
+        periods = {}
+        for ev in events:
+            key = ev['date'][:7] if group == 'month' else ev['date']
+            periods.setdefault(key, []).append(ev)
+        out = []
+        for key in sorted(periods, reverse=True):
+            block = _finance_totals(periods[key])
+            out.append({'period': key, **block})
+        return jsonify({'success': True, 'group': group, 'periods': out})
     finally:
         session.close()
 
