@@ -416,6 +416,10 @@ WITHDRAWAL_PCT_BINANCE = 0.0025
 WITHDRAWAL_PCT_BITAZZA = 0.0015
 WITHDRAWAL_FIXED_THB = 20
 
+# Стандарт по USDT-направлениям. Раньше сервер без явной маржи считал USDT → THB
+# по 4 %, а интерфейс объявлял стандартом 2 % — расхождение развели 27.08.2026.
+PROFIT_USDT_TO_THB = 2.4
+
 
 class CommissionCalculator:
     """Расчет комиссий по уровням сумм"""
@@ -686,7 +690,7 @@ class ExchangeCalculator:
 
     def usdt_to_thb(self, usdt_amount: float, custom_profit_margin: float = None) -> dict:
         """Операция 6: USDT → THB (amount)"""
-        target_profit = custom_profit_margin if custom_profit_margin is not None else 4.0
+        target_profit = custom_profit_margin if custom_profit_margin is not None else PROFIT_USDT_TO_THB
         usdt_comm = target_profit / 100.0
         
         usdt_thb_rate_sell = self.usdt_thb_rate * (1 - usdt_comm)
@@ -724,7 +728,7 @@ class ExchangeCalculator:
 
     def usdt_to_thb_target(self, thb_target: float, custom_profit_margin: float = None) -> dict:
         """Операция 5: USDT → THB (target)"""
-        target_profit = custom_profit_margin if custom_profit_margin is not None else 4.0
+        target_profit = custom_profit_margin if custom_profit_margin is not None else PROFIT_USDT_TO_THB
         usdt_comm = target_profit / 100.0
         
         thb_to_exchange = (thb_target + self.withdrawal_fixed) / (1 - self.withdrawal_percent)

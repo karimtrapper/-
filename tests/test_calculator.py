@@ -329,3 +329,31 @@ class TestProfitHitsTargetWithoutBonus:
     def test_bonus_is_zero_in_result(self, calc):
         r = calc.rub_to_thb(100_000)
         assert r['bonus_usdt'] == 0
+
+
+# -- Стандарт по USDT-направлениям (27.08.2026) --
+
+class TestUsdtToThbDefaultMargin:
+    """USDT → THB без явной маржи считается по 2.4%.
+
+    До 27.08.2026 сервер ставил тут 4%, а интерфейс объявлял стандартом 2% —
+    менеджер видел одно, клиент получал другое.
+    """
+
+    @pytest.fixture
+    def calc(self):
+        return ExchangeCalculator(usdt_thb_rate=32.87, rub_usdt_rate=89.97)
+
+    def test_default_is_2_4(self, calc):
+        from calculator import PROFIT_USDT_TO_THB
+        assert PROFIT_USDT_TO_THB == 2.4
+        r = calc.usdt_to_thb(5_000)
+        assert abs(r['profit_percent_actual'] - 2.4) < 0.01
+
+    def test_default_is_2_4_target(self, calc):
+        r = calc.usdt_to_thb_target(150_000)
+        assert abs(r['profit_percent_actual'] - 2.4) < 0.01
+
+    def test_explicit_margin_wins(self, calc):
+        r = calc.usdt_to_thb(5_000, custom_profit_margin=4.0)
+        assert abs(r['profit_percent_actual'] - 4.0) < 0.01

@@ -302,7 +302,7 @@
                                 <button class="commission-btn" data-profit="2.4" onclick="setProfitMargin(2.4)">2.4%</button>
                                 <button class="commission-btn" data-profit="3.0" onclick="setProfitMargin(3.0)">3%</button>
                                 <button class="commission-btn" data-profit="3.5" onclick="setProfitMargin(3.5)">3.5%</button>
-                                <button class="commission-btn active" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
+                                <button class="commission-btn" data-profit="4.0" onclick="setProfitMargin(4.0)">4%</button>
                                 <button class="commission-btn" data-profit="4.5" onclick="setProfitMargin(4.5)">4.5%</button>
                                 <button class="commission-btn" data-profit="5.0" onclick="setProfitMargin(5.0)">5%</button>
                                 <button class="commission-btn" id="customProfitBtn" data-profit="custom" onclick="toggleCustomProfit()">✏️ Своё</button>
@@ -354,6 +354,7 @@
                         Курс: <span id="finalRate">0</span> <span id="rateCurrency">₽/฿</span>
                     </div>
                     <div class="result-profit" id="resultProfit" style="display: none;"></div>
+                    <div id="marginWarning" style="display: none; margin-top: 10px; padding: 8px 12px; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 8px; color: #92400E; font-size: 14px; font-weight: 600;"></div>
                 </div>
 
                 <!-- Блок для копирования клиенту -->

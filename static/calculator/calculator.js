@@ -80,7 +80,7 @@ let state = {
     method: 'doverka',  // 'doverka' или 'broker'
     scenario: 'rub-to-thb',  // текущий сценарий
     direction: 'amount',  // 'amount' (вношу) или 'target' (хочу получить)
-    profitMargin: 4.0,    // чистая прибыль брокера в %
+    profitMargin: 5.0,    // подменяется лестницей при первом же расчёте (см. ladderProfit)
     rates: CONFIG.FALLBACK_RATES,
     customRubUsdt: null,  // кастомный курс для broker/custom (null = не введён)
     customUsdtThb: null,  // кастомный курс THB-USDT для метода 'custom' (null = не введён)
@@ -94,6 +94,57 @@ let state = {
     preciseRateTimer: null, // ID таймера обратного отсчёта
     _calcVersion: 0 // Счётчик версий расчёта (защита от race condition)
 };
+
+// ── Лестница маржи ─────────────────────────────────────────────────────────
+// Единственный источник правды по «проценту по умолчанию». До 27.08.2026 дефолт
+// жил в трёх местах и в режимах broker/custom не применялся вовсе: на сервер
+// уходил state.profitMargin со стартовым значением 4 %, поэтому сделки любого
+// размера считались по 4 %. Теперь любой расчёт берёт процент отсюда.
+const PROFIT_LADDER_SMALL = 5.0;   // до 500 000 ₽
+const PROFIT_LADDER_MEDIUM = 4.0;  // 500 000 – 1 000 000 ₽
+const PROFIT_LADDER_LARGE = 3.0;   // от 1 000 000 ₽
+const PROFIT_USDT_TO_THB = 2.4;    // решение Карима 27.08.2026
+const PROFIT_THB_TO_USDT = 3.0;
+const PROFIT_FLOOR = 1.5;          // ниже — только с согласованием
+
+/** Сумма сделки в рублях — база для порогов лестницы, из чего бы клиент ни платил. */
+function rubBase(amount, scenario = state.scenario, direction = state.direction) {
+    const rubUsdt = state.rates.rub_usdt || 82;
+    if (scenario === 'thb-to-rub') return amount * 2.8;
+    if (scenario === 'rub-to-thb' && direction === 'target') return amount * 2.8;
+    if (scenario === 'usdt-from-rub') return amount * rubUsdt;
+    if (scenario === 'rub-to-usdt' && direction === 'target') return amount * rubUsdt;
+    return amount;
+}
+
+/** Процент по регламенту для суммы и направления. См. wiki/pages/calculator-manager-reglament.md */
+function ladderProfit(amount, scenario = state.scenario, direction = state.direction) {
+    if (scenario === 'usdt-to-thb') return PROFIT_USDT_TO_THB;
+    if (scenario === 'thb-to-usdt') return PROFIT_THB_TO_USDT;
+    const base = rubBase(amount, scenario, direction);
+    if (base < 500000) return PROFIT_LADDER_SMALL;
+    if (base < 1000000) return PROFIT_LADDER_MEDIUM;
+    return PROFIT_LADDER_LARGE;
+}
+
+/** Что реально уходит в расчёт: согласованная скидка либо лестница. */
+function effectiveProfit(amount) {
+    if (!state.applyDiscount) return ladderProfit(amount);
+    return Math.max(state.profitMargin, PROFIT_FLOOR);
+}
+
+/** Сброс скидки — при смене метода, сценария или направления процент не «липнет». */
+function resetDiscount() {
+    state.applyDiscount = false;
+    const cb = document.getElementById('applyDiscount');
+    if (cb) cb.checked = false;
+    const wrapper = document.getElementById('profitMarginWrapper');
+    if (wrapper) wrapper.style.display = 'none';
+    const customWrapper = document.getElementById('customProfitWrapper');
+    if (customWrapper) customWrapper.style.display = 'none';
+    document.querySelectorAll('.commission-btn').forEach(btn => btn.classList.remove('active'));
+    state.profitMargin = ladderProfit(getAmount());
+}
 
 // Проверка авторизации — редирект на логин если не залогинен
 async function checkAuth() {
@@ -126,6 +177,7 @@ function hideResults() {
 // Переключение метода
 function switchMethod(method) {
     state.method = method;
+    resetDiscount();
     
     // Обновляем кнопки метода
     document.querySelectorAll('.method-btn').forEach(btn => {
@@ -202,6 +254,7 @@ function switchScenario(scenario) {
     state.scenario = scenario;
     updateScenarioUI();
     hideResults();
+    resetDiscount();
 
     // Показываем/скрываем поля кастомных курсов в зависимости от сценария
     if (state.method === 'broker' || state.method === 'custom') {
@@ -368,34 +421,18 @@ function toggleDiscount() {
     const wrapper = document.getElementById('profitMarginWrapper');
     
     if (state.applyDiscount) {
-        wrapper.style.display = 'block';
-        
-        // Автоматически выбираем дефолтный процент в зависимости от суммы
+        // Без суммы лестницу не посчитать, а в блоке останется чужой процент —
+        // так 27.08.2026 клиенту уехали 4 % вместо лестничных 5 %.
         const amount = getAmount();
-        if (amount > 0) {
-            let defaultProfit = 4.0;
-            // Для USDT-сценариев дефолт 2% (решение Карима 10.08; до этого 2.5%,
-            // причём такой кнопки в пресетах нет — активной не подсвечивалась ни одна)
-            const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
-            if (isUsdtScenario) {
-                defaultProfit = 2.0;
-            } else {
-                // Определяем базу для расчета (рубли)
-                let baseAmount = amount;
-                if (state.scenario === 'thb-to-rub') {
-                    baseAmount = amount * 2.8;
-                } else if (state.scenario === 'usdt-from-rub' || (state.scenario === 'rub-to-usdt' && state.direction === 'target')) {
-                    baseAmount = amount * (state.rates.rub_usdt || 82);
-                }
-
-                if (baseAmount < 500000) defaultProfit = 5.0;
-                else if (baseAmount < 1000000) defaultProfit = 4.0;
-                else defaultProfit = 3.0;
-            }
-            
-            // Устанавливаем маржу (это также обновит кнопки)
-            setProfitMargin(defaultProfit);
+        if (amount <= 0) {
+            state.applyDiscount = false;
+            document.getElementById('applyDiscount').checked = false;
+            wrapper.style.display = 'none';
+            showToast('Сначала введите сумму сделки — процент подставится по лестнице', 'error');
+            return;
         }
+        wrapper.style.display = 'block';
+        setProfitMargin(ladderProfit(amount));
     } else {
         wrapper.style.display = 'none';
         // Скидка выключена — пересчитываем без маржи
@@ -410,7 +447,21 @@ function toggleDiscount() {
 
 // Установка маржи (прибыли)
 function setProfitMargin(profit) {
+    const value = parseFloat(profit);
+    const amount = getAmount();
+    const ladder = ladderProfit(amount);
+
+    // Пол 1.5 % — ниже менеджер не опускает без согласования (решение Карима 27.08.2026)
+    if (value < PROFIT_FLOOR) {
+        showToast(`Ниже ${PROFIT_FLOOR}% — только с согласованием. Поставил ${PROFIT_FLOOR}%`, 'error');
+        profit = PROFIT_FLOOR;
+    }
+
     state.profitMargin = parseFloat(profit);
+    if (state.applyDiscount && state.profitMargin < ladder) {
+        const delta = (ladder - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
+        showToast(`Скидка ${delta} п.п. ниже стандарта (${ladder}%) — согласовано?`, 'info', 4000);
+    }
 
     // Скрываем кастом-инпут и чистим его (вызов из пресета)
     const customWrapper = document.getElementById('customProfitWrapper');
@@ -427,7 +478,6 @@ function setProfitMargin(profit) {
     console.log(`🎯 Выбрана маржа: ${state.profitMargin}%`);
 
     // СРАЗУ вызываем расчет если сумма введена
-    const amount = getAmount();
     if (amount > 0) {
         calculate();
     } else {
@@ -472,7 +522,20 @@ function onCustomProfitInput(el) {
     const capped = Math.min(val, 99);
     if (capped !== val) el.value = String(capped);
 
+    if (capped < PROFIT_FLOOR) {
+        // Ниже пола расчёт не показываем вовсе — чтобы такое число не уехало клиенту
+        state.profitMargin = capped;
+        hideResults();
+        showToast(`Ниже ${PROFIT_FLOOR}% без согласования нельзя`, 'error');
+        return;
+    }
+
     state.profitMargin = capped;
+    const ladderNow = ladderProfit(getAmount());
+    if (state.profitMargin < ladderNow) {
+        const d = (ladderNow - state.profitMargin).toFixed(2).replace(/\.?0+$/, '');
+        showToast(`Скидка ${d} п.п. ниже стандарта (${ladderNow}%) — согласовано?`, 'info', 4000);
+    }
     console.log(`🎯 Кастомная маржа: ${state.profitMargin}%`);
 
     const amount = getAmount();
@@ -494,6 +557,7 @@ function setDirection(direction) {
     // Обновляем метки в зависимости от direction
     updateScenarioUI();
     hideResults();
+    resetDiscount();
 }
 
 // Получение курсов
@@ -858,7 +922,8 @@ async function calculate() {
                 custom_rub_usdt: state.customRubUsdt,
                 // Для custom — ручной THB-USDT, для broker — точный курс с Playwright (если был)
                 custom_usdt_thb: state.method === 'custom' ? state.customUsdtThb : state.rates.usdt_thb,
-                profit_margin: state.profitMargin
+                // Без включённой скидки — процент по лестнице, а не то что осталось в памяти
+                profit_margin: effectiveProfit(amount)
             };
             
             const response = await fetch(`${CONFIG.API_URL}/calculate`, {
@@ -1052,7 +1117,7 @@ async function getPreciseRate() {
             direction: preciseDirection,
             method: state.method,
             rub_usdt: rubUsdt,
-            profit_margin: state.profitMargin
+            profit_margin: effectiveProfit(amount)
         };
 
         const response = await fetch(`${CONFIG.API_URL}/rates/precise`, {
@@ -1132,20 +1197,7 @@ async function getPreciseRate() {
 function calculateLocal(amount) {
     // В локальном режиме (file://) берем профит из стейта, если включена скидка,
     // иначе определяем его по порогам Doverka (имитируем поведение сервера)
-    const isUsdtScenario = ['usdt-to-thb', 'thb-to-usdt'].includes(state.scenario);
-    let targetProfit = isUsdtScenario ? 2.0 : 4.0;   // USDT-дефолт 2%, см. toggleDiscount
-    if (state.applyDiscount) {
-        targetProfit = state.profitMargin;
-    } else if (!isUsdtScenario) {
-        let baseAmount = amount;
-        if (state.scenario === 'thb-to-rub') {
-            baseAmount = amount * 2.8;
-        }
-
-        if (baseAmount < 500000) targetProfit = 5.0;
-        else if (baseAmount < 1000000) targetProfit = 4.0;
-        else targetProfit = 3.0;
-    }
+    const targetProfit = effectiveProfit(amount);
 
     // Комиссия в USDT-THB: без бонуса Доверки профит собирается только ей,
     // точная связь c = p/(1+p) — как в _get_commissions на сервере
@@ -1525,6 +1577,19 @@ function displayResult(result) {
         profitEl.style.display = '';
     } else {
         profitEl.style.display = 'none';
+    }
+
+    // Маржа ниже лестницы — менеджер должен видеть это до того, как назовёт курс
+    const warnEl = document.getElementById('marginWarning');
+    if (warnEl) {
+        const ladder = ladderProfit(getAmount());
+        if (profitPct > 0 && profitPct < ladder - 0.05) {
+            const delta = (ladder - profitPct).toFixed(2).replace(/\.?0+$/, '');
+            warnEl.textContent = `⚠️ Ниже стандарта на ${delta} п.п. — по регламенту тут ${ladder}%. Согласовано?`;
+            warnEl.style.display = '';
+        } else {
+            warnEl.style.display = 'none';
+        }
     }
 
     // Блок для копирования клиенту
