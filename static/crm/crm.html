@@ -3479,7 +3479,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const money = (v) => (v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const others = rows.filter(x => x.deal_id !== deal.id);
             let html = `<div style="margin-top:8px;font-size:0.85rem;line-height:1.6;">
-                <div>Перевод всего: <b>$${money(r.amount_usdt)}</b> · сделок в возмещении: <b>${r.deals_count || rows.length}</b></div>
+                <div>Возмещено всего: <b>$${money(r.amount_usdt)}</b> · сделок в возмещении: <b>${r.deals_count || rows.length}</b></div>
                 <div>Доля этой сделки: <b>$${money(deal.payout_amount_usdt)}</b></div>`;
             if (others.length) {
                 html += `<div style="margin-top:4px;">Вместе с ней покрыты:</div><ul style="margin:2px 0 0 18px;padding:0;">` +
@@ -11054,6 +11054,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             reimburseAmountManual[founderName] = true;
             renderAmountHint(founderName);
             updateReimbursementRate(founderName);
+            // Доли считаются от суммы возмещения. Раньше ручная правка суммы их
+            // не трогала: в поля оставалась пропорция от полного перевода, и
+            // сделке записывалась доля больше возмещения (кейс #548 — перевод
+            // 1952, возмещение 1375.46, сделке ушло 1952 → «задвоение»).
+            prefillAllocations(founderName);
+            renderAllocSummary(founderName);
         }
 
         function updateReimbursementRate(founderName) {
@@ -11130,7 +11136,19 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             // Сколько берём из каждого перевода: из пула знаем он-чейн суммы,
             // для хэшей, вписанных руками, сумму определит сервер (остаток перевода).
             const poolByHash = Object.fromEntries((reimburseTxPool[founderName] || []).map(t => [t.hash, t.amount]));
-            const txUses = txHashes.map(h => ({ tx_hash: h, amount_usdt: poolByHash[h] || 0 }));
+            // Берём из перевода ровно сумму возмещения, а не весь он-чейн объём:
+            // одним переводом закрываем несколько пачек сделок, и неизрасходованное
+            // должно остаться свободным остатком на хэше. До этого перевод на 1952
+            // при возмещении на 1375.46 помечался «разобран полностью».
+            let leftToCover = amountUsdt;
+            const txUses = txHashes.map(h => {
+                const onchain = poolByHash[h];
+                // Хэш вписан руками — суммы не знаем, сервер возьмёт нужное из остатка
+                if (onchain === undefined) return { tx_hash: h, amount_usdt: 0 };
+                const take = Math.max(0, Math.min(onchain, leftToCover));
+                leftToCover = Math.round((leftToCover - take) * 100) / 100;
+                return { tx_hash: h, amount_usdt: Math.round(take * 100) / 100 };
+            });
             // Доли по сделкам — только по отмеченным и только заполненные
             const dealAllocations = allocInputs(founderName)
                 .filter(el => dealIds.includes(parseInt(el.dataset.dealId)) && el.value !== '')

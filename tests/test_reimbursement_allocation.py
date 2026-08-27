@@ -219,3 +219,64 @@ class TestBreakdownOutput:
         txs = cli.get('/api/reimbursements/tx?founder=Андрей&only_free=1').get_json()['txs']
         mine = [t for t in txs if t['tx_hash'] == tx_hash]
         assert mine and mine[0]['free_usdt'] == pytest.approx(200)
+
+
+class TestAmountIsTheCeiling:
+    """Кейс сделки #548: перевод больше, чем возмещаем.
+
+    Перевод Андрею был на 1952 USDT, а себестоимость выданных 45 000 ฿ —
+    1375.46. Форма отправляла перевод целиком, сделке записывалась доля 1952,
+    и карточка ругалась «распределено больше, чем перевели», а прибыль сделки
+    уходила в фиктивный минус. Сумма возмещения — потолок для всего.
+    """
+
+    def test_transfer_taken_only_up_to_amount(self, cli, tx_hash, tx_hash2):
+        """Сумму по переводу не сказали → берём столько, сколько возмещаем."""
+        d1 = _make_deal(10000)
+        resp = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 500,
+            'tx_uses': [{'tx_hash': tx_hash}]})
+        assert resp.status_code == 200, resp.get_json()
+        assert _tx_free(tx_hash) == pytest.approx(200.0)
+
+    def test_taking_more_than_amount_rejected(self, cli, tx_hash, tx_hash2):
+        """Взять из перевода больше суммы возмещения нельзя."""
+        d1 = _make_deal(10000)
+        resp = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 500,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 700}]})
+        assert resp.status_code == 400
+        assert 'возмещение' in resp.get_json()['error']
+
+    def test_deal_share_over_amount_rejected(self, cli, tx_hash, tx_hash2):
+        """Ровно кейс #548: доля сделки = весь перевод при меньшем возмещении."""
+        d1 = _make_deal(45000)
+        resp = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 500,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 500}],
+            'deal_allocations': [{'deal_id': d1, 'amount_usdt': 700}]})
+        assert resp.status_code == 400
+
+    def test_two_transfers_cover_amount_without_overtaking(self, cli, tx_hash, tx_hash2):
+        """Два перевода по 700 на возмещение 900: второй отдаёт только 200."""
+        d1, d2 = _make_deal(10000), _make_deal(8000)
+        resp = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1, d2], 'amount_usdt': 900,
+            'tx_uses': [{'tx_hash': tx_hash}, {'tx_hash': tx_hash2}]})
+        assert resp.status_code == 200, resp.get_json()
+        assert _tx_free(tx_hash) == pytest.approx(0.0)
+        assert _tx_free(tx_hash2) == pytest.approx(500.0)
+
+    def test_multi_deal_shares_sum_to_amount(self, cli, tx_hash, tx_hash2):
+        """Несколько сделок в одном возмещении: доли складываются в сумму возмещения."""
+        d1, d2 = _make_deal(30000), _make_deal(10000)
+        cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1, d2], 'amount_usdt': 400,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 400}]})
+        s = get_session()
+        try:
+            shares = [s.query(Deal).get(x).payout_amount_usdt for x in (d1, d2)]
+        finally:
+            s.close()
+        assert sum(shares) == pytest.approx(400)
+        assert shares[0] == pytest.approx(300)   # пропорция по батам 30k:10k

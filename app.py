@@ -11358,6 +11358,14 @@ def create_reimbursement():
         if not founder_name or not deal_ids or not amount_usdt:
             return jsonify({'success': False, 'error': 'Missing required fields'}), 400
 
+        # Сумма возмещения — потолок для всего дальнейшего: и для долей по
+        # переводам, и для долей по сделкам. Приводим к числу здесь, чтобы
+        # ниже сравнивать, а не полагаться на тип из JSON.
+        try:
+            amount_usdt = round(float(amount_usdt), 2)
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Некорректная сумма возмещения'}), 400
+
         # ── Переводы: сколько берём из каждого ────────────────────────────
         # Раньше ничто не мешало ввести тот же хэш второй раз и «возместить» одни
         # и те же деньги дважды. Теперь перевод — сущность с суммой, а возмещение
@@ -11366,35 +11374,52 @@ def create_reimbursement():
         if not tx_uses_req and tx_hashes:
             # Обратная совместимость: старый фронт шлёт только хэши. Считаем,
             # что берём всю сумму возмещения, разложенную по переводам поровну.
-            share = float(amount_usdt) / len(tx_hashes)
-            tx_uses_req = [{'tx_hash': h.strip(), 'amount_usdt': share}
-                           for h in tx_hashes if h.strip()]
+            hs = [h.strip() for h in tx_hashes if h.strip()]
+            share = round(amount_usdt / len(hs), 2)
+            tx_uses_req = [{'tx_hash': h, 'amount_usdt': share} for h in hs]
+            # Последнему — остаток: иначе шесть долей по 84048.17 дают 504289.02
+            # при возмещении 504289.00 и упираются в проверку «взято больше»
+            tx_uses_req[-1]['amount_usdt'] = round(amount_usdt - share * (len(hs) - 1), 2)
 
         prepared_uses = []
+        covered = 0.0   # сколько из суммы возмещения уже набрано переводами
         for item in tx_uses_req:
             h = str(item.get('tx_hash') or '').strip()
             if not h:
                 continue
-            try:
-                take = round(float(item.get('amount_usdt') or 0), 2)
-            except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': f'Некорректная сумма по переводу {h[:16]}…'}), 400
+            raw = item.get('amount_usdt')
+            if raw in (None, ''):
+                take = None   # сумму не сказали — досчитаем от остатка возмещения
+            else:
+                try:
+                    take = round(float(raw), 2)
+                except (TypeError, ValueError):
+                    return jsonify({'success': False, 'error': f'Некорректная сумма по переводу {h[:16]}…'}), 400
 
             tx = session.query(ReimbursementTx).filter(ReimbursementTx.tx_hash == h).first()
             if tx is None:
                 # Первый раз видим перевод — сумму берём из блокчейна, а не с рук.
                 onchain = _tron_tx_amount(h)
+                # TronScan промолчал — верим рукам, а если и там пусто, считаем,
+                # что переводом закрыт непокрытый остаток возмещения.
+                manual_amount = take if take is not None else round(max(amount_usdt - covered, 0), 2)
                 tx = ReimbursementTx(
                     tx_hash=h, founder_name=founder_name,
-                    amount_usdt=onchain if onchain is not None else (take or 0),
+                    amount_usdt=onchain if onchain is not None else manual_amount,
                     source='tronscan' if onchain is not None else 'manual',
                 )
                 session.add(tx)
                 session.flush()
-            if not take:
-                take = tx.free_usdt()
 
             free = tx.free_usdt()
+            if not take:
+                # Раньше брали весь свободный остаток перевода — и перевод на 1952
+                # уходил в возмещение на 1375.46 целиком, «разобран полностью»,
+                # а разница вылезала задвоением в карточке сделки. Берём столько,
+                # сколько осталось покрыть возмещением.
+                take = round(min(free, max(amount_usdt - covered, 0)), 2)
+            if take <= 0:
+                continue   # возмещение уже покрыто предыдущими переводами
             if take > free + 0.01 and not data.get('force'):
                 # Куда перевод уже ушёл. Без этого «доступно $0.00» читается как
                 # поломка, хотя чаще всего это повторный клик по устаревшей форме:
@@ -11416,6 +11441,7 @@ def create_reimbursement():
                                 for u, r in prev],
                 }), 409
             prepared_uses.append((tx, take))
+            covered = round(covered + take, 2)
 
         # ── Явные доли по сделкам ─────────────────────────────────────────
         alloc_req = {}
@@ -11429,6 +11455,22 @@ def create_reimbursement():
             return jsonify({
                 'success': False,
                 'error': f'Распределено ${sum(alloc_req.values()):.2f}, а из переводов взято ${taken_total:.2f}',
+            }), 400
+        # Доли по сделкам не могут быть больше самого возмещения. Раньше сверяли
+        # только с переводами, и связка «взяли перевод целиком + доля = перевод»
+        # проходила молча: возмещение $1375.46, доля сделки $1952 — карточка потом
+        # ругалась на задвоение, а прибыль сделки уходила в фиктивный минус.
+        if alloc_req and round(sum(alloc_req.values()), 2) > amount_usdt + 0.01:
+            return jsonify({
+                'success': False,
+                'error': (f'Распределено по сделкам ${sum(alloc_req.values()):.2f}, '
+                          f'а возмещение на ${amount_usdt:.2f} — поправь суммы'),
+            }), 400
+        if taken_total > amount_usdt + 0.01:
+            return jsonify({
+                'success': False,
+                'error': (f'Из переводов взято ${taken_total:.2f}, а возмещение на ${amount_usdt:.2f}. '
+                          f'Лишнее должно остаться свободным остатком на хэше'),
             }), 400
 
         # Create reimbursement
