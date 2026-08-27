@@ -10816,7 +10816,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     <option value="">-- Выбрать из списка или ввести вручную --</option>
                                     ${outgoingTransactionsCache.map(tx => `
                                         <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">
-                                            ${txHashStatusLabel(tx.tx_hash)}${tx.is_internal ? '🔁 на свой кошелёк · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
+                                            ${txHashStatusLabel(tx.tx_hash)}${tx.is_internal ? '🔁 на свой кошелёк · ' : ''}${tx.tx_hash.substring(0, 12)}… · -$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
                                         </option>
                                     `).join('')}
                                 </select>
