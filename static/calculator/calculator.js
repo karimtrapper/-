@@ -1583,9 +1583,20 @@ function displayResult(result) {
     const warnEl = document.getElementById('marginWarning');
     if (warnEl) {
         const ladder = ladderProfit(getAmount());
+        const delta = Math.abs(profitPct - ladder).toFixed(2).replace(/\.?0+$/, '');
         if (profitPct > 0 && profitPct < ladder - 0.05) {
-            const delta = (ladder - profitPct).toFixed(2).replace(/\.?0+$/, '');
             warnEl.textContent = `⚠️ Ниже стандарта на ${delta} п.п. — по регламенту тут ${ladder}%. Согласовано?`;
+            warnEl.style.background = '#FEF3C7';
+            warnEl.style.borderColor = '#FCD34D';
+            warnEl.style.color = '#92400E';
+            warnEl.style.display = '';
+        } else if (profitPct > ladder + 0.05) {
+            // Переплата клиента — то, из-за чего 27.08.2026 на USDT → THB ушли 4 % вместо 2.4 %.
+            // Молча наказывает клиента, а не нас, поэтому вниз-предупреждения тут мало.
+            warnEl.textContent = `⚠️ Выше стандарта на ${delta} п.п. — клиент переплатит. По регламенту тут ${ladder}%.`;
+            warnEl.style.background = '#FEE2E2';
+            warnEl.style.borderColor = '#FCA5A5';
+            warnEl.style.color = '#991B1B';
             warnEl.style.display = '';
         } else {
             warnEl.style.display = 'none';
