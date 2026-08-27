@@ -3512,6 +3512,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         (t.free_usdt > 0.01
                             ? ` · <b style="color:#b45309;">свободно ещё $${money(t.free_usdt)}</b>`
                             : ` · <span style="color:#166534;">разобран полностью</span>`) + `</div>`;
+                    // Один хэш закрывает несколько сделок разом: часть наперёд (рубли
+                    // получили, USDT ещё нет), часть по факту. Без этого списка было
+                    // непонятно, за что ушла остальная сумма перевода.
+                    const others = (t.other_uses || []);
+                    if (others.length) {
+                        html += `<div style="margin:2px 0 0 12px;color:#475569;">Этим же переводом закрыто ещё:` +
+                            others.map(u => {
+                                const deals = (u.deals || [])
+                                    .map(d => `#${d.deal_id} ${escapeHtml(d.client_name || '')} — $${money(d.share_usdt)}`).join(', ');
+                                const kind = KIND_LABEL[u.kind] || u.kind || '';
+                                return `<div>• возмещение #${u.reimbursement_id} (${kind}) на $${money(u.taken_usdt)}${deals ? ` · ${deals}` : ''}</div>`;
+                            }).join('') + `</div>`;
+                    }
                 });
             } else {
                 html += `<div style="margin-top:4px;color:#94a3b8;">
@@ -4560,6 +4573,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             ${deal.reimbursement_id ? `
                                 <div style="background: #d1fae5; padding: 0.5rem; border-radius: 6px; margin-top: 0.5rem;">
                                     <strong>Возмещение:</strong> #${deal.reimbursement_id} ✅
+                                    ${deal.reimbursement?.kind && deal.reimbursement.kind !== 'manual'
+                                        ? `<span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:1px 8px;font-size:0.8rem;margin-left:4px;">${KIND_LABEL[deal.reimbursement.kind] || deal.reimbursement.kind}</span>` : ''}
                                     ${deal.reimbursement?.tx_hash ? `<br><strong>Хэш возмещения:</strong> <a href="https://tronscan.org/#/transaction/${deal.reimbursement.tx_hash}" target="_blank" style="font-family: monospace; font-size: 0.8rem; text-decoration: none; color: #065f46;">${deal.reimbursement.tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.reimbursement.tx_hash}')" style="cursor: pointer;">📋</span>` : ''}
                                     ${renderReimbursementBreakdown(deal)}
                                 </div>
@@ -9929,6 +9944,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         let outgoingTransactionsCache = [];
         // Хэши, уже учтённые в прошлых возмещениях — помечаем, чтобы не взять дважды
         let usedTxHashes = new Set();
+        // Учёт по хэшам переводов фаундерам: hash → {amount_usdt, used_usdt, free_usdt,
+        // uses_breakdown[]}. Один перевод закрывает несколько возмещений разного типа.
+        let txLedger = {};
         let outgoingWalletsFailed = 0;   // кошельки, не ответившие из-за лимита TronScan
 
         // ── Поступления и конвертации ──────────────────────────────────────
@@ -10708,18 +10726,27 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         async function loadReimbursements() {
             document.getElementById('pendingReimbursementsList').innerHTML = '<p style="color:#888;padding:1rem 0">Загрузка...</p>';
             // 3 запроса параллельно (outgoing теперь быстрый — внутренние переводы отфильтрованы на бэке)
-            const [pendingResult, historyResult, outgoingResult] = await Promise.all([
+            const [pendingResult, historyResult, outgoingResult, txResult] = await Promise.all([
                 fetch(`${API_URL}/api/reimbursements/pending`).then(r => r.json()).catch(() => ({ success: false })),
                 fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({ success: false })),
                 // include_internal: возмещение фаундеру может уйти на адрес, заведённый
                 // у нас как monitored — без этого флага перевод не попадёт в список
                 fetch(`${API_URL}/api/transactions/outgoing?include_internal=1`).then(r => r.json()).catch(() => ({ success: false })),
+                // Учёт по хэшам: сколько из каждого перевода уже разобрано и за что.
+                // Без этого в списке было только «⚠️ уже учтён» — непонятно, можно ли
+                // брать этот хэш ещё раз и сколько на нём осталось.
+                fetch(`${API_URL}/api/reimbursements/tx`).then(r => r.json()).catch(() => ({ success: false })),
             ]);
+            txLedger = {};
+            (txResult.success ? txResult.txs : []).forEach(t => { txLedger[t.tx_hash] = t; });
             outgoingTransactionsCache = outgoingResult.success ? outgoingResult.available : [];
             outgoingWalletsFailed = (outgoingResult.wallets_errors || []).length;
             // Пересобираем: карточки перерисовываются, старый пул к ним уже не относится
             reimburseTxPool = {};
             reimburseAmountManual = {};
+            // Хэши, засветившиеся в истории. Сам факт «уже был» больше ни на что
+            // не влияет — решает остаток из txLedger, — но список полезен, когда
+            // перевод завели руками и в учёте по хэшам его ещё нет.
             usedTxHashes = new Set(
                 (historyResult.success ? historyResult.reimbursements : [])
                     .flatMap(r => r.tx_hashes || [])
@@ -10789,7 +10816,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     <option value="">-- Выбрать из списка или ввести вручную --</option>
                                     ${outgoingTransactionsCache.map(tx => `
                                         <option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}" data-date="${formatDate(tx.timestamp)}">
-                                            ${usedTxHashes.has(tx.tx_hash) ? '⚠️ уже учтён · ' : ''}${tx.is_internal ? '🔁 на свой кошелёк · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
+                                            ${txHashStatusLabel(tx.tx_hash)}${tx.is_internal ? '🔁 на свой кошелёк · ' : ''}-$${tx.amount_usdt.toFixed(2)} → ${tx.to_address.substring(0, 10)}... | ${formatDate(tx.timestamp)}
                                         </option>
                                     `).join('')}
                                 </select>
@@ -10807,6 +10834,14 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 <div class="form-group">
                                     <label class="form-label">Итоговый курс (авто)</label>
                                     <input type="text" class="form-control reimburse-rate" data-founder="${founder.founder_name}" readonly placeholder="THB/USDT">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Тип возмещения</label>
+                                    <select class="form-control reimburse-kind" data-founder="${founder.founder_name}">
+                                        <option value="manual">USDT по сделке уже получили</option>
+                                        <option value="advance">Наперёд — USDT ещё не пришли</option>
+                                    </select>
+                                    <small style="color:#6b7280;">«Наперёд» — когда USDT по сделке ещё не пришли</small>
                                 </div>
                                 <div class="form-group" style="flex: 2;">
                                     <label class="form-label">Хэши вручную (если перевода нет в списке)</label>
@@ -10836,14 +10871,22 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     document.getElementById('reimbursementsList').innerHTML = historyData.reimbursements.map(r => `
                         <div class="batch-card" style="position: relative;">
                             <div class="batch-info">
-                                <h4>Возмещение #${r.id} - ${r.founder_name}</h4>
+                                <h4>Возмещение #${r.id} - ${r.founder_name}
+                                    ${(r.kind && r.kind !== 'manual')
+                                        ? `<span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:1px 8px;font-size:0.75rem;">${KIND_LABEL[r.kind] || r.kind}</span>` : ''}
+                                </h4>
                                 <p>
                                     ${r.deals_count} сделок | ${formatDate(r.created_at)}<br>
                                     ${(r.tx_hashes && r.tx_hashes.length > 0) ? r.tx_hashes.map(h => `<code style="font-size: 0.8rem; cursor: pointer; background: #e0f2fe; padding: 2px 6px; border-radius: 4px; display:inline-block; margin: 1px 0;" onclick="copyHash('${h}')" title="Нажмите чтобы скопировать">${h.substring(0, 25)}...</code>`).join('<br>') : '<span style="color: #f59e0b;">Без хэша</span>'}
                                 </p>
                                 <div style="font-size:0.85rem;color:#475569;">
                                     ${(r.deals_breakdown || []).map(d => `#${d.deal_id} ${escapeHtml(d.client_name || '')} — $${(d.share_usdt || 0).toFixed(2)}`).join(' · ')}
-                                    ${(r.tx_free_total || 0) > 0.01 ? `<div style="color:#b45309;font-weight:600;margin-top:2px;">Не разобрано по переводам: $${r.tx_free_total.toFixed(2)}</div>` : ''}
+                                    ${(r.tx_free_total || 0) > 0.01 ? `<div style="color:#b45309;font-weight:600;margin-top:2px;">Свободный остаток на переводах: $${r.tx_free_total.toFixed(2)}</div>` : ''}
+                                    ${(r.tx_uses || []).filter(t => (t.other_uses || []).length).map(t => `
+                                        <div style="margin-top:4px;color:#475569;">
+                                            Хэш <code style="font-size:0.75rem;">${(t.tx_hash || '').substring(0, 12)}…</code> ($${t.tx_amount_usdt.toFixed(2)}) закрыл ещё:
+                                            ${t.other_uses.map(u => `<div>• #${u.reimbursement_id} (${KIND_LABEL[u.kind] || u.kind}) — $${u.taken_usdt.toFixed(2)}${(u.deals || []).length ? ' · ' + u.deals.map(d => `#${d.deal_id} ${escapeHtml(d.client_name || '')}`).join(', ') : ''}</div>`).join('')}
+                                        </div>`).join('')}
                                 </div>
                             </div>
                             <div class="batch-amount">
@@ -10913,19 +10956,60 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             return (reimburseTxPool[founderName] || []).reduce((s, t) => s + t.amount, 0);
         }
 
+        const KIND_LABEL = { advance: 'наперёд', auto: 'автозачёт', manual: 'по факту' };
+
+        function txHashStatusLabel(hash) {
+            /* Метка перевода в списке. Раньше писали просто «⚠️ уже учтён», и
+               оператор не знал, можно ли брать хэш ещё раз: одним переводом
+               Андрей закрывает и рублёвые сделки наперёд, и сделку с уже
+               полученными USDT. Показываем остаток и число возмещений. */
+            const t = txLedger[hash];
+            if (!t) return '';
+            const uses = (t.uses_breakdown || []).length;
+            if (t.free_usdt > 0.01) {
+                return `♻️ свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}${uses ? ` (возмещений: ${uses})` : ''} · `;
+            }
+            return `✅ разобран полностью${uses ? ` (возмещений: ${uses})` : ''} · `;
+        }
+
+        function renderTxUsesLine(t) {
+            /* Одной строкой: за что ушёл перевод. Используем и в истории
+               возмещений, и в пуле выбранных переводов. */
+            const rows = (t && t.uses_breakdown) || [];
+            if (!rows.length) return '';
+            return rows.map(u => {
+                const deals = (u.deals || []).map(d => `#${d.deal_id} ${escapeHtml(d.client_name || '')}`).join(', ');
+                const kind = KIND_LABEL[u.kind] || u.kind || '';
+                return `<div>• возмещение #${u.reimbursement_id} (${kind}) — $${(u.taken_usdt || 0).toFixed(2)}${deals ? ` · ${deals}` : ''}</div>`;
+            }).join('');
+        }
+
         function renderTxPool(founderName) {
             const box = document.querySelector(`.reimburse-tx-pool[data-founder="${founderName}"]`);
             if (!box) return;
             const pool = reimburseTxPool[founderName] || [];
             if (!pool.length) { box.innerHTML = ''; return; }
-            box.innerHTML = pool.map(t => `
-                <div style="display:flex;align-items:center;gap:0.5rem;background:white;border:1px solid #e5e7eb;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
-                    <strong style="color:#667eea;">$${t.amount.toFixed(2)}</strong>
-                    <code style="flex:1;color:#6b7280;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
-                    <span style="color:#9ca3af;">${t.date || ''}</span>
-                    ${usedTxHashes.has(t.hash) ? '<span title="Уже учтён в другом возмещении">⚠️</span>' : ''}
-                    <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePoolTx('${founderName}','${t.hash}')">✕</button>
-                </div>`).join('') +
+            box.innerHTML = pool.map(t => {
+                const led = txLedger[t.hash];
+                // Что уже висит на этом хэше — видно до отправки формы, а не после
+                const spent = led && (led.uses_breakdown || []).length
+                    ? `<div style="font-size:0.8rem;color:#475569;padding:2px 8px 4px;">
+                           Уже закрыто этим переводом (свободно $${led.free_usdt.toFixed(2)} из $${led.amount_usdt.toFixed(2)}):
+                           ${renderTxUsesLine(led)}
+                       </div>`
+                    : '';
+                return `
+                <div style="background:white;border:1px solid #e5e7eb;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <strong style="color:#667eea;">$${t.amount.toFixed(2)}</strong>
+                        ${(t.onchain && Math.abs(t.onchain - t.amount) > 0.01) ? `<span style="color:#b45309;">из $${t.onchain.toFixed(2)}</span>` : ''}
+                        <code style="flex:1;color:#6b7280;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
+                        <span style="color:#9ca3af;">${t.date || ''}</span>
+                        <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePoolTx('${founderName}','${t.hash}')">✕</button>
+                    </div>
+                    ${spent}
+                </div>`;
+            }).join('') +
                 `<div style="text-align:right;font-weight:700;color:#166534;">Выбрано переводов: ${pool.length} · итого $${poolTotal(founderName).toFixed(2)}</div>`;
         }
 
@@ -10940,15 +11024,22 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 showToast('Этот перевод уже добавлен', 'error');
                 return;
             }
+            // В работу берём свободный остаток, а не весь он-чейн объём: перевод
+            // мог уже частично уйти на другие сделки (в том числе наперёд).
+            const led = txLedger[txHash];
+            const onchain = parseFloat(opt?.dataset?.amount) || 0;
             pool.push({
                 hash: txHash,
-                amount: parseFloat(opt?.dataset?.amount) || 0,
+                amount: led ? led.free_usdt : onchain,
+                onchain: led ? led.amount_usdt : onchain,
                 date: opt?.dataset?.date || '',
             });
             renderTxPool(founderName);
             syncReimburseAmount(founderName);
-            if (usedTxHashes.has(txHash)) {
-                showToast('⚠️ Этот перевод уже учтён в другом возмещении', 'error');
+            if (led && led.free_usdt <= 0.01) {
+                showToast('⚠️ Этот перевод уже разобран полностью — свободного остатка нет', 'error');
+            } else if (led && led.used_usdt > 0.01) {
+                showToast(`Из перевода уже разобрано $${led.used_usdt.toFixed(2)}, свободно $${led.free_usdt.toFixed(2)}`, 'warning');
             }
         }
 
@@ -11042,10 +11133,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const current = parseFloat(amountInput?.value) || 0;
             if (Math.abs(current - total) < 0.01) {
                 hint.style.color = '#6b7280';
-                hint.textContent = `= сумма ${pool.length} выбранных переводов`;
+                hint.textContent = `= свободный остаток по ${pool.length} выбранным переводам`;
             } else {
                 hint.style.color = '#b45309';
-                hint.innerHTML = `⚠️ вручную, сумма переводов $${total.toFixed(2)} ` +
+                hint.innerHTML = `⚠️ вручную, свободно по переводам $${total.toFixed(2)} ` +
                     `<button type="button" class="btn btn-sm btn-secondary" style="padding:0 6px;" onclick="syncReimburseAmount('${founderName}', true)">пересчитать</button>`;
             }
         }
@@ -11164,7 +11255,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         amount_usdt: amountUsdt,
                         tx_hashes: txHashes,
                         tx_uses: txUses,
-                        deal_allocations: dealAllocations
+                        deal_allocations: dealAllocations,
+                        kind: document.querySelector(`.reimburse-kind[data-founder="${founderName}"]`)?.value || 'manual'
                     })
                 });
 

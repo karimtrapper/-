@@ -280,3 +280,71 @@ class TestAmountIsTheCeiling:
             s.close()
         assert sum(shares) == pytest.approx(400)
         assert shares[0] == pytest.approx(300)   # пропорция по батам 30k:10k
+
+
+class TestOneHashTwoKinds:
+    """Один перевод — несколько возмещений разного типа.
+
+    Андрей прислал 2000 USDT одним хэшем: часть закрыла рублёвые сделки, где
+    USDT ещё не пришли (возмещение наперёд), часть — сделку, где клиент уже
+    прислал USDT. Система должна показывать по хэшу весь расклад: какое
+    возмещение за что и сколько осталось свободным.
+    """
+
+    def test_kind_advance_stored_and_returned(self, cli, tx_hash, tx_hash2):
+        d1 = _make_deal(10000)
+        r = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
+            'kind': 'advance',
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
+        assert r['reimbursement']['kind'] == 'advance'
+        deal = cli.get(f'/api/deals/{d1}').get_json()['deal']
+        assert deal['reimbursement']['kind'] == 'advance'
+
+    def test_auto_kind_cannot_be_forged(self, cli, tx_hash, tx_hash2):
+        """'auto' ставит только автозачёт: руками такой тип не подсунуть."""
+        d1 = _make_deal(10000)
+        r = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
+            'kind': 'auto', 'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
+        assert r['reimbursement']['kind'] == 'manual'
+
+    def test_deal_card_shows_other_uses_of_same_hash(self, cli, tx_hash, tx_hash2):
+        """В карточке первой сделки видно второе возмещение по тому же хэшу."""
+        d1, d2 = _make_deal(10000), _make_deal(6000)
+        first = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
+            'kind': 'advance',
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
+        second = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d2], 'amount_usdt': 200,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 200}]}).get_json()
+
+        use = cli.get(f'/api/deals/{d1}').get_json()['deal']['reimbursement']['tx_uses'][0]
+        assert use['tx_amount_usdt'] == pytest.approx(700)
+        assert use['free_usdt'] == pytest.approx(200)      # 700 − 300 − 200
+        assert len(use['uses_breakdown']) == 2
+        others = use['other_uses']
+        assert [o['reimbursement_id'] for o in others] == [second['reimbursement']['id']]
+        assert others[0]['taken_usdt'] == pytest.approx(200)
+        assert others[0]['kind'] == 'manual'
+        assert others[0]['deals'][0]['deal_id'] == d2
+        # А в карточке второй сделки — наоборот, видно первое (наперёд)
+        use2 = cli.get(f'/api/deals/{d2}').get_json()['deal']['reimbursement']['tx_uses'][0]
+        assert use2['other_uses'][0]['reimbursement_id'] == first['reimbursement']['id']
+        assert use2['other_uses'][0]['kind'] == 'advance'
+
+    def test_tx_endpoint_returns_full_breakdown(self, cli, tx_hash, tx_hash2):
+        """Справочник переводов отдаёт расклад — форма показывает его до отправки."""
+        d1, d2 = _make_deal(10000), _make_deal(6000)
+        cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
+            'kind': 'advance', 'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]})
+        cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d2], 'amount_usdt': 200,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 200}]})
+        txs = cli.get('/api/reimbursements/tx?founder=Андрей').get_json()['txs']
+        mine = [t for t in txs if t['tx_hash'] == tx_hash][0]
+        assert mine['free_usdt'] == pytest.approx(200)
+        assert {u['kind'] for u in mine['uses_breakdown']} == {'advance', 'manual'}
+        assert sum(u['taken_usdt'] for u in mine['uses_breakdown']) == pytest.approx(500)

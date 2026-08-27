@@ -786,8 +786,12 @@ class Reimbursement(Base):
     amount_usdt = Column(Float, nullable=False)
     tx_hash = Column(Text)  # Несколько хэшей через запятую
     tx_verified = Column(Boolean, default=False)
-    # 'manual' — реальный перевод оунеру; 'auto' — приход от брокера упал прямо
-    # на кошелёк, с которого платили за сделку, и двигать деньги не пришлось.
+    # 'manual'  — реальный перевод оунеру, USDT по сделке уже получены;
+    # 'advance' — оунер прислал USDT наперёд: рубли от клиента есть, USDT ещё нет,
+    #             но баты выданы и деньги вернули сразу. Тот же хэш дальше
+    #             расходуется на другие сделки — отсюда разные типы на одном хэше;
+    # 'auto'    — приход от брокера упал прямо на кошелёк, с которого платили
+    #             за сделку, и двигать деньги не пришлось.
     kind = Column(String(10), default='manual')
     # Каким ВХОДЯЩИМ приходом закрыт долг при автозачёте. Исходящего перевода
     # там нет, и подделывать его хешем клиента нельзя — показываем этот.
@@ -821,12 +825,17 @@ class Reimbursement(Base):
         tx_uses = []
         for u in (self.tx_uses or []):
             tx = u.tx
+            # Весь расход перевода, а не только эта строка: один хэш закрывает
+            # и рублёвые сделки наперёд, и сделку с уже полученными USDT.
+            tx_breakdown = tx.usage_breakdown() if tx else []
             tx_uses.append({
                 'tx_hash': tx.tx_hash if tx else '',
                 'tx_amount_usdt': round((tx.amount_usdt or 0) if tx else 0, 2),
                 'taken_usdt': round(u.amount_usdt or 0, 2),
                 'free_usdt': tx.free_usdt() if tx else 0,
                 'source': tx.source if tx else '',
+                'uses_breakdown': tx_breakdown,
+                'other_uses': [b for b in tx_breakdown if b['reimbursement_id'] != self.id],
             })
         return {'id': self.id, 'founder_name': self.founder_name, 'amount_usdt': total,
                 'tx_hash': self.tx_hash, 'tx_hashes': hashes, 'tx_verified': self.tx_verified,
@@ -883,11 +892,43 @@ class ReimbursementTx(Base):
         """Незадействованный остаток перевода — тот самый «запас»."""
         return round((self.amount_usdt or 0) - self.used_usdt(), 2)
 
-    def to_dict(self):
-        return {'id': self.id, 'tx_hash': self.tx_hash, 'founder_name': self.founder_name,
+    def usage_breakdown(self):
+        """Куда разошёлся перевод: возмещения с их сделками.
+
+        Одним переводом Андрей закрывает и рублёвые сделки, где USDT ещё не
+        пришли (возмещение наперёд), и сделку, где клиент уже прислал USDT.
+        Раньше в карточке было видно только «своё» возмещение, и оставалось
+        непонятным, за что ушла остальная часть перевода.
+        """
+        rows = []
+        for u in (self.uses or []):
+            r = u.reimbursement
+            if r is None:
+                continue
+            rows.append({
+                'reimbursement_id': r.id,
+                'kind': r.kind or 'manual',
+                'founder_name': r.founder_name,
+                'created_at': r.created_at.isoformat() if r.created_at else None,
+                'taken_usdt': round(u.amount_usdt or 0, 2),
+                'reimbursement_usdt': round(r.amount_usdt or 0, 2),
+                'deals': [{'deal_id': d.id,
+                           'client_name': (d.client.name if d.client else d.client_name) or '',
+                           'payout_thb': d.payout_amount_thb,
+                           'share_usdt': round(d.payout_amount_usdt or 0, 2)}
+                          for d in (r.deals or [])],
+            })
+        rows.sort(key=lambda x: x['reimbursement_id'])
+        return rows
+
+    def to_dict(self, with_breakdown=False):
+        data = {'id': self.id, 'tx_hash': self.tx_hash, 'founder_name': self.founder_name,
                 'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
                 'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
                 'created_at': self.created_at.isoformat() if self.created_at else None}
+        if with_breakdown:
+            data['uses_breakdown'] = self.usage_breakdown()
+        return data
 
 
 class ReimbursementTxUse(Base):
@@ -11219,11 +11260,19 @@ def get_reimbursement_txs():
     from sqlalchemy.orm import selectinload
     session = get_session()
     try:
-        q = session.query(ReimbursementTx).options(selectinload(ReimbursementTx.uses))
+        # Тянем сразу возмещения и их сделки: без этого расклад по каждому
+        # переводу разворачивался в N+1 запросов.
+        q = session.query(ReimbursementTx).options(
+            selectinload(ReimbursementTx.uses)
+            .selectinload(ReimbursementTxUse.reimbursement)
+            .selectinload(Reimbursement.deals))
         founder = (request.args.get('founder') or '').strip()
         if founder:
             q = q.filter(ReimbursementTx.founder_name == founder)
-        txs = [t.to_dict() for t in q.order_by(ReimbursementTx.created_at.desc()).all()]
+        # with_breakdown: форме нужно видеть, за что уже ушёл перевод — какие
+        # возмещения и сделки на нём висят, прежде чем брать из остатка.
+        txs = [t.to_dict(with_breakdown=True)
+               for t in q.order_by(ReimbursementTx.created_at.desc()).all()]
         if request.args.get('only_free') == '1':
             txs = [t for t in txs if t['free_usdt'] > 0.01]
         return jsonify({'success': True, 'txs': txs})
@@ -11474,10 +11523,16 @@ def create_reimbursement():
             }), 400
 
         # Create reimbursement
+        # Тип: 'advance' — вернули оунеру до того, как получили USDT по сделке.
+        # 'auto' ставит только автозачёт, руками его прислать нельзя.
+        kind = str(data.get('kind') or 'manual').strip().lower()
+        if kind not in ('manual', 'advance'):
+            kind = 'manual'
         reimbursement = Reimbursement(
             founder_name=founder_name,
             amount_usdt=amount_usdt,
-            tx_hash=tx_hash
+            tx_hash=tx_hash,
+            kind=kind,
         )
         session.add(reimbursement)
         session.flush()  # Get the ID
