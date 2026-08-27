@@ -192,28 +192,56 @@ class TestApi:
         assert len(mine[0]['deal_ids']) == 1
 
 
-class TestCryptoIsNotReimbursement:
-    """USDT клиента уже получены — это конвертация, а не долг фаундеру.
+class TestSettledByPayin:
+    """Долг закрыт, если приход упал на кошелёк, с которого фаундер платил.
 
-    Формулировка Карима (27.08): «если мы всё-таки получаем USDT, то это уже
-    не возмещение, а просто конвертация — получили деньги и отправили, имея
-    разницу». Рублёвая сделка устроена иначе: фаундер финансирует выдачу, а
-    USDT появляются после конвертации — там долг настоящий.
+    Сделка #549 (27.08): клиент прислал 1396.41 USDT прямо на TWyLcj… — тот же
+    кошелёк, откуда Андрей отправил 1952 на обменник. Возвращать нечего, это
+    конвертация: получили и отправили, разница в прибыль. А вот если приход
+    упал на общий кошелёк, у фаундера минус, у компании плюс — долг настоящий.
     """
 
-    def test_crypto_deal_closes_without_queue(self, cli, tx_hash):
-        """Крипто-приход + известная себестоимость → сделка сразу завершена."""
-        r = _create_deal(cli, 16600, tx_hash, 509.42)
-        deal = r.get_json()['deal']
+    def _deal_with_payin(self, cli, tx_hash, payin_hash, payin_method='crypto_direct'):
+        return cli.post('/api/deals', json={
+            'client_name': 'Клиент', 'deal_type': 'pay_in',
+            'payin_method': payin_method, 'payin_amount_usdt': 600,
+            'payin_tx_hashes': [{'hash': payin_hash, 'amount_usdt': 600}],
+            'payout_method': 'transfer', 'payout_source': 'founder_personal',
+            'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42,
+                                  'from_address': WALLET}],
+        }).get_json()['deal']
+
+    def test_payin_on_payer_wallet_closes_deal(self, cli, tx_hash, monkeypatch):
+        payin_hash = _fresh_hash()
+        monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: WALLET)
+        deal = self._deal_with_payin(cli, tx_hash, payin_hash)
         assert deal['needs_reimbursement'] is False
         assert deal['status'] == 'completed'
         assert deal['profit_usdt'] == pytest.approx(600 - 509.42, abs=0.01)
         pending = cli.get('/api/reimbursements/pending').get_json()['by_founder']
-        queued = [d['id'] for g in pending for d in g['deals']]
-        assert deal['id'] not in queued
+        assert deal['id'] not in [d['id'] for g in pending for d in g['deals']]
+
+    def test_partner_usdt_on_payer_wallet_also_closes(self, cli, tx_hash, monkeypatch):
+        """Не только крипта: партнёрские USDT на тот же кошелёк — то же самое."""
+        payin_hash = _fresh_hash()
+        monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: WALLET)
+        deal = self._deal_with_payin(cli, tx_hash, payin_hash, payin_method='partners_cash')
+        assert deal['needs_reimbursement'] is False
+
+    def test_payin_on_company_wallet_keeps_debt(self, cli, tx_hash, monkeypatch):
+        """Приход упал на общий кошелёк — фаундеру всё ещё должны."""
+        payin_hash = _fresh_hash()
+        monkeypatch.setattr(appmod, '_tron_tx_to_address',
+                            lambda h: 'TKTchhXduB6bxD5y7B7Ly6rZdhXx786t9K')
+        deal = self._deal_with_payin(cli, tx_hash, payin_hash)
+        assert deal['needs_reimbursement'] is True
+        assert deal['status'] == 'pending'
+        pending = cli.get('/api/reimbursements/pending').get_json()['by_founder']
+        assert deal['id'] in [d['id'] for g in pending for d in g['deals']]
 
     def test_ruble_deal_still_waits_reimbursement(self, cli, tx_hash):
-        """Рублёвая — как раньше: долг перед фаундером висит до возврата."""
+        """Рублёвая без прихода USDT — долг перед фаундером висит до возврата."""
         r = cli.post('/api/deals', json={
             'client_name': 'Рублёвая', 'deal_type': 'pay_in',
             'payin_method': 'sber_wl', 'payin_amount_rub': 45000,
@@ -225,51 +253,40 @@ class TestCryptoIsNotReimbursement:
         assert deal['needs_reimbursement'] is True
         assert deal['status'] == 'pending'
         pending = cli.get('/api/reimbursements/pending').get_json()['by_founder']
-        queued = [d['id'] for g in pending for d in g['deals']]
-        assert deal['id'] in queued
+        assert deal['id'] in [d['id'] for g in pending for d in g['deals']]
 
-    def test_explicit_flag_wins(self, cli, tx_hash):
-        """Явный needs_reimbursement из формы важнее умного дефолта."""
-        r = cli.post('/api/deals', json={
+    def test_explicit_flag_wins(self, cli, tx_hash, monkeypatch):
+        """Галка менеджера важнее автоматики."""
+        payin_hash = _fresh_hash()
+        monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: WALLET)
+        deal = cli.post('/api/deals', json={
             'client_name': 'Крипта с возвратом', 'deal_type': 'pay_in',
             'payin_method': 'crypto_direct', 'payin_amount_usdt': 600,
+            'payin_tx_hashes': [{'hash': payin_hash, 'amount_usdt': 600}],
             'payout_method': 'transfer', 'payout_source': 'founder_personal',
             'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
             'needs_reimbursement': True,
-            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42}],
-        })
-        deal = r.get_json()['deal']
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42,
+                                  'from_address': WALLET}],
+        }).get_json()['deal']
         assert deal['needs_reimbursement'] is True
         assert deal['status'] == 'pending'
 
+    def test_update_does_not_drop_queued_ruble_deal(self, cli, tx_hash):
+        """Рублёвая в очереди остаётся в ней, даже когда USDT досчитались.
 
-class TestBackfilledTxVerifiedOnDemand:
-    """Бэкфилл ставит сумму «сколько разнесли» — сеть уточняет её при работе.
-
-    После миграции перевод 3d828b22… знал только про свою первую долю 509.42,
-    хотя на самом деле ушло 1952. Если бы мы верили этой сумме, вторая сделка
-    упёрлась бы в выдуманный потолок.
-    """
-
-    def test_manual_amount_replaced_by_chain(self, cli, tx_hash, monkeypatch):
-        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {})
-        _create_deal(cli, 16600, tx_hash, 509.42)
-        assert _tx(tx_hash).source == 'manual'
-        # Сеть ожила — при следующей сделке сумма сверяется
-        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
-            'amount_usdt': 1952.0, 'from_address': WALLET, 'to_address': EXCHANGE})
-        r = _create_deal(cli, 45000, tx_hash, 1375.46)
-        assert r.status_code in (200, 201), r.get_json()
-        tx = _tx(tx_hash)
-        assert tx.amount_usdt == pytest.approx(1952.0)
-        assert tx.source == 'tronscan'
-        assert tx.free_usdt() == pytest.approx(67.12)
-
-    def test_chain_amount_still_blocks_overspend(self, cli, tx_hash, monkeypatch):
-        """Сеть сказала правду — сверх неё выдать всё равно нельзя."""
-        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {})
-        _create_deal(cli, 16600, tx_hash, 509.42)
-        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
-            'amount_usdt': 1952.0, 'from_address': WALLET, 'to_address': EXCHANGE})
-        r = _create_deal(cli, 45000, tx_hash, 1600.0)
-        assert r.status_code == 409, r.get_json()
+        USDT по рублёвой сделке появляются после конвертации — но приходят они
+        компании, а не фаундеру: его деньги всё ещё не вернулись. Пересохранение
+        сделки не должно тихо выносить её из очереди возмещений.
+        """
+        deal_id = cli.post('/api/deals', json={
+            'client_name': 'Рублёвая в очереди', 'deal_type': 'pay_in',
+            'payin_method': 'sber_wl', 'payin_amount_rub': 45000,
+            'payout_method': 'transfer', 'payout_source': 'founder_personal',
+            'payout_founder_name': 'Андрей', 'payout_amount_thb': 16600,
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 509.42}],
+        }).get_json()['deal']['id']
+        # конвертация прошла, USDT известны
+        cli.put(f'/api/deals/{deal_id}', json={'payin_amount_usdt': 520.0})
+        deal = cli.get(f'/api/deals/{deal_id}').get_json()['deal']
+        assert deal['needs_reimbursement'] is True

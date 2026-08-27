@@ -6786,21 +6786,44 @@ def _apply_payout_transfers(deal, data):
         deal.payout_tx_hash = parts[0]['hash']
 
 
-def _payin_usdt_already_received(payin_method, payin_amount_usdt):
-    """USDT по сделке уже получены — возмещать фаундеру нечего.
+def _payin_landed_on_payer_wallet(session, payin_hashes, payout_parts, wallet_id=None):
+    """USDT по сделке упали на тот же кошелёк, с которого фаундер платил за баты.
 
-    Рублёвая сделка финансируется фаундером: он выдал баты, а USDT появятся
-    только после конвертации, до тех пор долг перед ним висит. Крипто-сделка
-    устроена иначе: клиент прислал USDT, мы отправили свои — это конвертация,
-    прибыль равна разнице, отдельного возврата не бывает.
+    Тогда возвращать нечего: фаундер закрыл себя сам этим приходом — «получили
+    и отправили, разница в прибыль». Так было со сделкой #549: клиент прислал
+    1396.41 USDT прямо на TWyLcj…, откуда Андрей и отправлял 1952 на обменник.
+
+    Если приход упал на общий кошелёк, долг перед фаундером настоящий: у него
+    минус, у компании плюс, и сделка обязана остаться в очереди возмещений
+    (регресс `test_себестоимость_считается_из_переводов_при_создании`).
+
+    Способ оплаты роли не играет — крипта, партнёрские USDT или быстро
+    сконвертированные рубли одинаково смотрят на адрес получателя.
     """
-    method = payin_method.value if hasattr(payin_method, 'value') else payin_method
-    if method != PayInMethod.CRYPTO_DIRECT.value:
+    payer = {(p.get('from_address') or '').strip()
+             for p in (payout_parts or []) if p.get('from_address')}
+    if wallet_id:
+        w = session.query(Wallet).get(wallet_id)
+        if w and w.address:
+            payer.add(w.address.strip())
+    if not payer:
         return False
-    try:
-        return float(payin_amount_usdt or 0) > 0
-    except (TypeError, ValueError):
+
+    hashes = [h for h in (payin_hashes or []) if h]
+    if not hashes:
         return False
+    for h in hashes:
+        tx = session.query(PayinTx).filter(PayinTx.tx_hash == h).first()
+        addr = (tx.to_address if tx else None)
+        if not addr:
+            # Адрес прихода обычно проставляет фоновый бэкфилл, но решение о
+            # долге принимается здесь и сейчас — спрашиваем сеть.
+            addr = _tron_tx_to_address(h)
+            if addr and tx:
+                tx.to_address = addr
+        if addr and addr.strip() in payer:
+            return True
+    return False
 
 
 def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
@@ -7279,11 +7302,14 @@ def create_deal():
         elif data.get('payout_source') == PayOutSource.BANK_CARD.value:
             # Баты с карты откуплены заранее, при её пополнении — возмещать нечего
             needs_reimb = False
-        elif _payin_usdt_already_received(data.get('payin_method'),
-                                         data.get('payin_amount_usdt')):
-            # USDT клиента уже у нас: получили и отправили, разница — прибыль.
-            # Возвращать фаундеру отдельным переводом нечего, это не возмещение,
-            # а обычная конвертация (формулировка Карима, 27.08).
+        elif _payin_landed_on_payer_wallet(
+                session,
+                [p.get('hash') for p in _normalize_tx_hashes(data.get('payin_tx_hashes'))
+                 or ([{'hash': data.get('payin_tx_hash')}] if data.get('payin_tx_hash') else [])],
+                _normalize_payout_transfers(data.get('payout_tx_hashes')),
+                data.get('payout_wallet_id')):
+            # Приход упал на кошелёк, с которого фаундер платил за баты: он
+            # закрыл себя сам, это конвертация, а не долг (кейс #549, 27.08).
             needs_reimb = False
         else:
             payout_is_thb = (
@@ -7568,9 +7594,6 @@ def update_deal(deal_id):
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
             if (data.get('payout_source') or (deal.payout_source.value if deal.payout_source else None)) == PayOutSource.BANK_CARD.value:
                 deal.needs_reimbursement = False  # баты с карты уже откуплены
-            elif _payin_usdt_already_received(deal.payin_method, deal.payin_amount_usdt):
-                # USDT клиента уже получены — это конвертация, а не долг фаундеру
-                deal.needs_reimbursement = False
             else:
                 payout_is_thb = bool(deal.payout_amount_thb) or deal.custom_payout_currency == 'THB'
                 deal.needs_reimbursement = payout_is_thb

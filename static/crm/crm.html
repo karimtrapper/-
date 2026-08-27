@@ -8195,9 +8195,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Сумму сеть подставит сама, поэтому в payload уходит хотя бы хеш.
             if (data.payout_source === 'founder_personal') {
                 data.payout_no_conversion = noConversionOn();
-                // Возмещать или нет — решаем здесь, в сделке: в возмещениях
-                // спрашивать поздно, а данных для ответа там столько же
-                data.needs_reimbursement = !payoutSettledOn();
+                // Галку трогали руками — это решение менеджера, оно главнее.
+                // Не трогали — поле не шлём: бэк сам сверит кошелёк прихода
+                // с кошельком, с которого фаундер платил.
+                if (document.getElementById('payoutSettledByPayin')?.dataset.touched === '1') {
+                    data.needs_reimbursement = !payoutSettledOn();
+                }
                 if (data.payout_no_conversion) {
                     // Своими батами: переводов нет, сумму возврата и кошелёк
                     // задаёт человек. Пустой список чистит хеши, если сделку
@@ -9438,14 +9441,44 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (typeof calculateProfit === 'function') calculateProfit();
         }
 
-        function syncPayoutSettledDefault() {
-            /* Предзаполнение по приходу: USDT клиента уже получены — галка стоит.
-               Менеджер может снять её руками, тогда решает он. */
+        // Кэш адресов приходов: hash → to_address, чтобы не дёргать сеть дважды
+        const payinToAddressCache = {};
+
+        async function payinToAddress(hash) {
+            if (!hash || hash.length < 40) return null;
+            if (payinToAddressCache[hash] !== undefined) return payinToAddressCache[hash];
+            try {
+                const r = await (await fetch(`${API_URL}/api/tron/payout-tx?hash=${encodeURIComponent(hash)}`)).json();
+                payinToAddressCache[hash] = r.success ? (r.to_address || null) : null;
+            } catch (e) {
+                payinToAddressCache[hash] = null;
+            }
+            return payinToAddressCache[hash];
+        }
+
+        async function syncPayoutSettledDefault() {
+            /* Решает адрес прихода, а не способ оплаты. Клиент прислал USDT на
+               тот же кошелёк, с которого фаундер платил за баты, — он закрыл
+               себя сам, возвращать нечего (сделка #549). Приход упал на общий
+               кошелёк — у фаундера минус, долг настоящий. Менеджер трогал
+               галку руками — больше не вмешиваемся. */
             const box = document.getElementById('payoutSettledByPayin');
             if (!box || box.dataset.touched === '1') return;
-            const method = document.querySelector('[name="payin_method"]')?.value;
-            const usdt = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value);
-            box.checked = method === 'crypto_direct' && !isNaN(usdt) && usdt > 0;
+            const payer = new Set(payoutTxPool.map(t => (t.from_address || '').trim()).filter(Boolean));
+            const hashes = [
+                ...(payinTxPool || []).map(t => t.hash),
+                (document.querySelector('[name="payin_tx_hash"]')?.value || '').trim(),
+            ].filter(Boolean);
+            if (!payer.size || !hashes.length) { box.checked = false; togglePayoutSettled(); return; }
+            for (const h of hashes) {
+                const to = await payinToAddress(h);
+                if (to && payer.has(to.trim())) {
+                    box.checked = true;
+                    togglePayoutSettled();
+                    return;
+                }
+            }
+            box.checked = false;
             togglePayoutSettled();
         }
 
@@ -9626,6 +9659,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 wallet_label: opt?.dataset?.label || '',
             });
             renderPayoutTxPool();
+            syncPayoutSettledDefault();
             if (led && led.used_usdt > 0.01) {
                 showToast(payoutTxHint(hash), 'warning');
             }

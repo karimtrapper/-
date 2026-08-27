@@ -298,5 +298,7 @@ def test_settled_checkbox_lives_in_deal_form(html):
     """
     assert 'id="payoutSettledByPayin"' in html
     assert 'reimburse-kind' not in html, 'селект типа в возмещениях должен быть убран'
-    # Галка управляет именно флагом возмещения
+    # Галка управляет флагом возмещения — но только когда её трогали руками:
+    # иначе решение принимает бэк, сверяя кошелёк прихода с кошельком выдачи
+    assert "dataset.touched === '1'" in html
     assert 'data.needs_reimbursement = !payoutSettledOn()' in html
