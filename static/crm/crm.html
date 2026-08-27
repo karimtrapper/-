@@ -9375,6 +9375,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     ${t.wallet_label || t.from_address ? `<div style="font-size:0.78rem;color:#64748b;padding:0 4px 2px 8px;">
                         с кошелька ${t.wallet_label ? '<b>' + escapeHtml(t.wallet_label) + '</b> ' : ''}
                         <code>${(t.from_address || '').slice(0, 14)}…</code> — туда же пойдёт возврат</div>` : ''}
+                    ${payoutTxHint(t.hash) ? `<div style="font-size:0.78rem;color:#b45309;padding:0 4px 2px 8px;">${payoutTxHint(t.hash)}</div>` : ''}
                 </div>`).join('') +
                 `<div style="text-align:right;font-weight:700;color:#b91c1c;">Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}</div>`;
             payoutRefreshInfo();
@@ -9504,6 +9505,50 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 (wallets.length > 1 ? '<br><b style="color:#b45309">Переводы с разных кошельков — возврат разложится по ним</b>' : '');
         }
 
+        // Реестр переводов выдачи: hash → {amount_usdt, used_usdt, free_usdt, deal_ids}.
+        // Один перевод на обменник оплачивает выдачи нескольким клиентам, поэтому
+        // в сделку идёт доля, а не весь перевод.
+        let payoutTxLedger = {};
+
+        async function loadPayoutTxLedger() {
+            try {
+                const r = await (await fetch(`${API_URL}/api/payout-tx`)).json();
+                payoutTxLedger = {};
+                (r.txs || []).forEach(t => { payoutTxLedger[t.tx_hash] = t; });
+            } catch (e) {
+                console.warn('payout-tx ledger:', e);
+            }
+        }
+
+        function payoutTxFree(hash, currentDealId) {
+            /* Свободный остаток перевода с точки зрения ЭТОЙ сделки: её
+               собственная доля не считается занятой — иначе при повторном
+               сохранении сделка сама себе перекрывала бы остаток. */
+            const t = payoutTxLedger[hash];
+            if (!t) return null;
+            const mine = (t.deal_ids || []).includes(currentDealId) ? 0 : 0;
+            return t.free_usdt + mine;
+        }
+
+        function payoutTxOptionLabel(hash) {
+            /* Что видно прямо в списке: разобран перевод или из него ещё можно
+               выдать. Раньше строка показывала только сумму и кошельки, и было
+               не понять, что этот перевод уже оплатил чужую выдачу. */
+            const t = payoutTxLedger[hash];
+            if (!t || t.used_usdt <= 0.01) return '';
+            return t.free_usdt > 0.01
+                ? `♻️ свободно $${t.free_usdt.toFixed(2)} · `
+                : '✅ разобран · ';
+        }
+
+        function payoutTxHint(hash) {
+            const t = payoutTxLedger[hash];
+            if (!t) return '';
+            if (t.used_usdt <= 0.01) return '';
+            const deals = (t.deal_ids || []).map(id => '#' + id).join(', ');
+            return `по переводу уже разнесено $${t.used_usdt.toFixed(2)}${deals ? ' (' + deals + ')' : ''}, свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}`;
+        }
+
         function selectPayoutTx(select) {
             const opt = select.selectedOptions[0];
             const hash = select.value;
@@ -9514,15 +9559,23 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 return;
             }
             const amount = parseFloat(opt?.dataset?.amount);
+            const led = payoutTxLedger[hash];
+            // Подставляем свободный остаток: перевод на 1952 мог уже оплатить
+            // выдачу другой сделке, и целиком его брать нельзя
+            const suggested = led ? led.free_usdt : (isNaN(amount) ? null : amount);
             payoutTxPool.push({
                 hash,
-                amount_usdt: isNaN(amount) ? null : amount,
+                amount_usdt: suggested,
+                onchain_usdt: led ? led.amount_usdt : (isNaN(amount) ? null : amount),
                 date: opt?.dataset?.date || '',
                 from_address: opt?.dataset?.from || '',
                 to_address: opt?.dataset?.to || '',
                 wallet_label: opt?.dataset?.label || '',
             });
             renderPayoutTxPool();
+            if (led && led.used_usdt > 0.01) {
+                showToast(payoutTxHint(hash), 'warning');
+            }
         }
 
         // Список исходящих — тот же источник, что у формы возмещений
@@ -9530,6 +9583,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         async function loadOutgoingTxForSelect(force) {
             const select = document.getElementById('payoutTxSelect');
             if (!select) return;
+            // Остатки по переводам должны приехать раньше списка: иначе опции
+            // отрисуются без пометки «свободно / разобран»
+            await loadPayoutTxLedger();
             const btn = document.getElementById('payoutTxRefreshBtn');
             if (btn) { btn.disabled = true; btn.textContent = '…'; }
             // Пустой селект читается как «переводов нет», хотя на холодном кэше
@@ -9592,7 +9648,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         `<option value="${tx.tx_hash}" data-amount="${tx.amount_usdt}"
                                  data-date="${formatDate(tx.timestamp)}" data-from="${tx.from_address || ''}"
                                  data-to="${tx.to_address || ''}" data-label="${escapeHtml(labels[tx.from_address] || '')}">
-                            −$${Number(tx.amount_usdt).toFixed(2)} | ${who(tx.from_address)} → ${who(tx.to_address)}${
+                            ${payoutTxOptionLabel(tx.tx_hash)}−$${Number(tx.amount_usdt).toFixed(2)} | ${tx.tx_hash.substring(0, 10)}… | ${who(tx.from_address)} → ${who(tx.to_address)}${
                                 tx.is_internal ? ' · между своими' : ''} | ${formatDate(tx.timestamp)}</option>`
                     ).join('');
                 select.dataset.loaded = '1';

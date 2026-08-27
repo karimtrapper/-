@@ -76,6 +76,7 @@ READONLY_PATHS = [
     '/api/referrers',             # рефереры, их неоплаченные сделки, заявки
     '/api/payout-requests',       # заявки рефереров на вывод
     '/api/reimbursements',        # возмещения, в т.ч. /pending — что не возмещено
+    '/api/payout-tx',             # переводы выдачи с остатками
     '/api/wallets', '/api/cards', '/api/cash/',
     '/api/transactions/',         # приходы и расходы по кошелькам
     '/api/sber-incomes', '/api/wl-transactions',
@@ -1005,6 +1006,69 @@ class PayinTxUse(Base):
     amount_usdt = Column(Float, nullable=False, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     tx = relationship('PayinTx', back_populates='uses')
+
+
+class PayoutTx(Base):
+    """Исходящий USDT-перевод выдачи — одна запись на хэш.
+
+    Третье зеркало к PayinTx и ReimbursementTx, последнее место, где остаток
+    не считался. Фаундер отправляет USDT на обменник одной суммой, а баты из
+    неё выдаются нескольким клиентам: перевод 3d828b22… на 1952 закрыл и
+    сделку на 16 600 ฿, и следующую на 45 000 ฿. Пока переводы жили JSON-полем
+    внутри сделки, один и тот же хэш можно было указать в пяти сделках на
+    полную сумму — себестоимость задваивалась молча.
+    """
+    __tablename__ = 'payout_txs'
+    id = Column(Integer, primary_key=True)
+    tx_hash = Column(String(120), nullable=False, unique=True, index=True)
+    amount_usdt = Column(Float, nullable=False, default=0)
+    source = Column(String(20), default='manual')     # tronscan | manual
+    from_address = Column(String(100), nullable=True)  # кошелёк, который платил
+    to_address = Column(String(100), nullable=True)    # куда ушло (обменник)
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    uses = relationship('PayoutTxUse', back_populates='tx', cascade='all, delete-orphan')
+
+    def used_usdt(self):
+        """Сколько из перевода уже разнесено по сделкам.
+
+        Запросом, а не по self.uses: доли добавляются и читаются внутри одного
+        запроса, коллекция в памяти к этому моменту не перечитана (см. PayinTx).
+        """
+        from sqlalchemy import func as _f
+        from sqlalchemy.orm import object_session
+        s = object_session(self)
+        if s is not None and self.id:
+            with s.no_autoflush:
+                val = s.query(_f.sum(PayoutTxUse.amount_usdt)).filter(
+                    PayoutTxUse.tx_id == self.id).scalar()
+            return round(val or 0, 2)
+        return round(sum(u.amount_usdt or 0 for u in (self.uses or [])), 2)
+
+    def free_usdt(self):
+        """Нераспределённый остаток — сколько из перевода ещё можно выдать."""
+        return round((self.amount_usdt or 0) - self.used_usdt(), 2)
+
+    def to_dict(self):
+        return {'id': self.id, 'tx_hash': self.tx_hash,
+                'from_address': self.from_address, 'to_address': self.to_address,
+                'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
+                'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
+                'deal_ids': sorted({u.deal_id for u in (self.uses or []) if u.deal_id}),
+                'notes': self.notes,
+                'created_at': self.created_at.isoformat() if self.created_at else None}
+
+
+class PayoutTxUse(Base):
+    """Сколько из конкретного перевода выдачи отнесено на конкретную сделку."""
+    __tablename__ = 'payout_tx_uses'
+    __table_args__ = (UniqueConstraint('tx_id', 'deal_id', name='uq_payout_tx_use'),)
+    id = Column(Integer, primary_key=True)
+    tx_id = Column(Integer, ForeignKey('payout_txs.id'), nullable=False, index=True)
+    deal_id = Column(Integer, ForeignKey('deals.id'), nullable=False, index=True)
+    amount_usdt = Column(Float, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    tx = relationship('PayoutTx', back_populates='uses')
 
 
 class ConversionStatus(str, Enum):
@@ -2447,6 +2511,46 @@ try:
                 print(f'✅ Бэкфилл реестра приходов: {len(claims)} переводов')
 except Exception as e:
     print(f"ℹ️ payin_txs backfill: {e}")
+
+# Реестр переводов выдачи: один хэш обслуживает несколько сделок (зеркало payin_txs)
+try:
+    Base.metadata.create_all(engine, tables=[PayoutTx.__table__, PayoutTxUse.__table__])
+except Exception as e:
+    print(f"ℹ️ payout_txs migration: {e}")
+
+# Бэкфилл реестра выдач: хэши из payout_tx_hashes становятся переводами с долями.
+# Без него старые переводы не найдутся в реестре, и остаток по ним посчитается
+# с нуля — то есть перевод, уже разобранный по сделкам, выглядел бы свободным.
+# Сумма перевода = сумма долей: сеть на старте не опрашиваем (сотни запросов),
+# помечаем source='manual' — сверить можно при следующем сохранении сделки.
+try:
+    with SessionLocal() as _s:
+        if _s.query(PayoutTx).count() == 0:
+            _claims = {}
+            for _d in _s.query(Deal).filter(Deal.payout_tx_hashes != None).all():
+                try:
+                    for _p in json.loads(_d.payout_tx_hashes) or []:
+                        if _p.get('hash'):
+                            _claims.setdefault(_p['hash'], []).append(
+                                (_d.id, float(_p.get('amount_usdt') or 0), _p.get('from_address'),
+                                 _p.get('to_address')))
+                except (ValueError, TypeError, AttributeError):
+                    continue
+            for _hash, _uses in _claims.items():
+                _tx = PayoutTx(tx_hash=_hash, source='manual',
+                               amount_usdt=round(sum(a for _, a, _f1, _t1 in _uses), 2),
+                               from_address=next((f for _, _a, f, _t in _uses if f), None),
+                               to_address=next((t for _, _a, _f2, t in _uses if t), None),
+                               notes='бэкфилл: сумма из CRM, с сетью не сверена')
+                _s.add(_tx)
+                _s.flush()
+                for _deal_id, _amt, _f3, _t3 in _uses:
+                    _s.add(PayoutTxUse(tx_id=_tx.id, deal_id=_deal_id, amount_usdt=_amt))
+            _s.commit()
+            if _claims:
+                print(f'✅ Бэкфилл реестра выдач: {len(_claims)} переводов')
+except Exception as e:
+    print(f"ℹ️ payout_txs backfill: {e}")
 
 # Дополнительные приходы: несколько способов Pay-In в одной сделке
 try:
@@ -6655,6 +6759,16 @@ def _payout_transfers_total(deal):
 PAYOUT_RATE_CORRIDOR = (25.0, 45.0)
 
 
+def _payout_transfer_parts(deal):
+    """Переводы выдачи сделки как [{hash, amount_usdt, ...}] — вход для реестра долей."""
+    if not deal.payout_tx_hashes:
+        return []
+    try:
+        return _normalize_payout_transfers(json.loads(deal.payout_tx_hashes))
+    except (ValueError, TypeError):
+        return []
+
+
 def _apply_payout_transfers(deal, data):
     """Сохраняет фактические переводы выдачи: сумма, адрес, дата.
 
@@ -6670,6 +6784,119 @@ def _apply_payout_transfers(deal, data):
     deal.payout_tx_hashes = json.dumps(parts, ensure_ascii=False) if parts else None
     if parts and parts[0].get('hash'):
         deal.payout_tx_hash = parts[0]['hash']
+
+
+def _payin_usdt_already_received(payin_method, payin_amount_usdt):
+    """USDT по сделке уже получены — возмещать фаундеру нечего.
+
+    Рублёвая сделка финансируется фаундером: он выдал баты, а USDT появятся
+    только после конвертации, до тех пор долг перед ним висит. Крипто-сделка
+    устроена иначе: клиент прислал USDT, мы отправили свои — это конвертация,
+    прибыль равна разнице, отдельного возврата не бывает.
+    """
+    method = payin_method.value if hasattr(payin_method, 'value') else payin_method
+    if method != PayInMethod.CRYPTO_DIRECT.value:
+        return False
+    try:
+        return float(payin_amount_usdt or 0) > 0
+    except (TypeError, ValueError):
+        return False
+
+
+def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
+    """Перевод выдачи из реестра, при отсутствии — заводит.
+
+    Сумму и адреса тянем из сети: она источник истины, по ней считается остаток
+    и ловится попытка выдать из перевода больше, чем ушло. Сеть промолчала —
+    ставим заявленную долю и source='manual' («не сверено»), иначе сделка не
+    сохранилась бы из-за недоступного TronScan.
+    """
+    tx = session.query(PayoutTx).filter(PayoutTx.tx_hash == tx_hash).first()
+    if tx:
+        return tx
+    part = part or {}
+    amount, source = None, 'manual'
+    info = {}
+    try:
+        info = _tron_tx_info(tx_hash) or {}
+        if info.get('amount_usdt'):
+            amount, source = info['amount_usdt'], 'tronscan'
+    except Exception as e:
+        print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
+    tx = PayoutTx(tx_hash=tx_hash,
+                  amount_usdt=amount if amount is not None else float(claim_usdt or 0),
+                  source=source,
+                  from_address=info.get('from_address') or part.get('from_address'),
+                  to_address=info.get('to_address') or part.get('to_address'))
+    session.add(tx)
+    session.flush()
+    return tx
+
+
+def _sync_payout_tx_uses(session, deal, parts):
+    """Синхронизирует доли сделки в переводах выдачи.
+
+    Зеркало _sync_payin_tx_uses. Инвариант тот же: сумма долей по переводу не
+    больше того, что реально ушло (допуск копейка). Превышение — двойной учёт
+    себестоимости: один перевод оплатил бы две выдачи целиком.
+    """
+    wanted = {p['hash']: p for p in (parts or []) if p.get('hash')}
+
+    for use in session.query(PayoutTxUse).filter(PayoutTxUse.deal_id == deal.id).all():
+        tx = session.query(PayoutTx).get(use.tx_id)
+        if not tx or tx.tx_hash not in wanted:
+            session.delete(use)
+    session.flush()
+
+    for tx_hash, part in wanted.items():
+        claim = part.get('amount_usdt')
+        tx = _payout_tx_get_or_create(session, tx_hash, claim, part)
+        use = session.query(PayoutTxUse).filter(
+            PayoutTxUse.tx_id == tx.id, PayoutTxUse.deal_id == deal.id).first()
+        # Долю не указали — сделка забирает свободный остаток перевода
+        share = float(claim) if claim not in (None, '') else None
+        if share is None:
+            share = round((tx.amount_usdt or 0) - tx.used_usdt()
+                          + (use.amount_usdt if use else 0), 2)
+        if use:
+            use.amount_usdt = share
+        else:
+            use = PayoutTxUse(tx_id=tx.id, deal_id=deal.id, amount_usdt=share)
+            session.add(use)
+        session.flush()
+
+        if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
+            if tx.source != 'tronscan':
+                # Потолок выдуман: сумма пришла из бэкфилла или с рук, когда сеть
+                # молчала. Прежде чем раздувать его, спрашиваем сеть — там правда.
+                info = {}
+                try:
+                    info = _tron_tx_info(tx.tx_hash) or {}
+                except Exception as e:
+                    print(f'[PayoutTx] сверка с сетью не удалась {tx.tx_hash[:12]}…: {e}')
+                if info.get('amount_usdt'):
+                    tx.amount_usdt = info['amount_usdt']
+                    tx.source = 'tronscan'
+                    tx.notes = None
+                    tx.from_address = tx.from_address or info.get('from_address')
+                    tx.to_address = tx.to_address or info.get('to_address')
+                    session.flush()
+                    if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
+                        free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
+                        raise ValueError(
+                            f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
+                            f'свободно ${free:,.2f} — нельзя отнести на сделку ${share:,.2f}')
+                    continue
+                # Сеть тоже не знает — поднимаем до разобранного с пометкой
+                tx.amount_usdt = tx.used_usdt()
+                if not tx.notes:
+                    tx.notes = 'сумма из CRM, с сетью не сверена'
+                session.flush()
+            else:
+                free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
+                raise ValueError(
+                    f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
+                    f'свободно ${free:,.2f} — нельзя отнести на сделку ${share:,.2f}')
 
 
 def _payout_cost_from_transfers(deal):
@@ -7054,6 +7281,12 @@ def create_deal():
         elif data.get('payout_source') == PayOutSource.BANK_CARD.value:
             # Баты с карты откуплены заранее, при её пополнении — возмещать нечего
             needs_reimb = False
+        elif _payin_usdt_already_received(data.get('payin_method'),
+                                         data.get('payin_amount_usdt')):
+            # USDT клиента уже у нас: получили и отправили, разница — прибыль.
+            # Возвращать фаундеру отдельным переводом нечего, это не возмещение,
+            # а обычная конвертация (формулировка Карима, 27.08).
+            needs_reimb = False
         else:
             payout_is_thb = (
                 bool(data.get('payout_amount_thb'))
@@ -7121,6 +7354,13 @@ def create_deal():
         if 'payout_tx_hashes' in data and deal.deal_kind not in REALTY_KINDS:
             _apply_payout_transfers(deal, data)
             _enrich_payout_transfers(session, deal)
+            # Доли сделки в переводах выдачи: один перевод оплачивает выдачи
+            # нескольким клиентам, поэтому остаток ведётся реестром
+            try:
+                _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+            except ValueError as e:
+                session.rollback()
+                return jsonify({'success': False, 'error': str(e)}), 409
 
         # Выдача с карты: снимаем баты с остатка и берём себестоимость по курсу
         # карты. Обязательно до пересчёта финансов — прибыль считается из неё
@@ -7180,8 +7420,11 @@ def create_deal():
         # такую сделку сразу = прибыль равна минус всей выплате (#519: −319.20
         # при 30 750.72 ₽ прихода) и уведомление с этим минусом уходит в TG.
         # Пока payin_amount_usdt пуст — держим pending, закроется в PUT.
-        if (deal.payout_source == PayOutSource.BANK_CARD
-                and deal.status == DealStatus.PENDING
+        # Возмещения не будет (карта или USDT клиента уже получены), а обе ноги
+        # известны — держать сделку в pending нечего: прибыль посчитана.
+        if (deal.status == DealStatus.PENDING
+                and deal.needs_reimbursement is False
+                and deal.deal_kind not in REALTY_KINDS   # у недвижимости свой «Завершить»
                 and deal.payout_amount_usdt
                 and deal.payin_amount_usdt):
             deal.status = DealStatus.COMPLETED
@@ -7327,6 +7570,9 @@ def update_deal(deal_id):
         if 'needs_reimbursement' not in data and deal.reimbursement_id is None:
             if (data.get('payout_source') or (deal.payout_source.value if deal.payout_source else None)) == PayOutSource.BANK_CARD.value:
                 deal.needs_reimbursement = False  # баты с карты уже откуплены
+            elif _payin_usdt_already_received(deal.payin_method, deal.payin_amount_usdt):
+                # USDT клиента уже получены — это конвертация, а не долг фаундеру
+                deal.needs_reimbursement = False
             else:
                 payout_is_thb = bool(deal.payout_amount_thb) or deal.custom_payout_currency == 'THB'
                 deal.needs_reimbursement = payout_is_thb
@@ -7447,6 +7693,11 @@ def update_deal(deal_id):
             if 'payout_tx_hashes' in data:
                 _apply_payout_transfers(deal, data)
                 _enrich_payout_transfers(session, deal)
+                try:
+                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                except ValueError as e:
+                    session.rollback()
+                    return jsonify({'success': False, 'error': str(e)}), 409
             _apply_payout_cost_from_transfers(deal)
             _recalculate_deal_financials(deal, data)
 
@@ -7494,7 +7745,9 @@ def update_deal(deal_id):
         # ниже (по переходу old_status → COMPLETED). Явный status в payload
         # приоритетнее: решение оператора не перебиваем.
         if ('status' not in data
-                and deal.payout_source == PayOutSource.BANK_CARD
+                and deal.needs_reimbursement is False
+                and deal.reimbursement_id is None
+                and deal.deal_kind not in REALTY_KINDS
                 and deal.status == DealStatus.PENDING
                 and deal.payin_amount_usdt
                 and deal.payout_amount_usdt):
@@ -7611,6 +7864,9 @@ def delete_deal(deal_id):
         # payin_tx_uses_deal_id_fkey не даёт удалить сделку вовсе, а сама доля
         # осталась бы висеть и занимать остаток перевода
         session.query(PayinTxUse).filter(PayinTxUse.deal_id == deal_id).delete()
+        # То же для переводов выдачи: доля удалённой сделки должна вернуться
+        # в свободный остаток перевода, а не держать его занятым
+        session.query(PayoutTxUse).filter(PayoutTxUse.deal_id == deal_id).delete()
 
         # Отвязываем LOSE, привязанные к этой WON (иначе FK revived_by_deal_id заблокирует удаление)
         session.query(Deal).filter(Deal.revived_by_deal_id == deal_id).update(
@@ -11248,6 +11504,25 @@ def lookup_payout_tx():
                         'wallet_label': (wallet.label if wallet else None)})
     finally:
         db.close()
+
+
+@app.route('/api/payout-tx', methods=['GET'])
+def get_payout_txs():
+    """Переводы выдачи с остатками — подсказка для формы сделки.
+
+    `?only_free=1` оставляет те, из которых ещё есть что выдать.
+    """
+    from sqlalchemy.orm import selectinload
+    session = get_session()
+    try:
+        txs = [t.to_dict() for t in session.query(PayoutTx)
+               .options(selectinload(PayoutTx.uses))
+               .order_by(PayoutTx.created_at.desc()).limit(300).all()]
+        if request.args.get('only_free') == '1':
+            txs = [t for t in txs if t['free_usdt'] > 0.01]
+        return jsonify({'success': True, 'txs': txs})
+    finally:
+        session.close()
 
 
 @app.route('/api/reimbursements/tx', methods=['GET'])
