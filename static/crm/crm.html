@@ -1608,6 +1608,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     </div>
                                 </div>
 
+                                <!-- Возмещать или нет — видно уже здесь: если USDT клиента
+                                     пришли, фаундеру возвращать нечего, это конвертация. -->
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:0.75rem;
+                                              padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+                                    <input type="checkbox" id="payoutSettledByPayin"
+                                           onchange="this.dataset.touched='1'; togglePayoutSettled()">
+                                    <span style="font-weight:600;color:#166534;">Деньги за эту выдачу уже у нас — возмещать не нужно</span>
+                                </label>
+                                <div id="payoutSettledHint" style="font-size:0.82rem;color:#64748b;margin:-4px 0 10px 10px;"></div>
+
                                 <div id="payoutTransfersBox">
                                 <label class="form-label">Переводы выдачи с кошелька фаундера
                                     <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
@@ -5034,6 +5044,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             const hashInput = document.getElementById('payoutFounderHash');
                             if (hashInput) hashInput.value = '';
                             renderPayoutTxPool();
+                            // Возмещение: как сохранили, так и показываем — иначе
+                            // пересохранение сделки переигрывало бы решение менеджера
+                            const settledBox = document.getElementById('payoutSettledByPayin');
+                            if (settledBox) {
+                                settledBox.checked = deal.needs_reimbursement === false;
+                                settledBox.dataset.touched = '1';
+                                togglePayoutSettled();
+                            }
                             // Выдача своими батами: возвращаем сумму и кошелёк, иначе
                             // пересохранение сделки стёрло бы их валидацией
                             const noConvBox = document.getElementById('payoutNoConversion');
@@ -6132,6 +6150,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Show/hide fields based on payin method
         document.getElementById('payinMethod').addEventListener('change', applyPayinMethodFields);
+        // Метод прихода меняет ответ на вопрос «возмещать ли»: крипта = деньги
+        // уже у нас, рубли = фаундер отправил наперёд
+        document.getElementById('payinMethod').addEventListener('change', syncPayoutSettledDefault);
+        document.querySelector('[name="payin_amount_usdt"]')?.addEventListener('input', syncPayoutSettledDefault);
 
         // Оба сберовских метода кормятся из одной выписки: СБП приходит эквайрингом,
         // реквизиты — переводом от ФИО. Пул один, различаются меткой kind.
@@ -8173,6 +8195,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Сумму сеть подставит сама, поэтому в payload уходит хотя бы хеш.
             if (data.payout_source === 'founder_personal') {
                 data.payout_no_conversion = noConversionOn();
+                // Возмещать или нет — решаем здесь, в сделке: в возмещениях
+                // спрашивать поздно, а данных для ответа там столько же
+                data.needs_reimbursement = !payoutSettledOn();
                 if (data.payout_no_conversion) {
                     // Своими батами: переводов нет, сумму возврата и кошелёк
                     // задаёт человек. Пустой список чистит хеши, если сделку
@@ -9394,6 +9419,34 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!noConversionOn()) return 0;
             const n = parseFloat(document.getElementById('noConvUsdt')?.value);
             return isNaN(n) || n <= 0 ? 0 : n;
+        }
+
+        // ===== «Деньги за выдачу уже у нас» =====
+        // Клиент прислал USDT — фаундеру возвращать нечего, это конвертация:
+        // получили и отправили, разница в прибыль. Рублёвая сделка наоборот:
+        // фаундер отправил наперёд, долг перед ним висит до конвертации.
+        function payoutSettledOn() {
+            return !!document.getElementById('payoutSettledByPayin')?.checked;
+        }
+
+        function togglePayoutSettled() {
+            const hint = document.getElementById('payoutSettledHint');
+            if (!hint) return;
+            hint.textContent = payoutSettledOn()
+                ? 'Сделка закроется сразу, в очередь возмещений не попадёт.'
+                : 'Отправлено наперёд: сделка встанет в очередь возмещений, вернём фаундеру позже.';
+            if (typeof calculateProfit === 'function') calculateProfit();
+        }
+
+        function syncPayoutSettledDefault() {
+            /* Предзаполнение по приходу: USDT клиента уже получены — галка стоит.
+               Менеджер может снять её руками, тогда решает он. */
+            const box = document.getElementById('payoutSettledByPayin');
+            if (!box || box.dataset.touched === '1') return;
+            const method = document.querySelector('[name="payin_method"]')?.value;
+            const usdt = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value);
+            box.checked = method === 'crypto_direct' && !isNaN(usdt) && usdt > 0;
+            togglePayoutSettled();
         }
 
         function toggleNoConversion() {
@@ -10891,14 +10944,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     <label class="form-label">Итоговый курс (авто)</label>
                                     <input type="text" class="form-control reimburse-rate" data-founder="${founder.founder_name}" readonly placeholder="THB/USDT">
                                 </div>
-                                <div class="form-group">
-                                    <label class="form-label">Тип возмещения</label>
-                                    <select class="form-control reimburse-kind" data-founder="${founder.founder_name}">
-                                        <option value="manual">USDT по сделке уже получили</option>
-                                        <option value="advance">Наперёд — USDT ещё не пришли</option>
-                                    </select>
-                                    <small style="color:#6b7280;">«Наперёд» — когда USDT по сделке ещё не пришли</small>
-                                </div>
                                 <div class="form-group" style="flex: 2;">
                                     <label class="form-label">Хэши вручную (если перевода нет в списке)</label>
                                     <div class="reimburse-tx-hashes" data-founder="${founder.founder_name}">
@@ -11311,8 +11356,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         amount_usdt: amountUsdt,
                         tx_hashes: txHashes,
                         tx_uses: txUses,
-                        deal_allocations: dealAllocations,
-                        kind: document.querySelector(`.reimburse-kind[data-founder="${founderName}"]`)?.value || 'manual'
+                        deal_allocations: dealAllocations
                     })
                 });
 

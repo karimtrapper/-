@@ -11553,6 +11553,18 @@ def get_reimbursement_txs():
         session.close()
 
 
+def _reimbursement_kind_for(deals):
+    """«Наперёд» или «по факту» — видно по сделкам, спрашивать не нужно.
+
+    Возврат оунеру бывает до того, как по сделкам пришли USDT: рубли клиента
+    ещё в конвертации, а деньги ему уже отдали. Отличие важно, когда одним
+    переводом закрывают и такие сделки, и обычные — в карточке потом видно,
+    за что ушла каждая часть перевода.
+    """
+    known = [d for d in deals if (d.payin_amount_usdt or 0) > 0]
+    return 'manual' if known else 'advance'
+
+
 def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
     """Раскладывает возмещение по сделкам: аллокации → прибыль → агенты → статус.
 
@@ -11796,16 +11808,18 @@ def create_reimbursement():
             }), 400
 
         # Create reimbursement
-        # Тип: 'advance' — вернули оунеру до того, как получили USDT по сделке.
-        # 'auto' ставит только автозачёт, руками его прислать нельзя.
-        kind = str(data.get('kind') or 'manual').strip().lower()
+        # Тип определяем сами, а не спрашиваем в форме: лишнее поле там, где
+        # ответ уже есть в данных. 'advance' — вернули оунеру раньше, чем по
+        # сделкам пришли USDT (рубли ещё в конвертации). Явный kind из payload
+        # уважаем: интеграции могут знать лучше. 'auto' — только автозачёт.
+        kind = str(data.get('kind') or '').strip().lower()
         if kind not in ('manual', 'advance'):
-            kind = 'manual'
+            kind = None
         reimbursement = Reimbursement(
             founder_name=founder_name,
             amount_usdt=amount_usdt,
             tx_hash=tx_hash,
-            kind=kind,
+            kind=kind or 'manual',   # уточним ниже, когда увидим сделки
         )
         session.add(reimbursement)
         session.flush()  # Get the ID
@@ -11826,6 +11840,8 @@ def create_reimbursement():
             .with_for_update()
             .all()
         )
+        if kind is None:
+            reimbursement.kind = _reimbursement_kind_for(deals)
         total_thb = _settle_reimbursement(session, reimbursement, deals, alloc_req)
         session.commit()
         _notify_reimbursed(deals)

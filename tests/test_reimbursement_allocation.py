@@ -291,15 +291,23 @@ class TestOneHashTwoKinds:
     возмещение за что и сколько осталось свободным.
     """
 
-    def test_kind_advance_stored_and_returned(self, cli, tx_hash, tx_hash2):
-        d1 = _make_deal(10000)
+    def test_kind_advance_detected_without_asking(self, cli, tx_hash, tx_hash2):
+        """Тип не спрашиваем в форме: по сделке USDT ещё нет → «наперёд»."""
+        d1 = _make_deal(10000, payin_usdt=None)
         r = cli.post('/api/reimbursements', json={
             'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
-            'kind': 'advance',
             'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
         assert r['reimbursement']['kind'] == 'advance'
         deal = cli.get(f'/api/deals/{d1}').get_json()['deal']
         assert deal['reimbursement']['kind'] == 'advance'
+
+    def test_kind_manual_when_payin_known(self, cli, tx_hash, tx_hash2):
+        """USDT по сделке уже посчитаны → обычное возмещение."""
+        d1 = _make_deal(10000, payin_usdt=320.0)
+        r = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
+        assert r['reimbursement']['kind'] == 'manual'
 
     def test_auto_kind_cannot_be_forged(self, cli, tx_hash, tx_hash2):
         """'auto' ставит только автозачёт: руками такой тип не подсунуть."""
@@ -314,7 +322,7 @@ class TestOneHashTwoKinds:
         d1, d2 = _make_deal(10000), _make_deal(6000)
         first = cli.post('/api/reimbursements', json={
             'founder_name': 'Андрей', 'deal_ids': [d1], 'amount_usdt': 300,
-            'kind': 'advance',
+            'kind': 'advance',   # интеграция вправе сказать явно
             'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 300}]}).get_json()
         second = cli.post('/api/reimbursements', json={
             'founder_name': 'Андрей', 'deal_ids': [d2], 'amount_usdt': 200,

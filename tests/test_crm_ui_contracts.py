@@ -287,3 +287,16 @@ def test_conversion_return_has_tx_picker(html):
 
     show = _function_body(html, 'showConversion')
     assert '/api/transactions/outgoing' in show, 'список переводов не грузится при открытии пачки'
+
+
+def test_settled_checkbox_lives_in_deal_form(html):
+    """Возмещать или нет — отмечается в сделке, а не в форме возмещений.
+
+    Карим (27.08): «мы не расширяем интерфейс в возмещении, это всё делаем
+    в моменте, в создании сделки — это ускоряет работу». Селект типа в форме
+    возмещений был убран, вместо него галка рядом с переводами выдачи.
+    """
+    assert 'id="payoutSettledByPayin"' in html
+    assert 'reimburse-kind' not in html, 'селект типа в возмещениях должен быть убран'
+    # Галка управляет именно флагом возмещения
+    assert 'data.needs_reimbursement = !payoutSettledOn()' in html
