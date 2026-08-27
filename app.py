@@ -6851,6 +6851,23 @@ def _sync_payout_tx_uses(session, deal, parts):
     for tx_hash, part in wanted.items():
         claim = part.get('amount_usdt')
         tx = _payout_tx_get_or_create(session, tx_hash, claim, part)
+        # Сумма из бэкфилла или с рук — это «сколько разнесли», а не «сколько
+        # ушло»: перевод 3d828b22… после миграции знал про свои 509.42 при
+        # реальных 1952, и остаток показывался нулевым. Сверяем с сетью один
+        # раз — дальше source='tronscan' и в сеть больше не ходим.
+        if tx.source != 'tronscan':
+            try:
+                chain = _tron_tx_info(tx.tx_hash) or {}
+            except Exception as e:
+                chain = {}
+                print(f'[PayoutTx] сверка с сетью не удалась {tx.tx_hash[:12]}…: {e}')
+            if chain.get('amount_usdt'):
+                tx.amount_usdt = chain['amount_usdt']
+                tx.source = 'tronscan'
+                tx.notes = None
+                tx.from_address = tx.from_address or chain.get('from_address')
+                tx.to_address = tx.to_address or chain.get('to_address')
+                session.flush()
         use = session.query(PayoutTxUse).filter(
             PayoutTxUse.tx_id == tx.id, PayoutTxUse.deal_id == deal.id).first()
         # Долю не указали — сделка забирает свободный остаток перевода
@@ -6867,27 +6884,8 @@ def _sync_payout_tx_uses(session, deal, parts):
 
         if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
             if tx.source != 'tronscan':
-                # Потолок выдуман: сумма пришла из бэкфилла или с рук, когда сеть
-                # молчала. Прежде чем раздувать его, спрашиваем сеть — там правда.
-                info = {}
-                try:
-                    info = _tron_tx_info(tx.tx_hash) or {}
-                except Exception as e:
-                    print(f'[PayoutTx] сверка с сетью не удалась {tx.tx_hash[:12]}…: {e}')
-                if info.get('amount_usdt'):
-                    tx.amount_usdt = info['amount_usdt']
-                    tx.source = 'tronscan'
-                    tx.notes = None
-                    tx.from_address = tx.from_address or info.get('from_address')
-                    tx.to_address = tx.to_address or info.get('to_address')
-                    session.flush()
-                    if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
-                        free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
-                        raise ValueError(
-                            f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
-                            f'свободно ${free:,.2f} — нельзя отнести на сделку ${share:,.2f}')
-                    continue
-                # Сеть тоже не знает — поднимаем до разобранного с пометкой
+                # Сеть уже спросили выше и она молчит: потолок выдуман, отказывать
+                # по нему нельзя. Поднимаем до разобранного с пометкой «не сверено».
                 tx.amount_usdt = tx.used_usdt()
                 if not tx.notes:
                     tx.notes = 'сумма из CRM, с сетью не сверена'
