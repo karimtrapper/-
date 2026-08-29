@@ -10632,7 +10632,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 fetch(`/api/conversions/${id}`).then(r => r.json())
                     .catch(() => ({success: false, error: 'сеть недоступна'})),
                 fetch(`/api/conversions/${id}/distribution`).then(r => r.json()).catch(() => null),
-                fetch(`${API_URL}/api/transactions/outgoing?include_internal=1`)
+                // stale_ok: карточка не должна ждать обхода TronScan — на холодном
+                // кэше это ~27 секунд, и всё это время клик по строке выглядит как
+                // «не нажимается». Переводы тут нужны только для выпадашки возврата
+                fetch(`${API_URL}/api/transactions/outgoing?include_internal=1&stale_ok=1`)
                     .then(r => r.json()).catch(() => ({success: false})),
                 fetch(`${API_URL}/api/reimbursements`).then(r => r.json()).catch(() => ({success: false})),
             ]);
