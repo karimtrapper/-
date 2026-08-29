@@ -10629,7 +10629,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // это один и тот же POST /api/reimbursements. Значит и список
             // переводов должен быть тем же: вбивать хеш руками незачем.
             const [d, dist, outgoing, history] = await Promise.all([
-                fetch(`/api/conversions/${id}`).then(r => r.json()),
+                fetch(`/api/conversions/${id}`).then(r => r.json())
+                    .catch(() => ({success: false, error: 'сеть недоступна'})),
                 fetch(`/api/conversions/${id}/distribution`).then(r => r.json()).catch(() => null),
                 fetch(`${API_URL}/api/transactions/outgoing?include_internal=1`)
                     .then(r => r.json()).catch(() => ({success: false})),
@@ -10638,7 +10639,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             convOutgoingTx = outgoing.success ? (outgoing.available || []) : [];
             convUsedTx = new Set((history.success ? history.reimbursements : [])
                 .flatMap(r => r.tx_hashes || []));
-            if (!d.success) return;
+            if (!d.success) {
+                // Молчаливый return читался как «строка не нажимается»: чаще всего
+                // это протухшая сессия — API отдаёт 401, а на экране не менялось ничего
+                return showToast(d.error === 'unauthorized'
+                    ? 'Сессия истекла — обнови страницу и войди заново'
+                    : `Пачка не открылась: ${d.error || 'ошибка сервера'}`, 'error');
+            }
             const c = d.conversion;
             const comp = d.composition.map(x => `<tr>
                 <td>${(x.operation_date || '').slice(0, 10)}</td>
