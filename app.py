@@ -11046,10 +11046,15 @@ def get_dashboard():
         pending_deals = session.query(Deal).filter(
             Deal.status == DealStatus.PENDING, Deal.is_test.isnot(True)).all()
 
-        # Невозмещенные
+        # Невозмещённые. Условия те же, что в /api/reimbursements/pending —
+        # иначе баннер считает долгом сделки, где возвращать нечего
+        # (needs_reimbursement=False: выдача с карты, крипто-выдача, автозачёт
+        # по кошельку-плательщику).
         unreimbursed = session.query(Deal).filter(
             Deal.payout_source == PayOutSource.FOUNDER_PERSONAL,
             Deal.reimbursement_id == None,
+            Deal.payout_founder_name != None,
+            Deal.needs_reimbursement != False,
             Deal.is_test.isnot(True)
         ).all()
 

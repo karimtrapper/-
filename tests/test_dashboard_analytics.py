@@ -12,7 +12,8 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
-from app import app, get_session, Referrer, Client, Deal, DealType, DealStatus, AdminUser, DealAgent
+from app import (app, get_session, Referrer, Client, Deal, DealType, DealStatus,
+                 AdminUser, DealAgent, PayOutSource)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────
@@ -555,3 +556,42 @@ class TestUnitEconConsistency:
         assert ch['insta']['buyers'] == 1   # первое касание Анны
         assert ch['site']['buyers'] == 0
         assert ch['site']['deals'] == 1     # сделки — по метке самой сделки
+
+
+# ── Баннер «ожидают возмещения» ───────────────────────────────────────────
+
+class TestAttentionUnreimbursed:
+    """Баннер считает долгом только то, что реально надо вернуть фаундеру."""
+
+    def make_founder_deal(self, db, needs_reimb=True, founder='Андрей', payout_usdt=500.0):
+        d = make_deal(db, profit=50)
+        d.payout_source = PayOutSource.FOUNDER_PERSONAL
+        d.payout_founder_name = founder
+        d.needs_reimbursement = needs_reimb
+        d.payout_amount_usdt = payout_usdt
+        db.commit()
+        return d
+
+    def test_deal_without_debt_not_counted(self, db, tc):
+        """needs_reimbursement=False — возвращать нечего, в баннер не идёт."""
+        self.make_founder_deal(db, needs_reimb=True, payout_usdt=100)
+        self.make_founder_deal(db, needs_reimb=False, payout_usdt=500000)
+        att = get_dash(tc).get_json()['dashboard']['attention']
+        assert att['unreimbursed_founders'] == 1
+        assert att['unreimbursed_total_usdt'] == 100
+
+    def test_deal_without_founder_not_counted(self, db, tc):
+        """Без имени фаундера возмещать некому — как в /api/reimbursements/pending."""
+        self.make_founder_deal(db, founder=None, payout_usdt=300)
+        att = get_dash(tc).get_json()['dashboard']['attention']
+        assert att['unreimbursed_founders'] == 0
+        assert att['unreimbursed_total_usdt'] == 0
+
+    def test_banner_matches_pending_endpoint(self, db, tc):
+        """Цифра баннера сходится со списком, который открывается по клику."""
+        self.make_founder_deal(db, needs_reimb=True, founder='Андрей', payout_usdt=100)
+        self.make_founder_deal(db, needs_reimb=True, founder='Теодор', payout_usdt=200)
+        self.make_founder_deal(db, needs_reimb=False, founder='Андрей', payout_usdt=9999)
+        att = get_dash(tc).get_json()['dashboard']['attention']
+        pending = tc.get('/api/reimbursements/pending').get_json()['by_founder']
+        assert att['unreimbursed_founders'] == sum(len(f['deals']) for f in pending) == 2
