@@ -5827,6 +5827,83 @@ def attach_conversion_tx(conv_id):
         db.close()
 
 
+def _rollback_auto_settlement(db, tx_id):
+    """Снять автозачёты, закрытые этим приходом: приход отвязан — долг снова открыт.
+
+    Оставить их нельзя: сделка с `reimbursement_id` считается погашенной, и после
+    привязки правильного хеша `_auto_settle_conversion` её пропустит. Трогаем
+    только kind='auto' — ручное возмещение реальным переводом к приходу пачки
+    отношения не имеет.
+    """
+    reimbs = db.query(Reimbursement).filter(
+        Reimbursement.settled_by_payin_tx_id == tx_id,
+        Reimbursement.kind == 'auto').all()
+    for reimb in reimbs:
+        for deal in db.query(Deal).filter(Deal.reimbursement_id == reimb.id).all():
+            deal.reimbursement_id = None
+        db.delete(reimb)
+    db.flush()
+    return len(reimbs)
+
+
+@app.route('/api/conversions/<int:conv_id>/txs/<int:tx_id>', methods=['DELETE'])
+def detach_conversion_tx(conv_id, tx_id):
+    """Отвязать приход USDT от пачки — привязали не тот хеш.
+
+    Чинить опечатку удалением пачки нельзя: вместе с ней уходит состав. И одним
+    `delete(link)` не обойтись — приход успел разнести доли, погасить долги
+    автозачётом и проставить сделкам USDT. Не откатив это, правильный хеш ляжет
+    на грязное состояние: доли останутся от старого перевода, сделку с уже
+    проставленным `payin_amount_usdt` разнос пропустит, а автозачёт сочтёт её
+    возмещённой.
+
+    Статус сделки назад в pending не возвращаем: уведомление клиенту уже ушло,
+    а повторного разноса это не ломает — счётчики реферера растут только на
+    переходе pending → completed.
+    """
+    db = get_session()
+    try:
+        conv = db.query(Conversion).get(conv_id)
+        if not conv:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        link = db.query(ConversionTx).filter(
+            ConversionTx.conversion_id == conv.id,
+            ConversionTx.payin_tx_id == tx_id).first()
+        if not link:
+            return jsonify({'success': False, 'error': 'Этот приход к пачке не привязан'}), 404
+
+        _clear_conversion_payin_uses(db, conv)      # доли разнесём заново
+        _rollback_auto_settlement(db, tx_id)
+        # USDT сделкам проставила эта пачка. Оставить его — значит показывать
+        # прибыль по курсу перевода, которого в пачке больше нет
+        deal_ids = _conversion_deal_ids(db, conv)
+        if deal_ids:
+            for deal in db.query(Deal).filter(Deal.id.in_(deal_ids)).all():
+                deal.payin_amount_usdt = None
+                deal.profit_usdt = None
+                deal.profit_percent = None
+                deal.net_profit_usdt = None
+        db.delete(link)
+        db.flush()
+        db.refresh(conv)
+
+        deals_closed = []
+        if conv.txs:
+            # Брокер дробил выдачу — оставшиеся приходы всё ещё закрывают пачку
+            _apply_conversion_shares(db, conv)
+            deals_closed, _ = _close_deals_after_conversion(db)
+            _auto_settle_conversion(db, conv)
+        else:
+            conv.status = ConversionStatus.SENT
+            conv.received_at = None
+        db.commit()
+        db.refresh(conv)
+        return jsonify({'success': True, 'conversion': conv.to_dict(),
+                        'deals_closed': [d.id for d in deals_closed]})
+    finally:
+        db.close()
+
+
 def conversion_distribution(db, conv):
     """Раскладка прихода пачки до нуля: кому вернуть, что остаётся, сходится ли.
 
@@ -6175,7 +6252,8 @@ def get_conversion(conv_id):
             # Адрес НЕ дотягиваем здесь: чтение не должно зависеть от доступности
             # TronScan — при его недоступности экран висел на таймауте чужого
             # сервиса. Хеши без адреса добирает фоновый _payin_address_backfill
-            txs.append({'tx_hash': tx.tx_hash if tx else '',
+            txs.append({'payin_tx_id': t.payin_tx_id,
+                        'tx_hash': tx.tx_hash if tx else '',
                         'to_address': tx.to_address if tx else None,
                         'to_label': wallet_labels.get(tx.to_address) if tx else None,
                         'amount_usdt': round(t.amount_usdt or 0, 4),

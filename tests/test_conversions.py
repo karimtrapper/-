@@ -1332,3 +1332,88 @@ def test_бредовый_курс_не_подставляется(cli, incomes,
         db.commit()
     finally:
         db.close()
+
+
+def test_не_тот_хеш_отвязывается_и_меняется_на_правильный(cli, incomes, monkeypatch):
+    """Хеш привязывают руками — не тот попадает регулярно.
+
+    Отвязка обязана вернуть пачку в состояние «ждём USDT»: доли сняты, перевод
+    снова свободен целиком. Иначе правильный хеш ляжет поверх старых долей и
+    сделки получат USDT дважды.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    db = get_session()
+    deal_ids = []
+    try:
+        for inc_id, name in zip(incomes, ('Захаров', 'Roman', 'Olya')):
+            d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                     client_name=name, payin_method=PayInMethod.SBER_WL)
+            db.add(d)
+            db.flush()
+            deal_ids.append(d.id)
+            db.query(SberIncome).filter(SberIncome.id == inc_id).update(
+                {'claimed_deal_id': d.id})
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'БРАЙТУМ/TRADEX', 'rate_rub_usdt': 83.35,
+        'amount_rub_sent': 144435.47, 'sent_at': True,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44},
+                    {'sber_income_id': incomes[1], 'amount_rub': 35000.0},
+                    {'sber_income_id': incomes[2], 'amount_rub': 83000.0}],
+    }).get_json()['conversion']
+
+    wrong, right = _uid() + _uid(), _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs",
+             json={'tx_hash': wrong, 'amount_usdt': 1732.8791})
+
+    db = get_session()
+    try:
+        wrong_id = db.query(PayinTx).filter(PayinTx.tx_hash == wrong).first().id
+    finally:
+        db.close()
+
+    r = cli.delete(f"/api/conversions/{conv['id']}/txs/{wrong_id}")
+    assert r.status_code == 200, r.get_data(as_text=True)
+    # Приходов не осталось — пачка снова ждёт USDT, а не считается закрытой
+    assert r.get_json()['conversion']['status'] == 'sent'
+
+    db = get_session()
+    try:
+        tx = db.query(PayinTx).get(wrong_id)
+        assert tx.free_usdt() == round(tx.amount_usdt, 2)
+        assert db.query(PayinTxUse).filter(PayinTxUse.tx_id == wrong_id).count() == 0
+        for did in deal_ids:
+            assert db.query(Deal).get(did).payin_amount_usdt is None
+    finally:
+        db.close()
+
+    # Повторная отвязка — уже нечего отвязывать
+    assert cli.delete(f"/api/conversions/{conv['id']}/txs/{wrong_id}").status_code == 404
+
+    cli.post(f"/api/conversions/{conv['id']}/txs",
+             json={'tx_hash': right, 'amount_usdt': 1732.8791})
+    db = get_session()
+    try:
+        tx = db.query(PayinTx).filter(PayinTx.tx_hash == right).first()
+        uses = {u.deal_id: u.amount_usdt
+                for u in db.query(PayinTxUse).filter(PayinTxUse.tx_id == tx.id).all()}
+        # Доли те же, что при первой привязке — старый хеш ничего за собой не оставил
+        assert uses[deal_ids[0]] == 330.28
+        assert uses[deal_ids[1]] == 416.02
+        assert round(uses[deal_ids[2]], 2) == 986.58
+        assert db.query(PayinTxUse).filter(PayinTxUse.tx_id == wrong_id).count() == 0
+    finally:
+        db.close()
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash.in_([wrong, right])).delete(
+            synchronize_session=False)
+        db.query(Deal).filter(Deal.id.in_(deal_ids)).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
