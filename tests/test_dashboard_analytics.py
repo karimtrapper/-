@@ -221,6 +221,22 @@ class TestDealKindFilter:
     def test_invalid_kind_returns_400(self, tc, mixed_kinds):
         assert get_dash(tc, period='30d', deal_kind='bogus').status_code == 400
 
+    def test_объём_и_себестоимость_разнесены_на_недвижимость_и_обмены(
+            self, tc, mixed_kinds):
+        """Транзит по недвижимости не должен топить обменную ногу: месяц с одной
+        сделкой на застройщика иначе читается как «прогнали много, заработали
+        копейки»."""
+        p = get_dash(tc, period='30d').get_json()['dashboard']['period']
+        assert p['realty_deals_count'] == 2
+        assert p['exchange_deals_count'] == 1
+        assert p['volume_realty_usdt'] == 7000     # лизхолд 2000 + фрихолд 5000
+        assert p['volume_exchange_usdt'] == 1000
+        assert p['cost_realty_usdt'] == 6750       # 1950 + 4800
+        assert p['cost_exchange_usdt'] == 970
+        # Разрез сходится с итогом, иначе цифры в шапке спорят друг с другом
+        assert p['volume_realty_usdt'] + p['volume_exchange_usdt'] == p['volume_usdt']
+        assert p['cost_realty_usdt'] + p['cost_exchange_usdt'] == p['cost_usdt']
+
 
 # ── Юнит-экономика ────────────────────────────────────────────────────────
 

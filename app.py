@@ -11095,6 +11095,18 @@ def get_dashboard():
         period_volume = round(sum(usdt[d.id][0] for d in period_deals), 2)
         # Себестоимость = что мы потратили на покупку валюты для сделок (payout в USDT)
         period_cost = round(sum(usdt[d.id][1] for d in period_deals), 2)
+        # Разрез объёма и себестоимости по типу сделок. У недвижимости
+        # «себестоимость» — не закупка валюты, а транзит: деньги клиента уходят
+        # застройщику почти целиком, а заработок лежит в комиссии батами и в
+        # разницу «объём − себестоимость» не попадает. Без разреза месяц с одной
+        # сделкой на $500k читается как «прогнали полтора миллиона, заработали
+        # копейки»: обменная нога тонет в транзите.
+        _realty_deals = [d for d in period_deals if d.deal_kind in REALTY_KINDS]
+        _exch_deals = [d for d in period_deals if d.deal_kind not in REALTY_KINDS]
+        period_volume_realty = round(sum(usdt[d.id][0] for d in _realty_deals), 2)
+        period_cost_realty = round(sum(usdt[d.id][1] for d in _realty_deals), 2)
+        period_volume_exchange = round(sum(usdt[d.id][0] for d in _exch_deals), 2)
+        period_cost_exchange = round(sum(usdt[d.id][1] for d in _exch_deals), 2)
         # Сделки с реферралами и сумма выплат реферралам
         period_referrer_deals = [d for d in period_deals if d.referrer_id]
         period_referrer_payout = round(sum(d.referrer_payout_usdt or 0 for d in period_referrer_deals), 2)
@@ -11422,6 +11434,13 @@ def get_dashboard():
                     'profit_usdt': period_profit,
                     'volume_usdt': period_volume,
                     'cost_usdt': period_cost,
+                    # Транзит по недвижимости отдельно от закупки валюты под обмены
+                    'volume_realty_usdt': period_volume_realty,
+                    'cost_realty_usdt': period_cost_realty,
+                    'realty_deals_count': len(_realty_deals),
+                    'volume_exchange_usdt': period_volume_exchange,
+                    'cost_exchange_usdt': period_cost_exchange,
+                    'exchange_deals_count': len(_exch_deals),
                     'avg_margin': period_avg_margin,
                     'avg_check': period_avg_check,
                     'referrer_deals_count': len(period_referrer_deals),

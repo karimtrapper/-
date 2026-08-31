@@ -3730,10 +3730,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div class="stat-card">
                             <div class="stat-value">$${formatNumber(p.volume_usdt ?? 0)}</div>
                             <div class="stat-label">Объём ${pl}</div>
+                            ${(p.volume_realty_usdt || 0) > 0 && (p.volume_exchange_usdt || 0) > 0 ? `
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">
+                                недвижимость $${formatNumber(p.volume_realty_usdt)} (${p.realty_deals_count ?? 0})<br>
+                                обмены $${formatNumber(p.volume_exchange_usdt)} (${p.exchange_deals_count ?? 0})
+                            </div>` : ''}
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">$${formatNumber(p.cost_usdt ?? 0)}</div>
                             <div class="stat-label">Себестоимость ${pl}</div>
+                            ${(p.cost_realty_usdt || 0) > 0 ? `
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;line-height:1.5">
+                                транзит по недвижимости $${formatNumber(p.cost_realty_usdt)}<br>
+                                закупка валюты под обмены $${formatNumber(p.cost_exchange_usdt ?? 0)}
+                            </div>` : ''}
                         </div>
                         <div class="stat-card">
                             <div class="stat-value">${p.referrer_deals_count ?? 0}</div>
