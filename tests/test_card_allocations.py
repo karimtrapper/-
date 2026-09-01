@@ -272,6 +272,30 @@ def test_cost_and_profit_filled_from_card_rate(client):
     assert deal['cash_batch_rate'] == 33.5213
 
 
+def test_cost_and_profit_filled_from_card_rate_on_update(client):
+    """То же при сохранении, а не создании: карту привязали вторым заходом.
+
+    Регресс #580 — себестоимость по курсу карты проставлялась ПОСЛЕ пересчёта
+    прибыли, поэтому в базу и в Telegram уходил «Прибыль $0.00» при реальных
+    268.65 − 251.42 = 17.23."""
+    card_id = _mk_card()
+    created = client.post('/api/deals', json={
+        'deal_type': 'pay_in', 'status': 'pending', 'client_name': 'Alex - Grusha',
+        'payin_method': 'crypto_direct', 'payin_amount_usdt': 268.65,
+        'skip_sync': True,
+    }).get_json()['deal']
+
+    deal = client.put(f"/api/deals/{created['id']}", json={
+        'payout_source': 'bank_card', 'bank_card_id': card_id,
+        'payout_amount_thb': 8427.8, 'profit_usdt': 0, 'net_profit_usdt': 0,
+    }).get_json()['deal']
+
+    assert deal['payout_amount_usdt'] == round(8427.8 / 33.5213, 2)   # 251.42
+    assert deal['profit_usdt'] == round(268.65 - 251.42, 2)           # 17.23
+    assert deal['net_profit_usdt'] == round(268.65 - 251.42, 2)
+    assert deal['status'] == 'completed'
+
+
 def test_card_deal_needs_no_reimbursement(client):
     """Баты откуплены при пополнении карты — возмещать нечего."""
     card_id = _mk_card()

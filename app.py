@@ -7776,6 +7776,14 @@ def update_deal(deal_id):
         if 'payin_amount_usdt' not in data:
             _fill_payin_usdt_from_conversion(session, deal)
 
+        # Выдача с карты: пересобираем расход под текущее состояние сделки.
+        # Обязательно ДО пересчёта финансов — себестоимость батов берётся из
+        # курса карты, форма её не шлёт (поле readonly). Стояло ниже пересчёта,
+        # и прибыль считалась по ещё пустой себестоимости: #580 ушла в TG с
+        # «Прибыль $0.00» при 268.65 − 251.42 = 17.23, а у сделки с агентом на
+        # revshare от нулевой прибыли обнулилась бы и выплата партнёру
+        card_warning = _sync_card_allocation(session, deal)
+
         if deal.deal_kind in REALTY_KINDS:
             if deal.deal_kind == MF_REALTY_KIND:
                 _apply_mf_realty(deal, data)
@@ -7835,9 +7843,6 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': no_conv_error}), 400
 
         _clear_profit_if_payin_unknown(deal)
-
-        # Выдача с карты: пересобираем расход под текущее состояние сделки
-        card_warning = _sync_card_allocation(session, deal)
 
         # Приход досчитали в USDT — себестоимость известна, сделка закрывается
         # сама, а webhook / DM агентам / GSheet / Telegram уходят общей веткой
