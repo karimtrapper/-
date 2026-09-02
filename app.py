@@ -2919,9 +2919,10 @@ def reestr_tx_sum():
         try:
             r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
             info = r.json() if r.status_code == 200 else {}
-            trc = info.get('trc20TransferInfo') or []
-            tr = trc[0] if trc else {}
-            amt = float(tr.get('amount_str', 0)) / 1_000_000 if tr else 0.0
+            # Батч: сумма прихода — всё, что прислал отправитель этой
+            # транзакцией, а не первый перевод из списка
+            tr, _one, sent = _trc20_main_transfer(info.get('trc20TransferInfo'))
+            tr, amt = tr or {}, sent or 0.0
             if tr.get('to_address') and not to_addr:
                 to_addr = tr.get('to_address')
             # дата транзакции из TronScan → BKK (UTC+7), как в реестре
@@ -6921,7 +6922,10 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     try:
         info = _tron_tx_info(tx_hash) or {}
         if info.get('amount_usdt'):
-            amount, source = info['amount_usdt'], 'tronscan'
+            # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
+            # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
+            amount = info.get('total_out_usdt') or info['amount_usdt']
+            source = 'tronscan'
     except Exception as e:
         print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
     tx = PayoutTx(tx_hash=tx_hash,
@@ -6963,7 +6967,7 @@ def _sync_payout_tx_uses(session, deal, parts):
                 chain = {}
                 print(f'[PayoutTx] сверка с сетью не удалась {tx.tx_hash[:12]}…: {e}')
             if chain.get('amount_usdt'):
-                tx.amount_usdt = chain['amount_usdt']
+                tx.amount_usdt = chain.get('total_out_usdt') or chain['amount_usdt']
                 tx.source = 'tronscan'
                 tx.notes = None
                 tx.from_address = tx.from_address or chain.get('from_address')
@@ -6992,6 +6996,21 @@ def _sync_payout_tx_uses(session, deal, parts):
                     tx.notes = 'сумма из CRM, с сетью не сверена'
                 session.flush()
             else:
+                # Записи, сделанные старым разбором батча, знают про один
+                # перевод из хеша (23808e8f8997…: 1.50 вместо ушедших 3645.40).
+                # Прежде чем отказать, пересверяем потолок с сетью — один
+                # запрос в момент конфликта дешевле, чем миграция реестра.
+                try:
+                    chain = _tron_tx_info(tx.tx_hash) or {}
+                except Exception as e:
+                    chain = {}
+                    print(f'[PayoutTx] пересверка потолка {tx.tx_hash[:12]}…: {e}')
+                out = chain.get('total_out_usdt') or chain.get('amount_usdt')
+                if out and out > (tx.amount_usdt or 0):
+                    tx.amount_usdt = out
+                    session.flush()
+
+            if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01 and tx.source == 'tronscan':
                 free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
                 raise ValueError(
                     f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
@@ -10564,10 +10583,8 @@ def verify_transaction_post():
         tx_data = response.json()
         
         # Парсим TRC20 transfer
-        trc20_info = tx_data.get('trc20TransferInfo', [])
-        if trc20_info:
-            transfer = trc20_info[0]
-            amount = float(transfer.get('amount_str', 0)) / 1_000_000
+        transfer, amount, _total = _trc20_main_transfer(tx_data.get('trc20TransferInfo'))
+        if transfer:
             return jsonify({
                 'success': True,
                 'tx_hash': tx_hash,
@@ -11497,24 +11514,47 @@ def get_dashboard():
 
 # ==================== REIMBURSEMENTS API ====================
 
+def _trc20_amount(transfer):
+    """Сумма одного TRC20-перевода из ответа TronScan. 0.0 — если не читается."""
+    try:
+        return (int(transfer.get('amount_str') or transfer.get('quant') or 0)
+                / (10 ** int(transfer.get('decimals') or 6)))
+    except (TypeError, ValueError, AttributeError):
+        return 0.0
+
+
+def _trc20_main_transfer(trc):
+    """Главный перевод батча → (перевод, его сумма, сколько ушло с кошелька).
+
+    Транзакция бывает батчем: в 23808e8f8997… с кошелька Теда ушло два
+    перевода — 1.50 и 3643.90. Брали `trc[0]`, сеть отдавала первым мелкий, и
+    везде — реестр выдач, возмещения, проверка хеша — считалось, что перевод
+    был на полтора доллара. Главный перевод — крупнейший, третьим числом идёт
+    сумма всех переводов того же токена с того же кошелька: это и есть
+    «сколько ушло», по нему считается свободный остаток.
+
+    (None, None, None) — переводов в ответе нет.
+    """
+    if isinstance(trc, dict):
+        trc = [trc]
+    if not trc:
+        return None, None, None
+    main = max(trc, key=_trc20_amount)
+    total = sum(_trc20_amount(t) for t in trc
+                if t.get('from_address') == main.get('from_address')
+                and t.get('contract_address') == main.get('contract_address'))
+    return main, round(_trc20_amount(main), 2), round(total, 2)
+
+
 def _tron_tx_amount(tx_hash):
     """Сумма USDT перевода по хэшу из TronScan. None — если не прочиталась.
 
     Сумму перевода берём из сети, а не с рук: именно она задаёт потолок,
-    сколько можно разнести по сделкам.
+    сколько можно разнести по сделкам, — поэтому у батча берём всё, что ушло
+    с кошелька, а не один перевод из него.
     """
-    try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
-                         timeout=10)
-        if r.status_code != 200:
-            return None
-        trc = (r.json() or {}).get('trc20TransferInfo') or []
-        if not trc:
-            return None
-        return round(float(trc[0].get('amount_str', 0)) / 1_000_000, 2) or None
-    except Exception as e:
-        app.logger.warning(f'tron tx amount {tx_hash[:16]}: {e}')
-        return None
+    info = _tron_tx_info(tx_hash) or {}
+    return info.get('total_out_usdt') or info.get('amount_usdt') or None
 
 
 def _tron_tx_info(tx_hash):
@@ -11522,24 +11562,27 @@ def _tron_tx_info(tx_hash):
 
     По хешу выдачи видно и КАКОЙ кошелёк её оплатил, и СКОЛЬКО на него вернуть.
     Менеджеру достаточно вставить хеш: сумму и фаундера подставит сеть, а не память.
+
+    Одна транзакция бывает батчем: в 23808e8f8997… с кошелька Теда ушло
+    два перевода — 1.50 и 3643.90. Раньше брали trc[0], сеть отдавала первым
+    мелкий, и реестр считал, что из перевода ушло $1.50 — выдачу на 3643.90
+    после этого нельзя было сохранить. Поэтому:
+      amount_usdt    — крупнейший перевод, это и есть выдача сделки;
+      total_out_usdt — сколько всего ушло с того кошелька этой транзакцией,
+                       по нему реестр считает свободный остаток.
     """
     try:
         r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
                          timeout=10)
         if r.status_code != 200:
             return {}
-        trc = (r.json() or {}).get('trc20TransferInfo') or []
-        if not trc:
+        main, amount, total_out = _trc20_main_transfer((r.json() or {}).get('trc20TransferInfo'))
+        if not main:
             return {}
-        t = trc[0]
-        try:
-            amount = round(int(t.get('amount_str') or t.get('quant') or 0)
-                           / (10 ** int(t.get('decimals') or 6)), 2)
-        except (TypeError, ValueError):
-            amount = None
         return {'amount_usdt': amount or None,
-                'from_address': t.get('from_address') or None,
-                'to_address': t.get('to_address') or None}
+                'total_out_usdt': total_out or None,
+                'from_address': main.get('from_address') or None,
+                'to_address': main.get('to_address') or None}
     except Exception as e:
         app.logger.warning(f'tron tx info {tx_hash[:16]}: {e}')
         return {}
@@ -11602,8 +11645,10 @@ def _tron_tx_to_address(tx_hash):
                          timeout=10)
         if r.status_code != 200:
             return None
-        trc = (r.json() or {}).get('trc20TransferInfo') or []
-        return (trc[0].get('to_address') or None) if trc else None
+        # Батч: в одном хеше несколько переводов. Получатель — тот, кому ушло
+        # больше всех, мелкие попутчики (комиссии, сдача) сюда не относятся.
+        main, _amount, _total = _trc20_main_transfer((r.json() or {}).get('trc20TransferInfo'))
+        return (main or {}).get('to_address') or None
     except Exception as e:
         app.logger.warning(f'tron tx to_address {tx_hash[:16]}: {e}')
         return None

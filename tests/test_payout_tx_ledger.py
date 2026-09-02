@@ -290,3 +290,47 @@ class TestSettledByPayin:
         cli.put(f'/api/deals/{deal_id}', json={'payin_amount_usdt': 520.0})
         deal = cli.get(f'/api/deals/{deal_id}').get_json()['deal']
         assert deal['needs_reimbursement'] is True
+
+
+class TestBatchTransfer:
+    """Кейс 02.09: в хеше 23808e8f8997… два перевода с кошелька Теда —
+    1.50 и 3643.90. Разбор брал первый и считал, что ушло полтора доллара,
+    после чего выдачу на 3643.90 нельзя было сохранить."""
+
+    BATCH = [
+        {'amount_str': '1500000', 'decimals': 6, 'contract_address': appmod.USDT_TRC20_CONTRACT,
+         'from_address': WALLET, 'to_address': 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'},
+        {'amount_str': '3643900000', 'decimals': 6, 'contract_address': appmod.USDT_TRC20_CONTRACT,
+         'from_address': WALLET, 'to_address': EXCHANGE},
+    ]
+
+    def test_parser_takes_largest_and_counts_whole_batch(self, monkeypatch):
+        """Выдача — крупный перевод, потолок — всё, что ушло с кошелька."""
+        class _R:
+            status_code = 200
+            @staticmethod
+            def json():
+                return {'trc20TransferInfo': TestBatchTransfer.BATCH}
+
+        monkeypatch.setattr(appmod.requests, 'get', lambda *a, **kw: _R())
+        info = appmod._tron_tx_info('23808e8f' + '0' * 56)
+        assert info['amount_usdt'] == pytest.approx(3643.90)
+        assert info['total_out_usdt'] == pytest.approx(3645.40)
+        assert info['to_address'] == EXCHANGE
+
+    def test_old_undercounted_ceiling_is_resynced(self, cli, tx_hash, monkeypatch):
+        """Запись со старым потолком не блокирует выдачу — сверяем с сетью."""
+        s = get_session()
+        try:
+            s.add(PayoutTx(tx_hash=tx_hash, amount_usdt=1.50, source='tronscan',
+                           from_address=WALLET, to_address=EXCHANGE))
+            s.commit()
+        finally:
+            s.close()
+        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
+            'amount_usdt': 3643.90, 'total_out_usdt': 3645.40,
+            'from_address': WALLET, 'to_address': EXCHANGE})
+        r = _create_deal(cli, 120000, tx_hash, 3643.90)
+        assert r.status_code in (200, 201), r.get_json()
+        assert _tx(tx_hash).amount_usdt == pytest.approx(3645.40)
+        assert _tx(tx_hash).free_usdt() == pytest.approx(1.50)
