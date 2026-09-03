@@ -3436,9 +3436,26 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 wrap.classList.remove('open');
             });
 
-            // Обновление при программном изменении select
+            // Обновление при программном изменении select. MutationObserver ловит
+            // только смену списка опций и атрибутов, а `select.value = 'RUB'` из
+            // заполнения редактора мутацией не считается — подпись кнопки оставалась
+            // от прошлой сделки или от дефолта (кейс #463: в базе RUB, на экране THB).
+            // Перехватываем сеттеры value/selectedIndex на самом элементе.
             const observer = new MutationObserver(renderOptions);
             observer.observe(select, { childList: true, attributes: true });
+            ['value', 'selectedIndex'].forEach(prop => {
+                const native = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
+                Object.defineProperty(select, prop, {
+                    configurable: true,
+                    get() { return native.get.call(this); },
+                    set(v) { native.set.call(this, v); renderOptions(); }
+                });
+            });
+            // `option.selected = true` и dispatchEvent('change') сеттеры обходят
+            select.addEventListener('change', renderOptions);
+            // form.reset() возвращает опцию с атрибутом selected, минуя сеттеры;
+            // событие reset приходит ДО сброса значений — рисуем на следующем тике
+            if (select.form) select.form.addEventListener('reset', () => setTimeout(renderOptions, 0));
 
             // Закрытие при клике вне
             document.addEventListener('click', (e) => {
