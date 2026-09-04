@@ -781,6 +781,9 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
 SOFFICE_CANDIDATES = (
     '/Applications/LibreOffice.app/Contents/MacOS/soffice',   # macOS
     '/usr/bin/soffice', '/usr/bin/libreoffice',                # Debian/Ubuntu
+    # у пакетов -nogui симлинка в /usr/bin может не быть — бинарник лежит здесь
+    '/usr/lib/libreoffice/program/soffice',
+    '/usr/lib/libreoffice/program/soffice.bin',
     'soffice', 'libreoffice',                                  # из PATH
 )
 

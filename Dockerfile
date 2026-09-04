@@ -1,4 +1,4 @@
-# Dockerfile для Railway с Playwright
+# Dockerfile для Railway: Playwright (точный курс Binance) + LibreOffice (договоры в PDF)
 FROM python:3.11-slim
 
 # Установка системных зависимостей для Chromium
@@ -30,6 +30,11 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     libxshmfence1 \
     libexpat1 \
+    # LibreOffice Writer — конвертация договоров в PDF (docgen.to_pdf).
+    # Только Writer: полный libreoffice тянет Calc, Impress и Base и весит втрое больше.
+    # fonts-dejavu-core — иначе кириллица в PDF выходит квадратами.
+    libreoffice-writer-nogui \
+    fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
