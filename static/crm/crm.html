@@ -660,7 +660,111 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     .ca-preset { padding: 6px 12px; border: 2px solid #86efac; border-radius: 8px; background: white;
                  font-size: 12px; font-weight: 600; color: #166534; cursor: pointer; }
     .ca-preset.active { background: #166534; color: white; border-color: #166534; }
-    </style>
+    
+/* ── Документы: генерация агентских договоров ─────────────────────
+   Режим Operate — менеджер в задаче. Курс и валютная пара несут
+   основную нагрузку, поэтому им отдан первый экран и крупный кегль;
+   распознанное из документов уходит под свёртку, его правят редко. */
+.docs-head { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+.docs-lede { color:var(--text-sec); font-size:.875rem; line-height:1.55; max-width:68ch; margin:.35rem 0 0; }
+
+.docs-money { background:var(--navy-50); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.docs-money + .docs-fold { margin-top:16px; }
+
+.docs-pairs { display:flex; gap:8px; flex-wrap:wrap; }
+.docs-pair {
+  appearance:none; border:1px solid var(--border); background:var(--bg);
+  border-radius:9px; padding:9px 16px; font:inherit; font-size:.9rem; font-weight:600;
+  color:var(--navy-700); cursor:pointer; letter-spacing:-.01em;
+  transition:border-color .16s ease, background .16s ease, color .16s ease;
+}
+.docs-pair:hover { border-color:var(--navy-400); }
+.docs-pair:focus-visible { outline:2px solid var(--coral); outline-offset:2px; }
+.docs-pair[aria-pressed="true"] { background:var(--coral); border-color:var(--coral); color:#fff; }
+
+/* Три величины одной строкой: отдаёт → получает → курс.
+   minmax(0,…) обязателен, иначе длинные суммы распирают грид. */
+.docs-rate-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr); gap:14px; margin-top:16px; }
+@media (max-width:900px){ .docs-rate-row { grid-template-columns:1fr; } }
+
+.docs-field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.docs-field > label { font-size:.8rem; font-weight:600; color:var(--navy-600); letter-spacing:.01em; }
+.docs-hint { font-size:.75rem; color:var(--text-sec); line-height:1.4; }
+
+.docs-amount { display:flex; align-items:stretch; background:var(--bg); border:1px solid var(--navy-300); border-radius:10px; overflow:hidden; }
+.docs-amount:focus-within { border-color:var(--coral); box-shadow:0 0 0 3px var(--coral-light); }
+.docs-amount input {
+  flex:1; min-width:0; border:0; background:transparent; padding:13px 14px;
+  font:inherit; font-size:1.4rem; font-weight:650; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; color:var(--text);
+}
+.docs-amount input:focus { outline:none; }
+.docs-amount input::placeholder { color:var(--navy-500); font-weight:500; }
+.docs-cur {
+  display:flex; align-items:center; padding:0 14px; background:var(--navy-100);
+  border-left:1px solid var(--border); font-size:.85rem; font-weight:700;
+  color:var(--navy-600); letter-spacing:.02em;
+}
+
+.docs-purpose { margin-top:18px; }
+.docs-purpose textarea {
+  width:100%; box-sizing:border-box; border:1px solid var(--navy-300); border-radius:10px;
+  padding:12px 14px; font:inherit; font-size:.9rem; line-height:1.5; color:var(--text);
+  background:var(--bg); resize:vertical; min-height:64px;
+}
+.docs-purpose textarea:focus { outline:none; border-color:var(--coral); box-shadow:0 0 0 3px var(--coral-light); }
+.docs-label-row { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:6px; }
+.docs-relink { background:none; border:0; padding:0; font:inherit; font-size:.78rem; color:var(--coral); cursor:pointer; text-decoration:underline; text-underline-offset:2px; }
+.docs-relink:hover { color:var(--coral-hover); }
+
+/* Свёртки: распознанное и реквизиты. Правятся редко — по умолчанию закрыты. */
+.docs-fold { border:1px solid var(--border); border-radius:12px; background:var(--bg); overflow:hidden; }
+.docs-fold + .docs-fold { margin-top:12px; }
+.docs-fold > summary {
+  list-style:none; cursor:pointer; padding:14px 18px; display:flex; align-items:center;
+  gap:12px; font-size:.9rem; font-weight:600; color:var(--navy-700);
+  transition:background .16s ease;
+}
+.docs-fold > summary::-webkit-details-marker { display:none; }
+.docs-fold > summary:hover { background:var(--navy-50); }
+.docs-fold > summary:focus-visible { outline:2px solid var(--coral); outline-offset:-2px; }
+.docs-fold > summary::before {
+  content:''; width:7px; height:7px; flex:none; border-right:1.5px solid var(--navy-400);
+  border-bottom:1.5px solid var(--navy-400); transform:rotate(-45deg); margin-left:2px;
+  transition:transform .18s ease;
+}
+.docs-fold[open] > summary::before { transform:rotate(45deg); }
+.docs-summary-text { color:var(--text-sec); font-weight:400; font-size:.84rem; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.docs-fold-body { padding:4px 18px 18px; border-top:1px solid var(--border-light); }
+
+/* Широкие колонки: длинные значения (ФИО, адрес банка) должны читаться целиком */
+.docs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:14px 18px; margin-top:14px; }
+.docs-grid input { width:100%; box-sizing:border-box; }
+.docs-grid .form-input { font-size:.88rem; }
+.docs-src { color:var(--green-darker); font-weight:500; font-size:.72rem; }
+
+.docs-slots { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:14px; }
+.docs-slot { border:1px dashed var(--navy-300); border-radius:12px; padding:16px; background:var(--navy-50); transition:border-color .16s ease, background .16s ease; }
+.docs-slot:hover { border-color:var(--navy-400); background:var(--bg); }
+.docs-slot.is-filled { border-style:solid; border-color:var(--green); background:var(--green-light); }
+.docs-slot-top { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+.docs-slot-name { font-size:.9rem; font-weight:650; color:var(--navy-800); }
+.docs-req { font-size:.72rem; font-weight:600; color:var(--red); }
+.docs-req.is-optional { color:var(--text-sec); font-weight:500; }
+.docs-slot-what { font-size:.76rem; color:var(--text-sec); line-height:1.45; margin:6px 0 12px; }
+.docs-pick { display:inline-block; cursor:pointer; border:1px solid var(--navy-300); background:var(--bg); border-radius:8px; padding:7px 13px; font-size:.82rem; font-weight:600; color:var(--navy-700); transition:border-color .16s ease; }
+.docs-pick:hover { border-color:var(--navy-500); }
+.docs-slot input[type=file] { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+.docs-fname { display:block; margin-top:8px; font-size:.78rem; color:var(--green-darker); word-break:break-all; }
+
+.docs-note { font-size:.82rem; color:var(--text-sec); }
+.docs-status { font-size:.84rem; color:var(--text-sec); }
+.docs-status.is-error { color:var(--red); }
+.docs-empty { padding:28px 16px; text-align:center; color:var(--text-sec); font-size:.88rem; }
+.docs-num { font-variant-numeric:tabular-nums; font-size:.86rem; color:var(--navy-700); white-space:nowrap; }
+.docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
+
+</style>
 </head>
 
 <body>
@@ -2129,91 +2233,152 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <!-- KYC Section -->
         <section id="documents" class="section">
             <div class="card">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
-                    <span>Документы — агентские договоры</span>
+                <div class="docs-head">
+                    <div>
+                        <div class="card-title" style="margin:0">Агентские договоры</div>
+                        <p class="docs-lede">Договор подписывается один раз на клиента и тип сделки.
+                            Каждый следующий платёж — доп. соглашение и инвойс со ссылкой на него.</p>
+                    </div>
                     <div style="display:flex;gap:8px;align-items:center">
-                        <input id="docsSearch" class="form-input" placeholder="Клиент или номер" style="width:200px;font-size:.85rem" oninput="loadDocuments()">
-                        <button class="btn btn-primary" style="font-size:.9rem" onclick="docsOpenNew()">+ Новый договор</button>
+                        <input id="docsSearch" class="form-input" placeholder="Клиент или номер"
+                               style="width:220px;font-size:.85rem" oninput="loadDocuments()">
+                        <button class="btn btn-primary" style="font-size:.9rem" onclick="docsOpenNew()">Новый договор</button>
                     </div>
                 </div>
-                <p style="color:#666;font-size:.85rem;margin:.5rem 0 1rem">
-                    Один договор на клиента <b>на тип сделки</b>. Каждый следующий платёж —
-                    доп. соглашение и инвойс со ссылкой на него, договор не перевыпускается.
-                </p>
-                <div class="table-container" style="overflow-x:auto">
+                <div class="table-container" style="overflow-x:auto;margin-top:18px">
                     <table class="table">
                         <thead><tr>
-                            <th>Клиент</th><th>Тип</th><th>Номер</th><th>Статус</th>
-                            <th>Платежей</th><th>Документы</th><th></th>
+                            <th>Клиент</th><th>Тип</th><th>Пара</th><th style="text-align:right">Отдаёт</th>
+                            <th style="text-align:right">Получает</th><th style="text-align:right">Курс</th>
+                            <th>Номер</th><th>Статус</th><th style="text-align:center">Платежей</th><th></th>
                         </tr></thead>
-                        <tbody id="docsList"><tr><td colspan="7" style="color:#999;text-align:center;padding:1rem">Загрузка…</td></tr></tbody>
+                        <tbody id="docsList"><tr><td colspan="10" class="docs-empty">Загрузка…</td></tr></tbody>
                     </table>
                 </div>
             </div>
 
-            <!-- Мастер создания: тип → файлы → распознавание → подтверждение → выпуск -->
             <div class="card" id="docsWizard" style="display:none">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span id="docsWizTitle">Новый договор</span>
+                <div class="docs-head">
+                    <div class="card-title" id="docsWizTitle" style="margin:0">Новый договор</div>
                     <button class="btn" onclick="docsCloseNew()" style="font-size:.85rem">Отмена</button>
                 </div>
 
-                <div id="docsStep1">
-                    <label class="form-label">Тип сделки</label>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:1rem" id="docsTypeBtns">
-                        <button class="btn" data-dt="freehold" onclick="docsSetType('freehold')">Фрихолд</button>
-                        <button class="btn" data-dt="leasehold" onclick="docsSetType('leasehold')">Лизхолд</button>
-                        <button class="btn" data-dt="rental" onclick="docsSetType('rental')">Аренда</button>
-                    </div>
-                    <label class="form-label">Документы клиента</label>
-                    <p style="color:#666;font-size:.82rem;margin:.2rem 0 .75rem">
-                        Каждый документ — в свой слот. Так система знает, что перед ней, и берёт
-                        ФИО из паспорта, реквизиты получателя из инвойса, срок leasehold из СПА.
-                    </p>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.9rem">
-                        <div>
-                            <label class="form-label" style="font-size:.85rem">
-                                Паспорт <span id="docsReqPassport" style="color:#c00">обязательно</span></label>
-                            <input type="file" id="docsFilePassport" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
-                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">ФИО, гражданство, номер, кем и когда выдан</div>
-                        </div>
-                        <div>
-                            <label class="form-label" style="font-size:.85rem">
-                                Инвойс застройщика <span id="docsReqInvoice" style="color:#c00">обязательно</span></label>
-                            <input type="file" id="docsFileInvoice" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
-                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">получатель, банк, счёт, сумма, номер и дата</div>
-                        </div>
-                        <div>
-                            <label class="form-label" style="font-size:.85rem">
-                                СПА — договор с застройщиком <span style="color:#999">по желанию</span></label>
-                            <input type="file" id="docsFileSpa" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
-                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">срок и дата начала leasehold, договор-основание</div>
+                <div id="docsStep1" style="margin-top:18px">
+                    <div class="docs-field" style="margin-bottom:18px">
+                        <label>Тип сделки</label>
+                        <div class="docs-pairs" id="docsTypeBtns">
+                            <button type="button" class="docs-pair" data-dt="freehold" aria-pressed="false" onclick="docsSetType('freehold')">Фрихолд</button>
+                            <button type="button" class="docs-pair" data-dt="leasehold" aria-pressed="false" onclick="docsSetType('leasehold')">Лизхолд</button>
+                            <button type="button" class="docs-pair" data-dt="rental" aria-pressed="false" onclick="docsSetType('rental')">Аренда</button>
                         </div>
                     </div>
-                    <button class="btn btn-primary" style="margin-top:1rem" onclick="docsParse()">Распознать</button>
-                    <span id="docsParseStatus" style="margin-left:.75rem;color:#666;font-size:.85rem"></span>
+                    <div class="docs-field">
+                        <label>Документы клиента</label>
+                        <span class="docs-hint">Каждый в свой слот — так система знает, что перед ней:
+                            ФИО берёт из паспорта, реквизиты получателя из инвойса, срок leasehold из СПА.</span>
+                    </div>
+                    <div class="docs-slots">
+                        <div class="docs-slot" id="docsSlotPassport">
+                            <div class="docs-slot-top"><span class="docs-slot-name">Паспорт</span><span class="docs-req" id="docsReqPassport">обязательно</span></div>
+                            <p class="docs-slot-what">ФИО, гражданство, номер, кем и когда выдан</p>
+                            <label class="docs-pick">Выбрать файл
+                                <input type="file" id="docsFilePassport" accept=".pdf,.png,.jpg,.jpeg" onchange="docsSlotPicked('passport')">
+                            </label>
+                            <span class="docs-fname" id="docsNamePassport"></span>
+                        </div>
+                        <div class="docs-slot" id="docsSlotInvoice">
+                            <div class="docs-slot-top"><span class="docs-slot-name">Инвойс застройщика</span><span class="docs-req" id="docsReqInvoice">обязательно</span></div>
+                            <p class="docs-slot-what">получатель, банк, счёт, сумма, номер и дата</p>
+                            <label class="docs-pick">Выбрать файл
+                                <input type="file" id="docsFileInvoice" accept=".pdf,.png,.jpg,.jpeg" onchange="docsSlotPicked('invoice')">
+                            </label>
+                            <span class="docs-fname" id="docsNameInvoice"></span>
+                        </div>
+                        <div class="docs-slot" id="docsSlotSpa">
+                            <div class="docs-slot-top"><span class="docs-slot-name">СПА — договор с застройщиком</span><span class="docs-req is-optional" id="docsReqSpa">по желанию</span></div>
+                            <p class="docs-slot-what">срок и дата начала leasehold, договор-основание</p>
+                            <label class="docs-pick">Выбрать файл
+                                <input type="file" id="docsFileSpa" accept=".pdf,.png,.jpg,.jpeg" onchange="docsSlotPicked('spa')">
+                            </label>
+                            <span class="docs-fname" id="docsNameSpa"></span>
+                        </div>
+                    </div>
+                    <div style="margin-top:18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                        <button class="btn btn-primary" onclick="docsParse()">Распознать</button>
+                        <button class="btn" style="font-size:.85rem" onclick="docsSkipParse()">Заполнить вручную</button>
+                        <span id="docsParseStatus" class="docs-status"></span>
+                    </div>
                 </div>
 
-                <div id="docsStep2" style="display:none">
+                <div id="docsStep2" style="display:none;margin-top:18px">
                     <div id="docsWarnings"></div>
-                    <h4 style="font-size:.95rem;margin:1rem 0 .5rem">Данные из документов — проверьте и поправьте</h4>
-                    <div id="docsFieldsForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:.6rem"></div>
-                    <h4 style="font-size:.95rem;margin:1.25rem 0 .5rem">Курс и платёж</h4>
-                    <div id="docsMoneyForm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:.6rem"></div>
-                    <div style="margin-top:1rem;display:flex;gap:8px;align-items:center">
+
+                    <div class="docs-money">
+                        <div class="docs-field">
+                            <label>Валютная пара</label>
+                            <div class="docs-pairs" id="docsPairBtns"></div>
+                        </div>
+                        <div class="docs-rate-row">
+                            <div class="docs-field">
+                                <label for="docm_total_payin">Клиент отдаёт</label>
+                                <div class="docs-amount">
+                                    <input id="docm_total_payin" inputmode="decimal" placeholder="0" oninput="docsRecalc('payin')">
+                                    <span class="docs-cur" id="docsCurIn">RUB</span>
+                                </div>
+                            </div>
+                            <div class="docs-field">
+                                <label for="docm_transfer_amount">Получатель получает</label>
+                                <div class="docs-amount">
+                                    <input id="docm_transfer_amount" inputmode="decimal" placeholder="0" oninput="docsRecalc('payout')">
+                                    <span class="docs-cur" id="docsCurOut">THB</span>
+                                </div>
+                            </div>
+                            <div class="docs-field">
+                                <label for="docm_rate">Курс</label>
+                                <div class="docs-amount">
+                                    <input id="docm_rate" inputmode="decimal" placeholder="0.000000" oninput="docsRecalc('rate')">
+                                    <span class="docs-cur" id="docsCurRate">RUB / THB</span>
+                                </div>
+                                <span class="docs-hint" id="docsRateHint">Считается сам из двух сумм. Впишете курс — пересчитается сумма получателя.</span>
+                            </div>
+                        </div>
+                        <div class="docs-purpose">
+                            <div class="docs-label-row">
+                                <label for="docsPurpose" style="font-size:.8rem;font-weight:600;color:var(--navy-600)">Назначение платежа</label>
+                                <button type="button" class="docs-relink" onclick="docsBuildPurpose(true)">Собрать заново</button>
+                            </div>
+                            <textarea id="docsPurpose" rows="2"></textarea>
+                            <span class="docs-hint" id="docsPurposeHint"></span>
+                        </div>
+                    </div>
+
+                    <details class="docs-fold" id="docsFoldFields">
+                        <summary>Данные из документов<span class="docs-summary-text" id="docsFieldsSummary"></span></summary>
+                        <div class="docs-fold-body">
+                            <div class="docs-grid" id="docsFieldsForm"></div>
+                        </div>
+                    </details>
+
+                    <details class="docs-fold" id="docsFoldTerms">
+                        <summary>Реквизиты и сроки<span class="docs-summary-text">заполнены по умолчанию — комиссия в курсе, срок 1 рабочий день</span></summary>
+                        <div class="docs-fold-body">
+                            <div class="docs-grid" id="docsMoneyForm"></div>
+                        </div>
+                    </details>
+
+                    <div style="margin-top:20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                         <button class="btn btn-primary" onclick="docsCreate()">Создать пакет документов</button>
-                        <span id="docsCreateStatus" style="color:#666;font-size:.85rem"></span>
+                        <span id="docsCreateStatus" class="docs-status"></span>
                     </div>
                 </div>
             </div>
 
-            <!-- Карточка договора: документы, новый платёж, загрузка подписанных -->
             <div class="card" id="docsDetail" style="display:none">
-                <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
-                    <span id="docsDetailTitle"></span>
+                <div class="docs-head">
+                    <div class="card-title" id="docsDetailTitle" style="margin:0"></div>
                     <button class="btn" onclick="document.getElementById('docsDetail').style.display='none'" style="font-size:.85rem">Закрыть</button>
                 </div>
-                <div id="docsDetailBody"></div>
+                <div id="docsDetailBody" style="margin-top:14px"></div>
             </div>
         </section>
 
@@ -13450,8 +13615,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             document.getElementById('moreOverlay').classList.remove('open');
         }
 
+
         // ═══════════════════════════════════════════════════════════
         // ДОКУМЕНТЫ — договоры, допники, инвойсы
+        // Курс и валютная пара — главное на экране: от них зависит всё
+        // остальное, а распознанное из документов правят редко.
         // Карта полей: wiki/pages/crm-doc-generator-fields.md
         // ═══════════════════════════════════════════════════════════
         const DOCS_TYPE_LABEL = {freehold:'Фрихолд', leasehold:'Лизхолд', rental:'Аренда'};
@@ -13459,7 +13627,17 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             invoice:'Инвойс', signed:'Подписанный', source:'Исходник',
             source_passport:'Исходник — паспорт', source_invoice:'Исходник — инвойс',
             source_spa:'Исходник — СПА', source_other:'Исходник'};
-        // Поля паспорта и инвойса. Порядок = порядок в форме подтверждения.
+
+        // Валютные пары. Слева то, что отдаёт клиент, справа — что получает
+        // застройщик. Фрихолд платится в USD, лизхолд и аренда — в батах.
+        const DOCS_PAIRS = [
+            {k:'RUB_THB',  in:'RUB',  out:'THB', label:'RUB → THB'},
+            {k:'USDT_THB', in:'USDT', out:'THB', label:'USDT → THB'},
+            {k:'RUB_USD',  in:'RUB',  out:'USD', label:'RUB → USD'},
+            {k:'USDT_USD', in:'USDT', out:'USD', label:'USDT → USD'},
+        ];
+        const DOCS_DEFAULT_PAIR = {freehold:'RUB_USD', leasehold:'RUB_THB', rental:'RUB_THB'};
+
         const DOCS_FIELDS = [
             ['client_name_ru','ФИО кириллицей'], ['client_name_en','ФИО латиницей'],
             ['client_citizenship','Гражданство'], ['client_passport_no','Паспорт №'],
@@ -13476,15 +13654,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             ['rent_amount','Арендная плата'], ['deposit_amount','Депозит'],
             ['contract_ref','Договор-основание'],
         ];
-        // Денежный блок. flow ограничивает поле типом сделки — OUR/SHA/BEN и
-        // USD-подтверждение застройщика живут только во фрихолде.
+        // Реквизиты и сроки. Живут под свёрткой: почти всегда одинаковые.
         const DOCS_MONEY = [
-            ['total_payin','Всего к оплате клиентом', 'RUB 2 795 000.00', null],
-            ['transfer_amount','Сумма перевода получателю','THB 1 000 000.00', ['leasehold','rental']],
-            ['rate','Курс','2.795', ['leasehold','rental']],
-            ['rate_valid_until','Курс действует до','04.09.2026, 23:59 (GMT+7)', null],
-            ['payin_method','Способ оплаты','bank | sbp | usdt | cash', null],
-            ['payin_currency','Валюта оплаты','RUB', null],
+            ['rate_valid_until','Курс действует до','сегодня, 23:59 (GMT+7)', null],
+            ['payin_method','Способ оплаты','bank / sbp / usdt / cash', null],
             ['payin_details','Реквизиты для оплаты','р/с, банк, БИК / СБП / кошелёк', null],
             ['client_address','Адрес клиента','', null],
             ['client_contact','Email или телефон клиента','', null],
@@ -13498,10 +13671,18 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             ['thb_credit_status','Статус зачёта THB-инвойса','полное исполнение', ['freehold']],
             ['developer_confirmation','Письменное подтверждение застройщика','письмо № … от …', ['freehold']],
         ];
-        let docsState = {type:null, fields:{}, provenance:{}, files:null};
+        const DOCS_SLOTS = [['passport','docsFilePassport'], ['invoice','docsFileInvoice'], ['spa','docsFileSpa']];
+        const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport']};
+        const DOCS_SLOT_LABEL = {passport:'паспорт', invoice:'инвойс застройщика', spa:'договор с застройщиком'};
+
+        let docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, files:{}, purposeTouched:false};
 
         function docsEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+        function docsNum(v){ const n=parseFloat(String(v==null?'':v).replace(/\s/g,'').replace(',','.')); return isFinite(n)?n:null; }
+        function docsFmt(n, dp){ return n==null ? '' : n.toLocaleString('ru-RU',{minimumFractionDigits:dp||0, maximumFractionDigits:dp||0}); }
+        function docsPair(k){ return DOCS_PAIRS.find(p=>p.k===k) || DOCS_PAIRS[0]; }
 
+        // ── список ────────────────────────────────────────────────
         async function loadDocuments(){
             const q = (document.getElementById('docsSearch')||{}).value || '';
             const tb = document.getElementById('docsList');
@@ -13509,63 +13690,76 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const r = await fetch('/api/docs/agreements?q='+encodeURIComponent(q));
                 const d = await r.json();
                 const rows = d.agreements||[];
-                if(!rows.length){ tb.innerHTML = '<tr><td colspan="7" style="color:#999;text-align:center;padding:1rem">Договоров пока нет</td></tr>'; return; }
+                if(!rows.length){ tb.innerHTML = '<tr><td colspan="10" class="docs-empty">Договоров пока нет. Первый создаётся кнопкой «Новый договор».</td></tr>'; return; }
                 tb.innerHTML = rows.map(a=>{
+                    const m = a.money||{};
+                    const p = docsPair(m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB');
                     const badge = a.status==='signed' ? 'badge-completed' : (a.status==='sent'?'badge-verified':'badge-pending');
                     const label = a.status==='signed'?'подписан':(a.status==='sent'?'отправлен':'черновик');
+                    const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsNum(m.rate);
                     return `<tr>
                         <td>${docsEsc(a.client_name)}</td>
                         <td>${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type}</td>
-                        <td><code>${docsEsc(a.number)}</code></td>
+                        <td class="docs-num">${p.label}</td>
+                        <td class="docs-money-cell" style="text-align:right">${inAmt!=null?docsFmt(inAmt,2):'—'}</td>
+                        <td class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2):'—'}</td>
+                        <td class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}</td>
+                        <td class="docs-num">${docsEsc(a.number)}</td>
                         <td><span class="badge ${badge}">${label}</span></td>
-                        <td style="text-align:center">${a.payments_count}</td>
-                        <td>${(a.docs||[]).length}</td>
+                        <td style="text-align:center" class="docs-num">${a.payments_count}</td>
                         <td><button class="btn" style="font-size:.8rem" onclick="docsOpen(${a.id})">Открыть</button></td>
                     </tr>`;
                 }).join('');
-            }catch(e){ tb.innerHTML = '<tr><td colspan="7" style="color:#c00;padding:1rem">Ошибка загрузки: '+docsEsc(e.message)+'</td></tr>'; }
+            }catch(e){ tb.innerHTML = '<tr><td colspan="10" class="docs-empty" style="color:var(--red)">Не удалось загрузить: '+docsEsc(e.message)+'</td></tr>'; }
         }
 
-        // Слоты загрузки: паспорт, инвойс застройщика, СПА. Обязательность зависит
-        // от типа сделки — на аренде инвойса часто нет, основанием служит договор аренды.
-        const DOCS_SLOTS = [['passport','docsFilePassport'], ['invoice','docsFileInvoice'], ['spa','docsFileSpa']];
-        const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport']};
-        const DOCS_SLOT_LABEL = {passport:'паспорт', invoice:'инвойс застройщика', spa:'договор с застройщиком'};
-
+        // ── шаг 1: тип и документы ────────────────────────────────
         function docsOpenNew(){
-            docsState = {type:null, fields:{}, provenance:{}, files:null};
+            docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, files:{}, purposeTouched:false};
             document.getElementById('docsWizard').style.display='';
             document.getElementById('docsStep1').style.display='';
             document.getElementById('docsStep2').style.display='none';
             document.getElementById('docsParseStatus').textContent='';
-            DOCS_SLOTS.forEach(([,id])=>{ const el=document.getElementById(id); if(el) el.value=''; });
-            document.querySelectorAll('#docsTypeBtns .btn').forEach(b=>b.classList.remove('btn-primary'));
+            DOCS_SLOTS.forEach(([slot,id])=>{
+                const el=document.getElementById(id); if(el) el.value='';
+                document.getElementById('docsName'+slot[0].toUpperCase()+slot.slice(1)).textContent='';
+                document.getElementById('docsSlot'+slot[0].toUpperCase()+slot.slice(1)).classList.remove('is-filled');
+            });
+            document.querySelectorAll('#docsTypeBtns .docs-pair').forEach(b=>b.setAttribute('aria-pressed','false'));
+            document.getElementById('docsWizard').scrollIntoView({behavior:'smooth', block:'start'});
         }
         function docsCloseNew(){ document.getElementById('docsWizard').style.display='none'; }
+
         function docsSetType(t){
             docsState.type=t;
-            document.querySelectorAll('#docsTypeBtns .btn').forEach(b=>b.classList.toggle('btn-primary', b.dataset.dt===t));
-            // на аренде инвойс перестаёт быть обязательным
+            document.querySelectorAll('#docsTypeBtns .docs-pair').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.dt===t)));
             const need = DOCS_REQUIRED_SLOTS[t]||[];
             const inv = document.getElementById('docsReqInvoice');
-            if(inv){
-                const req = need.includes('invoice');
-                inv.textContent = req ? 'обязательно' : 'по желанию';
-                inv.style.color = req ? '#c00' : '#999';
-            }
+            const req = need.includes('invoice');
+            inv.textContent = req ? 'обязательно' : 'по желанию';
+            inv.classList.toggle('is-optional', !req);
+            docsState.pair = DOCS_DEFAULT_PAIR[t] || 'RUB_THB';
+        }
+
+        function docsSlotPicked(slot){
+            const cap = slot[0].toUpperCase()+slot.slice(1);
+            const el = document.getElementById('docsFile'+cap);
+            const f = el && el.files[0];
+            document.getElementById('docsName'+cap).textContent = f ? f.name : '';
+            document.getElementById('docsSlot'+cap).classList.toggle('is-filled', !!f);
         }
 
         async function docsParse(){
             const st = document.getElementById('docsParseStatus');
-            if(!docsState.type){ st.textContent='Сначала выберите тип сделки'; return; }
-            const fd = new FormData();
-            const picked = {};
+            st.classList.remove('is-error');
+            if(!docsState.type){ st.textContent='Сначала выберите тип сделки'; st.classList.add('is-error'); return; }
+            const fd = new FormData(); const picked = {};
             DOCS_SLOTS.forEach(([slot,id])=>{
                 const el = document.getElementById(id);
                 if(el && el.files.length){ fd.append(slot, el.files[0]); picked[slot]=el.files[0]; }
             });
             const missing = (DOCS_REQUIRED_SLOTS[docsState.type]||[]).filter(s=>!picked[s]);
-            if(missing.length){ st.textContent='Не приложены: '+missing.map(s=>DOCS_SLOT_LABEL[s]).join(', '); return; }
+            if(missing.length){ st.textContent='Не приложены: '+missing.map(s=>DOCS_SLOT_LABEL[s]).join(', '); st.classList.add('is-error'); return; }
             fd.append('deal_type', docsState.type);
             docsState.files = picked;
             st.textContent='Распознаю… несколько секунд на файл';
@@ -13573,146 +13767,296 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const r = await fetch('/api/docs/parse', {method:'POST', body:fd});
                 const d = await r.json();
                 if(!d.success){
+                    st.classList.add('is-error');
                     st.textContent = d.error==='no_api_key'
-                        ? 'Не задан OPENROUTER_API_KEY — поля можно заполнить руками'
+                        ? 'Распознавание недоступно — заполните поля вручную'
                         : (d.detail || ('Не удалось распознать: '+d.error));
-                    docsState.fields = {}; docsState.provenance = {};
-                    docsRenderStep2([]); return;
+                    if(d.error==='no_api_key'){ docsRenderStep2([],{},[]); }
+                    return;
                 }
                 docsState.fields = d.fields||{};
                 docsState.provenance = d.provenance||{};
-                st.textContent = 'Готово, модель: '+((d.models||[]).join(', ')||'—');
+                st.textContent='';
                 docsRenderStep2(d.warnings||[], d.conflicts||{}, d.failed||[]);
-            }catch(e){ st.textContent='Ошибка: '+e.message; }
+            }catch(e){ st.classList.add('is-error'); st.textContent='Ошибка: '+e.message; }
         }
 
+        function docsSkipParse(){
+            const st = document.getElementById('docsParseStatus');
+            if(!docsState.type){ st.textContent='Сначала выберите тип сделки'; st.classList.add('is-error'); return; }
+            docsState.files = {};
+            DOCS_SLOTS.forEach(([slot,id])=>{ const el=document.getElementById(id); if(el&&el.files.length) docsState.files[slot]=el.files[0]; });
+            docsState.fields={}; docsState.provenance={};
+            docsRenderStep2([],{},[]);
+        }
+
+        // ── шаг 2: курс, назначение, свёртки ──────────────────────
         function docsRenderStep2(warnings, conflicts, failed){
             const w = document.getElementById('docsWarnings');
             let html = '';
-            (warnings||[]).forEach(x=>{ html += `<div class="alert alert-warning">⚠ ${docsEsc(x)}</div>`; });
+            (warnings||[]).forEach(x=>{ html += `<div class="alert alert-warning">${docsEsc(x)}</div>`; });
             Object.entries(conflicts||{}).forEach(([k,v])=>{
-                html += `<div class="alert alert-warning">⚠ Поле «${docsEsc(k)}» пришло из разных файлов по-разному: `+
-                    v.map(x=>`${docsEsc(x.value)} (${docsEsc(x.file)})`).join(' / ')+'. Выберите верное вручную.</div>';
+                const label = (DOCS_FIELDS.find(f=>f[0]===k)||[k,k])[1];
+                html += `<div class="alert alert-warning">«${docsEsc(label)}» пришло из разных файлов по-разному: `+
+                    v.map(x=>`${docsEsc(x.value)} (${docsEsc(x.file)})`).join(' / ')+'. Выберите верное в блоке «Данные из документов».</div>';
             });
-            (failed||[]).forEach(x=>{ html += `<div class="alert alert-warning">⚠ Файл ${docsEsc(x.file)} не распознан: ${docsEsc(x.error)}</div>`; });
+            (failed||[]).forEach(x=>{ html += `<div class="alert alert-warning">Файл ${docsEsc(x.file)} не распознан: ${docsEsc(x.error)}</div>`; });
             w.innerHTML = html;
 
+            docsRenderPairs();
+            docsRenderFields();
+            docsRenderTerms();
+            docsBuildPurpose(false);
+            document.getElementById('docsStep1').style.display='none';
+            document.getElementById('docsStep2').style.display='';
+        }
+
+        function docsRenderPairs(){
+            document.getElementById('docsPairBtns').innerHTML = DOCS_PAIRS.map(p=>
+                `<button type="button" class="docs-pair" data-pair="${p.k}" aria-pressed="${p.k===docsState.pair}" onclick="docsSetPair('${p.k}')">${p.label}</button>`).join('');
+            docsApplyPair();
+        }
+        function docsSetPair(k){
+            docsState.pair = k;
+            document.querySelectorAll('#docsPairBtns .docs-pair').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.pair===k)));
+            docsApplyPair();
+            docsRecalc('payin');
+        }
+        function docsApplyPair(){
+            const p = docsPair(docsState.pair);
+            document.getElementById('docsCurIn').textContent = p.in;
+            document.getElementById('docsCurOut').textContent = p.out;
+            document.getElementById('docsCurRate').textContent = p.in+' / '+p.out;
+            document.getElementById('docsRateHint').textContent =
+                `Сколько ${p.in} за 1 ${p.out}. Считается сам из двух сумм; впишете курс — пересчитается сумма получателя.`;
+        }
+
+        // Двусторонняя связь: правишь суммы — считается курс, правишь курс —
+        // считается сумма получателя. Округление курса до 6 знаков, как в договорах.
+        function docsRecalc(source){
+            const inEl = document.getElementById('docm_total_payin');
+            const outEl = document.getElementById('docm_transfer_amount');
+            const rateEl = document.getElementById('docm_rate');
+            const a = docsNum(inEl.value), b = docsNum(outEl.value), r = docsNum(rateEl.value);
+            if(source==='rate'){
+                if(r && a) outEl.value = (a/r).toFixed(2);
+            } else if(a && b){
+                rateEl.value = (a/b).toFixed(6);
+            } else if(source==='payin' && a && r){
+                outEl.value = (a/r).toFixed(2);
+            }
+            docsBuildPurpose(false);
+        }
+
+        function docsBuildPurpose(force){
+            const el = document.getElementById('docsPurpose');
+            const hint = document.getElementById('docsPurposeHint');
+            const method = (document.getElementById('docm_payin_method')||{}).value || 'bank';
+            if(method!=='bank'){
+                hint.textContent = 'На СБП, крипте и наличных назначение не указывается — подтверждение уходит менеджеру.';
+                if(force || !docsState.purposeTouched) el.value = '';
+                el.placeholder = 'Не указывается для этого способа оплаты';
+                return;
+            }
+            hint.textContent = 'Собирается из номера инвойса, юнита и ФИО плательщика. Можно переписать руками.';
+            el.placeholder = '';
+            if(!force && docsState.purposeTouched) return;
+            const f = docsState.fields||{};
+            const parts = [];
+            const inv = (document.getElementById('docf_invoice_no')||{}).value || f.invoice_no;
+            const unit = (document.getElementById('docf_unit_no')||{}).value || f.unit_no;
+            const name = (document.getElementById('docf_client_name_ru')||{}).value || f.client_name_ru || f.client_name_en;
+            if(inv) parts.push('Оплата по инвойсу № '+inv);
+            if(unit) parts.push(unit);
+            if(name) parts.push(name);
+            el.value = parts.length ? parts.join(', ')+'. НДС не облагается' : '';
+        }
+
+        function docsRenderFields(){
+            const filled = DOCS_FIELDS.filter(([k])=>docsState.fields[k]).length;
+            document.getElementById('docsFieldsSummary').textContent =
+                filled ? `${docsState.fields.client_name_ru||docsState.fields.client_name_en||'клиент'} · заполнено ${filled} из ${DOCS_FIELDS.length}`
+                       : 'ничего не распознано — заполните вручную';
+            document.getElementById('docsFoldFields').open = !filled;
             document.getElementById('docsFieldsForm').innerHTML = DOCS_FIELDS.map(([k,label])=>{
                 const val = docsState.fields[k]||'';
                 const src = docsState.provenance[k];
-                return `<div>
-                    <label class="form-label" style="font-size:.8rem">${label}
-                        ${src?`<span style="color:#0a0;font-weight:400"> ← ${docsEsc(src)}</span>`:''}</label>
-                    <input class="form-input" id="docf_${k}" value="${docsEsc(val)}" style="font-size:.85rem">
+                return `<div class="docs-field">
+                    <label for="docf_${k}">${label}${src?` <span class="docs-src">← ${docsEsc(src)}</span>`:''}</label>
+                    <input class="form-input" id="docf_${k}" value="${docsEsc(val)}" oninput="docsBuildPurpose(false)">
                 </div>`;
             }).join('');
+        }
 
+        function docsRenderTerms(){
             document.getElementById('docsMoneyForm').innerHTML = DOCS_MONEY
                 .filter(([,,,flow])=>!flow || flow.includes(docsState.type))
-                .map(([k,label,ph])=>`<div>
-                    <label class="form-label" style="font-size:.8rem">${label}</label>
-                    <input class="form-input" id="docm_${k}" placeholder="${docsEsc(ph)}" style="font-size:.85rem">
+                .map(([k,label,ph])=>`<div class="docs-field">
+                    <label for="docm_${k}">${label}</label>
+                    <input class="form-input" id="docm_${k}" placeholder="${docsEsc(ph)}">
                 </div>`).join('');
-            const m = document.getElementById('docm_payin_method'); if(m) m.value='bank';
-            const c = document.getElementById('docm_payin_currency'); if(c) c.value='RUB';
+            const m = document.getElementById('docm_payin_method');
+            if(m){ m.value='bank'; m.addEventListener('input', ()=>docsBuildPurpose(true)); }
             const e = document.getElementById('docm_execution_days'); if(e) e.value='1';
-            document.getElementById('docsStep1').style.display='none';
-            document.getElementById('docsStep2').style.display='';
+            const t = document.getElementById('docsPurpose');
+            if(t) t.addEventListener('input', ()=>{ docsState.purposeTouched = true; });
         }
 
         function docsCollect(){
             const fields={}, money={};
             DOCS_FIELDS.forEach(([k])=>{ const el=document.getElementById('docf_'+k); if(el&&el.value.trim()) fields[k]=el.value.trim(); });
             DOCS_MONEY.forEach(([k])=>{ const el=document.getElementById('docm_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
+            const p = docsPair(docsState.pair);
+            ['total_payin','transfer_amount','rate'].forEach(k=>{
+                const el=document.getElementById('docm_'+k); if(el&&el.value.trim()) money[k]=el.value.trim();
+            });
+            money.pair = docsState.pair;
+            money.payin_currency = p.in;
+            const purpose = (document.getElementById('docsPurpose')||{}).value;
+            if(purpose && purpose.trim()) money.payment_reference = purpose.trim();
             return {fields, money};
         }
 
         async function docsCreate(){
             const st=document.getElementById('docsCreateStatus');
+            st.classList.remove('is-error');
             const {fields, money} = docsCollect();
             const fd = new FormData();
             fd.append('deal_type', docsState.type);
             fd.append('fields', JSON.stringify(fields));
             fd.append('money', JSON.stringify(money));
-            // исходники уходят по тем же слотам — в карточке будет видно, что есть что
             Object.entries(docsState.files||{}).forEach(([slot,f])=>fd.append(slot, f));
             st.textContent='Генерирую…';
             try{
                 const r = await fetch('/api/docs/agreements', {method:'POST', body:fd});
                 const d = await r.json();
                 if(!d.success){
-                    if(d.error==='missing_fields') st.textContent='Не заполнены обязательные поля: '+d.fields.join(', ');
-                    else if(d.error==='already_exists') st.textContent='У клиента уже есть договор этого типа — оформите платёж допником';
+                    st.classList.add('is-error');
+                    if(d.error==='missing_fields'){
+                        st.textContent='Не заполнены: '+d.fields.map(k=>{
+                            const f=DOCS_FIELDS.find(x=>x[0]===k), m=DOCS_MONEY.find(x=>x[0]===k);
+                            return f?f[1]:(m?m[1]:k);
+                        }).join(', ');
+                        document.getElementById('docsFoldFields').open = true;
+                        document.getElementById('docsFoldTerms').open = true;
+                    }
+                    else if(d.error==='already_exists') st.textContent='У клиента уже есть договор этого типа — платёж оформляется допником';
                     else if(d.error==='incomplete_document') st.textContent='В документе остались пустые места: '+d.problems.slice(0,3).join('; ');
                     else st.textContent='Ошибка: '+(d.detail||d.error);
                     return;
                 }
-                st.textContent='Готово';
+                st.textContent='';
                 docsCloseNew(); await loadDocuments(); docsOpen(d.agreement.id);
-            }catch(e){ st.textContent='Ошибка: '+e.message; }
+            }catch(e){ st.classList.add('is-error'); st.textContent='Ошибка: '+e.message; }
         }
 
+        // ── карточка договора ─────────────────────────────────────
         async function docsOpen(id){
             const r = await fetch('/api/docs/agreements/'+id);
             const d = await r.json();
             if(!d.success) return;
-            const a = d.agreement;
+            const a = d.agreement, m = a.money||{};
+            const p = docsPair(m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB');
             document.getElementById('docsDetailTitle').textContent =
                 `${a.client_name} · ${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type} · ${a.number}`;
             const bySeq = {};
             (a.docs||[]).forEach(x=>{ (bySeq[x.seq||1] = bySeq[x.seq||1] || []).push(x); });
-            let html = '';
+            const rate = docsNum(m.rate), inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount);
+            let html = `<div class="docs-money" style="margin-bottom:18px">
+                <div class="docs-rate-row" style="margin-top:0">
+                    <div class="docs-field"><label>Клиент отдаёт</label>
+                        <div class="docs-amount"><input value="${inAmt!=null?docsFmt(inAmt,2):'—'}" readonly><span class="docs-cur">${p.in}</span></div></div>
+                    <div class="docs-field"><label>Получатель получает</label>
+                        <div class="docs-amount"><input value="${outAmt!=null?docsFmt(outAmt,2):'—'}" readonly><span class="docs-cur">${p.out}</span></div></div>
+                    <div class="docs-field"><label>Курс</label>
+                        <div class="docs-amount"><input value="${rate!=null?rate.toFixed(6):'—'}" readonly><span class="docs-cur">${p.in} / ${p.out}</span></div></div>
+                </div></div>`;
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
-                html += `<h4 style="font-size:.9rem;margin:1rem 0 .4rem;color:#666">${seq==1?'Первый пакет':'Платёж № '+seq}</h4>`;
-                html += bySeq[seq].map(x=>`<div style="display:flex;gap:8px;align-items:center;padding:.35rem 0;border-bottom:1px solid #eee">
-                    <span style="min-width:150px;font-size:.85rem">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
+                html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Первый пакет':'Платёж № '+seq}</h4>`;
+                html += bySeq[seq].map(x=>`<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)">
+                    <span style="min-width:180px;font-size:.85rem;color:var(--navy-700)">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
                     <a href="/api/docs/file/${x.id}" style="font-size:.85rem">${docsEsc(x.filename)}</a>
-                    <span style="color:#999;font-size:.78rem">${Math.round((x.size||0)/1024)} КБ</span>
+                    <span class="docs-num" style="color:var(--text-sec);margin-left:auto">${Math.round((x.size||0)/1024)} КБ</span>
                 </div>`).join('');
             });
-            html += `<div style="margin-top:1.25rem;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-                <button class="btn btn-primary" style="font-size:.85rem" onclick="docsAddPayment(${a.id})">+ Платёж (допник + инвойс)</button>
-                <label class="btn" style="font-size:.85rem;cursor:pointer">Загрузить подписанные
-                    <input type="file" multiple style="display:none" onchange="docsUploadSigned(${a.id}, this.files)">
+            html += `<div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                <button class="btn btn-primary" style="font-size:.85rem" onclick="docsAddPayment(${a.id})">Новый платёж</button>
+                <label class="docs-pick">Загрузить подписанные
+                    <input type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0" onchange="docsUploadSigned(${a.id}, this.files)">
                 </label>
-                <span id="docsDetailStatus" style="color:#666;font-size:.85rem"></span>
+                <span id="docsDetailStatus" class="docs-status"></span>
             </div>
-            <div id="docsPaymentForm" style="display:none;margin-top:1rem"></div>`;
+            <div id="docsPaymentForm" style="display:none;margin-top:18px"></div>`;
             document.getElementById('docsDetailBody').innerHTML = html;
             document.getElementById('docsDetail').style.display='';
-            document.getElementById('docsDetail').scrollIntoView({behavior:'smooth'});
+            document.getElementById('docsDetail').scrollIntoView({behavior:'smooth', block:'start'});
             docsState.current = a;
         }
 
         function docsAddPayment(id){
             const a = docsState.current; if(!a) return;
             const box = document.getElementById('docsPaymentForm');
-            const money = a.money||{};
+            const m = a.money||{};
+            const pk = m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB';
+            const p = docsPair(pk);
             box.style.display='';
-            box.innerHTML = `<h4 style="font-size:.95rem;margin:0 0 .5rem">Платёж № ${(a.payments_count||1)+1} — курс и суммы</h4>
-                <p style="color:#666;font-size:.82rem;margin:0 0 .6rem">Договор не перевыпускается: допник и инвойс сошлются на ${docsEsc(a.number)}.</p>
-                <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.6rem">`+
+            box.innerHTML = `<div class="docs-money">
+                <div class="docs-field" style="margin-bottom:4px">
+                    <label>Платёж № ${(a.payments_count||1)+1} — ${p.label}</label>
+                    <span class="docs-hint">Договор не перевыпускается: допник и инвойс сошлются на ${docsEsc(a.number)}.</span>
+                </div>
+                <div class="docs-rate-row">
+                    <div class="docs-field"><label for="docp_total_payin">Клиент отдаёт</label>
+                        <div class="docs-amount"><input id="docp_total_payin" inputmode="decimal" placeholder="0" oninput="docsRecalcPay('payin')"><span class="docs-cur">${p.in}</span></div></div>
+                    <div class="docs-field"><label for="docp_transfer_amount">Получатель получает</label>
+                        <div class="docs-amount"><input id="docp_transfer_amount" inputmode="decimal" placeholder="0" oninput="docsRecalcPay('payout')"><span class="docs-cur">${p.out}</span></div></div>
+                    <div class="docs-field"><label for="docp_rate">Курс</label>
+                        <div class="docs-amount"><input id="docp_rate" inputmode="decimal" placeholder="0.000000" oninput="docsRecalcPay('rate')"><span class="docs-cur">${p.in} / ${p.out}</span></div></div>
+                </div>
+                <div class="docs-purpose">
+                    <div class="docs-label-row"><label for="docp_purpose" style="font-size:.8rem;font-weight:600;color:var(--navy-600)">Назначение платежа</label></div>
+                    <textarea id="docp_purpose" rows="2">${docsEsc(m.payment_reference||'')}</textarea>
+                </div>
+            </div>
+            <details class="docs-fold" style="margin-top:12px"><summary>Реквизиты и сроки<span class="docs-summary-text">перенесены из договора</span></summary>
+                <div class="docs-fold-body"><div class="docs-grid">`+
                 DOCS_MONEY.filter(([,,,flow])=>!flow||flow.includes(a.deal_type)).map(([k,label,ph])=>
-                    `<div><label class="form-label" style="font-size:.8rem">${label}</label>
-                     <input class="form-input" id="docp_${k}" value="${docsEsc(money[k]||'')}" placeholder="${docsEsc(ph)}" style="font-size:.85rem"></div>`).join('')+
-                `</div><div style="margin-top:.75rem"><button class="btn btn-primary" style="font-size:.85rem" onclick="docsSubmitPayment(${id})">Выпустить</button>
-                 <span id="docsPayStatus" style="margin-left:.6rem;color:#666;font-size:.85rem"></span></div>`;
+                    `<div class="docs-field"><label for="docp_${k}">${label}</label>
+                     <input class="form-input" id="docp_${k}" value="${docsEsc(m[k]||'')}" placeholder="${docsEsc(ph)}"></div>`).join('')+
+                `</div></div></details>
+            <div style="margin-top:16px"><button class="btn btn-primary" style="font-size:.85rem" onclick="docsSubmitPayment(${id})">Выпустить</button>
+             <span id="docsPayStatus" class="docs-status" style="margin-left:12px"></span></div>`;
+            box.scrollIntoView({behavior:'smooth', block:'nearest'});
+        }
+
+        function docsRecalcPay(source){
+            const a=docsNum((document.getElementById('docp_total_payin')||{}).value);
+            const b=docsNum((document.getElementById('docp_transfer_amount')||{}).value);
+            const r=docsNum((document.getElementById('docp_rate')||{}).value);
+            if(source==='rate'){ if(r&&a) document.getElementById('docp_transfer_amount').value=(a/r).toFixed(2); }
+            else if(a&&b){ document.getElementById('docp_rate').value=(a/b).toFixed(6); }
+            else if(source==='payin'&&a&&r){ document.getElementById('docp_transfer_amount').value=(a/r).toFixed(2); }
         }
 
         async function docsSubmitPayment(id){
             const st = document.getElementById('docsPayStatus');
+            st.classList.remove('is-error');
             const money={};
             DOCS_MONEY.forEach(([k])=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
+            ['total_payin','transfer_amount','rate'].forEach(k=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
+            const pu=(document.getElementById('docp_purpose')||{}).value;
+            if(pu&&pu.trim()) money.payment_reference=pu.trim();
             st.textContent='Генерирую…';
             const r = await fetch('/api/docs/agreements/'+id+'/payment', {
                 method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({money})});
             const d = await r.json();
             if(!d.success){
+                st.classList.add('is-error');
                 st.textContent = d.error==='missing_fields' ? 'Не заполнены: '+d.fields.join(', ')
                     : (d.error==='incomplete_document' ? 'Пустые места: '+d.problems.slice(0,3).join('; ') : ('Ошибка: '+(d.detail||d.error)));
                 return;
             }
-            st.textContent='Готово'; await loadDocuments(); docsOpen(id);
+            st.textContent=''; await loadDocuments(); docsOpen(id);
         }
 
         async function docsUploadSigned(id, files){
@@ -13724,7 +14068,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             st.textContent='Загружаю…';
             const r = await fetch('/api/docs/agreements/'+id+'/upload', {method:'POST', body:fd});
             const d = await r.json();
-            st.textContent = d.success ? ('Загружено файлов: '+d.saved) : 'Ошибка загрузки';
+            st.textContent = d.success ? ('Загружено: '+d.saved) : 'Ошибка загрузки';
             if(d.success){ await loadDocuments(); docsOpen(id); }
         }
 

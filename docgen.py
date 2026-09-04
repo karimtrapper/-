@@ -420,7 +420,8 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
                   f'действия реквизитов / As stated in the current Invoice')
     _set_field(t, 'Invoice / Instruction No.', f'№ {number} от {when:%d.%m.%Y}')
     _set_field(t, 'Срок действия реквизитов', valid)
-    _set_field(t, 'Назначение платежа', payment_reference(f, method, money.get('part')))
+    _set_field(t, 'Назначение платежа',
+               money.get('payment_reference') or payment_reference(f, method, money.get('part')))
     _set_field(t, 'Подтверждение оплаты', PAYIN_EVIDENCE.get(method, ''))
 
 
@@ -549,7 +550,8 @@ def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
             PAYIN_METHODS.get(method, method),
         '[полное наименование получателя]': AGENT['name'],
         '[счёт, банк, БИК / СБП / сеть и адрес кошелька]': money.get('payin_details') or '',
-        '[указать строго в этой формулировке]': payment_reference(fields, method, money.get('part')),
+        '[указать строго в этой формулировке]':
+            money.get('payment_reference') or payment_reference(fields, method, money.get('part')),
     }
     for p in doc.paragraphs:
         for old, new in repl.items():
