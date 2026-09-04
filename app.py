@@ -15514,8 +15514,14 @@ def docs_create_agreement():
                     fields.get('client_passport_no', ''), None, seq)).first():
             seq += 1
         number = docgen.make_number(fields.get('client_passport_no', ''), None, seq)
+        money['part'] = 1
+        # Договор — рамочный, приложения в нём остаются бланками: клиент
+        # подписывает его один раз и держит неизменным.
         data, _ = docgen.build_agreement(deal_type, fields, money, number=number)
-        problems = docgen.check(data)
+        addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1)
+        invoice = docgen.build_commercial_invoice(fields, money, number, deal_type)
+        problems = (docgen.check(data, allow_forms=True)
+                    + docgen.check(addendum) + docgen.check(invoice))
         if problems:
             return jsonify({'success': False, 'error': 'incomplete_document',
                             'problems': problems}), 422
@@ -15528,13 +15534,15 @@ def docs_create_agreement():
         db.flush()
 
         safe = re.sub(r'[^\w\-.]+', '_', client_name)[:40] or 'client'
+        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        # Три отдельных файла: договор живёт у клиента всегда, допник и инвойс —
+        # на конкретный платёж. В одном файле их держать нельзя.
         _docs_save(db, a.id, 'agreement', number, 1,
-                   f'MF_Agreement_{deal_type}_{safe}_{number}.docx', data,
-                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        inv = docgen.build_invoice(fields, money, number, number, number)
+                   f'MF_Agreement_{deal_type}_{safe}_{number}.docx', data, mime)
+        _docs_save(db, a.id, 'addendum', number, 1,
+                   f'MF_Addendum_1_{safe}_{number}.docx', addendum, mime)
         _docs_save(db, a.id, 'invoice', number, 1,
-                   f'MF_Invoice_{safe}_{number}.docx', inv,
-                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+                   f'MF_Commercial_Invoice_{number}.docx', invoice, mime)
 
         for slot, f in _docs_collect_uploads():
             raw = f.read()
@@ -15577,13 +15585,16 @@ def docs_add_payment(agreement_id):
         # с тем же номером. Клиенту показываем «Платёж № 2», а не № 3.
         payment_no = (a.payments_count or 1) + 1
         money['part'] = payment_no
+        # Хвост номера = номер платежа. Совпадение с чужим документом
+        # разрешаем сдвигом, но внутри одного договора номера не пересекаются.
         tail = payment_no
         number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-        while db.query(AgreementDoc.id).filter(AgreementDoc.number == number).first():
+        while db.query(AgreementDoc.id).join(Agreement).filter(
+                AgreementDoc.number == number, Agreement.id != a.id).first():
             tail += 1
             number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
         add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
-        inv = docgen.build_invoice(fields, money, number, a.number, number)
+        inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
         problems = docgen.check(add) + docgen.check(inv)
         if problems:
             return jsonify({'success': False, 'error': 'incomplete_document',
@@ -15594,7 +15605,7 @@ def docs_add_payment(agreement_id):
         _docs_save(db, a.id, 'addendum', number, payment_no,
                    f'MF_Addendum_{payment_no}_{safe}_{number}.docx', add, mime)
         _docs_save(db, a.id, 'invoice', number, payment_no,
-                   f'MF_Invoice_{safe}_{number}.docx', inv, mime)
+                   f'MF_Commercial_Invoice_{number}.docx', inv, mime)
         a.payments_count = payment_no
         a.fields_json = json.dumps(fields, ensure_ascii=False)
         a.money_json = json.dumps(money, ensure_ascii=False)

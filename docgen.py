@@ -30,6 +30,9 @@ TEMPLATES = {
     'rental': 'MF_Rental_Payment_Agreement_Template_RU_EN_v2.docx',
 }
 INVOICE_TEMPLATE = 'MF_Invoice_Short_Template_RU_EN_v2.docx'
+# Рублёвый «Коммерческий инвойс» — то, что реально уходит клиенту на оплату.
+# Формат снят с MF-180-2808-1: позиция, назначение капсом, реквизиты ООО.
+COMMERCIAL_INVOICE_TEMPLATE = 'MF_Commercial_Invoice_RU.docx'
 PEC_TEMPLATE = 'MF_Payment_Execution_Confirmation_Template_RU_EN.docx'
 
 DEAL_TYPE_TITLES = {
@@ -353,21 +356,75 @@ def payment_basis(f: dict, deal_type: str) -> str:
     return ';\n'.join(bits)
 
 
+def building_of(unit: str) -> str:
+    """Корпус из номера юнита: B2-711 → B2. У вилл и участков корпуса нет."""
+    u = (unit or '').strip()
+    if '-' in u:
+        head = u.split('-', 1)[0].strip()
+        if head and len(head) <= 4:
+            return head
+    return ''
+
+
+def property_description(f: dict, deal_type: str) -> str:
+    """Строка позиции коммерческого инвойса.
+
+    Формат снят с реальных инвойсов MF-180-2808-1 и MF-180-3108-1:
+    «Оплата по графику за апартаменты HEART BY BOTANICA (PHASE 1),
+    Building B2, Unit B2-711 (leasehold).»
+    """
+    kind = {'freehold': 'freehold', 'leasehold': 'leasehold', 'rental': 'аренда'}.get(deal_type, '')
+    bits = []
+    if f.get('project_name'):
+        bits.append(str(f['project_name']))
+    building = building_of(f.get('unit_no', ''))
+    if building:
+        bits.append(f'Building {building}')
+    if f.get('unit_no'):
+        bits.append(f"Unit {f['unit_no']}")
+    body = ', '.join(bits) if bits else 'объект по договору'
+    tail = f' ({kind})' if kind else ''
+    return f'Оплата по графику за апартаменты {body}{tail}.'
+
+
 def payment_reference(f: dict, method: str, part: int | None = None) -> str:
-    """Назначение платежа. На СБП, USDT и наличных его не указывают."""
+    """Назначение платежа для банка клиента.
+
+    Формулировка каноническая — переписана с реальных инвойсов MF Corp:
+    «ОПЛАТА ПО ИНВОЙСУ № BBB1-2026018 ОТ 26.08.2026 ЗА АПАРТАМЕНТЫ
+    UNIT B2-711, BUILDING B2, HEART BY BOTANICA (PHASE 1),
+    ДЛЯ NADEZHDA BUROVA. БЕЗ НДС.»
+
+    Капс, дата инвойса, корпус и ФИО ЛАТИНИЦЕЙ — банк сверяет платёж с
+    инвойсом застройщика, поэтому отсебятина здесь дороже всего.
+    """
     if method in ('sbp', 'usdt', 'cash'):
         return ('Без указания назначения платежа; подтверждение оплаты направляется менеджеру MF / '
                 'No payment reference in the transfer; the payment evidence is sent to the MF manager')
-    bits = []
+    head = 'ОПЛАТА ПО ИНВОЙСУ'
     if f.get('invoice_no'):
-        bits.append(f"Оплата по инвойсу № {f['invoice_no']}")
+        head += f" № {f['invoice_no']}"
+    if f.get('invoice_date'):
+        head += f" ОТ {f['invoice_date']}"
+    obj = []
     if f.get('unit_no'):
-        bits.append(str(f['unit_no']))
-    if f.get('client_name_ru') or f.get('client_name_en'):
-        bits.append(f.get('client_name_ru') or f.get('client_name_en'))
+        obj.append(f"UNIT {f['unit_no']}")
+    building = building_of(f.get('unit_no', ''))
+    if building:
+        obj.append(f'BUILDING {building}')
+    if f.get('project_name'):
+        obj.append(str(f['project_name']))
+    # после даты инвойса запятой нет — «… ОТ 26.08.2026 ЗА АПАРТАМЕНТЫ …»
+    if obj:
+        head += ' ЗА АПАРТАМЕНТЫ ' + ', '.join(obj)
+    parts = [head]
+    # в назначении ФИО латиницей — так его сверяет банк-получатель
+    name = f.get('client_name_en') or f.get('client_name_ru') or ''
+    if name:
+        parts.append(f'ДЛЯ {name}')
     if part and part > 1:
-        bits.append(f'Часть {part}')
-    return ', '.join(bits) + '. НДС не облагается'
+        parts.append(f'ЧАСТЬ {part}')
+    return (', '.join(parts) + '. БЕЗ НДС.').upper()
 
 
 # ─────────────────────── заполнение приложений ───────────────────────
@@ -462,9 +519,20 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
 
 # ─────────────────────────── публичное API ───────────────────────────
 
+ANNEX_FORM_MARK = ('ФОРМА — заполняется отдельным дополнительным соглашением на каждый платёж / '
+                   'TEMPLATE — completed by a separate supplementary agreement for each payment')
+
+
 def build_agreement(deal_type: str, fields: dict, money: dict,
-                    number: str | None = None, when: datetime | None = None) -> tuple[bytes, str]:
-    """Рамочный договор с заполненными Приложениями 1 и 2. → (docx-байты, номер)."""
+                    number: str | None = None, when: datetime | None = None,
+                    blank_annexes: bool = True) -> tuple[bytes, str]:
+    """Рамочный договор. → (docx-байты, номер).
+
+    По умолчанию Приложения 1 и 2 остаются пустыми формами: договор клиент
+    подписывает один раз и держит у себя неизменным, а суммы и курс каждого
+    платежа живут в отдельном дополнительном соглашении. Заполненные
+    приложения внутри договора сделали бы его привязанным к первому платежу.
+    """
     from docx import Document  # noqa: PLC0415
 
     if deal_type not in TEMPLATES:
@@ -506,8 +574,16 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
             for p in cell.paragraphs:
                 _para_replace(p, '[●]', money.get('execution_days') or DEFAULTS['execution_days'])
 
-    _fill_appendix1(doc, fields, deal_type, money, number, when)
-    _fill_appendix2(doc, fields, money, number, when)
+    if blank_annexes:
+        for para in doc.paragraphs:
+            if para.text.strip().upper().startswith('ПРИЛОЖЕНИЕ'):
+                mark = para.insert_paragraph_before(ANNEX_FORM_MARK)
+                for run in mark.runs:
+                    run.italic = True
+        _fill_client_signature(doc.tables[1], fields, money)
+    else:
+        _fill_appendix1(doc, fields, deal_type, money, number, when)
+        _fill_appendix2(doc, fields, money, number, when)
     _sign_agent(doc, when)
 
     buf = io.BytesIO()
@@ -603,19 +679,81 @@ def build_invoice(fields: dict, money: dict, number: str, parent_number: str,
     return buf.getvalue()
 
 
+
+def money_ru(amount, currency: str = 'RUB') -> str:
+    """«2 800 000 руб.» — формат сумм в коммерческом инвойсе."""
+    raw = str(amount or '').replace('\u00a0', ' ').replace(' ', '').replace(',', '.')
+    try:
+        value = float(raw)
+    except ValueError:
+        return str(amount or '')
+    whole = f'{value:,.0f}'.replace(',', '\u00a0') if value == int(value) else \
+        f'{value:,.2f}'.replace(',', '\u00a0')
+    suffix = {'RUB': 'руб.', 'THB': '฿', 'USD': 'USD', 'USDT': 'USDT'}.get(currency, currency)
+    return f'{whole} {suffix}'
+
+
+def build_commercial_invoice(fields: dict, money: dict, number: str,
+                             deal_type: str, when: datetime | None = None) -> bytes:
+    """Рублёвый коммерческий инвойс клиенту — тот, что уходит в банк.
+
+    Двуязычный Invoice Short от юриста в реальных сделках не используется:
+    клиент платит по этому документу, и банк сверяет назначение платежа с ним.
+    """
+    from docx import Document  # noqa: PLC0415
+
+    when = when or datetime.now()
+    doc = Document(os.path.join(TEMPLATE_DIR, COMMERCIAL_INVOICE_TEMPLATE))
+    method = money.get('payin_method') or 'bank'
+    client_bits = [fields.get('client_name_en') or fields.get('client_name_ru') or '']
+    if fields.get('client_passport_no'):
+        client_bits.append(f"паспорт {fields['client_passport_no']}")
+    if fields.get('client_passport_issue_date'):
+        client_bits.append(f"дата выдачи {fields['client_passport_issue_date']}")
+    repl = {
+        '[CLIENT]': ', '.join(b for b in client_bits if b),
+        '[NUMBER]': number,
+        '[DATE]': f'{when:%d.%m.%Y}',
+        '[DESCRIPTION]': money.get('invoice_description')
+                         or property_description(fields, deal_type),
+        '[AMOUNT]': money_ru(money.get('total_payin'), money.get('payin_currency') or 'RUB'),
+        '[PURPOSE]': money.get('payment_reference')
+                     or payment_reference(fields, method, money.get('part')),
+    }
+    targets = list(doc.paragraphs)
+    for t in doc.tables:
+        for row in t.rows:
+            for cell in row.cells:
+                targets.extend(cell.paragraphs)
+    for p in targets:
+        for old, new in repl.items():
+            _para_replace(p, old, new)
+    _sign_agent(doc, when)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 # ─────────────────────── проверка перед выдачей ───────────────────────
 
 PLACEHOLDER_RE = re.compile(r'\[●\]|\[[^\]\n]{2,80}?\s/\s[^\]\n]{2,80}?\]')
 
 
-def check(data: bytes) -> list[str]:
-    """Аналог check_doc.py: не отдаём документ с незаполненными местами."""
+def check(data: bytes, allow_forms: bool = False) -> list[str]:
+    """Аналог check_doc.py: не отдаём документ с незаполненными местами.
+
+    `allow_forms` — для рамочного договора: приложения в нём намеренно пустые
+    бланки, плейсхолдеры там не дефект. В допнике и инвойсе — дефект всегда.
+    """
     from docx import Document  # noqa: PLC0415
 
     doc = Document(io.BytesIO(data))
     problems = []
     texts = [p.text for p in doc.paragraphs]
-    for t in doc.tables:
+    body_only = allow_forms and len(doc.tables) > 1
+    for idx, t in enumerate(doc.tables):
+        if body_only and idx > 0:
+            continue          # таблицы 1 и 2 — бланки приложений
         for row in t.rows:
             for cell in row.cells:
                 texts.append(cell.text)

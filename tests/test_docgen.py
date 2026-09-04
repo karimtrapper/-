@@ -74,15 +74,42 @@ class TestНазначениеПлатежа:
     def test_на_крипте_и_налчиных_тоже(self, method):
         assert 'Без указания назначения' in docgen.payment_reference(CLIENT, method)
 
-    def test_на_переводе_собирается_из_инвойса_юнита_и_фио(self):
+    def test_совпадает_с_реальным_инвойсом_mf_180_2808(self):
+        """Эталон снят с живого MF_Commercial_Invoice_MF-180-2808-1.docx."""
+        f = {'invoice_no': 'BBB1-2026018', 'invoice_date': '26.08.2026', 'unit_no': 'B2-711',
+             'project_name': 'HEART BY BOTANICA (PHASE 1)', 'client_name_en': 'Nadezhda Burova'}
+        assert docgen.payment_reference(f, 'bank') == (
+            'ОПЛАТА ПО ИНВОЙСУ № BBB1-2026018 ОТ 26.08.2026 ЗА АПАРТАМЕНТЫ '
+            'UNIT B2-711, BUILDING B2, HEART BY BOTANICA (PHASE 1), '
+            'ДЛЯ NADEZHDA BUROVA. БЕЗ НДС.')
+
+    def test_совпадает_с_реальным_инвойсом_mf_180_3108(self):
+        f = {'invoice_no': 'BBB1-2026019', 'invoice_date': '31.08.2026', 'unit_no': 'B1-313',
+             'project_name': 'HEART BY BOTANICA (PHASE 1)', 'client_name_en': 'Nadezhda Burova'}
+        assert docgen.payment_reference(f, 'bank') == (
+            'ОПЛАТА ПО ИНВОЙСУ № BBB1-2026019 ОТ 31.08.2026 ЗА АПАРТАМЕНТЫ '
+            'UNIT B1-313, BUILDING B1, HEART BY BOTANICA (PHASE 1), '
+            'ДЛЯ NADEZHDA BUROVA. БЕЗ НДС.')
+
+    def test_фио_в_назначении_латиницей(self):
+        # банк-получатель сверяет назначение с инвойсом застройщика
         ref = docgen.payment_reference(CLIENT, 'bank')
-        assert 'BBB1-2026019' in ref and 'B1-313' in ref and 'Бурова' in ref
+        assert 'NADEZHDA BUROVA' in ref and 'БУРОВА НАДЕЖДА' not in ref
 
     def test_номер_части_попадает_в_назначение(self):
-        assert 'Часть 2' in docgen.payment_reference(CLIENT, 'bank', 2)
+        assert 'ЧАСТЬ 2' in docgen.payment_reference(CLIENT, 'bank', 2)
 
     def test_первая_часть_не_нумеруется(self):
-        assert 'Часть' not in docgen.payment_reference(CLIENT, 'bank', 1)
+        assert 'ЧАСТЬ' not in docgen.payment_reference(CLIENT, 'bank', 1)
+
+    def test_корпус_выводится_из_юнита(self):
+        assert docgen.building_of('B2-711') == 'B2'
+        assert docgen.building_of('B1-313') == 'B1'
+
+    def test_у_виллы_корпуса_нет(self):
+        assert docgen.building_of('Plot 25') == ''
+        assert 'BUILDING' not in docgen.payment_reference(
+            {'invoice_no': 'T-1', 'unit_no': 'Plot 25', 'client_name_en': 'A B'}, 'bank')
 
 
 class TestГражданство:
@@ -103,9 +130,20 @@ class TestГражданство:
 class TestГенерацияДоговоров:
     @pytest.mark.parametrize('deal_type,money', [
         ('freehold', MONEY_FREEHOLD), ('leasehold', MONEY), ('rental', MONEY)])
-    def test_нет_незаполненных_плейсхолдеров(self, deal_type, money):
+    def test_тело_договора_без_незаполненных_мест(self, deal_type, money):
         data, _ = docgen.build_agreement(deal_type, CLIENT, money, when=WHEN)
-        assert docgen.check(data) == []
+        assert docgen.check(data, allow_forms=True) == []
+
+    @pytest.mark.parametrize('deal_type', ['freehold', 'leasehold', 'rental'])
+    def test_приложения_в_договоре_остаются_бланками(self, deal_type):
+        from docx import Document
+        data, _ = docgen.build_agreement(deal_type, CLIENT, MONEY_FREEHOLD, when=WHEN)
+        doc = Document(io.BytesIO(data))
+        marks = [p.text for p in doc.paragraphs if p.text.startswith('ФОРМА')]
+        assert len(marks) == 2          # по пометке над каждым приложением
+        # суммы конкретного платежа в рамочный договор не попадают
+        annex = '\n'.join(c.text for t in doc.tables[1:] for r in t.rows for c in r.cells)
+        assert MONEY['total_payin'] not in annex
 
     def test_номер_проставляется_из_паспорта(self):
         _, number = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
@@ -113,23 +151,23 @@ class TestГенерацияДоговоров:
 
     def test_комиссия_по_умолчанию_вшита_в_курс(self):
         from docx import Document
-        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
-        text = '\n'.join(c.text for t in Document(io.BytesIO(data)).tables
+        add = docgen.build_addendum('leasehold', CLIENT, MONEY, 'MF-1', 'MF-0', 1, when=WHEN)
+        text = '\n'.join(c.text for t in Document(io.BytesIO(add)).tables
                          for r in t.rows for c in r.cells)
         assert 'Включена в курс' in text and 'отдельно не взимается' in text
 
     def test_на_лизхолде_нет_our_sha_ben(self):
         from docx import Document
-        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
-        text = '\n'.join(c.text for t in Document(io.BytesIO(data)).tables
+        add = docgen.build_addendum('leasehold', CLIENT, MONEY, 'MF-1', 'MF-0', 1, when=WHEN)
+        text = '\n'.join(c.text for t in Document(io.BytesIO(add)).tables
                          for r in t.rows for c in r.cells)
         assert 'Внутренний тайский перевод' in text
         assert 'OUR / SHA / BEN' not in text
 
     def test_фрихолд_без_подтверждения_застройщика_оставляет_дыры(self):
         # блок USD-конверсии обязателен по п. 2.3 — check обязан это поймать
-        data, _ = docgen.build_agreement('freehold', CLIENT, MONEY, when=WHEN)
-        assert docgen.check(data)
+        add = docgen.build_addendum('freehold', CLIENT, MONEY, 'MF-1', 'MF-0', 1, when=WHEN)
+        assert docgen.check(add)
 
     def test_подпись_и_печать_вставлены_по_одному_разу(self):
         from docx import Document
@@ -374,3 +412,61 @@ class TestГражданствоВДоговоре:
     def test_неизвестная_страна_проходит_как_есть(self):
         assert docgen.citizenship_ru('Thailand') == 'Thailand'
         assert docgen.citizenship_en('Thailand') == 'Thailand'
+
+
+class TestКоммерческийИнвойс:
+    """Рублёвый инвойс — тот, что реально уходит клиенту и в банк."""
+
+    def _text(self, data):
+        from docx import Document
+        doc = Document(io.BytesIO(data))
+        parts = [p.text for p in doc.paragraphs]
+        parts += [c.text for t in doc.tables for r in t.rows for c in r.cells]
+        return '\n'.join(parts)
+
+    def test_нет_незаполненных_плейсхолдеров(self):
+        data = docgen.build_commercial_invoice(CLIENT, MONEY, 'MF-242-0409-1', 'leasehold', when=WHEN)
+        text = self._text(data)
+        assert not [m for m in ('[CLIENT]', '[NUMBER]', '[DATE]', '[AMOUNT]',
+                                '[PURPOSE]', '[DESCRIPTION]') if m in text]
+
+    def test_клиент_указан_латиницей_с_паспортом(self):
+        text = self._text(docgen.build_commercial_invoice(
+            CLIENT, MONEY, 'MF-1', 'leasehold', when=WHEN))
+        assert 'Nadezhda Burova' in text and '77 2817242' in text
+
+    def test_сумма_в_рублях_с_разделителями(self):
+        text = self._text(docgen.build_commercial_invoice(
+            CLIENT, dict(MONEY, total_payin='2800000'), 'MF-1', 'leasehold', when=WHEN))
+        assert '2\u00a0800\u00a0000 руб.' in text
+
+    def test_назначение_капсом_и_каноническое(self):
+        text = self._text(docgen.build_commercial_invoice(
+            CLIENT, MONEY, 'MF-1', 'leasehold', when=WHEN))
+        assert 'ОПЛАТА ПО ИНВОЙСУ № BBB1-2026019' in text and 'БЕЗ НДС.' in text
+
+    def test_реквизиты_ооо_мф_на_месте(self):
+        text = self._text(docgen.build_commercial_invoice(
+            CLIENT, MONEY, 'MF-1', 'leasehold', when=WHEN))
+        for token in ('9909726886', '40807 810 9 3872 0000286', '044525225'):
+            assert token in text
+
+    def test_менеджер_может_переписать_назначение(self):
+        text = self._text(docgen.build_commercial_invoice(
+            CLIENT, dict(MONEY, payment_reference='СВОЁ НАЗНАЧЕНИЕ'),
+            'MF-1', 'leasehold', when=WHEN))
+        assert 'СВОЁ НАЗНАЧЕНИЕ' in text
+
+    @pytest.mark.parametrize('raw,want', [
+        ('2800000', '2\u00a0800\u00a0000 руб.'),
+        ('2 795 000', '2\u00a0795\u00a0000 руб.'),
+        ('1007194.24', '1\u00a0007\u00a0194.24 руб.'),
+    ])
+    def test_формат_суммы(self, raw, want):
+        assert docgen.money_ru(raw, 'RUB') == want
+
+    def test_позиция_инвойса_по_образцу(self):
+        f = {'project_name': 'HEART BY BOTANICA (PHASE 1)', 'unit_no': 'B2-711'}
+        assert docgen.property_description(f, 'leasehold') == (
+            'Оплата по графику за апартаменты HEART BY BOTANICA (PHASE 1), '
+            'Building B2, Unit B2-711 (leasehold).')

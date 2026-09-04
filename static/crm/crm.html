@@ -13874,18 +13874,45 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 el.placeholder = 'Не указывается для этого способа оплаты';
                 return;
             }
-            hint.textContent = 'Собирается из номера инвойса, юнита и ФИО плательщика. Можно переписать руками.';
+            hint.textContent = 'Формулировка как в инвойсах MF: номер и дата инвойса, юнит, корпус, проект, ФИО латиницей. Можно переписать руками.';
             el.placeholder = '';
             if(!force && docsState.purposeTouched) return;
-            const f = docsState.fields||{};
-            const parts = [];
-            const inv = (document.getElementById('docf_invoice_no')||{}).value || f.invoice_no;
-            const unit = (document.getElementById('docf_unit_no')||{}).value || f.unit_no;
-            const name = (document.getElementById('docf_client_name_ru')||{}).value || f.client_name_ru || f.client_name_en;
-            if(inv) parts.push('Оплата по инвойсу № '+inv);
-            if(unit) parts.push(unit);
-            if(name) parts.push(name);
-            el.value = parts.length ? parts.join(', ')+'. НДС не облагается' : '';
+            el.value = docsPurposeText();
+        }
+
+        // Формулировка каноническая — снята с реальных инвойсов MF Corp:
+        // «ОПЛАТА ПО ИНВОЙСУ № BBB1-2026018 ОТ 26.08.2026 ЗА АПАРТАМЕНТЫ
+        //  UNIT B2-711, BUILDING B2, HEART BY BOTANICA (PHASE 1),
+        //  ДЛЯ NADEZHDA BUROVA. БЕЗ НДС.»
+        // Банк сверяет платёж с инвойсом застройщика, отсебятина тут дороже всего.
+        function docsBuilding(unit){
+            const u = String(unit||'').trim();
+            if(u.indexOf('-')<0) return '';
+            const head = u.split('-')[0].trim();
+            return head.length<=4 ? head : '';
+        }
+        function docsFieldVal(k){
+            const el = document.getElementById('docf_'+k);
+            return (el && el.value.trim()) || (docsState.fields||{})[k] || '';
+        }
+        function docsPurposeText(part){
+            const inv = docsFieldVal('invoice_no'), date = docsFieldVal('invoice_date');
+            const unit = docsFieldVal('unit_no'), project = docsFieldVal('project_name');
+            // ФИО латиницей — так его читает банк-получатель
+            const name = docsFieldVal('client_name_en') || docsFieldVal('client_name_ru');
+            let head = 'ОПЛАТА ПО ИНВОЙСУ';
+            if(inv) head += ' № '+inv;
+            if(date) head += ' ОТ '+date;
+            const obj = [];
+            if(unit) obj.push('UNIT '+unit);
+            const b = docsBuilding(unit);
+            if(b) obj.push('BUILDING '+b);
+            if(project) obj.push(project);
+            if(obj.length) head += ' ЗА АПАРТАМЕНТЫ '+obj.join(', ');
+            const parts = [head];
+            if(name) parts.push('ДЛЯ '+name);
+            if(part && part>1) parts.push('ЧАСТЬ '+part);
+            return (parts.join(', ')+'. БЕЗ НДС.').toUpperCase();
         }
 
         function docsRenderFields(){
@@ -13992,7 +14019,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         <div class="docs-amount"><input value="${rate!=null?rate.toFixed(6):'—'}" readonly><span class="docs-cur">${p.in} / ${p.out}</span></div></div>
                 </div></div>`;
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
-                html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Первый пакет':'Платёж № '+seq}</h4>`;
+                html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Договор и первый платёж':'Платёж № '+seq}</h4>`;
                 html += bySeq[seq].map(x=>`<div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border-light)">
                     <span style="min-width:180px;font-size:.85rem;color:var(--navy-700)">${DOCS_KIND_LABEL[x.kind]||x.kind}</span>
                     <a href="/api/docs/file/${x.id}" style="font-size:.85rem">${docsEsc(x.filename)}</a>
@@ -14035,7 +14062,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 </div>
                 <div class="docs-purpose">
                     <div class="docs-label-row"><label for="docp_purpose" style="font-size:.8rem;font-weight:600;color:var(--navy-600)">Назначение платежа</label></div>
-                    <textarea id="docp_purpose" rows="2">${docsEsc(m.payment_reference||'')}</textarea>
+                    <textarea id="docp_purpose" rows="3">${docsEsc(docsPurposeText((a.payments_count||1)+1))}</textarea>
                 </div>
             </div>
             <details class="docs-fold" style="margin-top:12px"><summary>Реквизиты и сроки<span class="docs-summary-text">перенесены из договора</span></summary>
