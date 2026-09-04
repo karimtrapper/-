@@ -470,3 +470,68 @@ class TestКоммерческийИнвойс:
         assert docgen.property_description(f, 'leasehold') == (
             'Оплата по графику за апартаменты HEART BY BOTANICA (PHASE 1), '
             'Building B2, Unit B2-711 (leasehold).')
+
+
+class TestСверкаСЖивымиДоговорами:
+    """Расхождения, найденные сверкой с фрихолдом Антоненко и лизхолдом Буровой."""
+
+    def _annex1(self, deal_type, money=None):
+        from docx import Document
+        add = docgen.build_addendum(deal_type, CLIENT, money or MONEY_FREEHOLD,
+                                    'MF-1', 'MF-0', 1, when=WHEN)
+        doc = Document(io.BytesIO(add))
+        return {r.cells[0].text.strip(): r.cells[-1].text.strip()
+                for t in doc.tables for r in t.rows}
+
+    @pytest.mark.parametrize('deal_type,days', [
+        ('freehold', '3'), ('leasehold', '3'), ('rental', '1')])
+    def test_срок_исполнения_по_флоу(self, deal_type, days):
+        # Антоненко и Бурова — по 3 рабочих дня, Фролов (аренда) — 1
+        rows = self._annex1(deal_type)
+        field = [v for k, v in rows.items() if 'Срок исполнения' in k][0]
+        assert field.startswith(days)
+
+    def test_склонение_дней_не_ломается(self):
+        rows = self._annex1('rental', MONEY)
+        field = [v for k, v in rows.items() if 'Срок исполнения' in k][0]
+        assert '1 рабочий день' in field
+        rows = self._annex1('leasehold', MONEY)
+        field = [v for k, v in rows.items() if 'Срок исполнения' in k][0]
+        assert '3 рабочих дня' in field
+
+    def test_на_фрихолде_комиссия_в_сумме_payin_а_не_в_курсе(self):
+        # у Антоненко курса RUB/THB нет вовсе — «в согласованной сумме pay-in»
+        rows = self._annex1('freehold')
+        fee = [v for k, v in rows.items() if k.startswith('Комиссия Агента')][0]
+        assert 'согласованную сумму pay-in' in fee
+        assert 'в курс' not in fee
+
+    def test_на_лизхолде_комиссия_остаётся_в_курсе(self):
+        rows = self._annex1('leasehold', MONEY)
+        fee = [v for k, v in rows.items() if k.startswith('Комиссия Агента')][0]
+        assert 'Включена в курс' in fee
+
+    def test_приложение_2_отсылает_к_инвойсу_а_не_дублирует_назначение(self):
+        # у Буровой: «Указывается в Invoice № … / As stated in the Invoice»
+        rows = self._annex1('leasehold', MONEY)
+        ref = [v for k, v in rows.items() if 'Назначение платежа' in k][0]
+        assert 'Указывается в Invoice' in ref
+        assert 'ОПЛАТА ПО ИНВОЙСУ' not in ref
+
+    def test_приложение_2_не_называет_реквизиты_напрямую(self):
+        rows = self._annex1('leasehold', MONEY)
+        details = [v for k, v in rows.items() if 'Реквизиты / Payment details' in k][0]
+        assert 'указываются в актуальном Invoice' in details
+        assert 'переносить реквизиты' in details
+
+    def test_получатель_payin_со_ссылкой_на_инвойс(self):
+        rows = self._annex1('leasehold', MONEY)
+        rec = [v for k, v in rows.items() if 'Получатель платежа' in k][0]
+        assert 'актуальном Invoice' in rec and 'MF Corporation Company Limited' in rec
+
+    def test_полное_назначение_живёт_только_в_коммерческом_инвойсе(self):
+        from docx import Document
+        inv = docgen.build_commercial_invoice(CLIENT, MONEY, 'MF-1', 'leasehold', when=WHEN)
+        text = '\n'.join(c.text for t in Document(io.BytesIO(inv)).tables
+                         for r in t.rows for c in r.cells)
+        assert 'ОПЛАТА ПО ИНВОЙСУ' in text

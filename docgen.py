@@ -55,8 +55,12 @@ MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June',
              'July', 'August', 'September', 'October', 'November', 'December']
 
 # Дефолты, снятые с живого договора Фролова (аренда, 01.09.2026)
+# Срок исполнения различается по флоу — сверено с живыми договорами:
+# аренда Фролова 1 рабочий день, фрихолд Антоненко и лизхолд Буровой по 3.
+EXECUTION_DAYS = {'freehold': '3', 'leasehold': '3', 'rental': '1'}
+
 DEFAULTS = {
-    'execution_days': '1',
+    'execution_days': '3',
     'report_days': '5',
     'terminate_days': '10',
     'remaining_balance': 'отсутствует / none',
@@ -446,9 +450,17 @@ def _fill_client_signature(table, f: dict, money: dict) -> None:
 
 def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when: datetime) -> None:
     t = doc.tables[1]
-    fee_note = money.get('fee_note') or (
-        f"Включена в курс {money.get('rate', '')} RUB/THB, отдельно не взимается / "
-        f"Included in the rate of {money.get('rate', '')} RUB/THB, not charged separately")
+    # Формулировки дословно из живых документов: у Фролова (аренда) и Буровой
+    # (лизхолд) комиссия «в курсе», у Антоненко (фрихолд) курса RUB/THB нет
+    # вовсе — там «в согласованной сумме pay-in».
+    if deal_type == 'freehold':
+        default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
+                       'Included in the agreed pay-in amount; no separate charge')
+    else:
+        default_fee = (f"Включена в курс {money.get('rate', '')} RUB/THB, отдельно не взимается / "
+                       f"Included in the rate of {money.get('rate', '')} RUB/THB, "
+                       f"not charged separately")
+    fee_note = money.get('fee_note') or default_fee
 
     _set_field(t, 'Номер и дата', f'№ {number} от {date_ru_en(when)}')
     _set_field(t, 'Клиент / Client', client_line(f, 'ru') + '\n' + client_line(f, 'en'))
@@ -460,9 +472,11 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     _set_field(t, 'Всего к оплате Клиентом', money.get('total_payin'))
     _set_field(t, 'Сумма для перечисления получателю', money.get('transfer_amount'))
     _set_field(t, 'Остаток после исполнения', DEFAULTS['remaining_balance'])
+    days = money.get('execution_days') or EXECUTION_DAYS.get(deal_type, DEFAULTS['execution_days'])
+    word = 'рабочий день' if str(days) == '1' else 'рабочих дня'
     _set_field(t, 'Срок исполнения',
-               f"{money.get('execution_days') or DEFAULTS['execution_days']} рабочий день после "
-               f"выполнения п. 2.2 Договора / business day(s) after Clause 2.2 is met")
+               f'{days} {word} после выполнения п. 2.2 Договора / '
+               f'{days} business day(s) after Clause 2.2 is met')
     _set_field(t, 'Контакт для подтверждения', DEFAULTS['confirmation_contact'])
 
     # итоговый блок: обе комиссии по умолчанию вшиты в курс
@@ -499,21 +513,37 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
 
 
 def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> None:
+    """Приложение 2 — маршрут pay-in.
+
+    Реквизиты и назначение здесь НЕ дублируются, а отсылают к коммерческому
+    инвойсу: так в обоих живых договорах — у Буровой «Указывается в Invoice
+    № MF-180-2808-1 / As stated in the Invoice», у Антоненко «По отдельному
+    коммерческому инвойсу Агента». Дублировать опасно: реквизиты меняются,
+    а подписанный договор — нет.
+    """
     t = doc.tables[2]
     method = money.get('payin_method') or 'bank'
     valid = money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'
+    agent = AGENT['name']
     _set_field(t, 'Способ pay-in', PAYIN_METHODS.get(method, method))
     _set_field(t, 'Валюта / Currency', money.get('payin_currency') or 'RUB')
-    _set_field(t, 'Получатель платежа', AGENT['name'])
-    _set_field(t, 'Роль получателя', 'получатель MF / MF as recipient')
+    _set_field(t, 'Получатель платежа',
+               f'Указывается в актуальном Invoice № {number}: {agent} либо уполномоченный '
+               f'платёжный партнёр Агента / As stated in the current Invoice: {agent} '
+               f'or the Agent authorised payment partner')
+    _set_field(t, 'Роль получателя',
+               'Агент либо указанный им уполномоченный получатель / '
+               'Agent or its authorised pay-in recipient')
     _set_field(t, 'Реквизиты / Payment details',
                money.get('payin_details')
-               or f'Указываются в актуальном Invoice № {number} с номером, датой и сроком '
-                  f'действия реквизитов / As stated in the current Invoice')
+               or f'Банковские реквизиты указываются в актуальном Invoice № {number} '
+                  f'с номером, датой и сроком действия реквизитов; переносить реквизиты '
+                  f'из предыдущих сделок запрещено / Bank details are stated in the current '
+                  f'Invoice bearing its number, date and validity period')
     _set_field(t, 'Invoice / Instruction No.', f'№ {number} от {when:%d.%m.%Y}')
     _set_field(t, 'Срок действия реквизитов', valid)
     _set_field(t, 'Назначение платежа',
-               money.get('payment_reference') or payment_reference(f, method, money.get('part')))
+               f'Указывается в Invoice № {number} / As stated in the Invoice')
     _set_field(t, 'Подтверждение оплаты', PAYIN_EVIDENCE.get(method, ''))
 
 

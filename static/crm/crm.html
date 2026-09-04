@@ -13676,7 +13676,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             ['payin_details','Реквизиты для оплаты','р/с, банк, БИК / СБП / кошелёк', null],
             ['client_address','Адрес клиента','', null],
             ['client_contact','Email или телефон клиента','', null],
-            ['execution_days','Срок исполнения, раб. дней','1', null],
+            ['execution_days','Срок исполнения, раб. дней','3', null],
             ['payment_type','Вид платежа','депозит / арендная плата / сервис', ['rental']],
             ['registration_needed','Регистрация lease','да / нет / не подтверждено', ['leasehold']],
             ['registration_by','Кто организует регистрацию','застройщик / клиент', ['leasehold']],
@@ -13944,7 +13944,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 </div>`).join('');
             const m = document.getElementById('docm_payin_method');
             if(m){ m.value='bank'; m.addEventListener('input', ()=>docsBuildPurpose(true)); }
-            const e = document.getElementById('docm_execution_days'); if(e) e.value='1';
+            // 3 рабочих дня на фрихолде и лизхолде, 1 на аренде — сверено
+            // с живыми договорами Антоненко, Буровой и Фролова
+            const e = document.getElementById('docm_execution_days');
+            if(e) e.value = docsState.type==='rental' ? '1' : '3';
             const t = document.getElementById('docsPurpose');
             if(t) t.addEventListener('input', ()=>{ docsState.purposeTouched = true; });
         }
