@@ -168,3 +168,52 @@ class TestБэкфилл:
             assert s.query(Agreement).get(agreement_id).client_key
         finally:
             s.close()
+
+
+class TestУдаление:
+    """Удалить договор было нечем — API есть, кнопки в интерфейсе не было."""
+
+    def test_договор_удаляется_вместе_с_документами(self, client):
+        a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        assert len(a['docs']) == 3
+
+        assert client.delete(f"/api/docs/agreements/{a['id']}").status_code == 200
+
+        s = get_session()
+        try:
+            assert s.query(Agreement).count() == 0
+            # документы уходят каскадом, иначе в базе остаётся мусор с паспортами
+            assert s.query(AgreementDoc).filter(
+                AgreementDoc.agreement_id == a['id']).count() == 0
+        finally:
+            s.close()
+
+    def test_удаление_несуществующего_даёт_404(self, client):
+        assert client.delete('/api/docs/agreements/999999').status_code == 404
+
+    def test_после_удаления_тип_сделки_освобождается(self, client):
+        a = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        client.delete(f"/api/docs/agreements/{a['id']}")
+        # тот же клиент и тип снова заводится — ключ больше никем не занят
+        assert create(client, 'Бурова Надежда Васильевна').status_code == 200
+
+
+class TestДубльНеТупик:
+    """При «уже есть» менеджеру нужен путь дальше, а не сообщение в никуда."""
+
+    def test_ответ_несёт_id_и_номер_существующего(self, client):
+        first = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        dup = create(client, 'БУРОВА НАДЕЖДА ВАСИЛЬЕВНА').get_json()
+        assert dup['agreement_id'] == first['id']
+        assert dup['number'] == first['number']
+        assert 'допник' in dup['detail'].lower() or 'платёж' in dup['detail'].lower()
+
+    def test_платёж_по_существующему_договору_проходит(self, client):
+        first = create(client, 'Бурова Надежда Васильевна').get_json()['agreement']
+        r = client.post(f"/api/docs/agreements/{first['id']}/payment",
+                        json={'money': dict(MONEY, total_payin='3000000', rate='3.0',
+                                            transfer_amount='1000000')})
+        assert r.status_code == 200
+        a = r.get_json()['agreement']
+        assert a['payments_count'] == 2
+        assert len([d for d in a['docs'] if d['seq'] == 2]) == 2   # допник + инвойс

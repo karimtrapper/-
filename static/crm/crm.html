@@ -774,6 +774,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-status.is-error { color:var(--red); }
 .docs-empty { padding:28px 16px; text-align:center; color:var(--text-sec); font-size:.88rem; }
 .docs-num { font-variant-numeric:tabular-nums; font-size:.86rem; color:var(--navy-700); white-space:nowrap; }
+
+/* Список сгруппирован по клиентам: менеджер ищет человека, а не договор.
+   Внутри карточки — его договоры по типам сделки. */
+.docs-client { border:1px solid var(--border); border-radius:12px; overflow:hidden; }
+.docs-client + .docs-client { margin-top:12px; }
+.docs-client-head { display:flex; align-items:baseline; gap:12px; flex-wrap:wrap;
+  padding:13px 18px; background:var(--navy-50); border-bottom:1px solid var(--border); }
+.docs-client-name { font-size:.95rem; font-weight:650; color:var(--navy-800); }
+.docs-client-meta { font-size:.8rem; color:var(--text-sec); font-variant-numeric:tabular-nums; }
+.docs-deal { display:grid; grid-template-columns:110px 110px 1fr 1fr 110px 150px 96px auto;
+  gap:12px; align-items:center; padding:12px 18px; }
+.docs-deal + .docs-deal { border-top:1px solid var(--border-light); }
+.docs-deal:hover { background:var(--navy-50); }
+@media (max-width:1100px){ .docs-deal { grid-template-columns:1fr 1fr; row-gap:6px; } }
+.docs-deal-actions { display:flex; gap:6px; justify-content:flex-end; }
+.docs-btn-sm { font-size:.78rem; padding:6px 11px; }
+.docs-danger { color:var(--red); border-color:var(--red-light); }
+.docs-danger:hover { background:var(--red-light); border-color:var(--red); }
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
@@ -2257,16 +2275,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <button class="btn btn-primary" style="font-size:.9rem" onclick="docsOpenNew()">Новый договор</button>
                     </div>
                 </div>
-                <div class="table-container" style="overflow-x:auto;margin-top:18px">
-                    <table class="table">
-                        <thead><tr>
-                            <th>Клиент</th><th>Тип</th><th>Пара</th><th style="text-align:right">Отдаёт</th>
-                            <th style="text-align:right">Получает</th><th style="text-align:right">Курс</th>
-                            <th>Номер</th><th>Статус</th><th style="text-align:center">Платежей</th><th></th>
-                        </tr></thead>
-                        <tbody id="docsList"><tr><td colspan="10" class="docs-empty">Загрузка…</td></tr></tbody>
-                    </table>
-                </div>
+                <div id="docsList" style="margin-top:18px"><div class="docs-empty">Загрузка…</div></div>
             </div>
 
             <div class="card" id="docsWizard" style="display:none">
@@ -13697,35 +13706,77 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function docsFmt(n, dp){ return n==null ? '' : n.toLocaleString('ru-RU',{minimumFractionDigits:dp||0, maximumFractionDigits:dp||0}); }
         function docsPair(k){ return DOCS_PAIRS.find(p=>p.k===k) || DOCS_PAIRS[0]; }
 
-        // ── список ────────────────────────────────────────────────
+        // ── список: группируем по клиентам ────────────────────────
+        // Менеджер ищет человека, а не договор: заходит на клиента и оформляет
+        // ему новое поручение. Ключ группировки — паспорт, потому что имя из
+        // распознавания приходит то капсом, то в нормальном регистре.
+        function docsBestName(rows){
+            // из нескольких написаний берём то, где есть строчные буквы
+            const named = rows.map(r=>r.client_name).filter(Boolean);
+            return named.find(n=>/[а-яa-z]/.test(n)) || named[0] || 'Без имени';
+        }
+
+        function docsGroupByClient(rows){
+            const groups = new Map();
+            rows.forEach(a=>{
+                const key = a.client_key || a.client_name || String(a.id);
+                if(!groups.has(key)) groups.set(key, []);
+                groups.get(key).push(a);
+            });
+            return [...groups.entries()].map(([key, list])=>({
+                key, name: docsBestName(list),
+                passport: (list.find(x=>(x.fields||{}).client_passport_no)||{}).fields?.client_passport_no || '',
+                deals: list.sort((a,b)=>a.deal_type.localeCompare(b.deal_type)),
+            }));
+        }
+
+        function docsDealRow(a){
+            const m = a.money||{};
+            const p = docsPair(m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB');
+            const badge = a.status==='signed' ? 'badge-completed' : (a.status==='sent'?'badge-verified':'badge-pending');
+            const label = a.status==='signed'?'подписан':(a.status==='sent'?'отправлен':'черновик');
+            const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsNum(m.rate);
+            return `<div class="docs-deal">
+                <span style="font-size:.87rem;font-weight:600">${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type}</span>
+                <span class="docs-num">${p.label}</span>
+                <span class="docs-money-cell" style="text-align:right">${inAmt!=null?docsFmt(inAmt,2)+' '+p.in:'—'}</span>
+                <span class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2)+' '+p.out:'—'}</span>
+                <span class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}</span>
+                <span class="docs-num">${docsEsc(a.number)}</span>
+                <span><span class="badge ${badge}">${label}</span>
+                      <span class="docs-num" style="margin-left:6px;color:var(--text-sec)">${a.payments_count} пл.</span></span>
+                <span class="docs-deal-actions">
+                    <button class="btn btn-primary docs-btn-sm" onclick="docsOpenAndPay(${a.id})">+ Платёж</button>
+                    <button class="btn docs-btn-sm" onclick="docsOpen(${a.id})">Открыть</button>
+                </span>
+            </div>`;
+        }
+
         async function loadDocuments(){
             const q = (document.getElementById('docsSearch')||{}).value || '';
-            const tb = document.getElementById('docsList');
+            const box = document.getElementById('docsList');
             try{
                 const r = await fetch('/api/docs/agreements?q='+encodeURIComponent(q));
                 const d = await r.json();
                 const rows = d.agreements||[];
-                if(!rows.length){ tb.innerHTML = '<tr><td colspan="10" class="docs-empty">Договоров пока нет. Первый создаётся кнопкой «Новый договор».</td></tr>'; return; }
-                tb.innerHTML = rows.map(a=>{
-                    const m = a.money||{};
-                    const p = docsPair(m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB');
-                    const badge = a.status==='signed' ? 'badge-completed' : (a.status==='sent'?'badge-verified':'badge-pending');
-                    const label = a.status==='signed'?'подписан':(a.status==='sent'?'отправлен':'черновик');
-                    const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsNum(m.rate);
-                    return `<tr>
-                        <td>${docsEsc(a.client_name)}</td>
-                        <td>${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type}</td>
-                        <td class="docs-num">${p.label}</td>
-                        <td class="docs-money-cell" style="text-align:right">${inAmt!=null?docsFmt(inAmt,2):'—'}</td>
-                        <td class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2):'—'}</td>
-                        <td class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}</td>
-                        <td class="docs-num">${docsEsc(a.number)}</td>
-                        <td><span class="badge ${badge}">${label}</span></td>
-                        <td style="text-align:center" class="docs-num">${a.payments_count}</td>
-                        <td><button class="btn" style="font-size:.8rem" onclick="docsOpen(${a.id})">Открыть</button></td>
-                    </tr>`;
-                }).join('');
-            }catch(e){ tb.innerHTML = '<tr><td colspan="10" class="docs-empty" style="color:var(--red)">Не удалось загрузить: '+docsEsc(e.message)+'</td></tr>'; }
+                if(!rows.length){ box.innerHTML = '<div class="docs-empty">Договоров пока нет. Первый создаётся кнопкой «Новый договор».</div>'; return; }
+                box.innerHTML = docsGroupByClient(rows).map(g=>`
+                    <div class="docs-client">
+                        <div class="docs-client-head">
+                            <span class="docs-client-name">${docsEsc(g.name)}</span>
+                            ${g.passport?`<span class="docs-client-meta">паспорт ${docsEsc(g.passport)}</span>`:''}
+                            <span class="docs-client-meta">${g.deals.length} ${g.deals.length===1?'договор':'договора'}</span>
+                        </div>
+                        ${g.deals.map(docsDealRow).join('')}
+                    </div>`).join('');
+            }catch(e){ box.innerHTML = '<div class="docs-empty" style="color:var(--red)">Не удалось загрузить: '+docsEsc(e.message)+'</div>'; }
+        }
+
+        // Открыть договор и сразу развернуть форму нового платежа —
+        // из списка это самый частый путь: клиент прислал новое поручение.
+        async function docsOpenAndPay(id){
+            await docsOpen(id);
+            docsAddPayment(id);
         }
 
         // ── шаг 1: тип и документы ────────────────────────────────
@@ -13990,7 +14041,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         document.getElementById('docsFoldFields').open = true;
                         document.getElementById('docsFoldTerms').open = true;
                     }
-                    else if(d.error==='already_exists') st.textContent='У клиента уже есть договор этого типа — платёж оформляется допником';
+                    else if(d.error==='already_exists'){
+                        // не тупик: сразу предлагаем оформить платёж по существующему
+                        // договору, перенеся уже введённые курс и суммы
+                        st.innerHTML = `У клиента уже есть договор ${docsEsc(d.number||'')} этого типа. `+
+                            `<button class="btn btn-primary docs-btn-sm" style="margin-left:8px" `+
+                            `onclick="docsGoToPayment(${d.agreement_id})">Оформить платёж по нему</button>`;
+                    }
                     else if(d.error==='incomplete_document') st.textContent='В документе остались пустые места: '+d.problems.slice(0,3).join('; ');
                     else st.textContent='Ошибка: '+(d.detail||d.error);
                     return;
@@ -13998,6 +14055,25 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 st.textContent='';
                 docsCloseNew(); await loadDocuments(); docsOpen(d.agreement.id);
             }catch(e){ st.classList.add('is-error'); st.textContent='Ошибка: '+e.message; }
+        }
+
+        // Переход из «уже есть» в форму платежа: курс и суммы, которые менеджер
+        // только что ввёл, переносим — иначе он вводит их заново.
+        async function docsGoToPayment(id){
+            const carry = {};
+            ['total_payin','transfer_amount','rate'].forEach(k=>{
+                const el = document.getElementById('docm_'+k);
+                if(el && el.value.trim()) carry[k] = el.value.trim();
+            });
+            const purpose = (document.getElementById('docsPurpose')||{}).value;
+            docsCloseNew();
+            await docsOpen(id);
+            docsAddPayment(id);
+            Object.entries(carry).forEach(([k,v])=>{
+                const el = document.getElementById('docp_'+k); if(el) el.value = v;
+            });
+            const pu = document.getElementById('docp_purpose');
+            if(pu && purpose && purpose.trim()) pu.value = purpose.trim();
         }
 
         // ── карточка договора ─────────────────────────────────────
@@ -14035,6 +14111,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <input type="file" multiple style="position:absolute;width:1px;height:1px;opacity:0" onchange="docsUploadSigned(${a.id}, this.files)">
                 </label>
                 <span id="docsDetailStatus" class="docs-status"></span>
+                <button class="btn docs-danger" style="font-size:.85rem;margin-left:auto"
+                        onclick="docsDelete(${a.id})">Удалить договор</button>
             </div>
             <div id="docsPaymentForm" style="display:none;margin-top:18px"></div>`;
             document.getElementById('docsDetailBody').innerHTML = html;
@@ -14107,6 +14185,23 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 return;
             }
             st.textContent=''; await loadDocuments(); docsOpen(id);
+        }
+
+        // Удаление договора вместе со всеми его документами. Подтверждение
+        // обязательно: восстановить нельзя, а внутри могут быть подписанные сканы.
+        async function docsDelete(id){
+            const a = docsState.current;
+            const docs = (a && a.docs || []).length;
+            const name = a ? `${a.client_name} · ${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type} · ${a.number}` : 'договор';
+            if(!confirm(`Удалить ${name}?\n\nВместе с ним удалится ${docs} ${docs===1?'документ':'документов'}, включая загруженные исходники и подписанные сканы. Отменить будет нельзя.`)) return;
+            const st = document.getElementById('docsDetailStatus');
+            if(st) st.textContent='Удаляю…';
+            const r = await fetch('/api/docs/agreements/'+id, {method:'DELETE'});
+            const d = await r.json();
+            if(!d.success){ if(st){ st.classList.add('is-error'); st.textContent='Не удалось удалить'; } return; }
+            document.getElementById('docsDetail').style.display='none';
+            docsState.current = null;
+            await loadDocuments();
         }
 
         async function docsUploadSigned(id, files){
