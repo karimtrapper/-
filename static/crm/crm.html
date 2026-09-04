@@ -738,10 +738,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-fold-body { padding:4px 18px 18px; border-top:1px solid var(--border-light); }
 
 /* Широкие колонки: длинные значения (ФИО, адрес банка) должны читаться целиком */
-.docs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(360px,1fr)); gap:14px 18px; margin-top:14px; }
+/* Две колонки, а не три: широкое поле занимает ровно строку и не оставляет
+   дыр в сетке, а обычные становятся вдвое шире и читаются целиком. */
+.docs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:16px 20px; margin-top:14px; }
 .docs-grid input { width:100%; box-sizing:border-box; }
-.docs-grid .form-input { font-size:.88rem; }
-.docs-src { color:var(--green-darker); font-weight:500; font-size:.72rem; }
+/* Значения важнее подписей: кегль поля крупнее лейбла, воздуха больше */
+.docs-grid .form-input { font-size:.95rem; padding:10px 12px; }
+/* Длинные значения — наименование получателя, адрес банка, адрес объекта —
+   в одну колонку не влезают и обрезаются на середине слова. Отдаём им две. */
+.docs-field.is-wide { grid-column:span 2; }
+@media (max-width:760px){ .docs-field.is-wide { grid-column:auto; } }
+/* Подпись источника: короткий ярлык слота, а не имя файла на пол-строки */
+.docs-src {
+  display:inline-block; margin-left:6px; padding:1px 7px; border-radius:5px;
+  background:var(--green-light); color:var(--green-darker);
+  font-weight:600; font-size:.68rem; letter-spacing:.01em; vertical-align:1px;
+}
 
 .docs-slots { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin-top:14px; }
 .docs-slot { border:1px dashed var(--navy-300); border-radius:12px; padding:16px; background:var(--navy-50); transition:border-color .16s ease, background .16s ease; }
@@ -13638,22 +13650,25 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         ];
         const DOCS_DEFAULT_PAIR = {freehold:'RUB_USD', leasehold:'RUB_THB', rental:'RUB_THB'};
 
+        // Третий элемент — 'wide': значение длинное, поле занимает две колонки
         const DOCS_FIELDS = [
-            ['client_name_ru','ФИО кириллицей'], ['client_name_en','ФИО латиницей'],
+            ['client_name_ru','ФИО кириллицей','wide'], ['client_name_en','ФИО латиницей','wide'],
             ['client_citizenship','Гражданство'], ['client_passport_no','Паспорт №'],
             ['client_passport_issued_by','Кем выдан'], ['client_passport_issue_date','Дата выдачи'],
             ['client_passport_expiry_date','Действителен до'], ['client_birth_date','Дата рождения'],
             ['client_national_id','Нац. идентификатор'],
             ['invoice_no','Инвойс №'], ['invoice_date','Дата инвойса'],
             ['invoice_amount','Сумма инвойса'], ['invoice_currency','Валюта инвойса'],
-            ['project_name','Проект'], ['unit_no','Юнит'], ['property_address','Адрес объекта'],
-            ['recipient_name','Получатель'], ['recipient_bank','Банк получателя'],
+            ['project_name','Проект','wide'], ['unit_no','Юнит'],
+            ['property_address','Адрес объекта','wide'],
+            ['recipient_name','Получатель','wide'], ['recipient_bank','Банк получателя','wide'],
             ['recipient_account','Счёт получателя'], ['recipient_swift','SWIFT'],
-            ['recipient_bik','БИК'], ['recipient_bank_address','Адрес банка'],
+            ['recipient_bik','БИК'], ['recipient_bank_address','Адрес банка','wide'],
             ['lease_term','Срок leasehold / аренды'], ['lease_start_date','Дата начала'],
             ['rent_amount','Арендная плата'], ['deposit_amount','Депозит'],
-            ['contract_ref','Договор-основание'],
+            ['contract_ref','Договор-основание','wide'],
         ];
+        const DOCS_SRC_LABEL = {passport:'паспорт', invoice:'инвойс', spa:'СПА'};
         // Реквизиты и сроки. Живут под свёрткой: почти всегда одинаковые.
         const DOCS_MONEY = [
             ['rate_valid_until','Курс действует до','сегодня, 23:59 (GMT+7)', null],
@@ -13675,7 +13690,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport']};
         const DOCS_SLOT_LABEL = {passport:'паспорт', invoice:'инвойс застройщика', spa:'договор с застройщиком'};
 
-        let docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, files:{}, purposeTouched:false};
+        let docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, slots:{}, files:{}, purposeTouched:false};
 
         function docsEsc(v){ return String(v==null?'':v).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
         function docsNum(v){ const n=parseFloat(String(v==null?'':v).replace(/\s/g,'').replace(',','.')); return isFinite(n)?n:null; }
@@ -13715,7 +13730,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
         // ── шаг 1: тип и документы ────────────────────────────────
         function docsOpenNew(){
-            docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, files:{}, purposeTouched:false};
+            docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, slots:{}, files:{}, purposeTouched:false};
             document.getElementById('docsWizard').style.display='';
             document.getElementById('docsStep1').style.display='';
             document.getElementById('docsStep2').style.display='none';
@@ -13776,6 +13791,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 }
                 docsState.fields = d.fields||{};
                 docsState.provenance = d.provenance||{};
+                docsState.slots = d.slots||{};
                 st.textContent='';
                 docsRenderStep2(d.warnings||[], d.conflicts||{}, d.failed||[]);
             }catch(e){ st.classList.add('is-error'); st.textContent='Ошибка: '+e.message; }
@@ -13786,7 +13802,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             if(!docsState.type){ st.textContent='Сначала выберите тип сделки'; st.classList.add('is-error'); return; }
             docsState.files = {};
             DOCS_SLOTS.forEach(([slot,id])=>{ const el=document.getElementById(id); if(el&&el.files.length) docsState.files[slot]=el.files[0]; });
-            docsState.fields={}; docsState.provenance={};
+            docsState.fields={}; docsState.provenance={}; docsState.slots={};
             docsRenderStep2([],{},[]);
         }
 
@@ -13878,12 +13894,16 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 filled ? `${docsState.fields.client_name_ru||docsState.fields.client_name_en||'клиент'} · заполнено ${filled} из ${DOCS_FIELDS.length}`
                        : 'ничего не распознано — заполните вручную';
             document.getElementById('docsFoldFields').open = !filled;
-            document.getElementById('docsFieldsForm').innerHTML = DOCS_FIELDS.map(([k,label])=>{
+            document.getElementById('docsFieldsForm').innerHTML = DOCS_FIELDS.map(([k,label,wide])=>{
                 const val = docsState.fields[k]||'';
-                const src = docsState.provenance[k];
-                return `<div class="docs-field">
-                    <label for="docf_${k}">${label}${src?` <span class="docs-src">← ${docsEsc(src)}</span>`:''}</label>
-                    <input class="form-input" id="docf_${k}" value="${docsEsc(val)}" oninput="docsBuildPurpose(false)">
+                const file = docsState.provenance[k];
+                const slot = (docsState.slots||{})[k];
+                // ярлык слота читается за секунду, имя файла — нет; файл оставляем в подсказке
+                const chip = file ? `<span class="docs-src" title="${docsEsc(file)}">${DOCS_SRC_LABEL[slot]||docsEsc(file)}</span>` : '';
+                return `<div class="docs-field${wide?' is-wide':''}">
+                    <label for="docf_${k}">${label}${chip}</label>
+                    <input class="form-input" id="docf_${k}" value="${docsEsc(val)}"
+                           title="${docsEsc(val)}" oninput="this.title=this.value; docsBuildPurpose(false)">
                 </div>`;
             }).join('');
         }

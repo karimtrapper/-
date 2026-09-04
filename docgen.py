@@ -219,11 +219,46 @@ CITIZENSHIP_EN = {
 }
 
 
+# В паспорте гражданство стоит в именительном («Российская Федерация»),
+# а в договоре нужен родительный: «гражданин Российской Федерации».
+CITIZENSHIP_RU = {
+    'российская федерация': 'Российской Федерации', 'россия': 'Российской Федерации',
+    'республика болгария': 'Республики Болгария', 'болгария': 'Республики Болгария',
+    'республика казахстан': 'Республики Казахстан', 'казахстан': 'Республики Казахстан',
+    'республика беларусь': 'Республики Беларусь', 'беларусь': 'Республики Беларусь',
+    'украина': 'Украины', 'республика армения': 'Республики Армения', 'армения': 'Республики Армения',
+    'республика узбекистан': 'Республики Узбекистан', 'узбекистан': 'Республики Узбекистан',
+    'киргизская республика': 'Киргизской Республики', 'киргизия': 'Киргизской Республики',
+}
+
+
+def citizenship_ru(value: str) -> str:
+    """Приводим к родительному. Приставку «гражданин» срезаем — в договоре
+    она уже есть в шаблоне строки, иначе выйдет «гражданин гражданин ...»."""
+    v = (value or '').strip()
+    stripped = v
+    for pref in ('гражданина', 'гражданин', 'гражданки', 'гражданка'):
+        if stripped.lower().startswith(pref):
+            stripped = stripped[len(pref):].strip()
+            break
+    return CITIZENSHIP_RU.get(stripped.lower(), stripped)
+
+
 def citizenship_en(value: str) -> str:
+    """Гражданство → английская колонка.
+
+    Паспорт даёт именительный («Российская Федерация»), договоры и прошлые
+    сделки — родительный («Российской Федерации»). Сначала приводим к
+    родительному, потом переводим: одна таблица вместо двух.
+    """
     # lstrip() режет символы, а не префикс — здесь нужен именно removeprefix
     v = (value or '').strip()
     key = v.lower().removeprefix('гражданин').removeprefix('гражданка').strip()
-    return CITIZENSHIP_EN.get(key, CITIZENSHIP_EN.get(v.lower(), v))
+    genitive = CITIZENSHIP_RU.get(key, v)
+    for candidate in (genitive.lower(), key, v.lower()):
+        if candidate in CITIZENSHIP_EN:
+            return CITIZENSHIP_EN[candidate]
+    return v
 
 
 def client_line(f: dict, lang: str = 'ru') -> str:
@@ -233,7 +268,7 @@ def client_line(f: dict, lang: str = 'ru') -> str:
         if f.get('client_name_en') and f.get('client_name_ru'):
             parts[0] += f" ({f['client_name_en']})"
         if f.get('client_citizenship'):
-            parts.append(f"гражданин {f['client_citizenship']}")
+            parts.append(f"гражданин {citizenship_ru(f['client_citizenship'])}")
         if f.get('client_passport_no'):
             parts.append(f"паспорт № {f['client_passport_no']}")
         if f.get('client_passport_issue_date'):

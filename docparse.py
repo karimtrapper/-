@@ -205,6 +205,44 @@ def is_placeholder(key: str, value) -> bool:
     return _is_label_text(core)
 
 
+# В паспорте ФИО и гражданство напечатаны капсом. В договор это идёт как есть
+# и читается как крик: «БУРОВА НАДЕЖДА ВАСИЛЬЕВНА, гражданин РОССИЙСКАЯ ФЕДЕРАЦИЯ».
+CAPS_FIELDS = {'client_name_ru', 'client_name_en', 'client_citizenship',
+               'client_passport_issued_by', 'recipient_name', 'recipient_bank',
+               'project_name', 'property_address', 'recipient_bank_address'}
+# Частицы фамилий и служебные слова, которые с заглавной не пишутся
+LOWER_PARTICLES = {'де', 'ди', 'дю', 'ла', 'ле', 'фон', 'ван', 'дер', 'оглы', 'кызы',
+                   'de', 'di', 'du', 'la', 'le', 'van', 'von', 'der', 'the', 'of', 'and'}
+
+
+def _titlecase(text: str) -> str:
+    out = []
+    for i, word in enumerate(text.split(' ')):
+        if not word:
+            out.append(word)
+            continue
+        low = word.lower()
+        if i and low.strip('.,') in LOWER_PARTICLES:
+            out.append(low)
+            continue
+        # дефисные части пишутся с заглавной каждая: Салтыков-Щедрин
+        out.append('-'.join(p[:1].upper() + p[1:].lower() if p else p for p in low.split('-')))
+    return ' '.join(out)
+
+
+def normalize(key: str, value):
+    """Капс из паспорта → нормальный регистр. Аббревиатуры не трогаем."""
+    if not isinstance(value, str) or key not in CAPS_FIELDS:
+        return value
+    v = value.strip()
+    letters = [c for c in v if c.isalpha()]
+    if not letters or not all(c.isupper() for c in letters):
+        return v
+    if len(letters) <= 4:
+        return v          # ООО, THB, SWIFT-коды — оставляем как есть
+    return _titlecase(v)
+
+
 def parse_file(filename: str, data: bytes, mime: str, api_key: str,
                model: str | None = None, kind: str | None = None) -> dict:
     """Один файл → распознанные поля. При отказе модели пробуем запасные."""
@@ -232,7 +270,7 @@ def merge(results: list[dict]) -> dict:
     Разногласие между двумя равноправными источниками не затираем молча —
     складываем в `conflicts`, менеджер разрешает руками.
     """
-    fields, provenance, conflicts, masked = {}, {}, {}, set()
+    fields, provenance, conflicts, masked, slots = {}, {}, {}, set(), {}
     owned_by = {}
     for kind, keys in FIELD_OWNER.items():
         for key in keys:
@@ -247,10 +285,12 @@ def merge(results: list[dict]) -> dict:
                 if val:
                     masked.add(key)
                 continue
-            val = val.strip() if isinstance(val, str) else val
+            val = normalize(key, val.strip()) if isinstance(val, str) else val
             is_owner = owned_by.get(key) == kind
             if key not in fields:
                 fields[key], provenance[key] = val, src
+                if kind:
+                    slots[key] = kind
                 if is_owner:
                     provenance[key + '__owner'] = True
                 continue
@@ -260,6 +300,8 @@ def merge(results: list[dict]) -> dict:
                 # приехал документ-владелец — он и есть источник истины
                 fields[key], provenance[key] = val, src
                 provenance[key + '__owner'] = True
+                if kind:
+                    slots[key] = kind
                 conflicts.pop(key, None)
             elif provenance.get(key + '__owner') and not is_owner:
                 pass          # владелец уже дал значение, чужое игнорируем
@@ -273,6 +315,7 @@ def merge(results: list[dict]) -> dict:
     return {
         'fields': fields,
         'provenance': provenance,
+        'slots': slots,
         'conflicts': conflicts,
         'masked_fields': sorted(masked),
         'models': [r.get('_model') for r in results],

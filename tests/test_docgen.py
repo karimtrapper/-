@@ -314,3 +314,63 @@ class TestСлотыДокументов:
         assert 'загранпаспорт' in docparse.DOC_KINDS['passport']
         assert 'инвойс' in docparse.DOC_KINDS['invoice'].lower()
         assert 'SPA' in docparse.DOC_KINDS['spa']
+
+
+class TestНормализацияКапса:
+    """В паспорте ФИО и гражданство напечатаны капсом — в договор так нельзя."""
+
+    @pytest.mark.parametrize('key,raw,want', [
+        ('client_name_ru', 'БУРОВА НАДЕЖДА ВАСИЛЬЕВНА', 'Бурова Надежда Васильевна'),
+        ('client_name_en', 'BUROVA NADEZHDA', 'Burova Nadezhda'),
+        ('client_citizenship', 'РОССИЙСКАЯ ФЕДЕРАЦИЯ', 'Российская Федерация'),
+        ('client_name_ru', 'ИВАНОВ-ПЕТРОВ ПЁТР', 'Иванов-Петров Пётр'),
+        ('recipient_bank', 'BANGKOK BANK PUBLIC COMPANY LIMITED',
+         'Bangkok Bank Public Company Limited'),
+    ])
+    def test_капс_приводится_к_нормальному_регистру(self, key, raw, want):
+        assert docparse.normalize(key, raw) == want
+
+    @pytest.mark.parametrize('key,raw', [
+        ('invoice_currency', 'THB'), ('recipient_swift', 'BKKBTHBK'),
+        ('client_passport_issued_by', 'МВД 52014'),
+        ('recipient_name', 'Botanica Bangtao Beach 1 Co., Ltd.'),
+    ])
+    def test_аббревиатуры_и_нормальный_текст_не_трогаются(self, key, raw):
+        assert docparse.normalize(key, raw) == raw
+
+    def test_частицы_фамилий_остаются_строчными(self):
+        assert docparse.normalize('client_name_ru', 'ВАН ДЕР САР ЭДВИН') == 'Ван дер Сар Эдвин'
+
+    def test_нормализация_работает_внутри_склейки(self):
+        merged = docparse.merge([{'_file': 'p.jpg', '_kind': 'passport',
+                                  'client_name_ru': 'БУРОВА НАДЕЖДА', 'masked_fields': []}])
+        assert merged['fields']['client_name_ru'] == 'Бурова Надежда'
+        assert merged['slots']['client_name_ru'] == 'passport'
+
+
+class TestГражданствоВДоговоре:
+    """Паспорт даёт именительный, договору нужен родительный."""
+
+    @pytest.mark.parametrize('raw,want', [
+        ('Российская Федерация', 'Российской Федерации'),
+        ('РОССИЙСКАЯ ФЕДЕРАЦИЯ', 'Российской Федерации'),
+        ('Российской Федерации', 'Российской Федерации'),
+        ('гражданин Республики Болгария', 'Республики Болгария'),
+        ('гражданка Украины', 'Украины'),
+    ])
+    def test_родительный_падеж(self, raw, want):
+        assert docgen.citizenship_ru(raw) == want
+
+    def test_приставка_не_дублируется(self):
+        line = docgen.client_line({'client_name_ru': 'Иванов Иван',
+                                   'client_citizenship': 'гражданин Республики Болгария'}, 'ru')
+        assert line.count('гражданин') == 1
+
+    @pytest.mark.parametrize('raw', ['Российская Федерация', 'Российской Федерации',
+                                     'РОССИЙСКАЯ ФЕДЕРАЦИЯ'])
+    def test_английская_колонка_переводит_обе_формы(self, raw):
+        assert docgen.citizenship_en(raw) == 'the Russian Federation'
+
+    def test_неизвестная_страна_проходит_как_есть(self):
+        assert docgen.citizenship_ru('Thailand') == 'Thailand'
+        assert docgen.citizenship_en('Thailand') == 'Thailand'
