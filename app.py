@@ -15534,15 +15534,14 @@ def docs_create_agreement():
         db.flush()
 
         safe = re.sub(r'[^\w\-.]+', '_', client_name)[:40] or 'client'
-        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        # Три отдельных файла: договор живёт у клиента всегда, допник и инвойс —
-        # на конкретный платёж. В одном файле их держать нельзя.
-        _docs_save(db, a.id, 'agreement', number, 1,
-                   f'MF_Agreement_{deal_type}_{safe}_{number}.docx', data, mime)
-        _docs_save(db, a.id, 'addendum', number, 1,
-                   f'MF_Addendum_1_{safe}_{number}.docx', addendum, mime)
-        _docs_save(db, a.id, 'invoice', number, 1,
-                   f'MF_Commercial_Invoice_{number}.docx', invoice, mime)
+        # Три отдельных файла и все в PDF: договор живёт у клиента всегда,
+        # допник и инвойс — на конкретный платёж.
+        for kind, raw, base in (
+                ('agreement', data, f'MF_Agreement_{deal_type}_{safe}_{number}'),
+                ('addendum', addendum, f'MF_Addendum_1_{safe}_{number}'),
+                ('invoice', invoice, f'MF_Commercial_Invoice_{number}')):
+            body, fname, mime = docgen.as_pdf(raw, base)
+            _docs_save(db, a.id, kind, number, 1, fname, body, mime)
 
         for slot, f in _docs_collect_uploads():
             raw = f.read()
@@ -15601,11 +15600,11 @@ def docs_add_payment(agreement_id):
                             'problems': problems}), 422
 
         safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
-        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        _docs_save(db, a.id, 'addendum', number, payment_no,
-                   f'MF_Addendum_{payment_no}_{safe}_{number}.docx', add, mime)
-        _docs_save(db, a.id, 'invoice', number, payment_no,
-                   f'MF_Commercial_Invoice_{number}.docx', inv, mime)
+        for kind, raw, base in (
+                ('addendum', add, f'MF_Addendum_{payment_no}_{safe}_{number}'),
+                ('invoice', inv, f'MF_Commercial_Invoice_{number}')):
+            body, fname, mime = docgen.as_pdf(raw, base)
+            _docs_save(db, a.id, kind, number, payment_no, fname, body, mime)
         a.payments_count = payment_no
         a.fields_json = json.dumps(fields, ensure_ascii=False)
         a.money_json = json.dumps(money, ensure_ascii=False)

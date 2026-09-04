@@ -549,8 +549,21 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
 
 # ─────────────────────────── публичное API ───────────────────────────
 
-ANNEX_FORM_MARK = ('ФОРМА — заполняется отдельным дополнительным соглашением на каждый платёж / '
-                   'TEMPLATE — completed by a separate supplementary agreement for each payment')
+def _drop_annexes(doc) -> None:
+    """Вырезать Приложения 1 и 2 из рамочного договора.
+
+    Всё, что идёт после первого заголовка «ПРИЛОЖЕНИЕ», относится к приложениям
+    и уезжает в доп. соглашение. Тело договора (таблица 0) остаётся.
+    """
+    body = doc.element.body
+    dropping = False
+    for child in list(body):
+        if child.tag.endswith('}p'):
+            text = ''.join(child.itertext()).strip().upper()
+            if text.startswith('ПРИЛОЖЕНИЕ'):
+                dropping = True
+        if dropping and not child.tag.endswith('}sectPr'):
+            body.remove(child)
 
 
 def build_agreement(deal_type: str, fields: dict, money: dict,
@@ -605,12 +618,10 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
                 _para_replace(p, '[●]', money.get('execution_days') or DEFAULTS['execution_days'])
 
     if blank_annexes:
-        for para in doc.paragraphs:
-            if para.text.strip().upper().startswith('ПРИЛОЖЕНИЕ'):
-                mark = para.insert_paragraph_before(ANNEX_FORM_MARK)
-                for run in mark.runs:
-                    run.italic = True
-        _fill_client_signature(doc.tables[1], fields, money)
+        # Приложения из рамочного договора убираем совсем: они всё равно
+        # выпускаются отдельным доп. соглашением на каждый платёж, а пустые
+        # бланки внутри подписанного договора только путают клиента.
+        _drop_annexes(doc)
     else:
         _fill_appendix1(doc, fields, deal_type, money, number, when)
         _fill_appendix2(doc, fields, money, number, when)
@@ -762,6 +773,81 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+
+# ─────────────────────────── docx → PDF ───────────────────────────
+
+SOFFICE_CANDIDATES = (
+    '/Applications/LibreOffice.app/Contents/MacOS/soffice',   # macOS
+    '/usr/bin/soffice', '/usr/bin/libreoffice',                # Debian/Ubuntu
+    'soffice', 'libreoffice',                                  # из PATH
+)
+
+
+def soffice_path() -> str | None:
+    """Путь к LibreOffice или None, если его нет в окружении."""
+    import shutil  # noqa: PLC0415
+
+    override = os.environ.get('SOFFICE_PATH')
+    if override and (os.path.exists(override) or shutil.which(override)):
+        return override
+    for candidate in SOFFICE_CANDIDATES:
+        if os.path.isabs(candidate):
+            if os.path.exists(candidate):
+                return candidate
+        elif shutil.which(candidate):
+            return shutil.which(candidate)
+    return None
+
+
+def to_pdf(docx_bytes: bytes, timeout: int = 120) -> bytes | None:
+    """DOCX → PDF через LibreOffice. None, если конвертер недоступен.
+
+    Каждому вызову — свой профиль пользователя (`-env:UserInstallation`):
+    без него параллельные запуски soffice дерутся за общий профиль в HOME
+    и второй молча завершается, ничего не создав.
+    """
+    import subprocess  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    binary = soffice_path()
+    if not binary:
+        return None
+    with tempfile.TemporaryDirectory() as tmp:
+        src = os.path.join(tmp, 'doc.docx')
+        with open(src, 'wb') as fh:
+            fh.write(docx_bytes)
+        profile = os.path.join(tmp, 'profile')
+        cmd = [binary, f'-env:UserInstallation=file://{profile}', '--headless',
+               '--norestore', '--convert-to', 'pdf', '--outdir', tmp, src]
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+        out = os.path.join(tmp, 'doc.pdf')
+        if not os.path.exists(out):
+            return None
+        with open(out, 'rb') as fh:
+            data = fh.read()
+    return data or None
+
+
+PDF_MIME = 'application/pdf'
+DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+
+
+def as_pdf(docx_bytes: bytes, basename: str) -> tuple[bytes, str, str]:
+    """→ (байты, имя файла, mime). PDF, а при отсутствии конвертера — DOCX.
+
+    Клиенту уходит PDF: его нельзя случайно поправить и он одинаково
+    открывается на телефоне. DOCX остаётся аварийным вариантом, чтобы
+    отсутствие LibreOffice не блокировало выпуск документов.
+    """
+    pdf = to_pdf(docx_bytes)
+    if pdf:
+        return pdf, f'{basename}.pdf', PDF_MIME
+    return docx_bytes, f'{basename}.docx', DOCX_MIME
 
 
 # ─────────────────────── проверка перед выдачей ───────────────────────

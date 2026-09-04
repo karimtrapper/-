@@ -1,0 +1,6 @@
+# LibreOffice нужен для конвертации сгенерированных договоров в PDF
+# (docgen.to_pdf). Берём только Writer — полный пакет тянет Calc, Impress
+# и Base, которые здесь не нужны и весят втрое больше.
+# Шрифты: без них кириллица в PDF выходит квадратами.
+[phases.setup]
+aptPkgs = ["libreoffice-writer", "fonts-dejavu-core", "fonts-liberation"]

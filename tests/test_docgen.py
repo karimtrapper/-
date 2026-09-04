@@ -135,15 +135,12 @@ class TestГенерацияДоговоров:
         assert docgen.check(data, allow_forms=True) == []
 
     @pytest.mark.parametrize('deal_type', ['freehold', 'leasehold', 'rental'])
-    def test_приложения_в_договоре_остаются_бланками(self, deal_type):
+    def test_суммы_платежа_в_рамочный_договор_не_попадают(self, deal_type):
         from docx import Document
-        data, _ = docgen.build_agreement(deal_type, CLIENT, MONEY_FREEHOLD, when=WHEN)
-        doc = Document(io.BytesIO(data))
-        marks = [p.text for p in doc.paragraphs if p.text.startswith('ФОРМА')]
-        assert len(marks) == 2          # по пометке над каждым приложением
-        # суммы конкретного платежа в рамочный договор не попадают
-        annex = '\n'.join(c.text for t in doc.tables[1:] for r in t.rows for c in r.cells)
-        assert MONEY['total_payin'] not in annex
+        data, _ = docgen.build_agreement(deal_type, CLIENT, MONEY, when=WHEN)
+        text = '\n'.join(c.text for t in Document(io.BytesIO(data)).tables
+                         for r in t.rows for c in r.cells)
+        assert MONEY['total_payin'] not in text and MONEY['rate'] not in text
 
     def test_номер_проставляется_из_паспорта(self):
         _, number = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
@@ -535,3 +532,72 @@ class TestСверкаСЖивымиДоговорами:
         text = '\n'.join(c.text for t in Document(io.BytesIO(inv)).tables
                          for r in t.rows for c in r.cells)
         assert 'ОПЛАТА ПО ИНВОЙСУ' in text
+
+
+class TestДоговорБезПриложений:
+    """Приложения выпускаются отдельным допником — в договоре им не место."""
+
+    @pytest.mark.parametrize('deal_type', ['freehold', 'leasehold', 'rental'])
+    def test_в_договоре_остаётся_одна_таблица(self, deal_type):
+        from docx import Document
+        data, _ = docgen.build_agreement(deal_type, CLIENT, MONEY_FREEHOLD, when=WHEN)
+        assert len(Document(io.BytesIO(data)).tables) == 1
+
+    @pytest.mark.parametrize('deal_type', ['freehold', 'leasehold', 'rental'])
+    def test_упоминаний_приложений_не_осталось(self, deal_type):
+        from docx import Document
+        data, _ = docgen.build_agreement(deal_type, CLIENT, MONEY_FREEHOLD, when=WHEN)
+        doc = Document(io.BytesIO(data))
+        assert not [p for p in doc.paragraphs
+                    if p.text.strip().upper().startswith('ПРИЛОЖЕНИЕ')]
+
+    def test_договор_проходит_проверку_без_поблажек(self):
+        # раньше требовался allow_forms — теперь бланков нет вовсе
+        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
+        assert docgen.check(data) == []
+
+    def test_допник_приложения_сохраняет(self):
+        from docx import Document
+        add = docgen.build_addendum('leasehold', CLIENT, MONEY, 'MF-1', 'MF-0', 1, when=WHEN)
+        assert len(Document(io.BytesIO(add)).tables) == 2
+
+
+class TestPDF:
+    """Клиенту уходит PDF: его не поправишь случайно и он открывается везде."""
+
+    def test_путь_к_конвертеру_ищется(self):
+        # None — валидный ответ на машине без LibreOffice
+        assert docgen.soffice_path() is None or isinstance(docgen.soffice_path(), str)
+
+    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    def test_docx_конвертируется_в_pdf(self):
+        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
+        pdf = docgen.to_pdf(data)
+        assert pdf and pdf[:5] == b'%PDF-'
+
+    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    def test_pdf_заметно_легче_docx(self):
+        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
+        assert len(docgen.to_pdf(data)) < len(data)
+
+    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    def test_as_pdf_отдаёт_pdf_с_нужным_именем(self):
+        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
+        body, name, mime = docgen.as_pdf(data, 'MF_Agreement_test')
+        assert name == 'MF_Agreement_test.pdf'
+        assert mime == docgen.PDF_MIME
+        assert body[:5] == b'%PDF-'
+
+    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    def test_кириллица_доезжает_до_pdf(self):
+        from pypdf import PdfReader
+        data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
+        pdf = docgen.to_pdf(data)
+        text = '\n'.join((p.extract_text() or '') for p in PdfReader(io.BytesIO(pdf)).pages)
+        assert 'Бурова' in text and 'АГЕНТСКИЙ ДОГОВОР' in text.upper()
+
+    def test_без_конвертера_отдаётся_docx(self, monkeypatch):
+        # отсутствие LibreOffice не должно блокировать выпуск документов
+        monkeypatch.setattr(docgen, 'soffice_path', lambda: None)
+        body, name, mime = docgen.as_pdf(b'PK-fake-docx', 'MF_Agreement_test')
+        assert name.endswith('.docx') and mime == docgen.DOCX_MIME and body == b'PK-fake-docx'
