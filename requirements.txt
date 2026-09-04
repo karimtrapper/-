@@ -14,3 +14,5 @@ playwright==1.41.0
 pytest==9.0.2
 pytest-cov==7.0.0
 openai~=1.82
+python-docx==1.2.0
+pymupdf==1.27.1

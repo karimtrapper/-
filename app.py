@@ -2113,6 +2113,75 @@ class PaymentLinkOrder(Base):
     paid_at = Column(DateTime)
 
 
+
+class Agreement(Base):
+    """Рамочный агентский договор: один на клиента И НА ТИП СДЕЛКИ.
+
+    Шаблоны фрихолда, лизхолда и аренды юридически разные, поэтому «один договор
+    на клиента» недостаточно — уникальность по паре (клиент, тип сделки).
+    Каждый последующий платёж не перевыпускает договор, а добавляет
+    AgreementDoc kind='addendum' + 'invoice' со ссылкой на его номер.
+    """
+    __tablename__ = 'agreements'
+    id = Column(Integer, primary_key=True)
+    client_id = Column(Integer, ForeignKey('clients.id'), nullable=True, index=True)
+    client_name = Column(String(200), nullable=False)
+    deal_type = Column(String(20), nullable=False)          # freehold | leasehold | rental
+    number = Column(String(40), nullable=False, index=True)  # MF-<3 цифры паспорта>-<ДДММ>-<N>
+    status = Column(String(20), default='draft')             # draft | sent | signed
+    fields_json = Column(Text, default='{}')                 # распознанное из файлов
+    money_json = Column(Text, default='{}')                  # курс, суммы, способ оплаты
+    payments_count = Column(Integer, default=1)              # сколько допников выпущено
+    created_at = Column(DateTime, default=datetime.utcnow)
+    signed_at = Column(DateTime)
+    __table_args__ = (UniqueConstraint('client_name', 'deal_type', name='uq_agreement_client_type'),)
+
+    docs = relationship('AgreementDoc', back_populates='agreement',
+                        cascade='all, delete-orphan', order_by='AgreementDoc.id')
+
+    def to_dict(self, with_docs=True):
+        d = {'id': self.id, 'client_id': self.client_id, 'client_name': self.client_name,
+             'deal_type': self.deal_type, 'number': self.number, 'status': self.status,
+             'payments_count': self.payments_count or 1,
+             'fields': json.loads(self.fields_json or '{}'),
+             'money': json.loads(self.money_json or '{}'),
+             'created_at': self.created_at.isoformat() if self.created_at else None,
+             'signed_at': self.signed_at.isoformat() if self.signed_at else None}
+        if with_docs:
+            d['docs'] = [x.to_dict() for x in self.docs]
+        return d
+
+
+class AgreementDoc(Base):
+    """Файл под договором: сгенерированный документ, исходник или подписанный скан.
+
+    Байты лежат в deferred-колонке — как в kyc_files: список документов в CRM
+    не должен поднимать в память все паспорта. Следующий шаг — выносить на Drive
+    и оставлять здесь только ссылку (поле drive_url).
+    """
+    __tablename__ = 'agreement_docs'
+    id = Column(Integer, primary_key=True)
+    agreement_id = Column(Integer, ForeignKey('agreements.id'), nullable=False, index=True)
+    # agreement | addendum | invoice | signed | source_passport | source_invoice | source_contract
+    kind = Column(String(30), nullable=False)
+    number = Column(String(40))
+    seq = Column(Integer, default=0)          # номер платежа, к которому относится
+    filename = Column(String(200), nullable=False)
+    mime = Column(String(120), default='application/octet-stream')
+    size = Column(Integer, default=0)
+    drive_url = Column(String(500))
+    data = deferred(Column(LargeBinary))
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    agreement = relationship('Agreement', back_populates='docs')
+
+    def to_dict(self):
+        return {'id': self.id, 'kind': self.kind, 'number': self.number, 'seq': self.seq or 0,
+                'filename': self.filename, 'size': self.size, 'mime': self.mime,
+                'drive_url': self.drive_url,
+                'created_at': self.created_at.isoformat() if self.created_at else None}
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -15261,6 +15330,319 @@ def static_files(filename):
     return '', 404
 
 # ==================== MAIN ====================
+
+# ═══════════════════════════════════════════════════════════════════
+# ДОКУМЕНТЫ — генерация агентских договоров, допников и инвойсов
+# Карта полей и дефолты: wiki/pages/crm-doc-generator-fields.md
+# ═══════════════════════════════════════════════════════════════════
+
+DOCS_DEAL_TYPES = ('freehold', 'leasehold', 'rental')
+# Поля, без которых документ нельзя выпускать. Фрихолд тяжелее двух других:
+# по п. 2.3 нужно письменное подтверждение застройщика с курсом и его сроком.
+DOCS_REQUIRED_FIELDS = ['client_name_ru', 'client_passport_no']
+DOCS_REQUIRED_MONEY = {
+    'freehold': ['total_payin', 'rate_source', 'usd_equivalent',
+                 'thb_credit_status', 'developer_confirmation'],
+    'leasehold': ['total_payin', 'transfer_amount', 'rate'],
+    'rental': ['total_payin', 'transfer_amount', 'rate'],
+}
+
+
+def _docs_openrouter_key():
+    return os.environ.get('OPENROUTER_API_KEY', '')
+
+
+def _docs_save(db, agreement_id, kind, number, seq, filename, data, mime):
+    doc = AgreementDoc(agreement_id=agreement_id, kind=kind, number=number, seq=seq,
+                       filename=filename, mime=mime, size=len(data), data=data)
+    db.add(doc)
+    return doc
+
+
+def _docs_validate(deal_type, fields, money):
+    """Пустые обязательные поля ловим ДО генерации — иначе документ уйдёт с дырой."""
+    missing = [k for k in DOCS_REQUIRED_FIELDS if not (fields.get(k) or '').strip()]
+    missing += [k for k in DOCS_REQUIRED_MONEY.get(deal_type, [])
+                if not str(money.get(k) or '').strip()]
+    return missing
+
+
+@app.route('/api/docs/agreements', methods=['GET'])
+def docs_list_agreements():
+    """Список рамочных договоров. Фильтры: client_id, deal_type, q."""
+    db = get_session()
+    try:
+        q = db.query(Agreement).order_by(Agreement.created_at.desc())
+        if request.args.get('client_id'):
+            q = q.filter(Agreement.client_id == int(request.args['client_id']))
+        if request.args.get('deal_type'):
+            q = q.filter(Agreement.deal_type == request.args['deal_type'])
+        term = (request.args.get('q') or '').strip()
+        if term:
+            like = f'%{term}%'
+            q = q.filter(or_(Agreement.client_name.ilike(like), Agreement.number.ilike(like)))
+        return jsonify({'success': True,
+                        'agreements': [a.to_dict() for a in q.limit(200).all()]})
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/agreements/<int:agreement_id>', methods=['GET'])
+def docs_get_agreement(agreement_id):
+    db = get_session()
+    try:
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        return jsonify({'success': True, 'agreement': a.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/parse', methods=['POST'])
+def docs_parse():
+    """Загруженные файлы → распознанные поля + провенанс + конфликты.
+
+    Ничего не сохраняет: менеджер сначала подтверждает данные, и только потом
+    создаётся договор. Файлы приезжают повторно на шаге создания.
+    """
+    key = _docs_openrouter_key()
+    if not key:
+        return jsonify({'success': False, 'error': 'no_api_key',
+                        'detail': 'OPENROUTER_API_KEY не задан в окружении'}), 503
+    files = request.files.getlist('files')
+    if not files:
+        return jsonify({'success': False, 'error': 'no_files'}), 400
+    import docparse
+    results, failed = [], []
+    for f in files:
+        raw = f.read()
+        if not raw:
+            continue
+        try:
+            results.append(docparse.parse_file(f.filename, raw, f.mimetype, key))
+        except Exception as exc:
+            app.logger.warning(f'docs_parse: {f.filename} — {exc}')
+            failed.append({'file': f.filename, 'error': str(exc)[:300]})
+    if not results:
+        return jsonify({'success': False, 'error': 'parse_failed', 'failed': failed}), 502
+    merged = docparse.merge(results)
+    merged['warnings'] = docparse.validate(merged['fields'])
+    merged['failed'] = failed
+    merged['success'] = True
+    return jsonify(merged)
+
+
+@app.route('/api/docs/agreements', methods=['POST'])
+def docs_create_agreement():
+    """Создать рамочный договор и выпустить первый пакет: договор + инвойс.
+
+    Пара (клиент, тип сделки) уникальна: повторный платёж идёт через
+    /payment, а не через второй договор.
+    """
+    import docgen
+    payload = request.form.to_dict() if request.form else {}
+    body = request.get_json(silent=True) or {}
+    fields = body.get('fields') or json.loads(payload.get('fields') or '{}')
+    money = body.get('money') or json.loads(payload.get('money') or '{}')
+    deal_type = body.get('deal_type') or payload.get('deal_type')
+    client_id = body.get('client_id') or payload.get('client_id')
+
+    if deal_type not in DOCS_DEAL_TYPES:
+        return jsonify({'success': False, 'error': 'bad_deal_type'}), 400
+    missing = _docs_validate(deal_type, fields, money)
+    if missing:
+        return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
+
+    client_name = (fields.get('client_name_ru') or fields.get('client_name_en') or '').strip()
+    money['deal_type'] = deal_type
+    db = get_session()
+    try:
+        dup = db.query(Agreement).filter(Agreement.client_name == client_name,
+                                         Agreement.deal_type == deal_type).first()
+        if dup:
+            return jsonify({'success': False, 'error': 'already_exists',
+                            'agreement_id': dup.id, 'number': dup.number,
+                            'detail': 'У клиента уже есть договор этого типа — '
+                                      'новый платёж оформляется допником'}), 409
+
+        # Номер = MF-<3 цифры паспорта>-<ДДММ>-<N>. У одного клиента в один день
+        # может появиться договор второго типа — тогда хвост сдвигаем, иначе
+        # два разных договора получат один номер.
+        seq = 1
+        while db.query(Agreement.id).filter(
+                Agreement.number == docgen.make_number(
+                    fields.get('client_passport_no', ''), None, seq)).first():
+            seq += 1
+        number = docgen.make_number(fields.get('client_passport_no', ''), None, seq)
+        data, _ = docgen.build_agreement(deal_type, fields, money, number=number)
+        problems = docgen.check(data)
+        if problems:
+            return jsonify({'success': False, 'error': 'incomplete_document',
+                            'problems': problems}), 422
+
+        a = Agreement(client_id=int(client_id) if client_id else None,
+                      client_name=client_name, deal_type=deal_type, number=number,
+                      fields_json=json.dumps(fields, ensure_ascii=False),
+                      money_json=json.dumps(money, ensure_ascii=False), payments_count=1)
+        db.add(a)
+        db.flush()
+
+        safe = re.sub(r'[^\w\-.]+', '_', client_name)[:40] or 'client'
+        _docs_save(db, a.id, 'agreement', number, 1,
+                   f'MF_Agreement_{deal_type}_{safe}_{number}.docx', data,
+                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+        inv = docgen.build_invoice(fields, money, number, number, number)
+        _docs_save(db, a.id, 'invoice', number, 1,
+                   f'MF_Invoice_{safe}_{number}.docx', inv,
+                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+
+        for f in request.files.getlist('sources'):
+            raw = f.read()
+            if raw:
+                _docs_save(db, a.id, 'source', None, 1, f.filename, raw,
+                           f.mimetype or 'application/octet-stream')
+        db.commit()
+        return jsonify({'success': True, 'agreement': a.to_dict()})
+    except Exception as exc:
+        db.rollback()
+        app.logger.exception('docs_create_agreement')
+        return jsonify({'success': False, 'error': 'server_error', 'detail': str(exc)[:300]}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/agreements/<int:agreement_id>/payment', methods=['POST'])
+def docs_add_payment(agreement_id):
+    """Очередной платёж: доп. соглашение + инвойс со ссылкой на рамочный договор."""
+    import docgen
+    body = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+
+        fields = json.loads(a.fields_json or '{}')
+        fields.update(body.get('fields') or {})
+        money = json.loads(a.money_json or '{}')
+        money.update(body.get('money') or {})
+        money['deal_type'] = a.deal_type
+
+        missing = _docs_validate(a.deal_type, fields, money)
+        if missing:
+            return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
+
+        # Номер платежа для клиента и хвост номера документа — разные счётчики:
+        # хвост может уехать вперёд, если у клиента есть договор другого типа
+        # с тем же номером. Клиенту показываем «Платёж № 2», а не № 3.
+        payment_no = (a.payments_count or 1) + 1
+        money['part'] = payment_no
+        tail = payment_no
+        number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
+        while db.query(AgreementDoc.id).filter(AgreementDoc.number == number).first():
+            tail += 1
+            number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
+        add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
+        inv = docgen.build_invoice(fields, money, number, a.number, number)
+        problems = docgen.check(add) + docgen.check(inv)
+        if problems:
+            return jsonify({'success': False, 'error': 'incomplete_document',
+                            'problems': problems}), 422
+
+        safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
+        mime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        _docs_save(db, a.id, 'addendum', number, payment_no,
+                   f'MF_Addendum_{payment_no}_{safe}_{number}.docx', add, mime)
+        _docs_save(db, a.id, 'invoice', number, payment_no,
+                   f'MF_Invoice_{safe}_{number}.docx', inv, mime)
+        a.payments_count = payment_no
+        a.fields_json = json.dumps(fields, ensure_ascii=False)
+        a.money_json = json.dumps(money, ensure_ascii=False)
+        db.commit()
+        return jsonify({'success': True, 'agreement': a.to_dict()})
+    except Exception as exc:
+        db.rollback()
+        app.logger.exception('docs_add_payment')
+        return jsonify({'success': False, 'error': 'server_error', 'detail': str(exc)[:300]}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/agreements/<int:agreement_id>/upload', methods=['POST'])
+def docs_upload_signed(agreement_id):
+    """Подписанные клиентом документы возвращаются в тот же договор."""
+    db = get_session()
+    try:
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        kind = request.form.get('kind') or 'signed'
+        saved = 0
+        for f in request.files.getlist('files'):
+            raw = f.read()
+            if not raw:
+                continue
+            _docs_save(db, a.id, kind, None, a.payments_count or 1, f.filename, raw,
+                       f.mimetype or 'application/octet-stream')
+            saved += 1
+        if kind == 'signed' and saved:
+            a.status = 'signed'
+            a.signed_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'saved': saved, 'agreement': a.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/agreements/<int:agreement_id>/status', methods=['POST'])
+def docs_set_status(agreement_id):
+    db = get_session()
+    try:
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        status = (request.get_json(silent=True) or {}).get('status')
+        if status not in ('draft', 'sent', 'signed'):
+            return jsonify({'success': False, 'error': 'bad_status'}), 400
+        a.status = status
+        if status == 'signed' and not a.signed_at:
+            a.signed_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'agreement': a.to_dict()})
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/file/<int:doc_id>', methods=['GET'])
+def docs_download(doc_id):
+    db = get_session()
+    try:
+        d = db.query(AgreementDoc).filter(AgreementDoc.id == doc_id).first()
+        if not d or d.data is None:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        from flask import Response
+        from urllib.parse import quote
+        return Response(d.data, mimetype=d.mime, headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(d.filename)}"})
+    finally:
+        db.close()
+
+
+@app.route('/api/docs/agreements/<int:agreement_id>', methods=['DELETE'])
+def docs_delete_agreement(agreement_id):
+    db = get_session()
+    try:
+        a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
+        if not a:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        db.delete(a)
+        db.commit()
+        return jsonify({'success': True})
+    finally:
+        db.close()
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
