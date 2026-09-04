@@ -2126,6 +2126,10 @@ class Agreement(Base):
     id = Column(Integer, primary_key=True)
     client_id = Column(Integer, ForeignKey('clients.id'), nullable=True, index=True)
     client_name = Column(String(200), nullable=False)
+    # Только цифры паспорта — устойчивый ключ клиента. Имя для этого не годится:
+    # из паспорта оно приходит то капсом, то в нормальном регистре, и «БУРОВА
+    # НАДЕЖДА» с «Бурова Надежда» разъезжались в двух разных клиентов.
+    client_key = Column(String(20), index=True)
     deal_type = Column(String(20), nullable=False)          # freehold | leasehold | rental
     number = Column(String(40), nullable=False, index=True)  # MF-<3 цифры паспорта>-<ДДММ>-<N>
     status = Column(String(20), default='draft')             # draft | sent | signed
@@ -2134,13 +2138,14 @@ class Agreement(Base):
     payments_count = Column(Integer, default=1)              # сколько допников выпущено
     created_at = Column(DateTime, default=datetime.utcnow)
     signed_at = Column(DateTime)
-    __table_args__ = (UniqueConstraint('client_name', 'deal_type', name='uq_agreement_client_type'),)
+    __table_args__ = (UniqueConstraint('client_key', 'deal_type', name='uq_agreement_client_key_type'),)
 
     docs = relationship('AgreementDoc', back_populates='agreement',
                         cascade='all, delete-orphan', order_by='AgreementDoc.id')
 
     def to_dict(self, with_docs=True):
         d = {'id': self.id, 'client_id': self.client_id, 'client_name': self.client_name,
+             'client_key': self.client_key,
              'deal_type': self.deal_type, 'number': self.number, 'status': self.status,
              'payments_count': self.payments_count or 1,
              'fields': json.loads(self.fields_json or '{}'),
@@ -2185,6 +2190,57 @@ class AgreementDoc(Base):
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
+
+def _rebuild_agreements_without_name_constraint():
+    """SQLite: снять UNIQUE(client_name, deal_type) пересборкой таблицы.
+
+    В SQLite ограничение нельзя удалить на месте, а оно мешает однофамильцам
+    с разными паспортами. Пересобираем таблицу, перенося строки; на Postgres
+    для этого есть обычный DROP CONSTRAINT выше.
+    """
+    if 'postgresql' in DATABASE_URL:
+        return
+    with engine.begin() as conn:
+        sql = conn.execute(text(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='agreements'")).scalar()
+        if not sql or 'uq_agreement_client_type' not in sql:
+            return
+        cols = [r[1] for r in conn.execute(text('PRAGMA table_info(agreements)'))]
+        names = ', '.join(cols)
+        conn.execute(text('ALTER TABLE agreements RENAME TO agreements_old'))
+        Agreement.__table__.create(bind=conn)
+        conn.execute(text(f'INSERT INTO agreements ({names}) SELECT {names} FROM agreements_old'))
+        conn.execute(text('DROP TABLE agreements_old'))
+    app.logger.info('agreements: снято старое ограничение уникальности по имени')
+
+
+def _backfill_agreement_keys():
+    """Проставить client_key существующим договорам.
+
+    Идемпотентно: трогает только строки, где ключа ещё нет. Без этого старые
+    договоры не участвуют в проверке дублей, и у клиента может появиться
+    второй договор того же типа.
+    """
+    db = SessionLocal()
+    try:
+        rows = db.query(Agreement).filter(Agreement.client_key.is_(None)).all()
+        for a in rows:
+            try:
+                fields = json.loads(a.fields_json or '{}')
+            except Exception:
+                fields = {}
+            digits = re.sub(r'\D', '', fields.get('client_passport_no') or '')
+            a.client_key = digits or re.sub(r'\s+', ' ', a.client_name or '').strip().lower()[:20]
+        if rows:
+            db.commit()
+            app.logger.info(f'agreements: проставлен client_key для {len(rows)} договоров')
+    except Exception as exc:
+        db.rollback()
+        app.logger.warning(f'backfill client_key: {exc}')
+    finally:
+        db.close()
+
+
 # Миграция: добавляем колонки если их нет
 try:
     with engine.connect() as conn:
@@ -2204,8 +2260,14 @@ try:
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS note TEXT"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS keep_active BOOLEAN DEFAULT FALSE"))
+            conn.execute(text("ALTER TABLE agreements ADD COLUMN IF NOT EXISTS client_key VARCHAR(20)"))
+            # Уникальность переехала с имени на паспорт: имя приходит то капсом,
+            # то нет. Старое ограничение мешает однофамильцам с разными паспортами.
+            conn.execute(text("ALTER TABLE agreements DROP CONSTRAINT IF EXISTS uq_agreement_client_type"))
         # Для SQLite
         else:
+            try: conn.execute(text("ALTER TABLE agreements ADD COLUMN client_key VARCHAR(20)"))
+            except Exception: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
             except: pass
             try: conn.execute(text("ALTER TABLE wallets ADD COLUMN is_monitored BOOLEAN DEFAULT TRUE"))
@@ -2448,6 +2510,11 @@ try:
 except Exception as e:
     print(f"ℹ️ Migration info: {e}")
 
+
+# Ключ клиента у договоров: проставляем один раз при старте, иначе старые
+# записи не участвуют в проверке дублей.
+_rebuild_agreements_without_name_constraint()
+_backfill_agreement_keys()
 print("✅ Database initialized")
 
 # Засев реестра обменников из reestr_seed.json (только если таблица пуста).
@@ -15348,6 +15415,21 @@ DOCS_REQUIRED_MONEY = {
 }
 
 
+def _docs_client_key(fields):
+    """Ключ клиента: только цифры паспорта.
+
+    Имя как ключ не работает — распознавание отдаёт то «БУРОВА НАДЕЖДА
+    ВАСИЛЬЕВНА», то «Бурова Надежда Васильевна», и один человек превращался
+    в двух разных клиентов с двумя договорами одного типа.
+    """
+    digits = re.sub(r'\D', '', (fields.get('client_passport_no') or ''))
+    if digits:
+        return digits
+    # паспорта нет — падаем на нормализованное имя, но это слабый ключ
+    name = (fields.get('client_name_ru') or fields.get('client_name_en') or '')
+    return re.sub(r'\s+', ' ', name).strip().lower()[:20]
+
+
 def _docs_openrouter_key():
     return os.environ.get('OPENROUTER_API_KEY', '')
 
@@ -15497,7 +15579,8 @@ def docs_create_agreement():
     money['deal_type'] = deal_type
     db = get_session()
     try:
-        dup = db.query(Agreement).filter(Agreement.client_name == client_name,
+        client_key = _docs_client_key(fields)
+        dup = db.query(Agreement).filter(Agreement.client_key == client_key,
                                          Agreement.deal_type == deal_type).first()
         if dup:
             return jsonify({'success': False, 'error': 'already_exists',
@@ -15527,7 +15610,8 @@ def docs_create_agreement():
                             'problems': problems}), 422
 
         a = Agreement(client_id=int(client_id) if client_id else None,
-                      client_name=client_name, deal_type=deal_type, number=number,
+                      client_name=client_name, client_key=client_key,
+                      deal_type=deal_type, number=number,
                       fields_json=json.dumps(fields, ensure_ascii=False),
                       money_json=json.dumps(money, ensure_ascii=False), payments_count=1)
         db.add(a)
