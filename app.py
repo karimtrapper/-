@@ -15399,6 +15399,34 @@ def docs_get_agreement(agreement_id):
         db.close()
 
 
+# Какие слоты обязательны на каждом флоу. На аренде инвойса часто нет вовсе —
+# основанием служит договор аренды, поэтому требовать его нельзя.
+DOCS_REQUIRED_SLOTS = {
+    'freehold': ['passport', 'invoice'],
+    'leasehold': ['passport', 'invoice'],
+    'rental': ['passport'],
+}
+DOCS_SLOT_LABEL = {'passport': 'паспорт', 'invoice': 'инвойс застройщика',
+                   'spa': 'договор с застройщиком'}
+
+
+def _docs_collect_uploads():
+    """Файлы приходят по отдельным слотам: passport, invoice, spa.
+
+    Менеджер грузит их раздельно — так мы знаем тип каждого документа и можем
+    подсказать его модели. Общее поле `files` оставлено для совместимости.
+    """
+    uploads = []
+    for slot in ('passport', 'invoice', 'spa'):
+        for f in request.files.getlist(slot):
+            if f and f.filename:
+                uploads.append((slot, f))
+    for f in request.files.getlist('files'):
+        if f and f.filename:
+            uploads.append((None, f))
+    return uploads
+
+
 @app.route('/api/docs/parse', methods=['POST'])
 def docs_parse():
     """Загруженные файлы → распознанные поля + провенанс + конфликты.
@@ -15410,20 +15438,31 @@ def docs_parse():
     if not key:
         return jsonify({'success': False, 'error': 'no_api_key',
                         'detail': 'OPENROUTER_API_KEY не задан в окружении'}), 503
-    files = request.files.getlist('files')
-    if not files:
+    uploads = _docs_collect_uploads()
+    if not uploads:
         return jsonify({'success': False, 'error': 'no_files'}), 400
+
+    deal_type = request.form.get('deal_type')
+    if deal_type in DOCS_REQUIRED_SLOTS:
+        got = {slot for slot, _ in uploads if slot}
+        missing = [s for s in DOCS_REQUIRED_SLOTS[deal_type] if s not in got]
+        if missing:
+            return jsonify({'success': False, 'error': 'missing_documents',
+                            'slots': missing,
+                            'detail': 'Не приложены: ' + ', '.join(
+                                DOCS_SLOT_LABEL[s] for s in missing)}), 400
+
     import docparse
     results, failed = [], []
-    for f in files:
+    for slot, f in uploads:
         raw = f.read()
         if not raw:
             continue
         try:
-            results.append(docparse.parse_file(f.filename, raw, f.mimetype, key))
+            results.append(docparse.parse_file(f.filename, raw, f.mimetype, key, kind=slot))
         except Exception as exc:
             app.logger.warning(f'docs_parse: {f.filename} — {exc}')
-            failed.append({'file': f.filename, 'error': str(exc)[:300]})
+            failed.append({'file': f.filename, 'slot': slot, 'error': str(exc)[:300]})
     if not results:
         return jsonify({'success': False, 'error': 'parse_failed', 'failed': failed}), 502
     merged = docparse.merge(results)
@@ -15497,10 +15536,10 @@ def docs_create_agreement():
                    f'MF_Invoice_{safe}_{number}.docx', inv,
                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
 
-        for f in request.files.getlist('sources'):
+        for slot, f in _docs_collect_uploads():
             raw = f.read()
             if raw:
-                _docs_save(db, a.id, 'source', None, 1, f.filename, raw,
+                _docs_save(db, a.id, f'source_{slot or "other"}', None, 1, f.filename, raw,
                            f.mimetype or 'application/octet-stream')
         db.commit()
         return jsonify({'success': True, 'agreement': a.to_dict()})

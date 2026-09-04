@@ -194,6 +194,9 @@ class TestПостфильтрЗаглушек:
         ('client_citizenship', 'CITIZENSHIP'), ('invoice_date', 'null'),
         ('invoice_no', 'MF-XXX-XXXX-1'), ('invoice_date', '[DATE]'),
         ('project_name', '___'), ('unit_no', '[●]'), ('recipient_name', '  '),
+        # рамка внутри строки — просочилась на живом прогоне 04.09
+        ('project_name', '[PROJECT / UNIT No.]'),
+        ('invoice_amount', '1 USD = [FIXED RATE] RUB'),
     ])
     def test_ловит_рамку_макета(self, key, value):
         assert docparse.is_placeholder(key, value)
@@ -249,3 +252,65 @@ class TestСклейкаФайлов:
             {'_file': 'b.pdf', 'unit_no': 'B1-313', 'masked_fields': []}])
         assert 'unit_no' in merged['conflicts']
         assert len(merged['conflicts']['unit_no']) == 2
+
+
+class TestСлотыДокументов:
+    """Менеджер грузит паспорт, инвойс и СПА по отдельности — это меняет склейку."""
+
+    def test_фио_берётся_из_паспорта_даже_если_инвойс_пришёл_первым(self):
+        merged = docparse.merge([
+            {'_file': 'invoice.pdf', '_kind': 'invoice',
+             'client_name_ru': 'Бурова Н.В.', 'masked_fields': []},
+            {'_file': 'passport.pdf', '_kind': 'passport',
+             'client_name_ru': 'Бурова Надежда Васильевна', 'masked_fields': []}])
+        assert merged['fields']['client_name_ru'] == 'Бурова Надежда Васильевна'
+        assert merged['provenance']['client_name_ru'] == 'passport.pdf'
+        assert 'client_name_ru' not in merged['conflicts']
+
+    def test_реквизиты_получателя_берутся_из_инвойса(self):
+        merged = docparse.merge([
+            {'_file': 'spa.pdf', '_kind': 'spa',
+             'recipient_bank': 'какой-то банк', 'masked_fields': []},
+            {'_file': 'invoice.pdf', '_kind': 'invoice',
+             'recipient_bank': 'Bangkok Bank', 'masked_fields': []}])
+        assert merged['fields']['recipient_bank'] == 'Bangkok Bank'
+
+    def test_владелец_не_перебивается_чужим_документом(self):
+        merged = docparse.merge([
+            {'_file': 'passport.pdf', '_kind': 'passport',
+             'client_name_ru': 'Бурова Надежда Васильевна', 'masked_fields': []},
+            {'_file': 'invoice.pdf', '_kind': 'invoice',
+             'client_name_ru': 'Бурова Н.В.', 'masked_fields': []}])
+        assert merged['fields']['client_name_ru'] == 'Бурова Надежда Васильевна'
+        assert 'client_name_ru' not in merged['conflicts']
+
+    def test_срок_leasehold_берётся_из_спа(self):
+        merged = docparse.merge([
+            {'_file': 'invoice.pdf', '_kind': 'invoice', 'lease_term': '20 лет', 'masked_fields': []},
+            {'_file': 'spa.pdf', '_kind': 'spa', 'lease_term': '30 лет', 'masked_fields': []}])
+        assert merged['fields']['lease_term'] == '30 лет'
+
+    def test_чужое_значение_закрывает_пустоту(self):
+        # паспорта нет — ФИО из инвойса лучше, чем ничего
+        merged = docparse.merge([
+            {'_file': 'invoice.pdf', '_kind': 'invoice',
+             'client_name_ru': 'Бурова Н.В.', 'masked_fields': []}])
+        assert merged['fields']['client_name_ru'] == 'Бурова Н.В.'
+
+    def test_разногласие_равноправных_источников_остаётся_конфликтом(self):
+        # оба документа — не владельцы поля unit_no по отношению к invoice
+        merged = docparse.merge([
+            {'_file': 'a.pdf', '_kind': 'invoice', 'unit_no': 'B2-711', 'masked_fields': []},
+            {'_file': 'b.pdf', '_kind': 'invoice', 'unit_no': 'B1-313', 'masked_fields': []}])
+        assert 'unit_no' in merged['conflicts']
+
+    def test_служебные_ключи_не_утекают_в_провенанс(self):
+        merged = docparse.merge([
+            {'_file': 'passport.pdf', '_kind': 'passport',
+             'client_name_ru': 'Иванов', 'masked_fields': []}])
+        assert all(not k.endswith('__owner') for k in merged['provenance'])
+
+    def test_подсказка_типа_документа_уходит_в_промпт(self):
+        assert 'загранпаспорт' in docparse.DOC_KINDS['passport']
+        assert 'инвойс' in docparse.DOC_KINDS['invoice'].lower()
+        assert 'SPA' in docparse.DOC_KINDS['spa']

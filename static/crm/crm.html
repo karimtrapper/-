@@ -2166,13 +2166,31 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <button class="btn" data-dt="rental" onclick="docsSetType('rental')">Аренда</button>
                     </div>
                     <label class="form-label">Документы клиента</label>
-                    <p style="color:#666;font-size:.82rem;margin:.2rem 0 .5rem">
-                        Паспорт — обязательно. Инвойс застройщика — обязательно для фрихолда и лизхолда;
-                        на аренде основанием служит договор аренды, инвойса часто нет вовсе.
-                        Договор с застройщиком — по желанию, из него берутся срок и дата начала leasehold.
+                    <p style="color:#666;font-size:.82rem;margin:.2rem 0 .75rem">
+                        Каждый документ — в свой слот. Так система знает, что перед ней, и берёт
+                        ФИО из паспорта, реквизиты получателя из инвойса, срок leasehold из СПА.
                     </p>
-                    <input type="file" id="docsFiles" multiple accept=".pdf,.png,.jpg,.jpeg" class="form-input">
-                    <button class="btn btn-primary" style="margin-top:.75rem" onclick="docsParse()">Распознать</button>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:.9rem">
+                        <div>
+                            <label class="form-label" style="font-size:.85rem">
+                                Паспорт <span id="docsReqPassport" style="color:#c00">обязательно</span></label>
+                            <input type="file" id="docsFilePassport" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
+                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">ФИО, гражданство, номер, кем и когда выдан</div>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:.85rem">
+                                Инвойс застройщика <span id="docsReqInvoice" style="color:#c00">обязательно</span></label>
+                            <input type="file" id="docsFileInvoice" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
+                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">получатель, банк, счёт, сумма, номер и дата</div>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:.85rem">
+                                СПА — договор с застройщиком <span style="color:#999">по желанию</span></label>
+                            <input type="file" id="docsFileSpa" accept=".pdf,.png,.jpg,.jpeg" class="form-input" style="font-size:.85rem">
+                            <div style="color:#999;font-size:.78rem;margin-top:.2rem">срок и дата начала leasehold, договор-основание</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" style="margin-top:1rem" onclick="docsParse()">Распознать</button>
                     <span id="docsParseStatus" style="margin-left:.75rem;color:#666;font-size:.85rem"></span>
                 </div>
 
@@ -13438,7 +13456,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         // ═══════════════════════════════════════════════════════════
         const DOCS_TYPE_LABEL = {freehold:'Фрихолд', leasehold:'Лизхолд', rental:'Аренда'};
         const DOCS_KIND_LABEL = {agreement:'Агентский договор', addendum:'Доп. соглашение',
-            invoice:'Инвойс', signed:'Подписанный', source:'Исходник'};
+            invoice:'Инвойс', signed:'Подписанный', source:'Исходник',
+            source_passport:'Исходник — паспорт', source_invoice:'Исходник — инвойс',
+            source_spa:'Исходник — СПА', source_other:'Исходник'};
         // Поля паспорта и инвойса. Порядок = порядок в форме подтверждения.
         const DOCS_FIELDS = [
             ['client_name_ru','ФИО кириллицей'], ['client_name_en','ФИО латиницей'],
@@ -13506,37 +13526,56 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }catch(e){ tb.innerHTML = '<tr><td colspan="7" style="color:#c00;padding:1rem">Ошибка загрузки: '+docsEsc(e.message)+'</td></tr>'; }
         }
 
+        // Слоты загрузки: паспорт, инвойс застройщика, СПА. Обязательность зависит
+        // от типа сделки — на аренде инвойса часто нет, основанием служит договор аренды.
+        const DOCS_SLOTS = [['passport','docsFilePassport'], ['invoice','docsFileInvoice'], ['spa','docsFileSpa']];
+        const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport']};
+        const DOCS_SLOT_LABEL = {passport:'паспорт', invoice:'инвойс застройщика', spa:'договор с застройщиком'};
+
         function docsOpenNew(){
             docsState = {type:null, fields:{}, provenance:{}, files:null};
             document.getElementById('docsWizard').style.display='';
             document.getElementById('docsStep1').style.display='';
             document.getElementById('docsStep2').style.display='none';
             document.getElementById('docsParseStatus').textContent='';
-            document.getElementById('docsFiles').value='';
+            DOCS_SLOTS.forEach(([,id])=>{ const el=document.getElementById(id); if(el) el.value=''; });
             document.querySelectorAll('#docsTypeBtns .btn').forEach(b=>b.classList.remove('btn-primary'));
         }
         function docsCloseNew(){ document.getElementById('docsWizard').style.display='none'; }
         function docsSetType(t){
             docsState.type=t;
             document.querySelectorAll('#docsTypeBtns .btn').forEach(b=>b.classList.toggle('btn-primary', b.dataset.dt===t));
+            // на аренде инвойс перестаёт быть обязательным
+            const need = DOCS_REQUIRED_SLOTS[t]||[];
+            const inv = document.getElementById('docsReqInvoice');
+            if(inv){
+                const req = need.includes('invoice');
+                inv.textContent = req ? 'обязательно' : 'по желанию';
+                inv.style.color = req ? '#c00' : '#999';
+            }
         }
 
         async function docsParse(){
             const st = document.getElementById('docsParseStatus');
             if(!docsState.type){ st.textContent='Сначала выберите тип сделки'; return; }
-            const input = document.getElementById('docsFiles');
-            if(!input.files.length){ st.textContent='Приложите хотя бы паспорт'; return; }
             const fd = new FormData();
-            for(const f of input.files) fd.append('files', f);
-            docsState.files = input.files;
-            st.textContent='Распознаю… это занимает несколько секунд на файл';
+            const picked = {};
+            DOCS_SLOTS.forEach(([slot,id])=>{
+                const el = document.getElementById(id);
+                if(el && el.files.length){ fd.append(slot, el.files[0]); picked[slot]=el.files[0]; }
+            });
+            const missing = (DOCS_REQUIRED_SLOTS[docsState.type]||[]).filter(s=>!picked[s]);
+            if(missing.length){ st.textContent='Не приложены: '+missing.map(s=>DOCS_SLOT_LABEL[s]).join(', '); return; }
+            fd.append('deal_type', docsState.type);
+            docsState.files = picked;
+            st.textContent='Распознаю… несколько секунд на файл';
             try{
                 const r = await fetch('/api/docs/parse', {method:'POST', body:fd});
                 const d = await r.json();
                 if(!d.success){
                     st.textContent = d.error==='no_api_key'
                         ? 'Не задан OPENROUTER_API_KEY — поля можно заполнить руками'
-                        : ('Не удалось распознать: '+(d.detail||d.error));
+                        : (d.detail || ('Не удалось распознать: '+d.error));
                     docsState.fields = {}; docsState.provenance = {};
                     docsRenderStep2([]); return;
                 }
@@ -13595,7 +13634,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             fd.append('deal_type', docsState.type);
             fd.append('fields', JSON.stringify(fields));
             fd.append('money', JSON.stringify(money));
-            if(docsState.files) for(const f of docsState.files) fd.append('sources', f);
+            // исходники уходят по тем же слотам — в карточке будет видно, что есть что
+            Object.entries(docsState.files||{}).forEach(([slot,f])=>fd.append(slot, f));
             st.textContent='Генерирую…';
             try{
                 const r = await fetch('/api/docs/agreements', {method:'POST', body:fd});

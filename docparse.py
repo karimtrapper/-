@@ -56,6 +56,28 @@ FIELD_DEFS = {
     'contract_ref':        'реквизиты договора-основания: номер и дата',
 }
 
+# Менеджер грузит документы по отдельности — мы знаем, что это за файл.
+# Подсказка типа заметно поднимает качество и снимает конфликты: ФИО берём
+# из паспорта, реквизиты получателя — из инвойса, срок leasehold — из SPA.
+DOC_KINDS = {
+    'passport': 'Это скан загранпаспорта клиента.',
+    'invoice':  'Это инвойс застройщика или арендодателя.',
+    'spa':      'Это договор с застройщиком (SPA / Reservation / Lease Agreement).',
+}
+# Какой документ — источник истины для какого поля. Значение из «своего»
+# документа побеждает, даже если другой файл распознался раньше.
+FIELD_OWNER = {
+    'passport': ['client_name_ru', 'client_name_en', 'client_citizenship',
+                 'client_passport_no', 'client_passport_issued_by',
+                 'client_passport_issue_date', 'client_passport_expiry_date',
+                 'client_birth_date', 'client_national_id'],
+    'invoice': ['invoice_no', 'invoice_date', 'invoice_amount', 'invoice_currency',
+                'recipient_name', 'recipient_bank', 'recipient_account',
+                'recipient_swift', 'recipient_bik', 'recipient_bank_address'],
+    'spa': ['lease_term', 'lease_start_date', 'contract_ref', 'rent_amount',
+            'deposit_amount', 'project_name', 'unit_no', 'property_address'],
+}
+
 PROMPT = (
     'Ты извлекаешь данные из документа для оформления агентского договора на оплату '
     'недвижимости в Таиланде. Верни JSON строго по схеме.\n'
@@ -100,11 +122,15 @@ def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150) -> 
     return out
 
 
-def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180) -> dict:
+def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180,
+          kind: str | None = None) -> dict:
     from openai import OpenAI  # noqa: PLC0415
 
     client = OpenAI(base_url='https://openrouter.ai/api/v1', api_key=api_key, timeout=timeout)
-    content = [{'type': 'text', 'text': PROMPT}]
+    prompt = PROMPT
+    if kind in DOC_KINDS:
+        prompt = f'{DOC_KINDS[kind]}\n{PROMPT}'
+    content = [{'type': 'text', 'text': prompt}]
     for img in images:
         b64 = base64.b64encode(img).decode()
         content.append({'type': 'image_url',
@@ -165,6 +191,10 @@ def is_placeholder(key: str, value) -> bool:
         return True
     if 'XXX' in v or '___' in v or '●' in v:
         return True
+    # рамка макета внутри строки: «[PROJECT / UNIT No.]», «1 USD = [FIXED RATE] RUB».
+    # Квадратные скобки в настоящих реквизитах не встречаются.
+    if re.search(r'\[[^\]]{1,60}\]', v):
+        return True
     core = v.strip('[]<>()').strip()
     if not core:
         return True
@@ -176,15 +206,16 @@ def is_placeholder(key: str, value) -> bool:
 
 
 def parse_file(filename: str, data: bytes, mime: str, api_key: str,
-               model: str | None = None) -> dict:
+               model: str | None = None, kind: str | None = None) -> dict:
     """Один файл → распознанные поля. При отказе модели пробуем запасные."""
     images = pages_to_png(data, mime)
     errors = []
     for m in [model or DEFAULT_MODEL] + FALLBACK_MODELS:
         try:
-            res = _call(m, images, api_key)
+            res = _call(m, images, api_key, kind=kind)
             res['_model'] = m
             res['_file'] = filename
+            res['_kind'] = kind
             return res
         except Exception as exc:  # noqa: BLE001 — падать нельзя, пробуем следующую
             errors.append(f'{m}: {exc}')
@@ -194,13 +225,22 @@ def parse_file(filename: str, data: bytes, mime: str, api_key: str,
 def merge(results: list[dict]) -> dict:
     """Склейка нескольких файлов в один набор полей.
 
-    Первое непустое значение выигрывает — файлы менеджер грузит в порядке
-    паспорт → инвойс → договор, и у каждого свои поля, конфликтов почти нет.
-    Конфликты не затираем молча: складываем в `conflicts`, менеджер разрешает.
+    Менеджер грузит документы по отдельности, поэтому у каждого поля есть
+    документ-владелец: ФИО — паспорт, реквизиты получателя — инвойс, срок
+    leasehold — SPA. Значение из «своего» документа побеждает независимо от
+    порядка загрузки; из чужого берётся только чтобы закрыть пустоту.
+    Разногласие между двумя равноправными источниками не затираем молча —
+    складываем в `conflicts`, менеджер разрешает руками.
     """
     fields, provenance, conflicts, masked = {}, {}, {}, set()
+    owned_by = {}
+    for kind, keys in FIELD_OWNER.items():
+        for key in keys:
+            owned_by[key] = kind
+
     for res in results:
         src = res.get('_file') or '?'
+        kind = res.get('_kind')
         for key in FIELD_DEFS:
             val = res.get(key)
             if is_placeholder(key, val):
@@ -208,13 +248,28 @@ def merge(results: list[dict]) -> dict:
                     masked.add(key)
                 continue
             val = val.strip() if isinstance(val, str) else val
+            is_owner = owned_by.get(key) == kind
             if key not in fields:
                 fields[key], provenance[key] = val, src
-            elif fields[key] != val:
+                if is_owner:
+                    provenance[key + '__owner'] = True
+                continue
+            if fields[key] == val:
+                continue
+            if is_owner and not provenance.get(key + '__owner'):
+                # приехал документ-владелец — он и есть источник истины
+                fields[key], provenance[key] = val, src
+                provenance[key + '__owner'] = True
+                conflicts.pop(key, None)
+            elif provenance.get(key + '__owner') and not is_owner:
+                pass          # владелец уже дал значение, чужое игнорируем
+            else:
                 conflicts.setdefault(key, [{'value': fields[key], 'file': provenance[key]}])
                 conflicts[key].append({'value': val, 'file': src})
         for mf in res.get('masked_fields') or []:
             masked.add(mf)
+
+    provenance = {k: v for k, v in provenance.items() if not k.endswith('__owner')}
     return {
         'fields': fields,
         'provenance': provenance,
