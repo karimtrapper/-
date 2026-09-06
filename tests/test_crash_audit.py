@@ -182,6 +182,70 @@ def test_reimbursement_partial_allocations_cannot_exceed_total(cli, audit_db):
             assert sum(d.payout_amount_usdt for d in deals) == pytest.approx(100)
 
 
+def _deals_with_referrer(factory, payouts, *, profit=5.0, payout=1.5):
+    """Сделки одного реферера с revshare 30%: суммы выдачи в батах задаём списком."""
+    with factory() as db:
+        referrer = appmod.Referrer(name='Реферер', code='REF-AUDIT', token='audit-token-0001',
+                                   default_percent=30, comp_model='revshare')
+        db.add(referrer)
+        db.commit()
+        rows = [appmod.Deal(client_name=f'Аудит {i}',
+                            deal_type=appmod.DealType.PAY_IN,
+                            payin_method=appmod.PayInMethod.CRYPTO_DIRECT,
+                            payin_amount_usdt=200, payout_amount_thb=thb,
+                            payout_source=appmod.PayOutSource.FOUNDER_PERSONAL,
+                            payout_founder_name='Аудит', needs_reimbursement=True,
+                            referrer_id=referrer.id, referrer_name='Реферер',
+                            referrer_comp_model='revshare', referrer_percent=30,
+                            profit_usdt=profit, referrer_payout_usdt=payout,
+                            status=appmod.DealStatus.PENDING)
+                for i, thb in enumerate(payouts)]
+        db.add_all(rows)
+        db.commit()
+        return [row.id for row in rows]
+
+
+@pytest.mark.parametrize('allocations', [None, 'explicit'])
+def test_reimbursement_zero_share_does_not_inflate_profit(cli, audit_db, allocations):
+    """Сделка без суммы выдачи получает долю 0 — прибыль и агенты остаются прежними.
+
+    Иначе прибыль пересчитывается во весь приход (200 вместо 5), а выплата
+    реферера растёт с 1.50 до 60.00 — переплата на ровном месте. Проверяем оба
+    пути формы: пустые доли (автораспределение) и предзаполненные пропорцией.
+    """
+    deal_ids = _deals_with_referrer(audit_db, [3000, 0])
+    payload = {'founder_name': 'Аудит', 'deal_ids': deal_ids, 'amount_usdt': 100}
+    if allocations == 'explicit':
+        payload['deal_allocations'] = [{'deal_id': deal_ids[0], 'amount_usdt': 100},
+                                       {'deal_id': deal_ids[1], 'amount_usdt': 0}]
+    response = cli.post('/api/reimbursements', json=payload)
+    assert response.status_code == 200, response.get_data(as_text=True)
+    with audit_db() as db:
+        paid, unpaid = (db.get(appmod.Deal, deal_id) for deal_id in deal_ids)
+        # Сделке с выдачей досталась вся себестоимость — прибыль пересчитана.
+        assert paid.payout_amount_usdt == 100
+        assert paid.profit_usdt == 100
+        assert paid.referrer_payout_usdt == 30
+        # Сделке без выдачи не досталось ничего — прежние цифры не тронуты.
+        assert unpaid.payout_amount_usdt == 0
+        assert unpaid.profit_usdt == 5.0
+        assert unpaid.referrer_payout_usdt == 1.5
+
+
+def test_reimbursement_zero_payin_still_gets_negative_profit(cli, audit_db):
+    """Приход 0 при реальной себестоимости — прибыль обязана уйти в минус."""
+    deal_ids = _deals_with_referrer(audit_db, [3000])
+    with audit_db() as db:
+        deal = db.get(appmod.Deal, deal_ids[0])
+        deal.payin_amount_usdt = 0
+        db.commit()
+    response = cli.post('/api/reimbursements', json={
+        'founder_name': 'Аудит', 'deal_ids': deal_ids, 'amount_usdt': 40})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    with audit_db() as db:
+        assert db.get(appmod.Deal, deal_ids[0]).profit_usdt == -40
+
+
 def test_reimbursement_repeat_cannot_reassign_settled_deal(cli, audit_db):
     deal_id, = _deals(audit_db)
     payload = {'founder_name': 'Аудит', 'deal_ids': [deal_id], 'amount_usdt': 100}
@@ -287,12 +351,20 @@ def postgres_audit_engine():
         started = False
         engine = None
         try:
+            # Без LC_ALL homebrew-постгрес падает на старте с «postmaster became
+            # multithreaded»: у теста своя локаль, а не та, что у запускающего.
+            env = {**os.environ, 'LC_ALL': 'C', 'LANG': 'C'}
             subprocess.run([binaries['initdb'], '-D', data, '-A', 'trust',
                             '-U', 'calccrm_test', '--no-locale', '-E', 'UTF8'],
-                           check=True, capture_output=True, text=True, timeout=30)
-            subprocess.run([binaries['pg_ctl'], '-D', data, '-l', log,
-                            '-o', f"-k {root} -h '' -p 55432", '-w', 'start'],
-                           check=True, capture_output=True, text=True, timeout=30)
+                           check=True, capture_output=True, text=True, timeout=30, env=env)
+            try:
+                subprocess.run([binaries['pg_ctl'], '-D', data, '-l', log,
+                                '-o', f"-k {root} -h '' -p 55432", '-w', 'start'],
+                               check=True, capture_output=True, text=True, timeout=30, env=env)
+            except subprocess.CalledProcessError as start_error:
+                # Причина всегда в логе кластера, а не в выводе pg_ctl.
+                details = Path(log).read_text() if Path(log).exists() else '(лога нет)'
+                pytest.fail(f'PostgreSQL не стартовал: {start_error}\n{details}')
             started = True
             engine = create_engine(URL.create(
                 'postgresql+psycopg2', username='calccrm_test', database='postgres',

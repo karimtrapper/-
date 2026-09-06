@@ -174,7 +174,13 @@ class TestAllocation:
             assert [d.payout_amount_usdt for d in deals] == expected
             assert sum(round(d.payout_amount_usdt * 100) for d in deals) == round(amount * 100)
             assert all(d.status == DealStatus.COMPLETED for d in deals)
-            assert all(d.profit_usdt == round(200 - share, 2) for d, share in zip(deals, expected))
+            # Нулевая доля — это «себестоимость не разнесена», а не «выдача была
+            # бесплатной». Прибыль такой сделки не трогаем: пересчёт сделал бы её
+            # равной всему приходу и во столько же раз раздул выплату агентам.
+            assert all(d.profit_usdt == round(200 - share, 2)
+                       for d, share in zip(deals, expected) if share)
+            assert all(d.profit_usdt is None
+                       for d, share in zip(deals, expected) if not share)
 
     @pytest.mark.parametrize('shares', [[80, 19.99], [80, 20.01], [-1, 101], ['NaN', 100], ['Infinity', 0]])
     def test_invalid_full_allocation_rolls_back_transfer_and_deals(self, cli, tx_hash, shares):

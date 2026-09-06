@@ -12033,8 +12033,12 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
         deal.payout_amount_usdt = shares[deal.id] / 100
         total_thb += deal_payout
 
-        # Прибыль считается только сейчас — себестоимость выдачи стала известна
-        if deal.payin_amount_usdt is not None:
+        # Прибыль считается только сейчас — себестоимость выдачи стала известна.
+        # Нулевая доля означает «себестоимость не разнесена», а не «выдача была
+        # бесплатной»: сделка без суммы выдачи в батах получает ровно 0.00 и в
+        # пропорции, и в предзаполнении формы. Пересчёт по ней дал бы прибыль во
+        # весь приход и во столько же раз раздул выплату агентам.
+        if deal.payin_amount_usdt is not None and deal.payout_amount_usdt:
             deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
             deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
 
