@@ -149,6 +149,76 @@ class TestБэкфилл:
             s.close()
         assert keys == ['772817242']
 
+
+@pytest.mark.parametrize('payload', [
+    [], [1], None, 42,
+    {'fields': []}, {'fields': None}, {'money': [1]},
+    {'fields': {'client_name_ru': 1}},
+    {'fields': {'client_passport_no': 123456}},
+    {'money': {'total_payin': {'amount': 100}}},
+    {'money': {'total_payin': float('nan')}},
+    {'money': {'rate': float('inf')}},
+    {'client_id': 'wrong'}, {'client_id': True}, {'client_id': 1.5},
+])
+@pytest.mark.parametrize('payment', [False, True])
+def test_invalid_document_payload_is_atomic_400(client, monkeypatch, payload, payment):
+    """Неверный ввод не запускает генерацию и не меняет договор/счётчик платежей."""
+    import docgen
+    db = get_session()
+    try:
+        a = Agreement(client_name='Тест', client_key='990001234',
+                      deal_type='leasehold', number='QA-1', payments_count=1,
+                      fields_json=json.dumps(dict(FIELDS, client_name_ru='Тест')),
+                      money_json=json.dumps(MONEY))
+        db.add(a)
+        db.commit()
+        agreement_id = a.id
+    finally:
+        db.close()
+
+    def unexpected_generation(*args, **kwargs):
+        pytest.fail('Валидация должна завершиться до генерации документа')
+
+    monkeypatch.setattr(docgen, 'build_agreement', unexpected_generation)
+    monkeypatch.setattr(docgen, 'build_addendum', unexpected_generation)
+    path = (f'/api/docs/agreements/{agreement_id}/payment' if payment
+            else '/api/docs/agreements')
+    response = client.post(path, data=json.dumps(payload), content_type='application/json')
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'invalid_payload'
+    db = get_session()
+    try:
+        assert db.query(Agreement).count() == 1
+        assert db.get(Agreement, agreement_id).payments_count == 1
+        assert db.query(AgreementDoc).count() == 0
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('fields', ['{broken', '[]', 'null'])
+def test_invalid_multipart_fields_are_json_400(client, fields):
+    """Ошибки JSON в multipart обрабатываются так же, как в JSON-запросе."""
+    response = client.post('/api/docs/agreements', data={
+        'deal_type': 'leasehold', 'fields': fields, 'money': json.dumps(MONEY)},
+        content_type='multipart/form-data')
+    assert response.status_code == 400
+    assert response.get_json()['error'] == 'invalid_payload'
+
+
+def test_document_payload_keeps_valid_multipart_and_numeric_money():
+    """Валидация сохраняет контракт существующей формы и числовых сумм API."""
+    from app import _docs_request_payload
+    with app.test_request_context('/api/docs/agreements', method='POST', data={
+            'fields': json.dumps(FIELDS), 'money': json.dumps(MONEY), 'client_id': '7'},
+            content_type='multipart/form-data'):
+        parsed = _docs_request_payload()
+        assert parsed['fields'] == FIELDS
+        assert parsed['money'] == MONEY
+        assert parsed['client_id'] == 7
+    with app.test_request_context('/api/docs/agreements', json={
+            'fields': FIELDS, 'money': {'total_payin': 100.25, 'rate': 2}}):
+        assert _docs_request_payload()['money'] == {'total_payin': 100.25, 'rate': 2}
+
     def test_запись_без_паспорта_в_полях_получает_ключ_из_имени(self, client):
         create(client, 'Бурова Надежда Васильевна')
         s = get_session()

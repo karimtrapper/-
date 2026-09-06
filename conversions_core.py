@@ -77,11 +77,18 @@ def parse_sent_at(value):
 
     Принимаем 'ГГГГ-ММ-ДД' (или ISO), True — «сегодня», пусто — черновик.
     """
-    if not value:
+    if value is None or value is False or value == '':
         return None
     if value is True:
         return datetime.utcnow()
+    if isinstance(value, datetime):
+        return datetime.combine(value.date(), datetime.min.time())
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    if not isinstance(value, str):
+        raise ValueError('Дата отправки должна быть строкой ГГГГ-ММ-ДД или true')
     try:
-        return datetime.strptime(str(value)[:10], '%Y-%m-%d')
+        parsed = datetime.fromisoformat(value)
     except ValueError:
-        return datetime.utcnow()
+        raise ValueError('Некорректная дата отправки: требуется ГГГГ-ММ-ДД или ISO')
+    return datetime.combine(parsed.date(), datetime.min.time())

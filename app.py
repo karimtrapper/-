@@ -5535,6 +5535,94 @@ def _converted_by_income(session, income_ids):
     return {iid: round(val or 0, 2) for iid, val in rows}
 
 
+def _conversion_number(value, field, *, nullable=False, positive=False, maximum=None):
+    """Проверить число до округления: bool, NaN и бесконечности не являются суммой."""
+    import math
+    if nullable and (value is None or value == ''):
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f'{field}: требуется число')
+    try:
+        number = float(value)
+    except (ValueError, OverflowError):
+        raise ValueError(f'{field}: требуется конечное число')
+    if not math.isfinite(number) or number < 0 or (positive and number == 0):
+        raise ValueError(f'{field}: требуется конечное {"положительное" if positive else "неотрицательное"} число')
+    if maximum is not None and number > maximum:
+        raise ValueError(f'{field}: значение не должно превышать {maximum}')
+    return number
+
+
+def _conversion_fields(data):
+    """Единый контракт полей создания и правки пачки."""
+    if not isinstance(data, dict):
+        raise ValueError('Требуется JSON-объект')
+    fields = {}
+    for name, limit in (('broker', 100), ('request_no', 60), ('notes', None)):
+        if name in data:
+            value = data[name]
+            if value is not None and not isinstance(value, str):
+                raise ValueError(f'{name}: требуется строка')
+            fields[name] = (value or '').strip()[:limit] or None
+    for name in ('rate_rub_usdt', 'amount_rub_sent', 'held_percent', 'held_fixed_rub'):
+        if name in data:
+            fields[name] = _conversion_number(
+                data[name], name, nullable=name in ('rate_rub_usdt', 'amount_rub_sent'),
+                positive=name == 'rate_rub_usdt', maximum=100 if name == 'held_percent' else None)
+    if 'wallet_id' in data:
+        fields['wallet_id'] = (None if data['wallet_id'] in (None, '')
+                               else _conversion_id(data['wallet_id'], 'wallet_id'))
+    if 'sent_at' in data:
+        fields['sent_at'] = _parse_sent_at(data['sent_at'])
+    if 'force' in data and not isinstance(data['force'], bool):
+        raise ValueError('force: требуется true или false')
+    return fields
+
+
+def _conversion_id(value, field):
+    """ID должен быть положительным целым, без усечения дробной части."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        raise ValueError(f'{field}: требуется целый id')
+    try:
+        result = int(value)
+    except ValueError:
+        raise ValueError(f'{field}: требуется целый id')
+    if result <= 0 or result > 2147483647:
+        raise ValueError(f'{field}: некорректный id')
+    return result
+
+
+def _conversion_parts(items, id_field):
+    """Проверить весь список до записи; одинаковый порядок блокировок исключает инверсию."""
+    if items is None:
+        return []
+    if not isinstance(items, list):
+        raise ValueError('Состав пачки должен быть списком объектов')
+    result, seen = [], set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise ValueError('Каждая доля должна быть объектом')
+        item_id = _conversion_id(item.get(id_field), id_field)
+        if item_id in seen:
+            raise ValueError(f'{id_field}: повторный id #{item_id}')
+        seen.add(item_id)
+        amount = _conversion_number(item.get('amount_rub') if item.get('amount_rub') is not None else 0,
+                                    'amount_rub')
+        rounded = round(amount, 2)
+        if amount and not rounded:
+            raise ValueError('amount_rub: сумма меньше одной копейки')
+        result.append({id_field: item_id, 'amount_rub': rounded})
+    return sorted(result, key=lambda item: item[id_field])
+
+
+def _validate_conversion_totals(conv):
+    """Конечные входы тоже могут переполнить float в производном расчёте."""
+    import math
+    if any(isinstance(value, float) and not math.isfinite(value)
+           for value in conv.to_dict().values()):
+        raise ValueError('Суммы или курс выходят за допустимый диапазон расчёта')
+
+
 def _attach_sources(db, conv, sources_req, force=False):
     """Привязать поступления к пачке долями. Бросает ValueError при переборе.
 
@@ -5542,13 +5630,11 @@ def _attach_sources(db, conv, sources_req, force=False):
     чем пришло, добирая из буфера, — поэтому force снимает запрет. Но молча
     это не проходит: без флага пачка не создастся.
     """
+    sources_req = _conversion_parts(sources_req, 'sber_income_id')
     db.query(ConversionSource).filter(ConversionSource.conversion_id == conv.id).delete()
     db.flush()
-    for item in sources_req or []:
-        try:
-            sid = int(item.get('sber_income_id'))
-        except (TypeError, ValueError):
-            raise ValueError('Некорректный id прихода')
+    for item in sources_req:
+        sid = item['sber_income_id']
         inc = db.query(SberIncome).filter(SberIncome.id == sid).with_for_update().first()
         if not inc:
             raise ValueError(f'Приход #{sid} не найден')
@@ -5556,10 +5642,7 @@ def _attach_sources(db, conv, sources_req, force=False):
             raise ValueError(
                 f'Приход {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) исключён '
                 f'из конвертаций{": " + inc.note if inc.note else ""}')
-        try:
-            take = round(float(item.get('amount_rub') or 0), 2)
-        except (TypeError, ValueError):
-            raise ValueError(f'Некорректная сумма по приходу #{sid}')
+        take = item['amount_rub']
         free = inc.free_rub()
         if not take:
             # Сумму не задали — берём остаток. Если его нет, приход уже разнесён
@@ -5569,6 +5652,8 @@ def _attach_sources(db, conv, sources_req, force=False):
                 raise ValueError(
                     f'Приход {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) '
                     f'уже сконвертирован полностью')
+        if take <= 0:
+            raise ValueError('Доля должна быть положительной даже при force')
         if take > free + 0.01 and not force:
             raise ValueError(
                 f'По приходу {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) '
@@ -5615,6 +5700,8 @@ def _apply_conversion_shares(db, conv):
     shares = _conversion_shares(
         [(src.sber_income_id, src.amount_rub) for src in conv.sources],
         conv.received_usdt())
+    for share in shares.values():
+        _conversion_number(share, 'Рассчитанная доля USDT')
     per_deal = {}
     for sid, usdt in shares.items():
         inc = db.query(SberIncome).get(sid)
@@ -5860,8 +5947,12 @@ def _auto_settle_conversion(db, conv):
     if not addrs or not deal_ids:
         return []
 
+    # Session настроена без autoflush: сохраняем рассчитанный приход перед
+    # обновлением объектов из БД, иначе populate_existing сотрёт его.
+    db.flush()
     groups = {}
-    for deal in db.query(Deal).filter(Deal.id.in_(deal_ids)).order_by(Deal.id).all():
+    for deal in (db.query(Deal).filter(Deal.id.in_(deal_ids)).order_by(Deal.id)
+                 .populate_existing().with_for_update().all()):
         if deal.reimbursement_id is not None:
             continue                      # долг уже закрыт
         if deal.needs_reimbursement is False:
@@ -5905,47 +5996,57 @@ def attach_conversion_tx(conv_id):
     """
     db = get_session()
     try:
-        conv = db.query(Conversion).get(conv_id)
-        if not conv:
-            return jsonify({'success': False, 'error': 'not_found'}), 404
-        data = request.get_json(silent=True) or {}
-        h = str(data.get('tx_hash') or '').strip()
-        if not h:
-            return jsonify({'success': False, 'error': 'Нужен хеш прихода'}), 400
-        tx = db.query(PayinTx).filter(PayinTx.tx_hash == h).first()
-        if tx is None:
-            # Первый раз видим перевод — сумму берём из блокчейна, а не с рук
-            onchain = _tron_tx_amount(h)
-            try:
-                manual = float(data.get('amount_usdt') or 0)
-            except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'Некорректная сумма прихода'}), 400
-            tx = PayinTx(tx_hash=h, amount_usdt=onchain if onchain is not None else manual,
-                         source='tronscan' if onchain is not None else 'manual',
-                         to_address=_tron_tx_to_address(h))
-            db.add(tx)
-            db.flush()
         try:
-            take = round(float(data.get('amount_usdt') or tx.amount_usdt or 0), 4)
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'Некорректная сумма прихода'}), 400
-        existing = db.query(ConversionTx).filter(
-            ConversionTx.conversion_id == conv.id,
-            ConversionTx.payin_tx_id == tx.id).first()
-        if existing:
-            existing.amount_usdt = take
-        else:
-            db.add(ConversionTx(conversion_id=conv.id, payin_tx_id=tx.id, amount_usdt=take))
-        db.flush()
-        db.refresh(conv)
-        conv.status = ConversionStatus.RECEIVED
-        conv.received_at = datetime.utcnow()
-        _apply_conversion_shares(db, conv)
-        # Рубли пересчитаны в USDT — сделкам больше нечего ждать
-        closed, updated = _close_deals_after_conversion(db)
-        # Приход упал на кошелёк, с которого платили за сделку → долг закрыт им же
-        auto_settled = _auto_settle_conversion(db, conv)
-        db.commit()
+            conv = db.query(Conversion).filter(Conversion.id == conv_id).with_for_update().first()
+            if not conv:
+                return jsonify({'success': False, 'error': 'not_found'}), 404
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                raise ValueError('Требуется JSON-объект')
+            h = data.get('tx_hash')
+            if not isinstance(h, str) or not h.strip() or len(h.strip()) > 120:
+                raise ValueError('Нужен строковый хеш прихода длиной до 120 символов')
+            h = h.strip()
+            requested = _conversion_number(data.get('amount_usdt'), 'amount_usdt', nullable=True)
+            if requested and not round(requested, 4):
+                raise ValueError('amount_usdt: сумма меньше 0.0001 USDT')
+            tx = db.query(PayinTx).filter(PayinTx.tx_hash == h).with_for_update().first()
+            if tx is None:
+                # Первый раз видим перевод — сумму берём из блокчейна, а не с рук.
+                # Некорректную ручную долю отклоняем ещё до сетевого запроса.
+                onchain = _tron_tx_amount(h)
+                total = _conversion_number(onchain if onchain is not None else requested,
+                                           'Сумма прихода', positive=True)
+                tx = PayinTx(tx_hash=h, amount_usdt=total,
+                             source='tronscan' if onchain is not None else 'manual',
+                             to_address=_tron_tx_to_address(h))
+                db.add(tx)
+                db.flush()
+            # Ноль/пусто сохраняют прежний смысл: забрать всю сумму перевода.
+            take = round(_conversion_number(requested or tx.amount_usdt, 'amount_usdt', positive=True), 4)
+            if take <= 0:
+                raise ValueError('amount_usdt: сумма меньше 0.0001 USDT')
+            existing = db.query(ConversionTx).filter(
+                ConversionTx.conversion_id == conv.id,
+                ConversionTx.payin_tx_id == tx.id).first()
+            if existing:
+                existing.amount_usdt = take
+            else:
+                db.add(ConversionTx(conversion_id=conv.id, payin_tx_id=tx.id, amount_usdt=take))
+            db.flush()
+            db.refresh(conv)
+            conv.status = ConversionStatus.RECEIVED
+            conv.received_at = datetime.utcnow()
+            _validate_conversion_totals(conv)
+            _apply_conversion_shares(db, conv)
+            # Рубли пересчитаны в USDT — сделкам больше нечего ждать
+            closed, updated = _close_deals_after_conversion(db)
+            # Приход упал на кошелёк, с которого платили за сделку → долг закрыт им же
+            auto_settled = _auto_settle_conversion(db, conv)
+            db.commit()
+        except (TypeError, ValueError) as e:
+            db.rollback()
+            return jsonify({'success': False, 'error': f'Некорректные данные прихода: {e}'}), 400
         _notify_deals_completed(db, closed)
         if auto_settled:
             _notify_reimbursed(auto_settled)
@@ -6225,20 +6326,15 @@ def _attach_debits(db, conv, debits_req, force=False):
     поэтому список, а не одно поле. Один платёж не должен закрывать две пачки:
     иначе расход учтётся дважды, как это было с приходами USDT.
     """
+    debits_req = _conversion_parts(debits_req, 'sber_debit_id')
     db.query(ConversionDebit).filter(ConversionDebit.conversion_id == conv.id).delete()
     db.flush()
-    for item in debits_req or []:
-        try:
-            did = int(item.get('sber_debit_id'))
-        except (TypeError, ValueError):
-            raise ValueError('Некорректный id списания')
+    for item in debits_req:
+        did = item['sber_debit_id']
         deb = db.query(SberDebit).filter(SberDebit.id == did).with_for_update().first()
         if not deb:
             raise ValueError(f'Списание #{did} не найдено')
-        try:
-            take = round(float(item.get('amount_rub') or 0), 2)
-        except (TypeError, ValueError):
-            raise ValueError(f'Некорректная сумма по списанию #{did}')
+        take = item['amount_rub']
         free = deb.free_rub()
         if not take:
             take = free
@@ -6246,6 +6342,8 @@ def _attach_debits(db, conv, debits_req, force=False):
                 raise ValueError(
                     f'Списание {deb.amount_rub:,.2f} ₽ ({deb.payee or did}) '
                     f'уже привязано к другой пачке')
+        if take <= 0:
+            raise ValueError('Доля должна быть положительной даже при force')
         if take > free + 0.01 and not force:
             raise ValueError(
                 f'Списание {deb.amount_rub:,.2f} ₽ ({deb.payee or did}) уже разнесено: '
@@ -6407,34 +6505,33 @@ def create_conversion():
     """Создать пачку: брокер, курс, ставка удержания, состав поступлений."""
     db = get_session()
     try:
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
         try:
+            fields = _conversion_fields(data)
+            fields.setdefault('held_percent', 0.3)
+            fields.setdefault('held_fixed_rub', 40.0)
+            sources = _conversion_parts(data.get('sources'), 'sber_income_id')
+            debits = _conversion_parts(data.get('debits'), 'sber_debit_id')
+            if fields.get('wallet_id') and not db.query(Wallet).filter(Wallet.id == fields['wallet_id']).first():
+                raise ValueError('Кошелёк не найден')
             conv = Conversion(
-                broker=(data.get('broker') or '').strip()[:100] or None,
-                request_no=(data.get('request_no') or '').strip()[:60] or None,
-                rate_rub_usdt=float(data['rate_rub_usdt']) if data.get('rate_rub_usdt') else None,
-                held_percent=float(data.get('held_percent') if data.get('held_percent') is not None else 0.3),
-                held_fixed_rub=float(data.get('held_fixed_rub') if data.get('held_fixed_rub') is not None else 40.0),
-                amount_rub_sent=float(data['amount_rub_sent']) if data.get('amount_rub_sent') else None,
-                wallet_id=data.get('wallet_id') or None,
-                notes=(data.get('notes') or '').strip() or None,
-                created_by=flask_session.get('username'),
-                status=ConversionStatus.SENT if data.get('sent_at') else ConversionStatus.DRAFT,
-                sent_at=_parse_sent_at(data.get('sent_at')),
-            )
+                **fields, created_by=flask_session.get('username'),
+                status=ConversionStatus.SENT if fields.get('sent_at') else ConversionStatus.DRAFT)
         except (TypeError, ValueError) as e:
+            db.rollback()
             return jsonify({'success': False, 'error': f'Некорректные данные пачки: {e}'}), 400
         db.add(conv)
         db.flush()
         try:
-            _attach_sources(db, conv, data.get('sources'), force=bool(data.get('force')))
-            _attach_debits(db, conv, data.get('debits'), force=bool(data.get('force')))
+            _attach_sources(db, conv, sources, force=bool(data.get('force')))
+            _attach_debits(db, conv, debits, force=bool(data.get('force')))
             # Списание из выписки знает дату платежа точно — она главнее введённой
             if conv.debits:
                 dates = [d.debit.operation_date for d in conv.debits
                          if d.debit and d.debit.operation_date]
                 if dates:
                     conv.sent_at = _parse_sent_at(min(dates))
+            _validate_conversion_totals(conv)
         except ValueError as e:
             db.rollback()
             return jsonify({'success': False, 'error': str(e)}), 409
@@ -6457,27 +6554,16 @@ def update_conversion(conv_id):
         conv = db.query(Conversion).get(conv_id)
         if not conv:
             return jsonify({'success': False, 'error': 'not_found'}), 404
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
         try:
-            if 'broker' in data:
-                conv.broker = (data['broker'] or '').strip()[:100] or None
-            if 'request_no' in data:
-                conv.request_no = (data['request_no'] or '').strip()[:60] or None
-            if 'rate_rub_usdt' in data:
-                conv.rate_rub_usdt = float(data['rate_rub_usdt']) if data['rate_rub_usdt'] else None
-            if 'amount_rub_sent' in data:
-                conv.amount_rub_sent = float(data['amount_rub_sent']) if data['amount_rub_sent'] else None
-            if 'held_percent' in data:
-                conv.held_percent = float(data['held_percent'])
-            if 'held_fixed_rub' in data:
-                conv.held_fixed_rub = float(data['held_fixed_rub'])
-            if 'wallet_id' in data:
-                conv.wallet_id = data['wallet_id'] or None
-            if 'notes' in data:
-                conv.notes = (data['notes'] or '').strip() or None
-            if 'sent_at' in data:
-                conv.sent_at = _parse_sent_at(data['sent_at'])
+            fields = _conversion_fields(data)
+            if fields.get('wallet_id') and not db.query(Wallet).filter(Wallet.id == fields['wallet_id']).first():
+                raise ValueError('Кошелёк не найден')
+            for name, value in fields.items():
+                setattr(conv, name, value)
+            _validate_conversion_totals(conv)
         except (TypeError, ValueError) as e:
+            db.rollback()
             return jsonify({'success': False, 'error': f'Некорректные данные: {e}'}), 400
         db.commit()
         db.refresh(conv)
@@ -11876,6 +11962,27 @@ def _reimbursement_kind_for(deals):
     return 'manual' if known else 'advance'
 
 
+def _reimbursement_cents(value, *, allow_zero=False):
+    """Проверяет сумму в центах без округления или переполнения float."""
+    from decimal import Decimal, InvalidOperation
+
+    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+        raise ValueError('Сумма возмещения должна быть числом')
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation:
+        raise ValueError('Некорректная сумма возмещения') from None
+    if not amount.is_finite() or amount < 0 or (not allow_zero and amount == 0):
+        raise ValueError('Сумма должна быть конечной и положительной (доля может быть нулевой)')
+    # Начиная с 2**46 шаг Float превышает цент. БД пока хранит Float,
+    # поэтому такие суммы невозможно надёжно распределить и сохранить.
+    if amount >= Decimal(2**46):
+        raise ValueError('Сумма слишком велика для точного учёта в центах')
+    if amount != amount.quantize(Decimal('0.01')):
+        raise ValueError('Укажите сумму с точностью до двух знаков после запятой')
+    return int(amount * 100)
+
+
 def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
     """Раскладывает возмещение по сделкам: аллокации → прибыль → агенты → статус.
 
@@ -11885,23 +11992,49 @@ def _settle_reimbursement(session, reimbursement, deals, alloc_req=None):
 
     Возвращает сумму выдач в батах, вошедших в возмещение.
     """
+    from decimal import Decimal
+
     alloc_req = alloc_req or {}
-    amount_usdt = reimbursement.amount_usdt or 0
+    deals = sorted(deals, key=lambda d: d.id)
+    if not deals or set(alloc_req) - {d.id for d in deals}:
+        raise ValueError('Распределение содержит неизвестные сделки')
+    if any(d.reimbursement_id is not None for d in deals):
+        raise ValueError('Сделка уже возмещена')
+    # Целые центы исключают накопление округления. Явные доли сначала
+    # вычитаются; оставшиеся центы делятся только между неуказанными сделками.
+    cents = _reimbursement_cents(reimbursement.amount_usdt)
+    shares = {deal_id: _reimbursement_cents(value, allow_zero=True)
+              for deal_id, value in alloc_req.items()}
+    remaining = cents - sum(shares.values())
+    automatic = [d for d in deals if d.id not in shares]
+    if remaining < 0 or (not automatic and remaining):
+        raise ValueError('Сумма долей должна совпадать с суммой возмещения')
+    weights = [Decimal(str(d.payout_amount_thb or d.custom_payout_amount or 0))
+               for d in automatic]
+    if any(not w.is_finite() or w < 0 for w in weights):
+        raise ValueError('Некорректная сумма выдачи сделки')
+    total_weight = sum(weights)
+    if automatic and remaining and not total_weight:
+        raise ValueError('Укажите доли: нет сумм выдачи для распределения')
+    exact = [Decimal(remaining) * w / total_weight if total_weight else Decimal(0)
+             for w in weights]
+    rounded = [int(value) for value in exact]
+    # Метод наибольших остатков; при равенстве приоритет меньшему ID.
+    order = sorted(range(len(automatic)), key=lambda i: (-(exact[i] - rounded[i]), automatic[i].id))
+    for i in order[:remaining - sum(rounded)]:
+        rounded[i] += 1
+    shares.update({d.id: share for d, share in zip(automatic, rounded)})
+    if sum(shares.values()) != cents:
+        raise ValueError('Не удалось распределить сумму с точностью до цента')
     total_thb = 0
-    # Для пропорционального распределения USDT учитываем custom_payout_amount
-    total_payout = sum((d.payout_amount_thb or d.custom_payout_amount or 0) for d in deals)
     for deal in deals:
         deal.reimbursement_id = reimbursement.id
         deal_payout = deal.payout_amount_thb or deal.custom_payout_amount or 0
-        if deal.id in alloc_req:
-            # Сказали явно, сколько этой сделке — верим этому, а не пропорции
-            deal.payout_amount_usdt = alloc_req[deal.id]
-        else:
-            deal.payout_amount_usdt = amount_usdt * (deal_payout / total_payout) if deal_payout and total_payout else 0
+        deal.payout_amount_usdt = shares[deal.id] / 100
         total_thb += deal_payout
 
         # Прибыль считается только сейчас — себестоимость выдачи стала известна
-        if deal.payin_amount_usdt and deal.payout_amount_usdt:
+        if deal.payin_amount_usdt is not None:
             deal.profit_usdt = round(deal.payin_amount_usdt - deal.payout_amount_usdt, 2)
             deal.profit_percent = (deal.profit_usdt / deal.payout_amount_usdt * 100) if deal.payout_amount_usdt > 0 else 0
 
@@ -12006,10 +12139,25 @@ def create_reimbursement():
         # Сумма возмещения — потолок для всего дальнейшего: и для долей по
         # переводам, и для долей по сделкам. Приводим к числу здесь, чтобы
         # ниже сравнивать, а не полагаться на тип из JSON.
-        try:
-            amount_usdt = round(float(amount_usdt), 2)
-        except (TypeError, ValueError):
-            return jsonify({'success': False, 'error': 'Некорректная сумма возмещения'}), 400
+        amount_cents = _reimbursement_cents(amount_usdt)
+        amount_usdt = amount_cents / 100
+
+        # Проверка состава и состояния под блокировкой ДО создания финансовых
+        # записей. Повтор после ожидания блокировки увидит уже сохранённую связь.
+        if not isinstance(deal_ids, list) or any(
+                isinstance(i, bool) or not str(i).isdigit() or int(i) <= 0 for i in deal_ids):
+            return jsonify({'success': False, 'error': 'Некорректные ID сделок'}), 400
+        deal_ids = sorted({int(i) for i in deal_ids})
+        deals = (session.query(Deal).filter(Deal.id.in_(deal_ids)).order_by(Deal.id)
+                 .populate_existing().with_for_update().all())
+        missing = sorted(set(deal_ids) - {d.id for d in deals})
+        if missing:
+            return jsonify({'success': False, 'error': 'Некоторые сделки не найдены',
+                            'missing_deal_ids': missing}), 404
+        already_settled = [d.id for d in deals if d.reimbursement_id is not None]
+        if already_settled:
+            return jsonify({'success': False, 'error': 'Сделки уже возмещены — обнови страницу',
+                            'deal_ids': already_settled}), 409
 
         # ── Переводы: сколько берём из каждого ────────────────────────────
         # Раньше ничто не мешало ввести тот же хэш второй раз и «возместить» одни
@@ -12026,6 +12174,15 @@ def create_reimbursement():
             # при возмещении 504289.00 и упираются в проверку «взято больше»
             tx_uses_req[-1]['amount_usdt'] = round(amount_usdt - share * (len(hs) - 1), 2)
 
+        # Общие переводы блокируются в одинаковом порядке даже для разных
+        # наборов сделок. Новые хэши дополнительно защищает UNIQUE в БД.
+        requested_hashes = [str(item.get('tx_hash') or '').strip() for item in tx_uses_req]
+        nonempty_hashes = [h for h in requested_hashes if h]
+        if len(nonempty_hashes) != len(set(nonempty_hashes)):
+            return jsonify({'success': False, 'error': 'Один перевод указан несколько раз'}), 400
+        locked_txs = {tx.tx_hash: tx for tx in session.query(ReimbursementTx)
+                      .filter(ReimbursementTx.tx_hash.in_(nonempty_hashes))
+                      .order_by(ReimbursementTx.tx_hash).populate_existing().with_for_update().all()}
         prepared_uses = []
         covered = 0.0   # сколько из суммы возмещения уже набрано переводами
         for item in tx_uses_req:
@@ -12036,12 +12193,9 @@ def create_reimbursement():
             if raw in (None, ''):
                 take = None   # сумму не сказали — досчитаем от остатка возмещения
             else:
-                try:
-                    take = round(float(raw), 2)
-                except (TypeError, ValueError):
-                    return jsonify({'success': False, 'error': f'Некорректная сумма по переводу {h[:16]}…'}), 400
+                take = _reimbursement_cents(raw, allow_zero=True) / 100
 
-            tx = session.query(ReimbursementTx).filter(ReimbursementTx.tx_hash == h).first()
+            tx = locked_txs.get(h)
             if tx is None:
                 # Первый раз видим перевод — сумму берём из блокчейна, а не с рук.
                 onchain = _tron_tx_amount(h)
@@ -12065,7 +12219,8 @@ def create_reimbursement():
                 take = round(min(free, max(amount_usdt - covered, 0)), 2)
             if take <= 0:
                 continue   # возмещение уже покрыто предыдущими переводами
-            if take > free + 0.01 and not data.get('force'):
+            if (not data.get('force') and _reimbursement_cents(take, allow_zero=True)
+                    > _reimbursement_cents(max(free, 0), allow_zero=True)):
                 # Куда перевод уже ушёл. Без этого «доступно $0.00» читается как
                 # поломка, хотя чаще всего это повторный клик по устаревшей форме:
                 # возмещение уже создано, сделка из списка ожидающих ушла.
@@ -12092,11 +12247,23 @@ def create_reimbursement():
         alloc_req = {}
         for item in (data.get('deal_allocations') or []):
             try:
-                alloc_req[int(item.get('deal_id'))] = round(float(item.get('amount_usdt') or 0), 2)
+                raw_id = item.get('deal_id')
+                raw_share = item.get('amount_usdt')
+                if (isinstance(raw_id, bool) or not str(raw_id).isdigit()
+                        or isinstance(raw_share, bool)):
+                    raise ValueError('Некорректная доля')
+                deal_id = int(raw_id)
             except (TypeError, ValueError):
                 return jsonify({'success': False, 'error': 'Некорректная сумма в распределении'}), 400
-        taken_total = round(sum(t for _, t in prepared_uses), 2)
-        if alloc_req and taken_total and round(sum(alloc_req.values()), 2) > taken_total + 0.01:
+            share = _reimbursement_cents(raw_share if raw_share not in (None, '') else 0,
+                                         allow_zero=True) / 100
+            if deal_id not in deal_ids or deal_id in alloc_req:
+                return jsonify({'success': False, 'error': 'Некорректная доля или сделка в распределении'}), 400
+            alloc_req[deal_id] = share
+        taken_cents = sum(_reimbursement_cents(t, allow_zero=True) for _, t in prepared_uses)
+        allocated_cents = sum(_reimbursement_cents(t, allow_zero=True) for t in alloc_req.values())
+        taken_total = taken_cents / 100
+        if alloc_req and taken_cents and allocated_cents > taken_cents:
             return jsonify({
                 'success': False,
                 'error': f'Распределено ${sum(alloc_req.values()):.2f}, а из переводов взято ${taken_total:.2f}',
@@ -12105,13 +12272,13 @@ def create_reimbursement():
         # только с переводами, и связка «взяли перевод целиком + доля = перевод»
         # проходила молча: возмещение $1375.46, доля сделки $1952 — карточка потом
         # ругалась на задвоение, а прибыль сделки уходила в фиктивный минус.
-        if alloc_req and round(sum(alloc_req.values()), 2) > amount_usdt + 0.01:
+        if alloc_req and allocated_cents > amount_cents:
             return jsonify({
                 'success': False,
                 'error': (f'Распределено по сделкам ${sum(alloc_req.values()):.2f}, '
                           f'а возмещение на ${amount_usdt:.2f} — поправь суммы'),
             }), 400
-        if taken_total > amount_usdt + 0.01:
+        if taken_cents > amount_cents:
             return jsonify({
                 'success': False,
                 'error': (f'Из переводов взято ${taken_total:.2f}, а возмещение на ${amount_usdt:.2f}. '
@@ -12139,18 +12306,7 @@ def create_reimbursement():
             session.add(ReimbursementTxUse(tx_id=tx.id, reimbursement_id=reimbursement.id,
                                            amount_usdt=take))
         
-        # Update deals
-        # CR-05: блокировка строк сделок на время возмещения. Без with_for_update
-        # параллельный create_reimbursement / update_deal по тем же id мог переписать
-        # payout_amount_usdt и привести к двойной выплате/потере.
-        # ORDER BY id для предотвращения deadlock-а при пересекающихся deal_ids.
-        deals = (
-            session.query(Deal)
-            .filter(Deal.id.in_(deal_ids))
-            .order_by(Deal.id)
-            .with_for_update()
-            .all()
-        )
+        # Сделки уже проверены и заблокированы до создания возмещения.
         if kind is None:
             reimbursement.kind = _reimbursement_kind_for(deals)
         total_thb = _settle_reimbursement(session, reimbursement, deals, alloc_req)
@@ -12163,6 +12319,9 @@ def create_reimbursement():
             'deals_updated': len(deals),
             'total_thb': total_thb
         })
+    except ValueError as e:
+        session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 400
     except Exception as e:
         session.rollback()
         app.logger.error(f'Request error: {e}')
@@ -15441,6 +15600,38 @@ def _docs_save(db, agreement_id, kind, number, seq, filename, data, mime):
     return doc
 
 
+def _docs_request_payload():
+    """Проверяем форму запроса до обращения к полям и генерации документов."""
+    body = request.get_json(silent=True) if request.is_json else request.form.to_dict()
+    if not isinstance(body, dict):
+        raise ValueError('Тело запроса должно быть JSON-объектом')
+    body = dict(body)
+    for key in ('fields', 'money'):
+        value = body.get(key, {})
+        if not request.is_json and isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except (ValueError, TypeError):
+                raise ValueError(f'{key}: ожидается JSON-объект') from None
+        if not isinstance(value, dict):
+            raise ValueError(f'{key}: ожидается объект')
+        for name, item in value.items():
+            allowed = (str,) if key == 'fields' else (str, int, float)
+            if item is not None and (isinstance(item, bool) or not isinstance(item, allowed)):
+                raise ValueError(f'{key}.{name}: неверный тип значения')
+            if isinstance(item, float) and not (-float('inf') < item < float('inf')):
+                raise ValueError(f'{key}.{name}: число должно быть конечным')
+        body[key] = value
+    client_id = body.get('client_id')
+    if client_id is not None and client_id != '':
+        if (isinstance(client_id, bool) or not isinstance(client_id, (str, int))
+                or not str(client_id).isascii() or not str(client_id).isdigit()
+                or int(client_id) <= 0):
+            raise ValueError('client_id: ожидается положительный целочисленный ID')
+        body['client_id'] = int(client_id)
+    return body
+
+
 def _docs_validate(deal_type, fields, money):
     """Пустые обязательные поля ловим ДО генерации — иначе документ уйдёт с дырой."""
     missing = [k for k in DOCS_REQUIRED_FIELDS if not (fields.get(k) or '').strip()]
@@ -15562,12 +15753,13 @@ def docs_create_agreement():
     /payment, а не через второй договор.
     """
     import docgen
-    payload = request.form.to_dict() if request.form else {}
-    body = request.get_json(silent=True) or {}
-    fields = body.get('fields') or json.loads(payload.get('fields') or '{}')
-    money = body.get('money') or json.loads(payload.get('money') or '{}')
-    deal_type = body.get('deal_type') or payload.get('deal_type')
-    client_id = body.get('client_id') or payload.get('client_id')
+    try:
+        body = _docs_request_payload()
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': 'invalid_payload', 'detail': str(exc)}), 400
+    fields, money = body['fields'], body['money']
+    deal_type = body.get('deal_type')
+    client_id = body.get('client_id')
 
     if deal_type not in DOCS_DEAL_TYPES:
         return jsonify({'success': False, 'error': 'bad_deal_type'}), 400
@@ -15646,7 +15838,10 @@ def docs_create_agreement():
 def docs_add_payment(agreement_id):
     """Очередной платёж: доп. соглашение + инвойс со ссылкой на рамочный договор."""
     import docgen
-    body = request.get_json(silent=True) or {}
+    try:
+        body = _docs_request_payload()
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': 'invalid_payload', 'detail': str(exc)}), 400
     db = get_session()
     try:
         a = db.query(Agreement).filter(Agreement.id == agreement_id).first()

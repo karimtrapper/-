@@ -10,6 +10,8 @@ import os
 import sys
 from datetime import datetime
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from conversions_core import conversion_shares, match_wl_deal, parse_sent_at
@@ -49,4 +51,15 @@ def test_матчинг_wl_только_однозначный():
 def test_дата_отправки():
     assert parse_sent_at('2026-08-17') == datetime(2026, 8, 17)
     assert parse_sent_at(None) is None
-    assert parse_sent_at('мусор') is not None      # не роняем, откатываемся на сейчас
+    assert parse_sent_at('2026-08-17T23:45:00+03:00') == datetime(2026, 8, 17)
+    before = datetime.utcnow()
+    assert before <= parse_sent_at(True) <= datetime.utcnow()
+    assert parse_sent_at(False) is None
+    assert parse_sent_at('') is None
+
+
+@pytest.mark.parametrize('value', ['мусор', '2026-02-30', '2026-08-17garbage',
+                                   '2026-08-17T99:99:99', 1, 0, [], {}])
+def test_неверная_дата_не_подменяется_сегодняшней(value):
+    with pytest.raises(ValueError):
+        parse_sent_at(value)

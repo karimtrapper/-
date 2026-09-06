@@ -154,6 +154,61 @@ class TestRemainder:
 
 
 class TestAllocation:
+    @pytest.mark.parametrize('amount,manual,payouts,expected', [
+        (100, 80, [3000, 3000], [80, 20]),
+        (100, 80, [3000, 1000, 3000], [80, 5, 15]),
+        (100, None, [3000, 3000, 3000], [33.34, 33.33, 33.33]),
+        (0.01, None, [3000, 3000, 3000], [0.01, 0, 0]),
+        (100, 100, [3000, 3000], [100, 0]),
+    ])
+    def test_partial_and_rounded_shares_preserve_every_cent(self, cli, amount, manual, payouts, expected):
+        """Остаток распределяется один раз, порядок ID в запросе не меняет округление."""
+        ids = [_make_deal(payout) for payout in payouts]
+        body = {'founder_name': 'Андрей', 'deal_ids': list(reversed(ids)), 'amount_usdt': amount}
+        if manual is not None:
+            body['deal_allocations'] = [{'deal_id': ids[0], 'amount_usdt': manual}]
+        response = cli.post('/api/reimbursements', json=body)
+        assert response.status_code == 200, response.get_json()
+        with get_session() as db:
+            deals = [db.get(Deal, deal_id) for deal_id in ids]
+            assert [d.payout_amount_usdt for d in deals] == expected
+            assert sum(round(d.payout_amount_usdt * 100) for d in deals) == round(amount * 100)
+            assert all(d.status == DealStatus.COMPLETED for d in deals)
+            assert all(d.profit_usdt == round(200 - share, 2) for d, share in zip(deals, expected))
+
+    @pytest.mark.parametrize('shares', [[80, 19.99], [80, 20.01], [-1, 101], ['NaN', 100], ['Infinity', 0]])
+    def test_invalid_full_allocation_rolls_back_transfer_and_deals(self, cli, tx_hash, shares):
+        """Даже ошибка после подготовки перевода не оставляет финансовых записей."""
+        ids = [_make_deal(3000), _make_deal(3000)]
+        with get_session() as db:
+            before = db.query(Reimbursement).count()
+            before_uses = db.query(ReimbursementTxUse).count()
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': ids, 'amount_usdt': 100,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 100}],
+            'deal_allocations': [{'deal_id': i, 'amount_usdt': v} for i, v in zip(ids, shares)],
+        })
+        assert response.status_code == 400, response.get_json()
+        with get_session() as db:
+            assert db.query(Reimbursement).count() == before
+            assert db.query(ReimbursementTxUse).count() == before_uses
+            assert db.query(ReimbursementTx).filter_by(tx_hash=tx_hash).first() is None
+            assert all(db.get(Deal, i).reimbursement_id is None for i in ids)
+            assert all(db.get(Deal, i).status == DealStatus.PENDING for i in ids)
+
+    @pytest.mark.parametrize('mode', ['unknown', 'duplicate', 'zero_weights'])
+    def test_unallocatable_request_is_atomic(self, cli, mode):
+        ids = [_make_deal(0 if mode == 'zero_weights' else 3000), _make_deal(0)]
+        allocations = {'unknown': [{'deal_id': 99999999, 'amount_usdt': 10}],
+                       'duplicate': [{'deal_id': ids[0], 'amount_usdt': 10}] * 2,
+                       'zero_weights': []}[mode]
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': ids, 'amount_usdt': 100,
+            'deal_allocations': allocations})
+        assert response.status_code == 400
+        with get_session() as db:
+            assert all(db.get(Deal, i).reimbursement_id is None for i in ids)
+
     def test_explicit_shares_respected(self, cli, tx_hash, tx_hash2):
         """Явные доли важнее пропорции: 300 и 200 при разных суммах бат."""
         d1, d2 = _make_deal(10000), _make_deal(4000)
@@ -192,6 +247,93 @@ class TestAllocation:
             'deal_allocations': [{'deal_id': d1, 'amount_usdt': 500}]})
         assert resp.status_code == 400
         assert 'взято' in resp.get_json()['error']
+
+
+class TestReimbursementAtomicity:
+    def test_mixed_missing_ids_rejected_before_transfer_lookup(self, cli, tx_hash, monkeypatch):
+        deal_id = _make_deal(3000)
+        def unexpected_lookup(_hash):
+            pytest.fail('Несуществующая сделка должна отклоняться до обращения к переводу')
+        monkeypatch.setattr(appmod, '_tron_tx_amount', unexpected_lookup)
+        with get_session() as db:
+            before = db.query(Reimbursement).count()
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'deal_ids': [deal_id, 99999999], 'amount_usdt': 100,
+            'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': 100}]})
+        assert response.status_code == 404
+        assert response.get_json()['missing_deal_ids'] == [99999999]
+        with get_session() as db:
+            assert db.query(Reimbursement).count() == before
+            assert db.get(Deal, deal_id).reimbursement_id is None
+            assert db.get(Deal, deal_id).status == DealStatus.PENDING
+            assert db.query(ReimbursementTx).filter_by(tx_hash=tx_hash).first() is None
+
+    def test_repeat_with_unsettled_deal_preserves_original_and_new_deal(self, cli):
+        first_id, new_id = _make_deal(3000), _make_deal(3000)
+        body = {'founder_name': 'Андрей', 'amount_usdt': 100, 'deal_ids': [first_id]}
+        first = cli.post('/api/reimbursements', json=body)
+        assert first.status_code == 200
+        reimbursement_id = first.get_json()['reimbursement']['id']
+        with get_session() as db:
+            before = db.query(Reimbursement).count()
+        again = cli.post('/api/reimbursements', json={**body, 'deal_ids': [new_id, first_id]})
+        assert again.status_code == 409
+        with get_session() as db:
+            assert db.query(Reimbursement).count() == before
+            assert db.get(Deal, first_id).reimbursement_id == reimbursement_id
+            assert db.get(Deal, first_id).payout_amount_usdt == 100
+            assert db.get(Deal, new_id).reimbursement_id is None
+            assert db.get(Deal, new_id).status == DealStatus.PENDING
+
+    def test_completed_unreimbursed_deal_can_be_reimbursed(self, cli):
+        """Завершённая клиентская выдача ещё может требовать возврата оунеру."""
+        deal_id = _make_deal(3000)
+        with get_session() as db:
+            db.get(Deal, deal_id).status = DealStatus.COMPLETED
+            db.commit()
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'amount_usdt': 100, 'deal_ids': [deal_id]})
+        assert response.status_code == 200
+        with get_session() as db:
+            assert db.get(Deal, deal_id).reimbursement_id == response.get_json()['reimbursement']['id']
+
+    @pytest.mark.parametrize('amount', [0, -100, 'NaN', 'Infinity', '-Infinity',
+                                       0.001, 0.005, 100.005, '100.009', 1e308,
+                                       '70368744177664', True])
+    def test_invalid_amount_is_rejected(self, cli, amount):
+        deal_id = _make_deal(3000)
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'amount_usdt': amount, 'deal_ids': [deal_id]})
+        assert response.status_code == 400
+        with get_session() as db:
+            assert db.get(Deal, deal_id).reimbursement_id is None
+
+    @pytest.mark.parametrize('field', ['amount_usdt', 'deal_allocations', 'tx_uses'])
+    def test_precision_rejection_explains_problem_and_is_atomic(self, cli, tx_hash, field):
+        deal_id = _make_deal(3000)
+        body = {'founder_name': 'Андрей', 'amount_usdt': 100, 'deal_ids': [deal_id]}
+        body[field] = {'amount_usdt': '100.005',
+                       'deal_allocations': [{'deal_id': deal_id, 'amount_usdt': '100.005'}],
+                       'tx_uses': [{'tx_hash': tx_hash, 'amount_usdt': '100.005'}]}[field]
+        response = cli.post('/api/reimbursements', json=body)
+        assert response.status_code == 400
+        assert 'двух знаков' in response.get_json()['error']
+        with get_session() as db:
+            assert db.get(Deal, deal_id).reimbursement_id is None
+            assert db.query(ReimbursementTx).filter_by(tx_hash=tx_hash).first() is None
+
+    @pytest.mark.parametrize('value', ['0.01', '100.00', '70368744177663.99'])
+    def test_cent_storage_boundary_round_trips(self, cli, value):
+        """Даже на верхней границе диапазона одна сделка получает исходные центы."""
+        from decimal import Decimal
+        deal_id = _make_deal(3000)
+        response = cli.post('/api/reimbursements', json={
+            'founder_name': 'Андрей', 'amount_usdt': value, 'deal_ids': [deal_id]})
+        assert response.status_code == 200, response.get_json()
+        with get_session() as db:
+            deal = db.get(Deal, deal_id)
+            assert Decimal(str(deal.payout_amount_usdt)) == Decimal(value)
+            assert Decimal(str(db.get(Reimbursement, deal.reimbursement_id).amount_usdt)) == Decimal(value)
 
 
 class TestBreakdownOutput:

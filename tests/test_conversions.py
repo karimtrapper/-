@@ -1417,3 +1417,231 @@ def test_не_тот_хеш_отвязывается_и_меняется_на_п
         db.commit()
     finally:
         db.close()
+
+
+@pytest.mark.parametrize('payload', [
+    {'rate_rub_usdt': value} for value in (-80, 0, 'NaN', 'Infinity', True, [])
+] + [
+    {'held_percent': value} for value in (-0.1, 100.01, 'NaN', 'Infinity')
+] + [
+    {'held_fixed_rub': value} for value in (-40, 'NaN', 'Infinity')
+] + [
+    {'amount_rub_sent': value} for value in (-100, 'NaN', 'Infinity')
+] + [
+    {'sent_at': '2026-02-30'}, {'notes': 1}, {'wallet_id': []}, {'wallet_id': 1.5},
+    {'force': 'false'}, [1], False,
+])
+def test_invalid_create_and_update_are_atomic(cli, payload):
+    """Отклонённое создание/изменение не оставляет частично сохранённых полей."""
+    conv = cli.post('/api/conversions', json={'broker': 'Исходный', 'rate_rub_usdt': 80}).get_json()['conversion']
+    db = get_session()
+    count = db.query(Conversion).count()
+    db.close()
+    response = cli.post('/api/conversions', json=payload)
+    assert response.status_code == 400, response.get_data(as_text=True)
+    assert response.is_json and response.get_json()['success'] is False
+    update = dict(payload, broker='Не сохранять') if isinstance(payload, dict) else payload
+    response = cli.put(f"/api/conversions/{conv['id']}", json=update)
+    assert response.status_code == 400, response.get_data(as_text=True)
+    db = get_session()
+    try:
+        assert db.query(Conversion).count() == count
+        row = db.query(Conversion).get(conv['id'])
+        assert row.broker == 'Исходный'
+        assert row.rate_rub_usdt == 80
+    finally:
+        db.close()
+        cli.delete(f"/api/conversions/{conv['id']}")
+
+
+@pytest.mark.parametrize('field', ['sources', 'debits'])
+@pytest.mark.parametrize('amount', [-100, -0.001, 0.001, 'NaN', 'Infinity', True])
+@pytest.mark.parametrize('force', [False, True])
+def test_invalid_allocation_never_changes_balance(cli, incomes, debits, field, amount, force):
+    """force разрешает перебор, но не отрицательную/бесконечную долю."""
+    model = SberIncome if field == 'sources' else appmod.SberDebit
+    row_id = incomes[0] if field == 'sources' else debits[0]
+    id_field = 'sber_income_id' if field == 'sources' else 'sber_debit_id'
+    db = get_session()
+    before = db.query(model).get(row_id).free_rub()
+    count = db.query(Conversion).count()
+    db.close()
+    response = cli.post('/api/conversions', json={
+        field: [{id_field: row_id, 'amount_rub': amount}], 'force': force})
+    assert response.status_code == 400, response.get_data(as_text=True)
+    db = get_session()
+    try:
+        assert db.query(Conversion).count() == count
+        assert db.query(model).get(row_id).free_rub() == before
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('field', ['sources', 'debits'])
+@pytest.mark.parametrize('items', [[1], {}, 'bad', False])
+def test_invalid_allocation_shape_is_json_400(cli, field, items):
+    response = cli.post('/api/conversions', json={field: items})
+    assert response.status_code == 400
+    assert response.is_json and response.get_json()['success'] is False
+
+
+@pytest.mark.parametrize('field', ['sources', 'debits'])
+def test_duplicate_allocation_ids_rejected(cli, incomes, debits, field):
+    """Дубли нельзя разносить дважды или терять при вычислении долей USDT."""
+    id_field = 'sber_income_id' if field == 'sources' else 'sber_debit_id'
+    row_id = incomes[0] if field == 'sources' else debits[0]
+    response = cli.post('/api/conversions', json={field: [
+        {id_field: row_id, 'amount_rub': 100},
+        {id_field: str(row_id), 'amount_rub': 200}]})
+    assert response.status_code == 400
+
+
+def test_missing_debit_rolls_back_source_reservation(cli, incomes):
+    db = get_session()
+    before = db.query(SberIncome).get(incomes[0]).free_rub()
+    count = db.query(Conversion).count()
+    db.close()
+    response = cli.post('/api/conversions', json={
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 100}],
+        'debits': [{'sber_debit_id': 2147483647}]})
+    assert response.status_code == 409
+    db = get_session()
+    try:
+        assert db.query(Conversion).count() == count
+        assert db.query(SberIncome).get(incomes[0]).free_rub() == before
+    finally:
+        db.close()
+
+
+def test_finite_input_overflow_is_rejected(cli):
+    """Слишком маленький курс не должен отдавать Infinity в производных суммах."""
+    response = cli.post('/api/conversions', json={
+        'rate_rub_usdt': 1e-308, 'amount_rub_sent': 1e308})
+    assert response.status_code in (400, 409)
+    assert response.is_json and response.get_json()['success'] is False
+
+
+@pytest.mark.parametrize('field', ['sources', 'debits'])
+def test_force_cannot_allocate_negative_remainder(cli, incomes, debits, field):
+    """После осознанного перебора автодоля не должна возвратить расход в остаток."""
+    model = SberIncome if field == 'sources' else appmod.SberDebit
+    row_id = incomes[0] if field == 'sources' else debits[0]
+    id_field = 'sber_income_id' if field == 'sources' else 'sber_debit_id'
+    db = get_session()
+    amount = db.query(model).get(row_id).amount_rub
+    db.close()
+    created = cli.post('/api/conversions', json={field: [
+        {id_field: row_id, 'amount_rub': amount + 100}], 'force': True})
+    assert created.status_code == 200
+    conv_id = created.get_json()['conversion']['id']
+    response = cli.post('/api/conversions', json={field: [{id_field: row_id}], 'force': True})
+    assert response.status_code == 409
+    db = get_session()
+    try:
+        assert db.query(model).get(row_id).free_rub() == -100
+    finally:
+        db.close()
+        cli.delete(f'/api/conversions/{conv_id}')
+
+
+@pytest.mark.parametrize('existing', [False, True])
+@pytest.mark.parametrize('amount', [-10, -0.00001, 0.00001, 'NaN', 'Infinity', True, {}])
+def test_conversion_tx_rejects_invalid_amount_before_any_write(cli, monkeypatch, existing, amount):
+    """Невалидная доля не создаёт ручной перевод и не меняет ранее привязанную долю."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    tx_hash = _uid() + _uid()
+    conv = cli.post('/api/conversions', json={'rate_rub_usdt': 80}).get_json()['conversion']
+    path = f"/api/conversions/{conv['id']}/txs"
+    if existing:
+        assert cli.post(path, json={'tx_hash': tx_hash, 'amount_usdt': 100}).status_code == 200
+    # Даже для неизвестного хеша ошибка суммы определяется до сетевого вызова.
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: pytest.fail('Валидация вызвала сеть'))
+    response = cli.post(path, json={'tx_hash': tx_hash, 'amount_usdt': amount})
+    assert response.status_code == 400
+    assert response.is_json and response.get_json()['success'] is False
+    db = get_session()
+    try:
+        tx = db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).first()
+        links = db.query(appmod.ConversionTx).filter_by(conversion_id=conv['id']).all()
+        if existing:
+            assert tx.amount_usdt == 100 and links[0].amount_usdt == 100
+        else:
+            assert tx is None and links == []
+        row = db.query(Conversion).get(conv['id'])
+        assert row.status == (ConversionStatus.RECEIVED if existing else ConversionStatus.DRAFT)
+    finally:
+        db.close()
+        cli.delete(f"/api/conversions/{conv['id']}")
+        db = get_session()
+        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+        db.commit()
+        db.close()
+
+
+@pytest.mark.parametrize('payload', [[1], False, {'tx_hash': 1}, {'tx_hash': []}, {'tx_hash': 'x' * 121}])
+def test_conversion_tx_malformed_json_returns_400(cli, payload):
+    conv = cli.post('/api/conversions', json={}).get_json()['conversion']
+    response = cli.post(f"/api/conversions/{conv['id']}/txs", json=payload)
+    assert response.status_code == 400 and response.is_json
+    cli.delete(f"/api/conversions/{conv['id']}")
+
+
+@pytest.mark.parametrize('amount', [None, 0, '0', 12.3456])
+def test_conversion_tx_preserves_auto_amount_and_four_decimals(cli, amount):
+    tx_hash = _uid() + _uid()
+    db = get_session()
+    db.add(PayinTx(tx_hash=tx_hash, amount_usdt=100, source='manual'))
+    db.commit()
+    db.close()
+    conv = cli.post('/api/conversions', json={}).get_json()['conversion']
+    response = cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash, 'amount_usdt': amount})
+    assert response.status_code == 200, response.get_data(as_text=True)
+    assert response.get_json()['conversion']['received_usdt'] == (12.3456 if amount == 12.3456 else 100)
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
+    db.commit()
+    db.close()
+
+
+def test_conversion_tx_downstream_failure_rolls_back_new_manual_tx(cli, monkeypatch):
+    """Отказ разноса после создания перевода откатывает запись и статус пачки."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    def fail(*args):
+        raise ValueError('Не удалось разнести доли')
+    monkeypatch.setattr(appmod, '_apply_conversion_shares', fail)
+    tx_hash = _uid() + _uid()
+    conv = cli.post('/api/conversions', json={}).get_json()['conversion']
+    response = cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': tx_hash, 'amount_usdt': 100})
+    assert response.status_code == 400
+    db = get_session()
+    try:
+        assert db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).count() == 0
+        assert db.query(appmod.ConversionTx).filter_by(conversion_id=conv['id']).count() == 0
+        assert db.query(Conversion).get(conv['id']).status == ConversionStatus.DRAFT
+    finally:
+        db.close()
+        cli.delete(f"/api/conversions/{conv['id']}")
+
+
+
+def test_conversion_tx_overflow_in_share_calculation_rolls_back(cli, incomes, monkeypatch):
+    """Конечная сумма перевода может переполнить промежуточное умножение долей."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: None)
+    tx_hash = _uid() + _uid()
+    conv = cli.post('/api/conversions', json={'sources': [
+        {'sber_income_id': incomes[0], 'amount_rub': 100}]}).get_json()['conversion']
+    response = cli.post(f"/api/conversions/{conv['id']}/txs", json={
+        'tx_hash': tx_hash, 'amount_usdt': 1e308})
+    assert response.status_code == 400
+    db = get_session()
+    try:
+        assert db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).count() == 0
+        assert db.query(appmod.ConversionTx).filter_by(conversion_id=conv['id']).count() == 0
+        assert db.query(Conversion).get(conv['id']).status == ConversionStatus.DRAFT
+    finally:
+        db.close()
+        cli.delete(f"/api/conversions/{conv['id']}")

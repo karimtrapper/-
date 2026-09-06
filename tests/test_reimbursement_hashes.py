@@ -164,3 +164,65 @@ def test_reused_hash_error_names_previous_reimbursement(tc):
     assert f'#{rid}' in again.json['error']
     assert 'обнови страницу' in again.json['error']
     assert again.json['used_in'] == [{'reimbursement_id': rid, 'amount_usdt': 305.4}]
+
+
+def test_duplicate_hash_in_one_request_cannot_spend_same_remainder_twice(tc, deal, db):
+    """Два пункта с одним хэшем должны отклоняться до создания перевода."""
+    response = tc.post('/api/reimbursements', json={
+        'founder_name': 'Андрей', 'deal_ids': [deal['id']], 'amount_usdt': 100,
+        'tx_uses': [{'tx_hash': HASHES[0], 'amount_usdt': 50}] * 2})
+    assert response.status_code == 400
+    assert db.query(Reimbursement).count() == 0
+    assert db.query(ReimbursementTx).count() == 0
+    assert db.query(ReimbursementTxUse).count() == 0
+    assert db.get(Deal, deal['id']).reimbursement_id is None
+
+
+@pytest.mark.parametrize('value', [-1, 'NaN', 'Infinity'])
+def test_invalid_transfer_share_does_not_create_records(tc, deal, db, value):
+    response = tc.post('/api/reimbursements', json={
+        'founder_name': 'Андрей', 'deal_ids': [deal['id']], 'amount_usdt': 100,
+        'tx_uses': [{'tx_hash': HASHES[0], 'amount_usdt': value}]})
+    assert response.status_code == 400
+    assert db.query(Reimbursement).count() == 0
+    assert db.query(ReimbursementTx).count() == 0
+    assert db.query(ReimbursementTxUse).count() == 0
+
+
+@pytest.mark.parametrize('existing', [False, True])
+def test_one_cent_over_transfer_balance_is_rejected(tc, deal, db, monkeypatch, existing):
+    """Допуск в один цент не должен разрешать потратить 100.01 из перевода на 100."""
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: 100.0)
+    if existing:
+        db.add(ReimbursementTx(tx_hash=HASHES[0], amount_usdt=100, founder_name='Андрей'))
+        db.commit()
+    response = tc.post('/api/reimbursements', json={
+        'founder_name': 'Андрей', 'deal_ids': [deal['id']], 'amount_usdt': 100.01,
+        'tx_uses': [{'tx_hash': HASHES[0], 'amount_usdt': 100.01}]})
+    assert response.status_code == 409
+    assert db.query(Reimbursement).count() == 0
+    assert db.query(ReimbursementTxUse).count() == 0
+    tx = db.query(ReimbursementTx).filter_by(tx_hash=HASHES[0]).first()
+    assert (tx.free_usdt() == 100) if existing else (tx is None)
+
+
+def test_one_cent_over_reimbursement_total_rolls_back_new_manual_transfer(tc, deal, db):
+    """Без данных сети перевод создаётся из ручной доли; потолок суммы всё равно строгий."""
+    response = tc.post('/api/reimbursements', json={
+        'founder_name': 'Андрей', 'deal_ids': [deal['id']], 'amount_usdt': 100,
+        'tx_uses': [{'tx_hash': HASHES[0], 'amount_usdt': 100.01}]})
+    assert response.status_code == 400
+    assert db.query(Reimbursement).count() == 0
+    assert db.query(ReimbursementTx).count() == 0
+    assert db.query(ReimbursementTxUse).count() == 0
+
+
+def test_exact_one_cent_transfer_can_be_used(tc, deal, db):
+    db.add(ReimbursementTx(tx_hash=HASHES[0], amount_usdt=0.01, founder_name='Андрей'))
+    db.commit()
+    response = tc.post('/api/reimbursements', json={
+        'founder_name': 'Андрей', 'deal_ids': [deal['id']], 'amount_usdt': 0.01,
+        'tx_uses': [{'tx_hash': HASHES[0], 'amount_usdt': 0.01}]})
+    assert response.status_code == 200
+    db.expire_all()
+    assert db.query(ReimbursementTx).filter_by(tx_hash=HASHES[0]).one().free_usdt() == 0

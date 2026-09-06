@@ -128,7 +128,7 @@ body {
 }
 .nav-tabs {
     overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    padding-right: 180px; /* Место для кнопки справа */
+    margin-right: 180px; /* Полоса прокрутки заканчивается до кнопки создания */
 }
 .nav-tabs::-webkit-scrollbar { display: none; }
 .nav-create-btn {
@@ -136,7 +136,7 @@ body {
     padding: 8px 16px !important; min-height: 40px !important; white-space: nowrap;
     z-index: 2;
 }
-@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { padding-right: 0; } #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
+@media (max-width: 640px) { .nav-create-btn { display: none; } .nav-tabs { margin-right: 0; } #dashboard > div[style*="grid-template-columns"] { grid-template-columns: 1fr !important; } }
 .period-btn { padding:8px 16px;border-radius:20px;border:1px solid #e5e7eb;background:#fff;cursor:pointer;font-size:13px;font-weight:500;color:#666;transition:all .2s }
 .period-btn.active { background:#FF6B35;color:#fff;border-color:#FF6B35 }
 .period-btn:hover:not(.active) { border-color:#FF6B35;color:#FF6B35 }
@@ -11570,11 +11570,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const total = parseFloat(amountInput?.value) || 0;
             const boxes = checkedDeals(founderName);
             const thbTotal = boxes.reduce((s, b) => s + (parseFloat(b.dataset.thb) || 0), 0);
+            const cents = Math.round(total * 100);
+            const parts = boxes.map(box => {
+                const exact = thbTotal ? cents * (parseFloat(box.dataset.thb) || 0) / thbTotal : 0;
+                return {id: box.dataset.dealId, cents: Math.floor(exact), fraction: exact - Math.floor(exact)};
+            });
+            if (thbTotal && parts.length) {
+                let spare = cents - parts.reduce((sum, part) => sum + part.cents, 0);
+                const ranked = [...parts].sort((a, b) => b.fraction - a.fraction || Number(a.id) - Number(b.id));
+                for (let i = 0; i < spare; i++) ranked[i % ranked.length].cents++;
+            }
+            const shares = new Map(parts.map(part => [part.id, part.cents]));
             allocInputs(founderName).forEach(el => {
-                const box = boxes.find(b => b.dataset.dealId === el.dataset.dealId);
-                if (!box) { el.value = ''; return; }
-                const thb = parseFloat(box.dataset.thb) || 0;
-                el.value = (total && thbTotal) ? (total * thb / thbTotal).toFixed(2) : '';
+                el.value = total && thbTotal && shares.has(el.dataset.dealId)
+                    ? (shares.get(el.dataset.dealId) / 100).toFixed(2) : '';
             });
             renderAllocSummary(founderName);
         }
@@ -11589,16 +11598,23 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             if (!box) return;
             const total = parseFloat(document.querySelector(`.reimburse-amount[data-founder="${founderName}"]`)?.value) || 0;
             const alloc = allocTotal(founderName);
-            const left = total - alloc;
+            const left = (Math.round(total * 100) - Math.round(alloc * 100)) / 100;
+            const selected = new Set(checkedDeals(founderName).map(el => el.dataset.dealId));
+            const inputs = allocInputs(founderName).filter(el => selected.has(el.dataset.dealId));
+            const automatic = inputs.some(el => el.value === '');
+            const invalid = inputs.some(el => el.value !== '' &&
+                (!Number.isFinite(Number(el.value)) || Number(el.value) < 0));
             const money = (v) => v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             let color = '#166534', note = '';
-            if (left < -0.01) { color = '#b91c1c'; note = ' — больше, чем перевели'; }
-            else if (left > 0.01) { color = '#b45309'; note = ' — останется запасом на переводе'; }
+            if (invalid) { color = '#b91c1c'; note = ' — доли должны быть неотрицательными числами'; }
+            else if (left < 0) { color = '#b91c1c'; note = ' — больше суммы возмещения: уменьшите доли'; }
+            else if (left > 0 && automatic) { color = '#b45309'; note = ' — распределится автоматически между сделками с пустой долей'; }
+            else if (left > 0) { color = '#b91c1c'; note = ' — распределите всю сумму или оставьте долю пустой для авторасчёта'; }
             box.innerHTML = `<b>Распределено $${money(alloc)}</b> из $${money(total)} · ` +
                 `<span style="color:${color};font-weight:600;">остаток $${money(left)}${note}</span>` +
                 (allocManual[founderName] ? ` · <a href="#" onclick="event.preventDefault();allocManual['${founderName}']=false;prefillAllocations('${founderName}')">пересчитать пропорционально</a>` : '');
             const btn = document.querySelector(`.reimburse-btn[data-founder="${founderName}"]`);
-            if (btn) btn.disabled = left < -0.01;
+            if (btn) btn.disabled = invalid || left < 0 || (left > 0 && !automatic);
         }
 
         function renderAmountHint(founderName) {
