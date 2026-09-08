@@ -150,8 +150,24 @@ class TestCrmHidesDemo:
                              wallet='TDemo', contact_method='telegram',
                              contact_value='@demo', status='paid'))
         db.commit()
-        assert tc.get('/api/payout-requests').get_json()['requests'] == []
+        visible = tc.get('/api/payout-requests').get_json()
+        assert visible['requests'] == []
+        assert visible['active_count'] == 0
         assert len(tc.get('/api/payout-requests?include_test=1').get_json()['requests']) == 1
+
+    def test_payout_requests_report_visible_active_count(self, tc, demo, db):
+        real = Referrer(name='Живой', code='GR-REAL', token=secrets.token_hex(16))
+        db.add(real)
+        db.flush()
+        db.add(PayoutRequest(referrer_id=real.id, amount_usdt=50.0,
+                             wallet='TReal', contact_method='telegram',
+                             contact_value='@real', status='new'))
+        db.commit()
+
+        data = tc.get('/api/payout-requests?status=paid').get_json()
+        assert data['requests'] == []
+        assert data['active_count'] == 1
+        assert data['oldest_active_created_at'] is not None
 
 
 # ── Кабинет реферера видит демо-данные ────────────────────────────────────

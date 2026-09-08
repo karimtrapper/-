@@ -451,7 +451,7 @@
             balance_label: 'Доступно к выводу',
             req_pending: 'на рассмотрении',
             req_progress: 'в работе',
-            balance_sub_req: (id, amt, st) => 'Заявка #' + id + ' на $' + amt + ' — ' + st,
+            balance_sub_req: (id, date, amt, st) => 'Заявка #' + id + ' от ' + date + ' на $' + amt + ' — ' + st,
             balance_sub_terms: 'По запросу · от $20 · USDT TRC-20',
             cta_sent: 'Заявка уже отправлена',
             cta_request: 'Запросить выплату',
@@ -578,7 +578,7 @@
             balance_label: 'Available to withdraw',
             req_pending: 'under review',
             req_progress: 'in progress',
-            balance_sub_req: (id, amt, st) => 'Request #' + id + ' for $' + amt + ' — ' + st,
+            balance_sub_req: (id, date, amt, st) => 'Request #' + id + ' from ' + date + ' for $' + amt + ' — ' + st,
             balance_sub_terms: 'On request · from $20 · USDT TRC-20',
             cta_sent: 'Request already sent',
             cta_request: 'Request a payout',
@@ -689,6 +689,9 @@
     // Разделители тысяч и формат дат — по языку партнёра
     const locale = () => (LANG === 'en' ? 'en-US' : 'ru-RU');
     const fmtInt = n => Math.round(Number(n) || 0).toLocaleString(locale());
+    const fmtDate = value => value
+        ? new Date(value).toLocaleDateString(locale(), { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '—';
 
     function setLang(lang) {
         LANG = (lang === 'en') ? 'en' : 'ru';
@@ -869,7 +872,8 @@
                     <div class="balance-sub">
                         <div class="dot"></div>
                         <span>${activeReq
-                            ? t('balance_sub_req', maskId(activeReq.id), (activeReq.amount_usdt||0).toFixed(2),
+                            ? t('balance_sub_req', maskId(activeReq.id), fmtDate(activeReq.created_at),
+                                (activeReq.amount_usdt||0).toFixed(2),
                                 t(activeReq.status === 'in_progress' ? 'req_progress' : 'req_pending'))
                             : t('balance_sub_terms')}</span>
                     </div>

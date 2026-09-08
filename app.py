@@ -12417,12 +12417,17 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
-def send_telegram_notification(text, thread_id=None):
+def send_telegram_notification(text, thread_id=None, fallback_without_thread=False):
     """Отправляет сообщение ботом в чат.
 
     thread_id: id топика. Если не передан — берётся из env TELEGRAM_THREAD_ID
     (топик «Сделки», 2108 по умолчанию). Явный аргумент имеет приоритет —
     так заявки на выплату уходят в отдельный топик «Задачи».
+
+    fallback_without_thread: при явном отказе Telegram повторить отправку в общий
+    чат без топика. Для денежных заявок лучше заметное сообщение не в том месте,
+    чем тихо потерянная задача. При сетевом exception не повторяем: первый запрос
+    мог дойти, а ответ потеряться — повтор создал бы дубль.
     """
     token = os.environ.get('TELEGRAM_BOT_TOKEN', '').strip()
     chat_id = os.environ.get('TELEGRAM_CHAT_ID', '-1002274229486').strip()
@@ -12438,8 +12443,23 @@ def send_telegram_notification(text, thread_id=None):
             payload["message_thread_id"] = int(thread_id)
         response = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                                 json=payload, timeout=10)
-        print(f'[Telegram] Sent: {response.status_code}')
-        return response.status_code == 200
+        if response.status_code == 200:
+            print('[Telegram] Sent: 200')
+            return True
+
+        # Раньше логировали только код и вызывающий код игнорировал False — узнать,
+        # почему денежная заявка не пришла, было невозможно даже по Railway logs.
+        detail = (getattr(response, 'text', '') or '')[:500].replace('\n', ' ')
+        print(f'[Telegram] Failed: {response.status_code} {detail}')
+        if fallback_without_thread and payload.get('message_thread_id'):
+            fallback_payload = dict(payload)
+            fallback_payload.pop('message_thread_id', None)
+            fallback = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                                     json=fallback_payload, timeout=10)
+            fallback_detail = (getattr(fallback, 'text', '') or '')[:500].replace('\n', ' ')
+            print(f'[Telegram] Fallback without thread: {fallback.status_code} {fallback_detail}')
+            return fallback.status_code == 200
+        return False
     except Exception as e:
         print(f'[Telegram] Error: {e}')
         return False
@@ -14571,7 +14591,8 @@ def create_payout_request(token):
                 )
                 # Заявки на выплату — в топик «Задачи» (а не «Сделки»)
                 tasks_thread = os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112')
-                send_telegram_notification(msg, thread_id=tasks_thread)
+                send_telegram_notification(
+                    msg, thread_id=tasks_thread, fallback_without_thread=True)
             except Exception as e:
                 print(f'[PayoutRequest] Telegram notify failed: {e}')
 
@@ -14613,16 +14634,31 @@ def list_payout_requests():
     db = get_session()
     try:
         status_filter = (request.args.get('status') or '').strip()
-        q = db.query(PayoutRequest).order_by(PayoutRequest.created_at.desc())
-        if status_filter:
-            q = q.filter(PayoutRequest.status == status_filter)
+        base_q = db.query(PayoutRequest)
         if request.args.get('include_test') != '1':
             # Заявки демо-рефереров (витрина) команде в списке не нужны
             test_ids = [r.id for r in db.query(Referrer.id).filter(Referrer.is_test == True).all()]
             if test_ids:
-                q = q.filter(~PayoutRequest.referrer_id.in_(test_ids))
+                base_q = base_q.filter(~PayoutRequest.referrer_id.in_(test_ids))
+        # Счётчик активных заявок возвращаем независимо от выбранного фильтра.
+        # CRM использует его для постоянного бейджа и алерта на дашборде — иначе
+        # заявка видна только тому, кто сам догадался открыть отдельную вкладку.
+        active_q = base_q.filter(PayoutRequest.status.in_(['new', 'in_progress']))
+        active_count = active_q.count()
+        oldest_active = active_q.order_by(PayoutRequest.created_at.asc()).first()
+
+        q = base_q.order_by(PayoutRequest.created_at.desc())
+        if status_filter:
+            q = q.filter(PayoutRequest.status == status_filter)
         items = [r.to_dict(with_referrer=True) for r in q.limit(200).all()]
-        return jsonify({'success': True, 'requests': items})
+        return jsonify({
+            'success': True,
+            'requests': items,
+            'active_count': active_count,
+            'oldest_active_created_at': (
+                oldest_active.created_at.isoformat()
+                if oldest_active and oldest_active.created_at else None),
+        })
     finally:
         db.close()
 

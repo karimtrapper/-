@@ -7,7 +7,8 @@ os.environ['REF_LOGIN_BOT_TOKEN'] = '111:TEST_TOKEN'
 os.environ['REF_LK_WEBHOOK_SECRET'] = 'whsecret'
 
 from app import (app, get_session, Referrer, PayoutRequest,
-                 send_referrer_dm, _cancel_payout, _cancel_button)
+                 send_referrer_dm, send_telegram_notification,
+                 _cancel_payout, _cancel_button)
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +52,34 @@ def test_dm_sent_with_tg_id(monkeypatch):
     assert send_referrer_dm(r, 'hi', buttons=_cancel_button(7)) is True
     assert captured['json']['chat_id'] == 42
     assert 'reply_markup' in captured['json']
+
+
+def test_team_notification_falls_back_to_general_chat_on_topic_error(monkeypatch):
+    """Денежная задача не пропадает, если Telegram-топик удалён/закрыт."""
+    class Resp:
+        def __init__(self, status_code, text):
+            self.status_code = status_code
+            self.text = text
+
+    responses = [
+        Resp(400, '{"ok":false,"description":"message thread not found"}'),
+        Resp(200, '{"ok":true}'),
+    ]
+    calls = []
+
+    def fake_post(url, **kwargs):
+        calls.append(kwargs['json'])
+        return responses[len(calls) - 1]
+
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', '111:TEST_TOKEN')
+    monkeypatch.setenv('TELEGRAM_CHAT_ID', '-100123')
+    monkeypatch.setattr('app.requests.post', fake_post)
+
+    assert send_telegram_notification(
+        'money task', thread_id='2112', fallback_without_thread=True) is True
+    assert calls[0]['message_thread_id'] == 2112
+    assert 'message_thread_id' not in calls[1]
+    assert calls[1]['chat_id'] == '-100123'
 
 
 def test_cancel_payout_helper():

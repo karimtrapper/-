@@ -166,6 +166,12 @@ body {
 .nav-tab.active {
     background: var(--navy-800); color: white;
 }
+.payout-nav-count {
+    display:none; min-width:20px; height:20px; align-items:center; justify-content:center;
+    margin-left:6px; padding:0 6px; border-radius:999px; background:var(--red);
+    color:white; font-size:11px; font-weight:700; line-height:20px;
+}
+.nav-tab.active .payout-nav-count { background:white; color:var(--red); }
 
 /* ---- "MORE" MENU PANEL ---- */
 .more-panel {
@@ -831,7 +837,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="kyc">KYC</button>
             <button class="nav-tab" data-section="partners">Партнёры</button>
             <button class="nav-tab" data-section="referrers">Рефереры</button>
-            <button class="nav-tab" data-section="payoutRequests">Заявки на выплату</button>
+            <button class="nav-tab" data-section="payoutRequests">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
             <button class="nav-tab" data-section="admins">🔐 Админы</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
@@ -4115,6 +4121,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>`;
                     }
                     document.getElementById('attentionAlerts').innerHTML = alertsHtml;
+                    renderPayoutAttention();
 
                     // Графики
                     if (d.charts) renderCharts(d.charts);
@@ -13177,12 +13184,52 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
         // ============== Заявки на выплату ==============
         let _payoutFilter = '';
+        let _activePayoutCount = 0;
+        let _oldestActivePayoutAt = null;
         const PAYOUT_STATUS_LABELS = {
             new: { label: 'Новая', color: '#F97316', bg: '#FFF7ED' },
             in_progress: { label: 'В работе', color: '#3B82F6', bg: '#EFF6FF' },
             paid: { label: 'Выплачено', color: '#16A34A', bg: '#DCFCE7' },
             cancelled: { label: 'Отменено', color: '#64748B', bg: '#F1F5F9' },
         };
+
+        function renderPayoutAttention() {
+            const badge = document.getElementById('payoutRequestsBadge');
+            if (badge) {
+                badge.textContent = _activePayoutCount > 99 ? '99+' : String(_activePayoutCount || '');
+                badge.style.display = _activePayoutCount > 0 ? 'inline-flex' : 'none';
+            }
+
+            const box = document.getElementById('attentionAlerts');
+            if (!box) return;
+            box.querySelector('.payout-attention-alert')?.remove();
+            if (_activePayoutCount <= 0) return;
+
+            const oldest = _oldestActivePayoutAt
+                ? new Date(_oldestActivePayoutAt).toLocaleDateString('ru-RU')
+                : null;
+            box.insertAdjacentHTML('afterbegin', `
+                <div class="alert alert-warning payout-attention-alert"
+                     onclick="showSection('payoutRequests')" style="cursor:pointer">
+                    <strong>Заявки на выплату:</strong> ${_activePayoutCount} ${_activePayoutCount === 1 ? 'заявка ждёт' : 'заявки ждут'} обработки${oldest ? ` · старейшая с ${oldest}` : ''}
+                </div>`);
+        }
+
+        function updatePayoutAttention(data) {
+            _activePayoutCount = Number(data?.active_count) || 0;
+            _oldestActivePayoutAt = data?.oldest_active_created_at || null;
+            renderPayoutAttention();
+        }
+
+        async function refreshPayoutAttention() {
+            try {
+                const res = await fetch(`${API_URL}/api/payout-requests?status=new`, { cache: 'no-store' });
+                const data = await res.json();
+                if (data.success) updatePayoutAttention(data);
+            } catch (e) {
+                console.error('Не удалось обновить счётчик заявок на выплату:', e);
+            }
+        }
 
         function filterPayoutRequests(status) {
             _payoutFilter = status;
@@ -13196,8 +13243,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const list = document.getElementById('payoutRequestsList');
             try {
                 const url = `${API_URL}/api/payout-requests` + (_payoutFilter ? `?status=${_payoutFilter}` : '');
-                const res = await fetch(url);
+                const res = await fetch(url, { cache: 'no-store' });
                 const data = await res.json();
+                if (data.success) updatePayoutAttention(data);
                 if (!data.success || !data.requests || data.requests.length === 0) {
                     list.innerHTML = '<div style="color:#999;font-style:italic;padding:1rem;text-align:center;">Заявок нет</div>';
                     return;
@@ -13271,6 +13319,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 list.innerHTML = '<div style="color:#DC2626;padding:1rem;text-align:center;">Ошибка загрузки</div>';
             }
         }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshPayoutAttention();
+            setInterval(refreshPayoutAttention, 60000);
+        });
 
         async function setPayoutStatus(id, status) {
             const labels = { in_progress: 'взять в работу', paid: 'отметить выплаченной', cancelled: 'отменить' };
