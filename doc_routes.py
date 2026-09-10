@@ -100,7 +100,11 @@ def validate(m, deal_type):
             raise ValueError('Подтверждённый USD-эквивалент должен совпадать с суммой получателю')
     if m.get('rate'):
         rate = decimal_amount(m['rate'], 'курс')
-        # Курс хранится как входная валюта за единицу выходной, округляется до 6 знаков.
-        if abs(rate - incoming / outgoing) > Decimal('0.000001'):
+        # Форма может считать курс из сумм ИЛИ сумму получателя из котировки.
+        # Во втором случае сумма округляется до 2/6 знаков, а сам курс не меняется.
+        quantum = Decimal('0.000001') if m['transfer_currency'] == 'USDT' else Decimal('0.01')
+        rate_matches = abs(rate - incoming / outgoing) <= Decimal('0.000001')
+        rounded_payout_matches = abs(outgoing - incoming / rate) <= quantum / 2
+        if not rate_matches and not rounded_payout_matches:
             raise ValueError('Курс не соответствует суммам. Пересчитайте курс из суммы клиента и суммы получателя')
     return []

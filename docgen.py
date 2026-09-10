@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Генерация пакета документов MF Corp → клиент по проверенным юристом шаблонам.
+"""Генерация пакета документов MF Corp → клиент на базе фирменных шаблонов.
 
-Три флоу — три шаблона: freehold / leasehold / rental. Договор рамочный,
-подписывается один раз на клиента И НА ТИП СДЕЛКИ (шаблоны юридически разные),
+Флоу недвижимости: freehold / leasehold / rental; общий перевод — payment.
+Договор рамочный, на клиента, тип сделки, валютную пару и способ оплаты;
 каждый последующий платёж оформляется своим Приложением 1 плюс инвойсом.
 
 Правила зашиты по карте полей (wiki `crm-doc-generator-fields.md`):
@@ -896,6 +896,16 @@ def _route_invoice(fields, money, number, when):
               'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед MF Corporation Company Limited по указанной операции.\n'
               'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to MF Corporation Company Limited for this transaction.\n'
               + PAYIN_EVIDENCE[money['payin_method']] + ': направить менеджеру MF / send to the MF manager.')
+    # Короткий шаблон не содержит блока подписи, поэтому добавляем его явно.
+    # Подпись и печать те же, что в договоре; размещаем рядом для компактности.
+    signature_table = doc.add_table(rows=1, cols=2)
+    cell = signature_table.cell(0, 0)
+    _set_cell(cell, f"{AGENT['name']}\nDirector: {AGENT['director']}")
+    cell.add_paragraph('Signature: ')
+    cell.add_paragraph('Date: ')
+    _sign_agent(doc, when)
+    if cell.paragraphs[-1]._p.xpath('.//w:drawing'):
+        signature_table.cell(0, 1)._tc.append(cell.paragraphs[-1]._p)
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()

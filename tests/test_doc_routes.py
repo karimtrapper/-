@@ -47,6 +47,7 @@ def test_route_in_every_document(pair, method, kind):
     agreement, _ = docgen.build_agreement(kind, FIELDS, m, when=WHEN)
     addendum = docgen.build_addendum(kind, FIELDS, m, 'MF-1', 'MF-0', 1, when=WHEN)
     invoice = docgen.build_commercial_invoice(FIELDS, m, 'MF-1', kind, when=WHEN)
+    assert len(Document(io.BytesIO(invoice)).inline_shapes) >= 2  # подпись и печать Агента
     for data in (agreement, addendum, invoice):
         assert docgen.check(data) == []
         assert '40807' not in text(data) and '9909726886' not in text(data)
@@ -88,6 +89,19 @@ def test_rounding_and_amount_validation():
     m['rate']='32.26'
     with pytest.raises(ValueError, match='Курс не соответствует'):
         doc_routes.validate(m, 'leasehold')
+
+
+@pytest.mark.parametrize('pair,payout,quoted_rate', [
+    ('RUB_THB','359.71','2.78'),
+    ('RUB_USDT','11.716187','85.352'),
+])
+def test_quoted_rate_allows_normal_payout_rounding(pair,payout,quoted_rate):
+    m=route(pair,'bank')
+    m.update(total_payin='1000',transfer_amount=payout,rate=quoted_rate)
+    assert doc_routes.validate(m,'payment') == []
+    m['transfer_amount']='500'
+    with pytest.raises(ValueError, match='Курс не соответствует'):
+        doc_routes.validate(m,'payment')
 
 
 @pytest.mark.parametrize('invalid', ['NaN','Infinity','-1','0','575USD','575junk'])
