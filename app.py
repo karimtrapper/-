@@ -15932,6 +15932,15 @@ def docs_add_payment(agreement_id):
         money['deal_type'] = a.deal_type
         import doc_routes
         try:
+            submitted_money = body.get('money') or {}
+            previous_basis = json.loads(a.money_json or '{}').get('rate_basis', doc_routes.INVERSE_RATE)
+            if ('rate_basis' in submitted_money and 'rate' not in submitted_money
+                    and submitted_money['rate_basis'] != previous_basis and money.get('rate')):
+                raise ValueError('При смене направления курса укажите курс этого платежа')
+            if 'rate' in submitted_money:
+                # Старый клиент API без маркера всё ещё передаёт обратный курс.
+                # Нельзя наследовать направление предыдущего платежа.
+                money['rate_basis'] = submitted_money.get('rate_basis', doc_routes.INVERSE_RATE)
             if a.route_key == 'legacy':
                 raise ValueError('Это договор старого шаблона. Создайте новый договор с выбранной валютной парой и способом оплаты; старые файлы сохраняются')
             money = doc_routes.normalize(money, a.deal_type)

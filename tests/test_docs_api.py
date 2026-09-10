@@ -159,6 +159,51 @@ class TestМаршрутыДокументов:
         import docgen
         monkeypatch.setattr(docgen, 'to_pdf', lambda data: None)
 
+    @pytest.mark.parametrize('first_direct,next_direct', [(False,True),(True,False),(True,True)])
+    def test_rate_direction_survives_create_and_new_payment(self, client, first_direct, next_direct):
+        from tests.test_doc_routes import route
+        import doc_routes
+        initial=route()
+        if first_direct:
+            initial.update(rate='32.260870',rate_basis=doc_routes.DIRECT_RATE)
+        created=create(client,'Test direct quote',money=initial)
+        assert created.status_code==200,created.json
+        agreement=created.json['agreement']
+        assert agreement['money']['rate_basis']==(doc_routes.DIRECT_RATE if first_direct else doc_routes.INVERSE_RATE)
+        before=client.get(f"/api/docs/agreements/{agreement['id']}").json['agreement']
+        old_files={d['id']:client.get(f"/api/docs/file/{d['id']}").data for d in before['docs']}
+        payment=route()
+        if next_direct:
+            payment.update(rate='32.260870',rate_basis=doc_routes.DIRECT_RATE)
+        result=client.post(f"/api/docs/agreements/{agreement['id']}/payment",json={'money':payment})
+        assert result.status_code==200,result.json
+        saved=result.json['agreement']['money']
+        assert saved['rate_basis']==(doc_routes.DIRECT_RATE if next_direct else doc_routes.INVERSE_RATE)
+        assert saved['total_payin']=='575' and saved['transfer_amount']=='18550'
+        for doc_id,data in old_files.items():
+            assert client.get(f'/api/docs/file/{doc_id}').data==data
+
+    def test_basis_without_rate_is_rejected_atomically(self, client):
+        from tests.test_doc_routes import route
+        initial=route()
+        created=create(client,'Test direct quote',money=initial).json['agreement']
+        initial.pop('rate')
+        initial['rate_basis']='transfer_per_payin'
+        result=client.post(f"/api/docs/agreements/{created['id']}/payment",json={'money':initial})
+        assert result.status_code==400 and 'укажите курс' in result.json['detail']
+        assert client.get(f"/api/docs/agreements/{created['id']}").json['agreement']['payments_count']==1
+
+    def test_freehold_without_optional_rate_accepts_unchanged_basis(self, client):
+        money=dict(MONEY,pair='RUB_USD',transfer_currency='USD',rate='',
+                   rate_basis='payin_per_transfer',transfer_amount='100',usd_equivalent='100',
+                   rate_source='Test source',developer_confirmation='Test confirmation',
+                   thb_credit_status='Test confirmed')
+        created=create(client,'Test no quote',deal_type='freehold',money=money)
+        assert created.status_code==200,created.json
+        money.pop('rate')
+        result=client.post(f"/api/docs/agreements/{created.json['agreement']['id']}/payment",json={'money':money})
+        assert result.status_code==200,result.json
+
     def test_разные_пары_у_одного_клиента(self, client):
         first = create(client, 'Тест Клиент')
         second = create(client, 'Тест Клиент', money={

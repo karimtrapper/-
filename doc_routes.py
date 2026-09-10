@@ -1,5 +1,8 @@
 """Маршрут документов: валюты и реквизиты одной операции, без банковских дефолтов."""
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+
+INVERSE_RATE = 'payin_per_transfer'  # исторический формат, в том числе без маркера
+DIRECT_RATE = 'transfer_per_payin'
 
 PAIRS = {
     'RUB_THB': ('RUB', 'THB'), 'USDT_THB': ('USDT', 'THB'),
@@ -25,6 +28,11 @@ def pair_for(money, deal_type='leasehold'):
 def normalize(money, deal_type='leasehold'):
     m = dict(money)
     key, incoming, outgoing = pair_for(m, deal_type)
+    basis = m.get('rate_basis', INVERSE_RATE)
+    if basis not in (INVERSE_RATE, DIRECT_RATE):
+        raise ValueError('Неизвестное направление курса')
+    if basis == DIRECT_RATE and key != 'USDT_THB':
+        raise ValueError('Курс за 1 USDT поддерживается только для USDT → THB')
     if m.get('payin_currency') and m['payin_currency'] != incoming:
         raise ValueError('Валюта оплаты не совпадает с выбранной парой')
     if m.get('transfer_currency') and m['transfer_currency'] != outgoing:
@@ -34,7 +42,8 @@ def normalize(money, deal_type='leasehold'):
         raise ValueError('Выберите способ оплаты: по реквизитам, СБП, USDT или наличные')
     if (incoming == 'USDT') != (method == 'usdt') or (method == 'sbp' and incoming != 'RUB'):
         raise ValueError('Способ оплаты не подходит к валюте клиента')
-    m.update(pair=key, payin_currency=incoming, transfer_currency=outgoing, payin_method=method)
+    m.update(pair=key, payin_currency=incoming, transfer_currency=outgoing,
+             payin_method=method, rate_basis=basis)
     if method != 'bank':
         m['payment_reference'] = ''
     return m
@@ -75,6 +84,29 @@ def details(m):
     return m.get('payin_details', '')
 
 
+def rate_text(m, deal_type='leasehold'):
+    """Клиентская котировка; старые значения не переинтерпретируем и не пишем в БД."""
+    key, incoming, outgoing = pair_for(m, deal_type)
+    raw = m.get('rate')
+    if key != 'USDT_THB':
+        return f"{raw or ''} {incoming}/{outgoing}"
+    if not raw:
+        return ''
+    rate = decimal_amount(raw, 'курс')
+    if m.get('rate_basis', INVERSE_RATE) == INVERSE_RATE:
+        # Старый курс из сумм округлялся до 6 знаков. Восстанавливаем прямой
+        # из этих сумм; для точной котировки с округлением payout обращаем rate.
+        a = decimal_amount(m.get('total_payin'), incoming)
+        b = decimal_amount(m.get('transfer_amount'), outgoing)
+        # На половине шага старый JS toFixed мог округлить вниз. Принимаем обе
+        # границы для шестизначного значения; точную котировку не заменяем.
+        rounded_from_amounts = (rate == rate.quantize(Decimal('0.000001'))
+                                and abs(rate - a / b) <= Decimal('0.0000005000000001'))
+        rate = b / a if rounded_from_amounts else 1 / rate
+        rate = rate.quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+    return f'1 USDT = {rate:f} THB'
+
+
 def validate(m, deal_type):
     """Проверка перед выдачей; низкоуровневые builders пригодны и для черновиков."""
     normalize(m, deal_type)
@@ -103,8 +135,11 @@ def validate(m, deal_type):
         # Форма может считать курс из сумм ИЛИ сумму получателя из котировки.
         # Во втором случае сумма округляется до 2/6 знаков, а сам курс не меняется.
         quantum = Decimal('0.000001') if m['transfer_currency'] == 'USDT' else Decimal('0.01')
-        rate_matches = abs(rate - incoming / outgoing) <= Decimal('0.000001')
-        rounded_payout_matches = abs(outgoing - incoming / rate) <= quantum / 2
+        direct = m.get('rate_basis', INVERSE_RATE) == DIRECT_RATE
+        expected_rate = outgoing / incoming if direct else incoming / outgoing
+        expected_payout = incoming * rate if direct else incoming / rate
+        rate_matches = abs(rate - expected_rate) <= Decimal('0.000001')
+        rounded_payout_matches = abs(outgoing - expected_payout) <= quantum / 2
         if not rate_matches and not rounded_payout_matches:
             raise ValueError('Курс не соответствует суммам. Пересчитайте курс из суммы клиента и суммы получателя')
     return []

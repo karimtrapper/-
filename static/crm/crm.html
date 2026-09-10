@@ -13731,6 +13731,18 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             {k:'USD_THB', in:'USD', out:'THB', label:'USD → THB'},
         ];
         const DOCS_DEFAULT_PAIR = {freehold:'RUB_USD', leasehold:'RUB_THB', rental:'RUB_THB', payment:'RUB_USDT'};
+        // В документах USDT → THB котируем баты за один USDT. Остальные пары прежние.
+        const docsDirectRate = pair => pair === 'USDT_THB';
+        const docsRateBasis = pair => docsDirectRate(pair) ? 'transfer_per_payin' : 'payin_per_transfer';
+        const docsRateUnit = pair => { const p=docsPair(pair); return docsDirectRate(pair) ? 'THB за 1 USDT' : p.in+' / '+p.out; };
+        function docsDisplayRate(m,pair){
+            const r=docsNum(m.rate);
+            if(!r || !docsDirectRate(pair) || m.rate_basis==='transfer_per_payin') return r;
+            const a=docsNum(m.total_payin), b=docsNum(m.transfer_amount);
+            // Старые записи без маркера имеют обратный курс. Как в doc_routes.rate_text.
+            const rounded=a&&b&&r===Number(r.toFixed(6))&&Math.abs(r-a/b)<=0.0000005000000001;
+            return rounded ? b/a : 1/r;
+        }
 
         // Третий элемент — 'wide': значение длинное, поле занимает две колонки
         const DOCS_FIELDS = [
@@ -13861,13 +13873,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const p = docsPair(m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB');
             const badge = a.status==='signed' ? 'badge-completed' : (a.status==='sent'?'badge-verified':'badge-pending');
             const label = a.status==='signed'?'подписан':(a.status==='sent'?'отправлен':'черновик');
-            const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsNum(m.rate);
+            const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsDisplayRate(m,p.k);
             return `<div class="docs-deal">
                 <span style="font-size:.87rem;font-weight:600">${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type}</span>
                 <span class="docs-num">${p.label}<br><small>${docsEsc(DOCS_METHOD_LABELS[m.payin_method]||'Способ не указан')}</small></span>
                 <span class="docs-money-cell" style="text-align:right">${inAmt!=null?docsFmt(inAmt,2)+' '+p.in:'—'}</span>
                 <span class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2)+' '+p.out:'—'}</span>
-                <span class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}</span>
+                <span class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}<br><small>${docsRateUnit(p.k)}</small></span>
                 <span class="docs-num">${docsEsc(a.number)}</span>
                 <span><span class="badge ${badge}">${label}</span>
                       <span class="docs-num" style="margin-left:6px;color:var(--text-sec)">${a.payments_count} пл.</span></span>
@@ -14027,9 +14039,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const p = docsPair(docsState.pair);
             document.getElementById('docsCurIn').textContent = p.in;
             document.getElementById('docsCurOut').textContent = p.out;
-            document.getElementById('docsCurRate').textContent = p.in+' / '+p.out;
+            document.getElementById('docsCurRate').textContent = docsRateUnit(docsState.pair);
             document.getElementById('docsRateHint').textContent =
-                `Сколько ${p.in} за 1 ${p.out}. Считается сам из двух сумм; впишете курс — пересчитается сумма получателя.`;
+                (docsDirectRate(docsState.pair) ? '1 USDT = указанное количество THB. ' : `Сколько ${p.in} за 1 ${p.out}. `)+
+                'Считается сам из двух сумм; впишете курс — пересчитается сумма получателя.';
             docsUpdateFieldsVisibility();
         }
 
@@ -14048,16 +14061,17 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         // считается сумма получателя. Округление курса до 6 знаков, как в договорах.
         function docsRecalc(source){
             const dp=docsPair(docsState.pair).out==='USDT'?6:2;
+            const direct=docsDirectRate(docsState.pair);
             const inEl = document.getElementById('docm_total_payin');
             const outEl = document.getElementById('docm_transfer_amount');
             const rateEl = document.getElementById('docm_rate');
             const a = docsNum(inEl.value), b = docsNum(outEl.value), r = docsNum(rateEl.value);
             if(source==='rate'){
-                if(r && a) outEl.value = (a/r).toFixed(dp);
+                if(r && a) outEl.value = (direct?a*r:a/r).toFixed(dp);
             } else if(a && b){
-                rateEl.value = (a/b).toFixed(6);
+                rateEl.value = (direct?b/a:a/b).toFixed(6);
             } else if(source==='payin' && a && r){
-                outEl.value = (a/r).toFixed(dp);
+                outEl.value = (direct?a*r:a/r).toFixed(dp);
             }
             docsBuildPurpose(false);
         }
@@ -14158,6 +14172,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const el=document.getElementById('docm_'+k); if(el&&el.value.trim()) money[k]=el.value.trim();
             });
             money.pair = docsState.pair;
+            money.rate_basis = docsRateBasis(docsState.pair);
             money.payin_currency = p.in;
             money.transfer_currency = p.out;
             const purpose = (document.getElementById('docsPurpose')||{}).value;
@@ -14231,7 +14246,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 `${a.client_name} · ${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type} · ${a.number}`;
             const bySeq = {};
             (a.docs||[]).forEach(x=>{ (bySeq[x.seq||1] = bySeq[x.seq||1] || []).push(x); });
-            const rate = docsNum(m.rate), inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount);
+            const rate = docsDisplayRate(m,p.k), inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount);
             let html = `<div class="docs-money" style="margin-bottom:18px">
                 <div class="docs-rate-row" style="margin-top:0">
                     <div class="docs-field"><label>Клиент отдаёт</label>
@@ -14239,7 +14254,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <div class="docs-field"><label>Получатель получает</label>
                         <div class="docs-amount"><input value="${outAmt!=null?docsFmt(outAmt,2):'—'}" readonly><span class="docs-cur">${p.out}</span></div></div>
                     <div class="docs-field"><label>Курс</label>
-                        <div class="docs-amount"><input value="${rate!=null?rate.toFixed(6):'—'}" readonly><span class="docs-cur">${p.in} / ${p.out}</span></div></div>
+                        <div class="docs-amount"><input value="${rate!=null?rate.toFixed(6):'—'}" readonly><span class="docs-cur">${docsRateUnit(p.k)}</span></div></div>
                 </div></div>`;
             Object.keys(bySeq).sort((x,y)=>x-y).forEach(seq=>{
                 html += `<h4 style="font-size:.85rem;margin:16px 0 6px;color:var(--text-sec);font-weight:600">${seq==1?'Договор и первый платёж':'Платёж № '+seq}</h4>`;
@@ -14288,7 +14303,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <div class="docs-field"><label for="docp_transfer_amount">Получатель получает</label>
                         <div class="docs-amount"><input id="docp_transfer_amount" inputmode="decimal" placeholder="0" oninput="docsRecalcPay('payout')"><span class="docs-cur">${p.out}</span></div></div>
                     <div class="docs-field"><label for="docp_rate">Курс</label>
-                        <div class="docs-amount"><input id="docp_rate" inputmode="decimal" placeholder="0.000000" oninput="docsRecalcPay('rate')"><span class="docs-cur">${p.in} / ${p.out}</span></div></div>
+                        <div class="docs-amount"><input id="docp_rate" inputmode="decimal" placeholder="0.000000" oninput="docsRecalcPay('rate')"><span class="docs-cur">${docsRateUnit(pk)}</span></div></div>
                 </div>
                 <div class="docs-purpose">
                     <div class="docs-label-row"><label for="docp_purpose" style="font-size:.8rem;font-weight:600;color:var(--navy-600)">Назначение платежа</label></div>
@@ -14309,18 +14324,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
         function docsRecalcPay(source){
             const dp=docsPair((docsState.current.money||{}).pair).out==='USDT'?6:2;
+            const direct=docsDirectRate((docsState.current.money||{}).pair);
             const a=docsNum((document.getElementById('docp_total_payin')||{}).value);
             const b=docsNum((document.getElementById('docp_transfer_amount')||{}).value);
             const r=docsNum((document.getElementById('docp_rate')||{}).value);
-            if(source==='rate'){ if(r&&a) document.getElementById('docp_transfer_amount').value=(a/r).toFixed(dp); }
-            else if(a&&b){ document.getElementById('docp_rate').value=(a/b).toFixed(6); }
-            else if(source==='payin'&&a&&r){ document.getElementById('docp_transfer_amount').value=(a/r).toFixed(dp); }
+            if(source==='rate'){ if(r&&a) document.getElementById('docp_transfer_amount').value=(direct?a*r:a/r).toFixed(dp); }
+            else if(a&&b){ document.getElementById('docp_rate').value=(direct?b/a:a/b).toFixed(6); }
+            else if(source==='payin'&&a&&r){ document.getElementById('docp_transfer_amount').value=(direct?a*r:a/r).toFixed(dp); }
         }
 
         async function docsSubmitPayment(id){
             const st = document.getElementById('docsPayStatus');
             st.classList.remove('is-error');
             const money=docsRouteCollect('docp_');
+            money.rate_basis=docsRateBasis((docsState.current.money||{}).pair);
             DOCS_MONEY.forEach(([k])=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
             ['total_payin','transfer_amount','rate'].forEach(k=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
             const pu=(document.getElementById('docp_purpose')||{}).value;

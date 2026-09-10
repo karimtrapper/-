@@ -1,5 +1,8 @@
 """Регрессия MF-268: валютная пара обязана проходить через весь комплект."""
 import io
+import shutil
+import subprocess
+from pathlib import Path
 from datetime import datetime
 
 import pytest
@@ -14,6 +17,56 @@ FIELDS = {'client_name_ru': 'Тестовый Клиент', 'client_name_en': '
           'recipient_bank': 'Test Bank', 'recipient_account': '123456',
           'contract_ref': 'Test instruction'}
 WHEN = datetime(2026, 9, 10)
+
+
+def test_real_javascript_document_rate_forms_and_payloads():
+    """Исполняем настоящий JS обеих форм, а не проверяем наличие формулы в тексте."""
+    node=shutil.which('node')
+    if not node:
+        pytest.skip('Для JS-регрессии требуется Node.js')
+    html=(Path(__file__).resolve().parents[1]/'static/crm/crm.html').read_text()
+    code=html[html.index('const DOCS_TYPE_LABEL'):].split('</script>')[0]
+    checks=r'''
+    const assert=require('node:assert/strict');
+    const elements={};
+    const document={getElementById:id=>elements[id]??={value:'',style:{},classList:{remove(){},add(){}},disabled:false}};
+    let sent;
+    const fetch=async(url,options)=>{sent=JSON.parse(options.body);return {json:async()=>({success:false,error:'test stop'})};};
+    '''+code+r'''
+    (async()=>{
+        for(const pair of DOCS_PAIRS){
+            docsState.pair=pair.k;
+            docsState.current={money:{pair:pair.k}};
+            const direct=pair.k==='USDT_THB';
+            for(const prefix of ['docm_','docp_']){
+                const recalc=prefix==='docm_'?docsRecalc:docsRecalcPay;
+                const put=(key,value)=>document.getElementById(prefix+key).value=value;
+                const get=key=>document.getElementById(prefix+key).value;
+                put('total_payin','575');put('transfer_amount','18550');put('rate','');
+                recalc('payout');
+                assert.equal(get('rate'),direct?'32.260870':'0.030997');
+                put('rate',direct?'32,26':'2,78');recalc('rate');
+                assert.equal(get('transfer_amount'),direct?'18549.50':(575/2.78).toFixed(pair.out==='USDT'?6:2));
+                put('transfer_amount','');recalc('payin');
+                assert.equal(get('transfer_amount'),direct?'18549.50':(575/2.78).toFixed(pair.out==='USDT'?6:2));
+            }
+            assert.equal(docsCollect().money.rate_basis,direct?'transfer_per_payin':'payin_per_transfer');
+            await docsSubmitPayment(1);
+            assert.equal(sent.money.rate_basis,direct?'transfer_per_payin':'payin_per_transfer');
+        }
+        const old={rate:'0.030997',total_payin:'575',transfer_amount:'18550'};
+        assert.equal(docsDisplayRate(old,'USDT_THB').toFixed(6),'32.260870');
+        assert.equal(old.rate,'0.030997');
+        assert.equal(docsDisplayRate({rate:'0.030998',total_payin:'61.997',transfer_amount:'2000'},'USDT_THB').toFixed(6),'32.259625');
+        assert.equal(docsDisplayRate({rate:'0.03099910102607024396292507517',total_payin:'1',transfer_amount:'32.26'},'USDT_THB').toFixed(6),'32.259000');
+        assert.equal(docsDisplayRate({rate:'32.259',rate_basis:'transfer_per_payin'},'USDT_THB'),32.259);
+        assert.equal(docsRateUnit('USDT_THB'),'THB за 1 USDT');
+        assert.equal(docsRateUnit('RUB_THB'),'RUB / THB');
+        console.log('both forms, six pairs, payloads and historical display PASS');
+    })().catch(e=>{console.error(e);process.exit(1)});
+    '''
+    result=subprocess.run([node,'-e',checks],capture_output=True,text=True,timeout=20)
+    assert result.returncode==0,result.stdout+result.stderr
 
 
 def route(pair='USDT_THB', method='usdt'):
@@ -55,7 +108,7 @@ def test_route_in_every_document(pair, method, kind):
             assert 'RUB' not in text(data)
         if kind == 'payment':
             assert 'leasehold' not in text(data).lower()
-    assert pair.replace('_', '/') in text(agreement)
+    assert ('THB за 1 USDT' if pair == 'USDT_THB' else pair.replace('_', '/')) in text(agreement)
     assert doc_routes.amount('575', m['payin_currency']) in text(addendum)
     assert doc_routes.amount('18550', m['transfer_currency']) in text(addendum)
     if method == 'usdt':
@@ -89,6 +142,71 @@ def test_rounding_and_amount_validation():
     m['rate']='32.26'
     with pytest.raises(ValueError, match='Курс не соответствует'):
         doc_routes.validate(m, 'leasehold')
+
+
+@pytest.mark.parametrize('incoming,outgoing,rate', [
+    ('575', '18550', '32.260870'),
+    ('575', '18548.92', '32.259'),
+    ('0.123456', '3.98', '32.26'),
+    ('1000000', '32260000', '32.26'),
+])
+def test_direct_rate_accepts_amounts_or_rounded_quote(incoming, outgoing, rate):
+    m=route()
+    m.update(total_payin=incoming, transfer_amount=outgoing, rate=rate,
+             rate_basis=doc_routes.DIRECT_RATE)
+    assert doc_routes.validate(m, 'leasehold') == []
+    assert doc_routes.rate_text(m) == f'1 USDT = {rate} THB'
+    m['transfer_amount']='100'
+    with pytest.raises(ValueError, match='Курс не соответствует'):
+        doc_routes.validate(m, 'leasehold')
+
+
+def test_unmarked_old_rate_is_not_reinterpreted_or_mutated():
+    old=route()
+    original=dict(old)
+    normalized=doc_routes.normalize(old)
+    assert normalized['rate_basis']==doc_routes.INVERSE_RATE
+    assert doc_routes.normalize(normalized)==normalized
+    assert doc_routes.rate_text(old)=='1 USDT = 32.260870 THB'
+    assert old==original
+
+
+def test_precise_historical_quote_not_replaced_by_rounded_payout_ratio():
+    old=route()
+    old.update(total_payin='1',transfer_amount='32.26',rate='0.03099910102607024396292507517')
+    assert doc_routes.validate(old,'leasehold')==[]
+    assert doc_routes.rate_text(old)=='1 USDT = 32.259000 THB'
+
+
+def test_historical_js_halfway_rounding_matches_display():
+    old=route()
+    old.update(total_payin='61.997',transfer_amount='2000',rate='0.030998')
+    assert doc_routes.validate(old,'leasehold')==[]
+    assert doc_routes.rate_text(old)=='1 USDT = 32.259625 THB'
+
+
+@pytest.mark.parametrize('rate', ['0.030997', '32.260870'])
+def test_direct_rate_is_consistent_through_documents(rate):
+    m=route()
+    if rate != '0.030997':
+        m.update(rate=rate, rate_basis=doc_routes.DIRECT_RATE)
+    a=text(docgen.build_agreement('leasehold',FIELDS,m,when=WHEN)[0])
+    b=text(docgen.build_addendum('leasehold',FIELDS,m,'MF-1','MF-0',1,when=WHEN))
+    assert 'курс THB за 1 USDT' in a
+    assert 'exchange rate in THB per 1 USDT' in a
+    assert b.count('1 USDT = 32.260870 THB')==3
+    assert 'USDT/THB' not in a+b and '0.030997' not in a+b
+
+
+@pytest.mark.parametrize('basis', ['wrong', '', None])
+def test_unknown_rate_basis_rejected(basis):
+    with pytest.raises(ValueError, match='направление курса'):
+        doc_routes.normalize(dict(route(),rate_basis=basis))
+
+
+def test_direct_rate_cannot_change_other_pair_semantics():
+    with pytest.raises(ValueError, match='только для USDT'):
+        doc_routes.normalize(dict(route('RUB_THB','bank'), rate_basis=doc_routes.DIRECT_RATE))
 
 
 @pytest.mark.parametrize('pair,payout,quoted_rate', [

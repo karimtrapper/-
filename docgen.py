@@ -466,8 +466,9 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
         default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
                        'Included in the agreed pay-in amount; no separate charge')
     else:
-        default_fee = (f"Включена в курс {money.get('rate', '')} {incoming}/{outgoing}, отдельно не взимается / "
-                       f"Included in the rate of {money.get('rate', '')} {incoming}/{outgoing}, "
+        quote = doc_routes.rate_text(money, deal_type)
+        default_fee = (f"Включена в курс {quote}, отдельно не взимается / "
+                       f"Included in the rate of {quote}, "
                        f"not charged separately")
     fee_note = money.get('fee_note') or default_fee
 
@@ -512,8 +513,10 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
                    money.get('bank_charges') or 'Включены в итоговую сумму / Included in the total')
         _set_field(t, 'Сумма, поступающая Агенту', payin)
         _set_field(t, 'Сумма и валюта перевода', payout)
+        quote = (doc_routes.rate_text(money, deal_type) if (incoming, outgoing) == ('USDT', 'THB') else
+                 f"{money.get('rate', '')} {incoming} за 1 {outgoing} / {money.get('rate', '')} {incoming} per 1 {outgoing}")
         _set_field(t, 'Курс и срок его действия',
-                   f"{money.get('rate', '')} {incoming} за 1 {outgoing} / {money.get('rate', '')} {incoming} per 1 {outgoing} — "
+                   f"{quote} — "
                    f"до {money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'}")
 
     if deal_type == 'leasehold':
@@ -575,6 +578,9 @@ def _apply_route(doc, money, deal_type):
     _, incoming, outgoing = doc_routes.pair_for(money, deal_type)
     paragraphs = list(doc.paragraphs) + [p for c in _unique_cells(doc) for p in c.paragraphs]
     for p in paragraphs:
+        if (incoming, outgoing) == ('USDT', 'THB'):
+            _para_replace(p, 'курс RUB/THB', 'курс THB за 1 USDT')
+            _para_replace(p, 'RUB/THB exchange rate', 'exchange rate in THB per 1 USDT')
         _para_replace(p, 'RUB/THB', f'{incoming}/{outgoing}')
         if deal_type == 'payment':
             for old, new in [('LEASEHOLD PAYMENT ARRANGEMENT', 'PAYMENT ARRANGEMENT'),
