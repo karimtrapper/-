@@ -33,7 +33,9 @@ FIELDS = {
     'recipient_name': 'Botanica Co., Ltd.', 'recipient_bank': 'Bangkok Bank',
 }
 MONEY = {'pair': 'RUB_THB', 'payin_currency': 'RUB', 'total_payin': '2800000',
-         'transfer_amount': '1007194.24', 'rate': '2.78', 'payin_method': 'bank'}
+         'transfer_amount': '1007194.24', 'rate': '2.78', 'payin_method': 'bank',
+         'payin_recipient': 'MF Corporation Company Limited', 'payin_recipient_role': 'Агент',
+         'payin_details': 'Test bank, account 12345', 'rate_valid_until': '10.09.2026, 23:59 (GMT+7)'}
 
 
 @pytest.fixture(autouse=True)
@@ -148,6 +150,71 @@ class TestБэкфилл:
         finally:
             s.close()
         assert keys == ['772817242']
+
+
+class TestМаршрутыДокументов:
+    @pytest.fixture(autouse=True)
+    def skip_pdf(self, monkeypatch):
+        # API-тестирует сохранение и валидацию; PDF проверяется отдельно реальным рендером.
+        import docgen
+        monkeypatch.setattr(docgen, 'to_pdf', lambda data: None)
+
+    def test_разные_пары_у_одного_клиента(self, client):
+        first = create(client, 'Тест Клиент')
+        second = create(client, 'Тест Клиент', money={
+            'pair':'USDT_THB','payin_currency':'USDT','payin_method':'usdt',
+            'total_payin':'575','transfer_amount':'18550','rate':'0.030997',
+            'payin_network':'TRON (TRC-20)','payin_wallet':'T'+'A'*33})
+        assert first.status_code == second.status_code == 200
+        assert first.json['agreement']['number'] != second.json['agreement']['number']
+
+    def test_разные_способы_оплаты_разные_договоры(self, client):
+        assert create(client, 'Тест Клиент').status_code == 200
+        assert create(client, 'Тест Клиент', money={'payin_method':'sbp'}).status_code == 200
+
+    def test_старый_шаблон_не_блокирует_исправленный_договор(self, client):
+        old=create(client, 'Тест Клиент').json['agreement']
+        s=get_session()
+        try:
+            s.get(Agreement,old['id']).route_key='legacy'
+            s.commit()
+        finally:
+            s.close()
+        r=client.post(f"/api/docs/agreements/{old['id']}/payment",json={'money':MONEY})
+        assert r.status_code == 400 and 'старого шаблона' in r.json['detail']
+        fresh=create(client, 'Тест Клиент')
+        assert fresh.status_code == 200
+        assert fresh.json['agreement']['id'] != old['id']
+        assert len(client.get(f"/api/docs/agreements/{old['id']}").json['agreement']['docs']) == 3
+
+    def test_новый_платёж_не_наследует_кошелёк_и_срок(self, client):
+        first = create(client, 'Тест Клиент').json['agreement']
+        r = client.post(f"/api/docs/agreements/{first['id']}/payment", json={
+            'money': {'total_payin':'300', 'transfer_amount':'100', 'rate':'3'}})
+        assert r.status_code == 400
+        assert 'payin_details' in r.json['fields']
+        assert 'rate_valid_until' in r.json['fields']
+        assert client.get(f"/api/docs/agreements/{first['id']}").json['agreement']['payments_count'] == 1
+
+    def test_новый_платёж_не_меняет_рамочный_маршрут(self, client):
+        first = create(client, 'Тест Клиент').json['agreement']
+        r=client.post(f"/api/docs/agreements/{first['id']}/payment", json={'money':dict(MONEY,payin_method='sbp')})
+        assert r.status_code == 400
+        assert 'новый договор' in r.json['detail']
+
+    def test_неверная_пара_не_создаёт_файлы(self, client):
+        r=create(client,'Тест Клиент',money={'pair':'USDT_THB','payin_currency':'USDT'})
+        assert r.status_code == 400
+        s=get_session()
+        try:
+            assert s.query(AgreementDoc).count() == 0
+        finally:
+            s.close()
+
+    def test_пустая_сеть_не_выпускает_usdt(self, client):
+        r=create(client,'Тест Клиент',money={'pair':'USDT_THB','payin_currency':'USDT','payin_method':'usdt'})
+        assert r.status_code == 400
+        assert 'payin_network' in r.json['fields']
 
 
 @pytest.mark.parametrize('payload', [

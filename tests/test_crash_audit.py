@@ -279,6 +279,8 @@ def test_docs_generation_failure_rolls_back_entire_package(cli, audit_db, monkey
         'deal_type': 'leasehold',
         'fields': {'client_name_ru': 'Аудит', 'client_passport_no': '990001234'},
         'money': {'total_payin': '100', 'transfer_amount': '100', 'rate': '1',
+                  'payin_recipient': 'Test recipient', 'payin_recipient_role': 'Agent',
+                  'payin_details': 'Test bank account', 'rate_valid_until': '10.09.2026 23:59 GMT+7',
                   'payin_currency': 'RUB', 'pair': 'RUB_THB', 'payin_method': 'bank'}})
     assert len(attempts) == 2
     assert response.status_code == 500

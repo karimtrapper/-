@@ -20,6 +20,7 @@ import io
 import os
 import re
 from datetime import datetime
+import doc_routes
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'doc_templates')
 ASSETS = os.path.join(TEMPLATE_DIR, 'assets')
@@ -28,6 +29,7 @@ TEMPLATES = {
     'freehold': 'MF_Freehold_Payment_Agreement_Template_RU_EN.docx',
     'leasehold': 'MF_Leasehold_Payment_Agreement_Template_RU_EN.docx',
     'rental': 'MF_Rental_Payment_Agreement_Template_RU_EN_v2.docx',
+    'payment': 'MF_Leasehold_Payment_Agreement_Template_RU_EN.docx',
 }
 INVOICE_TEMPLATE = 'MF_Invoice_Short_Template_RU_EN_v2.docx'
 # Рублёвый «Коммерческий инвойс» — то, что реально уходит клиенту на оплату.
@@ -39,6 +41,7 @@ DEAL_TYPE_TITLES = {
     'freehold': 'Фрихолд — покупка в собственность',
     'leasehold': 'Лизхолд — покупка права аренды',
     'rental': 'Аренда — депозит, арендная плата, коммунальные',
+    'payment': 'Перевод / обмен',
 }
 
 AGENT = {
@@ -344,6 +347,8 @@ def recipient_details(f: dict) -> str:
 
 
 def payment_basis(f: dict, deal_type: str) -> str:
+    if deal_type == 'payment' and not f.get('invoice_no') and not f.get('contract_ref'):
+        return 'Поручение Клиента на перевод средств / Client instruction to transfer funds'
     if deal_type == 'rental' and not f.get('invoice_no'):
         base = 'Договор аренды (Lease Agreement)'
         if f.get('contract_ref'):
@@ -450,6 +455,10 @@ def _fill_client_signature(table, f: dict, money: dict) -> None:
 
 def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when: datetime) -> None:
     t = doc.tables[1]
+    _, incoming, outgoing = doc_routes.pair_for(money, deal_type)
+    payin = doc_routes.amount(money.get('total_payin'), incoming)
+    payout = doc_routes.amount((money.get('usd_equivalent') if deal_type == 'freehold' else None)
+                              or money.get('transfer_amount'), outgoing)
     # Формулировки дословно из живых документов: у Фролова (аренда) и Буровой
     # (лизхолд) комиссия «в курсе», у Антоненко (фрихолд) курса RUB/THB нет
     # вовсе — там «в согласованной сумме pay-in».
@@ -457,20 +466,24 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
         default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
                        'Included in the agreed pay-in amount; no separate charge')
     else:
-        default_fee = (f"Включена в курс {money.get('rate', '')} RUB/THB, отдельно не взимается / "
-                       f"Included in the rate of {money.get('rate', '')} RUB/THB, "
+        default_fee = (f"Включена в курс {money.get('rate', '')} {incoming}/{outgoing}, отдельно не взимается / "
+                       f"Included in the rate of {money.get('rate', '')} {incoming}/{outgoing}, "
                        f"not charged separately")
     fee_note = money.get('fee_note') or default_fee
 
     _set_field(t, 'Номер и дата', f'№ {number} от {date_ru_en(when)}')
     _set_field(t, 'Клиент / Client', client_line(f, 'ru') + '\n' + client_line(f, 'en'))
     _set_field(t, 'Основание платежа', payment_basis(f, deal_type))
-    _set_field(t, 'Объект / Property', property_line(f, deal_type))
+    _set_field(t, 'Объект / Property', property_line(f, deal_type) or
+               ('Перевод средств / Funds transfer' if deal_type == 'payment' else ''))
     _set_field(t, 'Получатель / Recipient', f.get('recipient_name'))
     _set_field(t, 'Реквизиты получателя', recipient_details(f))
     _set_field(t, 'Комиссия Агента / Agent', fee_note)
-    _set_field(t, 'Всего к оплате Клиентом', money.get('total_payin'))
-    _set_field(t, 'Сумма для перечисления получателю', money.get('transfer_amount'))
+    _set_field(t, 'Всего к оплате Клиентом', payin)
+    _set_field(t, 'Сумма для перечисления получателю', payout)
+    if outgoing == 'USDT':
+        _set_field(t, 'Реквизиты получателя',
+                   f"Сеть / Network: {money.get('payout_network', '')}\nUSDT: {money.get('payout_wallet', '')}")
     _set_field(t, 'Остаток после исполнения', DEFAULTS['remaining_balance'])
     days = money.get('execution_days') or EXECUTION_DAYS.get(deal_type, DEFAULTS['execution_days'])
     word = 'рабочий день' if str(days) == '1' else 'рабочих дня'
@@ -487,7 +500,7 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
 
     if deal_type == 'freehold':
         _set_field(t, 'Банковские расходы', money.get('bank_charges') or 'OUR')
-        _set_field(t, 'Сумма и валюта pay-in', money.get('total_payin'))
+        _set_field(t, 'Сумма и валюта pay-in', payin)
         _set_field(t, 'Обязательство по инвойсу застройщика',
                    f"{f.get('invoice_currency') or 'THB'} {f.get('invoice_amount') or ''}".strip())
         _set_field(t, 'Источник курса и срок действия', money.get('rate_source'))
@@ -495,11 +508,12 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
         _set_field(t, 'Статус зачёта THB-инвойса', money.get('thb_credit_status'))
         _set_field(t, 'Письменное подтверждение застройщика', money.get('developer_confirmation'))
     else:
-        _set_field(t, 'Банковские расходы', DEFAULTS['bank_charges_local'])
-        _set_field(t, 'Сумма, поступающая Агенту', money.get('total_payin'))
-        _set_field(t, 'Сумма и валюта перевода', money.get('transfer_amount'))
+        _set_field(t, 'Банковские расходы', DEFAULTS['bank_charges_local'] if outgoing == 'THB' else
+                   money.get('bank_charges') or 'Включены в итоговую сумму / Included in the total')
+        _set_field(t, 'Сумма, поступающая Агенту', payin)
+        _set_field(t, 'Сумма и валюта перевода', payout)
         _set_field(t, 'Курс и срок его действия',
-                   f"{money.get('rate', '')} RUB за 1 THB / {money.get('rate', '')} RUB per 1 THB — "
+                   f"{money.get('rate', '')} {incoming} за 1 {outgoing} / {money.get('rate', '')} {incoming} per 1 {outgoing} — "
                    f"до {money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'}")
 
     if deal_type == 'leasehold':
@@ -525,7 +539,7 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
     method = money.get('payin_method') or 'bank'
     valid = money.get('rate_valid_until') or f'{when:%d.%m.%Y}, 23:59 (GMT+7)'
     agent = AGENT['name']
-    _set_field(t, 'Способ pay-in', PAYIN_METHODS.get(method, method))
+    _set_field(t, 'Способ pay-in', doc_routes.METHODS.get(method, method))
     _set_field(t, 'Валюта / Currency', money.get('payin_currency') or 'RUB')
     _set_field(t, 'Получатель платежа',
                f'Указывается в актуальном Invoice № {number}: {agent} либо уполномоченный '
@@ -545,6 +559,70 @@ def _fill_appendix2(doc, f: dict, money: dict, number: str, when: datetime) -> N
     _set_field(t, 'Назначение платежа',
                f'Указывается в Invoice № {number} / As stated in the Invoice')
     _set_field(t, 'Подтверждение оплаты', PAYIN_EVIDENCE.get(method, ''))
+    if money.get('payin_recipient'):
+        _set_field(t, 'Получатель платежа', money['payin_recipient'])
+        _set_field(t, 'Роль получателя', money.get('payin_recipient_role', ''))
+    if method in ('usdt', 'cash') or money.get('payin_details'):
+        _set_field(t, 'Реквизиты / Payment details', doc_routes.details(money))
+    if method != 'bank':
+        _set_field(t, 'Назначение платежа', payment_reference(f, method))
+    _set_field(t, 'Наличные', doc_routes.details(money) if method == 'cash' else
+               'Не применимо / Not applicable')
+
+
+def _apply_route(doc, money, deal_type):
+    """Валюта и способ оплаты в обеих языковых колонках рамочного договора."""
+    _, incoming, outgoing = doc_routes.pair_for(money, deal_type)
+    paragraphs = list(doc.paragraphs) + [p for c in _unique_cells(doc) for p in c.paragraphs]
+    for p in paragraphs:
+        _para_replace(p, 'RUB/THB', f'{incoming}/{outgoing}')
+        if deal_type == 'payment':
+            for old, new in [('LEASEHOLD PAYMENT ARRANGEMENT', 'PAYMENT ARRANGEMENT'),
+                             ('ОПЛАТЫ LEASEHOLD', 'ПЕРЕВОДА СРЕДСТВ'),
+                             ('Leasehold Payment Instruction', 'Payment Instruction'),
+                             ('Leasehold Payment Arrangement', 'Payment Arrangement'),
+                             ('LEASEHOLD PAYMENT INSTRUCTION', 'PAYMENT INSTRUCTION'),
+                             ('оплаты leasehold', 'перевода средств'),
+                             ('THB', outgoing)]:
+                _para_replace(p, old, new)
+            if outgoing == 'USDT':
+                for old, new in [
+                    ('платеж не был осуществлен Агентом Банку', 'перевод не был осуществлен Агентом получателю'),
+                    ('Agent to the Bank', 'Agent to the recipient'),
+                    ('направления платежа банку', 'направления перевода получателю'),
+                    ('submitting the payment to the bank', 'submitting the transfer to the recipient'),
+                    ('доступный банковский reference', 'доступный TXID перевода'),
+                    ('available bank reference', 'available transaction ID (TXID)'),
+                ]:
+                    _para_replace(p, old, new)
+    if deal_type == 'payment':
+        replacements = {
+            '1.1.': ('Агент по поручению и за счёт Клиента организует конвертацию и перевод средств получателю, указанному в отдельной Payment Instruction (Приложение 1). Основание, цель перевода, валюты и реквизиты определяются в этой инструкции (далее — «Основная сделка»).',
+                     'At the Client’s instruction and expense, the Agent arranges conversion and transfer of funds to the recipient specified in a separate Payment Instruction (Appendix 1). The basis, purpose, currencies and payment details are specified in that instruction (the “Underlying Transaction”).'),
+            '1.2.': ('Агент организует перевод средств и не является стороной Основной сделки между Клиентом и получателем.', 'The Agent arranges the funds transfer and is not a party to the Underlying Transaction between the Client and the recipient.'),
+            '3.1.': ('До исполнения Клиент предоставляет документы, подтверждающие основание перевода, сведения о получателе и иные документы, разумно запрошенные Агентом.', 'Before execution, the Client provides documents supporting the transfer basis, recipient details and other documents reasonably requested by the Agent.'),
+            '3.2.': ('Клиент самостоятельно проверяет основание перевода и реквизиты получателя. Агент не проводит юридическую проверку Основной сделки, если отдельно письменно не согласовано иное.', 'The Client independently verifies the transfer basis and recipient details. The Agent does not perform legal due diligence of the Underlying Transaction unless separately agreed in writing.'),
+            '6.2.': ('Агент не отвечает за действия получателя, банка, платёжной системы или органа власти; а также косвенные убытки и упущенную выгоду.', 'The Agent is not liable for acts of the recipient, bank, payment system or public authority, or for indirect losses and lost profit.'),
+        }
+        for row in doc.tables[0].rows:
+            ru = row.cells[-2].text.strip()
+            for clause, (ru_text, en_text) in replacements.items():
+                if ru.startswith(clause):
+                    _set_cell(row.cells[-2], clause + ' ' + ru_text)
+                    _set_cell(row.cells[-1], clause + ' ' + en_text)
+            if ru.startswith('3. ДОКУМЕНТЫ'):
+                _set_cell(row.cells[-2], '3. ДОКУМЕНТЫ ПО ПЕРЕВОДУ')
+                _set_cell(row.cells[-1], '3. TRANSFER DOCUMENTS')
+        if len(doc.tables) > 1:
+            row = doc.tables[1].rows[1]
+            _set_cell(row.cells[-2], 'Клиент подтверждает точность реквизитов получателя и согласие на исполнение перевода на указанных условиях.')
+            _set_cell(row.cells[-1], 'The Client confirms the accuracy of recipient details and agrees to execution of the transfer on the stated terms.')
+    row = _find_row(doc.tables[0], '2.1.')
+    if row is not None:
+        for cell, text in zip(row.cells[-2:], [
+            f"Для настоящего Договора согласовано направление {incoming} → {outgoing}; способ оплаты Клиентом: {doc_routes.METHODS[money['payin_method']]}. Конкретные реквизиты и сеть, если применимо, указываются в Invoice и Payment Instruction.",
+            f"The agreed route under this Agreement is {incoming} → {outgoing}; the Client’s pay-in method is {doc_routes.METHODS[money['payin_method']].split(' / ')[-1]}. Transaction details and network, where applicable, are specified in the Invoice and Payment Instruction."]):
+            cell.add_paragraph(text)
 
 
 # ─────────────────────────── публичное API ───────────────────────────
@@ -564,6 +642,15 @@ def _drop_annexes(doc) -> None:
                 dropping = True
         if dropping and not child.tag.endswith('}sectPr'):
             body.remove(child)
+    # Пустой абзац с разрывом перед первым приложением не должен создавать
+    # пустую последнюю страницу рамочного договора.
+    for child in reversed(list(body)):
+        if child.tag.endswith('}sectPr'):
+            continue
+        if child.tag.endswith('}p') and not ''.join(child.itertext()).strip():
+            body.remove(child)
+        else:
+            break
 
 
 def build_agreement(deal_type: str, fields: dict, money: dict,
@@ -582,11 +669,15 @@ def build_agreement(deal_type: str, fields: dict, money: dict,
         raise ValueError(f'неизвестный тип сделки: {deal_type}')
     when = when or datetime.now()
     number = number or make_number(fields.get('client_passport_no', ''), when, 1)
+    money = doc_routes.normalize(money, deal_type)
 
     doc = Document(os.path.join(TEMPLATE_DIR, TEMPLATES[deal_type]))
     _strip_draft_mark(doc)
+    _apply_route(doc, money, deal_type)
 
     for p in doc.paragraphs:
+        if p.text.startswith('АГЕНТСКИЙ ДОГОВОР'):
+            p.add_run(f' № {number}')
         _para_replace(p, 'г. [●] / [●], [дата / date]',
                       f'г. Пхукет, Таиланд / Phuket, Thailand, {date_ru_en(when)}')
 
@@ -642,8 +733,10 @@ def build_addendum(deal_type: str, fields: dict, money: dict, number: str,
     from docx import Document  # noqa: PLC0415
 
     when = when or datetime.now()
+    money = doc_routes.normalize(money, deal_type)
     doc = Document(os.path.join(TEMPLATE_DIR, TEMPLATES[deal_type]))
     _strip_draft_mark(doc)
+    _apply_route(doc, money, deal_type)
     _fill_appendix1(doc, fields, deal_type, money, number, when)
     _fill_appendix2(doc, fields, money, number, when)
     _sign_agent(doc, when)
@@ -736,14 +829,19 @@ def money_ru(amount, currency: str = 'RUB') -> str:
 
 def build_commercial_invoice(fields: dict, money: dict, number: str,
                              deal_type: str, when: datetime | None = None) -> bytes:
-    """Рублёвый коммерческий инвойс клиенту — тот, что уходит в банк.
+    """Инвойс по выбранному маршруту и реквизитам конкретной операции.
 
-    Двуязычный Invoice Short от юриста в реальных сделках не используется:
-    клиент платит по этому документу, и банк сверяет назначение платежа с ним.
+    Старый RUB-шаблон оставлен лишь для совместимости прямых legacy-вызовов;
+    API требует явно заполнить реквизиты и всегда использует route invoice.
     """
     from docx import Document  # noqa: PLC0415
 
     when = when or datetime.now()
+    money = doc_routes.normalize(money, deal_type)
+    # Один платёжный маршрут — один источник реквизитов. Старый банковский
+    # шаблон допустим только для legacy-вызовов RUB/bank без новых полей.
+    if money['payin_method'] != 'bank' or money['payin_currency'] != 'RUB' or money.get('payin_details'):
+        return _route_invoice(fields, money, number, when)
     doc = Document(os.path.join(TEMPLATE_DIR, COMMERCIAL_INVOICE_TEMPLATE))
     method = money.get('payin_method') or 'bank'
     client_bits = [fields.get('client_name_en') or fields.get('client_name_ru') or '']
@@ -770,6 +868,34 @@ def build_commercial_invoice(fields: dict, money: dict, number: str,
         for old, new in repl.items():
             _para_replace(p, old, new)
     _sign_agent(doc, when)
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
+def _route_invoice(fields, money, number, when):
+    from docx import Document
+    doc = Document(io.BytesIO(build_invoice(fields, money, number,
+                   money.get('parent_number') or number, number, when)))
+    _set_field(doc.tables[1], 'Клиент', client_line(fields, 'ru') + '\n' + client_line(fields, 'en'))
+    _set_field(doc.tables[1], 'Сделка', property_line(fields, money.get('deal_type', 'payment')) or
+               f"Перевод / Transfer {money['pair'].replace('_', ' → ')}")
+    _set_field(doc.tables[1], 'Основание',
+               f"Договор / Agreement № {money.get('parent_number') or number}; Instruction № {number}\n" +
+               payment_basis(fields, money.get('deal_type', 'payment')))
+    _set_cell(doc.tables[2].rows[0].cells[-1], 'ИТОГО К ОПЛАТЕ / AMOUNT DUE\n' +
+              doc_routes.amount(money.get('total_payin'), money['payin_currency']))
+    _set_field(doc.tables[3], 'Получатель платежа', money.get('payin_recipient') or '')
+    _set_field(doc.tables[3], 'Реквизиты', doc_routes.details(money))
+    _set_field(doc.tables[3], 'Способ оплаты', doc_routes.METHODS[money['payin_method']])
+    _set_field(doc.tables[3], 'Назначение платежа', money.get('payment_reference') or
+               payment_reference(fields, money['payin_method']))
+    row = doc.tables[3].rows[-1]
+    role = money.get('payin_recipient_role') or ''
+    _set_cell(row.cells[0], f'Роль получателя / Recipient role: {role}\n'
+              'Оплата указанному получателю по реквизитам настоящего счёта является надлежащим исполнением обязательства Клиента перед MF Corporation Company Limited по указанной операции.\n'
+              'Payment to the named recipient using the details in this Invoice constitutes due performance of the Client’s obligation to MF Corporation Company Limited for this transaction.\n'
+              + PAYIN_EVIDENCE[money['payin_method']] + ': направить менеджеру MF / send to the MF manager.')
     buf = io.BytesIO()
     doc.save(buf)
     return buf.getvalue()

@@ -2130,6 +2130,7 @@ class Agreement(Base):
     # из паспорта оно приходит то капсом, то в нормальном регистре, и «БУРОВА
     # НАДЕЖДА» с «Бурова Надежда» разъезжались в двух разных клиентов.
     client_key = Column(String(20), index=True)
+    route_key = Column(String(60), nullable=False, default='legacy')
     deal_type = Column(String(20), nullable=False)          # freehold | leasehold | rental
     number = Column(String(40), nullable=False, index=True)  # MF-<3 цифры паспорта>-<ДДММ>-<N>
     status = Column(String(20), default='draft')             # draft | sent | signed
@@ -2138,14 +2139,14 @@ class Agreement(Base):
     payments_count = Column(Integer, default=1)              # сколько допников выпущено
     created_at = Column(DateTime, default=datetime.utcnow)
     signed_at = Column(DateTime)
-    __table_args__ = (UniqueConstraint('client_key', 'deal_type', name='uq_agreement_client_key_type'),)
+    __table_args__ = (UniqueConstraint('client_key', 'deal_type', 'route_key', name='uq_agreement_client_route'),)
 
     docs = relationship('AgreementDoc', back_populates='agreement',
                         cascade='all, delete-orphan', order_by='AgreementDoc.id')
 
     def to_dict(self, with_docs=True):
         d = {'id': self.id, 'client_id': self.client_id, 'client_name': self.client_name,
-             'client_key': self.client_key,
+             'client_key': self.client_key, 'route_key': self.route_key,
              'deal_type': self.deal_type, 'number': self.number, 'status': self.status,
              'payments_count': self.payments_count or 1,
              'fields': json.loads(self.fields_json or '{}'),
@@ -2203,14 +2204,20 @@ def _rebuild_agreements_without_name_constraint():
     with engine.begin() as conn:
         sql = conn.execute(text(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name='agreements'")).scalar()
-        if not sql or 'uq_agreement_client_type' not in sql:
+        if not sql or not any(k in sql for k in ('uq_agreement_client_type', 'uq_agreement_client_key_type')):
             return
         cols = [r[1] for r in conn.execute(text('PRAGMA table_info(agreements)'))]
         names = ', '.join(cols)
-        conn.execute(text('ALTER TABLE agreements RENAME TO agreements_old'))
-        Agreement.__table__.create(bind=conn)
-        conn.execute(text(f'INSERT INTO agreements ({names}) SELECT {names} FROM agreements_old'))
-        conn.execute(text('DROP TABLE agreements_old'))
+        # Не переименовываем исходную таблицу: SQLite иначе перепишет FK
+        # agreement_docs на временное имя. Копия + замена в одной транзакции.
+        from sqlalchemy.schema import CreateTable
+        ddl = str(CreateTable(Agreement.__table__).compile(engine))
+        conn.execute(text(ddl.replace('CREATE TABLE agreements', 'CREATE TABLE agreements_route_new', 1)))
+        conn.execute(text(f'INSERT INTO agreements_route_new ({names}) SELECT {names} FROM agreements'))
+        conn.execute(text('DROP TABLE agreements'))
+        conn.execute(text('ALTER TABLE agreements_route_new RENAME TO agreements'))
+        for index in Agreement.__table__.indexes:
+            index.create(bind=conn, checkfirst=True)
     app.logger.info('agreements: снято старое ограничение уникальности по имени')
 
 
@@ -2261,11 +2268,16 @@ try:
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS source_tag VARCHAR(30)"))
             conn.execute(text("ALTER TABLE sber_incomes ADD COLUMN IF NOT EXISTS keep_active BOOLEAN DEFAULT FALSE"))
             conn.execute(text("ALTER TABLE agreements ADD COLUMN IF NOT EXISTS client_key VARCHAR(20)"))
+            conn.execute(text("ALTER TABLE agreements ADD COLUMN IF NOT EXISTS route_key VARCHAR(60) NOT NULL DEFAULT 'legacy'"))
             # Уникальность переехала с имени на паспорт: имя приходит то капсом,
             # то нет. Старое ограничение мешает однофамильцам с разными паспортами.
             conn.execute(text("ALTER TABLE agreements DROP CONSTRAINT IF EXISTS uq_agreement_client_type"))
+            conn.execute(text("ALTER TABLE agreements DROP CONSTRAINT IF EXISTS uq_agreement_client_key_type"))
+            conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS uq_agreement_client_route ON agreements (client_key, deal_type, route_key)"))
         # Для SQLite
         else:
+            try: conn.execute(text("ALTER TABLE agreements ADD COLUMN route_key VARCHAR(60) NOT NULL DEFAULT 'legacy'"))
+            except Exception: pass
             try: conn.execute(text("ALTER TABLE agreements ADD COLUMN client_key VARCHAR(20)"))
             except Exception: pass
             try: conn.execute(text("ALTER TABLE deals ADD COLUMN payout_wallet_id INTEGER"))
@@ -15602,7 +15614,7 @@ def static_files(filename):
 # Карта полей и дефолты: wiki/pages/crm-doc-generator-fields.md
 # ═══════════════════════════════════════════════════════════════════
 
-DOCS_DEAL_TYPES = ('freehold', 'leasehold', 'rental')
+DOCS_DEAL_TYPES = ('freehold', 'leasehold', 'rental', 'payment')
 # Поля, без которых документ нельзя выпускать. Фрихолд тяжелее двух других:
 # по п. 2.3 нужно письменное подтверждение застройщика с курсом и его сроком.
 DOCS_REQUIRED_FIELDS = ['client_name_ru', 'client_passport_no']
@@ -15611,6 +15623,7 @@ DOCS_REQUIRED_MONEY = {
                  'thb_credit_status', 'developer_confirmation'],
     'leasehold': ['total_payin', 'transfer_amount', 'rate'],
     'rental': ['total_payin', 'transfer_amount', 'rate'],
+    'payment': ['total_payin', 'transfer_amount', 'rate'],
 }
 
 
@@ -15718,6 +15731,7 @@ DOCS_REQUIRED_SLOTS = {
     'freehold': ['passport', 'invoice'],
     'leasehold': ['passport', 'invoice'],
     'rental': ['passport'],
+    'payment': ['passport'],
 }
 DOCS_SLOT_LABEL = {'passport': 'паспорт', 'invoice': 'инвойс застройщика',
                    'spa': 'договор с застройщиком'}
@@ -15804,6 +15818,12 @@ def docs_create_agreement():
     if deal_type not in DOCS_DEAL_TYPES:
         return jsonify({'success': False, 'error': 'bad_deal_type'}), 400
     missing = _docs_validate(deal_type, fields, money)
+    import doc_routes
+    try:
+        money = doc_routes.normalize(money, deal_type)
+        missing += doc_routes.validate(money, deal_type)
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': 'invalid_route', 'detail': str(exc)}), 400
     if missing:
         return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
 
@@ -15812,13 +15832,28 @@ def docs_create_agreement():
     db = get_session()
     try:
         client_key = _docs_client_key(fields)
-        dup = db.query(Agreement).filter(Agreement.client_key == client_key,
-                                         Agreement.deal_type == deal_type).first()
+        route_key = money['pair'] + ':' + money['payin_method']
+        candidates = db.query(Agreement).filter(Agreement.client_key == client_key,
+                                               Agreement.deal_type == deal_type).all()
+        dup = None
+        for candidate in candidates:
+            # Старый шаблон не фиксировал маршрут и мог содержать другую валюту.
+            # Архив сохраняем, но он не блокирует исправленный рамочный договор.
+            if candidate.route_key == 'legacy':
+                continue
+            old = json.loads(candidate.money_json or '{}')
+            try:
+                old = doc_routes.normalize(old, deal_type)
+                old_key = old['pair'] + ':' + old['payin_method']
+            except ValueError:
+                old_key = candidate.route_key
+            if old_key == route_key:
+                dup = candidate
+                break
         if dup:
             return jsonify({'success': False, 'error': 'already_exists',
                             'agreement_id': dup.id, 'number': dup.number,
-                            'detail': 'У клиента уже есть договор этого типа — '
-                                      'новый платёж оформляется допником'}), 409
+                            'detail': 'У клиента уже есть договор этого типа и маршрута — новый платёж оформляется допником'}), 409
 
         # Номер = MF-<3 цифры паспорта>-<ДДММ>-<N>. У одного клиента в один день
         # может появиться договор второго типа — тогда хвост сдвигаем, иначе
@@ -15826,7 +15861,8 @@ def docs_create_agreement():
         seq = 1
         while db.query(Agreement.id).filter(
                 Agreement.number == docgen.make_number(
-                    fields.get('client_passport_no', ''), None, seq)).first():
+                    fields.get('client_passport_no', ''), None, seq)).first() or db.query(AgreementDoc.id).filter(
+                AgreementDoc.number == docgen.make_number(fields.get('client_passport_no', ''), None, seq)).first():
             seq += 1
         number = docgen.make_number(fields.get('client_passport_no', ''), None, seq)
         money['part'] = 1
@@ -15843,6 +15879,7 @@ def docs_create_agreement():
 
         a = Agreement(client_id=int(client_id) if client_id else None,
                       client_name=client_name, client_key=client_key,
+                      route_key=route_key,
                       deal_type=deal_type, number=number,
                       fields_json=json.dumps(fields, ensure_ascii=False),
                       money_json=json.dumps(money, ensure_ascii=False), payments_count=1)
@@ -15893,8 +15930,22 @@ def docs_add_payment(agreement_id):
         money = json.loads(a.money_json or '{}')
         money.update(body.get('money') or {})
         money['deal_type'] = a.deal_type
+        import doc_routes
+        try:
+            if a.route_key == 'legacy':
+                raise ValueError('Это договор старого шаблона. Создайте новый договор с выбранной валютной парой и способом оплаты; старые файлы сохраняются')
+            money = doc_routes.normalize(money, a.deal_type)
+            original = doc_routes.normalize(json.loads(a.money_json or '{}'), a.deal_type)
+            if (money['pair'], money['payin_method']) != (original['pair'], original['payin_method']):
+                raise ValueError('Изменился маршрут: создайте новый договор для этой пары и способа оплаты')
+            # Каждый новый платёж требует реквизитов из новой формы, не из старого инвойса.
+            for key in (*doc_routes.ROUTE_FIELDS, 'rate_valid_until', 'payment_reference'):
+                money[key] = (body.get('money') or {}).get(key, '')
+            route_missing = doc_routes.validate(money, a.deal_type)
+        except ValueError as exc:
+            return jsonify({'success': False, 'error': 'invalid_route', 'detail': str(exc)}), 400
 
-        missing = _docs_validate(a.deal_type, fields, money)
+        missing = _docs_validate(a.deal_type, fields, money) + route_missing
         if missing:
             return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
 
@@ -15912,6 +15963,7 @@ def docs_add_payment(agreement_id):
             tail += 1
             number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
         add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
+        money['parent_number'] = a.number
         inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
         problems = docgen.check(add) + docgen.check(inv)
         if problems:

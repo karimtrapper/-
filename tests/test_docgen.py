@@ -163,7 +163,7 @@ class TestГенерацияДоговоров:
 
     def test_фрихолд_без_подтверждения_застройщика_оставляет_дыры(self):
         # блок USD-конверсии обязателен по п. 2.3 — check обязан это поймать
-        add = docgen.build_addendum('freehold', CLIENT, MONEY, 'MF-1', 'MF-0', 1, when=WHEN)
+        add = docgen.build_addendum('freehold', CLIENT, dict(MONEY, transfer_amount='USD 30500'), 'MF-1', 'MF-0', 1, when=WHEN)
         assert docgen.check(add)
 
     def test_подпись_и_печать_вставлены_по_одному_разу(self):

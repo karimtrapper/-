@@ -746,14 +746,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 /* Широкие колонки: длинные значения (ФИО, адрес банка) должны читаться целиком */
 /* Две колонки, а не три: широкое поле занимает ровно строку и не оставляет
    дыр в сетке, а обычные становятся вдвое шире и читаются целиком. */
-.docs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(420px,1fr)); gap:16px 20px; margin-top:14px; }
+.docs-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 20px; margin-top:14px; }
 .docs-grid input { width:100%; box-sizing:border-box; }
 /* Значения важнее подписей: кегль поля крупнее лейбла, воздуха больше */
 .docs-grid .form-input { font-size:.95rem; padding:10px 12px; }
 /* Длинные значения — наименование получателя, адрес банка, адрес объекта —
    в одну колонку не влезают и обрезаются на середине слова. Отдаём им две. */
 .docs-field.is-wide { grid-column:span 2; }
-@media (max-width:760px){ .docs-field.is-wide { grid-column:auto; } }
+@media (max-width:760px){ .docs-grid { grid-template-columns:minmax(0,1fr); } .docs-field.is-wide { grid-column:auto; } }
 /* Подпись источника: короткий ярлык слота, а не имя файла на пол-строки */
 .docs-src {
   display:inline-block; margin-left:6px; padding:1px 7px; border-radius:5px;
@@ -2272,7 +2272,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div class="docs-head">
                     <div>
                         <div class="card-title" style="margin:0">Агентские договоры</div>
-                        <p class="docs-lede">Договор подписывается один раз на клиента и тип сделки.
+                        <p class="docs-lede">Договор подписывается на клиента, тип сделки, валютную пару и способ оплаты.
                             Каждый следующий платёж — доп. соглашение и инвойс со ссылкой на него.</p>
                     </div>
                     <div style="display:flex;gap:8px;align-items:center">
@@ -2297,6 +2297,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <button type="button" class="docs-pair" data-dt="freehold" aria-pressed="false" onclick="docsSetType('freehold')">Фрихолд</button>
                             <button type="button" class="docs-pair" data-dt="leasehold" aria-pressed="false" onclick="docsSetType('leasehold')">Лизхолд</button>
                             <button type="button" class="docs-pair" data-dt="rental" aria-pressed="false" onclick="docsSetType('rental')">Аренда</button>
+                            <button type="button" class="docs-pair" data-dt="payment" aria-pressed="false" onclick="docsSetType('payment')">Перевод / обмен</button>
                         </div>
                     </div>
                     <div class="docs-field">
@@ -2379,6 +2380,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     </div>
 
+                    <div class="docs-grid" id="docsRouteForm" style="margin:20px 0"></div>
                     <details class="docs-fold" id="docsFoldFields">
                         <summary>Данные из документов<span class="docs-summary-text" id="docsFieldsSummary"></span></summary>
                         <div class="docs-fold-body">
@@ -2386,8 +2388,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         </div>
                     </details>
 
-                    <details class="docs-fold" id="docsFoldTerms">
-                        <summary>Реквизиты и сроки<span class="docs-summary-text">заполнены по умолчанию — комиссия в курсе, срок 1 рабочий день</span></summary>
+                    <details class="docs-fold" id="docsFoldTerms" open>
+                        <summary>Сроки и условия<span class="docs-summary-text">комиссия включена в курс; срок действия реквизитов укажите для этого платежа</span></summary>
                         <div class="docs-fold-body">
                             <div class="docs-grid" id="docsMoneyForm"></div>
                         </div>
@@ -13712,7 +13714,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         // остальное, а распознанное из документов правят редко.
         // Карта полей: wiki/pages/crm-doc-generator-fields.md
         // ═══════════════════════════════════════════════════════════
-        const DOCS_TYPE_LABEL = {freehold:'Фрихолд', leasehold:'Лизхолд', rental:'Аренда'};
+        const DOCS_TYPE_LABEL = {freehold:'Фрихолд', leasehold:'Лизхолд', rental:'Аренда', payment:'Перевод / обмен'};
         const DOCS_KIND_LABEL = {agreement:'Агентский договор', addendum:'Доп. соглашение',
             invoice:'Инвойс', signed:'Подписанный', source:'Исходник',
             source_passport:'Исходник — паспорт', source_invoice:'Исходник — инвойс',
@@ -13725,8 +13727,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             {k:'USDT_THB', in:'USDT', out:'THB', label:'USDT → THB'},
             {k:'RUB_USD',  in:'RUB',  out:'USD', label:'RUB → USD'},
             {k:'USDT_USD', in:'USDT', out:'USD', label:'USDT → USD'},
+            {k:'RUB_USDT', in:'RUB', out:'USDT', label:'RUB → USDT'},
+            {k:'USD_THB', in:'USD', out:'THB', label:'USD → THB'},
         ];
-        const DOCS_DEFAULT_PAIR = {freehold:'RUB_USD', leasehold:'RUB_THB', rental:'RUB_THB'};
+        const DOCS_DEFAULT_PAIR = {freehold:'RUB_USD', leasehold:'RUB_THB', rental:'RUB_THB', payment:'RUB_USDT'};
 
         // Третий элемент — 'wide': значение длинное, поле занимает две колонки
         const DOCS_FIELDS = [
@@ -13750,8 +13754,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         // Реквизиты и сроки. Живут под свёрткой: почти всегда одинаковые.
         const DOCS_MONEY = [
             ['rate_valid_until','Курс действует до','сегодня, 23:59 (GMT+7)', null],
-            ['payin_method','Способ оплаты','bank / sbp / usdt / cash', null],
-            ['payin_details','Реквизиты для оплаты','р/с, банк, БИК / СБП / кошелёк', null],
             ['client_address','Адрес клиента','', null],
             ['client_contact','Email или телефон клиента','', null],
             ['execution_days','Срок исполнения, раб. дней','3', null],
@@ -13765,7 +13767,62 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             ['developer_confirmation','Письменное подтверждение застройщика','письмо № … от …', ['freehold']],
         ];
         const DOCS_SLOTS = [['passport','docsFilePassport'], ['invoice','docsFileInvoice'], ['spa','docsFileSpa']];
-        const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport']};
+        const DOCS_REQUIRED_SLOTS = {freehold:['passport','invoice'], leasehold:['passport','invoice'], rental:['passport'], payment:['passport']};
+        const DOCS_ROUTE_FIELDS = [
+            ['payin_recipient','Получатель оплаты клиента','Полное имя или наименование'],
+            ['payin_recipient_role','Роль получателя','Агент / уполномоченный платёжный партнёр'],
+            ['payin_details','Реквизиты для оплаты','Банк, счёт, БИК / ссылка или телефон СБП', ['bank','sbp']],
+            ['payin_network','Сеть USDT','Например: TRON (TRC-20), Ethereum (ERC-20)', ['usdt']],
+            ['payin_wallet','Кошелёк для приёма USDT','Адрес в выбранной сети', ['usdt']],
+            ['cash_network','Сеть приёма наличных','Название сети / кассы', ['cash']],
+            ['cash_location','Место приёма наличных','Город и адрес', ['cash']],
+            ['cash_contact','Контакт кассы','ФИО и телефон', ['cash']],
+            ['cash_datetime','Когда вносятся наличные','Дата, время и часовой пояс', ['cash']],
+            ['payout_network','Сеть USDT получателя','Сеть для отправки получателю', ['payout']],
+            ['payout_wallet','Кошелёк получателя','Адрес получателя в выбранной сети', ['payout']],
+        ];
+        const DOCS_METHOD_LABELS = {bank:'По реквизитам', sbp:'СБП', usdt:'USDT — перевод по сети', cash:'Наличные через кассу / сеть'};
+
+        function docsRouteRender(prefix, pairKey, values={}){
+            const p=docsPair(pairKey);
+            const methods=p.in==='USDT'?['usdt']:p.in==='RUB'?['bank','sbp','cash']:['bank','cash'];
+            const method=methods.includes(values.payin_method)?values.payin_method:methods[0];
+            return `<datalist id="${prefix}networks"><option value="TRON (TRC-20)"><option value="Ethereum (ERC-20)"><option value="BNB Smart Chain (BEP-20)"><option value="TON"></datalist>
+                <div class="docs-field is-wide"><label for="${prefix}payin_method">Как клиент оплачивает — ${p.in}</label>
+                <select class="form-input" id="${prefix}payin_method" ${prefix==='docp_'?'disabled':''} onchange="docsRouteChanged('${prefix}')">${methods.map(k=>`<option value="${k}" ${k===method?'selected':''}>${DOCS_METHOD_LABELS[k]}</option>`).join('')}</select>
+                ${prefix==='docp_'?'<span class="docs-hint">Для другой пары или способа оплаты создайте новый договор.</span>':''}</div>`+
+                DOCS_ROUTE_FIELDS.map(([key,label,hint,kinds])=>{
+                    const active=!kinds || kinds.includes(method) || (kinds.includes('payout') && p.out==='USDT');
+                    return `<div class="docs-field" data-doc-route="${prefix}" data-kinds="${(kinds||[]).join(',')}" style="${active?'':'display:none'}">
+                        <label for="${prefix}${key}">${label}</label>
+                        <input class="form-input" id="${prefix}${key}" ${['payin_network','payout_network'].includes(key)?`list="${prefix}networks"`:''} value="${docsEsc(values[key]||'')}" placeholder="${docsEsc(hint)}" ${active?'':'disabled'}></div>`;
+                }).join('');
+        }
+        function docsRouteChanged(prefix){
+            const method=document.getElementById(prefix+'payin_method').value;
+            const pk=prefix==='docm_'?docsState.pair:(docsState.current.money.pair||DOCS_DEFAULT_PAIR[docsState.current.deal_type]);
+            document.querySelectorAll(`[data-doc-route="${prefix}"]`).forEach(box=>{
+                const kinds=box.dataset.kinds.split(',').filter(Boolean);
+                const active=!kinds.length||kinds.includes(method)||(kinds.includes('payout')&&docsPair(pk).out==='USDT');
+                box.style.display=active?'':'none';
+                const input=box.querySelector('input'); input.disabled=!active;
+                if(!active) input.value='';
+            });
+            // Реквизиты банка и СБП тоже несовместимы между собой.
+            const details=document.getElementById(prefix+'payin_details'); if(details) details.value='';
+            if(prefix==='docm_'){ docsState.purposeTouched=false; docsBuildPurpose(true); }
+            else document.getElementById('docp_purpose').value=method==='bank'?docsPurposeText((docsState.current.payments_count||1)+1):'';
+        }
+        function docsRouteCollect(prefix){
+            const money={payin_method:document.getElementById(prefix+'payin_method').value};
+            DOCS_ROUTE_FIELDS.forEach(([key])=>{
+                const el=document.getElementById(prefix+key); money[key]=el&&!el.disabled?el.value.trim():'';
+            });
+            return money;
+        }
+        function docsMissingLabels(keys){
+            return keys.map(k=>(DOCS_ROUTE_FIELDS.find(f=>f[0]===k)||DOCS_MONEY.find(f=>f[0]===k)||DOCS_FIELDS.find(f=>f[0]===k)||[k,k])[1]).join(', ');
+        }
         const DOCS_SLOT_LABEL = {passport:'паспорт', invoice:'инвойс застройщика', spa:'договор с застройщиком'};
 
         let docsState = {type:null, pair:'RUB_THB', fields:{}, provenance:{}, slots:{}, files:{}, purposeTouched:false};
@@ -13807,7 +13864,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             const inAmt = docsNum(m.total_payin), outAmt = docsNum(m.transfer_amount), rate = docsNum(m.rate);
             return `<div class="docs-deal">
                 <span style="font-size:.87rem;font-weight:600">${DOCS_TYPE_LABEL[a.deal_type]||a.deal_type}</span>
-                <span class="docs-num">${p.label}</span>
+                <span class="docs-num">${p.label}<br><small>${docsEsc(DOCS_METHOD_LABELS[m.payin_method]||'Способ не указан')}</small></span>
                 <span class="docs-money-cell" style="text-align:right">${inAmt!=null?docsFmt(inAmt,2)+' '+p.in:'—'}</span>
                 <span class="docs-money-cell" style="text-align:right">${outAmt!=null?docsFmt(outAmt,2)+' '+p.out:'—'}</span>
                 <span class="docs-money-cell" style="text-align:right">${rate!=null?rate.toFixed(6):'—'}</span>
@@ -13855,6 +13912,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             document.getElementById('docsStep1').style.display='';
             document.getElementById('docsStep2').style.display='none';
             document.getElementById('docsParseStatus').textContent='';
+            ['total_payin','transfer_amount','rate'].forEach(k=>document.getElementById('docm_'+k).value='');
+            document.getElementById('docsPurpose').value='';
             DOCS_SLOTS.forEach(([slot,id])=>{
                 const el=document.getElementById(id); if(el) el.value='';
                 document.getElementById('docsName'+slot[0].toUpperCase()+slot.slice(1)).textContent='';
@@ -13942,17 +14001,23 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             docsRenderPairs();
             docsRenderFields();
             docsRenderTerms();
+            document.getElementById('docsRouteForm').innerHTML=docsRouteRender('docm_',docsState.pair);
             docsBuildPurpose(false);
             document.getElementById('docsStep1').style.display='none';
             document.getElementById('docsStep2').style.display='';
         }
 
         function docsRenderPairs(){
-            document.getElementById('docsPairBtns').innerHTML = DOCS_PAIRS.map(p=>
+            document.getElementById('docsPairBtns').innerHTML = DOCS_PAIRS.filter(p=>docsState.type==='payment'||p.out===(docsState.type==='freehold'?'USD':'THB')).map(p=>
                 `<button type="button" class="docs-pair" data-pair="${p.k}" aria-pressed="${p.k===docsState.pair}" onclick="docsSetPair('${p.k}')">${p.label}</button>`).join('');
             docsApplyPair();
         }
         function docsSetPair(k){
+            if(k!==docsState.pair){
+                ['total_payin','transfer_amount','rate'].forEach(f=>document.getElementById('docm_'+f).value='');
+                document.getElementById('docsRouteForm').innerHTML=docsRouteRender('docm_',k);
+                docsState.purposeTouched=false;
+            }
             docsState.pair = k;
             document.querySelectorAll('#docsPairBtns .docs-pair').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.pair===k)));
             docsApplyPair();
@@ -13965,21 +14030,34 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             document.getElementById('docsCurRate').textContent = p.in+' / '+p.out;
             document.getElementById('docsRateHint').textContent =
                 `Сколько ${p.in} за 1 ${p.out}. Считается сам из двух сумм; впишете курс — пересчитается сумма получателя.`;
+            docsUpdateFieldsVisibility();
+        }
+
+        function docsUpdateFieldsVisibility(){
+            const p=docsPair(docsState.pair);
+            const realEstate=['project_name','unit_no','property_address','lease_term','lease_start_date','rent_amount','deposit_amount'];
+            const bank=['recipient_bank','recipient_account','recipient_swift','recipient_bik','recipient_bank_address'];
+            DOCS_FIELDS.forEach(([key])=>{
+                const el=document.getElementById('docf_'+key); if(!el) return;
+                const hidden=(docsState.type==='payment'&&realEstate.includes(key)) || (p.out==='USDT'&&bank.includes(key));
+                el.disabled=hidden; el.parentElement.style.display=hidden?'none':'';
+            });
         }
 
         // Двусторонняя связь: правишь суммы — считается курс, правишь курс —
         // считается сумма получателя. Округление курса до 6 знаков, как в договорах.
         function docsRecalc(source){
+            const dp=docsPair(docsState.pair).out==='USDT'?6:2;
             const inEl = document.getElementById('docm_total_payin');
             const outEl = document.getElementById('docm_transfer_amount');
             const rateEl = document.getElementById('docm_rate');
             const a = docsNum(inEl.value), b = docsNum(outEl.value), r = docsNum(rateEl.value);
             if(source==='rate'){
-                if(r && a) outEl.value = (a/r).toFixed(2);
+                if(r && a) outEl.value = (a/r).toFixed(dp);
             } else if(a && b){
                 rateEl.value = (a/b).toFixed(6);
             } else if(source==='payin' && a && r){
-                outEl.value = (a/r).toFixed(2);
+                outEl.value = (a/r).toFixed(dp);
             }
             docsBuildPurpose(false);
         }
@@ -14053,6 +14131,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                            title="${docsEsc(val)}" oninput="this.title=this.value; docsBuildPurpose(false)">
                 </div>`;
             }).join('');
+            docsUpdateFieldsVisibility();
         }
 
         function docsRenderTerms(){
@@ -14062,8 +14141,6 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <label for="docm_${k}">${label}</label>
                     <input class="form-input" id="docm_${k}" placeholder="${docsEsc(ph)}">
                 </div>`).join('');
-            const m = document.getElementById('docm_payin_method');
-            if(m){ m.value='bank'; m.addEventListener('input', ()=>docsBuildPurpose(true)); }
             // 3 рабочих дня на фрихолде и лизхолде, 1 на аренде — сверено
             // с живыми договорами Антоненко, Буровой и Фролова
             const e = document.getElementById('docm_execution_days');
@@ -14073,8 +14150,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         }
 
         function docsCollect(){
-            const fields={}, money={};
-            DOCS_FIELDS.forEach(([k])=>{ const el=document.getElementById('docf_'+k); if(el&&el.value.trim()) fields[k]=el.value.trim(); });
+            const fields={}, money=docsRouteCollect('docm_');
+            DOCS_FIELDS.forEach(([k])=>{ const el=document.getElementById('docf_'+k); if(el&&!el.disabled&&el.value.trim()) fields[k]=el.value.trim(); });
             DOCS_MONEY.forEach(([k])=>{ const el=document.getElementById('docm_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
             const p = docsPair(docsState.pair);
             ['total_payin','transfer_amount','rate'].forEach(k=>{
@@ -14082,8 +14159,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             });
             money.pair = docsState.pair;
             money.payin_currency = p.in;
+            money.transfer_currency = p.out;
             const purpose = (document.getElementById('docsPurpose')||{}).value;
-            if(purpose && purpose.trim()) money.payment_reference = purpose.trim();
+            money.payment_reference = money.payin_method==='bank'?(purpose||'').trim():'';
             return {fields, money};
         }
 
@@ -14103,17 +14181,14 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 if(!d.success){
                     st.classList.add('is-error');
                     if(d.error==='missing_fields'){
-                        st.textContent='Не заполнены: '+d.fields.map(k=>{
-                            const f=DOCS_FIELDS.find(x=>x[0]===k), m=DOCS_MONEY.find(x=>x[0]===k);
-                            return f?f[1]:(m?m[1]:k);
-                        }).join(', ');
+                        st.textContent='Не заполнены: '+docsMissingLabels(d.fields);
                         document.getElementById('docsFoldFields').open = true;
                         document.getElementById('docsFoldTerms').open = true;
                     }
                     else if(d.error==='already_exists'){
                         // не тупик: сразу предлагаем оформить платёж по существующему
                         // договору, перенеся уже введённые курс и суммы
-                        st.innerHTML = `У клиента уже есть договор ${docsEsc(d.number||'')} этого типа. `+
+                        st.innerHTML = `У клиента уже есть договор ${docsEsc(d.number||'')} для этого типа, валютной пары и способа оплаты. `+
                             `<button class="btn btn-primary docs-btn-sm" style="margin-left:8px" `+
                             `onclick="docsGoToPayment(${d.agreement_id})">Оформить платёж по нему</button>`;
                     }
@@ -14193,6 +14268,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function docsAddPayment(id){
             const a = docsState.current; if(!a) return;
             const box = document.getElementById('docsPaymentForm');
+            if(a.route_key==='legacy'){
+                box.style.display='';
+                box.innerHTML='<p>Этот договор создан старым шаблоном. Для следующего платежа оформите договор с выбранной валютной парой и способом оплаты. Старые файлы останутся в архиве.</p><button class="btn btn-primary" onclick="docsOpenNew()">Создать договор</button>';
+                return;
+            }
             const m = a.money||{};
             const pk = m.pair || DOCS_DEFAULT_PAIR[a.deal_type] || 'RUB_THB';
             const p = docsPair(pk);
@@ -14212,14 +14292,15 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 </div>
                 <div class="docs-purpose">
                     <div class="docs-label-row"><label for="docp_purpose" style="font-size:.8rem;font-weight:600;color:var(--navy-600)">Назначение платежа</label></div>
-                    <textarea id="docp_purpose" rows="3">${docsEsc(docsPurposeText((a.payments_count||1)+1))}</textarea>
+                    <textarea id="docp_purpose" rows="3">${m.payin_method==='bank'?docsEsc(docsPurposeText((a.payments_count||1)+1)):''}</textarea>
                 </div>
             </div>
-            <details class="docs-fold" style="margin-top:12px"><summary>Реквизиты и сроки<span class="docs-summary-text">перенесены из договора</span></summary>
+            <div class="docs-grid" style="margin:20px 0">${docsRouteRender('docp_',pk,{payin_method:m.payin_method})}</div>
+            <details class="docs-fold" style="margin-top:12px" open><summary>Сроки и условия<span class="docs-summary-text">реквизиты заполняются на каждый платёж</span></summary>
                 <div class="docs-fold-body"><div class="docs-grid">`+
                 DOCS_MONEY.filter(([,,,flow])=>!flow||flow.includes(a.deal_type)).map(([k,label,ph])=>
                     `<div class="docs-field"><label for="docp_${k}">${label}</label>
-                     <input class="form-input" id="docp_${k}" value="${docsEsc(m[k]||'')}" placeholder="${docsEsc(ph)}"></div>`).join('')+
+                     <input class="form-input" id="docp_${k}" value="${docsEsc(k==='rate_valid_until'?'':m[k]||'')}" placeholder="${docsEsc(ph)}"></div>`).join('')+
                 `</div></div></details>
             <div style="margin-top:16px"><button class="btn btn-primary" style="font-size:.85rem" onclick="docsSubmitPayment(${id})">Выпустить</button>
              <span id="docsPayStatus" class="docs-status" style="margin-left:12px"></span></div>`;
@@ -14227,29 +14308,30 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         }
 
         function docsRecalcPay(source){
+            const dp=docsPair((docsState.current.money||{}).pair).out==='USDT'?6:2;
             const a=docsNum((document.getElementById('docp_total_payin')||{}).value);
             const b=docsNum((document.getElementById('docp_transfer_amount')||{}).value);
             const r=docsNum((document.getElementById('docp_rate')||{}).value);
-            if(source==='rate'){ if(r&&a) document.getElementById('docp_transfer_amount').value=(a/r).toFixed(2); }
+            if(source==='rate'){ if(r&&a) document.getElementById('docp_transfer_amount').value=(a/r).toFixed(dp); }
             else if(a&&b){ document.getElementById('docp_rate').value=(a/b).toFixed(6); }
-            else if(source==='payin'&&a&&r){ document.getElementById('docp_transfer_amount').value=(a/r).toFixed(2); }
+            else if(source==='payin'&&a&&r){ document.getElementById('docp_transfer_amount').value=(a/r).toFixed(dp); }
         }
 
         async function docsSubmitPayment(id){
             const st = document.getElementById('docsPayStatus');
             st.classList.remove('is-error');
-            const money={};
+            const money=docsRouteCollect('docp_');
             DOCS_MONEY.forEach(([k])=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
             ['total_payin','transfer_amount','rate'].forEach(k=>{ const el=document.getElementById('docp_'+k); if(el&&el.value.trim()) money[k]=el.value.trim(); });
             const pu=(document.getElementById('docp_purpose')||{}).value;
-            if(pu&&pu.trim()) money.payment_reference=pu.trim();
+            money.payment_reference=money.payin_method==='bank'?(pu||'').trim():'';
             st.textContent='Генерирую…';
             const r = await fetch('/api/docs/agreements/'+id+'/payment', {
                 method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({money})});
             const d = await r.json();
             if(!d.success){
                 st.classList.add('is-error');
-                st.textContent = d.error==='missing_fields' ? 'Не заполнены: '+d.fields.join(', ')
+                st.textContent = d.error==='missing_fields' ? 'Не заполнены: '+docsMissingLabels(d.fields)
                     : (d.error==='incomplete_document' ? 'Пустые места: '+d.problems.slice(0,3).join('; ') : ('Ошибка: '+(d.detail||d.error)));
                 return;
             }
