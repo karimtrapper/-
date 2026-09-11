@@ -23,6 +23,12 @@ def html():
     return CRM_HTML.read_text(encoding='utf-8')
 
 
+def test_card_topup_amount_accepts_satang(html):
+    tag = re.search(r'<input[^>]+id=["\']topupAmountThb["\'][^>]*>', html)
+    assert tag, 'поле суммы пополнения карты не найдено'
+    assert re.search(r'\bstep=["\']0\.01["\']', tag.group(0))
+
+
 # ==================== helpers ====================
 
 TAG_RE = re.compile(r'<(/?)(\w+)([^>]*?)(/?)>')

@@ -11292,37 +11292,68 @@ def delete_card_topup(card_id, topup_id):
 
 
 @app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['PATCH'])
-def update_card_writeoff_rate(card_id, topup_id):
-    """Исправить курс ручного списания без изменения THB-баланса карты."""
+def update_card_topup(card_id, topup_id):
+    """Исправить отдельную закупку или курс ручного списания.
+
+    У списания меняется только USDT-себестоимость. У отдельной закупки можно
+    исправить фактические THB/USDT; разница THB переносится в баланс карты.
+    Пополнения из кассовых партий здесь не правим, чтобы не рассинхронизировать
+    остаток самой партии.
+    """
     session = get_session()
     try:
         data = request.get_json() or {}
+        card = session.query(BankCard).filter(
+            BankCard.id == card_id,
+        ).with_for_update().first()
+        if not card:
+            return jsonify({'success': False, 'error': 'Карта не найдена'}), 404
         topup = session.query(CardTopup).filter(
             CardTopup.id == topup_id,
             CardTopup.card_id == card_id,
         ).with_for_update().first()
         if not topup:
             return jsonify({'success': False, 'error': 'Операция не найдена'}), 404
-        if topup.source_type != 'adjustment' or (topup.amount_thb or 0) >= 0:
+
+        if topup.source_type == 'adjustment' and (topup.amount_thb or 0) < 0:
+            rate = parse_float(data.get('purchase_rate'))
+            if not math.isfinite(rate) or not 20 <= rate <= 60:
+                return jsonify({
+                    'success': False,
+                    'error': 'Укажите курс списания THB/USD от 20 до 60'
+                }), 400
+
+            topup.purchase_rate = round(rate, 4)
+            topup.cost_usdt = round(topup.amount_thb / rate, 2)
+        elif topup.source_type == 'separate' and (topup.amount_thb or 0) > 0:
+            amount_thb = round(parse_float(data.get('amount_thb')), 2)
+            cost_usdt = round(parse_float(data.get('cost_usdt')), 2)
+            if (not math.isfinite(amount_thb) or amount_thb <= 0
+                    or not math.isfinite(cost_usdt) or cost_usdt <= 0):
+                return jsonify({
+                    'success': False,
+                    'error': 'Укажите положительные суммы THB и USDT'
+                }), 400
+
+            old_amount_thb = topup.amount_thb
+            topup.amount_thb = amount_thb
+            topup.cost_usdt = cost_usdt
+            topup.purchase_rate = amount_thb / cost_usdt
+            card.balance_thb = round((card.balance_thb or 0) + amount_thb - old_amount_thb, 2)
+        else:
             return jsonify({
                 'success': False,
-                'error': 'Курс можно исправлять только у ручного списания'
+                'error': 'Эту операцию нельзя исправить данным способом'
             }), 400
-
-        rate = parse_float(data.get('purchase_rate'))
-        if not math.isfinite(rate) or not 20 <= rate <= 60:
-            return jsonify({
-                'success': False,
-                'error': 'Укажите курс списания THB/USD от 20 до 60'
-            }), 400
-
-        topup.purchase_rate = round(rate, 4)
-        topup.cost_usdt = round(topup.amount_thb / rate, 2)
         session.commit()
-        return jsonify({'success': True, 'topup': topup.to_dict()})
+        return jsonify({
+            'success': True,
+            'topup': topup.to_dict(),
+            'balance_thb': card.balance_thb,
+        })
     except Exception as e:
         session.rollback()
-        app.logger.error(f'[update_card_writeoff_rate] error: {e}')
+        app.logger.error(f'[update_card_topup] error: {e}')
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()

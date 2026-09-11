@@ -536,6 +536,41 @@ def test_writeoff_rate_edit_rejects_real_topup(client):
     assert r.status_code == 400
 
 
+def test_separate_purchase_can_be_fixed_with_satang(client):
+    """Фактические 251 206,54 THB не округляются до 251 207."""
+    card_id = _mk_card(amount_thb=251207.0, cost_usdt=7800.0)
+    history = client.get(f'/api/cards/{card_id}/history').get_json()
+    purchase = next(t for t in history['topups'] if t['source_type'] == 'separate')
+
+    r = client.patch(f"/api/cards/{card_id}/topup/{purchase['id']}", json={
+        'amount_thb': '251206,54',
+        'cost_usdt': 7800,
+    })
+
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['topup']['amount_thb'] == 251206.54
+    assert data['topup']['cost_usdt'] == 7800.0
+    assert round(data['topup']['purchase_rate'], 6) == 32.205967
+    assert data['balance_thb'] == 251206.54
+    assert _balance(card_id) == 251206.54
+
+
+@pytest.mark.parametrize('amount,cost', [
+    (0, 7800), (-1, 7800), (251206.54, 0), (251206.54, -1),
+    (float('nan'), 7800), (251206.54, float('inf')),
+])
+def test_separate_purchase_fix_rejects_invalid_amounts(client, amount, cost):
+    card_id = _mk_card(amount_thb=251207.0, cost_usdt=7800.0)
+    purchase = client.get(f'/api/cards/{card_id}/history').get_json()['topups'][0]
+    r = client.patch(f"/api/cards/{card_id}/topup/{purchase['id']}", json={
+        'amount_thb': amount,
+        'cost_usdt': cost,
+    })
+    assert r.status_code == 400
+    assert _balance(card_id) == 251207.0
+
+
 def test_topup_saves_reference(client):
     card_id = _mk_card(amount_thb=1.0, cost_usdt=1.0)
     r = client.post(f'/api/cards/{card_id}/topup', json={

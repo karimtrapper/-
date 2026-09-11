@@ -3325,7 +3325,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     <div class="form-group">
                         <label class="form-label">Сумма THB</label>
                         <input type="number" class="form-control" name="amount_thb" id="topupAmountThb" required
-                            placeholder="500000">
+                            placeholder="500000" min="0.01" step="0.01">
                     </div>
                     <div class="form-group" id="topupCostGroup" style="display:none;">
                         <label class="form-label">Стоимость USDT</label>
@@ -8998,6 +8998,41 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
+        async function editCardPurchase(cardId, topupId, currentAmount, currentCost) {
+            const rawAmount = prompt('Фактическая сумма закупки, THB:', String(currentAmount || ''));
+            if (rawAmount === null) return;
+            const amountThb = parseFloat(String(rawAmount).replace(/\s/g, '').replace(',', '.'));
+            const rawCost = prompt('Фактическая стоимость закупки, USDT:', String(currentCost || ''));
+            if (rawCost === null) return;
+            const costUsdt = parseFloat(String(rawCost).replace(/\s/g, '').replace(',', '.'));
+            if (!amountThb || amountThb <= 0 || !costUsdt || costUsdt <= 0) {
+                showToast('Введите положительные суммы THB и USDT', 'error');
+                return;
+            }
+            try {
+                const r = await fetch(`${API_URL}/api/cards/${cardId}/topup/${topupId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount_thb: amountThb, cost_usdt: costUsdt })
+                });
+                const d = await r.json();
+                if (!d.success) {
+                    showToast('Ошибка: ' + d.error, 'error');
+                    return;
+                }
+                showToast(
+                    `Закупка исправлена: ${formatNumber(d.topup.amount_thb)} THB · ` +
+                    `$${Number(d.topup.cost_usdt).toFixed(2)} @ ${formatThbUsdRate(d.topup.purchase_rate)}`,
+                    'success'
+                );
+                loadBankCards();
+                await showCardHistory(cardId);
+            } catch (e) {
+                console.error('Error updating card purchase:', e);
+                showToast('Ошибка изменения закупки', 'error');
+            }
+        }
+
         function openTopupCardModal(cardId) {
             document.getElementById('topupCardFormId').value = cardId;
             document.getElementById('topupCardModal').classList.add('active');
@@ -9634,7 +9669,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 sign = '+'; color = '#10b981';
                                 rateLine = `~$${(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
                                 note = it.notes || '';
-                                actions = `<button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>`;
+                                actions = `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                                    ${it.source_type === 'separate' ? `<button class="btn btn-sm btn-info" onclick="editCardPurchase(${cardId}, ${it.id}, ${it.amount_thb || 0}, ${it.cost_usdt || 0})">Исправить закупку</button>` : ''}
+                                    <button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>
+                                </div>`;
                             }
 
                             html += `
