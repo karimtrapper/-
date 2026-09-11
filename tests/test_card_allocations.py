@@ -17,7 +17,8 @@ os.environ['REESTR_SYNC_ENABLED'] = '0'
 import pytest
 
 from app import (BankCard, CardAllocation, CardTopup, CashBatchStatus, Deal,
-                 DealStatus, app as flask_app, get_session, _card_avg_rate)
+                 DealStatus, app as flask_app, get_session, _card_avg_rate,
+                 _card_latest_purchase_rate)
 
 
 @pytest.fixture(autouse=True)
@@ -110,6 +111,33 @@ def test_avg_rate_without_topups_is_zero():
         assert _card_avg_rate(card) == 0
     finally:
         s.close()
+
+
+def test_avg_rate_weights_only_unspent_old_balance(client):
+    """Потраченная старая закупка не должна влиять на курс после нового пополнения."""
+    card_id = _mk_card()
+    used_thb = 247986.0
+    r = client.post('/api/deals', json=_deal_payload(card_id, used_thb))
+    assert r.status_code == 201, r.get_json()
+
+    s = get_session()
+    try:
+        allocation = s.query(CardAllocation).filter(CardAllocation.card_id == card_id).one()
+        remaining_thb = 261466.06 - allocation.amount_thb
+        remaining_usdt = 7800.0 - allocation.cost_usdt
+    finally:
+        s.close()
+
+    r = client.post(f'/api/cards/{card_id}/topup', json={
+        'amount_thb': 251206.54, 'cost_usdt': 7800,
+        'source_type': 'separate',
+    })
+    assert r.status_code == 200, r.get_json()
+
+    expected = (remaining_thb + 251206.54) / (remaining_usdt + 7800.0)
+    assert _avg_rate(card_id) == pytest.approx(expected)
+    assert round(_avg_rate(card_id), 2) == 32.27
+    assert round(_avg_rate(card_id), 2) != 32.86  # старый ошибочный расчёт
 
 
 # ── Списание при создании сделки ─────────────────────────────────────────
@@ -226,6 +254,47 @@ def test_repeated_save_does_not_double_charge(client):
     assert _balance(card_id) == 230726.06
 
 
+def test_repeated_save_preserves_historical_rate_after_new_topup(client):
+    """Новая закупка не переоценивает старую выдачу при обычном PUT сделки."""
+    card_id = _mk_card()
+    deal_id = client.post('/api/deals', json=_deal_payload(card_id, 30740.0)).get_json()['deal']['id']
+
+    client.post(f'/api/cards/{card_id}/topup', json={
+        'amount_thb': 251206.54, 'cost_usdt': 7800,
+        'source_type': 'separate',
+    })
+    client.put(f'/api/deals/{deal_id}', json={'client_name': 'Ольга без переоценки'})
+
+    s = get_session()
+    try:
+        alloc = s.query(CardAllocation).filter(CardAllocation.deal_id == deal_id).one()
+        assert alloc.card_rate == 33.5213
+        assert alloc.cost_usdt == round(30740.0 / 33.5213, 2)
+    finally:
+        s.close()
+
+
+def test_amount_fix_on_same_card_preserves_historical_rate(client):
+    """Уточнение суммы старого платежа меняет количество, но не его закупку."""
+    card_id = _mk_card()
+    deal_id = client.post('/api/deals', json=_deal_payload(card_id, 30740.0)).get_json()['deal']['id']
+    client.post(f'/api/cards/{card_id}/topup', json={
+        'amount_thb': 251206.54, 'cost_usdt': 7800,
+        'source_type': 'separate',
+    })
+
+    r = client.put(f'/api/deals/{deal_id}', json={'payout_amount_thb': 32000.0})
+    assert r.status_code == 200, r.get_json()
+
+    s = get_session()
+    try:
+        alloc = s.query(CardAllocation).filter(CardAllocation.deal_id == deal_id).one()
+        assert alloc.card_rate == 33.5213
+        assert alloc.cost_usdt == round(32000.0 / 33.5213, 2)
+    finally:
+        s.close()
+
+
 # ── Удаление ─────────────────────────────────────────────────────────────
 
 def test_delete_deal_returns_money(client):
@@ -330,7 +399,8 @@ def test_adjust_reduces_balance_keeping_rate(client):
     средний курс закупки остаётся прежним."""
     card_id = _mk_card()
     r = client.post(f'/api/cards/{card_id}/adjust',
-                    json={'amount_thb': 10000, 'reason': 'Тестовый платёж 30.07'})
+                    json={'amount_thb': 10000, 'purchase_rate': 33.5213,
+                          'reason': 'Тестовый платёж 30.07'})
     assert r.status_code == 200, r.get_json()
 
     assert _balance(card_id) == 251466.06
@@ -340,13 +410,16 @@ def test_adjust_reduces_balance_keeping_rate(client):
 def test_adjust_by_target_balance(client):
     """Можно задать не сумму списания, а желаемый остаток."""
     card_id = _mk_card()
-    client.post(f'/api/cards/{card_id}/adjust', json={'new_balance_thb': 200974.06})
+    client.post(f'/api/cards/{card_id}/adjust', json={
+        'new_balance_thb': 200974.06, 'purchase_rate': 33.5213,
+    })
     assert _balance(card_id) == 200974.06
 
 
 def test_adjust_requires_amount(client):
     card_id = _mk_card()
-    r = client.post(f'/api/cards/{card_id}/adjust', json={'amount_thb': 0})
+    r = client.post(f'/api/cards/{card_id}/adjust',
+                    json={'amount_thb': 0, 'purchase_rate': 33.5213})
     assert r.status_code == 400
     assert _balance(card_id) == 261466.06
 
@@ -354,13 +427,113 @@ def test_adjust_requires_amount(client):
 def test_adjust_shows_in_history(client):
     card_id = _mk_card()
     client.post(f'/api/cards/{card_id}/adjust',
-                json={'amount_thb': 10000, 'reason': 'Тестовый платёж 30.07'})
+                json={'amount_thb': 10000, 'purchase_rate': 33.5213,
+                      'reason': 'Тестовый платёж 30.07'})
 
     data = client.get(f'/api/cards/{card_id}/history').get_json()
     adj = [t for t in data['topups'] if t['source_type'] == 'adjustment']
     assert len(adj) == 1
     assert adj[0]['amount_thb'] == -10000
     assert adj[0]['notes'] == 'Тестовый платёж 30.07'
+
+
+def test_adjust_requires_explicit_purchase_rate(client):
+    """Не подменяем курс конкретной закупки средним курсом всей карты."""
+    card_id = _mk_card()
+    r = client.post(f'/api/cards/{card_id}/adjust', json={'amount_thb': 10000})
+    assert r.status_code == 400
+    assert 'курс' in r.get_json()['error'].lower()
+    assert _balance(card_id) == 261466.06
+
+
+def test_adjust_uses_selected_purchase_rate_not_card_average(client):
+    """Регресс 11.09: целевой платёж по 32,206 не должен списываться по 32,85."""
+    card_id = _mk_card()
+    client.post(f'/api/cards/{card_id}/topup', json={
+        'amount_thb': 251206.54, 'cost_usdt': 7800,
+        'source_type': 'separate', 'reference': 'IPPS-SECOND',
+    })
+
+    r = client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 170015, 'purchase_rate': '32,206',
+        'reason': 'перевод за виллу Теодору',
+    })
+    assert r.status_code == 200, r.get_json()
+
+    data = client.get(f'/api/cards/{card_id}/history').get_json()
+    adjustment = next(t for t in data['topups'] if t['source_type'] == 'adjustment')
+    assert adjustment['purchase_rate'] == 32.206
+    assert adjustment['cost_usdt'] == -5278.99
+    assert data['card']['latest_purchase_rate'] == 32.206
+
+
+@pytest.mark.parametrize('rate', [None, 0, 19.99, 60.01, 'не число',
+                                  float('nan'), float('inf')])
+def test_adjust_rejects_invalid_rate(client, rate):
+    card_id = _mk_card()
+    r = client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 10000, 'purchase_rate': rate,
+    })
+    assert r.status_code == 400
+    assert _balance(card_id) == 261466.06
+
+
+def test_adjust_cannot_turn_negative_amount_into_topup(client):
+    """Запись напрямую в API с минусом не должна увеличивать баланс карты."""
+    card_id = _mk_card()
+    r = client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': -10000, 'purchase_rate': 33.5213,
+    })
+    assert r.status_code == 400
+    assert _balance(card_id) == 261466.06
+
+
+def test_latest_purchase_rate_ignores_newer_adjustments(client):
+    card_id = _mk_card()
+    client.post(f'/api/cards/{card_id}/topup', json={
+        'amount_thb': 251206.54, 'cost_usdt': 7800,
+        'source_type': 'separate',
+    })
+    client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 10000, 'purchase_rate': 31.5,
+    })
+
+    s = get_session()
+    try:
+        card = s.query(BankCard).filter(BankCard.id == card_id).one()
+        assert round(_card_latest_purchase_rate(card), 4) == 32.206
+    finally:
+        s.close()
+
+
+def test_writeoff_rate_can_be_fixed_without_changing_thb_balance(client):
+    card_id = _mk_card()
+    created = client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 170015, 'purchase_rate': 32.85,
+        'reason': 'перевод за виллу Теодору',
+    }).get_json()
+    assert created['success'] is True
+    balance_before = _balance(card_id)
+    history = client.get(f'/api/cards/{card_id}/history').get_json()
+    adjustment = next(t for t in history['topups'] if t['source_type'] == 'adjustment')
+
+    r = client.patch(f"/api/cards/{card_id}/topup/{adjustment['id']}", json={
+        'purchase_rate': 32.206,
+    })
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()['topup']['purchase_rate'] == 32.206
+    assert r.get_json()['topup']['cost_usdt'] == -5278.99
+    assert _balance(card_id) == balance_before
+
+
+def test_writeoff_rate_edit_rejects_real_topup(client):
+    card_id = _mk_card()
+    history = client.get(f'/api/cards/{card_id}/history').get_json()
+    purchase = next(t for t in history['topups'] if t['source_type'] == 'separate')
+    r = client.patch(f"/api/cards/{card_id}/topup/{purchase['id']}", json={
+        'purchase_rate': 32.206,
+    })
+    assert r.status_code == 400
 
 
 def test_topup_saves_reference(client):

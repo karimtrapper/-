@@ -51,7 +51,8 @@ class TestReadOnlyScope:
 
     def test_write_methods_forbidden(self, cli):
         for method, path in (('post', '/api/deals'), ('delete', '/api/deals/1'),
-                             ('put', '/api/deals/1')):
+                             ('put', '/api/deals/1'),
+                             ('patch', '/api/cards/1/topup/1')):
             resp = ro(cli, path, method=method, json={})
             assert resp.status_code == 403, f'{method} {path}'
             assert resp.get_json()['error'] == 'read_only_key'

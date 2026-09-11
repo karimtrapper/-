@@ -723,10 +723,12 @@ class BankCard(Base):
     
     def to_dict(self):
         avg_rate = _card_avg_rate(self)
+        latest_purchase_rate = _card_latest_purchase_rate(self)
         return {
             'id': self.id, 'created_at': self.created_at.isoformat() if self.created_at else None,
             'bank_name': self.bank_name, 'card_name': self.card_name, 'holder_name': self.holder_name,
             'balance_thb': self.balance_thb, 'avg_rate': round(avg_rate, 4) if avg_rate else 0,
+            'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0,
             'status': self.status.value if self.status else None,
             'topups': [t.to_dict() for t in self.topups] if self.topups else []
         }
@@ -5167,43 +5169,95 @@ def get_deal(deal_id):
         session.close()
 
 def _card_avg_rate(card):
-    """Средневзвешенный курс закупки карты, THB за 1 USDT.
+    """Средневзвешенный курс ОСТАТКА карты, THB за 1 USDT.
 
-    Считается по всем её пополнениям: сколько бат завели и во что они обошлись.
-    Это база себестоимости любой выдачи с этой карты.
+    Из пополнений вычитаются и ручные списания (они лежат в ``card_topups``
+    отрицательными строками), и выдачи клиентам из ``card_allocations``.
+    Без второго вычета полностью потраченная старая закупка продолжала влиять
+    на курс после нового пополнения, хотя этих бат на карте уже не было.
     """
-    total_thb = sum(t.amount_thb for t in card.topups) if card.topups else 0
-    total_usdt = sum(t.cost_usdt for t in card.topups) if card.topups else 0
-    return total_thb / total_usdt if total_usdt > 0 else 0
+    topup_thb = sum(t.amount_thb for t in card.topups) if card.topups else 0
+    topup_usdt = sum(t.cost_usdt for t in card.topups) if card.topups else 0
+    allocated_thb = sum(a.amount_thb for a in card.allocations) if card.allocations else 0
+    allocated_usdt = sum(a.cost_usdt for a in card.allocations) if card.allocations else 0
+    remaining_thb = topup_thb - allocated_thb
+    remaining_usdt = topup_usdt - allocated_usdt
+    return remaining_thb / remaining_usdt if remaining_thb > 0 and remaining_usdt > 0 else 0
+
+
+def _card_latest_purchase_rate(card):
+    """Курс последнего реального пополнения карты, THB за 1 USDT.
+
+    Ручные списания тоже хранятся в ``card_topups`` отрицательными строками.
+    Они не должны становиться подсказкой для следующего списания: оператору нужен
+    курс конкретной закупки, а не курс прошлой расходной операции.
+    """
+    purchases = [
+        t for t in (card.topups or [])
+        if (t.amount_thb or 0) > 0 and (t.cost_usdt or 0) > 0
+    ]
+    if not purchases:
+        return 0
+    latest = max(
+        purchases,
+        key=lambda t: (t.created_at or datetime.min, t.id or 0),
+    )
+    return latest.purchase_rate or (latest.amount_thb / latest.cost_usdt)
 
 
 def _sync_card_allocation(session, deal):
     """Держит расход по карте в согласии со сделкой.
 
     Выдача с карты — единственное движение, которого карта раньше не видела:
-    баланс рос от пополнений и не уменьшался никогда. Функция идемпотентна —
-    зовётся и при создании, и при каждом обновлении: сначала возвращает деньги
-    туда, откуда их сняли в прошлый раз, потом списывает заново по текущему
-    состоянию сделки. Поэтому смена карты, суммы или уход сделки в LOSE
-    отрабатывают сами, без отдельных веток.
+    баланс рос от пополнений и не уменьшался никогда. Функция идемпотентна:
+    неизменное списание сохраняет свой исторический курс, а при смене карты,
+    суммы или статуса старое движение сначала возвращается.
 
     Возвращает текст предупреждения, если карте не хватило. В минус пускаем
     сознательно: остаток в CRM ведёт человек и он отстаёт от факта, а
     блокировать закрытие уже состоявшейся выдачи из-за этого нельзя.
     """
-    for alloc in session.query(CardAllocation).filter(CardAllocation.deal_id == deal.id).all():
-        card = session.query(BankCard).filter(BankCard.id == alloc.card_id).with_for_update().first()
-        if card:
-            card.balance_thb = round((card.balance_thb or 0) + alloc.amount_thb, 2)
-        session.delete(alloc)
-    session.flush()
-
+    existing = session.query(CardAllocation).filter(CardAllocation.deal_id == deal.id).all()
     needs_allocation = (
         deal.payout_source == PayOutSource.BANK_CARD
         and deal.bank_card_id
         and (deal.payout_amount_thb or 0) > 0
         and deal.status not in NON_DEAL_STATUSES + (DealStatus.CANCELLED,)
     )
+    amount_thb = round(deal.payout_amount_thb or 0, 2)
+
+    # Обычное сохранение карточки сделки не должно переоценивать старую выдачу
+    # по сегодняшнему курсу остатка. Это меняло COGS и прибыль задним числом.
+    if (needs_allocation and len(existing) == 1
+            and existing[0].card_id == deal.bank_card_id
+            and round(existing[0].amount_thb, 2) == amount_thb):
+        alloc = existing[0]
+        deal.payout_amount_usdt = alloc.cost_usdt
+        deal.cash_batch_rate = alloc.card_rate
+        card = session.query(BankCard).filter(BankCard.id == alloc.card_id).first()
+        if card and card.balance_thb < 0:
+            return (f'Остаток карты «{card.bank_name}» ушёл в минус: '
+                    f'{card.balance_thb:,.2f} THB — проверьте пополнения')
+        return None
+
+    preserved_rate = None
+    if (needs_allocation and len(existing) == 1
+            and existing[0].card_id == deal.bank_card_id
+            and existing[0].card_rate):
+        # Исправление суммы той же исторической выдачи остаётся в той же закупке.
+        preserved_rate = existing[0].card_rate
+
+    touched_cards = []
+    for alloc in existing:
+        card = session.query(BankCard).filter(BankCard.id == alloc.card_id).with_for_update().first()
+        if card:
+            card.balance_thb = round((card.balance_thb or 0) + alloc.amount_thb, 2)
+            touched_cards.append(card)
+        session.delete(alloc)
+    session.flush()
+    for card in touched_cards:
+        session.expire(card, ['allocations'])
+
     if not needs_allocation:
         return None
 
@@ -5211,8 +5265,7 @@ def _sync_card_allocation(session, deal):
     if not card:
         return f'Карта #{deal.bank_card_id} не найдена — расход по сделке не списан'
 
-    amount_thb = round(deal.payout_amount_thb, 2)
-    rate = _card_avg_rate(card)
+    rate = preserved_rate or _card_avg_rate(card)
     # Курса нет только у карты без пополнений — тогда берём себестоимость,
     # посчитанную формой, чтобы не записать нулевую стоимость выдачи
     cost_usdt = round(amount_thb / rate, 2) if rate else round(deal.payout_amount_usdt or 0, 2)
@@ -11016,13 +11069,15 @@ def get_cards_balance():
         result = []
         for c in cards:
             avg_rate = _card_avg_rate(c)
+            latest_purchase_rate = _card_latest_purchase_rate(c)
             result.append({
                 'id': c.id,
                 'bank_name': c.bank_name,
                 'card_name': c.card_name,
                 'holder_name': c.holder_name,
                 'balance_thb': c.balance_thb,
-                'avg_rate': round(avg_rate, 4) if avg_rate else 0
+                'avg_rate': round(avg_rate, 4) if avg_rate else 0,
+                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0
             })
 
         return jsonify({
@@ -11128,13 +11183,17 @@ def get_card_history(card_id):
             CardAllocation.card_id == card_id
         ).order_by(CardAllocation.created_at.desc()).all()
 
+        avg_rate = _card_avg_rate(card)
+        latest_purchase_rate = _card_latest_purchase_rate(card)
         return jsonify({
             'success': True,
             'card': {
                 'id': card.id,
                 'bank_name': card.bank_name,
                 'card_name': card.card_name,
-                'balance_thb': card.balance_thb
+                'balance_thb': card.balance_thb,
+                'avg_rate': round(avg_rate, 4) if avg_rate else 0,
+                'latest_purchase_rate': round(latest_purchase_rate, 4) if latest_purchase_rate else 0
             },
             'topups': result,
             'total_topups': len(result),
@@ -11151,8 +11210,9 @@ def adjust_card(card_id):
 
     Нужно для движений мимо клиентов: тестовый перевод, комиссия банка,
     перекидка на другой свой счёт. Списание оформляется как пополнение
-    с минусом, а стоимость в USDT снимается по текущему среднему курсу
-    карты — иначе средний курс поехал бы вниз, будто баты подешевели.
+    с минусом. Курс обязателен и задаётся оператором: на одном счёте могут
+    одновременно лежать целевые закупки по разным курсам, поэтому средний
+    курс карты не определяет себестоимость конкретного перевода.
 
     Принимает `amount_thb` (сколько снять, положительное число) либо
     `new_balance_thb` (каким должен стать остаток).
@@ -11169,15 +11229,21 @@ def adjust_card(card_id):
             amount_thb = round(current - parse_float(data.get('new_balance_thb')), 2)
         else:
             amount_thb = round(parse_float(data.get('amount_thb')), 2)
-        if not amount_thb:
-            return jsonify({'success': False, 'error': 'Укажите сумму списания'}), 400
+        if not math.isfinite(amount_thb) or amount_thb <= 0:
+            return jsonify({'success': False, 'error': 'Сумма списания должна быть больше нуля'}), 400
 
-        rate = _card_avg_rate(card)
+        rate = parse_float(data.get('purchase_rate'))
+        if not math.isfinite(rate) or not 20 <= rate <= 60:
+            return jsonify({
+                'success': False,
+                'error': 'Укажите курс списания THB/USD от 20 до 60'
+            }), 400
+
         reason = (data.get('reason') or '').strip()[:200] or 'Ручная корректировка'
         session.add(CardTopup(
             card_id=card.id,
             amount_thb=-amount_thb,
-            cost_usdt=round(-amount_thb / rate, 2) if rate else 0,
+            cost_usdt=round(-amount_thb / rate, 2),
             purchase_rate=round(rate, 4),
             source_type='adjustment',
             reference=(data.get('reference') or '').strip()[:120] or None,
@@ -11220,6 +11286,43 @@ def delete_card_topup(card_id, topup_id):
     except Exception as e:
         session.rollback()
         app.logger.error(f'Request error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+    finally:
+        session.close()
+
+
+@app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['PATCH'])
+def update_card_writeoff_rate(card_id, topup_id):
+    """Исправить курс ручного списания без изменения THB-баланса карты."""
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        topup = session.query(CardTopup).filter(
+            CardTopup.id == topup_id,
+            CardTopup.card_id == card_id,
+        ).with_for_update().first()
+        if not topup:
+            return jsonify({'success': False, 'error': 'Операция не найдена'}), 404
+        if topup.source_type != 'adjustment' or (topup.amount_thb or 0) >= 0:
+            return jsonify({
+                'success': False,
+                'error': 'Курс можно исправлять только у ручного списания'
+            }), 400
+
+        rate = parse_float(data.get('purchase_rate'))
+        if not math.isfinite(rate) or not 20 <= rate <= 60:
+            return jsonify({
+                'success': False,
+                'error': 'Укажите курс списания THB/USD от 20 до 60'
+            }), 400
+
+        topup.purchase_rate = round(rate, 4)
+        topup.cost_usdt = round(topup.amount_thb / rate, 2)
+        session.commit()
+        return jsonify({'success': True, 'topup': topup.to_dict()})
+    except Exception as e:
+        session.rollback()
+        app.logger.error(f'[update_card_writeoff_rate] error: {e}')
         return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
     finally:
         session.close()

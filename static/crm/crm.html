@@ -8916,7 +8916,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Ручное списание с карты: движения мимо клиентов — тестовый перевод,
         // комиссия банка, перекидка на другой свой счёт
-        async function adjustCard(cardId, currentBalance, fromHistory = false) {
+        async function adjustCard(cardId, currentBalance, fromHistory = false, suggestedRate = 0) {
             const raw = prompt(
                 `Остаток: ${formatNumber(currentBalance)} THB\n\n` +
                 `Сколько списать (в батах)?`,
@@ -8928,16 +8928,31 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 showToast('Введите положительную сумму', 'error');
                 return;
             }
+            const rawRate = prompt(
+                `Курс списания THB/USD\n\n` +
+                `Укажите курс закупки, из которой оплачивается этот перевод.`,
+                suggestedRate ? String(suggestedRate) : ''
+            );
+            if (rawRate === null) return;
+            const purchaseRate = parseFloat(String(rawRate).replace(/\s/g, '').replace(',', '.'));
+            if (!purchaseRate || purchaseRate < 20 || purchaseRate > 60) {
+                showToast('Введите курс THB/USD от 20 до 60', 'error');
+                return;
+            }
             const reason = prompt('Причина списания:', 'Тестовый платёж') || '';
             try {
                 const r = await fetch(`${API_URL}/api/cards/${cardId}/adjust`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amount_thb: amount, reason })
+                    body: JSON.stringify({ amount_thb: amount, purchase_rate: purchaseRate, reason })
                 });
                 const d = await r.json();
                 if (d.success) {
-                    showToast(`Списано ${formatNumber(amount)} THB · остаток ${formatNumber(d.balance_thb)} THB`, 'success');
+                    showToast(
+                        `Списано ${formatNumber(amount)} THB по ${purchaseRate} · ` +
+                        `остаток ${formatNumber(d.balance_thb)} THB`,
+                        'success'
+                    );
                     loadBankCards();
                     if (fromHistory) await showCardHistory(cardId);
                 } else {
@@ -8946,6 +8961,40 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (e) {
                 console.error('Error adjusting card:', e);
                 showToast('Ошибка списания', 'error');
+            }
+        }
+
+        async function editCardWriteoffRate(cardId, topupId, currentRate) {
+            const rawRate = prompt(
+                'Новый курс списания THB/USD:',
+                currentRate ? String(currentRate) : ''
+            );
+            if (rawRate === null) return;
+            const purchaseRate = parseFloat(String(rawRate).replace(/\s/g, '').replace(',', '.'));
+            if (!purchaseRate || purchaseRate < 20 || purchaseRate > 60) {
+                showToast('Введите курс THB/USD от 20 до 60', 'error');
+                return;
+            }
+            try {
+                const r = await fetch(`${API_URL}/api/cards/${cardId}/topup/${topupId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ purchase_rate: purchaseRate })
+                });
+                const d = await r.json();
+                if (!d.success) {
+                    showToast('Ошибка: ' + d.error, 'error');
+                    return;
+                }
+                showToast(
+                    `Курс исправлен: ${purchaseRate} · себестоимость $${Math.abs(d.topup.cost_usdt).toFixed(2)}`,
+                    'success'
+                );
+                loadBankCards();
+                await showCardHistory(cardId);
+            } catch (e) {
+                console.error('Error updating write-off rate:', e);
+                showToast('Ошибка изменения курса', 'error');
             }
         }
 
@@ -9446,7 +9495,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div>
                                     <strong>Начальная сумма:</strong> ${formatNumber(info.amount_thb)} THB<br>
                                     <strong>Остаток:</strong> ${formatNumber(info.remaining_thb)} THB<br>
-                                    <strong>Курс закупки:</strong> ${info.purchase_rate?.toFixed(2)} THB/USDT
+                                    <strong>Курс закупки:</strong> ${formatThbUsdRate(info.purchase_rate)} THB/USDT
                                 </div>
                                 <div style="text-align: right;">
                                     <span style="color: #666;">Сделок: ${summary.total_deals}</span><br>
@@ -9544,7 +9593,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             </div>
                             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <button class="btn btn-sm btn-success" onclick="closeHistoryModal(); openTopupCardModal(${cardId})">Пополнить</button>
-                                <button class="btn btn-sm btn-warning" onclick="adjustCard(${cardId}, ${info.balance_thb}, true)">Списать</button>
+                                <button class="btn btn-sm btn-warning" onclick="adjustCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})">Списать</button>
                             </div>
                         </div>
                     `;
@@ -9570,9 +9619,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 title = 'Списание';
                                 amount = Math.abs(it.amount_thb || 0);
                                 sign = '−'; color = '#f59e0b';
-                                rateLine = `~$${Math.abs(it.cost_usdt || 0).toFixed(2)} @ ${(it.purchase_rate || 0).toFixed(2)}`;
+                                rateLine = `~$${Math.abs(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
                                 note = it.notes || '';
-                                actions = `<button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>`;
+                                actions = `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                                    <button class="btn btn-sm btn-info" onclick="editCardWriteoffRate(${cardId}, ${it.id}, ${it.purchase_rate || 0})">Исправить курс</button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>
+                                </div>`;
                             } else {
                                 icon = it.source_type === 'cash_batch' ? '💰' : '💳';
                                 title = it.source_type === 'cash_batch'
@@ -9580,7 +9632,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     : 'Отдельная закупка';
                                 amount = it.amount_thb || 0;
                                 sign = '+'; color = '#10b981';
-                                rateLine = `~$${(it.cost_usdt || 0).toFixed(2)} @ ${(it.purchase_rate || 0).toFixed(2)}`;
+                                rateLine = `~$${(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
                                 note = it.notes || '';
                                 actions = `<button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>`;
                             }
@@ -10192,7 +10244,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 
                                 <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
                                     <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
-                                    <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb})">Списать</button>
+                                    <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Списать</button>
                                     <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
                                     ${!card.topups || card.topups.length === 0 ? `
                                         <button class="btn btn-sm btn-danger" onclick="deleteCard(${card.id})">Удалить</button>
@@ -12273,6 +12325,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function formatNumber(num) {
             if (!num) return '0';
             return Math.round(num).toLocaleString('ru-RU');
+        }
+
+        function formatThbUsdRate(rate) {
+            const value = Number(rate);
+            if (!Number.isFinite(value) || value <= 0) return '—';
+            return value.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
         }
 
         function formatDate(dateStr) {
