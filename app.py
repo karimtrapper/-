@@ -8009,9 +8009,8 @@ def update_deal(deal_id):
 
         if 'bank_card_id' in data:
             # Пустое значение при неизменном источнике «карта» не трогает привязку:
-            # карта с нулевым остатком выпадает из дропдауна (/api/cards/balance
-            # отдаёт только balance_thb > 0), и форма пришлёт пустое поле — тихо
-            # отвязывать сделку от карты из-за этого нельзя
+            # старый или кэшированный клиент мог не прислать bank_card_id — тихо
+            # отвязывать сделку от карты из-за этого нельзя.
             new_card_id = data['bank_card_id'] or None
             keep_existing = (new_card_id is None and deal.bank_card_id
                              and deal.payout_source == PayOutSource.BANK_CARD)
@@ -11058,12 +11057,16 @@ def delete_card(card_id):
 
 @app.route('/api/cards/balance', methods=['GET'])
 def get_cards_balance():
-    """Получить баланс всех активных карт для dropdown'а"""
+    """Получить баланс всех активных карт для dropdown'а.
+
+    Нулевой или отрицательный остаток не скрывает карту: фактическая выдача уже
+    могла состояться до того, как оператор разнёс пополнение в CRM. Такие карты
+    должны оставаться доступными для восстановления учёта задним числом.
+    """
     session = get_session()
     try:
         cards = session.query(BankCard).filter(
-            BankCard.status == CashBatchStatus.ACTIVE,
-            BankCard.balance_thb > 0
+            BankCard.status == CashBatchStatus.ACTIVE
         ).order_by(BankCard.bank_name).all()
 
         result = []

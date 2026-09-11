@@ -428,6 +428,33 @@ def test_adjust_by_target_balance(client):
     assert _balance(card_id) == 200974.06
 
 
+def test_adjust_allows_negative_balance(client):
+    """Фактический расход записывается, даже если CRM ещё не знает о приходе."""
+    card_id = _mk_card(amount_thb=100, cost_usdt=3)
+
+    r = client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 150, 'purchase_rate': 33.3333,
+        'reason': 'Фактический платёж больше учётного остатка',
+    })
+
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()['balance_thb'] == -50
+    assert _balance(card_id) == -50
+
+
+def test_negative_card_remains_available_for_payout_selection(client):
+    """Минусовая карта не исчезает из dropdown следующих операций."""
+    card_id = _mk_card(amount_thb=100, cost_usdt=3)
+    client.post(f'/api/cards/{card_id}/adjust', json={
+        'amount_thb': 150, 'purchase_rate': 33.3333,
+    })
+
+    data = client.get('/api/cards/balance').get_json()
+    card = next(c for c in data['cards'] if c['id'] == card_id)
+    assert card['balance_thb'] == -50
+    assert data['total_thb'] == -50
+
+
 def test_adjust_requires_amount(client):
     card_id = _mk_card()
     r = client.post(f'/api/cards/{card_id}/adjust',
