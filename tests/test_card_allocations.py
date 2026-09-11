@@ -65,6 +65,18 @@ def _mk_card(amount_thb=261466.06, cost_usdt=7800.0, bank='IPPS'):
         s.close()
 
 
+def _mk_empty_card(bank='SCB', holder='Теодор'):
+    s = get_session()
+    try:
+        card = BankCard(bank_name=bank, card_name='Карта личная', holder_name=holder,
+                        balance_thb=0, status=CashBatchStatus.ACTIVE)
+        s.add(card)
+        s.commit()
+        return card.id
+    finally:
+        s.close()
+
+
 def _balance(card_id):
     s = get_session()
     try:
@@ -569,6 +581,171 @@ def test_separate_purchase_fix_rejects_invalid_amounts(client, amount, cost):
     })
     assert r.status_code == 400
     assert _balance(card_id) == 251207.0
+
+
+# ── Внутренний перевод между картами ────────────────────────────────────
+
+def test_card_transfer_creates_paired_movements_and_preserves_total(client):
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    total_before = _balance(source_id) + _balance(target_id)
+
+    r = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': target_id,
+        'amount_thb': 170015,
+        'purchase_rate': 32.206,
+        'reason': 'Перевод для оплаты Теодора',
+    })
+
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['source_balance_thb'] == 91451.06
+    assert data['target_balance_thb'] == 170015.0
+    assert _balance(source_id) + _balance(target_id) == total_before
+    assert data['transfer_out']['amount_thb'] == -170015
+    assert data['transfer_in']['amount_thb'] == 170015
+    assert data['transfer_out']['cost_usdt'] == -5278.99
+    assert data['transfer_in']['cost_usdt'] == 5278.99
+    assert data['transfer_out']['purchase_rate'] == 32.206
+    assert data['transfer_in']['purchase_rate'] == 32.206
+    assert data['transfer_out']['reference'] == data['transfer_in']['reference']
+    assert data['reference'].startswith('CARD-XFER-')
+
+    s = get_session()
+    try:
+        movements = s.query(CardTopup).filter(
+            CardTopup.reference == data['reference']
+        ).all()
+        assert {m.source_type for m in movements} == {
+            'card_transfer_out', 'card_transfer_in'
+        }
+        target = s.query(BankCard).filter(BankCard.id == target_id).one()
+        assert round(_card_latest_purchase_rate(target), 4) == 32.206
+    finally:
+        s.close()
+
+
+def test_card_transfer_can_be_cancelled_from_either_history(client):
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    created = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': target_id,
+        'amount_thb': 170015,
+        'purchase_rate': 32.206,
+    }).get_json()
+
+    r = client.delete(
+        f"/api/cards/{target_id}/topup/{created['transfer_in']['id']}"
+    )
+
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()['transfer_cancelled'] is True
+    assert _balance(source_id) == 261466.06
+    assert _balance(target_id) == 0
+    s = get_session()
+    try:
+        assert s.query(CardTopup).filter(
+            CardTopup.reference == created['reference']
+        ).count() == 0
+    finally:
+        s.close()
+
+
+def test_existing_writeoff_can_be_reclassified_as_transfer(client):
+    """Ошибочно заведённое списание переносится без повторного расхода источника."""
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    client.post(f'/api/cards/{source_id}/adjust', json={
+        'amount_thb': 170015,
+        'purchase_rate': 32.206,
+        'reason': 'перевод за виллу Теодору',
+    })
+    source_after_writeoff = _balance(source_id)
+    history = client.get(f'/api/cards/{source_id}/history').get_json()
+    adjustment = next(t for t in history['topups'] if t['source_type'] == 'adjustment')
+
+    r = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': target_id,
+        'adjustment_topup_id': adjustment['id'],
+        'reason': 'перевод за виллу Теодору',
+    })
+
+    assert r.status_code == 200, r.get_json()
+    data = r.get_json()
+    assert data['transfer_out']['id'] == adjustment['id']
+    assert data['transfer_out']['source_type'] == 'card_transfer_out'
+    assert data['transfer_in']['source_type'] == 'card_transfer_in'
+    assert _balance(source_id) == source_after_writeoff
+    assert _balance(target_id) == 170015
+    assert data['transfer_out']['cost_usdt'] == -5278.99
+    assert data['transfer_in']['cost_usdt'] == 5278.99
+
+    source_history = client.get(f'/api/cards/{source_id}/history').get_json()
+    target_history = client.get(f'/api/cards/{target_id}/history').get_json()
+    assert not [t for t in source_history['topups'] if t['source_type'] == 'adjustment']
+    assert [t['reference'] for t in source_history['topups'] if t['source_type'] == 'card_transfer_out'] == [data['reference']]
+    assert [t['reference'] for t in target_history['topups'] if t['source_type'] == 'card_transfer_in'] == [data['reference']]
+
+
+def test_only_manual_writeoff_can_be_reclassified_as_transfer(client):
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    purchase = client.get(f'/api/cards/{source_id}/history').get_json()['topups'][0]
+    r = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': target_id,
+        'adjustment_topup_id': purchase['id'],
+    })
+    assert r.status_code == 400
+    assert 'ручное списание' in r.get_json()['error'].lower()
+    assert _balance(source_id) == 261466.06
+    assert _balance(target_id) == 0
+
+
+@pytest.mark.parametrize('payload,error_part', [
+    ({'amount_thb': 0, 'purchase_rate': 32.206}, 'сумма перевода'),
+    ({'amount_thb': -1, 'purchase_rate': 32.206}, 'сумма перевода'),
+    ({'amount_thb': 100, 'purchase_rate': 0}, 'курс перевода'),
+    ({'amount_thb': 100, 'purchase_rate': float('nan')}, 'курс перевода'),
+])
+def test_card_transfer_rejects_invalid_payload(client, payload, error_part):
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    payload = {'target_card_id': target_id, **payload}
+    r = client.post(f'/api/cards/{source_id}/transfer', json=payload)
+    assert r.status_code == 400
+    assert error_part in r.get_json()['error'].lower()
+    assert _balance(source_id) == 261466.06
+    assert _balance(target_id) == 0
+
+
+@pytest.mark.parametrize('target', [None, 'TARGET'])
+def test_card_transfer_requires_target_card(client, target):
+    source_id = _mk_card()
+    payload = {'amount_thb': 100, 'purchase_rate': 32.206}
+    if target is not None:
+        payload['target_card_id'] = target
+    r = client.post(f'/api/cards/{source_id}/transfer', json=payload)
+    assert r.status_code == 400
+    assert 'выберите карту' in r.get_json()['error'].lower()
+    assert _balance(source_id) == 261466.06
+
+
+def test_card_transfer_rejects_same_card_and_insufficient_balance(client):
+    source_id = _mk_card()
+    target_id = _mk_empty_card()
+    same = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': source_id, 'amount_thb': 100, 'purchase_rate': 32.206,
+    })
+    assert same.status_code == 400
+    assert 'ту же карту' in same.get_json()['error'].lower()
+
+    too_much = client.post(f'/api/cards/{source_id}/transfer', json={
+        'target_card_id': target_id, 'amount_thb': 261466.07, 'purchase_rate': 32.206,
+    })
+    assert too_much.status_code == 400
+    assert 'недостаточно' in too_much.get_json()['error'].lower()
+    assert _balance(source_id) == 261466.06
+    assert _balance(target_id) == 0
 
 
 def test_topup_saves_reference(client):

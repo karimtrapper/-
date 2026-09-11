@@ -32,6 +32,15 @@ def test_card_topup_amount_accepts_satang(html):
     assert '${formatThbAmount(amount)} THB' in html
 
 
+def test_card_transfer_ui_has_paired_operation_flow(html):
+    assert 'async function transferCard(' in html
+    assert '/api/cards/${cardId}/transfer' in html
+    assert '>Перевести</button>' in html
+    assert "t.source_type === 'card_transfer_out'" in html
+    assert "t.source_type === 'card_transfer_in'" in html
+    assert '>Отменить перевод</button>' in html
+
+
 # ==================== helpers ====================
 
 TAG_RE = re.compile(r'<(/?)(\w+)([^>]*?)(/?)>')

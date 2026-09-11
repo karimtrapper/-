@@ -11208,8 +11208,9 @@ def get_card_history(card_id):
 def adjust_card(card_id):
     """Ручное списание бат с карты, не связанное со сделкой.
 
-    Нужно для движений мимо клиентов: тестовый перевод, комиссия банка,
-    перекидка на другой свой счёт. Списание оформляется как пополнение
+    Нужно для расходов вне сделок: комиссия банка или внешний платёж.
+    Перевод между своими картами оформляется отдельным ``transfer_card``.
+    Списание оформляется как пополнение
     с минусом. Курс обязателен и задаётся оператором: на одном счёте могут
     одновременно лежать целевые закупки по разным курсам, поэтому средний
     курс карты не определяет себестоимость конкретного перевода.
@@ -11260,6 +11261,142 @@ def adjust_card(card_id):
     finally:
         session.close()
 
+
+@app.route('/api/cards/<int:card_id>/transfer', methods=['POST'])
+def transfer_card(card_id):
+    """Перевести THB между картами без изменения общей стоимости активов.
+
+    Движение записывается двумя строками с общим ``reference``: расходом на
+    исходной карте и приходом на целевой. Обе строки несут один курс и одну
+    USDT-себестоимость, поэтому средний курс каждой карты остаётся проверяемым.
+    """
+    session = get_session()
+    try:
+        data = request.get_json() or {}
+        try:
+            target_card_id = int(data.get('target_card_id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'error': 'Выберите карту получателя'}), 400
+        if target_card_id == card_id:
+            return jsonify({'success': False, 'error': 'Нельзя перевести на ту же карту'}), 400
+
+        adjustment_topup_id = data.get('adjustment_topup_id')
+        if adjustment_topup_id is not None:
+            try:
+                adjustment_topup_id = int(adjustment_topup_id)
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'Некорректное списание'}), 400
+            amount_thb = rate = None
+        else:
+            amount_thb = round(parse_float(data.get('amount_thb')), 2)
+            rate = parse_float(data.get('purchase_rate'))
+            if not math.isfinite(amount_thb) or amount_thb <= 0:
+                return jsonify({'success': False, 'error': 'Сумма перевода должна быть больше нуля'}), 400
+            if not math.isfinite(rate) or not 20 <= rate <= 60:
+                return jsonify({
+                    'success': False,
+                    'error': 'Укажите курс перевода THB/USD от 20 до 60'
+                }), 400
+
+        # Единый порядок блокировок защищает встречные переводы от deadlock.
+        cards = session.query(BankCard).filter(
+            BankCard.id.in_(sorted((card_id, target_card_id)))
+        ).order_by(BankCard.id).with_for_update().all()
+        by_id = {card.id: card for card in cards}
+        source = by_id.get(card_id)
+        target = by_id.get(target_card_id)
+        if not source:
+            return jsonify({'success': False, 'error': 'Исходная карта не найдена'}), 404
+        if not target:
+            return jsonify({'success': False, 'error': 'Карта получателя не найдена'}), 404
+        if source.status != CashBatchStatus.ACTIVE or target.status != CashBatchStatus.ACTIVE:
+            return jsonify({'success': False, 'error': 'Обе карты должны быть активны'}), 400
+
+        existing_adjustment = None
+        if adjustment_topup_id is not None:
+            existing_adjustment = session.query(CardTopup).filter(
+                CardTopup.id == adjustment_topup_id,
+                CardTopup.card_id == source.id,
+            ).with_for_update().first()
+            if (not existing_adjustment
+                    or existing_adjustment.source_type != 'adjustment'
+                    or (existing_adjustment.amount_thb or 0) >= 0):
+                return jsonify({
+                    'success': False,
+                    'error': 'Для переноса нужно выбрать ручное списание исходной карты'
+                }), 400
+            amount_thb = round(abs(existing_adjustment.amount_thb), 2)
+            rate = existing_adjustment.purchase_rate
+            cost_usdt = round(abs(existing_adjustment.cost_usdt), 2)
+            if (not math.isfinite(rate or 0) or not 20 <= rate <= 60
+                    or not math.isfinite(cost_usdt) or cost_usdt <= 0):
+                return jsonify({
+                    'success': False,
+                    'error': 'У списания некорректная себестоимость — сначала исправьте курс'
+                }), 400
+        else:
+            cost_usdt = round(amount_thb / rate, 2)
+
+        if existing_adjustment is None and round(source.balance_thb or 0, 2) < amount_thb:
+            return jsonify({
+                'success': False,
+                'error': f'На исходной карте недостаточно средств: {source.balance_thb:,.2f} THB'
+            }), 400
+
+        transfer_ref = f'CARD-XFER-{secrets.token_hex(12)}'
+        created_at = (existing_adjustment.created_at
+                      if existing_adjustment and existing_adjustment.created_at
+                      else datetime.utcnow())
+        reason = (data.get('reason') or '').strip()[:200] or 'Внутренний перевод'
+        source_label = f'{source.bank_name} - {source.card_name or "Без названия"}'
+        target_label = f'{target.bank_name} - {target.card_name or "Без названия"}'
+        if existing_adjustment:
+            transfer_out = existing_adjustment
+            transfer_out.source_type = 'card_transfer_out'
+            transfer_out.reference = transfer_ref
+            transfer_out.notes = f'{reason} → {target_label}'
+        else:
+            transfer_out = CardTopup(
+                card_id=source.id,
+                amount_thb=-amount_thb,
+                cost_usdt=-cost_usdt,
+                purchase_rate=round(rate, 4),
+                source_type='card_transfer_out',
+                reference=transfer_ref,
+                notes=f'{reason} → {target_label}',
+                created_at=created_at,
+            )
+        transfer_in = CardTopup(
+            card_id=target.id,
+            amount_thb=amount_thb,
+            cost_usdt=cost_usdt,
+            purchase_rate=round(rate, 4),
+            source_type='card_transfer_in',
+            reference=transfer_ref,
+            notes=f'{reason} ← {source_label}',
+            created_at=created_at,
+        )
+        if existing_adjustment is None:
+            source.balance_thb = round((source.balance_thb or 0) - amount_thb, 2)
+        target.balance_thb = round((target.balance_thb or 0) + amount_thb, 2)
+        session.add_all((transfer_out, transfer_in))
+        session.commit()
+        return jsonify({
+            'success': True,
+            'reference': transfer_ref,
+            'source_balance_thb': source.balance_thb,
+            'target_balance_thb': target.balance_thb,
+            'transfer_out': transfer_out.to_dict(),
+            'transfer_in': transfer_in.to_dict(),
+        })
+    except Exception as e:
+        session.rollback()
+        app.logger.error(f'[transfer_card] error: {e}')
+        return jsonify({'success': False, 'error': 'Ошибка обработки запроса'}), 400
+    finally:
+        session.close()
+
+
 @app.route('/api/cards/<int:card_id>/topup/<int:topup_id>', methods=['DELETE'])
 def delete_card_topup(card_id, topup_id):
     session = get_session()
@@ -11267,6 +11404,40 @@ def delete_card_topup(card_id, topup_id):
         topup = session.query(CardTopup).filter(CardTopup.id == topup_id, CardTopup.card_id == card_id).first()
         if not topup:
             return jsonify({'success': False, 'error': 'Пополнение не найдено'}), 404
+
+        if (topup.source_type in ('card_transfer_out', 'card_transfer_in')
+                and (topup.reference or '').startswith('CARD-XFER-')):
+            paired = session.query(CardTopup).filter(
+                CardTopup.reference == topup.reference,
+                CardTopup.source_type.in_(('card_transfer_out', 'card_transfer_in')),
+            ).with_for_update().all()
+            if len(paired) != 2 or {p.source_type for p in paired} != {
+                    'card_transfer_out', 'card_transfer_in'}:
+                return jsonify({
+                    'success': False,
+                    'error': 'Парная запись перевода повреждена — удаление остановлено'
+                }), 409
+            transfer_cards = session.query(BankCard).filter(
+                BankCard.id.in_(sorted({p.card_id for p in paired}))
+            ).order_by(BankCard.id).with_for_update().all()
+            cards_by_id = {card.id: card for card in transfer_cards}
+            if len(cards_by_id) != 2:
+                return jsonify({
+                    'success': False,
+                    'error': 'Одна из карт перевода не найдена — удаление остановлено'
+                }), 409
+            for movement in paired:
+                transfer_card_obj = cards_by_id[movement.card_id]
+                transfer_card_obj.balance_thb = round(
+                    (transfer_card_obj.balance_thb or 0) - movement.amount_thb, 2
+                )
+                session.delete(movement)
+            session.commit()
+            return jsonify({
+                'success': True,
+                'transfer_cancelled': True,
+                'reference': topup.reference,
+            })
             
         card = session.query(BankCard).filter(BankCard.id == card_id).first()
         

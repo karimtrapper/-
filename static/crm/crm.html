@@ -8914,8 +8914,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             document.getElementById('addCardModal').classList.remove('active');
         }
 
-        // Ручное списание с карты: движения мимо клиентов — тестовый перевод,
-        // комиссия банка, перекидка на другой свой счёт
+        // Ручное списание с карты: внешний расход, который не является ни сделкой,
+        // ни внутренним переводом на другую карту.
         async function adjustCard(cardId, currentBalance, fromHistory = false, suggestedRate = 0) {
             const raw = prompt(
                 `Остаток: ${formatNumber(currentBalance)} THB\n\n` +
@@ -8961,6 +8961,98 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             } catch (e) {
                 console.error('Error adjusting card:', e);
                 showToast('Ошибка списания', 'error');
+            }
+        }
+
+        async function transferCard(
+            cardId, currentBalance, fromHistory = false, suggestedRate = 0,
+            existingWriteoffId = 0, fixedAmount = 0, fixedRate = 0
+        ) {
+            try {
+                const cardsData = await fetch(`${API_URL}/api/cards`).then(r => r.json());
+                const targets = (cardsData.cards || []).filter(
+                    card => card.status === 'active' && card.id !== cardId
+                );
+                if (!targets.length) {
+                    showToast('Нет другой активной карты для перевода', 'error');
+                    return;
+                }
+                const choices = targets.map((card, index) =>
+                    `${index + 1}. ${card.bank_name} - ${card.card_name || 'Без названия'} ` +
+                    `(${card.holder_name || 'без владельца'}) · ${formatThbAmount(card.balance_thb)} THB`
+                ).join('\n');
+                const rawChoice = prompt(`Куда перевести?\n\n${choices}`, '1');
+                if (rawChoice === null) return;
+                const targetIndex = Number.parseInt(rawChoice, 10) - 1;
+                if (!Number.isInteger(targetIndex) || !targets[targetIndex]) {
+                    showToast('Выберите номер карты из списка', 'error');
+                    return;
+                }
+
+                let amountThb;
+                let purchaseRate;
+                if (existingWriteoffId) {
+                    amountThb = Number(fixedAmount);
+                    purchaseRate = Number(fixedRate);
+                } else {
+                    const rawAmount = prompt(
+                        `На исходной карте ${formatThbAmount(currentBalance)} THB.\n\nСумма перевода:`,
+                        ''
+                    );
+                    if (rawAmount === null) return;
+                    amountThb = parseFloat(String(rawAmount).replace(/\s/g, '').replace(',', '.'));
+                    if (!amountThb || amountThb <= 0 || amountThb > currentBalance) {
+                        showToast('Введите положительную сумму не больше остатка карты', 'error');
+                        return;
+                    }
+                    const rawRate = prompt(
+                        'Курс переводимых бат THB/USD:',
+                        suggestedRate ? String(suggestedRate) : ''
+                    );
+                    if (rawRate === null) return;
+                    purchaseRate = parseFloat(String(rawRate).replace(/\s/g, '').replace(',', '.'));
+                    if (!purchaseRate || purchaseRate < 20 || purchaseRate > 60) {
+                        showToast('Введите курс THB/USD от 20 до 60', 'error');
+                        return;
+                    }
+                }
+                const reason = prompt('Комментарий к переводу:', 'Внутренний перевод') || '';
+                const target = targets[targetIndex];
+                if (!(await showConfirm(
+                    `Перевести ${formatThbAmount(amountThb)} THB по ${purchaseRate} ` +
+                    `на «${target.bank_name} - ${target.card_name || 'Без названия'}»?`
+                ))) return;
+
+                const response = await fetch(`${API_URL}/api/cards/${cardId}/transfer`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(existingWriteoffId ? {
+                        target_card_id: target.id,
+                        adjustment_topup_id: existingWriteoffId,
+                        reason
+                    } : {
+                        target_card_id: target.id,
+                        amount_thb: amountThb,
+                        purchase_rate: purchaseRate,
+                        reason
+                    })
+                });
+                const data = await response.json();
+                if (!data.success) {
+                    showToast('Ошибка: ' + data.error, 'error');
+                    return;
+                }
+                showToast(
+                    `Переведено ${formatThbAmount(amountThb)} THB · ` +
+                    `остатки ${formatThbAmount(data.source_balance_thb)} → ` +
+                    `${formatThbAmount(data.target_balance_thb)} THB`,
+                    'success'
+                );
+                await loadBankCards();
+                if (fromHistory) await showCardHistory(cardId);
+            } catch (e) {
+                console.error('Error transferring between cards:', e);
+                showToast('Ошибка перевода между картами', 'error');
             }
         }
 
@@ -9598,15 +9690,27 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     // Пополнения и списания живут в одной таблице: списание — это topup
                     // с минусом (source_type='adjustment'). Разводим их по знаку, иначе
                     // ручная корректировка попадает в «закупки» и занижает объём закупок.
-                    const purchases = topups.filter(t => (t.amount_thb || 0) >= 0);
-                    const writeoffs = topups.filter(t => (t.amount_thb || 0) < 0);
+                    const purchases = topups.filter(t =>
+                        (t.amount_thb || 0) >= 0 && t.source_type !== 'card_transfer_in'
+                    );
+                    const writeoffs = topups.filter(t => t.source_type === 'adjustment');
+                    const transfersOut = topups.filter(t => t.source_type === 'card_transfer_out');
+                    const transfersIn = topups.filter(t => t.source_type === 'card_transfer_in');
                     const totalPurchases = purchases.reduce((s, t) => s + (t.amount_thb || 0), 0);
                     const totalWriteoffs = writeoffs.reduce((s, t) => s + Math.abs(t.amount_thb || 0), 0);
+                    const totalTransfersOut = transfersOut.reduce((s, t) => s + Math.abs(t.amount_thb || 0), 0);
+                    const totalTransfersIn = transfersIn.reduce((s, t) => s + (t.amount_thb || 0), 0);
                     const totalSpent = data.total_spent_thb || 0;
 
                     // Единая лента: закупки + списания + выдачи, по дате сверху вниз
                     const feed = [
-                        ...topups.map(t => ({ kind: (t.amount_thb || 0) < 0 ? 'writeoff' : 'topup', at: t.created_at, item: t })),
+                        ...topups.map(t => ({
+                            kind: t.source_type === 'card_transfer_out' ? 'transfer_out'
+                                : t.source_type === 'card_transfer_in' ? 'transfer_in'
+                                : (t.amount_thb || 0) < 0 ? 'writeoff' : 'topup',
+                            at: t.created_at,
+                            item: t
+                        })),
                         ...allocations.map(a => ({ kind: 'allocation', at: a.created_at, item: a }))
                     ].sort((x, y) => new Date(y.at || 0) - new Date(x.at || 0));
 
@@ -9623,11 +9727,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 <div style="text-align: right;">
                                     <span style="color: #10b981;">Закупки: ${purchases.length} · +${formatThbAmount(totalPurchases)} THB</span><br>
                                     <span style="color: #f59e0b;">Списания: ${writeoffs.length} · −${formatThbAmount(totalWriteoffs)} THB</span><br>
+                                    ${(transfersOut.length || transfersIn.length) ? `<span style="color:#2563eb;">Переводы: ${transfersOut.length ? `−${formatThbAmount(totalTransfersOut)}` : '0'} / ${transfersIn.length ? `+${formatThbAmount(totalTransfersIn)}` : '0'} THB</span><br>` : ''}
                                     <span style="color: #ef4444;">Выдачи: ${allocations.length} · −${formatThbAmount(totalSpent)} THB</span>
                                 </div>
                             </div>
                             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                 <button class="btn btn-sm btn-success" onclick="closeHistoryModal(); openTopupCardModal(${cardId})">Пополнить</button>
+                                <button class="btn btn-sm btn-info" onclick="transferCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})">Перевести</button>
                                 <button class="btn btn-sm btn-warning" onclick="adjustCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0})">Списать</button>
                             </div>
                         </div>
@@ -9649,6 +9755,16 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 rateLine = `~$${(it.cost_usdt || 0).toFixed(2)} @ ${(it.card_rate || 0).toFixed(2)}`;
                                 note = '';
                                 actions = `<button class="btn btn-sm btn-info" onclick="closeHistoryModal(); openDealEditor(${it.deal_id})">Открыть сделку</button>`;
+                            } else if (row.kind === 'transfer_out' || row.kind === 'transfer_in') {
+                                const isOut = row.kind === 'transfer_out';
+                                icon = '🔁';
+                                title = isOut ? 'Перевод на другую карту' : 'Перевод с другой карты';
+                                amount = Math.abs(it.amount_thb || 0);
+                                sign = isOut ? '−' : '+';
+                                color = '#2563eb';
+                                rateLine = `~$${Math.abs(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
+                                note = it.notes || '';
+                                actions = `<button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true, true)">Отменить перевод</button>`;
                             } else if (row.kind === 'writeoff') {
                                 icon = '📤';
                                 title = 'Списание';
@@ -9657,6 +9773,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                 rateLine = `~$${Math.abs(it.cost_usdt || 0).toFixed(2)} @ ${formatThbUsdRate(it.purchase_rate)}`;
                                 note = it.notes || '';
                                 actions = `<div style="display:flex;gap:0.4rem;flex-wrap:wrap;justify-content:flex-end;">
+                                    <button class="btn btn-sm btn-info" onclick="transferCard(${cardId}, ${info.balance_thb}, true, ${info.latest_purchase_rate || 0}, ${it.id}, ${Math.abs(it.amount_thb || 0)}, ${it.purchase_rate || 0})">На другую карту</button>
                                     <button class="btn btn-sm btn-info" onclick="editCardWriteoffRate(${cardId}, ${it.id}, ${it.purchase_rate || 0})">Исправить курс</button>
                                     <button class="btn btn-sm btn-danger" onclick="deleteCardTopup(${cardId}, ${it.id}, true)">Удалить</button>
                                 </div>`;
@@ -10274,14 +10391,15 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                                         ($${Math.abs(t.cost_usdt || 0).toFixed(2)} @ ${t.purchase_rate})
                                                     </span>
                                                 </div>
-                                                <button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id})">×</button>
+                                                <button class="btn btn-sm btn-danger" style="padding: 0.1rem 0.4rem;" onclick="deleteCardTopup(${card.id}, ${t.id}, false, ${t.source_type === 'card_transfer_out' || t.source_type === 'card_transfer_in'})">×</button>
                                             </div>
                                         `).join('')}
                                     </div>
                                 ` : '<p style="font-size: 0.85rem; color: #f59e0b; margin-top: 0.5rem; font-style: italic;">Нет пополнений</p>'}
                                 
-                                <div style="margin-top: 1rem; display: flex; gap: 0.5rem;">
+                                <div style="margin-top: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
                                     <button class="btn btn-sm btn-success" onclick="openTopupCardModal(${card.id})">Пополнить</button>
+                                    <button class="btn btn-sm btn-info" onclick="transferCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Перевести</button>
                                     <button class="btn btn-sm btn-warning" onclick="adjustCard(${card.id}, ${card.balance_thb}, false, ${card.latest_purchase_rate || 0})">Списать</button>
                                     <button class="btn btn-sm btn-info" onclick="showCardHistory(${card.id})">История</button>
                                     ${!card.topups || card.topups.length === 0 ? `
@@ -10381,17 +10499,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             }
         }
 
-        async function deleteCardTopup(cardId, topupId, fromHistory = false) {
-            if (!(await showConfirm('Удалить эту операцию? Если пополнение было из кассы — деньги вернутся в партию.'))) return;
+        async function deleteCardTopup(cardId, topupId, fromHistory = false, isTransfer = false) {
+            const confirmation = isTransfer
+                ? 'Отменить внутренний перевод? Обе парные записи удалятся, балансы обеих карт вернутся назад.'
+                : 'Удалить эту операцию? Если пополнение было из кассы — деньги вернутся в партию.';
+            if (!(await showConfirm(confirmation))) return;
 
             try {
                 const response = await fetch(`${API_URL}/api/cards/${cardId}/topup/${topupId}`, { method: 'DELETE' });
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast(data.returned_to_batch
-                        ? `Операция удалена, ${formatNumber(data.amount_returned)} THB возвращено в партию #${data.returned_to_batch}`
-                        : 'Операция удалена');
+                    showToast(data.transfer_cancelled
+                        ? 'Внутренний перевод отменён на обеих картах'
+                        : data.returned_to_batch
+                            ? `Операция удалена, ${formatNumber(data.amount_returned)} THB возвращено в партию #${data.returned_to_batch}`
+                            : 'Операция удалена');
                     loadBankCards();
                     loadCashBatchesForSelect();
                     if (fromHistory) await showCardHistory(cardId);
