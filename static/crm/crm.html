@@ -8949,8 +8949,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const d = await r.json();
                 if (d.success) {
                     showToast(
-                        `Списано ${formatNumber(amount)} THB по ${purchaseRate} · ` +
-                        `остаток ${formatNumber(d.balance_thb)} THB`,
+                        `Списано ${formatThbAmount(amount)} THB по ${purchaseRate} · ` +
+                        `остаток ${formatThbAmount(d.balance_thb)} THB`,
                         'success'
                     );
                     loadBankCards();
@@ -9021,7 +9021,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     return;
                 }
                 showToast(
-                    `Закупка исправлена: ${formatNumber(d.topup.amount_thb)} THB · ` +
+                    `Закупка исправлена: ${formatThbAmount(d.topup.amount_thb)} THB · ` +
                     `$${Number(d.topup.cost_usdt).toFixed(2)} @ ${formatThbUsdRate(d.topup.purchase_rate)}`,
                     'success'
                 );
@@ -9618,12 +9618,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
                                 <div>
                                     <strong>Банк:</strong> ${info.bank_name}<br>
-                                    <strong>Баланс:</strong> ${formatNumber(info.balance_thb)} THB
+                                    <strong>Баланс:</strong> ${formatThbAmount(info.balance_thb)} THB
                                 </div>
                                 <div style="text-align: right;">
-                                    <span style="color: #10b981;">Закупки: ${purchases.length} · +${formatNumber(totalPurchases)} THB</span><br>
-                                    <span style="color: #f59e0b;">Списания: ${writeoffs.length} · −${formatNumber(totalWriteoffs)} THB</span><br>
-                                    <span style="color: #ef4444;">Выдачи: ${allocations.length} · −${formatNumber(totalSpent)} THB</span>
+                                    <span style="color: #10b981;">Закупки: ${purchases.length} · +${formatThbAmount(totalPurchases)} THB</span><br>
+                                    <span style="color: #f59e0b;">Списания: ${writeoffs.length} · −${formatThbAmount(totalWriteoffs)} THB</span><br>
+                                    <span style="color: #ef4444;">Выдачи: ${allocations.length} · −${formatThbAmount(totalSpent)} THB</span>
                                 </div>
                             </div>
                             <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
@@ -9687,7 +9687,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     </div>
                                     <div style="text-align: right; white-space: nowrap;">
                                         <div style="color: ${color}; font-weight: bold;">
-                                            ${sign}${formatNumber(amount)} THB
+                                            ${sign}${formatThbAmount(amount)} THB
                                         </div>
                                         <small style="color: #888;">${rateLine}</small>
                                     </div>
@@ -10245,7 +10245,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
 
                 if (data.success) {
-                    document.getElementById('totalCardsThb').textContent = formatNumber(data.total_remaining_thb) + ' ฿';
+                    document.getElementById('totalCardsThb').textContent = formatThbAmount(data.total_remaining_thb) + ' ฿';
 
                     const activeCards = data.cards.filter(c => c.status === 'active');
 
@@ -10258,7 +10258,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                         <p style="color: #666; font-size: 0.9rem;">${card.holder_name || 'Неизвестно'} | ${formatDate(card.created_at)}</p>
                                     </div>
                                     <div style="text-align: right;">
-                                        <div style="font-size: 1.25rem; font-weight: 600; color: #10b981;">${formatNumber(card.balance_thb)} ฿</div>
+                                        <div style="font-size: 1.25rem; font-weight: 600; color: #10b981;">${formatThbAmount(card.balance_thb)} ฿</div>
                                         <div style="font-size: 0.85rem; color: #666;">Ср. курс: ${card.avg_rate || '-'}</div>
                                     </div>
                                 </div>
@@ -10269,7 +10269,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                         ${card.topups.slice(0, 3).map(t => `
                                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem; background: white; border-radius: 6px; margin-bottom: 0.25rem; border: 1px solid #edf2f7;">
                                                 <div style="font-size: 0.85rem;">
-                                                    <span style="font-weight: 600; color: ${(t.amount_thb || 0) < 0 ? '#f59e0b' : '#2d3748'};">${(t.amount_thb || 0) < 0 ? '−' : '+'}${formatNumber(Math.abs(t.amount_thb || 0))} ฿</span>
+                                                    <span style="font-weight: 600; color: ${(t.amount_thb || 0) < 0 ? '#f59e0b' : '#2d3748'};">${(t.amount_thb || 0) < 0 ? '−' : '+'}${formatThbAmount(Math.abs(t.amount_thb || 0))} ฿</span>
                                                     <span style="color: #718096; margin-left: 0.25rem;">
                                                         ($${Math.abs(t.cost_usdt || 0).toFixed(2)} @ ${t.purchase_rate})
                                                     </span>
@@ -12363,6 +12363,16 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function formatNumber(num) {
             if (!num) return '0';
             return Math.round(num).toLocaleString('ru-RU');
+        }
+
+        function formatThbAmount(num) {
+            const value = Number(num);
+            if (!Number.isFinite(value)) return '0';
+            const hasSatang = Math.abs(value - Math.round(value)) > 0.000001;
+            return value.toLocaleString('ru-RU', {
+                minimumFractionDigits: hasSatang ? 2 : 0,
+                maximumFractionDigits: 2
+            });
         }
 
         function formatThbUsdRate(rate) {

@@ -27,6 +27,9 @@ def test_card_topup_amount_accepts_satang(html):
     tag = re.search(r'<input[^>]+id=["\']topupAmountThb["\'][^>]*>', html)
     assert tag, 'поле суммы пополнения карты не найдено'
     assert re.search(r'\bstep=["\']0\.01["\']', tag.group(0))
+    assert 'function formatThbAmount(num)' in html
+    assert '${formatThbAmount(info.balance_thb)} THB' in html
+    assert '${formatThbAmount(amount)} THB' in html
 
 
 # ==================== helpers ====================
