@@ -3895,20 +3895,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             return html;
         }
 
-        function showConfirm(message) {
+        function showConfirm(message, confirmLabel = 'OK', danger = false) {
             return new Promise(resolve => {
                 const overlay = document.createElement('div');
                 overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
-                overlay.innerHTML = `<div style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
-                    <div style="font-size:15px;line-height:1.5;margin-bottom:20px">${message.replace(/\n/g, '<br>')}</div>
+                overlay.innerHTML = `<div role="dialog" aria-modal="true" style="background:#fff;border-radius:16px;padding:24px;max-width:400px;width:90vw;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+                    <div style="font-size:15px;line-height:1.5;margin-bottom:20px">${escapeHtml(message).replace(/\n/g, '<br>')}</div>
                     <div style="display:flex;gap:12px;justify-content:flex-end">
                         <button class="confirm-cancel" style="padding:10px 20px;border-radius:10px;border:1px solid #ddd;background:#fff;cursor:pointer;font-size:14px">Отмена</button>
-                        <button class="confirm-ok" style="padding:10px 20px;border-radius:10px;border:none;background:#FF6B35;color:#fff;cursor:pointer;font-size:14px;font-weight:600">OK</button>
+                        <button class="confirm-ok" style="padding:10px 20px;border-radius:10px;border:none;background:${danger ? 'var(--red)' : '#FF6B35'};color:#fff;cursor:pointer;font-size:14px;font-weight:600">${confirmLabel}</button>
                     </div></div>`;
                 document.body.appendChild(overlay);
-                overlay.querySelector('.confirm-cancel').onclick = () => { overlay.remove(); resolve(false); };
-                overlay.querySelector('.confirm-ok').onclick = () => { overlay.remove(); resolve(true); };
-                overlay.onclick = (e) => { if (e.target === overlay) { overlay.remove(); resolve(false); } };
+                const finish = value => { overlay.remove(); resolve(value); };
+                overlay.querySelector('.confirm-cancel').onclick = () => finish(false);
+                overlay.querySelector('.confirm-ok').onclick = () => finish(true);
+                overlay.onclick = (e) => { if (e.target === overlay) finish(false); };
+                overlay.onkeydown = (e) => { if (e.key === 'Escape') finish(false); };
+                // Безопасный дефолт для опасных действий: фокус сначала на отмене.
+                overlay.querySelector('.confirm-cancel').focus();
             });
         }
 
@@ -11390,10 +11394,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // по следующей конвертации, не пересказывая цифры руками
             window._convSummary = buildConversionSummary(c, d, dist);
             document.getElementById('conversionModalBody').innerHTML = `
-                <div style="display:flex; align-items:center; gap:10px">
-                    <div class="card-title" style="flex:1">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
+                <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+                    <div class="card-title" style="flex:1 1 220px">${c.display_name} · ${c.broker || ''} ${c.request_no || ''}</div>
                     <button class="btn btn-secondary btn-sm" onclick="editConversion(${id})">✏️</button>
                     <button class="btn btn-secondary btn-sm" onclick="copyConversionSummary(this)">📋 Копировать</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteConversion(${id}, this)">Удалить</button>
                 </div>
                 <pre style="background:#f8fafc; padding:12px; border-radius:8px; font-size:0.9rem">Поступления   ${cnvNum(c.sources_rub)} ₽
 Удержано      ${cnvNum(c.held_rub)} ₽   ${cnvHeldLabel(c)} — не ушло брокеру
@@ -11429,6 +11434,46 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         Привязать и разнести по сделкам</button>
                 </div>`;
             document.getElementById('conversionModal').classList.add('active');
+        }
+
+        async function deleteConversion(id, button) {
+            const name = `CNV-${String(id).padStart(4, '0')}`;
+            const confirmed = await showConfirm(
+                `Удалить ${name}?\n\nПоступления вернутся в «не сконвертировано». ` +
+                'Если к пачке привязан приход USDT, его разнос по сделкам будет снят. ' +
+                'Отменить удаление будет нельзя.',
+                'Удалить', true);
+            if (!confirmed) return;
+
+            const oldText = button?.textContent;
+            if (button) {
+                button.disabled = true;
+                button.textContent = 'Удаляем…';
+            }
+            try {
+                const response = await fetch(`/api/conversions/${id}`, {method: 'DELETE'});
+                const data = await response.json().catch(() => ({success: false}));
+                if (!response.ok || !data.success) {
+                    return showToast(data.error || `${name} не удалось удалить`, 'error');
+                }
+                document.getElementById('conversionModal').classList.remove('active');
+                showToast(`${name} удалена — поступления снова доступны`);
+                const refreshes = [loadConversions()];
+                if (document.getElementById('incomes')?.classList.contains('active')) {
+                    refreshes.push(loadIncomes());
+                }
+                // Удаление уже подтверждено сервером: сбой обновления списка не должен
+                // показывать ложное «не удалена». Следующая загрузка всё равно даст факт.
+                await Promise.allSettled(refreshes);
+            } catch (error) {
+                console.error('Error deleting conversion:', error);
+                showToast(`Сетевая ошибка: ${name} не удалена`, 'error');
+            } finally {
+                if (button?.isConnected) {
+                    button.disabled = false;
+                    button.textContent = oldText;
+                }
+            }
         }
 
         // Исходящие переводы для возврата оунеру прямо из раскладки пачки.

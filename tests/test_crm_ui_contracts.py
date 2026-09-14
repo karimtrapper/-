@@ -338,6 +338,23 @@ def test_conversion_return_has_tx_picker(html):
     assert '/api/transactions/outgoing' in show, 'список переводов не грузится при открытии пачки'
 
 
+def test_conversion_card_can_delete_batch_safely(html):
+    """Ошибочную пачку можно удалить из карточки, увидев последствия заранее."""
+    show = _function_body(html, 'showConversion')
+    assert 'deleteConversion(${id}, this)' in show
+    assert '>Удалить</button>' in show
+
+    delete = _function_body(html, 'deleteConversion')
+    assert "fetch(`/api/conversions/${id}`, {method: 'DELETE'})" in delete
+    assert 'Поступления вернутся в «не сконвертировано»' in delete
+    assert "'Удалить', true" in delete, 'подтверждение удаления должно быть явно опасным действием'
+    assert "button.disabled = true" in delete, 'повторный клик не должен отправить второй DELETE'
+    assert "getElementById('conversionModal').classList.remove('active')" in delete
+    assert 'const refreshes = [loadConversions()]' in delete
+    assert 'refreshes.push(loadIncomes())' in delete
+    assert 'await Promise.allSettled(refreshes)' in delete
+
+
 def test_settled_checkbox_lives_in_deal_form(html):
     """Возмещать или нет — отмечается в сделке, а не в форме возмещений.
 

@@ -159,6 +159,27 @@ def test_создание_пачки_с_поступлениями(cli, incomes)
     cli.delete(f"/api/conversions/{conv['id']}")
 
 
+def test_удаление_пачки_освобождает_поступление(cli, incomes):
+    """Удаление из карточки возвращает приход в пул и не оставляет пачку."""
+    created = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
+        'sources': [{'sber_income_id': incomes[0], 'amount_rub': 27786.44}],
+    }).get_json()['conversion']
+
+    before = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    income_before = next(i for i in before['incomes'] if i['id'] == incomes[0])
+    assert income_before['free_rub'] == 0
+
+    response = cli.delete(f"/api/conversions/{created['id']}")
+    assert response.status_code == 200
+    assert response.get_json()['success'] is True
+    assert cli.get(f"/api/conversions/{created['id']}").status_code == 404
+
+    after = cli.get('/api/sber-incomes?all=1&with_conversion=1').get_json()
+    income_after = next(i for i in after['incomes'] if i['id'] == incomes[0])
+    assert income_after['free_rub'] == 27786.44
+
+
 def test_факт_выписки_главнее_расчёта(cli, incomes):
     """Отправка известна из выписки — удержание считается обратным счётом."""
     r = cli.post('/api/conversions', json={
