@@ -283,6 +283,18 @@ def test_realty_payout_block_is_shared_not_duplicated(html):
     assert 'appendChild' in body, 'блок переводов должен переезжать в активную форму'
 
 
+def test_realty_payout_manual_hash_requires_explicit_network_and_amount(html):
+    """Ручной payout в Coins на лизхолде не угадывает сеть по хэшу."""
+    block = extract_subtree(html, 'realtyPayoutTxBlock')
+    for elem_id in ('mfPayoutManualNetwork', 'mfPayoutManualHash', 'mfPayoutManualAmount'):
+        assert f'id="{elem_id}"' in block
+    assert '<option value="trc20">TRC-20 (TRON)</option>' in block
+    assert '<option value="erc20">ERC-20 (Ethereum)</option>' in block
+    add = _function_body(html, 'addMfPayoutManual')
+    assert 'hash, network, amount_usdt: amount' in add
+    assert "mfPayoutTxPool.some(t => t.hash === hash)" in add
+
+
 def test_conversion_return_has_tx_picker(html):
     """Возврат оунеру из раскладки пачки выбирается из списка, а не вбивается.
 

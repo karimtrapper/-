@@ -1023,6 +1023,9 @@ class PayoutTx(Base):
     __tablename__ = 'payout_txs'
     id = Column(Integer, primary_key=True)
     tx_hash = Column(String(120), nullable=False, unique=True, index=True)
+    # Сеть хранится отдельно от хэша: Ethereum и TRON нельзя надёжно различать
+    # только по строке tx_hash, особенно если оператор убрал префикс 0x.
+    network = Column(String(20), nullable=False, default='trc20')
     amount_usdt = Column(Float, nullable=False, default=0)
     source = Column(String(20), default='manual')     # tronscan | manual
     from_address = Column(String(100), nullable=True)  # кошелёк, который платил
@@ -1052,7 +1055,7 @@ class PayoutTx(Base):
         return round((self.amount_usdt or 0) - self.used_usdt(), 2)
 
     def to_dict(self):
-        return {'id': self.id, 'tx_hash': self.tx_hash,
+        return {'id': self.id, 'tx_hash': self.tx_hash, 'network': self.network or 'trc20',
                 'from_address': self.from_address, 'to_address': self.to_address,
                 'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
                 'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
@@ -2665,6 +2668,20 @@ except Exception as e:
 # Реестр переводов выдачи: один хэш обслуживает несколько сделок (зеркало payin_txs)
 try:
     Base.metadata.create_all(engine, tables=[PayoutTx.__table__, PayoutTxUse.__table__])
+    # create_all не добавляет колонку в уже существующую таблицу.
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text(
+                "ALTER TABLE payout_txs ADD COLUMN IF NOT EXISTS network "
+                "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
+        else:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE payout_txs ADD COLUMN network "
+                    "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
+            except Exception:
+                pass
+        conn.commit()
 except Exception as e:
     print(f"ℹ️ payout_txs migration: {e}")
 
@@ -2683,18 +2700,19 @@ try:
                         if _p.get('hash'):
                             _claims.setdefault(_p['hash'], []).append(
                                 (_d.id, float(_p.get('amount_usdt') or 0), _p.get('from_address'),
-                                 _p.get('to_address')))
+                                 _p.get('to_address'), _p.get('network') or 'trc20'))
                 except (ValueError, TypeError, AttributeError):
                     continue
             for _hash, _uses in _claims.items():
                 _tx = PayoutTx(tx_hash=_hash, source='manual',
-                               amount_usdt=round(sum(a for _, a, _f1, _t1 in _uses), 2),
-                               from_address=next((f for _, _a, f, _t in _uses if f), None),
-                               to_address=next((t for _, _a, _f2, t in _uses if t), None),
+                               network=next((n for _, _a, _f1, _t1, n in _uses if n), 'trc20'),
+                               amount_usdt=round(sum(a for _, a, _f1, _t1, _n1 in _uses), 2),
+                               from_address=next((f for _, _a, f, _t, _n2 in _uses if f), None),
+                               to_address=next((t for _, _a, _f2, t, _n3 in _uses if t), None),
                                notes='бэкфилл: сумма из CRM, с сетью не сверена')
                 _s.add(_tx)
                 _s.flush()
-                for _deal_id, _amt, _f3, _t3 in _uses:
+                for _deal_id, _amt, _f3, _t3, _n4 in _uses:
                     _s.add(PayoutTxUse(tx_id=_tx.id, deal_id=_deal_id, amount_usdt=_amt))
             _s.commit()
             if _claims:
@@ -7066,8 +7084,26 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
         _sync_sber_claims(session, deal, base)
 
 
+PAYOUT_NETWORK_ALIASES = {
+    'trc20': 'trc20', 'trc-20': 'trc20', 'tron': 'trc20',
+    'erc20': 'erc20', 'erc-20': 'erc20', 'ethereum': 'erc20', 'eth': 'erc20',
+}
+
+
+def _normalize_payout_network(value):
+    """Единый код сети для реестра исходящих переводов.
+
+    Пустое значение — легаси TRC-20: до добавления поля CRM
+    читала исходящие только из TronScan. Неизвестный ввод не
+    угадываем по формату хэша — помечаем unknown.
+    """
+    if value in (None, ''):
+        return 'trc20'
+    return PAYOUT_NETWORK_ALIASES.get(str(value).strip().lower(), 'unknown')
+
+
 def _normalize_payout_transfers(raw):
-    """Переводы отправки → [{'hash','amount_usdt','to_address','date'}].
+    """Переводы отправки → [{'hash','network','amount_usdt','to_address','date'}].
 
     Адрес храним, чтобы в карточке и в форме было видно КУДА ушли деньги,
     а не только сколько.
@@ -7075,7 +7111,7 @@ def _normalize_payout_transfers(raw):
     out, seen = [], set()
     for item in (raw or []):
         if isinstance(item, str):
-            h, amt, addr, date, src = item.strip(), None, '', '', ''
+            h, amt, addr, date, src, network = item.strip(), None, '', '', '', 'trc20'
         elif isinstance(item, dict):
             h = str(item.get('hash') or item.get('tx_hash') or '').strip()
             amt = item.get('amount_usdt')
@@ -7083,6 +7119,7 @@ def _normalize_payout_transfers(raw):
             date = str(item.get('date') or '').strip()
             # Откуда ушло — кошелёк, на который придёт возврат
             src = str(item.get('from_address') or '').strip()
+            network = _normalize_payout_network(item.get('network'))
         else:
             continue
         if not h or h in seen:
@@ -7092,7 +7129,7 @@ def _normalize_payout_transfers(raw):
             amt = float(amt) if amt not in (None, '') else None
         except (TypeError, ValueError):
             amt = None
-        out.append({'hash': h, 'amount_usdt': amt, 'to_address': addr, 'date': date,
+        out.append({'hash': h, 'network': network, 'amount_usdt': amt, 'to_address': addr, 'date': date,
                     'from_address': src})
     return out
 
@@ -7200,26 +7237,40 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     ставим заявленную долю и source='manual' («не сверено»), иначе сделка не
     сохранилась бы из-за недоступного TronScan.
     """
+    part = part or {}
+    network = _normalize_payout_network(part.get('network'))
+    if network == 'unknown':
+        raise ValueError('Выберите сеть перевода: TRC-20 или ERC-20')
     tx = session.query(PayoutTx).filter(PayoutTx.tx_hash == tx_hash).first()
     if tx:
+        existing_network = tx.network or 'trc20'
+        if network != 'unknown' and existing_network != network:
+            raise ValueError(
+                f'Хэш {tx_hash[:12]}… уже записан как {existing_network.upper()}, '
+                f'нельзя сохранить его как {network.upper()}')
         return tx
-    part = part or {}
     amount, source = None, 'manual'
     info = {}
-    try:
-        info = _tron_tx_info(tx_hash) or {}
-        if info.get('amount_usdt'):
-            # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
-            # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
-            amount = info.get('total_out_usdt') or info['amount_usdt']
-            source = 'tronscan'
-    except Exception as e:
-        print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
+    # ERC-20 не отправляем в TronScan: сеть выбрал оператор,
+    # сумма приходит из формы и остаётся с пометкой manual.
+    if network == 'trc20':
+        try:
+            info = _tron_tx_info(tx_hash) or {}
+            if info.get('amount_usdt'):
+                # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
+                # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
+                amount = info.get('total_out_usdt') or info['amount_usdt']
+                source = 'tronscan'
+        except Exception as e:
+            print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
     tx = PayoutTx(tx_hash=tx_hash,
+                  network=network,
                   amount_usdt=amount if amount is not None else float(claim_usdt or 0),
                   source=source,
                   from_address=info.get('from_address') or part.get('from_address'),
-                  to_address=info.get('to_address') or part.get('to_address'))
+                  to_address=info.get('to_address') or part.get('to_address'),
+                  notes=('сумма из CRM, сеть выбрана вручную'
+                         if network == 'erc20' else None))
     session.add(tx)
     session.flush()
     return tx
@@ -7247,7 +7298,7 @@ def _sync_payout_tx_uses(session, deal, parts):
         # ушло»: перевод 3d828b22… после миграции знал про свои 509.42 при
         # реальных 1952, и остаток показывался нулевым. Сверяем с сетью один
         # раз — дальше source='tronscan' и в сеть больше не ходим.
-        if tx.source != 'tronscan':
+        if tx.source != 'tronscan' and (tx.network or 'trc20') == 'trc20':
             try:
                 chain = _tron_tx_info(tx.tx_hash) or {}
             except Exception as e:
@@ -7811,6 +7862,16 @@ def create_deal():
                 _apply_payout_cost_from_transfers(deal)
                 _recalculate_deal_financials(deal, data)
 
+            # Перевод в Coins на лизхолде и перевод застройщику на фрихолде —
+            # такие же исходящие транзакции, как выдача в обычной сделке. Раньше
+            # они жили только JSON-ом в сделке и не создавались в общем реестре.
+            if deal.deal_kind in REALTY_KINDS and 'payout_tx_hashes' in data:
+                try:
+                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                except ValueError as e:
+                    session.rollback()
+                    return jsonify({'success': False, 'error': str(e)}), 409
+
             # Мультиагенты: явный массив agents → каскадный пересчёт; иначе зеркалим
             # одиночного реферала (без пересчёта) для единого источника кабинета
             if data.get('agents'):
@@ -8094,6 +8155,12 @@ def update_deal(deal_id):
                 _apply_mf_realty(deal, data)
             else:
                 _apply_mf_freehold(deal, data)
+            if 'payout_tx_hashes' in data:
+                try:
+                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                except ValueError as e:
+                    session.rollback()
+                    return jsonify({'success': False, 'error': str(e)}), 409
             if 'agents' not in data:
                 _apply_deal_agents(session, deal, [
                     {'referrer_id': r.referrer_id, 'name': r.name, 'tier': r.tier,
@@ -12146,6 +12213,10 @@ def _enrich_payout_transfers(session, deal):
     changed = False
     for part in parts:
         if part.get('amount_usdt') is not None and part.get('from_address'):
+            continue
+        # ERC-20 был выбран человеком. TronScan такой хэш не знает, а попытка
+        # запроса маскировала ручной выбор сообщением «перевод не найден».
+        if _normalize_payout_network(part.get('network')) != 'trc20':
             continue
         info = _tron_tx_info(part.get('hash') or '')
         if not info:

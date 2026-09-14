@@ -23,6 +23,7 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
 import app as A
 from app import (app, get_session, Deal, DealType, Client, AdminUser, DealAgent, Referrer,
+                 PayoutTx, PayoutTxUse,
                  compute_mf_freehold, freehold_month_sheet_name,
                  GSHEET_FREEHOLD_HEADERS, sync_realty_deal_to_gsheet,
                  _mf_freehold_telegram_text)
@@ -38,6 +39,8 @@ def approx(a, b, eps=0.02):
 def clean_db():
     s = get_session()
     try:
+        s.query(PayoutTxUse).delete()
+        s.query(PayoutTx).delete()
         s.query(DealAgent).delete()
         s.query(Deal).delete()
         s.query(Client).delete()
@@ -49,8 +52,9 @@ def clean_db():
 
 
 @pytest.fixture
-def tc():
+def tc(monkeypatch):
     app.config['TESTING'] = True
+    monkeypatch.setattr(A, '_tron_tx_info', lambda h: {})
     s = get_session()
     try:
         a = s.query(AdminUser).first()

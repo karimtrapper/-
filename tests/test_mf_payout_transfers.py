@@ -19,7 +19,8 @@ os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 import json
 import app as A
 from app import (compute_mf_realty, _normalize_payout_transfers, _payout_hash_list,
-                 _payout_transfers_total, get_session, Deal, Client, DealAgent,
+                 _payout_transfers_total, get_session, Deal, Client, DealAgent, PayoutTx,
+                 PayoutTxUse,
                  AdminUser, get_used_transaction_hashes)
 
 # Числа сделки #458 (Clover Residence B22)
@@ -42,7 +43,7 @@ class TestNormalize:
             {'hash': 'aa', 'amount_usdt': 100, 'to_address': 'TAddr', 'date': '04.08.2026'}])
         # from_address добавлен 21.08: по нему видно, с какого кошелька ушла выдача,
         # то есть куда придёт возврат оунеру
-        assert out == [{'hash': 'aa', 'amount_usdt': 100.0, 'to_address': 'TAddr',
+        assert out == [{'hash': 'aa', 'network': 'trc20', 'amount_usdt': 100.0, 'to_address': 'TAddr',
                         'date': '04.08.2026', 'from_address': ''}]
 
     def test_accepts_tx_hash_key(self):
@@ -51,8 +52,13 @@ class TestNormalize:
 
     def test_plain_strings(self):
         assert _normalize_payout_transfers(['aa', ' bb ']) == [
-            {'hash': 'aa', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''},
-            {'hash': 'bb', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''}]
+            {'hash': 'aa', 'network': 'trc20', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''},
+            {'hash': 'bb', 'network': 'trc20', 'amount_usdt': None, 'to_address': '', 'date': '', 'from_address': ''}]
+
+    def test_keeps_explicit_erc20_network(self):
+        out = _normalize_payout_transfers([
+            {'hash': '0xabc', 'network': 'Ethereum', 'amount_usdt': 500}])
+        assert out[0]['network'] == 'erc20'
 
     def test_duplicates_dropped(self):
         assert len(_normalize_payout_transfers([{'hash': 'aa'}, {'hash': 'aa'}])) == 1
@@ -133,6 +139,8 @@ class TestCompute:
 def clean_db():
     s = get_session()
     try:
+        s.query(PayoutTxUse).delete()
+        s.query(PayoutTx).delete()
         s.query(DealAgent).delete(); s.query(Deal).delete(); s.query(Client).delete()
         s.commit()
     finally:
@@ -145,6 +153,7 @@ def tc(monkeypatch):
     A.app.config['TESTING'] = True
     monkeypatch.setattr(A, 'sync_realty_deal_to_gsheet', lambda d: {'ok': False})
     monkeypatch.setattr(A, '_send_deal_telegram', lambda d: None)
+    monkeypatch.setattr(A, '_tron_tx_info', lambda h: {})
     s = get_session()
     try:
         a = s.query(AdminUser).first()
@@ -193,6 +202,38 @@ class TestDealSave:
             assert 'h5' in get_used_transaction_hashes(s)
         finally:
             s.close()
+
+    def test_leasehold_coins_transfer_creates_payout_ledger_row(self, tc):
+        """Лизхолдный payout в Coins существует и в общем реестре переводов."""
+        d = tc.post('/api/deals', json=create_payload(
+            payout_tx_hashes=[{'hash': 'coins-erc-hash', 'network': 'erc20',
+                               'amount_usdt': 508828, 'to_address': '0xCoins'}]
+        )).json['deal']
+        s = get_session()
+        try:
+            tx = s.query(PayoutTx).filter_by(tx_hash='coins-erc-hash').one()
+            assert tx.network == 'erc20'
+            assert tx.amount_usdt == pytest.approx(508828)
+            assert tx.source == 'manual'
+            assert [(u.deal_id, u.amount_usdt) for u in tx.uses] == [(d['id'], 508828)]
+        finally:
+            s.close()
+
+    def test_erc20_manual_network_never_queries_tronscan(self, tc, monkeypatch):
+        def forbidden(_hash):
+            raise AssertionError('ERC-20 нельзя отправлять в TronScan')
+        monkeypatch.setattr(A, '_tron_tx_info', forbidden)
+        r = tc.post('/api/deals', json=create_payload(
+            payout_tx_hashes=[{'hash': '0x' + 'ab' * 32, 'network': 'erc20',
+                               'amount_usdt': 508828}]))
+        assert r.status_code in (200, 201), r.json
+
+    def test_unknown_manual_network_is_rejected(self, tc):
+        r = tc.post('/api/deals', json=create_payload(
+            payout_tx_hashes=[{'hash': 'network-typo-hash', 'network': 'ercc20',
+                               'amount_usdt': 508828}]))
+        assert r.status_code == 409
+        assert 'TRC-20 или ERC-20' in r.json['error']
 
     def test_edit_replaces_transfers(self, tc):
         did = tc.post('/api/deals', json=create_payload()).json['deal']['id']
