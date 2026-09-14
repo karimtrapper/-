@@ -1402,7 +1402,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                             placeholder="Вставьте полный хэш транзакции">
                                     </div>
                                 </div>
-                                <small style="display:block;color:#64748b;margin-top:6px;">При ручном вводе сеть выбирается явно. ERC-20 не проверяется через TronScan.</small>
+                                <small style="display:block;color:#64748b;margin-top:6px;">При ручном вводе сеть выбирается явно: TRC-20 проверяется через TronScan, ERC-20 — через Etherscan.</small>
                             </div>
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
@@ -1562,12 +1562,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                             <input class="form-control" id="mfPayoutManualHash" placeholder="Вставьте полный хэш">
                                         </div>
                                         <div>
-                                            <label class="form-label" for="mfPayoutManualAmount">Сумма USDT *</label>
-                                            <input class="form-control" id="mfPayoutManualAmount" type="number" min="0" step="any" placeholder="0.00">
+                                            <label class="form-label" for="mfPayoutManualAmount">Сумма USDT</label>
+                                            <input class="form-control" id="mfPayoutManualAmount" type="number" min="0" step="any" placeholder="подставится из сети">
                                         </div>
                                         <button type="button" class="btn btn-primary" onclick="addMfPayoutManual()">Добавить</button>
                                     </div>
-                                    <small style="display:block;color:#64748b;margin-top:6px;">Для ручного хэша сеть указывается явно. ERC-20 не проверяется через TronScan, поэтому сверьте сумму перед сохранением.</small>
+                                    <small style="display:block;color:#64748b;margin-top:6px;">Сеть проверит хэш и подставит сумму: TRC-20 через TronScan, ERC-20 через Etherscan. Для части общего перевода сумму можно указать вручную.</small>
                                 </details>
                                 <small style="color:#6b7280;" id="realtyPayoutTxHint">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</small>
                             </div>
@@ -7702,30 +7702,62 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             realtyPayoutRecalc();
         }
 
-        function addMfPayoutManual() {
+        async function addMfPayoutManual() {
             const hashEl = document.getElementById('mfPayoutManualHash');
             const amountEl = document.getElementById('mfPayoutManualAmount');
             const networkEl = document.getElementById('mfPayoutManualNetwork');
             const hash = (hashEl?.value || '').trim();
-            const amount = Number(amountEl?.value);
+            let amount = Number(amountEl?.value);
             const network = networkEl?.value || 'trc20';
             if (hash.length < 32) {
                 showToast('Вставьте полный хэш транзакции', 'error');
                 hashEl?.focus();
                 return;
             }
-            if (!(amount > 0)) {
-                showToast('Укажите сумму перевода в USDT', 'error');
-                amountEl?.focus();
-                return;
-            }
             if (mfPayoutTxPool.some(t => t.hash === hash)) {
                 showToast('Этот перевод уже добавлен', 'error');
                 return;
             }
+            let chain = null;
+            try {
+                const response = await fetch(`/api/tx/lookup?network=${encodeURIComponent(network)}&hash=${encodeURIComponent(hash)}`);
+                const result = await response.json();
+                if (response.ok && result.success) {
+                    chain = result;
+                    const mainAmount = Number(result.amount_usdt || 0);
+                    const totalOut = Number(result.total_out_usdt || mainAmount);
+                    // Один хэш = один полный расход. В batch-транзакции это
+                    // основной перевод плюс отдельный Transfer комиссии.
+                    if (!(amount > 0)) amount = totalOut;
+                    if (amount > totalOut + 0.01) {
+                        showToast(`В сети ушло $${totalOut.toFixed(2)} — нельзя указать $${amount.toFixed(2)}`, 'error');
+                        amountEl?.focus();
+                        return;
+                    }
+                    const provider = result.source === 'etherscan' ? 'Etherscan' : 'TronScan';
+                    const extra = totalOut - mainAmount;
+                    showToast(extra > 0.000001
+                        ? `${provider}: расход $${totalOut.toFixed(2)} (перевод $${mainAmount.toFixed(2)} + ещё $${extra.toFixed(6)})`
+                        : `${provider} подтвердил расход $${totalOut.toFixed(2)}`);
+                } else if (response.status === 422) {
+                    showToast(result.error || 'Транзакция не подтверждает перевод USDT', 'error');
+                    return;
+                } else if (amount > 0) {
+                    showToast(`${result.error || 'Сеть не ответила'} — сохраню сумму как не сверенную`, 'error');
+                }
+            } catch (error) {
+                if (amount > 0) showToast('Сеть не ответила — сохраню сумму как не сверенную', 'error');
+            }
+            if (!(amount > 0)) {
+                showToast('Сеть не подтвердила сумму — укажите её вручную', 'error');
+                amountEl?.focus();
+                return;
+            }
             mfPayoutTxPool.push({
                 hash, network, amount_usdt: amount,
-                to_address: '', date: new Date().toLocaleDateString('ru-RU'),
+                from_address: chain?.from_address || '',
+                to_address: chain?.to_address || '',
+                date: new Date().toLocaleDateString('ru-RU'),
             });
             hashEl.value = '';
             amountEl.value = '';

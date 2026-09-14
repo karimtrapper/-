@@ -960,7 +960,7 @@ class PayinTx(Base):
     # Формат хэша не определяет блокчейн однозначно: сеть выбирает оператор.
     network = Column(String(20), nullable=False, default='trc20')
     amount_usdt = Column(Float, nullable=False, default=0)
-    source = Column(String(20), default='manual')     # tronscan | manual
+    source = Column(String(20), default='manual')     # tronscan | etherscan | manual
     tx_time = Column(DateTime, nullable=True)
     # Кошелёк-получатель: в сводке по конвертации нужно «сколько пришло,
     # хеш, какого кошелька». Берём из сети, а не с рук
@@ -1030,7 +1030,7 @@ class PayoutTx(Base):
     # только по строке tx_hash, особенно если оператор убрал префикс 0x.
     network = Column(String(20), nullable=False, default='trc20')
     amount_usdt = Column(Float, nullable=False, default=0)
-    source = Column(String(20), default='manual')     # tronscan | manual
+    source = Column(String(20), default='manual')     # tronscan | etherscan | manual
     from_address = Column(String(100), nullable=True)  # кошелёк, который платил
     to_address = Column(String(100), nullable=True)    # куда ушло (обменник)
     notes = Column(Text)
@@ -7230,12 +7230,12 @@ def _payin_landed_on_payer_wallet(session, payin_hashes, payout_parts, wallet_id
     Способ оплаты роли не играет — крипта, партнёрские USDT или быстро
     сконвертированные рубли одинаково смотрят на адрес получателя.
     """
-    payer = {(p.get('from_address') or '').strip()
+    payer = {(p.get('from_address') or '').strip().lower()
              for p in (payout_parts or []) if p.get('from_address')}
     if wallet_id:
         w = session.query(Wallet).get(wallet_id)
         if w and w.address:
-            payer.add(w.address.strip())
+            payer.add(w.address.strip().lower())
     if not payer:
         return False
 
@@ -7248,10 +7248,15 @@ def _payin_landed_on_payer_wallet(session, payin_hashes, payout_parts, wallet_id
         if not addr:
             # Адрес прихода обычно проставляет фоновый бэкфилл, но решение о
             # долге принимается здесь и сейчас — спрашиваем сеть.
-            addr = _tron_tx_to_address(h)
+            network = _normalize_tx_network(tx.network if tx else 'trc20')
+            if network == 'trc20':
+                addr = _tron_tx_to_address(h)
+            else:
+                info = _tx_info_by_network(h, network)
+                addr = info.get('to_address') if info else None
             if addr and tx:
                 tx.to_address = addr
-        if addr and addr.strip() in payer:
+        if addr and addr.strip().lower() in payer:
             return True
     return False
 
@@ -7262,7 +7267,7 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     Сумму и адреса тянем из сети: она источник истины, по ней считается остаток
     и ловится попытка выдать из перевода больше, чем ушло. Сеть промолчала —
     ставим заявленную долю и source='manual' («не сверено»), иначе сделка не
-    сохранилась бы из-за недоступного TronScan.
+    сохранилась бы из-за недоступного TronScan/Etherscan.
     """
     part = part or {}
     network = _normalize_payout_network(part.get('network'))
@@ -7278,26 +7283,25 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
         return tx
     amount, source = None, 'manual'
     info = {}
-    # ERC-20 не отправляем в TronScan: сеть выбрал оператор,
-    # сумма приходит из формы и остаётся с пометкой manual.
-    if network == 'trc20':
-        try:
-            info = _tron_tx_info(tx_hash) or {}
-            if info.get('amount_usdt'):
-                # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
-                # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
-                amount = info.get('total_out_usdt') or info['amount_usdt']
-                source = 'tronscan'
-        except Exception as e:
-            print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
+    try:
+        info = _tx_info_by_network(tx_hash, network) or {}
+        if info.get('amount_usdt'):
+            # Потолок реестра — сколько ушло с кошелька этой транзакцией, а не
+            # один перевод из батча: иначе вторая выдача тем же хешем не влезет.
+            amount = info.get('total_out_usdt') or info['amount_usdt']
+            source = _tx_network_source(network)
+    except TransactionVerificationError:
+        raise
+    except Exception as e:
+        print(f'[PayoutTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
     tx = PayoutTx(tx_hash=tx_hash,
                   network=network,
                   amount_usdt=amount if amount is not None else float(claim_usdt or 0),
                   source=source,
                   from_address=info.get('from_address') or part.get('from_address'),
                   to_address=info.get('to_address') or part.get('to_address'),
-                  notes=('сумма из CRM, сеть выбрана вручную'
-                         if network == 'erc20' else None))
+                  notes=(None if source != 'manual'
+                         else 'сумма из CRM, с сетью не сверена'))
     session.add(tx)
     session.flush()
     return tx
@@ -7324,16 +7328,19 @@ def _sync_payout_tx_uses(session, deal, parts):
         # Сумма из бэкфилла или с рук — это «сколько разнесли», а не «сколько
         # ушло»: перевод 3d828b22… после миграции знал про свои 509.42 при
         # реальных 1952, и остаток показывался нулевым. Сверяем с сетью один
-        # раз — дальше source='tronscan' и в сеть больше не ходим.
-        if tx.source != 'tronscan' and (tx.network or 'trc20') == 'trc20':
+        # раз — дальше source становится tronscan/etherscan и в сеть больше не ходим.
+        expected_source = _tx_network_source(tx.network or 'trc20')
+        if tx.source != expected_source:
             try:
-                chain = _tron_tx_info(tx.tx_hash) or {}
+                chain = _tx_info_by_network(tx.tx_hash, tx.network or 'trc20') or {}
+            except TransactionVerificationError:
+                raise
             except Exception as e:
                 chain = {}
                 print(f'[PayoutTx] сверка с сетью не удалась {tx.tx_hash[:12]}…: {e}')
             if chain.get('amount_usdt'):
                 tx.amount_usdt = chain.get('total_out_usdt') or chain['amount_usdt']
-                tx.source = 'tronscan'
+                tx.source = expected_source
                 tx.notes = None
                 tx.from_address = tx.from_address or chain.get('from_address')
                 tx.to_address = tx.to_address or chain.get('to_address')
@@ -7353,7 +7360,7 @@ def _sync_payout_tx_uses(session, deal, parts):
         session.flush()
 
         if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
-            if tx.source != 'tronscan':
+            if tx.source not in ('tronscan', 'etherscan'):
                 # Сеть уже спросили выше и она молчит: потолок выдуман, отказывать
                 # по нему нельзя. Поднимаем до разобранного с пометкой «не сверено».
                 tx.amount_usdt = tx.used_usdt()
@@ -7366,7 +7373,9 @@ def _sync_payout_tx_uses(session, deal, parts):
                 # Прежде чем отказать, пересверяем потолок с сетью — один
                 # запрос в момент конфликта дешевле, чем миграция реестра.
                 try:
-                    chain = _tron_tx_info(tx.tx_hash) or {}
+                    chain = _tx_info_by_network(tx.tx_hash, tx.network or 'trc20') or {}
+                except TransactionVerificationError:
+                    raise
                 except Exception as e:
                     chain = {}
                     print(f'[PayoutTx] пересверка потолка {tx.tx_hash[:12]}…: {e}')
@@ -7375,7 +7384,8 @@ def _sync_payout_tx_uses(session, deal, parts):
                     tx.amount_usdt = out
                     session.flush()
 
-            if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01 and tx.source == 'tronscan':
+            if (tx.used_usdt() > (tx.amount_usdt or 0) + 0.01
+                    and tx.source in ('tronscan', 'etherscan')):
                 free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
                 raise ValueError(
                     f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
@@ -7489,7 +7499,7 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     Сумму тянем из сети: она источник истины, по ней считается остаток и
     ловится попытка отнести больше пришедшего. Сеть не ответила — ставим
     заявленную долю и помечаем source='manual' («не сверено»), иначе первая
-    же сделка не сохранилась бы из-за недоступного TronScan.
+    же сделка не сохранилась бы из-за недоступного TronScan/Etherscan.
     """
     part = part or {}
     network = _normalize_tx_network(part.get('network'))
@@ -7502,19 +7512,36 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
             raise ValueError(
                 f'Хэш {tx_hash[:12]}… уже записан как {existing_network.upper()}, '
                 f'нельзя сохранить его как {network.upper()}')
+        # ERC-хэш мог быть сохранён вручную до появления интеграции Etherscan.
+        # При следующем редактировании сделки повышаем его до сетевого источника.
+        if network == 'erc20' and tx.source != 'etherscan':
+            chain = _etherscan_tx_info(tx_hash) or {}
+            if chain.get('amount_usdt'):
+                tx.amount_usdt = chain['amount_usdt']
+                tx.source = 'etherscan'
+                tx.to_address = tx.to_address or chain.get('to_address')
+                tx.notes = None
+                session.flush()
         return tx
     amount, source = None, 'manual'
-    if network == 'trc20':
-        try:
+    try:
+        if network == 'trc20':
             chain = _tron_tx_usdt_amount(tx_hash)
             if chain and chain > 0:
                 amount, source = chain, 'tronscan'
-        except Exception as e:
-            print(f'[PayinTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
+        else:
+            chain = _etherscan_tx_info(tx_hash) or {}
+            if chain.get('amount_usdt'):
+                amount, source = chain['amount_usdt'], 'etherscan'
+    except TransactionVerificationError:
+        raise
+    except Exception as e:
+        print(f'[PayinTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
     tx = PayinTx(tx_hash=tx_hash, network=network,
                  amount_usdt=amount or float(claim_usdt or 0), source=source,
-                 notes=('сумма из CRM, сеть выбрана вручную'
-                        if network == 'erc20' else None))
+                 to_address=(chain or {}).get('to_address') if isinstance(chain, dict) else None,
+                 notes=(None if source != 'manual'
+                        else 'сумма из CRM, с сетью не сверена'))
     session.add(tx)
     session.flush()
     return tx
@@ -7555,7 +7582,7 @@ def _sync_payin_tx_uses(session, deal, parts):
         session.flush()
 
         if tx.used_usdt() > (tx.amount_usdt or 0) + 0.01:
-            if tx.source != 'tronscan':
+            if tx.source not in ('tronscan', 'etherscan'):
                 # Сумму перевода мы не знаем: сеть молчала, и она равна первой
                 # заявленной доле. Отказывать по такому потолку нельзя — он
                 # выдуман. Поднимаем сумму до разобранного и оставляем пометку,
@@ -10256,6 +10283,15 @@ def get_wl_transactions():
 
 
 USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+# Ethereum Mainnet: официальный контракт Tether USD и сигнатура события
+# Transfer(address,address,uint256). Etherscan API V2 требует chainid даже для
+# mainnet; ключ читаем при каждом вызове, чтобы тесты и локальный reload могли
+# безопасно подменять окружение без перезапуска модуля.
+USDT_ERC20_CONTRACT = '0xdac17f958d2ee523a2206206994597c13d831ec7'
+ERC20_TRANSFER_TOPIC = (
+    '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+)
+ETHERSCAN_API_URL = 'https://api.etherscan.io/v2/api'
 _TRONSCAN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 }
@@ -10264,6 +10300,15 @@ _TRONSCAN_HEADERS = {
 # заводится на tronscan.org; не задан — работаем как раньше.
 if os.environ.get('TRONSCAN_API_KEY'):
     _TRONSCAN_HEADERS['TRON-PRO-API-KEY'] = os.environ['TRONSCAN_API_KEY']
+
+
+class TransactionVerificationError(ValueError):
+    """Сеть ответила однозначно: транзакция не может подтверждать USDT-перевод."""
+
+
+def _tx_network_source(network):
+    """Имя проверяющего сервиса для нормализованной сети."""
+    return 'etherscan' if _normalize_tx_network(network) == 'erc20' else 'tronscan'
 
 
 def _merge_partial_with_cache(fresh, cache_key, failed_addresses, addr_field):
@@ -12238,6 +12283,119 @@ def _tron_tx_info(tx_hash):
         return {}
 
 
+def _normalize_ethereum_tx_hash(tx_hash):
+    """Хэш Ethereum в каноническом виде; None, если строка им быть не может."""
+    value = str(tx_hash or '').strip().lower()
+    if re.fullmatch(r'[0-9a-f]{64}', value):
+        value = f'0x{value}'
+    return value if re.fullmatch(r'0x[0-9a-f]{64}', value) else None
+
+
+def _etherscan_tx_info(tx_hash):
+    """Разбирает подтверждённые ERC20-USDT переводы из receipt через Etherscan.
+
+    `amount_usdt` — крупнейший USDT Transfer (основной платёж),
+    `total_out_usdt` — все USDT-переводы того же отправителя внутри транзакции.
+    Это важно для batch-транзакций: отдельный маленький перевод может быть
+    комиссией, но весь расход всё равно задаёт потолок реестра выдачи.
+
+    Пустой dict означает, что API не настроен/не ответил — тогда CRM сохраняет
+    ручную сумму с пометкой «не сверено». Однозначно неуспешную транзакцию или
+    receipt без USDT отклоняем: такой хэш нельзя использовать как подтверждение.
+    """
+    api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
+    if not api_key:
+        return {}
+    normalized_hash = _normalize_ethereum_tx_hash(tx_hash)
+    if not normalized_hash:
+        raise TransactionVerificationError(
+            'Некорректный хэш Ethereum: нужен 0x и 64 шестнадцатеричных символа')
+    try:
+        response = requests.get(
+            ETHERSCAN_API_URL,
+            params={
+                'chainid': '1',
+                'module': 'proxy',
+                'action': 'eth_getTransactionReceipt',
+                'txhash': normalized_hash,
+                'apikey': api_key,
+            },
+            timeout=8,
+        )
+        if response.status_code != 200:
+            app.logger.warning(
+                f'Etherscan receipt HTTP {response.status_code} for {normalized_hash[:18]}…')
+            return {}
+        payload = response.json() or {}
+    except Exception as exc:
+        app.logger.warning(f'Etherscan receipt error {normalized_hash[:18]}…: {exc}')
+        return {}
+
+    if payload.get('error'):
+        app.logger.warning(
+            f'Etherscan receipt API error {normalized_hash[:18]}…: '
+            f"{payload['error'].get('message') if isinstance(payload['error'], dict) else payload['error']}")
+        return {}
+    receipt = payload.get('result')
+    if not isinstance(receipt, dict):
+        return {}
+    if str(receipt.get('status') or '').lower() not in ('0x1', '1'):
+        raise TransactionVerificationError(
+            'Ethereum-транзакция найдена, но завершилась с ошибкой')
+
+    transfers = []
+    for log in receipt.get('logs') or []:
+        if str(log.get('address') or '').lower() != USDT_ERC20_CONTRACT:
+            continue
+        topics = log.get('topics') or []
+        if (len(topics) < 3
+                or str(topics[0]).lower() != ERC20_TRANSFER_TOPIC):
+            continue
+        try:
+            amount = int(str(log.get('data') or '0x0'), 16) / 1_000_000
+        except (TypeError, ValueError):
+            continue
+        if amount <= 0:
+            continue
+        transfers.append({
+            'amount_usdt': amount,
+            'from_address': f"0x{str(topics[1])[-40:].lower()}",
+            'to_address': f"0x{str(topics[2])[-40:].lower()}",
+        })
+
+    if not transfers:
+        raise TransactionVerificationError(
+            'Транзакция найдена в Ethereum, но перевода ERC-20 USDT в ней нет')
+    main = max(transfers, key=lambda item: item['amount_usdt'])
+    total_out = sum(
+        item['amount_usdt'] for item in transfers
+        if item['from_address'] == main['from_address']
+    )
+    try:
+        block_number = int(str(receipt.get('blockNumber') or '0x0'), 16)
+    except (TypeError, ValueError):
+        block_number = None
+    return {
+        'amount_usdt': round(main['amount_usdt'], 6),
+        'total_out_usdt': round(total_out, 6),
+        'extra_out_usdt': round(total_out - main['amount_usdt'], 6),
+        'from_address': main['from_address'],
+        'to_address': main['to_address'],
+        'transfer_count': len(transfers),
+        'block_number': block_number,
+    }
+
+
+def _tx_info_by_network(tx_hash, network):
+    """Единый разбор USDT-транзакции в явно выбранной оператором сети."""
+    normalized_network = _normalize_tx_network(network)
+    if normalized_network == 'erc20':
+        return _etherscan_tx_info(tx_hash)
+    if normalized_network == 'trc20':
+        return _tron_tx_info(tx_hash)
+    raise TransactionVerificationError('Выберите сеть перевода: TRC-20 или ERC-20')
+
+
 def _enrich_payout_transfers(session, deal):
     """Достаёт из сети то, чего менеджер не вводил: сумму перевода и кошелёк-плательщик.
 
@@ -12255,15 +12413,14 @@ def _enrich_payout_transfers(session, deal):
     for part in parts:
         if part.get('amount_usdt') is not None and part.get('from_address'):
             continue
-        # ERC-20 был выбран человеком. TronScan такой хэш не знает, а попытка
-        # запроса маскировала ручной выбор сообщением «перевод не найден».
-        if _normalize_payout_network(part.get('network')) != 'trc20':
-            continue
-        info = _tron_tx_info(part.get('hash') or '')
+        info = _tx_info_by_network(
+            part.get('hash') or '', _normalize_payout_network(part.get('network')))
         if not info:
             continue
         if part.get('amount_usdt') is None and info.get('amount_usdt'):
-            part['amount_usdt'] = info['amount_usdt']
+            # Для payout себестоимость — ВЕСЬ расход транзакции: основной
+            # перевод плюс отдельные Transfer-комиссии/сдача того же отправителя.
+            part['amount_usdt'] = info.get('total_out_usdt') or info['amount_usdt']
             changed = True
         for field in ('from_address', 'to_address'):
             if not part.get(field) and info.get(field):
@@ -12282,7 +12439,7 @@ def _enrich_payout_transfers(session, deal):
         addr = (part.get('from_address') or '').strip()
         if not addr:
             continue
-        wallet = session.query(Wallet).filter(Wallet.address == addr).first()
+        wallet = session.query(Wallet).filter(Wallet.address.ilike(addr)).first()
         if wallet:
             deal.payout_wallet_id = wallet.id
             break
@@ -12306,6 +12463,42 @@ def _tron_tx_to_address(tx_hash):
     except Exception as e:
         app.logger.warning(f'tron tx to_address {tx_hash[:16]}: {e}')
         return None
+
+
+@app.route('/api/tx/lookup', methods=['GET'])
+def lookup_tx_by_network():
+    """Проверяет USDT-хэш в сети, которую явно выбрал оператор."""
+    tx_hash = (request.args.get('hash') or '').strip()
+    network = _normalize_tx_network(request.args.get('network'))
+    if not tx_hash:
+        return jsonify({'success': False, 'error': 'Нужен хэш'}), 400
+    if network == 'unknown':
+        return jsonify({'success': False,
+                        'error': 'Выберите сеть: TRC-20 или ERC-20'}), 400
+    if network == 'erc20' and not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
+        return jsonify({'success': False, 'error': 'Etherscan API не настроен',
+                        'manual_fallback': True}), 503
+    try:
+        info = _tx_info_by_network(tx_hash, network)
+    except TransactionVerificationError as exc:
+        return jsonify({'success': False, 'error': str(exc)}), 422
+    if not info:
+        provider = 'Etherscan' if network == 'erc20' else 'TronScan'
+        return jsonify({'success': False,
+                        'error': f'{provider} не подтвердил перевод',
+                        'manual_fallback': True}), 404
+    db = get_session()
+    try:
+        wallet = None
+        if info.get('from_address'):
+            wallet = db.query(Wallet).filter(
+                Wallet.address.ilike(info['from_address'])).first()
+        return jsonify({'success': True, 'network': network,
+                        'source': _tx_network_source(network), **info,
+                        'wallet_id': wallet.id if wallet else None,
+                        'wallet_label': wallet.label if wallet else None})
+    finally:
+        db.close()
 
 
 @app.route('/api/tron/payout-tx', methods=['GET'])

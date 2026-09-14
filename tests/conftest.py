@@ -65,6 +65,10 @@ def isolated_runtime(monkeypatch):
     before = dict(module.app.config)
     module.limiter.reset()
     monkeypatch.setenv('LOCAL_NO_AUTH', '0')
+    # calculator.py подгружает локальный .env уже после начальной очистки.
+    # Интеграционные ключи не должны менять поведение изолированных тестов;
+    # тесты Etherscan включают свой фиктивный ключ явно.
+    monkeypatch.delenv('ETHERSCAN_API_KEY', raising=False)
     # Не читаем локальный service-account даже при заблокированном интернете.
     monkeypatch.setattr(module, 'get_gsheet_client', lambda: None)
     original_request = requests.sessions.Session.request
