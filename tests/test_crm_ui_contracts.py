@@ -295,6 +295,17 @@ def test_realty_payout_manual_hash_requires_explicit_network_and_amount(html):
     assert "mfPayoutTxPool.some(t => t.hash === hash)" in add
 
 
+def test_manual_payin_hash_requires_explicit_network(html):
+    """Ручной Pay-In с экрана создания сделки передаёт выбранную сеть."""
+    block = extract_subtree(html, 'payinTxHashGroup')
+    assert 'id="payinManualNetwork"' in block
+    assert 'id="payinManualHash"' in block
+    assert '<option value="trc20">TRC-20 (TRON)</option>' in block
+    assert '<option value="erc20">ERC-20 (Ethereum)</option>' in block
+    submit = html[html.index("document.getElementById('createDealForm').addEventListener('submit'"):]
+    assert "network: document.getElementById('payinManualNetwork')?.value || 'trc20'" in submit
+
+
 def test_conversion_return_has_tx_picker(html):
     """Возврат оунеру из раскладки пачки выбирается из списка, а не вбивается.
 

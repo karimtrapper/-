@@ -957,6 +957,8 @@ class PayinTx(Base):
     __tablename__ = 'payin_txs'
     id = Column(Integer, primary_key=True)
     tx_hash = Column(String(120), nullable=False, unique=True, index=True)
+    # Формат хэша не определяет блокчейн однозначно: сеть выбирает оператор.
+    network = Column(String(20), nullable=False, default='trc20')
     amount_usdt = Column(Float, nullable=False, default=0)
     source = Column(String(20), default='manual')     # tronscan | manual
     tx_time = Column(DateTime, nullable=True)
@@ -989,7 +991,8 @@ class PayinTx(Base):
         return round((self.amount_usdt or 0) - self.used_usdt(), 2)
 
     def to_dict(self):
-        return {'id': self.id, 'tx_hash': self.tx_hash, 'to_address': self.to_address,
+        return {'id': self.id, 'tx_hash': self.tx_hash,
+                'network': self.network or 'trc20', 'to_address': self.to_address,
                 'amount_usdt': round(self.amount_usdt or 0, 2), 'source': self.source,
                 'used_usdt': self.used_usdt(), 'free_usdt': self.free_usdt(),
                 'deal_ids': sorted({u.deal_id for u in (self.uses or []) if u.deal_id}),
@@ -2628,6 +2631,20 @@ except Exception as e:
 # Реестр входящих переводов: один хэш может обслуживать несколько сделок
 try:
     Base.metadata.create_all(engine, tables=[PayinTx.__table__, PayinTxUse.__table__])
+    # create_all не меняет уже существующую таблицу.
+    with engine.connect() as conn:
+        if 'postgresql' in DATABASE_URL:
+            conn.execute(text(
+                "ALTER TABLE payin_txs ADD COLUMN IF NOT EXISTS network "
+                "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
+        else:
+            try:
+                conn.execute(text(
+                    "ALTER TABLE payin_txs ADD COLUMN network "
+                    "VARCHAR(20) NOT NULL DEFAULT 'trc20'"))
+            except Exception:
+                pass
+        conn.commit()
 except Exception as e:
     print(f"ℹ️ payin_txs migration: {e}")
 
@@ -2645,19 +2662,22 @@ try:
                     for _p in json.loads(_d.payin_tx_hashes) or []:
                         if _p.get('hash'):
                             claims.setdefault(_p['hash'], []).append(
-                                (_d.id, float(_p.get('amount_usdt') or 0)))
+                                (_d.id, float(_p.get('amount_usdt') or 0),
+                                 _p.get('network') or 'trc20'))
                 except (ValueError, TypeError, AttributeError):
                     continue
             for _d in _s.query(Deal).filter(Deal.payin_tx_hash != None).all():
                 if _d.payin_tx_hash not in claims:
-                    claims[_d.payin_tx_hash] = [(_d.id, float(_d.payin_amount_usdt or 0))]
+                    claims[_d.payin_tx_hash] = [
+                        (_d.id, float(_d.payin_amount_usdt or 0), 'trc20')]
             for _hash, _uses in claims.items():
                 _tx = PayinTx(tx_hash=_hash, source='manual',
-                              amount_usdt=round(sum(a for _, a in _uses), 2),
+                              network=next((n for _, _a, n in _uses if n), 'trc20'),
+                              amount_usdt=round(sum(a for _, a, _n in _uses), 2),
                               notes='бэкфилл: сумма из CRM, с сетью не сверена')
                 _s.add(_tx)
                 _s.flush()
-                for _deal_id, _amt in _uses:
+                for _deal_id, _amt, _network in _uses:
                     _s.add(PayinTxUse(tx_id=_tx.id, deal_id=_deal_id, amount_usdt=_amt))
             _s.commit()
             if claims:
@@ -6876,8 +6896,22 @@ def _sync_sber_claims(session, deal, parts):
         inc.claimed_at = datetime.utcnow()
 
 
+TX_NETWORK_ALIASES = {
+    'trc20': 'trc20', 'trc-20': 'trc20', 'tron': 'trc20',
+    'erc20': 'erc20', 'erc-20': 'erc20', 'ethereum': 'erc20', 'eth': 'erc20',
+}
+
+
+def _normalize_tx_network(value):
+    """Нормализует явный выбор сети, не пытаясь угадать её по хэшу."""
+    if value in (None, ''):
+        # Все старые пикеры работали только с TronScan.
+        return 'trc20'
+    return TX_NETWORK_ALIASES.get(str(value).strip().lower(), 'unknown')
+
+
 def _normalize_tx_hashes(raw):
-    """Хэши прихода крипты → [{'hash':.., 'amount_usdt':..}], без дублей и пустых.
+    """Хэши прихода → [{'hash','network','amount_usdt'}], без дублей и пустых.
 
     Принимает и строки, и dict — фронт шлёт объекты с суммой части, интеграции
     могут прислать просто список хэшей.
@@ -6885,10 +6919,11 @@ def _normalize_tx_hashes(raw):
     out, seen = [], set()
     for item in (raw or []):
         if isinstance(item, str):
-            h, amt = item.strip(), None
+            h, amt, network = item.strip(), None, 'trc20'
         elif isinstance(item, dict):
             h = str(item.get('hash') or item.get('tx_hash') or '').strip()
             amt = item.get('amount_usdt')
+            network = _normalize_tx_network(item.get('network'))
         else:
             continue
         if not h or h in seen:
@@ -6898,7 +6933,7 @@ def _normalize_tx_hashes(raw):
             amt = float(amt) if amt not in (None, '') else None
         except (TypeError, ValueError):
             amt = None
-        out.append({'hash': h, 'amount_usdt': amt})
+        out.append({'hash': h, 'network': network, 'amount_usdt': amt})
     return out
 
 
@@ -7084,12 +7119,6 @@ def _apply_payin_extra(session, deal, raw_extra, main_usdt, main_rub):
         _sync_sber_claims(session, deal, base)
 
 
-PAYOUT_NETWORK_ALIASES = {
-    'trc20': 'trc20', 'trc-20': 'trc20', 'tron': 'trc20',
-    'erc20': 'erc20', 'erc-20': 'erc20', 'ethereum': 'erc20', 'eth': 'erc20',
-}
-
-
 def _normalize_payout_network(value):
     """Единый код сети для реестра исходящих переводов.
 
@@ -7097,9 +7126,7 @@ def _normalize_payout_network(value):
     читала исходящие только из TronScan. Неизвестный ввод не
     угадываем по формату хэша — помечаем unknown.
     """
-    if value in (None, ''):
-        return 'trc20'
-    return PAYOUT_NETWORK_ALIASES.get(str(value).strip().lower(), 'unknown')
+    return _normalize_tx_network(value)
 
 
 def _normalize_payout_transfers(raw):
@@ -7444,18 +7471,19 @@ def _payin_hash_list(deal):
 
 
 def _payin_tx_parts(deal):
-    """Хэши прихода сделки как [{hash, amount_usdt}] — вход для реестра долей."""
+    """Хэши прихода сделки как [{hash, network, amount_usdt}] — вход реестра."""
     if deal.payin_tx_hashes:
         try:
             return _normalize_tx_hashes(json.loads(deal.payin_tx_hashes))
         except (ValueError, TypeError):
             pass
     if deal.payin_tx_hash:
-        return [{'hash': deal.payin_tx_hash, 'amount_usdt': deal.payin_amount_usdt}]
+        return [{'hash': deal.payin_tx_hash, 'network': 'trc20',
+                 'amount_usdt': deal.payin_amount_usdt}]
     return []
 
 
-def _payin_tx_get_or_create(session, tx_hash, claim_usdt):
+def _payin_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
     """Перевод из реестра, при отсутствии — заводит.
 
     Сумму тянем из сети: она источник истины, по ней считается остаток и
@@ -7463,18 +7491,30 @@ def _payin_tx_get_or_create(session, tx_hash, claim_usdt):
     заявленную долю и помечаем source='manual' («не сверено»), иначе первая
     же сделка не сохранилась бы из-за недоступного TronScan.
     """
+    part = part or {}
+    network = _normalize_tx_network(part.get('network'))
+    if network == 'unknown':
+        raise ValueError('Выберите сеть прихода: TRC-20 или ERC-20')
     tx = session.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).with_for_update().first()
     if tx:
+        existing_network = tx.network or 'trc20'
+        if existing_network != network:
+            raise ValueError(
+                f'Хэш {tx_hash[:12]}… уже записан как {existing_network.upper()}, '
+                f'нельзя сохранить его как {network.upper()}')
         return tx
     amount, source = None, 'manual'
-    try:
-        chain = _tron_tx_usdt_amount(tx_hash)
-        if chain and chain > 0:
-            amount, source = chain, 'tronscan'
-    except Exception as e:
-        print(f'[PayinTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
-    tx = PayinTx(tx_hash=tx_hash, amount_usdt=amount or float(claim_usdt or 0),
-                 source=source)
+    if network == 'trc20':
+        try:
+            chain = _tron_tx_usdt_amount(tx_hash)
+            if chain and chain > 0:
+                amount, source = chain, 'tronscan'
+        except Exception as e:
+            print(f'[PayinTx] сумма из сети недоступна для {tx_hash[:12]}…: {e}')
+    tx = PayinTx(tx_hash=tx_hash, network=network,
+                 amount_usdt=amount or float(claim_usdt or 0), source=source,
+                 notes=('сумма из CRM, сеть выбрана вручную'
+                        if network == 'erc20' else None))
     session.add(tx)
     session.flush()
     return tx
@@ -7488,7 +7528,7 @@ def _sync_payin_tx_uses(session, deal, parts):
     того, что пришло (допуск копейка). Превышение это двойной учёт: один и тот
     же приход попал бы в две сделки и раздул бы месяц.
     """
-    wanted = {p['hash']: p.get('amount_usdt') for p in (parts or []) if p.get('hash')}
+    wanted = {p['hash']: p for p in (parts or []) if p.get('hash')}
 
     # Снять доли, которых в сделке больше нет
     for use in session.query(PayinTxUse).filter(PayinTxUse.deal_id == deal.id).all():
@@ -7497,8 +7537,9 @@ def _sync_payin_tx_uses(session, deal, parts):
             session.delete(use)
     session.flush()
 
-    for tx_hash, claim in wanted.items():
-        tx = _payin_tx_get_or_create(session, tx_hash, claim)
+    for tx_hash, part in wanted.items():
+        claim = part.get('amount_usdt')
+        tx = _payin_tx_get_or_create(session, tx_hash, claim, part)
         use = session.query(PayinTxUse).filter(
             PayinTxUse.tx_id == tx.id, PayinTxUse.deal_id == deal.id).first()
         # Долю не указали — считаем, что сделка забирает остаток перевода

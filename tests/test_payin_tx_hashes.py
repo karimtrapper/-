@@ -13,6 +13,7 @@ import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ['SECRET_KEY'] = 'test-secret-key-for-pytest'
 
+import app as A
 from app import (app, get_session, Deal, Client, AdminUser, PayinTx, PayinTxUse,
                  _normalize_tx_hashes, _payin_hash_list, get_used_transaction_hashes)
 
@@ -79,11 +80,19 @@ class TestNormalize:
 
     def test_objects_kept_with_amounts(self):
         out = _normalize_tx_hashes([{'hash': H1, 'amount_usdt': 100}, {'hash': H2, 'amount_usdt': '50.5'}])
-        assert out == [{'hash': H1, 'amount_usdt': 100.0}, {'hash': H2, 'amount_usdt': 50.5}]
+        assert out == [
+            {'hash': H1, 'network': 'trc20', 'amount_usdt': 100.0},
+            {'hash': H2, 'network': 'trc20', 'amount_usdt': 50.5}]
 
     def test_plain_strings_accepted(self):
         assert _normalize_tx_hashes([H1, H2]) == [
-            {'hash': H1, 'amount_usdt': None}, {'hash': H2, 'amount_usdt': None}]
+            {'hash': H1, 'network': 'trc20', 'amount_usdt': None},
+            {'hash': H2, 'network': 'trc20', 'amount_usdt': None}]
+
+    def test_explicit_ethereum_network_is_preserved(self):
+        assert _normalize_tx_hashes([
+            {'hash': H1, 'network': 'Ethereum', 'amount_usdt': 100}
+        ])[0]['network'] == 'erc20'
 
     def test_dedupe_and_drop_empty(self):
         out = _normalize_tx_hashes([H1, '  ', {'hash': H1, 'amount_usdt': 5}, None, {'hash': '  '}])
@@ -125,6 +134,25 @@ class TestCreateDeal:
     def test_duplicates_collapsed(self, tc):
         resp = tc.post('/api/deals', json=_payload(payin_tx_hashes=[H1, H1, H2]))
         assert [x['hash'] for x in resp.json['deal']['payin_tx_hashes']] == [H1, H2]
+
+    def test_manual_erc20_is_saved_without_tronscan(self, tc, db, monkeypatch):
+        def forbidden(_hash):
+            raise AssertionError('ERC-20 нельзя отправлять в TronScan')
+        monkeypatch.setattr(A, '_tron_tx_usdt_amount', forbidden)
+
+        resp = tc.post('/api/deals', json=_payload(payin_tx_hashes=[
+            {'hash': '0x' + H1, 'network': 'erc20', 'amount_usdt': 300000}]))
+        assert resp.status_code in (200, 201), resp.json
+        assert resp.json['deal']['payin_tx_hashes'][0]['network'] == 'erc20'
+        tx = db.query(PayinTx).filter_by(tx_hash='0x' + H1).one()
+        assert tx.network == 'erc20'
+        assert tx.source == 'manual'
+
+    def test_unknown_network_is_rejected(self, tc):
+        resp = tc.post('/api/deals', json=_payload(payin_tx_hashes=[
+            {'hash': H1, 'network': 'ercc20', 'amount_usdt': 300000}]))
+        assert resp.status_code == 400
+        assert 'TRC-20 или ERC-20' in resp.json['error']
 
 
 class TestUpdateDeal:

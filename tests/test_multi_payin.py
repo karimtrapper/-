@@ -111,7 +111,8 @@ def test_normalize_keeps_hashes_and_uuids():
         'tx_hashes': [{'hash': H_EXTRA, 'amount_usdt': 500}],
         'sber_uuids': ['uuid-1'],
     }])
-    assert out[0]['tx_hashes'] == [{'hash': H_EXTRA, 'amount_usdt': 500.0}]
+    assert out[0]['tx_hashes'] == [
+        {'hash': H_EXTRA, 'network': 'trc20', 'amount_usdt': 500.0}]
     assert out[0]['sber_uuids'] == ['uuid-1']
 
 

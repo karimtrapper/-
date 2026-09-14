@@ -1381,15 +1381,28 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     placeholder="Имя партнера">
                             </div>
                             <div class="form-group" id="payinTxHashGroup">
-                                <label class="form-label">Хэш транзакции (для крипты) <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
+                                <label class="form-label">Транзакции Pay-In <span style="font-weight:400;color:#64748b;">— можно несколько, суммируются</span></label>
                                 <select class="form-control" id="payinTxSelect" onchange="selectPayinTx(this)"
                                     style="margin-bottom: 0.5rem;">
                                     <option value="">-- Выбрать из входящих --</option>
                                 </select>
                                 <div id="payinTxWarn" style="display:none;margin-bottom:0.5rem;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;"></div>
                                 <div id="payinTxPoolBox" style="margin-bottom: 0.5rem;"></div>
-                                <input type="text" class="form-control" name="payin_tx_hash"
-                                    placeholder="Или введите TxHash вручную...">
+                                <div id="payinManualTxFields" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;align-items:end;">
+                                    <div>
+                                        <label class="form-label" for="payinManualNetwork">Сеть ручного хэша *</label>
+                                        <select class="form-control" id="payinManualNetwork">
+                                            <option value="trc20">TRC-20 (TRON)</option>
+                                            <option value="erc20">ERC-20 (Ethereum)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="form-label" for="payinManualHash">Ручной TxHash</label>
+                                        <input type="text" class="form-control" id="payinManualHash" name="payin_tx_hash"
+                                            placeholder="Вставьте полный хэш транзакции">
+                                    </div>
+                                </div>
+                                <small style="display:block;color:#64748b;margin-top:6px;">При ручном вводе сеть выбирается явно. ERC-20 не проверяется через TronScan.</small>
                             </div>
                             <div class="form-group" id="payinRateGroup">
                                 <label class="form-label">Курс RUB/USDT</label>
@@ -2651,6 +2664,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     const rxPct = (m,u) => (u&&u>0)?((m/u*100).toFixed(2)+'%'):'0%';
     const rxTron = h => 'https://tronscan.org/#/transaction/'+h;
     const rxTronAddr = a => 'https://tronscan.org/#/address/'+a;
+    function txNetworkCode(network) {
+        return String(network || 'trc20').toLowerCase() === 'erc20' ? 'erc20' : 'trc20';
+    }
+    function txNetworkLabel(network) { return txNetworkCode(network).toUpperCase(); }
+    function txExplorerUrl(hash, network) {
+        return txNetworkCode(network) === 'erc20'
+            ? 'https://etherscan.io/tx/' + encodeURIComponent(hash)
+            : 'https://tronscan.org/#/transaction/' + encodeURIComponent(hash);
+    }
+    function dealPayinNetwork(deal, hash) {
+        const part = (deal.payin_tx_hashes || []).find(t => t && typeof t === 'object' && t.hash === hash);
+        return part?.network || 'trc20';
+    }
 
     const RX_ST = {
       created:{t:'🆕 Создана',bg:'#EFF6FF',c:'#1E40AF'},
@@ -4798,7 +4824,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <div style="margin: 0 0 6px;">
                                         <p style="margin: 0 0 2px; font-size: 0.9rem;">• <strong>${idx + 1}.</strong> ${escapeHtml(p.label)}${(p.amount_rub && p.rate_rub_usdt) ? ` · ${formatNumber(p.amount_rub)} ₽ @ ${p.rate_rub_usdt.toFixed(4)}` : ''} → $${(p.amount_usdt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                         ${p.tx_hashes.length ? `<div style="margin-left: 14px;">
-                                            ${p.tx_hashes.map(t => `<div style="font-size:0.82rem;margin:1px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#e0f2fe;padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:#0369a1;">${String(t.hash).substring(0, 16)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor:pointer;" title="Скопировать">📋</span></div>`).join('')}
+                                            ${p.tx_hashes.map(t => `<div style="font-size:0.82rem;margin:1px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<strong style="color:#166534;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong> <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#e0f2fe;padding:1px 5px;border-radius:4px;font-family:monospace;text-decoration:none;color:#0369a1;">${String(t.hash).substring(0, 16)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor:pointer;" title="Скопировать">📋</span></div>`).join('')}
                                             ${hashSum > 0 && Math.abs(gap) > 0.01 ? `<div style="font-size:0.78rem;color:#b45309;">переводами закрыто $${hashSum.toFixed(2)} из $${(p.amount_usdt || 0).toFixed(2)} · ${gap > 0 ? `не хватает $${gap.toFixed(2)}` : `переводов больше на $${Math.abs(gap).toFixed(2)}`}</div>` : (hashSum === 0 ? `<div style="font-size:0.78rem;color:#94a3b8;">суммы по переводам не проставлены</div>` : '')}
                                         </div>` : `<div style="margin-left:14px;font-size:0.78rem;color:#94a3b8;">переводы не привязаны</div>`}
                                     </div>`;
@@ -4815,11 +4841,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             ? ''
                             : (deal.payin_tx_hashes && deal.payin_tx_hashes.length > 1)
                             ? `<p><strong>Хэши Pay-In (${deal.payin_tx_hashes.length} части):</strong><br>` + deal.payin_tx_hashes.map(t =>
-                                `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
+                                `<span style="display:inline-block;margin:2px 0;">${t.amount_usdt != null ? `<strong style="color:#059669;">+$${Number(t.amount_usdt).toFixed(2)}</strong> ` : ''}<strong style="color:#166534;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong> <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${t.hash.substring(0, 20)}...</a> <span onclick="copyHash('${t.hash}')" style="cursor: pointer;" title="Скопировать">📋</span></span><br>`
                               ).join('') + `</p>`
                             : ''}
                             <div id="dealConversionRow"></div>
-                            ${(deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <a href="https://tronscan.org/#/transaction/${deal.payin_tx_hash}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
+                            ${(deal.payin_tx_hash ? `<p><strong>Хэш Pay-In:</strong> <strong style="color:#166534;font-size:0.72rem;">${txNetworkLabel(dealPayinNetwork(deal, deal.payin_tx_hash))}</strong> <a href="${txExplorerUrl(deal.payin_tx_hash, dealPayinNetwork(deal, deal.payin_tx_hash))}" target="_blank" style="background: #e0f2fe; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 0.85rem; text-decoration: none; color: #0369a1;">${deal.payin_tx_hash.substring(0, 20)}...</a> <span onclick="copyHash('${deal.payin_tx_hash}')" style="cursor: pointer;" title="Скопировать">📋</span> ${deal.payin_tx_verified ? '✅' : '⏳'}</p>` : '')}
                         <div id="payinTxSharedBox" style="margin-top:0.25rem;"></div>
                         
                         ${isDoverka ? `
@@ -4860,9 +4886,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <p style="margin:0 0 4px;"><strong>Переводы в компанию (${deal.payout_tx_hashes.length}):</strong></p>
                                     ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
                                         <strong style="color:#b91c1c;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                        <strong style="color:#7f1d1d;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
                                         ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
-                                        <a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#b91c1c;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                        <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#fee2e2;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#b91c1c;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#b91c1c;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
@@ -4888,9 +4915,10 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <p style="margin:0 0 4px;"><strong>Переводы (${deal.payout_tx_hashes.length}):</strong></p>
                                     ${deal.payout_tx_hashes.map(t => `<p style="margin:0 0 3px;font-size:0.9rem;">
                                         <strong style="color:#0e7490;">−$${(Number(t.amount_usdt) || 0).toFixed(2)}</strong>
+                                        <strong style="color:#155e75;font-size:0.72rem;">${txNetworkLabel(t.network)}</strong>
                                         ${t.to_address ? ` → <span style="font-family:monospace;">${escapeHtml(t.to_address.substring(0, 14))}…</span> <span onclick="copyHash('${t.to_address}')" style="cursor:pointer;" title="Скопировать адрес">📋</span>` : ''}
                                         ${t.date ? ` · ${escapeHtml(t.date)}` : ''}
-                                        <a href="https://tronscan.org/#/transaction/${t.hash}" target="_blank" style="background:#cffafe;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#0e7490;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
+                                        <a href="${txExplorerUrl(t.hash, t.network)}" target="_blank" style="background:#cffafe;padding:2px 6px;border-radius:4px;font-family:monospace;font-size:0.8rem;text-decoration:none;color:#0e7490;margin-left:4px;">${t.hash.substring(0, 16)}…</a>
                                     </p>`).join('')}
                                     <p style="margin:4px 0 0;color:#0e7490;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
@@ -6194,6 +6222,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             style="max-width:120px;padding:2px 6px;height:auto;font-size:0.85rem;"
                             value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту сделку"
                             oninput="payinTxShareChanged(${i}, this.value)">
+                        <span style="color:#166534;font-size:0.75rem;font-weight:700;">${(t.network || 'trc20').toUpperCase()}</span>
                         <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
                         <span style="color:#94a3b8;">${t.date || ''}</span>
                         <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" onclick="removePayinTx(${i})">✕</button>
@@ -6294,6 +6323,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (share != null && expected > 0 && expected < share) share = expected;
             payinTxPool.push({
                 hash: txHash,
+                network: 'trc20',
                 amount_usdt: share,
                 date: opt?.dataset?.date || '',
                 // Подставлено из сети, руками не трогали: когда приедет реестр,
@@ -6317,6 +6347,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function resetPayinTxPool(parts) {
             payinTxPool = (parts || []).map(p => ({
                 hash: p.hash,
+                network: p.network || 'trc20',
                 amount_usdt: p.amount_usdt != null ? Number(p.amount_usdt) : null,
                 date: '',
             }));
@@ -8562,8 +8593,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Части прихода Сбера (пустой список = убрать части и освободить пул)
             data.payin_parts = methodUsesSberPool(data.payin_method) ? sberParts : [];
 
-            // Приход крипты частями (пустой список = один хэш из поля, как раньше)
-            data.payin_tx_hashes = payinTxPool.map(t => ({ hash: t.hash, amount_usdt: t.amount_usdt }));
+            // Для ручного хэша сеть обязательна: по самому хэшу отличить
+            // Ethereum от TRON нельзя. Выбранные из входящих всегда TRC-20.
+            data.payin_tx_hashes = payinTxPool.length
+                ? payinTxPool.map(t => ({
+                    hash: t.hash,
+                    network: t.network || 'trc20',
+                    amount_usdt: t.amount_usdt,
+                }))
+                : (data.payin_tx_hash ? [{
+                    hash: data.payin_tx_hash,
+                    network: document.getElementById('payinManualNetwork')?.value || 'trc20',
+                    amount_usdt: data.payin_amount_usdt ?? null,
+                }] : []);
 
             // Дополнительные приходы (пустой список = вернуться к одному каналу).
             // Обязательно ДО отправки и на обоих режимах: без этой строки вторая
