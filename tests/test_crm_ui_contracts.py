@@ -295,6 +295,14 @@ def test_realty_payout_manual_hash_requires_explicit_network_and_amount(html):
     assert "mfPayoutTxPool.some(t => t.hash === hash)" in add
 
 
+def test_trc_picker_uses_whole_batch_expense(html):
+    """Выбор TRC из списка пересверяет хэш и берёт основной перевод + комиссию."""
+    add = _function_body(html, 'addMfPayoutChecked')
+    assert '/api/tx/lookup?network=trc20' in add
+    assert 'result.total_out_usdt || mainAmount' in add
+    assert 'amount_usdt: totalOut > 0 ? totalOut : listedAmount' in add
+
+
 def test_manual_payin_hash_requires_explicit_network(html):
     """Ручной Pay-In с экрана создания сделки передаёт выбранную сеть."""
     block = extract_subtree(html, 'payinTxHashGroup')

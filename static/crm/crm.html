@@ -7684,20 +7684,57 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             renderMfPayoutPicker();
         }
 
-        function addMfPayoutChecked() {
+        let mfPayoutAdding = false;
+
+        async function addMfPayoutChecked() {
+            if (mfPayoutAdding) return;
             const picked = mfPayoutTxOptions.filter(tx => mfPayoutChecked.has(tx.tx_hash)
                 && !mfPayoutTxPool.some(t => t.hash === tx.tx_hash));
             if (!picked.length) { showToast('Отметь хотя бы один перевод', 'error'); return; }
-            picked.forEach(tx => mfPayoutTxPool.push({
-                hash: tx.tx_hash,
-                network: 'trc20',
-                amount_usdt: tx.amount_usdt != null ? Number(tx.amount_usdt) : null,
-                to_address: tx.to_address || '',
-                date: formatDate(tx.timestamp) || '',
+            mfPayoutAdding = true;
+            showToast(`Проверяю в TronScan: ${picked.length} перевод(а/ов)…`);
+            const checked = await Promise.all(picked.map(async tx => {
+                const listedAmount = tx.amount_usdt != null ? Number(tx.amount_usdt) : null;
+                try {
+                    const response = await fetch(`/api/tx/lookup?network=trc20&hash=${encodeURIComponent(tx.tx_hash)}`);
+                    const result = await response.json();
+                    if (response.ok && result.success) {
+                        const mainAmount = Number(result.amount_usdt || 0);
+                        const totalOut = Number(result.total_out_usdt || mainAmount);
+                        return {
+                            hash: tx.tx_hash, network: 'trc20',
+                            // Один TRON-хэш = один полный расход: основной Transfer
+                            // плюс отдельный Transfer комиссии внутри того же батча.
+                            amount_usdt: totalOut > 0 ? totalOut : listedAmount,
+                            main_amount_usdt: mainAmount,
+                            from_address: result.from_address || '',
+                            to_address: result.to_address || tx.to_address || '',
+                            date: formatDate(tx.timestamp) || '', verified: true,
+                        };
+                    }
+                } catch (error) {
+                    console.warn('TronScan lookup failed for payout:', tx.tx_hash, error);
+                }
+                return {
+                    hash: tx.tx_hash, network: 'trc20', amount_usdt: listedAmount,
+                    to_address: tx.to_address || '', date: formatDate(tx.timestamp) || '',
+                    verified: false,
+                };
             }));
+            mfPayoutAdding = false;
+            checked.forEach(tx => mfPayoutTxPool.push(tx));
             mfPayoutChecked.clear();
             document.getElementById('mfPayoutPicker').style.display = 'none';
-            showToast(`Добавлено переводов: ${picked.length}`);
+            const extra = checked.reduce((sum, tx) =>
+                sum + Math.max(0, (tx.amount_usdt || 0) - (tx.main_amount_usdt || tx.amount_usdt || 0)), 0);
+            const unverified = checked.filter(tx => !tx.verified).length;
+            if (extra > 0.000001) {
+                showToast(`Добавлено: ${checked.length}. Полный расход включает комиссию +$${extra.toFixed(6)}`);
+            } else if (unverified) {
+                showToast(`Добавлено: ${checked.length}; ${unverified} не удалось пересверить в TronScan`, 'error');
+            } else {
+                showToast(`Добавлено переводов: ${checked.length}`);
+            }
             renderMfPayoutTxPool();
             realtyPayoutRecalc();
         }

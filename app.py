@@ -12238,7 +12238,9 @@ def _trc20_main_transfer(trc):
     total = sum(_trc20_amount(t) for t in trc
                 if t.get('from_address') == main.get('from_address')
                 and t.get('contract_address') == main.get('contract_address'))
-    return main, round(_trc20_amount(main), 2), round(total, 2)
+    # USDT имеет 6 знаков. Округление до центов здесь съедало мелкую отдельную
+    # комиссию батча ещё до того, как расход попадал в сделку.
+    return main, round(_trc20_amount(main), 6), round(total, 6)
 
 
 def _tron_tx_amount(tx_hash):
@@ -12271,13 +12273,20 @@ def _tron_tx_info(tx_hash):
                          timeout=10)
         if r.status_code != 200:
             return {}
-        main, amount, total_out = _trc20_main_transfer((r.json() or {}).get('trc20TransferInfo'))
+        raw_transfers = (r.json() or {}).get('trc20TransferInfo')
+        main, amount, total_out = _trc20_main_transfer(raw_transfers)
         if not main:
             return {}
+        transfers = [raw_transfers] if isinstance(raw_transfers, dict) else (raw_transfers or [])
+        same_out = [t for t in transfers
+                    if t.get('from_address') == main.get('from_address')
+                    and t.get('contract_address') == main.get('contract_address')]
         return {'amount_usdt': amount or None,
                 'total_out_usdt': total_out or None,
+                'extra_out_usdt': round((total_out or 0) - (amount or 0), 6),
                 'from_address': main.get('from_address') or None,
-                'to_address': main.get('to_address') or None}
+                'to_address': main.get('to_address') or None,
+                'transfer_count': len(same_out)}
     except Exception as e:
         app.logger.warning(f'tron tx info {tx_hash[:16]}: {e}')
         return {}

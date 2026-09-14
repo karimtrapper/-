@@ -316,7 +316,33 @@ class TestBatchTransfer:
         info = appmod._tron_tx_info('23808e8f' + '0' * 56)
         assert info['amount_usdt'] == pytest.approx(3643.90)
         assert info['total_out_usdt'] == pytest.approx(3645.40)
+        assert info['extra_out_usdt'] == pytest.approx(1.50)
+        assert info['transfer_count'] == 2
         assert info['to_address'] == EXCHANGE
+
+    def test_parser_keeps_subcent_trc_commission_in_full_expense(self, monkeypatch):
+        """TRC-комиссия внутри второго Transfer не теряется из-за округления."""
+        batch = [
+            {'amount_str': '99000000000', 'decimals': 6,
+             'contract_address': appmod.USDT_TRC20_CONTRACT,
+             'from_address': WALLET, 'to_address': EXCHANGE},
+            {'amount_str': '1234', 'decimals': 6,
+             'contract_address': appmod.USDT_TRC20_CONTRACT,
+             'from_address': WALLET, 'to_address': 'TFee111111111111111111111111111111'},
+        ]
+
+        class _R:
+            status_code = 200
+
+            @staticmethod
+            def json():
+                return {'trc20TransferInfo': batch}
+
+        monkeypatch.setattr(appmod.requests, 'get', lambda *a, **kw: _R())
+        info = appmod._tron_tx_info('a' * 64)
+        assert info['amount_usdt'] == pytest.approx(99000)
+        assert info['extra_out_usdt'] == pytest.approx(0.001234)
+        assert info['total_out_usdt'] == pytest.approx(99000.001234)
 
     def test_old_undercounted_ceiling_is_resynced(self, cli, tx_hash, monkeypatch):
         """Запись со старым потолком не блокирует выдачу — сверяем с сетью."""
