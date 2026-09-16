@@ -1316,6 +1316,68 @@ def test_сделка_взяла_часть_большого_прихода(cli,
         db.close()
 
 
+def test_комиссия_эквайринга_не_добавляется_к_приходу(cli, incomes, monkeypatch):
+    """Регресс #615: приход сделки равен полученному от брокера, без комиссии банка.
+
+    Эквайринг зачисляется уже за вычетом комиссии, а в payin_parts и в
+    payin_amount_rub лежит брутто. Деление брутто на нетто приписывало сделке
+    ставку комиссии: на 120 738.33 ₽ выходило 1 405.49 USDT вместо 1 395.65,
+    и 0,7 % банковского расхода книжились как наша прибыль.
+    """
+    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+    monkeypatch.setattr(appmod, '_send_deal_telegram', lambda *a, **kw: None)
+    monkeypatch.setattr(appmod, 'notify_agents_new_deal', lambda *a, **kw: None)
+    monkeypatch.setattr(appmod, 'send_deal_completed_webhook', lambda *a, **kw: None)
+
+    db = get_session()
+    try:
+        inc = SberIncome(
+            uuid=_uid(), operation_date='2026-09-11', amount_rub=119893.16,
+            payer='Московский банк Сбербанка России',
+            purpose='Зачисление средств по операциям эквайринга. '
+                    'Мерчант №781003872118. Комиссия 845.17. НДС не облагается.')
+        db.add(inc); db.flush()
+        inc_id, inc_uuid = inc.id, inc.uuid
+        d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                 client_name='Andrey Zaytsev - Grusha', payin_method=PayInMethod.SBER_WL,
+                 payin_amount_rub=120738.33,
+                 payin_parts=json.dumps([{'uuid': inc_uuid, 'amount_rub': 120738.33,
+                                          'fee_rub': 845.17, 'net_rub': 119893.16}]))
+        db.add(d); db.flush()
+        deal_id = d.id
+        inc.claimed_deal_id = deal_id
+        db.commit()
+    finally:
+        db.close()
+
+    conv = cli.post('/api/conversions', json={
+        'broker': 'трейдх', 'rate_rub_usdt': 85.6,
+        'sources': [{'sber_income_id': inc_id, 'amount_rub': 119893.16}],
+    }).get_json()['conversion']
+    h = _uid() + _uid()
+    cli.post(f"/api/conversions/{conv['id']}/txs", json={'tx_hash': h, 'amount_usdt': 1395.65})
+
+    db = get_session()
+    try:
+        deal = db.query(Deal).get(deal_id)
+        # Сделка забрала приход целиком — ей причитается ровно доля пачки
+        assert deal.payin_amount_usdt == pytest.approx(1395.65, abs=0.01), deal.payin_amount_usdt
+        # Курс считается от брутто: клиент заплатил 120 738.33 за 1 395.65 USDT
+        assert deal.payin_rate_rub_usdt == pytest.approx(86.5105, abs=0.001)
+    finally:
+        db.close()
+
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(PayinTx).filter(PayinTx.tx_hash == h).delete()
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.query(SberIncome).filter(SberIncome.id == inc_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
 def test_бредовый_курс_не_подставляется(cli, incomes, monkeypatch):
     """Страховка: если доля даёт курс вне коридора — сделку не трогаем."""
     monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)

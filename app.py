@@ -5897,16 +5897,24 @@ def _fill_payin_usdt_from_conversion(db, deal):
         share = shares.get(inc.id)
         if not share:
             return False              # хоть один приход не в полученной пачке
+        # Доля сделки и весь приход должны меряться одной линейкой. В payin_parts
+        # и в payin_amount_rub лежит БРУТТО (что заплатил клиент), а amount_rub
+        # прихода — уже за вычетом эквайринга. Деление брутто на нетто добавляло
+        # к приходу ставку комиссии: 120 738.33 / 119 893.16 = 1.00705, и сделка
+        # получала 1 405.49 USDT вместо реальных 1 395.65 — комиссия банка
+        # книжилась как наш доход. У переводов по реквизитам комиссии нет,
+        # брутто равно нетто, и поведение не меняется.
+        gross = (inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
         taken = taken_by_uuid.get(inc.uuid)
         if taken is None:
             # Части не записаны: доверяем целому поступлению, только если оно
             # и есть приход сделки. Иначе не гадаем — пусть проставят руками
-            if abs((inc.amount_rub or 0) - (deal.payin_amount_rub or 0)) > 1:
+            if abs(gross - (deal.payin_amount_rub or 0)) > 1:
                 return False
-            taken = inc.amount_rub or 0
-        if not inc.amount_rub:
+            taken = gross
+        if not gross:
             return False
-        usdt += share * (taken / inc.amount_rub)
+        usdt += share * (taken / gross)
 
     usdt = round(usdt, 2)
     if usdt <= 0:
