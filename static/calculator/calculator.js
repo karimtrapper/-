@@ -2246,3 +2246,47 @@ function setRateSource(src) {
         if (saved !== 'exchange') switchDealCategory(saved);
     });
 })();
+
+// --- Префилл из ссылки -------------------------------------------------------
+// CRM открывает калькулятор в новой вкладке с уже проставленными курсами, суммой
+// и типом сделки — менеджеру остаётся только поставить свой процент. Без
+// параметров в адресе функция не делает ничего, поведение калькулятора прежнее.
+function applyPrefill() {
+    const q = new URLSearchParams(location.search);
+    if (![...q.keys()].length) return;
+
+    const cat = q.get('cat');
+    if (cat && typeof switchDealCategory === 'function') switchDealCategory(cat);
+
+    // метод переключаем ДО курсов: switchMethod чистит кастомные поля
+    const method = q.get('method');
+    if (method && typeof switchMethod === 'function') switchMethod(method);
+
+    const sc = q.get('scenario');
+    if (sc && typeof switchScenario === 'function') switchScenario(sc);
+
+    const dir = q.get('dir');
+    if (dir && typeof setDirection === 'function') setDirection(dir);
+
+    const ru = q.get('rub_usdt'), ut = q.get('usdt_thb');
+    const elRu = document.getElementById('customRubUsdt');
+    const elUt = document.getElementById('customUsdtThb');
+    if (ru && elRu) elRu.value = ru;
+    if (ut && elUt) elUt.value = ut;
+    if ((ru || ut) && typeof updateCustomRate === 'function') updateCustomRate();
+
+    const amt = q.get('amount');
+    const elAmt = document.getElementById('amount');
+    if (amt && elAmt) elAmt.value = amt;
+
+    const deal = q.get('deal');
+    if (deal) {
+        const cap = document.getElementById('methodCaption');
+        if (cap) cap.textContent = 'Метод обмена · из сделки ' + deal;
+    }
+    if (typeof hideResults === 'function') hideResults();
+}
+
+// Отдельный слушатель — регистрируется последним, поэтому отрабатывает после
+// восстановления типа сделки из localStorage и перекрывает его параметрами ссылки.
+document.addEventListener('DOMContentLoaded', () => { try { applyPrefill(); } catch (e) { console.warn('prefill', e); } });
