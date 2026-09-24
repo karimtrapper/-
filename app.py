@@ -18,9 +18,16 @@ import math
 import hashlib
 import hmac
 import secrets
+import base64
+import binascii
+from collections import Counter
 import bcrypt
 import logging
 import gspread
+from html import escape as html_escape
+from stand_transfers import (preserve_server_fields, send_fingerprint,
+                             expected_addresses, normalize_network, normalize_ref,
+                             verify_transfer, _amount)
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== ТЕСТОВЫЙ СТЕНД ====================
@@ -4803,26 +4810,23 @@ def _stand_tg_send(text):
     token = os.environ.get('STAND_TG_TOKEN', '').strip()
     chat = os.environ.get('STAND_TG_CHAT', '').strip()
     if not token or not chat:
-        return
+        return False
     try:
-        requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
-                      json={'chat_id': chat, 'text': text, 'parse_mode': 'HTML',
-                            'disable_web_page_preview': True}, timeout=10)
-    except Exception as exc:
-        print(f'[STAND] Телеграм не принял уведомление: {exc}')
+        response = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
+                                 json={'chat_id': chat, 'text': text, 'parse_mode': 'HTML',
+                                       'disable_web_page_preview': True}, timeout=10)
+        return response.status_code == 200 and bool((response.json() or {}).get('ok'))
+    except Exception:
+        print('[STAND] Телеграм не принял уведомление')
+        return False
 
 
 def _stand_notify(sent_ids, new_data):
-    """Шлём только те уведомления, которых раньше не было.
-
-    Считаем на сервере, а не на клиенте: одну доску тянут несколько браузеров,
-    и каждый отправил бы своё. Список уже отправленных храним в БД, а не выводим
-    сравнением с прошлым состоянием: два сохранения подряд успевают прочитать
-    одно и то же «прошлое» и дублируют сообщение.
-    """
+    """Подготовить очередное сообщение; отметка sent ставится после HTTP 200."""
     fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in sent_ids]
     if not fresh:
-        return []
+        return None, []
+    fresh = fresh[-5:]
     deals = {d.get('id'): d for d in (new_data.get('deals') or [])}
     lines = []
     for n in reversed(fresh):          # в состоянии новые лежат сверху
@@ -4833,15 +4837,30 @@ def _stand_notify(sent_ids, new_data):
             # Ссылка ведёт в саму задачу: без неё человек открывал общий список
             # и искал сделку глазами — на телефоне это гарантированный отказ.
             base = os.environ.get('STAND_BASE_URL', '').rstrip('/')
-            label = f"{d.get('code') or ''} · {d.get('client') or ''}"
+            label = html_escape(f"{d.get('code') or ''} · {d.get('client') or ''}")
             link = f'<a href="{base}/tasks?deal={d.get("id")}">{label}</a>' if base else f'<i>{label}</i>'
             tail = f"\n{link}"
-        lines.append(f"🔔 <b>{who}</b>\n{n.get('text') or ''}{tail}")
-    msg = '\n\n'.join(lines[:5])
-    if len(fresh) > 5:
-        msg += f"\n\n…и ещё {len(fresh) - 5}"
-    threading.Thread(target=_stand_tg_send, args=(msg,), daemon=True).start()
-    return [str(n.get('id')) for n in fresh]
+        lines.append(f"🔔 <b>{html_escape(str(who))}</b>\n{html_escape(str(n.get('text') or ''))}{tail}")
+    msg = '\n\n'.join(lines)
+    return msg, [str(n.get('id')) for n in fresh]
+
+
+def _stand_deliver_notes():
+    """После commit отправить notes, не теряя их при ошибке Telegram."""
+    if not os.environ.get('STAND_TG_TOKEN') or not os.environ.get('STAND_TG_CHAT'):
+        return
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        sent = set(json.loads(row.notified or '[]'))
+        message, ids = _stand_notify(sent, json.loads(row.data or '{}'))
+        if not ids:
+            return
+        if _stand_tg_send(message):
+            row.notified = json.dumps((list(sent) + ids)[-300:])
+            db.commit()
+    finally:
+        db.close()
 
 
 @app.route('/api/stand/state', methods=['PUT'])
@@ -4857,6 +4876,7 @@ def stand_state_put():
     payload = request.get_json(silent=True) or {}
     if 'data' not in payload:
         return jsonify({'success': False, 'error': 'no_data'}), 400
+    actor = current_role()
     db = get_session()
     try:
         row = _stand_row(db, lock=True)
@@ -4866,19 +4886,20 @@ def stand_state_put():
                             'version': row.version or 0,
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
-        try:
-            sent = set(json.loads(row.notified or '[]'))
-        except Exception:
-            sent = set()
-        row.data = json.dumps(payload['data'], ensure_ascii=False)
+        previous = json.loads(row.data or '{}')
+        problem = _stand_guard_transition(previous, payload['data'], actor)
+        if problem:
+            return jsonify({'success': False, 'error': problem,
+                            'version': row.version or 0, 'data': previous}), 409
+        clean = preserve_server_fields(previous, payload['data'])
+        _stand_completion_notes(previous, clean)
+        row.data = json.dumps(clean, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
         row.updated_at = datetime.utcnow()
-        just_sent = _stand_notify(sent, payload['data'])
-        if just_sent:
-            row.notified = json.dumps((list(sent) + just_sent)[-300:])
         db.commit()
-        return jsonify({'success': True, 'version': row.version})
+        _stand_deliver_notes()
+        return jsonify({'success': True, 'version': row.version, 'data': clean})
     finally:
         db.close()
 
@@ -4901,6 +4922,573 @@ def stand_state_reset():
         row.updated_at = datetime.utcnow()
         db.commit()
         return jsonify({'success': True, 'version': row.version})
+    finally:
+        db.close()
+
+
+def _stand_members(state, deal_id):
+    deals = {d.get('id'): d for d in state.get('deals', [])}
+    deal = deals.get(deal_id)
+    if not deal:
+        return []
+    conv = next((c for c in state.get('convs', []) if c.get('id') == deal.get('cnvId')), None)
+    ids = [s.get('dealId') for s in (conv or {}).get('sources', [])]
+    if not ids:
+        ids = [deal_id] + (deal.get('conv') or [])
+    return [deals[i] for i in ids if i in deals]
+
+
+def _stand_note(state, event_id, role, deal, text):
+    notes = state.setdefault('notes', [])
+    if any(str(n.get('id')) == event_id for n in notes):
+        return
+    notes.insert(0, {'id': event_id, 'role': role, 'dealId': deal.get('id'),
+                     'text': text, 'at': int(time.time() * 1000), 'read': False})
+    del notes[40:]
+
+
+def _stand_send_complete(deal):
+    sends = (deal.get('transfer') or {}).get('sends') or []
+    if not sends:
+        return False
+    try:
+        required = _amount((deal.get('transfer') or {}).get('amount'))
+        verified = sum((_amount(s.get('verifiedAmount')) or 0) for s in sends
+                       if s.get('status') == 'confirmed')
+        return (required is not None and required > 0
+                and verified + _amount('0.005') >= required)
+    except (TypeError, ValueError):
+        return False
+
+
+def _stand_referral_payouts(deal, gross, payin):
+    """Расчёт агентских выплат стенда для уведомления о закрытии."""
+    total = 0.0
+    previous = None
+    agents = sorted(deal.get('agents') or [], key=lambda a: a.get('tier') or 1)
+    for agent in agents:
+        tier = agent.get('tier') or 1
+        kind = agent.get('comp') or 'revshare'
+        base = payin if kind == 'markup' else (previous if tier > 1 and previous is not None else gross)
+        payout = (float(agent.get('fixed') or 0) if kind == 'fixed'
+                  else max(0.0, base * float(agent.get('percent') or 0) / 100))
+        previous = payout
+        total += payout
+    return total
+
+
+def _stand_number(value):
+    return float(_amount(value) or 0)
+
+
+def _stand_main_profit(deal):
+    """Прибыль лизхолда при закрытии по фактическим переводам."""
+    payin_hashes = sum(_stand_number(h.get('amount')) for h in deal.get('payinHashes') or [])
+    payin_extra = sum(
+        sum(_stand_number(h.get('amount')) for h in x.get('hashes') or [])
+        or _stand_number(x.get('amountUsdt'))
+        for x in deal.get('payinExtra') or [])
+    payin = payin_hashes + payin_extra or _stand_number((deal.get('pay') or {}).get('usdt'))
+    invoice = _stand_number(deal.get('amountThb'))
+    buy = _stand_number((deal.get('rates') or {}).get('usdtThb'))
+    if not payin or not invoice or not buy:
+        return None
+    pct = _stand_number(deal.get('companyPct')) if deal.get('companyPct') is not None else 1
+    sent_thb = round(invoice * (1 + pct / 100))
+    transfer = deal.get('transfer') or {}
+    rate = _stand_number(transfer.get('rate'))
+    if deal.get('postConv') == 'coins':
+        sent_thb = (_stand_number(((deal.get('pay') or {}).get('coinsCredit') or {}).get('thb'))
+                    or _stand_number(transfer.get('thb')) or sent_thb)
+    fee_usd = (sent_thb - invoice) / (rate or buy)
+    payout = deal.get('payout') or {}
+    cost = (sum(_stand_number(x.get('amount')) for x in deal.get('mfPayout') or [])
+            or sum(_stand_number(x.get('amount')) for x in payout.get('hashes') or [])
+            or sent_thb / buy)
+    crypto = payin - cost
+    gross = crypto + fee_usd
+    # crypto_share учитывает только прибыль в крипте.
+    total = 0.0
+    previous = None
+    for agent in sorted(deal.get('agents') or [], key=lambda a: a.get('tier') or 1):
+        tier = agent.get('tier') or 1
+        kind = agent.get('comp') or 'revshare'
+        base = (payin if kind == 'markup' else crypto if kind == 'crypto_share'
+                else previous if tier > 1 and previous is not None else gross)
+        payout_agent = (_stand_number(agent.get('fixed')) if kind == 'fixed'
+                        else max(0.0, base * _stand_number(agent.get('percent')) / 100))
+        previous = payout_agent
+        total += payout_agent
+    return round(gross, 2), round(gross - total, 2)
+
+
+def _stand_valid_receipt(deal):
+    """Чек — реальный PDF/PNG/JPEG/WebP, а не отметка docs.receipt."""
+    allowed = {'application/pdf': b'%PDF-', 'image/png': b'\x89PNG\r\n\x1a\n',
+               'image/jpeg': b'\xff\xd8\xff', 'image/webp': b'RIFF'}
+    extensions = {'application/pdf': {'pdf'}, 'image/png': {'png'},
+                  'image/jpeg': {'jpg', 'jpeg'}, 'image/webp': {'webp'}}
+    for item in (deal.get('files') or {}).get('receipt') or []:
+        mime = str(item.get('mime') or '').lower()
+        data = str(item.get('data') or '')
+        ext = str(item.get('file') or '').rsplit('.', 1)[-1].lower()
+        if (mime not in allowed or ext not in extensions[mime]
+                or not data.startswith(f'data:{mime};base64,')):
+            continue
+        try:
+            raw = base64.b64decode(data.split(',', 1)[1], validate=True)
+        except (ValueError, binascii.Error):
+            continue
+        if not raw or len(raw) > 2 * 1024 * 1024 or not raw.startswith(allowed[mime]):
+            continue
+        if mime == 'image/webp' and raw[8:12] != b'WEBP':
+            continue
+        return True
+    return False
+
+
+def _stand_guard_transition(previous, new_state, actor=None):
+    new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
+    for old_conv in previous.get('convs', []):
+        if not any(t.get('status') == 'confirmed' for t in old_conv.get('txs') or []):
+            continue
+        new_conv = new_convs.get(old_conv.get('id'))
+        accepted_main = next((d for d in previous.get('deals', [])
+                              if d.get('cnvId') == old_conv.get('id')
+                              and d.get('postConv') == 'coins'), None)
+        assignment_locked = (accepted_main or {}).get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
+        immutable_sources = lambda c: [(s.get('dealId'), s.get('rub'), s.get('incomeId'),
+                                         s.get('usdt') if assignment_locked else None,
+                                         s.get('usdtFact') if assignment_locked else None)
+                                       for s in c.get('sources') or []]
+        if not new_conv or (old_conv.get('walletId') != new_conv.get('walletId')
+                            or immutable_sources(old_conv) != immutable_sources(new_conv)):
+            return 'Полученную пачку нельзя перепривязать после подтверждения прихода'
+        old_txs = Counter((t.get('hash'), normalize_network(t.get('net')))
+                          for t in old_conv.get('txs') or [] if t.get('status') == 'confirmed')
+        new_txs = Counter((t.get('hash'), normalize_network(t.get('net')))
+                          for t in new_conv.get('txs') or [])
+        if any(new_txs[key] != count for key, count in old_txs.items()):
+            return 'Подтверждённый приход нельзя удалить или продублировать'
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in new_state.get('deals', []):
+        before = old.get(deal.get('id'))
+        if not before:
+            continue
+        old_confirmed = Counter(send_fingerprint(previous, before, send)
+                                for send in (before.get('transfer') or {}).get('sends') or []
+                                if send.get('status') == 'confirmed')
+        new_sends = Counter(send_fingerprint(new_state, deal, send)
+                            for send in (deal.get('transfer') or {}).get('sends') or [])
+        if any(new_sends[key] != count for key, count in old_confirmed.items()):
+            return 'Подтверждённый перевод нельзя удалить или изменить'
+        old_conv = next((c for c in previous.get('convs', [])
+                         if c.get('id') == before.get('cnvId')), None)
+        old_main = next((d for d in previous.get('deals', [])
+                         if d.get('cnvId') == before.get('cnvId') and d.get('postConv') == 'coins'), None)
+        assignment_locked = (old_main or {}).get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
+        previous_target = _amount((before.get('transfer') or {}).get('amount'))
+        new_target = _amount((deal.get('transfer') or {}).get('amount'))
+        if ((old_confirmed or (assignment_locked and previous_target and previous_target > 0))
+                and previous_target != new_target):
+            return 'Сумму отправки нельзя менять после подтверждённого перевода'
+        if before.get('postConv') == 'coins' and assignment_locked and deal.get('step') == 's22':
+            return 'Принятую пачку нельзя вернуть на назначение отправок'
+        if actor not in (None, 'admin') and before != deal:
+            required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
+                        's26': 'operator', 's27': 'manager'}.get(before.get('step'))
+            if before.get('step') == 's23':
+                conv = next((c for c in previous.get('convs', [])
+                             if c.get('id') == before.get('cnvId')), None)
+                wallet_id = (conv or {}).get('walletId') or before.get('walletId')
+                wallet = next((w for w in previous.get('wallets', [])
+                               if w.get('id') == wallet_id), None)
+                required = ((wallet or {}).get('role') or
+                            ('teodor' if wallet_id in ('teodor', 'andrey') else 'findir'))
+            if required and actor != required:
+                return f'Действие шага {before.get("step")} доступно роли {required}'
+        if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
+            if deal.get('closed') or deal.get('step') == 'done':
+                return 'Возврат фаундеру ещё не подтверждён сетью'
+        if before.get('postConv') != 'coins':
+            continue
+        if (before.get('step') in ('s23', 's24')
+                and deal.get('step') in ('s25', 's26', 's27', 'done')
+                and not before.get('serverTransferComplete')):
+            return 'Переводы пачки ещё не подтверждены сетью'
+        if (not before.get('closed') and deal.get('closed')
+                and deal.get('closeReason') == 'Успешно завершена'):
+            if not (before.get('serverTransferComplete')
+                    and (deal.get('pay') or {}).get('invoicePaid')
+                    and (deal.get('pay') or {}).get('coinsNotified')
+                    and ((deal.get('pay') or {}).get('coinsCredit') or {}).get('thb')
+                    and _stand_valid_receipt(deal)
+                    and deal.get('sentToClient')):
+                return 'Нужны подтверждённые переводы, оплата инвойса, чек и отправка клиенту'
+    return None
+
+
+def _stand_completion_notes(previous, state):
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in state.get('deals', []):
+        before = old.get(deal.get('id')) or {}
+        if (deal.get('postConv') != 'coins' or not deal.get('closed')
+                or before.get('closed') or deal.get('closeReason') != 'Успешно завершена'):
+            continue
+        profit = _stand_main_profit(deal)
+        amount = (f'валовая прибыль {profit[0]:.2f}, чистая {profit[1]:.2f} USDT'
+                  if profit else 'прибыль пока не рассчитана')
+        prefix = 'DEMO · ' if deal.get('demoTransfers') else ''
+        _stand_note(state, f"stand:completed:{deal['id']}", 'manager', deal,
+                    f"{prefix}{deal.get('code') or deal['id']}: лизхолд закрыт, {amount}")
+
+
+def _stand_small_profit(deal):
+    payin = (deal.get('pay') or {}).get('usdt')
+    if payin is None:
+        payin = sum(float(h.get('amount') or 0) for h in deal.get('payinHashes') or []) or None
+    if payin is None:
+        return None
+    cost = (sum(float(s.get('verifiedAmount') or 0)
+                for s in (deal.get('transfer') or {}).get('sends') or []
+                if s.get('status') == 'confirmed')
+            or _stand_number((deal.get('payout') or {}).get('usdt')))
+    gross = float(payin) - cost
+    return round(gross - _stand_referral_payouts(deal, gross, float(payin)), 2)
+
+
+def _stand_settle_verified(state, members):
+    """Закрыть каждый возврат; задача Coins ждёт подтверждения всей пачки."""
+    changed = False
+    for deal in members:
+        if deal.get('postConv') != 'refund' or deal.get('serverSettled') or deal.get('closed'):
+            continue
+        sends = (deal.get('transfer') or {}).get('sends') or []
+        auto = False
+        if not sends:
+            accepted_main = next((d for d in members if d.get('postConv') == 'coins'), None)
+            if not accepted_main or accepted_main.get('step') not in ('s23', 's24', 's25', 's26', 's27', 'done'):
+                continue
+            conv = next((c for c in state.get('convs', [])
+                         if c.get('id') == deal.get('cnvId')), None)
+            source = next((s for s in (conv or {}).get('sources', [])
+                           if s.get('dealId') == deal.get('id')), None)
+            incoming = (conv or {}).get('txs') or []
+            verified_incoming = sum(_stand_number(t.get('amount')) for t in incoming
+                                    if t.get('status') == 'confirmed')
+            allocated_incoming = sum(_stand_number(s.get('usdtFact') or s.get('usdt'))
+                                     for s in (conv or {}).get('sources') or [])
+            auto = bool(conv and source and incoming and
+                        conv.get('walletId') == (deal.get('transfer') or {}).get('walletId')
+                        and all(t.get('status') == 'confirmed' for t in incoming)
+                        and verified_incoming + 0.005 >= allocated_incoming > 0
+                        and _stand_number(source.get('usdtFact') or source.get('usdt'))
+                        + 0.005 >= _stand_number((deal.get('transfer') or {}).get('amount')) > 0)
+            if not auto:
+                continue
+        elif not _stand_send_complete(deal):
+            continue
+        po = deal.setdefault('payout', {})
+        amount = (round(sum(float(s.get('verifiedAmount') or 0) for s in sends
+                            if s.get('status') == 'confirmed'), 2)
+                  if sends else _stand_number((deal.get('transfer') or {}).get('amount')))
+        po['usdt'] = amount
+        po['reimbursement'] = {
+            'id': 'R-' + str(deal['id']),
+            'kind': ('автовозмещение — USDT пришли на кошелёк фаундера'
+                     if auto else 'перевод фаундеру'),
+            'hash': (', '.join(t.get('hash') or '' for t in incoming)
+                     if auto else ', '.join(normalize_ref(s.get('hash') or s.get('ref'),
+                                                         normalize_network(s.get('net') or 'TRC-20')) or ''
+                                            for s in sends if s.get('status') == 'confirmed')),
+            'usdt': amount,
+            'at': datetime.now().strftime('%d.%m, %H:%M'),
+        }
+        deal['closed'] = True
+        deal['step'] = 'done'
+        deal['closeReason'] = 'Успешно завершена'
+        deal['closedAt'] = datetime.now().strftime('%d.%m, %H:%M')
+        deal['serverSettled'] = True
+        profit = _stand_small_profit(deal)
+        prefix = 'DEMO · ' if deal.get('demoTransfers') else ''
+        proof = 'тестовый перевод подтверждён' if deal.get('demoTransfers') else 'возврат фаундеру подтверждён сетью'
+        text = (f"{prefix}{deal.get('code') or deal['id']}: {proof}, "
+                f"сделка закрыта" + (f", чистая прибыль {profit:.2f} USDT" if profit is not None else ''))
+        _stand_note(state, f"stand:refund:{deal['id']}", 'manager', deal, text)
+        changed = True
+    main = next((d for d in members if d.get('step') in ('s23', 's24') and
+                 d.get('postConv') == 'coins'), None)
+    if main and not main.get('serverTransferComplete'):
+        conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
+        wallet_id = (conv or {}).get('walletId') or main.get('walletId')
+        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+        multisig = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
+        def required_send(deal):
+            kind = deal.get('postConv')
+            if kind in ('coins', 'client'):
+                return True
+            if kind == 'refund':
+                return not (deal.get('serverSettled')
+                            and not (deal.get('transfer') or {}).get('sends'))
+            if kind == 'ipps':
+                return bool((deal.get('transfer') or {}).get('back'))
+            return False
+        outgoing = [d for d in members if required_send(d)]
+        if ((not multisig or main.get('step') == 's24') and outgoing
+                and _stand_send_complete(main)
+                and all(_stand_send_complete(d) for d in outgoing)):
+            sends = [s for s in (main.get('transfer') or {}).get('sends') or []
+                     if s.get('status') == 'confirmed']
+            hashes = [{'hash': normalize_ref(s.get('hash') or s.get('ref'),
+                                              normalize_network(s.get('net') or 'TRC-20')),
+                       'amount': s.get('verifiedAmount'),
+                       'network': normalize_network(s.get('net') or 'TRC-20').upper()}
+                      for s in sends]
+            payout = main.setdefault('payout', {})
+            payout['hashes'] = hashes
+            payout['hash'] = hashes[0]['hash'] if hashes else None
+            payout['usdt'] = round(sum(float(h['amount'] or 0) for h in hashes), 2)
+            main['mfPayout'] = [{'hash': h['hash'], 'net': h['network'],
+                                 'amount': h['amount']} for h in hashes]
+            main.setdefault('pay', {})['outHash'] = payout['hash']
+            main['step'] = 's25'
+            main['serverTransferComplete'] = True
+            prefix = 'DEMO · ' if main.get('demoTransfers') else ''
+            proof = 'тестовые переводы подтверждены' if prefix else 'все переводы пачки подтверждены'
+            _stand_note(state, f"stand:coins:{main['id']}", 'operator', main,
+                        f"{prefix}{main.get('code') or main['id']}: {proof}; известите Coins")
+            changed = True
+    return changed
+
+
+def _stand_check_transfers(deal_id=None, *, poll=False):
+    """Проверить сеть вне блокировки БД и применить результат к неизменённым отправкам."""
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        snapshot = json.loads(row.data or '{}')
+    finally:
+        db.close()
+    ids = ([deal_id] if deal_id is not None else
+           [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
+    jobs = []
+    seen = set()
+    for wanted in ids:
+        for deal in _stand_members(snapshot, wanted):
+            if deal.get('id') in seen:
+                continue
+            seen.add(deal.get('id'))
+            for send in (deal.get('transfer') or {}).get('sends') or []:
+                if send.get('status') == 'confirmed' or (poll and send.get('status') not in (None, 'pending', 'error')):
+                    continue
+                key = send_fingerprint(snapshot, deal, send)
+                jobs.append((deal.get('id'), key, deal, send, send.get('demoOutcome')))
+    if deal_id is not None and not _stand_members(snapshot, deal_id):
+        return None
+    # Один хеш нельзя учесть дважды, в том числе при нескольких получателях.
+    all_claims = {}
+    for deal in snapshot.get('deals', []):
+        for send in (deal.get('transfer') or {}).get('sends') or []:
+            key = send_fingerprint(snapshot, deal, send)
+            if key[0]:
+                all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
+    results = []
+    main = next((d for d in snapshot.get('deals', [])
+                 if d.get('id') in seen and d.get('postConv') == 'coins'
+                 and d.get('step') in ('s23', 's24')), None)
+    conv = next((c for c in snapshot.get('convs', [])
+                 if c.get('id') == (main or {}).get('cnvId')), None)
+    wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
+    wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
+    demo_multisig_wait = bool(main and main.get('step') == 's23'
+                              and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
+    for member_id, key, deal, send, demo_outcome in jobs:
+        sender, receiver = expected_addresses(snapshot, deal)
+        cohort = _stand_members(snapshot, member_id)
+        if key[0] is None:
+            result = {'status': 'mismatch', 'checkError': 'Хеш и ссылка не совпадают или некорректны'}
+        elif key[0] and all_claims.get((key[0], key[1]), 0) > 1:
+            result = {'status': 'mismatch', 'checkError': 'Хеш уже указан в другой отправке'}
+        elif key[0] and key[0].startswith('demo:') and key[0].split(':')[1] != str(member_id):
+            result = {'status': 'mismatch', 'checkError': 'Demo ref принадлежит другой сделке'}
+        elif deal.get('demoTransfers') and not all(d.get('demoTransfers') for d in cohort):
+            result = {'status': 'mismatch', 'checkError': 'Demo режим нужен всей пачке'}
+        elif deal.get('demoTransfers') and demo_multisig_wait and send.get('demoOutcome') == 'confirmed':
+            result = {'status': 'pending', 'demo': True,
+                      'checkError': 'Ждём вторую подпись на шаге s24'}
+        else:
+            result = verify_transfer(send.get('hash') or send.get('ref'), key[1], sender, receiver,
+                                     send.get('amount'), demo=bool(deal.get('demoTransfers')),
+                                     demo_outcome=send.get('demoOutcome'),
+                                     etherscan_key=os.environ.get('ETHERSCAN_API_KEY'))
+        result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
+        results.append((member_id, key, demo_outcome, result))
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        changed = False
+        for member_id, key, demo_outcome, result in results:
+            deal = next((d for d in state.get('deals', []) if d.get('id') == member_id), None)
+            if not deal:
+                continue
+            for send in (deal.get('transfer') or {}).get('sends') or []:
+                if (send_fingerprint(state, deal, send) != key
+                        or send.get('demoOutcome') != demo_outcome
+                        or send.get('status') == 'confirmed'):
+                    continue
+                if poll and send.get('status') == result['status'] and send.get('checkError') == result.get('checkError'):
+                    break
+                for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo'):
+                    send.pop(field, None)
+                send.update(result)
+                changed = True
+                break
+        for wanted in ids:
+            members = _stand_members(state, wanted)
+            if members:
+                changed = _stand_settle_verified(state, members) or changed
+        if changed:
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            row.updated_by = 'проверка переводов'
+            row.updated_at = datetime.utcnow()
+            db.commit()
+        _stand_deliver_notes()
+        return {'success': True, 'version': row.version or 0, 'data': state}
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/transfers/check', methods=['POST'])
+def stand_transfers_check():
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    result = _stand_check_transfers(deal_id)
+    return jsonify(result) if result else (jsonify({'success': False, 'error': 'Сделка не найдена'}), 404)
+
+
+@app.route('/api/stand/transfers/demo', methods=['POST'])
+def stand_transfers_demo():
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    ref, outcome = data.get('ref'), data.get('outcome')
+    if outcome not in ('pending', 'confirmed', 'failed'):
+        return jsonify({'success': False, 'error': 'Неверный исход demo'}), 400
+    role = current_role()
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal or not deal.get('demoTransfers'):
+            return jsonify({'success': False, 'error': 'Demo для сделки не включено'}), 400
+        members = _stand_members(state, deal_id)
+        main = next((d for d in members if d.get('postConv') == 'coins'), deal)
+        conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
+        wallet_id = (conv or {}).get('walletId') or main.get('walletId')
+        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+        multi = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
+        required = 'teodor' if multi and main.get('step') == 's24' else (
+            'findir' if multi else (wallet or {}).get('role') or 'teodor')
+        if role not in ('admin', required):
+            return jsonify({'success': False, 'error': 'Недостаточно прав'}), 403
+        if outcome == 'confirmed' and multi and main.get('step') != 's24':
+            return jsonify({'success': False, 'error': 'Нужна вторая подпись на s24'}), 409
+        if not re.fullmatch(rf'demo:{deal_id}:[A-Za-z0-9_-]+', str(ref or '')):
+            return jsonify({'success': False, 'error': 'Неверный demo ref'}), 400
+        send = next((s for s in (deal.get('transfer') or {}).get('sends') or []
+                     if s.get('ref') == ref or s.get('hash') == ref), None)
+        if not send:
+            return jsonify({'success': False, 'error': 'Отправка не найдена'}), 404
+        if send.get('status') == 'confirmed':
+            return jsonify({'success': False, 'error': 'Подтверждённый перевод нельзя изменить'}), 409
+        send['demoOutcome'] = outcome
+        send['status'] = 'pending'
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        db.commit()
+    finally:
+        db.close()
+    result = _stand_check_transfers(deal_id)
+    return jsonify(result)
+
+
+@app.route('/api/stand/incoming/check', methods=['POST'])
+def stand_incoming_check():
+    """Проверить входящий USDT-перевод и привязать его к пачке стенда."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    tx_hash = normalize_ref(data.get('hash'), normalize_network(data.get('network')))
+    network = normalize_network(data.get('network'))
+    if not tx_hash or tx_hash.startswith('demo:') or not network:
+        return jsonify({'success': False, 'error': 'Нужен настоящий хеш и сеть'}), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
+        if not conv:
+            return jsonify({'success': False, 'error': 'Пачка не найдена'}), 404
+        wallet = next((w for w in state.get('wallets', []) if w.get('id') == conv.get('walletId')), None)
+        from stand_transfers import DEFAULT_WALLETS
+        receiver = (wallet or {}).get('addr') or DEFAULT_WALLETS.get(conv.get('walletId'))
+    finally:
+        db.close()
+    checked = verify_transfer(tx_hash, network, None, receiver, None,
+                              etherscan_key=os.environ.get('ETHERSCAN_API_KEY'))
+    if checked['status'] != 'confirmed':
+        return jsonify({'success': False, 'status': checked['status'],
+                        'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
+    if conv.get('sentTs') and (not checked.get('timestampMs')
+                             or checked['timestampMs'] < conv['sentTs']):
+        return jsonify({'success': False, 'status': 'mismatch',
+                        'error': 'Перевод был раньше отправки рублей брокеру'}), 422
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
+        if not conv:
+            return jsonify({'success': False, 'error': 'Пачка изменилась — повторите проверку'}), 409
+        wallet = next((w for w in state.get('wallets', []) if w.get('id') == conv.get('walletId')), None)
+        from stand_transfers import DEFAULT_WALLETS
+        current_receiver = (wallet or {}).get('addr') or DEFAULT_WALLETS.get(conv.get('walletId'))
+        if current_receiver != receiver:
+            return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
+        if conv.get('sentTs') and checked['timestampMs'] < conv['sentTs']:
+            return jsonify({'success': False, 'error': 'Время отправки пачки изменилось'}), 409
+        existing = next((t for c in state.get('convs', []) for t in c.get('txs', []) or []
+                         if normalize_ref(t.get('hash'), normalize_network(t.get('net'))) == tx_hash), None)
+        if existing:
+            return jsonify({'success': False, 'error': 'Хеш уже привязан к пачке'}), 409
+        tx = {'hash': tx_hash, 'net': network.upper(), 'amount': checked['verifiedAmount'],
+              'to': checked['to'], 'from': checked['from'], 'status': 'confirmed',
+              'verifiedAt': checked['verifiedAt'], 'timestampMs': checked['timestampMs'],
+              'cnv': conv['id']}
+        conv.setdefault('txs', []).append(tx)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = 'проверка прихода USDT'
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state})
     finally:
         db.close()
 
@@ -17010,6 +17598,22 @@ def docs_delete_agreement(agreement_id):
     finally:
         db.close()
 
+
+
+def _stand_transfer_poll_loop():
+    """Проверять ожидающие переводы, даже если никто не открыл браузер."""
+    while True:
+        time.sleep(20)
+        try:
+            _stand_check_transfers(poll=True)
+        except Exception as exc:
+            app.logger.warning('stand transfer poll: %s', exc)
+
+
+if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
+        and 'pytest' not in sys.modules):
+    threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
+                     name='stand-transfer-poll').start()
 
 
 if __name__ == '__main__':

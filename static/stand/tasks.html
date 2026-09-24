@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 15:37</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 · проверка переводов</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -446,10 +446,11 @@ async function standSave(){
     if(r.status===409){
       const j=await r.json();
       standVer=j.version; standApply(j.data); render();
-      toast('Доску только что поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — показал свежую');
+      toast(j.error&&j.error!=='conflict'?j.error:('Доску только что поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — показал свежую'));
     }else{
       const j=await r.json();
-      if(j.success)standVer=j.version;
+      if(j.success){standVer=j.version;if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}}
+      else toast(j.detail||j.error||'Сервер не сохранил изменения');
     }
   }catch(e){ toast('Не сохранилось — проверьте связь'); }
   finally{
@@ -729,7 +730,12 @@ function econ(d){
     r.sentThb=Math.round(invoice*(1+pct/100));
     r.feeThb=r.sentThb-invoice;
     r.feeUsd=r.feeThb/buy;
-    r.cost=r.sentThb/buy;
+    const fact=mfList(d).length?mfSum(d):hashSum((d.payout||{}).hashes);
+    r.cost=fact!=null?fact:(d.postConv==='coins'&&pcAmount(d)?pcAmount(d):r.sentThb/buy);
+    if(d.postConv==='coins'&&num((d.transfer||{}).rate)) {
+      r.sentThb=(d.pay&&d.pay.coinsCredit&&d.pay.coinsCredit.thb)||num(cleanNum(String(d.transfer.thb||'')))||r.sentThb;
+      r.feeThb=r.sentThb-invoice;r.feeUsd=r.feeThb/num(d.transfer.rate);
+    }
     r.crypto=payin-r.cost;
     r.gross=r.crypto+r.feeUsd;              // два кармана: крипта + баты в компании
     r.companyPct=pct;r.pockets='два';
@@ -819,9 +825,9 @@ function cnvMembers(d){
 }
 /* Что по пачке ушло в Coins: сделка, баты, курс, отправленные USDT и хеши */
 function coinsSends(d){
-  return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{const tr=x.transfer||{}, l=sendList(x);
+  return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{const tr=x.transfer||{}, l=sendList(x).filter(t=>t.status==='confirmed');
     return {code:x.code, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
-      usdt:sendSum(x)||pcAmount(x)||0, hashes:l.map(t=>t.hash||t.ref).filter(Boolean)};});
+      usdt:sendSum(x), hashes:l.map(t=>t.hash||t.ref).filter(Boolean)};});
 }
 function cnvShareOf(d,x){
   const c=convOf(d);
@@ -897,13 +903,13 @@ function payoutRecord(x,phase,main){
       if(!pcSends(x)) po.reimbursement={id:'R-'+x.id,kind:'автовозмещение — USDT пришли на кошелёк фаундера',hash:null,at:now()};
     }
   }else{
-    const l=sendList(x).filter(t=>t.hash||t.ref);
-    const hashes=l.map(t=>({amount:t.amount,network:pcNet(x).replace('-',''),hash:t.hash||t.ref}));
+    const l=sendList(x).filter(t=>t.status==='confirmed'&&(t.hash||t.ref));
+    const hashes=l.map(t=>({amount:t.verifiedAmount,network:pcNet(x).replace('-',''),hash:t.hash||t.ref}));
     if(k==='coins'||k==='client'){
       po.hashes=hashes; po.hash=(hashes[0]||{}).hash||null; po.usdt=sendSum(x)||po.usdt||null;
       /* у недвижимости перевод в Coins — это «Переводы в MF Corp (факт)» */
       if(x.type==='Оплата недвижимости')
-        x.mfPayout=mfList(x).concat(hashes.map(h=>({hash:h.hash,net:pcNet(x),amount:h.amount})));
+        x.mfPayout=hashes.map(h=>({hash:h.hash,net:pcNet(x),amount:h.amount}));
     }
     if(k==='refund') po.reimbursement={id:'R-'+x.id,kind:'перевод фаундеру',
       hash:hashes.map(h=>h.hash).join(', '),usdt:sendSum(x),at:now()};
@@ -919,8 +925,10 @@ function packSettle(d,phase){
     if(x.closed&&x.id!==d.id&&!(phase==='sent'&&x.postConv==='refund')) return;
     payoutRecord(x,phase,x.id===d.id);
     if(x.id===d.id||x.closed) return;
+    if(x.postConv==='refund')return; /* Возмещение и закрытие записывает сервер после проверки. */
     const o=POST_CONV.find(p=>p.k===x.postConv), what=o?o.t:(x.postConv||'—');
-    const now1=(phase==='decided')&&(!pcSends(x)||x.postConv==='refund');
+    const now1=(phase==='decided')&&!pcSends(x);
+    if(phase==='sent'&&!sendDone(x))return;
     if(phase==='decided'&&!now1){log(x,'Ждёт перевода с кошелька — закроется, когда он уйдёт в сеть');return;}
     x.step='done';x.closed=true;x.closeReason='Успешно завершена';x.closedAt=now();
     log(x,phase==='sent'?'Закрыта: перевод ушёл в сеть — '+what
@@ -955,37 +963,64 @@ function pcDefaultTo(k,x){
    остаток. Поэтому храним список отправок, а не одно поле, и закрываем задачу,
    когда сумма отправленного покрывает сумму задачи. */
 function sendList(x){return ((x.transfer||{}).sends)||[];}
-function sendSum(x){return Math.round(sendList(x).reduce((s,t)=>s+(t.amount||0),0)*100)/100;}
-function sendLeft(x){return Math.round(((pcAmount(x)||0)-sendSum(x))*100)/100;}
-function sendDone(x){const need=pcAmount(x)||0;return need>0&&sendSum(x)>=need-0.01;}
-function sendAdd(id){
-  const x=deal(id);
-  const ref=String(val('sh_'+id)||'').trim();
-  if(!ref){toast(multiFor(x)?'Вставьте ссылку на транзакцию':'Вставьте хеш отправки');return;}
-  const manual=num(cleanNum(val('sa_'+id)||''));
-  const left=sendLeft(x);
-  /* Это исходящий перевод: его суммы нет в списке входящих. В проде она читается
-     из сети по хешу, здесь — либо вводят, либо берём остаток задачи. */
-  const amount=manual||(left>0?left:(pcAmount(x)||0));
-  const src=manual?'введено':'остаток задачи';
-  x.transfer=Object.assign({},x.transfer||{});
-  x.transfer.sends=sendList(x).concat([{ref:ref,hash:(/^https?:/i.test(ref)?null:ref),
-    amount:amount,net:pcNet(x),src:src}]);
-  log(x,'Отправлено '+usd(amount)+' · '+(src==='хэш'?'сумма с хэша':'сумма '+src)+' · '+ref);
-  save();render();
-  toast(sendDone(x)?('Задача закрыта — отправлено '+usd(sendSum(x))):('Добавлено '+usd(amount)+', осталось '+usd(sendLeft(x))));
+function sendSum(x){return Math.round(sendList(x).reduce((s,t)=>s+(t.status==='confirmed'?(Number(t.verifiedAmount)||0):0),0)*100)/100;}
+function sendDeclared(x){return Math.round(sendList(x).filter(t=>!['failed','mismatch'].includes(t.status)).reduce((s,t)=>s+(Number(t.amount)||0),0)*100)/100;}
+function sendLeft(x){return Math.max(0,Math.round(((pcAmount(x)||0)-sendSum(x))*100)/100);}
+function sendDone(x){const need=pcAmount(x)||0;return need>0&&sendSum(x)>=need-0.005;}
+function htmlText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function transferMode(id,mode){
+  const d=deal(id), mem=cnvMembers(d);
+  if(mem.some(x=>sendList(x).length)){toast('Режим нельзя менять после добавления переводов');return;}
+  if(convOf(d)&&(convOf(d).txs||[]).length){toast('Режим закреплён приходами этой пачки');return;}
+  mem.forEach(x=>x.demoTransfers=mode==='demo');save();render();
 }
-function sendDel(id,i){const x=deal(id);const l=sendList(x).slice();l.splice(i,1);
+function transferModeBlock(d){return `<div class="fg"><label class="fl">Проверка переводов</label>
+  <select class="fc" onchange="transferMode(${d.id},this.value)" ${sendList(d).length?'disabled':''}>
+  <option value="network" ${!d.demoTransfers?'selected':''}>Настоящие хеши — проверка в сети</option>
+  <option value="demo" ${d.demoTransfers?'selected':''}>Тестовый сценарий — без движения денег</option></select>
+  <p class="fh">${d.demoTransfers?'Тестовые события помечены DEMO. Они проверяют процесс, деньги не переводятся.':'Успешность, сумма и адреса читаются из сети. Запись хеша сама по себе не подтверждает перевод.'}</p></div>`;}
+async function standAction(path,payload){
+  if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return null;}
+  standBusy=true;
+  try{
+    const r=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.success){if(j.data){standVer=j.version;standApply(j.data);render();}return j;}
+    toast(j.detail||j.error||'Не удалось проверить');return null;
+  }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым');return null;}
+  finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
+}
+async function checkSends(id){const j=await standAction('/api/stand/transfers/check',{dealId:id});if(j)toast('Статусы переводов обновлены');}
+async function demoSend(id,i,outcome){const x=deal(id),t=sendList(x)[i];if(!t||!x.demoTransfers)return;
+  const j=await standAction('/api/stand/transfers/demo',{dealId:id,ref:t.ref,outcome});if(j)toast('Тестовое событие: '+outcome);}
+function sendAdd(id,demo){
+  const x=deal(id);
+  const ref=demo&&x.demoTransfers?'demo:'+id+':'+Date.now():String(val('sh_'+id)||'').trim();
+  if(!ref){toast('Вставьте полный хеш или ссылку на транзакцию');return;}
+  if(!x.demoTransfers&&!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш транзакции из 64 символов, либо ссылка с ним');return;}
+  const manual=Number(String(val('sa_'+id)||'').replace(/\s/g,'').replace(',','.'));
+  const amount=manual||Math.max(0,(pcAmount(x)||0)-sendDeclared(x));
+  if(!Number.isFinite(amount)||amount<=0){toast('Укажите положительную сумму этой части');return;}
+  const key=ref.toLowerCase().match(/(?:0x)?[a-f0-9]{64}/)?.[0]||ref;
+  if(S.deals.some(d=>sendList(d).some(t=>(String(t.ref).toLowerCase().match(/(?:0x)?[a-f0-9]{64}/)?.[0]||t.ref)===key))){toast('Этот перевод уже добавлен — повторно учитывать его нельзя');return;}
+  x.transfer=Object.assign({},x.transfer||{});
+  x.transfer.sends=sendList(x).concat([{ref,hash:ref.startsWith('demo:')?null:(ref.match(/(?:0x)?[a-fA-F0-9]{64}/)||[])[0],amount,net:pcNet(x),status:'pending'}]);
+  log(x,'Зарегистрирован перевод '+usd(amount)+' · ждёт подтверждения · '+ref);
+  save();render();toast('Добавлено — ждём подтверждения');
+}
+function sendDel(id,i){const x=deal(id),l=sendList(x).slice();if(l[i]?.status==='confirmed'){toast('Подтверждённый перевод нельзя удалить');return;}l.splice(i,1);
   x.transfer=Object.assign({},x.transfer||{});x.transfer.sends=l;save();render();}
 function multiFor(x){const w=dealWallet(x);return !w||w.multisig;}
+function coinsThb(x){const thb=x.amountThb||approx(x).thb||0;
+  return x.type==='Оплата недвижимости'&&x.kind!=='Фрихолд'?Math.round(thb*(1+(x.companyPct==null?1:x.companyPct)/100)):thb;}
 function transferSet(id,f,v){
-  const x=deal(id); x.transfer=Object.assign({},x.transfer||{}); x.transfer[f]=v;
+  const x=deal(id);if(sendList(x).length){toast('Назначение перевода уже закреплено — сначала уберите неподтверждённые отправки');return;} x.transfer=Object.assign({},x.transfer||{}); x.transfer[f]=v;
   /* Coins называет курс — сумму USDT считаем от бат, руками её не вводят */
   if(x.postConv==='coins'){
     const r=num(cleanNum(String(x.transfer.rate||'')));
     /* баты в поле уже подставлены из сделки: если их не трогали, берём оттуда.
        Иначе ввод одного курса ничего не считал — поймано на прогоне лизхолда 23.09 */
-    const t=num(cleanNum(String(x.transfer.thb||'')))||approx(x).thb||x.amountThb||0;
+    const t=num(cleanNum(String(x.transfer.thb||'')))||coinsThb(x);
     if(r&&t){
       if(!x.transfer.thb) x.transfer.thb=t;
       x.transfer.amount=(Math.round(t/r*100)/100)
@@ -1018,7 +1053,7 @@ function pcTaskText(x,k,w){
   return '';
 }
 function postConvSet(id,k){
-  const d=deal(id); d.postConv=k;
+  const d=deal(id);if(sendList(d).length){toast('По сделке уже зарегистрированы переводы');return;} d.postConv=k;
   const x=POST_CONV.find(p=>p.k===k);
   log(d,'Что делаем с USDT: '+(x?x.t:k));
   save();render();
@@ -1198,8 +1233,8 @@ function bellHtml(){
     ${S.notesOpen?`<div class="notebox">
       <div class="noteh">Уведомления · ${ROLES[S.role]?ROLES[S.role].t:''}
         ${list.length?`<button class="btn btn-outline btn-sm" onclick="notesRead()">Отметить прочитанными</button>`:''}</div>
-      ${list.length?list.map(n=>`<div class="notei ${n.read?'':'new'}" onclick="noteGo('${n.id}')">
-          <div class="t">${n.text}</div><div class="s">${ago(n.at)}${n.dealId&&deal(n.dealId)?' · '+deal(n.dealId).code:''}</div>
+      ${list.length?list.map(n=>`<div class="notei ${n.read?'':'new'}" onclick="noteGo(${htmlText(JSON.stringify(String(n.id)))})">
+          <div class="t">${htmlText(n.text)}</div><div class="s">${ago(n.at)}${n.dealId&&deal(n.dealId)?' · '+deal(n.dealId).code:''}</div>
         </div>`).join('')
         :`<div class="notei"><div class="s">Пока пусто — здесь появятся курсы и запросы по вашим сделкам</div></div>`}
     </div>`:''}`;
@@ -1733,7 +1768,7 @@ function balTake(src,thb,usdtRate){
   b[src]=Math.round((b[src]||0)-thb); return thb;
 }
 function explorer(hash,net){
-  return (net||'TRC20').toUpperCase()==='ERC20'
+  return (net||'TRC20').toUpperCase().replace('-','')==='ERC20'
     ? 'https://etherscan.io/tx/'+encodeURIComponent(hash)
     : 'https://tronscan.org/#/transaction/'+encodeURIComponent(hash);
 }
@@ -1750,6 +1785,7 @@ function copyHash(h){
 /* Хеш — не текст, а ссылка: из карточки надо попадать в обозреватель одним кликом */
 function hashLink(hash,net,amount){
   if(!hash)return '—';
+  if(String(hash).startsWith('demo:'))return '<span class="src">DEMO</span> <span class="addr">'+htmlText(hash)+'</span>';
   const n=(net||'TRC20').toUpperCase();
   return `${amount!=null?`<b class="pos">+${usd(amount)}</b> `:''}<span class="net">${n}</span> `+
     `<a class="hash" href="${explorer(hash,n)}" target="_blank" rel="noopener">${hash}</a> `+
@@ -2018,10 +2054,17 @@ function docFileName(d,k,ext){
   return t+'_'+String(d.code||'').replace(/\s/g,'')+'.'+ext;
 }
 function docDownload(id,k,ext){
-  const d=deal(id), name=docFileName(d,k,ext);
-  log(d,'Скачан '+(DOCT[k]||k)+' · '+ext.toUpperCase()+' · '+name);
-  save();render();
-  toast(ext==='doc'?('DOC скачан — правьте и загрузите обратно: '+name):('PDF скачан: '+name));
+  if(typeof ext==='number'||ext===undefined){
+    const d=deal(id), f=filesOf(d,k)[typeof ext==='number'?ext:0];
+    const blob=f&&fileBlob(f);
+    if(!blob){toast('Файл не загружен — скачивать нечего');return;}
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url;a.download=f.file||'document';a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+    log(d,'Скачан файл: '+(DOCT[k]||k)+' · '+f.file);save();return;
+  }
+  toast('Скачивание макета '+String(ext).toUpperCase()+' пока не реализовано');
 }
 function issuedUpload(id,k){
   const d=deal(id);
@@ -2039,7 +2082,17 @@ function issuedDrop(id,k){
   log(d,'Свой файл убран, вернулся сгенерированный: '+(DOCT[k]||k)+' (был '+f+')');
   save();render();toast('Вернули сгенерированный');
 }
-function docOpen(id,k){S.doc={id:id,k:k};save();render();}
+function docOpen(id,k,index){
+  const d=deal(id), files=filesOf(d,k);
+  if(files.length||k==='receipt'||k==='signed'){
+    const f=files[index==null?0:index], blob=f&&fileBlob(f);
+    if(!blob){toast('Файл не загружен — откройте его после загрузки');return;}
+    const url=URL.createObjectURL(blob), tab=window.open(url,'_blank','noopener,noreferrer');
+    if(!tab)toast('Браузер заблокировал окно — используйте «Скачать»');
+    setTimeout(()=>URL.revokeObjectURL(url),60000);return;
+  }
+  S.doc={id:id,k:k};save();render();
+}
 function docClose(){S.doc=null;save();render();}
 
 /* Мелкие обмены, проведённые без шагов, стоят в общей очереди и ждут ближайшей
@@ -2080,6 +2133,7 @@ function render(){
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
     ? `<button class="ghost" onclick="seedDemo()">Добавить примеры</button>
+       <button class="ghost" onclick="seedLeaseholdTest()">Тест лизхолда → Coins</button>
        <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
@@ -3475,43 +3529,27 @@ function convMarginBlock(d,total){
   </div></div>`;
 }
 function cnvTxPick(id,txId){
-  const d=deal(id), c=convOf(d), t=txPool().find(x=>x.id===Number(txId));
+  const d=deal(id),c=convOf(d),t=txPool().find(x=>x.id===Number(txId));
   if(!c||!t)return;
-  c.txs=c.txs||[];
-  if(!c.txs.some(x=>x.hash===t.hash)) c.txs.push(Object.assign({hash:t.hash,net:t.net,amount:t.amount},cnvTo(c)));
-  save();render();toast('Перевод добавлен: '+usd(t.amount));
+  if(!d.demoTransfers||!t.demo||t.cnv!==c.id){toast('Для настоящего прихода введите полный хеш — сервер проверит сеть');return;}
+  if(S.convs.some(v=>(v.txs||[]).some(x=>x.hash===t.hash))){toast('Перевод уже привязан к пачке');return;}
+  c.txs=c.txs||[];c.txs.push(Object.assign({},t,cnvTo(c)));
+  save();render();toast('DEMO: добавлен тестовый приход '+usd(t.amount));
 }
-function cnvTxDel(id,i){const c=convOf(deal(id)); if(!c)return; c.txs.splice(i,1);save();render();}
-/* Хеш ищем в списке входящих: нашёлся — сумма подставляется сама, это и есть смысл
-   «сумма приходит вместе с транзакцией». Не нашёлся — не блокируем: принимаем сумму
-   со слов и помечаем, что она не с хэша (Карим, 22.09 — «пусть пропускает дальше»). */
-function txFind(h){
-  h=String(h||'').trim().toLowerCase(); if(h.length<4)return null;
-  return txPool().find(t=>{
-    const x=String(t.hash).toLowerCase();
-    return x===h||x.indexOf(h)>=0||h.indexOf(x.replace(/….*$/,''))===0;
-  })||null;
-}
-function cnvTxManual(id){
-  const d=deal(id), c=convOf(d); if(!c)return;
-  if(need({w2:'хеш перевода'}))return;
-  const h=val('w2');
-  if((c.txs||[]).some(x=>String(x.hash).toLowerCase()===h.toLowerCase())){toast('Такой хеш уже добавлен');return;}
-  const found=txFind(h);
-  const typed=val('w1')?Number(String(val('w1')).replace(/\s/g,'').replace(',','.')):null;
-  let a=found?found.amount:typed, src=found?'хэш':'со слов';
-  if(a==null){
-    /* сумму не назвали и хеша нет в списке — берём остаток по заявке, но честно помечаем */
-    const plan=c.sources.reduce((s,x)=>s+(x.usdt||0),0);
-    const have=hashSum(c.txs)||0;
-    a=Math.round((plan-have)*100)/100;
-    src='по заявке';
+function cnvTxDel(id,i){const c=convOf(deal(id));if(!c||c.status==='received')return;c.txs.splice(i,1);save();render();}
+function txFind(h){return txPool().find(t=>String(t.hash).toLowerCase()===String(h).trim().toLowerCase())||null;}
+async function cnvTxManual(id){
+  const d=deal(id),c=convOf(d);if(!c)return;
+  const hash=String(val('w2')||'').trim(),network=val('w_net')||'TRC-20';
+  if(!hash){toast('Введите полный хеш перевода');return;}
+  if(d.demoTransfers){
+    const found=txFind(hash);if(found){cnvTxPick(id,found.id);return;}
+    toast('В DEMO выберите тестовый приход из списка');return;
   }
-  c.txs=c.txs||[];
-  c.txs.push(Object.assign({hash:found?found.hash:h,net:found?found.net:'TRC20',amount:a,src:src},cnvTo(c)));
-  log(d,'Перевод добавлен: '+usd(a)+' · '+(found?'сумма с хэша':'сумма '+src)+' · '+(found?found.hash:h));
-  save();render();
-  toast(found?('Хеш найден — сумма '+usd(a)):('Хеш не в списке — сумма '+src+': '+usd(a)));
+  if(S.convs.some(v=>(v.txs||[]).some(x=>String(x.hash).toLowerCase()===hash.toLowerCase()))){toast('Этот хеш уже привязан');return;}
+  const j=await standAction('/api/stand/incoming/check',{dealId:id,hash,network});
+  if(j&&j.tx){const latest=convOf(deal(id));latest.txs=latest.txs||[];
+    if(!latest.txs.some(t=>t.hash===j.tx.hash))latest.txs.push(j.tx);save();render();toast('Приход проверен: '+usd(j.tx.amount));}
 }
 function payinTxPick(id,txId){
   editApply(id); const d=deal(id), t=txPool().find(x=>x.id===Number(txId)); if(!t)return;
@@ -3529,58 +3567,85 @@ function payinTxManual(id){
 }
 /* Приходы Сбера: тот же пул, что во вкладке «Поступления». «Забрать» привязывает
    поступление к сделке — руками сумму не переписывают. */
-function sberFree(){ return incomes().filter(x=>!x.excluded&&!x.dealId); }
+function sberFree(){ return incomes().filter(x=>!x.excluded&&!x.dealId&&!x.cnvId); }
 /* Автосверка не всегда срабатывает: плательщик другой, назначение своё, платёж частями.
    Тогда приход забирают руками прямо на шаге ожидания (Карим, 24.09). */
 function payinSum(d){ return (d.payinParts||[]).reduce((s,p)=>s+(p.amountRub||0),0); }
+function payinIssues(d){
+  const ex=expectOf(d), parts=d.payinParts||[], got=payinSum(d), issues=[];
+  const gap=Math.round((Number(ex.amount)-got)*100)/100;
+  if(Math.abs(gap)>Number(ex.tol)) issues.push(gap>0?'Недоплата '+money(gap,'₽'):'Переплата '+money(-gap,'₽'));
+  parts.forEach(p=>{
+    const x=incomes().find(i=>i.id===p.incId);
+    if(!x||x.dealId!==d.id||x.excluded) issues.push('Часть прихода не связана с доступной записью');
+    if(x&&Number(x.rub)!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода');
+    const acc=x&&x.acc, purpose=x&&x.purpose;
+    if(!acc) issues.push('Счёт прихода не указан');
+    else if(acc!==ex.acc) issues.push('Счёт прихода '+acc+' вместо '+ex.acc);
+    if(!purpose) issues.push('Назначение платежа не указано');
+    else if(String(purpose).trim().toLowerCase()!==String(ex.purpose).trim().toLowerCase())
+      issues.push('Назначение отличается от ожидаемого');
+  });
+  return [...new Set(issues)];
+}
 function payinPool(d){
-  const ex=expectOf(d), want=num(cleanNum(String(ex.amount||'')))||approx(d).pay||0;
-  const got=payinSum(d), tol=num(cleanNum(String(ex.tol||'')))||1000;
+  const ex=expectOf(d), want=Number(ex.amount)||0;
+  const got=payinSum(d), tol=Number(ex.tol);
   const left=Math.round((want-got)*100)/100;
   return `<div class="sberbox" style="margin-top:14px">
     <div class="chtitle" style="color:#0369A1">🏦 Забрать приход руками
-      <span>если автосверка не сошлась: другой плательщик, своё назначение, платёж частями</span></div>
+      <span>выберите зарегистрированный приход; все данные здесь тестовые</span></div>
     ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
       <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
         ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
-        <span class="sub2">· ${x.payer||''} · ${x.date||''}</span></span>
+        <span class="sub2">· ${x.payer||''} · ${x.date||''} · ${x.acc||'счёт неизвестен'} · ${x.purpose||'назначение неизвестно'}</span></span>
       <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
     ${sberFree().length?sberFree().slice(0,6).map(x=>`<div class="sbrow">
-      <span><span class="net">${x.kind}</span> <b>${money(x.rub,'₽')}</b>
-        <span class="sub2">· ${x.payer} · ${x.date}</span></span>
+      <span><span class="net">${x.kind}${x.demo?' · тест':''}</span> <b>${money(x.rub,'₽')}</b>
+        <span class="sub2">· ${x.payer} · ${x.date} · ${x.acc||'счёт неизвестен'} · ${x.purpose||'назначение неизвестно'}</span></span>
       <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${x.id})">Забрать</button></div>`).join('')
       :`<p class="fh">Свободных поступлений нет — всё разобрано по другим сделкам.</p>`}
     <div class="hrow" style="margin-top:10px">
       <input class="fc num" id="e_sbamt" placeholder="Сумма ₽ вручную" style="max-width:180px">
       <input class="fc" id="e_sbnote" placeholder="Чей платёж, комментарий">
-      <button class="btn btn-outline btn-sm" onclick="sberManual(${d.id})">+ Добавить</button>
+      <input class="fc" id="e_sbacc" placeholder="Счёт зачисления (например, …0286 · Сбер)">
+      <input class="fc" id="e_sbpurp" placeholder="Назначение из выписки">
+      <button class="btn btn-outline btn-sm" onclick="sberManual(${d.id})">+ Зарегистрировать тестовый приход</button>
     </div>
+    <p class="fh">Ручная запись помечается тестовой. Пустые счёт или назначение потребуют объяснения при принятии.</p>
     ${(d.payinParts||[]).length?`<p class="fh" style="color:#0369A1;font-weight:600">Забрано: ${money(got,'₽')} из ${money(want,'₽')}${
       Math.abs(left)<=tol?' — сходится в пределах допуска':(left>0?' · не хватает '+money(left,'₽'):' · больше на '+money(-left,'₽'))}</p>
+      ${payinIssues(d).length?`<div class="alert a-warn"><div>${payinIssues(d).join('; ')}. Для принятия нужна причина.</div></div>`:''}
       <div class="row" style="margin-top:8px">
         <button class="btn btn-success btn-sm" onclick="payinDone(${d.id})">Приход собран — дальше</button></div>`
-      :`<p class="fh">Заберите поступление или добавьте сумму руками — тогда шаг можно закрыть.</p>`}
+      :`<p class="fh">Заберите зарегистрированное поступление или создайте тестовую запись.</p>`}
   </div>`;
 }
 function payinDone(id){
   const d=deal(id), ex=expectOf(d);
-  const want=num(cleanNum(String(ex.amount||'')))||approx(d).pay||0;
-  const got=payinSum(d), tol=num(cleanNum(String(ex.tol||'')))||1000;
+  const want=Number(ex.amount), got=payinSum(d), tol=Number(ex.tol);
   if(!got){toast('Ничего не забрано — нечего закрывать');return;}
+  const ids=(d.payinParts||[]).map(p=>p.incId);
+  if(new Set(ids).size!==ids.length||(d.payinParts||[]).some(p=>!p.incId||
+      !incomes().some(x=>x.id===p.incId&&x.dealId===d.id&&!x.excluded&&!x.cnvId&&Number(x.rub)===Number(p.amountRub)))){
+    toast('Есть часть без зарегистрированного прихода — перепроверьте список');return;}
   const gap=Math.round((want-got)*100)/100;
-  d.incomeAmount=got;
-  log(d,'Приход разобран вручную: '+money(got,'₽')+' по '+(d.payinParts||[]).length+
+  const issues=payinIssues(d);
+  log(d,'Приход собран из записей: '+money(got,'₽')+' по '+(d.payinParts||[]).length+
     ((d.payinParts||[]).length===1?' платежу':' платежам')+
     (Math.abs(gap)<=tol?' — сошлось в пределах допуска':(gap>0?' · не хватает '+money(gap,'₽'):' · больше ожидания на '+money(-gap,'₽'))));
-  noteAdd('manager','Приход разобран вручную: '+money(got,'₽')+' по сделке',d.id);
-  /* Недобор больше допуска — тот же разбор, что и при автосверке: сначала причина. */
-  if(Math.abs(gap)>tol){ go(d,'s14m','Сумма не сошлась — нужен ручной разбор');
-    toast('Сумма не сошлась — впишите, почему привязываем'); return; }
+  d.incomeReview=issues;
+  if(issues.length){ go(d,'s14m','Приход требует ручного разбора: '+issues.join('; '));
+    toast('Расхождение — укажите причину принятия'); return; }
+  d.incomeAmount=got;
   go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
   toast('Приход засчитан: '+money(got,'₽'));
 }
 function sberTake(id,incId){
   editApply(id); const d=deal(id), x=incomes().find(i=>i.id===incId); if(!x)return;
+  if(x.excluded||x.cnvId||x.dealId||(d.payinParts||[]).some(p=>p.incId===x.id)){
+    toast('Приход уже занят или недоступен');return;}
+  if(!Number.isFinite(Number(x.rub))||Number(x.rub)<=0){toast('У прихода нет корректной суммы');return;}
   x.dealId=d.id;
   d.payinParts=d.payinParts||[];
   /* СБП в списке поступлений тоже эквайринг — иначе забранный руками платёж
@@ -3588,25 +3653,29 @@ function sberTake(id,incId){
   const acq=(x.kind==='эквайринг'||x.kind==='СБП');
   d.payinParts.push({amountRub:x.rub,payer:x.payer,date:x.date,kind:acq?'acquiring':'bank',
     net:acq?Math.round(x.rub*0.9904*100)/100:null,
-    fee:acq?Math.round(x.rub*0.0096*100)/100:null,incId:x.id});
-  d.incomeAmount=(d.payinParts||[]).reduce((s,p)=>s+(p.amountRub||0),0);
+    fee:acq?Math.round(x.rub*0.0096*100)/100:null,incId:x.id,
+    acc:x.acc||null,purpose:x.purpose||null,demo:!!x.demo});
+  if(d.step!=='s14'&&d.step!=='s14m') d.incomeAmount=payinSum(d);
   save();render();toast('Приход забран: '+money(x.rub,'₽'));
 }
 function sberDrop(id,i){
   editApply(id); const d=deal(id), p=d.payinParts[i];
   if(p&&p.incId){const x=incomes().find(z=>z.id===p.incId); if(x)x.dealId=null;}
   d.payinParts.splice(i,1);
-  d.incomeAmount=(d.payinParts||[]).reduce((s,q)=>s+(q.amountRub||0),0)||null;
+  d.incomeAmount=(d.step==='s14'||d.step==='s14m')?null:(payinSum(d)||null);
   save();render();
 }
 function sberManual(id){
   editApply(id); const d=deal(id);
   if(need({e_sbamt:'сумма ₽'}))return;
   const a=Number(String(val('e_sbamt')).replace(/\s/g,'').replace(',','.'));
-  d.payinParts=d.payinParts||[];
-  d.payinParts.push({amountRub:a,payer:val('e_sbnote')||d.client,date:now().slice(0,5),kind:'bank'});
-  d.incomeAmount=(d.payinParts||[]).reduce((s,p)=>s+(p.amountRub||0),0);
-  save();render();toast('Добавлено вручную');
+  if(!Number.isFinite(a)||a<=0){toast('Введите положительную сумму прихода');return;}
+  const pool=incomes(), incId=Math.max(0,...pool.map(x=>Number(x.id)||0))+1;
+  pool.push({id:incId,date:now().slice(0,5),payer:val('e_sbnote')||d.client,
+    rub:a,kind:'банк',acc:val('e_sbacc').trim(),purpose:val('e_sbpurp').trim(),
+    dealId:null,cnvId:null,excluded:false,demo:true});
+  log(d,'Зарегистрирован тестовый приход #'+incId+': '+money(a,'₽'));
+  sberTake(id,incId);
 }
 function chatList(src){return src==='tg'?TG_CHATS:(src==='wa'?WA_CHATS:(src==='bitrix'?BX_DEALS:[]));}
 function editSrcSet(id,v){editApply(id);const d=deal(id);d.source=v;d.sourceRef='';d.srefOther=false;save();render();}
@@ -4175,13 +4244,51 @@ const FILE_NAMES={
   signed:['signed_contract.pdf','signed_appendix.pdf','signed_invoice.pdf','signed_scan_2.jpg'],
   receipt:['bank_receipt_scb.pdf','receipt_part2.pdf','swift_confirmation.pdf','receipt_scan.jpg']
 };
+function fileValid(f){
+  if(!f||typeof f.data!=='string'||f.data.length>3*1024*1024||
+      (f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>2*1024*1024)))return false;
+  const allowed={'application/pdf':['pdf'],'image/png':['png'],
+    'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
+  const ext=String(f.file||'').split('.').pop().toLowerCase();
+  if(!Object.prototype.hasOwnProperty.call(allowed,f.mime)||!allowed[f.mime].includes(ext)||
+      !f.data.startsWith('data:'+f.mime+';base64,'))return false;
+  try{
+    const first=atob(f.data.split(',')[1].slice(0,32));
+    if(f.mime==='application/pdf')return first.startsWith('%PDF-');
+    if(f.mime==='image/png')return first.startsWith('\x89PNG\r\n\x1a\n');
+    if(f.mime==='image/jpeg')return first.startsWith('\xff\xd8\xff');
+    return first.startsWith('RIFF')&&first.slice(8,12)==='WEBP';
+  }catch(e){return false;}
+}
+function fileBlob(f){
+  if(!fileValid(f))return null;
+  try{
+    const data=atob(f.data.split(',')[1]), bytes=new Uint8Array(data.length);
+    for(let i=0;i<data.length;i++)bytes[i]=data.charCodeAt(i);
+    return new Blob([bytes],{type:f.mime});
+  }catch(e){return null;}
+}
+function demoPdfData(){
+  let pdf='%PDF-1.4\n';const offsets=[0];
+  const add=(n,s)=>{offsets[n]=pdf.length;pdf+=n+' 0 obj\n'+s+'\nendobj\n';};
+  add(1,'<< /Type /Catalog /Pages 2 0 R >>');
+  add(2,'<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  add(3,'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 400 160] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>');
+  add(4,'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  const line='BT /F1 14 Tf 20 100 Td (DEMO - NOT A BANK DOCUMENT) Tj ET';
+  add(5,'<< /Length '+line.length+' >>\nstream\n'+line+'\nendstream');
+  const xref=pdf.length;
+  pdf+='xref\n0 6\n0000000000 65535 f \n';
+  for(let i=1;i<=5;i++)pdf+=String(offsets[i]).padStart(10,'0')+' 00000 n \n';
+  pdf+='trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
+  return 'data:application/pdf;base64,'+btoa(pdf);
+}
 function filesOf(d,k){
   d.files=d.files||{};
-  /* документ мог быть приложен по-старому, одним файлом — переносим в список */
-  if(!Array.isArray(d.files[k])){
-    const m=(d.docMeta||{})[k];
-    d.files[k]=(d.docs[k]&&m)?[{file:m.file,size:m.size,at:m.at}]:[];
-  }
+  /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
+  if(!Array.isArray(d.files[k]))d.files[k]=[];
+  d.files[k]=d.files[k].filter(fileValid);
+  if(k==='receipt'||k==='signed')d.docs[k]=d.files[k].length>0;
   return d.files[k];
 }
 function fileSync(d,k){
@@ -4192,17 +4299,45 @@ function fileSync(d,k){
   else delete d.docMeta[k];
 }
 function fileAdd(id,k){
-  const d=deal(id), l=filesOf(d,k);
-  const names=FILE_NAMES[k]||['file.pdf'];
-  const nm=names[l.length%names.length];
-  const size=['1,8 МБ','96 КБ','420 КБ','2,1 МБ'][l.length%4];
-  l.push({file:nm,size:size,at:now()});
-  fileSync(d,k);
-  log(d,'Приложен файл: '+(DOCT[k]||k)+' · '+nm);
-  save();render();toast('Файл приложен — можно добавить ещё');
+  const demo=arguments[2]===true;
+  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,f)=>m+(f.data||'').length,0),0);
+  const append=f=>{
+    const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
+    const l=filesOf(d,k);
+    if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
+    if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
+    if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+    l.push(f);fileSync(d,k);
+    log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
+    save();render();toast(f.demo?'Тестовый PDF добавлен':'Файл приложен');
+  };
+  if(demo){
+    const data=demoPdfData();append({file:'DEMO_'+k+'.pdf',size:'тестовый PDF',at:now(),
+      mime:'application/pdf',bytes:atob(data.split(',')[1]).length,data:data,demo:true});return;
+  }
+  const input=document.createElement('input');input.type='file';
+  input.accept='.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp';
+  input.onchange=()=>{
+    const f=input.files&&input.files[0];if(!f)return;
+    const ext=String(f.name||'').split('.').pop().toLowerCase();
+    const allowed={'application/pdf':['pdf'],'image/png':['png'],
+      'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
+    if(!Object.prototype.hasOwnProperty.call(allowed,f.type)||!allowed[f.type].includes(ext)){
+      toast('Разрешены только PDF, PNG, JPEG или WEBP');return;}
+    if(f.size>2*1024*1024){toast('Файл больше 2 МБ');return;}
+    if(total()+Math.ceil(f.size*4/3)+64>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+    const reader=new FileReader();
+    reader.onerror=()=>toast('Не удалось прочитать файл');
+    reader.onload=()=>append({file:f.name.replace(/[<>\"'`&\x00-\x1f]/g,'_'),
+      size:Math.max(1,Math.ceil(f.size/1024))+' КБ',at:now(),
+      mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false});
+    reader.readAsDataURL(f);
+  };
+  input.click();
 }
 function fileDel(id,k,i){
   const d=deal(id), l=filesOf(d,k);
+  if(i<0||i>=l.length)return;
   const [x]=l.splice(i,1);
   fileSync(d,k);
   log(d,'Файл убран: '+(DOCT[k]||k)+(x?' · '+x.file:''));
@@ -4215,31 +4350,32 @@ const FILE_TAIL={
 };
 function fileBlock(d,k,label,hint){
   const l=filesOf(d,k);
+  const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   return `<div class="list">
     ${l.length?l.map((f,i)=>`<div class="li on" style="cursor:default">
       <span class="av">✓</span>
-      <div><div class="t1">${f.file}</div><div class="t2">${f.size} · ${f.at}</div></div>
+      <div><div class="t1">${safe(f.file)}${f.demo?' · DEMO':''}</div><div class="t2">${safe(f.size)} · ${safe(f.at)}</div></div>
       <span class="t3" style="white-space:nowrap">
-        <button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}')">Открыть</button>
-        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}')">Скачать</button>
+        <button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
+        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
         <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button></span></div>`).join('')
     :`<div class="li" style="cursor:default"><span class="av">+</span>
       <div><div class="t1">${label}</div><div class="t2">${hint}</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`}
   </div>
+  ${!l.length?`<div class="row" style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="fileAdd(${d.id},'${k}',true)">+ Добавить тестовый PDF</button></div>`:''}
   ${l.length?`<div class="row" style="margin-top:8px">
     <button class="btn btn-outline btn-sm" onclick="fileAdd(${d.id},'${k}')">+ Ещё файл</button>
     <span class="fh" style="align-self:center">${l.length} ${l.length===1?'файл':(l.length<5?'файла':'файлов')}${FILE_TAIL[k]?' — '+FILE_TAIL[k]:''}</span></div>`:''}`;
 }
 function toggleDoc(id,k){
-  const d=deal(id);d.docMeta=d.docMeta||{};
-  d.docs[k]=!d.docs[k];
-  if(d.docs[k]){const fl=DOCFILE[k]||['file.pdf','—'];
-    d.docMeta[k]={file:fl[0],size:fl[1],at:now()};
-    log(d,'Приложен документ: '+(DOCT[k]||k));
-    if(k==='pass')toast('Паспорт распознан — ФИО и номер уедут в договор сами');}
-  else{delete d.docMeta[k];log(d,'Документ убран: '+(DOCT[k]||k));}
-  save();render();}
+  const d=deal(id);
+  if(d.docs[k]){
+    d.files=d.files||{};d.files[k]=[];fileSync(d,k);
+    log(d,'Документ убран: '+(DOCT[k]||k));save();render();return;
+  }
+  fileAdd(id,k);
+}
 function toggleConv(id,xid){const d=deal(id);d.conv=d.conv||[];
   d.conv.includes(xid)?d.conv=d.conv.filter(v=>v!==xid):d.conv.push(xid);save();render();}
 function setSrc(id,k){const d=deal(id);d.paySrc=k;save();render();}
@@ -4261,10 +4397,14 @@ function expectOf(d){
 }
 function expectSet(id,k,v){
   const d=deal(id), was=expectOf(d);
-  d.expect=d.expect||{};
-  const nv=(k==='amount'||k==='tol')?(String(v).replace(/\s/g,'').replace(',','.')):v;
+  if(!['amount','tol','acc','purpose'].includes(k))return;
+  const nv=(k==='amount'||k==='tol')?Number(String(v).replace(/\s/g,'').replace(',','.')):String(v).trim();
+  if((k==='amount'||k==='tol')&&(!Number.isFinite(nv)||(k==='amount'?nv<=0:nv<0))){
+    toast(k==='amount'?'Ожидаемая сумма должна быть больше нуля':'Допуск не может быть отрицательным');render();return;}
+  if((k==='acc'||k==='purpose')&&!nv){toast('Заполните '+(k==='acc'?'счёт':'назначение'));render();return;}
   if(String(was[k])===String(nv))return;
-  d.expect[k]=(k==='amount'||k==='tol')?Number(nv):nv;
+  d.expect=d.expect||{};
+  d.expect[k]=nv;
   const label={amount:'ждём сумму',acc:'счёт зачисления',tol:'допуск',purpose:'назначение платежа'}[k]||k;
   log(d,'Ожидание прихода — '+label+': «'+(was[k]||'—')+'» → «'+(d.expect[k]||'—')+'»');
   save();render();
@@ -4395,31 +4535,45 @@ function ret(id){const d=deal(id);const q=prompt('Чего не хватает, 
   const b={s5:'s4',s11:'s8',s24:'s23',s26:'s15'}[d.step];
   if(!b){log(d,'Вопрос по шагу: '+q);save();render();toast('Вопрос записан в журнал — вернуть этот шаг некуда');return;}
   const to=stepWho(d,b);
+  if(d.step==='s26')d.invoiceDetailsReturn=true;
   go(d,b,'Возврат с вопросом: '+q);
   const n=notes().find(x=>x.dealId===d.id&&x.role===to);
   if(n&&n.text.indexOf('Задача на вас')===0) n.text+=' · вопрос: '+q;
   save();render();toast('Вернули: '+(STEPS[b]?STEPS[b].title:b));}
 function incomeExact(id){
   const d=deal(id),a=approx(d);
-  /* приходит то, что ждём: сумма могла быть поправлена руками */
-  const ex=expectOf(d), exp=isCrypto(d)?a.pay:(Number(ex.amount)||a.pay);
-  d.incomeAmount=exp;
+  const ex=expectOf(d), exp=isCrypto(d)?a.pay:Number(ex.amount);
   if(isCrypto(d)){
+    d.incomeAmount=exp;
     d.amountUsdt=d.amountUsdt||a.pay; d.pay.usdt=a.pay;
     d.pay.hash='0x'+Math.random().toString(16).slice(2,10)+'…'+Math.random().toString(16).slice(2,6);
-    log(d,'USDT получены и подтверждены в сети: '+money(a.pay,'$'));
+    log(d,'Симуляция: тестовый приход USDT подтверждён в сети: '+money(a.pay,'$'));
     go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
     toast('Деньги пришли — заполните реквизиты оплаты');return;}
-  log(d,'Поступление сошлось автоматически: '+money(exp,'₽')+(ex.purposeEdited?' · назначение сверено с чеком клиента':''));
-  go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
-  toast('Деньги пришли — заполните реквизиты оплаты');}
+  if(d.step!=='s14'||!Number.isFinite(exp)||exp<=0){toast('Проверьте ожидаемую сумму');return;}
+  const pool=incomes(), incId=Math.max(0,...pool.map(x=>Number(x.id)||0))+1;
+  pool.push({id:incId,date:now().slice(0,5),payer:d.client,rub:exp,kind:'банк',
+    acc:ex.acc,purpose:ex.purpose,dealId:null,cnvId:null,excluded:false,demo:true});
+  log(d,'Симуляция: создан тестовый приход #'+incId+' на '+money(exp,'₽'));
+  sberTake(id,incId);
+  payinDone(id);}
 function incomeOff(id){
   const d=deal(id),a=approx(d);
-  const ex=expectOf(d), exp=isCrypto(d)?a.pay:(Number(ex.amount)||a.pay);
-  const gap=isCrypto(d)?5:(Number(ex.tol)||1000);
-  d.incomeAmount=Math.round((exp-gap)*100)/100;
-  log(d,'Поступление не сошлось: '+money(d.incomeAmount,SIGN[a.cur]));
-  go(d,'s14m');toast('Не сошлось — нужен ручной разбор');}
+  const ex=expectOf(d), exp=isCrypto(d)?a.pay:Number(ex.amount);
+  if(isCrypto(d)){
+    d.incomeAmount=Math.round((exp-5)*100)/100;
+    log(d,'Симуляция: поступление USDT меньше ожидания на 5');
+    go(d,'s14m');toast('Не сошлось — нужен ручной разбор');return;}
+  if(d.step!=='s14'||!Number.isFinite(exp)||exp<=0){toast('Проверьте ожидаемую сумму');return;}
+  const short=Math.min(exp,Math.max(Number(ex.tol)+1,0.01));
+  const actual=Math.round((exp-short)*100)/100;
+  if(actual<=0){toast('Ожидаемая сумма слишком мала для этой симуляции');return;}
+  const pool=incomes(), incId=Math.max(0,...pool.map(x=>Number(x.id)||0))+1;
+  pool.push({id:incId,date:now().slice(0,5),payer:d.client,rub:actual,kind:'банк',
+    acc:ex.acc,purpose:ex.purpose,dealId:null,cnvId:null,excluded:false,demo:true});
+  log(d,'Симуляция: создан тестовый приход #'+incId+' на '+money(actual,'₽'));
+  sberTake(id,incId);
+  payinDone(id);}
 
 /* ---------- карточки шагов ---------- */
 /* Ожидаемый результат шага. У каждой задачи есть «что должно получиться» — и ради
@@ -4577,9 +4731,9 @@ function pcCard(d,x,share,w){
         <input class="fc num" id="cr_${x.id}" value="${tr.rate||''}" placeholder="31,20"
           onchange="transferSet(${x.id},'rate',this.value)">
         <p class="fh">курс называет Coins под эту сделку</p></div>
-      <div class="fg"><label class="fl">Баты получателю<span class="rq">*</span></label>
+      <div class="fg"><label class="fl">${x.type==='Оплата недвижимости'?'Баты на счёт MF Corp, включая комиссию':'Баты получателю'}<span class="rq">*</span></label>
         <input class="fc num" id="ct_${x.id}" value="${(function(){
-            const v=num(cleanNum(String(tr.thb||'')))||ap2.thb||0;
+            const v=num(cleanNum(String(tr.thb||'')))||coinsThb(x);
             return v?Number(v).toLocaleString('ru-RU'):'';})()}"
           onchange="transferSet(${x.id},'thb',this.value)"></div>
       <div class="fg"><label class="fl">К отправке<span class="sub2"> считается по курсу Coins</span></label>
@@ -4651,30 +4805,33 @@ function pcCard(d,x,share,w){
 /* Отправки по задаче: список частей и строка добавления. Сумма берётся из хеша,
    если он есть во входящих; иначе её вводят или добираем остаток задачи. */
 function sendBlock(x,edit,multi){
-  const l=sendList(x), sum=sendSum(x), need=pcAmount(x)||0, left=sendLeft(x), ok=sendDone(x);
-  const rows=l.map((t,i)=>`<div class="hrow">
-      <b class="pos" style="min-width:104px">${usd(t.amount)}</b>
-      <span class="net">${t.net||'TRC-20'}</span>${t.src&&t.src!=='хэш'?`<span class="src">сумма ${t.src}</span>`:''}
-      <span style="flex:1;min-width:0;font-size:12.5px;color:var(--text-sec);word-break:break-all">${t.ref}</span>
-      <button class="btn btn-outline btn-sm" onclick="copyAsk(${JSON.stringify(String(t.ref)).replace(/"/g,'&quot;')})">копировать</button>
-      ${edit?`<button class="btn btn-outline btn-sm" onclick="sendDel(${x.id},${i})">убрать</button>`:''}</div>`).join('');
-  if(!edit) return l.length?`<div class="hashbox" style="margin-top:8px">${rows}
-      <p class="fh" style="margin-top:8px">Отправлено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${ok?' — задача закрыта':` · осталось <b>${usd(left)}</b>`}</p></div>`
-    :`<div class="hempty" style="margin-top:8px">${multi?'Транзакция ещё не завешена':'Отправок ещё нет'}</div>`;
+  const l=sendList(x),sum=sendSum(x),need=pcAmount(x)||0,left=sendLeft(x),ok=sendDone(x);
+  const status={pending:'Ждём подтверждения',confirmed:'Подтверждено',failed:'Ошибка перевода',mismatch:'Не совпали реквизиты / сумма',error:'Сеть недоступна — повторим проверку'};
+  const canDemo=x.demoTransfers&&(canSwitchRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
+  const rows=l.map((t,i)=>`<div class="hashbox" style="margin:8px 0">
+      <div class="hrow"><b class="${t.status==='confirmed'?'pos':''}">${usd(t.status==='confirmed'?t.verifiedAmount:t.amount)}</b>
+      <span class="net">${htmlText(t.net||'TRC-20')}</span><b>${htmlText(status[t.status]||status.pending)}</b>
+      ${x.demoTransfers?'<span class="src">DEMO</span>':''}</div>
+      <p class="addr" style="word-break:break-all">${htmlText(t.ref)}</p>
+      ${t.checkError?`<p class="fh neg">${htmlText(t.checkError)}</p>`:''}
+      <div class="row"><button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>
+      ${edit&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="sendDel(${x.id},${i})">Убрать</button>`:''}
+      ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">DEMO: подтвердить эту часть</button>
+      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">DEMO: ошибка</button>`:''}</div></div>`).join('');
   return `<div class="hashbox" style="margin-top:10px">
-    ${rows||`<div class="hempty">${multi?'Ни одной транзакции пока не завешено':'Отправок ещё нет'}</div>`}
-    <div class="fr" style="margin-top:10px">
-      <div class="fg"><label class="fl">${multi?'Ссылка на транзакцию':'Хеш отправки'}${ok?'':'<span class="rq">*</span>'}</label>
-        <input class="fc addr" id="sh_${x.id}" placeholder="${multi?'tronscan.org/#/transaction/…':'ed7f9fcd31249fcc…'}">
-        <p class="fh">в рабочей системе сумма подтянется из сети по этому ${multi?'переводу':'хешу'}</p></div>
-      <div class="fg"><label class="fl">Сумма, если её нет по хешу</label>
-        <div class="hrow"><input class="fc num" id="sa_${x.id}" placeholder="${left>0?left.toFixed(2):'не обязательно'}">
-          <button class="btn btn-outline btn-sm" onclick="sendAdd(${x.id})">Добавить</button></div>
-        <p class="fh">оставите пустым — возьмём остаток задачи</p></div>
-    </div>
-    <p class="fh" style="margin-top:2px">Отправлено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${
-      ok?' — <b class="pos">задача закрыта</b>':(left>0?` · осталось <b>${usd(left)}</b> — можно добить второй отправкой`:'')}</p>
-  </div>`;
+    ${rows||'<div class="hempty">Переводов ещё нет</div>'}
+    ${edit?`<div class="fr" style="margin-top:10px">
+      <div class="fg"><label class="fl">${multi?'Хеш или ссылка на подготовленную транзакцию':'Хеш отправки'}</label>
+        <input class="fc addr" id="sh_${x.id}" placeholder="полный хеш / ссылка">
+        <p class="fh">Вставьте хеш именно этой отправки. Ссылка без хеша не подтверждает платёж.</p></div>
+      <div class="fg"><label class="fl">Сумма этой части, USDT</label>
+        <input class="fc num" id="sa_${x.id}" placeholder="${Math.max(0,need-sendDeclared(x)).toFixed(2)}">
+        <p class="fh">Пусто — зарегистрируем ещё не добавленный остаток. Проверка сверит его с сетью.</p></div></div>
+      <div class="row"><button class="btn btn-outline btn-sm" onclick="sendAdd(${x.id})">Добавить хеш</button>
+        ${x.demoTransfers?`<button class="btn btn-secondary btn-sm" onclick="sendAdd(${x.id},true)">DEMO: добавить ожидающую часть</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="checkSends(${x.id})">Проверить переводы</button></div>`:''}
+    <p class="fh">Подтверждено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${ok?' — вся сумма подтверждена':` · ждём ещё <b>${usd(left)}</b>`}.
+    Зарегистрировано ${usd(sendDeclared(x))}.${sum>need+0.005?` <b class="neg">Переплата ${usd(sum-need)} — проверьте возврат излишка.</b>`:''}</p></div>`;
 }
 function taskFacts(d,x){
   const c=convOf(x)||convOf(d), ap2=approx(x), tr=x.transfer||{};
@@ -4705,7 +4862,7 @@ function packTasks(d,edit){
   const sends=mem.filter(x=>pcSends(x)).length;
   return `<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
     <div class="sec po" style="margin:0 0 4px">${c?'ЗАДАЧИ ПО ЭТОЙ ПАЧКЕ · '+mem.length:'ЧТО ОТПРАВЛЯЕМ'}</div>
-    ${edit?`<p class="fh" style="margin:0 0 10px">${sends} ${sends===1?'перевод':'перевода'} с кошелька. По ${sends===1?'нему':'каждому'} ${multi?'завешиваем транзакцию и вносим ссылку':'вносим хеш отправки'} — можно частями, суммы складываются. Задача закрывается, когда отправленное покрывает её сумму. Закрыто: ${done} из ${sends}.</p>`
+    ${edit?`<p class="fh" style="margin:0 0 10px">${sends} ${sends===1?'перевод':'перевода'} с кошелька. По ${sends===1?'нему':'каждому'} ${multi?'завешиваем транзакцию и вносим ссылку':'вносим хеш отправки'} — можно частями, суммы складываются. Перевод засчитывается после подтверждения суммы и адресов. Подтверждено: ${done} из ${sends}.</p>`
       :`<p class="fh" style="margin:0 0 10px">Что уходит с кошелька и за что. Сделки без перевода помечены отдельно.</p>`}
     ${mem.map(x=>{
       const o=POST_CONV.find(p=>p.k===x.postConv), tr=x.transfer||{}, send=pcSends(x);
@@ -5064,17 +5221,15 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
-    <div class="sim"><div class="h">Симуляция · в жизни это делает выписка Сбера</div>
-      <p>В настоящем продукте платежи сверяются автоматически раз в минуту. Здесь нажмите сами.</p>
-      <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Пришёл ровно ${money(num(ex.amount)||ap.pay,'₽')}</button>
-      <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Пришло на ${money(num(ex.tol)||1000,'₽')} меньше</button></div>
+    <div class="sim"><div class="h">Тестовая симуляция прихода</div>
+      <p>Кнопки создают помеченную тестовую запись в разделе «Поступления» и привязывают её к этой сделке. Фактический приход выберите в списке ниже.</p>
+      <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Создать тестовый приход ${money(Number(ex.amount),'₽')}</button>
+      <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Создать тестовую недоплату</button></div>
     ${payinPool(d)}`;})()}</div>`,
 
-  s14m:()=>`<div class="card"><div class="card-title">Не сошлось автоматически</div>
-    <div class="alert a-warn"><div>Ждали <b>${money(ap.pay,ap.sign)}</b>, пришло <b>${money(d.incomeAmount,ap.sign)}</b> — ${
-      (function(){const g=Math.round(((ap.pay||0)-(d.incomeAmount||0))*100)/100;
-        return g>0?'меньше на '+money(g,ap.sign):(g<0?'больше на '+money(-g,ap.sign):'ровно, но разбор попросили вручную');})()}${
-      (d.payinParts||[]).length>1?' · частей: '+d.payinParts.length:''}.</div></div>
+  s14m:()=>`<div class="card"><div class="card-title">Разобрать поступление</div>
+    <div class="alert a-warn"><div>Ждали <b>${money(Number(expectOf(d).amount),ap.sign)}</b>, в выбранных приходах <b>${money(payinSum(d)||d.incomeAmount,ap.sign)}</b>.
+      ${(d.incomeReview||[]).length?`<br>${d.incomeReview.join('; ')}.`:'Проверьте причину несовпадения.'}</div></div>
     <div class="fg"><label class="fl">Почему привязываем<span class="rq">*</span></label>
       <textarea class="fc" id="c" placeholder="Банк клиента удержал комиссию, клиент прислал чек"></textarea></div>
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s14m')">Привязать к сделке</button>
@@ -5134,7 +5289,7 @@ function stepCard(d){
         <span class="t3 num">${money(base,'₽')}</span></div>
       ${extra.length?extra.map(x=>`<div class="li ${sel.indexOf(x.id)<0?'':'on'}" onclick="toggleConv(${d.id},${x.id})">
         <span class="av">${sel.indexOf(x.id)<0?'+':'✓'}</span><div><div class="t1">${x.code} · ${x.client}</div>
-        <div class="t2">без шагов · ${x.payType} · наценка ${String(exSpread(x)).replace('.',',')}% = ${money(exMargin([x]),'₽')}${
+        <div class="t2">без шагов · ${x.payType} · указанная наценка ${String(exSpread(x)).replace('.',',')}% (прибыль будет по факту прихода и выдачи)${
           sel.indexOf(x.id)<0?'':' · к брокеру <b>'+moneyKop(sh(x.amountRub||0),'₽')+'</b>'}</div></div>
         <span class="t3 num">${money(x.amountRub,'₽')}<br><span class="pick">${
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):
@@ -5165,6 +5320,7 @@ function stepCard(d){
         <p class="fh">от владельца зависит, кто отправляет дальше: мультисиг — фин дир и вторая подпись, личный — владелец сам</p></div>
     </div>
     ${walletBlock(d)}
+    ${transferModeBlock(d)}
     <div class="derived" style="margin-top:4px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <span>${(function(){const b=brokerSend(total);
@@ -5198,16 +5354,16 @@ function stepCard(d){
           <option value="">— входящие переводы —</option>
           ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
             /* во входящих для пачки — только то, что пришло после отправки рублей */
-            &&!(c&&c.sentTs&&!(t.ts&&t.ts>=c.sentTs))).map(t=>
+            &&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
         </select></div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
-        <input class="fc" id="w2" placeholder="ed7f9fcd… или часть хеша">
-        <p class="fh">если хеш есть во входящих, сумма подставится сама</p></div>
-      <div class="fg"><label class="fl">Сумма, если хеша нет в списке</label>
-        <div class="hrow"><input class="fc num" id="w1" placeholder="не обязательно">
+        <input class="fc" id="w2" placeholder="полный хеш транзакции">
+        <p class="fh">сумма и адрес получения проверяются сервером</p></div>
+      <div class="fg"><label class="fl">Сеть прихода</label>
+        <div class="hrow"><select class="fc" id="w_net"><option>TRC-20</option><option>ERC-20</option></select>
           <button class="btn btn-outline btn-sm" onclick="cnvTxManual(${d.id})">Добавить</button></div>
-        <p class="fh">оставите пустым — возьмём остаток по заявке и пометим, что сумма не с хэша</p></div>
+        <p class="fh">Укажите ту сеть, в которой брокер отправил USDT.</p></div>
     </div>
 
     <div class="hashbox">
@@ -5275,6 +5431,7 @@ function stepCard(d){
       <div class="row" style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="cnvOpen(${c.id})">Открыть пачку целиком</button></div>
     </div>`:`<div class="alert a-warn"><div><b>Пачки конвертации нет.</b> ${isCrypto(d)?'Клиент платил криптой — USDT пришли напрямую, конвертировать было нечего.':'Рубли ещё не конвертированы — проверьте, откуда берутся деньги на этот платёж.'}</div></div>`}
 
+    ${transferModeBlock(d)}
     ${packTasks(d,true)}
     ${(function(){const w=dealWallet(d);
       return (w&&w.multisig)?`
@@ -5291,13 +5448,13 @@ function stepCard(d){
     const c=convOf(d), rate=num(d.rates.usdtThb)||avgUsdt();
     const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
     const sObj=SOURCES_PAY[d.paySrc]||SOURCES_PAY.coins;
-    return `<div class="card"><div class="card-title">Вторая подпись<span class="sub">транзакция живёт сутки · осталось 23 ч</span></div>
+    return `<div class="card"><div class="card-title">Вторая подпись<span class="sub">подпишите в кошельке — сервис дождётся подтверждения сети</span></div>
 
-    ${packTasks(d)}
+    ${packTasks(d,true)}
     <div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec po" style="margin:0 0 10px">ЧТО ПОДПИСЫВАЕТЕ</div>
       <table class="tbl">
-        ${trow('Сумма',usd(d.pay.usdt),'уйдёт с: '+((dealWallet(d)||{}).name||'кошелёк не выбран')+' · <span class="addr">'+((dealWallet(d)||{}).addr||'адрес не указан')+'</span>')}
+        ${trow('Сумма',usd(pcAmount(d)),'уйдёт с: '+((dealWallet(d)||{}).name||'кошелёк не выбран')+' · <span class="addr">'+((dealWallet(d)||{}).addr||'адрес не указан')+'</span>')}
         ${trow('Кому','<span class="addr">'+(((d.transfer||{}).addr)||'адрес не указан')+'</span>',((d.transfer||{}).to||'')+' · '+pcNet(d))}
         ${trow('За что',d.code+' · '+d.client,d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:''))}
         ${trow('Получателю уйдёт',money(ap.thb,'฿'),'через '+(sObj?sObj.t:'—'))}
@@ -5321,9 +5478,9 @@ function stepCard(d){
     <div class="alert a-ok"><div><b>Фин дир проверил:</b> ${d.pay.check||'комментарий не оставлен'}</div></div>
     <div class="fg"><label class="fl">Ссылка на транзакцию</label><input class="fc" readonly value="${d.pay.tx||'—'}"></div>
 
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s24')">Подписать · станет 2 из 2</button>
+    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s24')">Проверить подтверждение в сети</button>
     <button class="btn btn-outline" onclick="ret(${d.id})">Отклонить с причиной</button></div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Если не подписать за сутки — транзакция протухнет и фин диру придётся завешивать заново.</p>
+    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Эта кнопка проверяет статус. Саму подпись нужно поставить в кошельке. Незавершённый или ошибочный перевод не закрывает сделку.</p>
     </div>`;},
 
   s25:()=>{
@@ -5334,10 +5491,16 @@ function stepCard(d){
     const rows=cs.map(x=>`<tr><td>${x.code}</td><td class="num">${money(x.thb,'฿')}</td><td>${x.rate||'—'}</td>
       <td class="num">${moneyKop(x.usdt)} USDT</td><td>${x.hashes.map(h=>'<span class="addr">'+h+'</span>').join('<br>')||'—'}</td></tr>`).join('');
     return `<div class="card"><div class="card-title">Известить Coins</div>
-    <div class="alert a-ok"><div>Переводы подтверждены в сети. По каждой сделке — сколько ушло в Coins и какими хешами; в рабочей системе хеши придут из сети.</div></div>
+    <div class="alert a-ok"><div>${d.demoTransfers?'DEMO: тестовые переводы подтверждены в сценарии.':'Переводы подтверждены в сети.'} По каждой сделке — фактическая сумма и хеши. Передайте их Coins.</div></div>
     ${cs.length?`<table class="tbl"><tr><th>Сделка</th><th>Выдать</th><th>Курс Coins</th><th>Ушло</th><th>Хеши</th></tr>${rows}</table>`
       :'<div class="alert a-warn"><div>В этой пачке нет задач в Coins — извещать некого.</div></div>'}
-    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Известил, чек загружен</button></div></div>`;},
+    ${d.pay.coinsNotified?`<div class="alert a-info"><div>Coins извещён. После поступления батов сверьте выписку SCB и внесите факт. Это ручное подтверждение операциониста.</div></div>
+    <div class="fr"><div class="fg"><label class="fl">Пришло на SCB по этой сделке, ฿</label>
+    <input class="fc num" id="coins_thb" placeholder="${coinsThb(d)}" value="${(d.transfer||{}).thb||coinsThb(d)}"></div>
+    <div class="fg"><label class="fl">Номер операции / ссылка на выписку</label><input class="fc" id="coins_ref" placeholder="референс зачисления"></div></div>
+    <div class="fg"><label class="fl">Причина расхождения, если сумма отличается</label><input class="fc" id="coins_gap"></div>
+    <button class="btn btn-primary" onclick="act(${d.id},'s25')">Баты поступили — к оплате инвойса</button>`:
+    `<div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Суммы и хеши переданы Coins</button></div>`}</div>`;},
 
   s26:()=>{
     const pt=d.payTo||{}, sum=pt.amount||ap.thb||0;
@@ -5369,20 +5532,22 @@ function stepCard(d){
 
   s27:()=>{
     const pt=d.payTo||{};
+    const receiptFiles=filesOf(d,'receipt');
+    const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const ok=[['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],
       ['Хеш обмена',d.pay.hash],['Транзакция отправки',d.pay.tx],
-      ['Чек оплаты инвойса',d.docs.receipt?((d.docMeta||{}).receipt||{}).file||'есть':null]];
+      ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]];
     const miss=ok.filter(x=>!x[1]).length;
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-miss} из ${ok.length} полей собрано по дороге</span></div>
     ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
-    ${d.docs.receipt?`<div class="paybox">
+    ${receiptFiles.length?`<div class="paybox">
       <div class="payrow" style="border-bottom:none"><div><div class="k">ЧЕК ОТ ОПЕРАЦИОНИСТА</div>
-        <div class="v">оплата ${money(pt.amount||ap.thb,'฿')}${pt.dev?(' · '+pt.dev):''} — отправьте клиенту ${filesOf(d,'receipt').length>1?'все файлы':'этот файл'}</div></div></div>
-      ${filesOf(d,'receipt').map((f,i)=>`<div class="payrow">
-        <div style="min-width:0"><div class="k">Файл ${i+1}</div><div class="v">${f.file} · ${f.size}</div></div>
-        <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="docOpen(${d.id},'receipt')">Открыть</button>
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap" onclick="docDownload(${d.id},'receipt')">Скачать</button></div>`).join('')}
+        <div class="v">оплата ${money(pt.amount||ap.thb,'฿')}${pt.dev?(' · '+pt.dev):''} — отправьте клиенту ${receiptFiles.length>1?'все файлы':'этот файл'}</div></div></div>
+      ${receiptFiles.map((f,i)=>`<div class="payrow">
+        <div style="min-width:0"><div class="k">Файл ${i+1}</div><div class="v">${safe(f.file)}${f.demo?' · DEMO':''} · ${safe(f.size)}</div></div>
+        <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="docOpen(${d.id},'receipt',${i})">Открыть</button>
+        <button class="btn btn-secondary btn-sm" style="white-space:nowrap" onclick="docDownload(${d.id},'receipt',${i})">Скачать</button></div>`).join('')}
     </div>
     <div class="list" style="margin-top:12px">
       <div class="li ${d.sentToClient?'on':''}" onclick="sentToggle(${d.id})">
@@ -5415,6 +5580,7 @@ function stepCard(d){
 /* ---------- действия ---------- */
 function act(id,step){
   const d=deal(id);
+  if(!d||d.closed||d.step!==step){toast('Шаг уже изменился — откройте текущую задачу');return;}
   const c=document.getElementById('c');
   saveNote(d,step);            /* комментарий шага — до любых переходов */
   if(step==='s4'){d.comment=c?c.value:'';d.selfRate=false;d.self=false;
@@ -5475,7 +5641,12 @@ function act(id,step){
   if(step==='s12'){go(d,'s14','Ожидание прихода поставлено');toast('Ждём приход');return;}
   if(step==='s14m'){
     if(!c||!c.value.trim()){toast('Нужна причина привязки');return;}
-    log(d,'Привязано вручную: '+c.value.trim());
+    if(!isCrypto(d)){
+      if(!(d.payinParts||[]).length||payinIssues(d).some(x=>x.includes('не связана')||x.includes('отличается от записи'))){
+        toast('Проверьте зарегистрированные приходы');return;}
+      d.incomeAmount=payinSum(d);
+    }
+    log(d,'Расхождения приняты вручную: '+(d.incomeReview||[]).join('; ')+'. Причина: '+c.value.trim());
     if(isCrypto(d))d.pay.usdt=d.incomeAmount;
     go(d,'s15','Привязано вручную — нужны реквизиты для оплаты');toast('Заполните реквизиты оплаты');return;}
   if(step==='s15'){
@@ -5488,7 +5659,8 @@ function act(id,step){
     /* Реквизиты правят и по возврату с оплаты: тогда деньги уже сконвертированы и
        разосланы, и «следующий по пути» шаг (отправка брокеру) повёл бы сделку по
        второму кругу. Решение по USDT принято — значит, назад на оплату. */
-    const F=flowOf(d), i=F.indexOf('s15'), nxt=d.postConv?'s26':(F[i+1]||'s26');
+    const F=flowOf(d), i=F.indexOf('s15'), nxt=d.invoiceDetailsReturn?'s26':(F[i+1]||'s26');
+    delete d.invoiceDetailsReturn;
     go(d,nxt,'Реквизиты готовы — дальше оплата');
     toast('Ушло дальше по пути');return;}
   if(step==='s18'){
@@ -5496,6 +5668,7 @@ function act(id,step){
     if(need({b1:'курс, который назвал брокер',b2:'кошелёк, куда придут USDT'}))return;
     d.rates.broker=b1;
     const rate=num(b1);
+    if(!Number.isFinite(rate)||rate<=0){toast('Курс брокера должен быть больше нуля');return;}
     const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
     S.cseq=(S.cseq||0)+1;
     const rubTotal=members.reduce((s,x)=>s+(x.incomeAmount||x.amountRub||0),0);
@@ -5515,13 +5688,14 @@ function act(id,step){
     /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
        кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
        и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
-    if(STAND){
-      const plan=Math.round(cn.sources.reduce((a,x)=>a+(x.usdt||0),0)*100)/100;
+    members.forEach(x=>x.demoTransfers=!!d.demoTransfers);
+    if(d.demoTransfers){
+      const plan=Math.round(cn.sent/num(cn.rate)*100)/100;
       if(plan>0){
         const p1=Math.round(plan*0.6*100)/100, hx=()=>Math.random().toString(16).slice(2,10)+'…'+Math.random().toString(16).slice(2,6);
         const t0=Date.now();
         [[p1,t0+60000],[Math.round((plan-p1)*100)/100,t0+120000]].forEach(function(a,i){
-          txPool().push({id:Date.now()+i,amount:a[0],net:'TRC20',hash:hx(),ts:a[1],cnv:cn.id,
+          txPool().push({id:Date.now()+i,amount:a[0],net:'TRC20',hash:'demo:incoming:'+cn.id+':'+i,ts:a[1],cnv:cn.id,demo:true,status:'confirmed',
             at:new Date(a[1]).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
             from:'T'+b0.replace(/[^A-Za-z]/g,'').slice(0,8)+'…'+(i?'b2':'a1')});});
       }
@@ -5540,7 +5714,8 @@ function act(id,step){
   if(step==='s18w'){
     const c=convOf(d);
     const got=c?hashSum(c.txs):null;
-    if(got==null){toast('Добавьте перевод — сумма подставится из транзакции');return;}
+    if(got==null||got<=0){toast('Добавьте подтверждённый приход');return;}
+    if(c.txs.some(t=>t.status!=='confirmed'||(!d.demoTransfers&&t.demo))){toast('Есть неподтверждённые приходы — проверьте хеши');return;}
     if(c){
       c.status='received';
       c.receivedAt=now();
@@ -5551,15 +5726,18 @@ function act(id,step){
          чтобы прибыль считалась от того, что реально пришло. В пачке денег несколько
          сделок — делим по доле рублей, иначе расхождение осядет на одной из них. */
       const rubAll=c.sources.reduce((s,x)=>s+(x.rub||0),0);
-      c.sources.forEach(src=>{
-        const x=deal(src.dealId); if(!x) return;
-        const share=rubAll?(src.rub||0)/rubAll:(1/c.sources.length);
-        const amt=Math.round(got*share*100)/100;
-        src.usdtFact=amt;
-        /* доля сделки в каждом переводе — чтобы в сделке остались все хэши пачки,
-           а не один; по ним потом сводят приход через полгода */
-        x.payinHashes=c.txs.map(t=>({amount:Math.round((t.amount||0)*share*100)/100,network:t.net||'TRC20',hash:t.hash}));
-        x.pay=x.pay||{}; x.pay.usdt=amt; x.pay.hash=c.txs[0].hash;
+      const allocations=c.sources.map(()=>[]);
+      c.txs.forEach(t=>{
+        const cents=Math.round(t.amount*100);let allocated=0;
+        c.sources.forEach((src,i)=>{
+          const part=i===c.sources.length-1?cents-allocated:Math.floor(cents*(src.rub||0)/rubAll);
+          allocated+=part;allocations[i].push({amount:part/100,network:t.net||'TRC20',hash:t.hash});
+        });
+      });
+      c.sources.forEach((src,i)=>{
+        const x=deal(src.dealId);if(!x)return;
+        x.payinHashes=allocations[i];src.usdtFact=hashSum(x.payinHashes);
+        x.pay=x.pay||{};x.pay.usdt=src.usdtFact;x.pay.hash=c.txs[0].hash;
       });
     }
     d.pay.usdt=d.pay.usdt||got;
@@ -5583,7 +5761,7 @@ function act(id,step){
     if(noKind){bad(noKind,'не выбрано назначение','pc_'+noKind.id);return;}
     const noSrc=mem.find(x=>x.postConv==='keep'&&x.id!==d.id&&!(x.transfer||{}).src);
     if(noSrc){bad(noSrc,'не указано, откуда выдали баты','pk_'+noSrc.id);return;}
-    const noAmt=mem.find(x=>pcSends(x)&&!pcAmount(x));
+    const noAmt=mem.find(x=>(pcSends(x)||x.postConv==='refund')&&(!Number.isFinite(pcAmount(x))||pcAmount(x)<=0));
     if(noAmt){bad(noAmt,'не указана сумма USDT',(noAmt.postConv==='coins'?'cr_':'ca_')+noAmt.id);return;}
     const noAddr=mem.find(x=>pcSends(x)&&!String((x.transfer||{}).addr||'').trim());
     if(noAddr){bad(noAddr,'не указан кошелёк получателя','cad_'+noAddr.id);return;}
@@ -5605,55 +5783,37 @@ function act(id,step){
     go(d,nxt,'Решение по USDT: '+(mine?mine.t:d.postConv)+(mem.length>1?' · задач по пачке: '+mem.length:''));
     toast('К отправке '+usd(pcOut(d)));return;}
   if(step==='s23'){
-    /* Переводов в пачке несколько, и по каждому свой след: у мультисига — своя
-       транзакция, у личного кошелька — свой хеш. Одного поля на всю пачку мало. */
-    const w=dealWallet(d), multi=!w||w.multisig;
-    const mem=cnvMembers(d), sends=mem.filter(x=>pcSends(x));
-    if(!sends.length){toast('По этой пачке отправлять нечего');return;}
-    const miss=sends.find(x=>!sendDone(x));
-    if(miss){
-      const e=document.getElementById('sh_'+miss.id);
-      if(e){e.scrollIntoView({block:'center'});e.focus();e.classList.add('bad');}
-      toast(miss.code+': '+(sendSum(miss)?('отправлено '+usd(sendSum(miss))+' из '+usd(pcAmount(miss))+', осталось '+usd(sendLeft(miss)))
-        :(multi?'транзакция не завешена':'нет хеша отправки')));return;}
-    sends.forEach(x=>{const tr=x.transfer||{}, l=sendList(x);
-      log(x,(multi?'Завешено в мультисиге':'Отправлено')+' '+usd(sendSum(x))+
-        ' · '+(tr.to||'—')+' · '+(tr.addr||'—')+' · '+pcNet(x)+
-        ' · '+l.length+(l.length===1?' перевод':' перевода')+': '+l.map(t=>t.ref).join(', '));
-      if(x.id!==d.id) log(d,'По сделке '+x.code+': '+usd(sendSum(x))+' '+(multi?'завешено':'отправлено'));});
-    if(multi){
-      d.pay.tx=(sendList(d)[0]||{}).ref||null;
-      d.pay.check=c?c.value:'';
-      go(d,'s24',(function(t){return t.charAt(0).toUpperCase()+t.slice(1);})(walletSigner(w))+' подписал '+sends.length+
-        (sends.length===1?' перевод':' перевода')+' — 1 из 2, ждём одобрения Теодора');
-      toast('Ушло Теодору');return;}
-    d.pay.outHash=(sendList(d)[0]||{}).hash||(sendList(d)[0]||{}).ref||null;
-    d.pay.usdt=d.pay.usdt||pcAmount(d)||d.pay.usdt;
-    packSettle(d,'sent');
-    const F=flowOf(d), i=F.indexOf('s23'), nxt=F[i+1]||'s26';
-    go(d,nxt,'Отправлено с личного кошелька '+((w&&w.owner)||'владельца')+' · переводов '+sends.length);
-    toast('Отправлено');return;}
-  if(step==='s24'){
-    /* После одобрения транзакции уходят в сеть — хеш появляется по каждой отправке */
-    const sends=cnvMembers(d).filter(x=>pcSends(x));
-    sends.forEach(x=>{
-      x.transfer=Object.assign({},x.transfer||{});
-      x.transfer.sends=sendList(x).map(t=>{
-        /* завешенная транзакция после одобрения уходит в сеть и получает хеш */
-        if(t.hash) return t;
-        return Object.assign({},t,{hash:Math.random().toString(16).slice(2,10)+
-          Math.random().toString(16).slice(2,10)+Math.random().toString(16).slice(2,10)});});
-      log(x,'Одобрено Теодором — ушло в сеть · '+x.transfer.sends.map(t=>t.hash).join(', '));});
-    d.pay.outHash=(sendList(d)[0]||{}).hash||null;
-    log(d,'Теодор одобрил — 2 из 2, в сеть ушло '+sends.length+(sends.length===1?' перевод':' перевода'));
-    packSettle(d,'sent');
-    go(d,'s25','Подтверждено в сети — задача операционисту создана автоматически');toast('Подписано, отправка подтверждена');return;}
-  if(step==='s25'){go(d,'s26','Coins извещён, чек конвертации загружен');toast('Дальше — оплата инвойса');return;}
+    const sends=cnvMembers(d).filter(pcSends), multi=needsSecondSign(d);
+    const over=sends.find(x=>sendDeclared(x)>(pcAmount(x)||0)+0.005);
+    if(over){toast(over.code+': добавленные переводы превышают сумму задачи — проверьте части');return;}
+    const miss=sends.find(x=>sendDeclared(x)<(pcAmount(x)||0)-0.005);
+    if(miss){toast(miss.code+': добавьте переводы на всю сумму задачи');return;}
+    d.pay.tx=(sendList(d)[0]||{}).ref||null;
+    if(multi){d.pay.check=c?c.value:'';go(d,'s24','Переводы подготовлены — Теодору нужно подписать их в кошельке');toast('Передано Теодору');}
+    else {checkSends(d.id);}
+    return;}
+  if(step==='s24'){checkSends(d.id);return;}
+  if(step==='s25'){
+    if(!cnvMembers(d).filter(pcSends).every(sendDone)){toast('Не все переводы подтверждены');return;}
+    if(!d.pay.coinsNotified){d.pay.coinsNotified=true;log(d,'Операционист известил Coins: фактические суммы и хеши переданы');save();render();toast('Теперь ждём поступления батов на SCB');return;}
+    const amount=Number(String(val('coins_thb')||'').replace(/\s/g,'').replace(',','.'));
+    const ref=String(val('coins_ref')||'').trim(),reason=String(val('coins_gap')||'').trim();
+    const expected=num(cleanNum(String((d.transfer||{}).thb||'')))||coinsThb(d);
+    if(!Number.isFinite(amount)||amount<=0||!ref){toast('Укажите фактическую сумму и номер операции SCB');return;}
+    if(S.deals.some(x=>x.id!==d.id&&x.pay?.coinsCredit?.ref===ref)){toast('Эта операция SCB уже учтена');return;}
+    if(Math.abs(amount-expected)>0.01&&!reason){toast('Сумма отличается от заявки — укажите причину');return;}
+    if(!d.pay.coinsCredit){
+      d.pay.coinsCredit={thb:amount,ref,reason,at:now()};bal().scb=Math.round((balOf('scb')+amount)*100)/100;
+      log(d,'Coins: на SCB поступило '+moneyKop(amount,'฿')+' · операция '+ref+(reason?' · расхождение: '+reason:''));
+    }
+    go(d,'s26','Баты от Coins зачислены на SCB — оплатить инвойс');toast('Дальше — оплата инвойса');return;}
   if(step==='s26'){
     /* Платим со счёта тайской компании — источник не выбирают, он один (Карим, 23.09).
        Без чека шаг не закрывается: именно его менеджер отправит клиенту. */
     const pt=d.payTo||{};
     if(!pt.acc){toast('Нет реквизитов — верните задачу менеджеру');return;}
+    if(d.postConv==='coins'&&!d.pay.coinsCredit){toast('Сначала подтвердите зачисление батов от Coins на SCB');return;}
+    if(d.pay.invoicePaid){toast('Оплата инвойса уже учтена');return;}
     if(!d.docs.receipt){toast('Приложите чек банка — его отправят клиенту');return;}
     const sum=pt.amount||approx(d).thb||0;
     const taken=balTake('scb',sum,null);
@@ -5669,6 +5829,8 @@ function act(id,step){
     toast('Чек ушёл менеджеру');return;}
   if(step==='s27'){
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
+    const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
+    if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
     closeDeal(d,'Успешно завершена');return;}
 }
 
@@ -5980,9 +6142,16 @@ function seedLog(d,items,agoMin){
 }
 function seedDocs(d,keys){
   keys.forEach(function(k){
-    d.docs[k]=true;
-    const fl=DOCFILE[k]||['file.pdf','—'];
-    d.docMeta[k]={file:fl[0],size:fl[1],at:d.createdAt};
+    if(k==='receipt'||k==='signed'){
+      const data=demoPdfData();d.files=d.files||{};
+      d.files[k]=[{file:'DEMO_'+k+'.pdf',size:'тестовый PDF',at:d.createdAt,
+        mime:'application/pdf',bytes:atob(data.split(',')[1]).length,data:data,demo:true}];
+      fileSync(d,k);
+    }else{
+      d.docs[k]=true;
+      const fl=DOCFILE[k]||['file.pdf','—'];
+      d.docMeta[k]={file:fl[0],size:fl[1],at:d.createdAt};
+    }
   });
 }
 function seedCnv(o){
@@ -5997,7 +6166,60 @@ function seedCnv(o){
   c.sources.forEach(s=>{const d=deal(s.dealId);if(d)d.cnvId=c.id;});
   return c;
 }
+/* Отдельный учебный вход в лизхолд: живую доску не сбрасываем и конвертацию
+   не создаём заранее — её надо пройти из задачи вместе с мелким обменом. */
+function seedLeaseholdTest(){
+  if(!canSwitchRole()){toast('Добавить тест может только админ');return;}
+  S.role='manager';
+  const main=newDeal({source:'none',client:'Тест · лизхолд Coins',type:'Оплата недвижимости',
+    kind:'Лизхолд',payType:'По реквизитам',object:'DEMO Phuket, unit L-01',
+    amountRub:931000,amountThb:350000,curBase:'rub',step:'s14',manager:'Марина'});
+  main.demoTransfers=true;main.docVersion=1;main.companyPct=1;
+  main.rates={rubUsdt:'81,40',broker:'81,40',usdtThb:'31,20',client:'2,66',at:Date.now()};
+  main.expect={amount:931000,acc:'…0286 · Сбер',tol:1000,
+    purpose:'DEMO оплата по агентскому договору № '+main.code};
+  main.payTo={dev:'DEMO Developer Co., Ltd.',amount:350000,bank:'DEMO Kasikornbank',
+    acc:'000-0-00000-0',inv:'DEMO-INV-'+main.id,
+    purpose:'DEMO payment for unit L-01',due:'30.09'};
+  main.walletId='vitaly';main.postConv='coins';
+  main.transfer={to:'Coins.co.th · DEMO (не для отправки денег)',addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',rate:'31,20',thb:353500,
+    amount:'11330.13',net:'TRC-20',sends:[]};
+  main.files={};
+  ['pass','inv','spa','signed'].forEach(k=>{
+    const data=demoPdfData();main.files[k]=[{file:'DEMO_'+k+'.pdf',size:'тестовый PDF',
+      at:now(),mime:'application/pdf',bytes:atob(data.split(',')[1]).length,data:data,demo:true}];
+    fileSync(main,k);
+  });
+  log(main,'DEMO: тест лизхолда → Coins создан на шаге ожидания RUB; документы учебные');
+
+  const small=newDeal({source:'none',client:'Тест · обмен Андрея',type:'Обмен валюты',
+    payType:'По реквизитам',amountRub:100000,amountThb:37000,curBase:'rub',step:'ready'});
+  small.demoTransfers=true;small.incomeAmount=100000;small.readyAt=Date.now();
+  small.rates={rubUsdt:'81,40',broker:'81,40',usdtThb:'31,20',client:'2,70',at:Date.now()};
+  const addr='TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p';
+  if(!walletById('demo-andrey'))wallets().push({id:'demo-andrey',name:'DEMO: кошелёк Андрея',
+    owner:'DEMO: Андрей',role:'teodor',addr:addr,multisig:false,
+    note:'Тестовый адрес сценария; деньги не переводить'});
+  small.postConv='refund';small.paySrc='founder';
+  small.transfer={walletId:'demo-andrey',to:'DEMO: Андрей',addr:addr,
+    amount:'1185.90',thb:37000,net:'TRC-20',sends:[]};
+  small.payout={method:'баты выдал фаундер своими',source:SOURCES_PAY.founder.t,
+    founder:'DEMO: Андрей',ownBaht:true,thb:37000};
+  const pool=incomes();
+  let inc=pool.find(x=>x.dealId===small.id&&Number(x.rub)===100000);
+  if(!inc){inc={id:Math.max(0,...pool.map(x=>Number(x.id)||0))+1,date:now().slice(0,5),
+    payer:small.client,rub:100000,kind:'банк',dealId:small.id,cnvId:null,excluded:false};pool.push(inc);}
+  inc.demo=true;inc.acc='…0286 · Сбер';inc.purpose='DEMO обмен '+small.code;
+  small.payinParts=[{amountRub:100000,payer:small.client,date:inc.date,kind:'bank',
+    incId:inc.id,acc:inc.acc,purpose:inc.purpose,demo:true}];
+  main.conv=[small.id];
+  log(small,'DEMO: 100 000 ₽ получены; 37 000 ฿ клиенту выдал фаундер, ждёт возмещения');
+  log(main,'DEMO: в будущую пачку добавлен '+small.code+' · 100 000 ₽; конвертация ещё не создана');
+  S.open=main.id;S.tab='tasks';S.view='task';S.modal=null;
+  save();render();toast('Добавлен DEMO лизхолд '+main.code+' и обмен '+small.code);
+}
 function seedDemo(){
+  const demoStart=S.deals.length;
   S.incomes=null;   /* поступления пересобираются из сделок */
   /* 1. Завершённый лизхолд по реквизитам — полный путь, вчера */
   const g1=newDeal({source:'tg',sourceRef:'Игорь Гусев',client:'Гусев Игорь',type:'Оплата недвижимости',
@@ -6215,6 +6437,7 @@ function seedDemo(){
              [2,'manager','Запрос курса ушёл операционисту · клиент ждёт курс сегодня']],25);
   noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
     ' · Левченко Анна · клиент ждёт курс сегодня',q.id);
+  S.deals.slice(demoStart).forEach(d=>{d.demoTransfers=true;});
   save();render();toast('Добавлены примеры — сделки с полным путём');
 }
 
