@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 01:45 · крипта</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 02:11 · кошелёк прихода</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -768,6 +768,35 @@ function wallets(){
   return S.wallets;
 }
 function walletById(id){return wallets().find(w=>w.id===id)||null;}
+/* Кошелёк, на который крипто-клиент платит USDT. Раньше был зашит кошелёк Груши:
+   ни в договоре, ни на ожидании прихода выбрать другой было нельзя (Карим, 25.09).
+   От него же зависит дальше путь подписи: мультисиг — фин дир и Теодор,
+   личный — отправляет владелец. */
+function payinWallet(d){return walletById(d.walletId)||walletById('grusha');}
+function payToCrypto(w){
+  if(!w) return '';
+  return 'USDT · сеть TRC-20 · '+(w.owner==='компания'?'кошелёк '+MF.name:'кошелёк')+': '+(w.addr||'');
+}
+function payinWalletSet(id,wid){
+  const d=deal(id), w=walletById(wid);
+  if(!w){toast('Кошелёк не найден');return;}
+  if(d.incomeAmount||(d.payinHashes||[]).length){toast('Деньги уже пришли — кошелёк прихода менять поздно');render();return;}
+  const prev=payinWallet(d);
+  if(prev&&prev.id===w.id)return;
+  if(!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(w.addr||'')){toast('У «'+w.name+'» нет корректного адреса TRC-20 — уточните его в справочнике кошельков');render();return;}
+  d.walletId=w.id;
+  /* Адрес в пакете обновляем, только пока пакет не собран и адрес не правили руками.
+     Собранный договор клиент уже видел — его не переписываем молча, а на ожидании
+     прихода предупреждаем, что в договоре другой адрес. */
+  if(!d.docVersion&&d.docFields&&prev&&d.docFields.payTo===payToCrypto(prev)) d.docFields.payTo=payToCrypto(w);
+  log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+(w.multisig?' · мультисиг':' · личный, отправляет владелец'));
+  save();render();toast('Кошелёк прихода: '+w.name);
+}
+function payinWalletSelect(d,disabled){
+  const cur=payinWallet(d);
+  return `<select class="fc" id="pw_${d.id}" onchange="payinWalletSet(${d.id},this.value)" ${disabled?'disabled':''}>
+    ${wallets().map(w=>`<option value="${w.id}"${cur&&cur.id===w.id?' selected':''}>${w.name} · ${w.owner} · ${w.multisig?'мультисиг':'личный'}</option>`).join('')}</select>`;
+}
 /* Куда брокер прислал USDT — кошелёк пачки, а не всегда общий кошелёк Груши */
 function cnvTo(c){
   const w=walletById(c&&c.walletId)||walletById('grusha');
@@ -2022,7 +2051,7 @@ function docFields(d){
     /* Крипто-клиент платит USDT на кошелёк компании; рублёвые реквизиты ему не нужны —
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
-      ? 'USDT · сеть TRC-20 · кошелёк '+MF.name+': '+((walletById('grusha')||{}).addr||'')
+      ? payToCrypto(payinWallet(d))
       : MF.rubName+' · ИНН '+MF.inn+' · '+MF.bank+' · р/с '+MF.acc,
     purpose:'Оплата по агентскому договору № '+d.code+', НДС не облагается',
     feeNote:'Комиссия включена в курс, отдельно не взимается',
@@ -5149,6 +5178,9 @@ function stepCard(d){
       ${fld('agentReg','Рег. номер')}
       ${fld('agentDir','Подписант')}
     </div>
+    ${isCrypto(d)?`<div class="fr"><div class="fg w2"><label class="fl">Кошелёк, куда клиент платит USDT</label>
+      ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
+      <p class="fh">адрес подставится в «Куда платит клиент»; мультисиг — дальше подпись фин дира и Теодора, личный — отправляет владелец</p></div></div>`:''}
     ${fld('payTo','Куда платит клиент',{area:1})}
     ${fld('purpose','Назначение платежа',{area:1})}
     ${fld('feeNote','Оговорка о комиссии',{area:1})}
@@ -5227,9 +5259,12 @@ function stepCard(d){
   s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':'рубли на счёт Сбера'}</span></div>
     ${isCrypto(d)?`<div class="fr">
       <div class="fg"><label class="fl">Сумма</label><input class="fc num" readonly value="${money(ap.pay,'USDT')}"></div>
-      <div class="fg"><label class="fl">Кошелёк</label><input class="fc addr" readonly value="${(walletById('grusha')||{}).addr} · TRC-20"></div>
+      <div class="fg"><label class="fl">Кошелёк</label>${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
+        <p class="fh addr" style="word-break:break-all">${(payinWallet(d)||{}).addr||''} · TRC-20</p></div>
       <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± 5 USDT"></div>
     </div>
+    ${(function(){const w=payinWallet(d), pt=(d.docFields||{}).payTo;
+      return (w&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:'';})()}
     <div class="alert a-info"><div>Криптоприход сверяется по сети, а не по выписке: ждём хеш и подтверждения в TRON. Назначение платежа тут не при чём — сделку опознаём по сумме и адресу отправителя.</div></div>
     <div class="sim"><div class="h">Симуляция · в жизни это видит наблюдатель за кошельком</div>
       <p>В настоящем продукте приход ловится по сети автоматически. Здесь нажмите сами.</p>
