@@ -569,6 +569,14 @@ function resetAll(){
   localStorage.removeItem(KEY);S=load();render();
 }
 function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1900);}
+/* «6 сделки» в тексте читается как опечатка и подрывает доверие к цифрам */
+function plural(n,one,few,many){
+  const a=Math.abs(n)%100, b=a%10;
+  if(a>10&&a<20)return many;
+  if(b>1&&b<5)return few;
+  if(b===1)return one;
+  return many;
+}
 function ago(ts){
   if(!ts)return '';
   const m=Math.round((Date.now()-ts)/60000);
@@ -4307,8 +4315,15 @@ function stepGoal(d){
       nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':'счёт Сбера'],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
     case 's14m': return {t:'Понять, к какой сделке относится приход',
       nums:[['Пришло',money2(d.incomeAmount||ap.pay,'₽')],['Ожидали',money2(ap.pay,'₽')],['Сделка',d.code]]};
-    case 's18': return {t:'Отдать рубли брокеру и зафиксировать курс',
-      nums:[['К отправке',money2(d.incomeAmount||d.amountRub,'₽')],['Курс брокера',d.rates.broker||'спросить'],['Сделок в пачке',String(1+((d.conv||[]).length))]]};
+    case 's18': return (function(){
+      /* В шапке была сумма одной сделки, хотя брокеру уходит вся пачка: при
+         добранных обменах цифра расходилась с тем, что ниже в карточке. */
+      const own=d.incomeAmount||d.amountRub||0;
+      const добрано=exSum((d.conv||[]).map(deal).filter(Boolean));
+      return {t:'Отдать рубли брокеру и зафиксировать курс',
+        nums:[['К отправке',money2(own+добрано,'₽')+(добрано?' · из них по сделке '+money2(own,'₽'):'')],
+              ['Курс брокера',d.rates.broker||'спросить'],
+              ['Сделок в пачке',String(1+((d.conv||[]).length))]]};})();
     case 's18w': return {t:'Получить USDT и хэш — это факт прихода',
       nums:[['Ждём USDT',E.parts[0].calc!=null?usd(E.parts[0].calc):'—'],['Курс заявки',d.rates.broker||'—'],['Отправлено',money2(d.incomeAmount||d.amountRub,'₽')]]};
     case 's22': return {t:'Решить, куда уходят пришедшие USDT',
@@ -5051,7 +5066,7 @@ function stepCard(d){
     ${w?walletLine(w):`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`}
     <div class="alert a-info"><div>USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.</div></div>
     ${mem.length>1?`<div class="card-title" style="font-size:14px;margin:16px 0 4px">Назначение по каждой сделке пачки</div>
-      <p class="fh" style="margin:0 0 4px">В пачке ${mem.length} сделки, и задачи по ним разные: одна уходит в Coins, по другой с кошелька не уходит ничего — выдача с баланса, третья возвращается клиенту на его кошелёк. Владелец кошелька увидит ровно этот список.</p>`:''}
+      <p class="fh" style="margin:0 0 4px">В пачке ${mem.length} ${plural(mem.length,'сделка','сделки','сделок')}, и задачи по ним разные: одна уходит в Coins, по другой с кошелька не уходит ничего — выдача с баланса, третья возвращается клиенту на его кошелёк. Владелец кошелька увидит ровно этот список.</p>`:''}
     ${mem.map(x=>pcCard(d,x,cnvShareOf(d,x),w)).join('')}
     <div class="derived" style="margin-top:14px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -5911,6 +5926,41 @@ function seedDemo(){
   seedCnv({broker:'Крипта-Платежи',requestNo:'51',rate:'81,20',at:'21.09, 18:04',
     sources:[{dealId:x.id,payer:'Бранова О.',date:'21.09',rub:393680,usdt:4833.24,usdtFact:4833.24}],
     txs:[{hash:'0x5512aa7c…31bd',net:'TRC20',amount:4833.24,to:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',toLabel:'кошелёк Груши'}]});
+  /* Конвертацию не на чем показать, пока в очереди одна мелочь: пачка —
+     это несколько сделок с разными деньгами и разными задачами после обмена
+     (кому-то баты через Coins, кому-то оплата с IPPS, кто-то просто ждёт).
+     Поэтому в демо лежит крупная сделка, готовая к отправке брокеру, и
+     четыре обмена, которые в неё можно добрать (Карим, 24.09). */
+  const big=newDeal({clientId:2,source:'tg',sourceRef:'Анна Левченко',client:'Левченко Анна',
+    type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам',
+    object:'Sansiri Phuket, CRA412',amountThb:350000,amountRub:1164000,curBase:'thb',step:'s18'});
+  big.incomeAmount=1164000;
+  big.rates={client:'3,32',rubUsdt:'103,50',usdtThb:'31,20',broker:'103,50',at:Date.now()-40*60000};
+  big.payinParts=[{amountRub:1164000,payer:'Левченко А.',date:'24.09',kind:'bank'}];
+  seedDocs(big,['pass','inv','spa']);
+  seedLog(big,[
+    [0,'manager','Сделка создана · Telegram · Анна Левченко'],
+    [22,'operator','Курсы отданы: RUB→USDT 103,50 · USDT→THB 31,20'],
+    [40,'manager','Клиент согласен с курсом 3,32'],
+    [65,'operator','Пакет документов собран'],
+    [90,'manager','Деньги пришли: 1 164 000 ₽ — ждём конвертацию']],150);
+  noteAdd('operator','Задача на вас: '+(STEPS['s18']?STEPS['s18'].title:'Отправка брокеру')+
+    ' · Левченко Анна · 1 164 000 ₽ готовы к конвертации',big.id);
+
+  /* Мелочь в очереди: разные клиенты, суммы и способы оплаты — на них и видно,
+     как наценка считается по каждой сделке, а курс берётся на общий объём. */
+  [[6,'wa','+66 92 888 0412','Гурьев Денис',84000,'Крипта',95],
+   [7,'tg','Ким Сергей','Ким Сергей',156000,'СБП',70],
+   [8,'wa','+7 903 774 1290','Мартиросян Карен',64000,'Наличные',35],
+   [9,'tg','Полякова Инна','Полякова Инна',238000,'По реквизитам',18]].forEach(function(a){
+    const e=newDeal({clientId:a[0],source:a[1],sourceRef:a[2],client:a[3],type:'Обмен валюты',
+      payType:a[5],amountRub:a[4],curBase:'rub',step:'ready'});
+    seedLog(e,[
+      [0,'manager','Сделка создана · '+(a[1]==='tg'?'Telegram':'WhatsApp')+' · '+a[2]],
+      [3,'manager','Проведена без шагов — ждёт конвертации']],a[6]);
+    e.readyAt=e.log[e.log.length-1].at;
+  });
+
   /* Стенд смотрят вчетвером: если все демо-задачи лежат у менеджера,
      операционист заходит на пустой экран и решает, что сервис сломан.
      Одна живая заявка лежит на нём. */
