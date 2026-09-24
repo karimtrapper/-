@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 00:50 · крипта</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 01:45 · крипта</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -1037,7 +1037,10 @@ function pcTaskText(x,k,w){
   const to=tr.addr?tr.addr+' ('+net+')':'адрес уточняем';
   const head='Сделка '+x.code+': ';
   if(k==='coins'){
-    const where=x.bank?('на '+x.bank):'на реквизиты получателя — пришлём отдельно';
+    /* Coins выплачивает только на счёт MF Corp (SCB), дальше инвойс платим сами. Раньше
+       тут стоял банк застройщика из реквизитов: скопировав текст в чат Coins, операционист
+       отправил бы баты и комиссию компании прямо застройщику (прогон 25.09). */
+    const where='на счёт MF Corporation Co., Ltd. в SCB';
     return head+'нужно выдать '+money(thb,'฿')+' '+where+'. '+
       (tr.rate&&tr.amount
         ? 'По курсу '+tr.rate+' это '+tr.amount+' USDT — отправим с '+from+'.'
@@ -1100,7 +1103,7 @@ function calcOpen(id){
 function calcBtn(d){
   const has=d.rates.rubUsdt||d.rates.usdtThb;
   return `<div class="derived" style="margin:14px 0">
-    <span>${has?`Курсы уже есть: <b>${d.rates.rubUsdt||'—'}</b> RUB/USDT и <b>${d.rates.usdtThb||'—'}</b> USDT/THB. Калькулятор откроется с ними, с суммой и с типом сделки — останется поставить свой процент.`
+    <span>${has?`Курсы уже есть: ${isCrypto(d)?'':`<b>${d.rates.rubUsdt||'—'}</b> RUB/USDT и `}<b>${d.rates.usdtThb||'—'}</b> USDT/THB. Калькулятор откроется с ними, с суммой и с типом сделки — останется поставить свой процент.`
       :'Курсы ещё не проставлены — калькулятор откроется пустым.'}</span>
     <button class="btn btn-secondary btn-sm" style="margin-left:auto;white-space:nowrap" onclick="calcOpen(${d.id})">Открыть в калькуляторе</button></div>`;
 }
@@ -4573,7 +4576,7 @@ function incomeExact(id){
     d.walletId=d.walletId||'grusha'; d.demoTransfers=true;
     d.pay.hash='demo:payin:'+d.id+':'+Date.now();
     d.payinHashes=[{amount:a.pay,network:'TRC20',hash:d.pay.hash}];
-    log(d,'Симуляция: тестовый приход USDT подтверждён в сети: '+money(a.pay,'$'));
+    log(d,'Симуляция: тестовый приход USDT подтверждён в сети: '+money(a.pay,'USDT'));
     go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
     toast('Деньги пришли — заполните реквизиты оплаты');return;}
   if(d.step!=='s14'||!Number.isFinite(exp)||exp<=0){toast('Проверьте ожидаемую сумму');return;}
@@ -5665,6 +5668,8 @@ function act(id,step){
       return;}
     d.docMiss=[];
     d.amountThb=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
+    /* объект из пакета — в карточку сделки, иначе в шапке всех шагов «не указан» */
+    if(String(F.object||'').trim()) d.object=String(F.object).trim();
     const pay=num(cleanNum(String(F.amountPay)));
     if(isCrypto(d)) d.amountUsdt=pay; else d.amountRub=pay;
     d.docComment2=c?c.value:'';
