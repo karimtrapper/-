@@ -577,6 +577,8 @@ function plural(n,one,few,many){
   if(b===1)return one;
   return many;
 }
+/* «ждёт 15 мин назад» — «назад» тут лишнее: речь о длительности ожидания */
+function since(ts){ const a=ago(ts); return a?a.replace(' назад',''):'только что'; }
 function ago(ts){
   if(!ts)return '';
   const m=Math.round((Date.now()-ts)/60000);
@@ -2297,7 +2299,7 @@ function viewTasks(){
         ${conv.length?`<button class="btn btn-primary btn-sm" onclick="openDeal(${conv[0].id})">Добавить в обмен ${conv[0].code}</button>`:''}</div>
       <div class="list">${pend.map(x=>`<div class="li" onclick="openDeal(${x.id})"><span class="av">₽</span>
         <div><div class="t1">${x.code} · ${x.client}</div>
-        <div class="t2">без шагов · ${x.payType} · ждёт ${ago(x.readyAt)||'только что'}</div></div>
+        <div class="t2">без шагов · ${x.payType} · ждёт ${since(x.readyAt)}</div></div>
         <span class="t3 num">${money(x.amountRub,'₽')}</span></div>`).join('')}</div>
       <p style="font-size:12.5px;color:var(--text-muted);margin-top:11px">${conv.length?
         'Эти деньги можно влить в текущую конвертацию — курс возьмётся на общий объём, наценка по каждой посчитается сама.':
