@@ -8766,7 +8766,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 let result = await response.json();
                 if (response.status === 409 && result.requires_confirmation) {
                     const confirmed = await showConfirm(
-                        `${result.warning}\n\nСумма к возмещению по сделке будет больше суммы перевода в сети. Вы уверены, что хотите сохранить её?`,
+                        `${result.warning}\n\nЭта доля будет учтена как сумма к возмещению по сделке, хотя превышает доступный остаток перевода. Вы уверены, что хотите сохранить её?`,
                         'Да, сохранить');
                     if (!confirmed) return;
                     data.confirm_payout_tx_overage = true;
