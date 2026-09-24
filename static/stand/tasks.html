@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 14:54</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 15:37</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -835,6 +835,12 @@ function pcSends(x){
   const k=(x&&typeof x==='object')?x.postConv:x;
   if(!k||k==='keep') return false;
   if(k==='ipps') return !!(x&&typeof x==='object'&&x.transfer&&x.transfer.back);
+  /* Автовозмещение, как в CRM: брокер прислал USDT прямо на кошелёк фаундера,
+     который выдавал баты, — двигать деньги не нужно, долг закрыт приходом. */
+  if(k==='refund'&&x&&typeof x==='object'){
+    const c=convOf(x), tr=x.transfer||{};
+    if(c&&c.walletId&&tr.walletId&&c.walletId===tr.walletId) return false;
+  }
   return true;
 }
 /* Возврат внутрь компании — на наш же кошелёк, поэтому его выбирают из списка */
@@ -858,13 +864,68 @@ function pcAmount(x){return num(cleanNum(String((x.transfer||{}).amount||'')));}
    сразу после решения по USDT. С переводом — Coins, клиенту, фаундеру, IPPS с возвратом —
    когда перевод ушёл в сеть. Раньше все мелкие закрывались при получении USDT, и по
    выдаче с IPPS или из кассы никто не получал задачи. */
+/* Задачи — это путь, которым заполняется карточка сделки из CRM (Карим, 24.09).
+   Решение по USDT и уход перевода в сеть — это Pay-Out: источник, баты, USDT,
+   хеши выдачи. Возмещение — только когда баты выдал фаундер своими; если платили
+   деньгами, которые пришли к нам, это просто наш расход, долга нет.
+   Раньше пачка Pay-Out не писала вовсе: у сделок была пустая выдача, и прибыль
+   не считалась (прогон 24.09). */
+function payoutRecord(x,phase,main){
+  const tr=x.transfer||{}, k=x.postConv, thb=num(cleanNum(String(tr.thb||'')))||approx(x).thb||0;
+  const po=Object.assign({},x.payout||{});
+  const w=dealWallet(x);
+  if(phase==='decided'){
+    if(k==='coins'){x.paySrc='coins';Object.assign(po,{method:'Coins — выдача батов',source:SOURCES_PAY.coins.t,
+      thb:thb,rate:tr.rate||null,wallet:(w&&w.addr)||''});}
+    if(k==='client'){x.paySrc='client';Object.assign(po,{method:'USDT клиенту на кошелёк',source:SOURCES_PAY.client.t,
+      thb:null,usdt:pcAmount(x)||null,wallet:(w&&w.addr)||''});}
+    if((k==='ipps'||k==='keep')&&!main){
+      /* Выдача не с кошелька: баты ушли с баланса — списываем, иначе балансы
+         на стенде врут (Поляковой выдали 91 538 ฿ с IPPS, баланс не изменился). */
+      const src=k==='ipps'?'ipps':(tr.src||'cash');
+      x.paySrc=src;
+      Object.assign(po,{method:k==='ipps'?'баты с баланса IPPS':'выдача не с кошелька',source:SOURCES_PAY[src].t,thb:thb});
+      const t=balTake(src,thb,null);
+      log(x,t===false?'На балансе «'+SOURCES_PAY[src].t+'» не хватает '+money(thb,'฿')+' — выдачу надо закрыть другим источником'
+        :'Списано с «'+SOURCES_PAY[src].t+'»: '+money(thb,'฿'));
+    }
+    if(k==='refund'){
+      const fw=walletById(tr.walletId);
+      x.paySrc='founder';
+      Object.assign(po,{method:'баты выдал фаундер своими',source:SOURCES_PAY.founder.t,founder:fw?fw.owner:(tr.to||''),
+        ownBaht:true,thb:thb,usdt:pcAmount(x)||null,wallet:tr.addr||''});
+      if(!pcSends(x)) po.reimbursement={id:'R-'+x.id,kind:'автовозмещение — USDT пришли на кошелёк фаундера',hash:null,at:now()};
+    }
+  }else{
+    const l=sendList(x).filter(t=>t.hash||t.ref);
+    const hashes=l.map(t=>({amount:t.amount,network:pcNet(x).replace('-',''),hash:t.hash||t.ref}));
+    if(k==='coins'||k==='client'){
+      po.hashes=hashes; po.hash=(hashes[0]||{}).hash||null; po.usdt=sendSum(x)||po.usdt||null;
+      /* у недвижимости перевод в Coins — это «Переводы в MF Corp (факт)» */
+      if(x.type==='Оплата недвижимости')
+        x.mfPayout=mfList(x).concat(hashes.map(h=>({hash:h.hash,net:pcNet(x),amount:h.amount})));
+    }
+    if(k==='refund') po.reimbursement={id:'R-'+x.id,kind:'перевод фаундеру',
+      hash:hashes.map(h=>h.hash).join(', '),usdt:sendSum(x),at:now()};
+  }
+  x.payout=po;
+}
+/* Мелкая сделка пачки закрывается, как в CRM, когда клиент получил деньги:
+   выдача с баланса, из кассы или фаундером своими — сразу после решения по USDT
+   (долг фаундеру живёт отдельно, во «Возмещениях»); Coins и перевод клиенту — когда
+   перевод ушёл в сеть. */
 function packSettle(d,phase){
   cnvMembers(d).forEach(x=>{
+    if(x.closed&&x.id!==d.id&&!(phase==='sent'&&x.postConv==='refund')) return;
+    payoutRecord(x,phase,x.id===d.id);
     if(x.id===d.id||x.closed) return;
     const o=POST_CONV.find(p=>p.k===x.postConv), what=o?o.t:(x.postConv||'—');
-    if(phase==='decided'&&pcSends(x)){log(x,'Ждёт перевода с кошелька — закроется, когда он уйдёт в сеть');return;}
+    const now1=(phase==='decided')&&(!pcSends(x)||x.postConv==='refund');
+    if(phase==='decided'&&!now1){log(x,'Ждёт перевода с кошелька — закроется, когда он уйдёт в сеть');return;}
     x.step='done';x.closed=true;x.closeReason='Успешно завершена';x.closedAt=now();
-    log(x,phase==='decided'?'Закрыта: перевода с кошелька нет — '+what:'Закрыта: перевод ушёл в сеть — '+what);
+    log(x,phase==='sent'?'Закрыта: перевод ушёл в сеть — '+what
+      :(x.postConv==='refund'?'Закрыта: баты клиенту выдал фаундер — возмещение '+(pcSends(x)?'ждёт перевода':'закрыто автоматически')
+      :'Закрыта: перевода с кошелька нет — '+what));
   });
 }
 function pcOut(d){return Math.round(cnvMembers(d).reduce((s,x)=>s+(pcSends(x)?(pcAmount(x)||0):0),0)*100)/100;}
@@ -1653,7 +1714,8 @@ const SOURCES_PAY={
   cash   :{t:'Касса · партия налички',cur:'thb', conv:false, debt:false, note:'выдаём из наличных, партия уменьшается'},
   scb    :{t:'Счёт SCB · MF Corp',    cur:'thb', conv:false, debt:false, note:'перевод со счёта тайской компании'},
   coins  :{t:'Coins / Bitazza',       cur:'usdt',conv:true,  debt:false, note:'покупаем баты за USDT под эту сделку'},
-  founder:{t:'Кошелёк фаундера',      cur:'usdt',conv:true,  debt:true,  note:'платим своими — родится возмещение'}
+  founder:{t:'Кошелёк фаундера',      cur:'usdt',conv:true,  debt:true,  note:'платим своими — родится возмещение'},
+  client :{t:'USDT клиенту на кошелёк',cur:'usdt',conv:true, debt:false, note:'клиент получает USDT — расход по переводу с нашего кошелька'}
 };
 function balInit(){return {ipps:1250000,cash:480000,scb:2100000,usdt:41800};}
 function bal(){ if(!S.bal)S.bal=balInit(); return S.bal; }
@@ -2458,7 +2520,7 @@ function viewStub(){
     ${x[1]}<br><br>Он есть в рабочей системе и никуда не делся: прототип добавляет задачник, а не заменяет CRM.</div></div>`;
 }
 const VIEWS={tasks:viewTasks,deals:viewDeals,income:viewIncome,convs:viewConvs,refs:viewRefs,analytics:viewAnalytics,
-  documents:viewStub,closing:viewStub,exchangers:viewStub,balance:viewStub,reimb:viewStub,transactions:viewStub,
+  documents:viewStub,closing:viewStub,exchangers:viewStub,balance:viewStub,reimb:viewReimb,transactions:viewStub,
   managers:viewStub,verification:viewStub,kyc:viewStub,partners:viewStub,payouts:viewStub,admins:viewStub};
 
 /* ---------- создание ---------- */
@@ -3053,13 +3115,15 @@ function overview(d,st,mine,p,wh){
       ${row('Стоимость USDT',(d.payout&&d.payout.usdt!=null)?usd(d.payout.usdt):(E.cost!=null?usd(E.cost):'<span style="color:#B45309">Ожидает возмещения</span>'))}
       ${(d.payout&&d.payout.rate)?row('Курс',d.payout.rate):''}
       ${(d.payout&&d.payout.hash)?row('Хэш Pay-Out',hashLink(d.payout.hash,'TRC20')):''}
+      ${(d.payout&&(d.payout.hashes||[]).length>1)?row('Переводы выдачи',d.payout.hashes.map(h=>usd(h.amount)+' · '+hashLink(h.hash,h.network)).join('<br>')):''}
       ${(d.payout&&d.payout.founder)?row('Фаундер',d.payout.founder):''}
+      ${(d.payout&&d.payout.invoice)?row('Оплата инвойса',money(d.payout.invoice.thb,'฿')+' · '+d.payout.invoice.source+(d.payout.invoice.to?' → '+d.payout.invoice.to:'')):''}
     </table>
     ${(d.payout&&d.payout.noConversion)?`<p style="font-size:13px;color:#B45309;margin-top:8px">Выдано своими батами — конвертации не было, хеша выдачи нет</p>`:''}
     ${(d.payout&&d.payout.reimbursement)?`<div class="box box-green">
-      <b>Возмещение:</b> #${d.payout.reimbursement.id} ✅ ${d.payout.reimbursement.kind||''}
+      <b>Возмещение:</b> #${d.payout.reimbursement.id} ✅ ${d.payout.reimbursement.kind||''}${d.payout.reimbursement.usdt?' · '+usd(d.payout.reimbursement.usdt):''}
       ${d.payout.reimbursement.hash?`<br><b>Хэш возмещения:</b> ${hashLink(d.payout.reimbursement.hash,'TRC20')}`:''}</div>`:
-      ((d.payout&&d.payout.source==='из своих (фаундер)')?`<div class="box box-amber">Платили с кошелька фаундера — пока не возмещено, прибыль по сделке не финальная.</div>`:'')}`}
+      ((d.paySrc==='founder'||(d.payout&&d.payout.source==='из своих (фаундер)'))?`<div class="box box-amber">Платили с кошелька фаундера — пока не возмещено, прибыль по сделке не финальная.</div>`:'')}`}
   </div>
 
   ${(!d.refId&&refSignal(d))?(function(){const sig=refSignal(d);return `<div class="card" style="margin-bottom:16px">
@@ -3577,7 +3641,7 @@ function payoutBySource(d,E,po){
       <div class="fg"></div>
     </div>`;
   }
-  if(src==='coins'){
+  if(src==='coins'||src==='client'){
     return `<div class="fr">
       <div class="fg"><label class="fl">Кошелёк списания</label>
         <input class="fc addr" id="e_wallet" value="${(po.wallet||'').replace(/"/g,'&quot;')}" placeholder="адрес целиком, без сокращений"></div>
@@ -4483,6 +4547,13 @@ function pcCard(d,x,share,w){
           <option value="yes"${tr.back?' selected':''}>вернуть на кошелёк, с которого пополняли</option>
         </select>
         <p class="fh">получателю ушли баты с баланса IPPS, USDT остались у нас. Если баланс пополняли с конкретного кошелька — вернём туда, иначе задачи владельцу кошелька не будет</p></div>`:''}
+      ${k==='keep'?`
+      <div class="fg w2"><label class="fl">Откуда выдали баты<span class="rq">*</span></label>
+        <select class="fc" id="pk_${x.id}" onchange="transferSet(${x.id},'src',this.value)">
+          <option value="">— выбрать —</option>
+          ${['cash','scb'].map(v=>`<option value="${v}"${tr.src===v?' selected':''}>${SOURCES_PAY[v].t} · ${balLabel(v)}</option>`).join('')}
+        </select>
+        <p class="fh">это Pay-Out сделки: с этого баланса баты и спишутся. Если выдал фаундер своими — назначение «Вернуть фаундеру»</p></div>`:''}
       ${(k!=='coins'&&pcSends(x))?`
       <div class="fg"><label class="fl">Сумма USDT<span class="rq">*</span></label>
         <input class="fc num" id="ca_${x.id}" value="${tr.amount||''}" placeholder="${share?share.toFixed(2):''}"
@@ -5447,6 +5518,9 @@ function act(id,step){
     }
     d.pay.usdt=d.pay.usdt||got;
     (d.conv||[]).forEach(xid=>{const x=deal(xid);if(x){x.rates.broker=d.rates.broker;x.step='pack';
+      /* курс USDT→THB пачки: по нему CRM оценивает стоимость батов, выданных с баланса
+         IPPS или из кассы, — без него прибыль мелкой сделки не считалась */
+      x.rates.usdtThb=x.rates.usdtThb||d.rates.usdtThb||String(avgUsdt()).replace('.',',');
       log(x,'Сконвертирована в обмене '+d.code+', курс '+d.rates.broker+' — ждёт решения по выдаче');}});
     const selD=(d.conv||[]).map(deal).filter(Boolean);
     if(selD.length) log(d,'В обмен вошли мелкие: '+selD.length+' на '+money(exSum(selD),'₽')+', наценка '+money(exMargin(selD),'₽'));
@@ -5461,15 +5535,14 @@ function act(id,step){
       toast(x.code+': '+why);};
     const noKind=mem.find(x=>!x.postConv);
     if(noKind){bad(noKind,'не выбрано назначение','pc_'+noKind.id);return;}
+    const noSrc=mem.find(x=>x.postConv==='keep'&&x.id!==d.id&&!(x.transfer||{}).src);
+    if(noSrc){bad(noSrc,'не указано, откуда выдали баты','pk_'+noSrc.id);return;}
     const noAmt=mem.find(x=>pcSends(x)&&!pcAmount(x));
     if(noAmt){bad(noAmt,'не указана сумма USDT',(noAmt.postConv==='coins'?'cr_':'ca_')+noAmt.id);return;}
     const noAddr=mem.find(x=>pcSends(x)&&!String((x.transfer||{}).addr||'').trim());
     if(noAddr){bad(noAddr,'не указан кошелёк получателя','cad_'+noAddr.id);return;}
     mem.forEach(x=>{
       const o=POST_CONV.find(p=>p.k===x.postConv);
-      if(x.postConv==='coins') x.paySrc='coins';
-      if(x.postConv==='ipps')  x.paySrc='ipps';
-      if(x.postConv==='refund'){x.paySrc='founder';x.payout=x.payout||{};x.payout.source=SOURCES_PAY.founder.t;}
       const tr=x.transfer||{};
       log(x,'Назначение: '+(o?o.t:x.postConv)+(pcSends(x)
         ? ' · '+(tr.amount||'—')+' USDT · '+(tr.to||'—')+' · '+(tr.addr||'адрес не указан')
@@ -5477,6 +5550,10 @@ function act(id,step){
       if(x.id!==d.id) log(d,'По сделке '+x.code+': '+(o?o.t:x.postConv)+(pcSends(x)?' · '+(tr.amount||'—')+' USDT':''));
     });
     packSettle(d,'decided');
+    /* Ни по одной сделке пачки перевода с кошелька нет — подписывать нечего,
+       иначе шаг подписи ждал бы переводов, которых не будет. */
+    if(!mem.some(x=>pcSends(x))){
+      go(d,'s26','Решение по USDT: переводов с кошелька нет — дальше оплата');toast('Переводов нет — дальше оплата');return;}
     const F=flowOf(d), i=F.indexOf('s22'), nxt=F[i+1]||'s26';
     const mine=POST_CONV.find(p=>p.k===d.postConv);
     go(d,nxt,'Решение по USDT: '+(mine?mine.t:d.postConv)+(mem.length>1?' · задач по пачке: '+mem.length:''));
@@ -5535,9 +5612,12 @@ function act(id,step){
     const sum=pt.amount||approx(d).thb||0;
     const taken=balTake('scb',sum,null);
     if(taken===false){toast('На счёте SCB не хватает — сообщите фин диру');return;}
-    d.paySrc='scb'; d.pay.invoicePaid=true;
-    d.payout=Object.assign({},d.payout||{},{method:'оплата инвойса',source:SOURCES_PAY.scb.t,
-      thb:sum,usdt:null,rate:null,noConversion:true});
+    d.pay.invoicePaid=true;
+    /* Оплата инвойса дописывается к Pay-Out, а не затирает его: раньше тут пропадали
+       11 217,95 USDT, ушедшие в Coins, и «конвертации не было» (прогон 24.09). */
+    const prev=d.payout||{};
+    d.payout=Object.assign({},prev,{invoice:{source:SOURCES_PAY.scb.t,thb:sum,to:pt.dev||'',at:now()}});
+    if(!prev.source){d.paySrc='scb';Object.assign(d.payout,{method:'оплата инвойса',source:SOURCES_PAY.scb.t,thb:sum});}
     log(d,'Инвойс оплачен со счёта SCB — '+money(sum,'฿')+' · '+(pt.dev||'получателю')+' · чек приложен');
     go(d,'s27','Оплачено, чек у менеджера — отправить клиенту и закрыть');
     toast('Чек ушёл менеджеру');return;}
@@ -5684,6 +5764,26 @@ function convForm(){
     <div class="row"><button class="btn btn-primary" onclick="convFormSave()">Создать пачку</button>
     <button class="btn btn-outline" onclick="convFormClose()">Отмена</button></div>
   </div>`;
+}
+/* Возмещения — как в CRM: долг перед фаундером, который выдал баты своими.
+   Сделка при этом уже закрыта (клиент деньги получил), а долг живёт здесь, пока
+   не повесят хеш перевода. Автовозмещение — USDT от брокера пришли прямо на кошелёк
+   этого фаундера, двигать деньги не пришлось. */
+function viewReimb(){
+  const l=S.deals.filter(d=>d.paySrc==='founder');
+  const open=l.filter(d=>!(d.payout&&d.payout.reimbursement)), done=l.filter(d=>d.payout&&d.payout.reimbursement);
+  const due=Math.round(open.reduce((a,d)=>a+((d.payout&&d.payout.usdt)||0),0)*100)/100;
+  const tr=d=>{const po=d.payout||{}, r=po.reimbursement;
+    return `<tr onclick="openDeal(${d.id})" style="cursor:pointer"><td>${d.code}</td><td>${d.client}</td><td>${po.founder||'—'}</td>
+      <td class="num">${money(po.thb,'฿')}</td><td class="num">${po.usdt!=null?usd(po.usdt):'—'}</td>
+      <td>${r?(r.hash?'✅ '+r.kind+' · '+hashLink(r.hash,'TRC20'):'✅ '+r.kind):'<span style="color:#B45309">ждёт перевода</span>'}</td></tr>`;};
+  return `<div class="page-h">Возмещения</div>
+  <div class="card" style="margin-bottom:16px"><div class="card-title">Не возмещено<span class="sub">${open.length} · ${usd(due)}</span></div>
+    ${open.length?`<table class="tbl"><tr><th>Сделка</th><th>Клиент</th><th>Фаундер</th><th>Выдал</th><th>Вернуть</th><th>Статус</th></tr>${open.map(tr).join('')}</table>`
+      :'<div class="empty">Долгов перед фаундерами нет.</div>'}</div>
+  <div class="card"><div class="card-title">Возмещено<span class="sub">${done.length}</span></div>
+    ${done.length?`<table class="tbl"><tr><th>Сделка</th><th>Клиент</th><th>Фаундер</th><th>Выдал</th><th>Вернули</th><th>Как</th></tr>${done.map(tr).join('')}</table>`
+      :'<div class="empty">Пока пусто.</div>'}</div>`;
 }
 function viewConvs(){
   const L=(S.convs||[]).slice().reverse();
