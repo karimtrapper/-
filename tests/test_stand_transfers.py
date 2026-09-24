@@ -340,3 +340,23 @@ def test_notification_retry_marks_sent_only_after_http_success(monkeypatch):
         assert json.loads(appmod._stand_row(db).notified) == ['n1']
     finally:
         db.close()
+
+
+def test_small_coins_and_client_close_with_payout_hashes_when_pack_confirmed():
+    """Мелкие Coins/клиент закрываются сервером вместе с подтверждением пачки (24.09)."""
+    state = board()
+    main, small = state['deals']
+    main['step'] = 's24'
+    main['transfer']['sends'] = [{'ref': HASH, 'hash': HASH, 'net': 'TRC-20', 'amount': 100,
+                                  'status': 'confirmed', 'verifiedAmount': 100}]
+    small['postConv'] = 'client'
+    small['transfer']['sends'][0].update(status='pending')
+    appmod._stand_settle_verified(state, state['deals'])
+    assert not small['closed'] and main['step'] == 's24'
+    small['transfer']['sends'][0].update(status='confirmed', verifiedAmount=600)
+    appmod._stand_settle_verified(state, state['deals'])
+    assert main['step'] == 's25'
+    assert small['closed'] and small['step'] == 'done'
+    assert small['payout']['usdt'] == 600 and small['payout']['hash'] == HASH
+    appmod._stand_settle_verified(state, state['deals'])
+    assert sum(1 for n in state['notes'] if n['id'] == 'stand:payout:2') == 1

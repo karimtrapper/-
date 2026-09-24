@@ -5253,6 +5253,41 @@ def _stand_settle_verified(state, members):
             main.setdefault('pay', {})['outHash'] = payout['hash']
             main['step'] = 's25'
             main['serverTransferComplete'] = True
+            # Мелкие сделки пачки с Coins и переводом клиенту: клиент получает деньги,
+            # когда перевод подтверждён, — это закрытие сделки и хеши выдачи в Pay-Out.
+            # Раньше их закрывал браузер на шаге подписи; после переноса подтверждения
+            # на сервер они навсегда оставались «в пачке» без хешей (прогон 24.09).
+            stamp = datetime.now().strftime('%d.%m, %H:%M')
+            for deal in outgoing:
+                if (deal is main or deal.get('closed')
+                        or deal.get('postConv') not in ('coins', 'client')):
+                    continue
+                confirmed = [s for s in (deal.get('transfer') or {}).get('sends') or []
+                             if s.get('status') == 'confirmed']
+                dh = [{'hash': normalize_ref(s.get('hash') or s.get('ref'),
+                                             normalize_network(s.get('net') or 'TRC-20')),
+                       'amount': s.get('verifiedAmount'),
+                       'network': normalize_network(s.get('net') or 'TRC-20').upper()}
+                      for s in confirmed]
+                dpo = deal.setdefault('payout', {})
+                dpo['hashes'] = dh
+                dpo['hash'] = dh[0]['hash'] if dh else None
+                dpo['usdt'] = round(sum(float(h['amount'] or 0) for h in dh), 2)
+                if deal.get('type') == 'Оплата недвижимости':
+                    deal['mfPayout'] = [{'hash': h['hash'], 'net': h['network'],
+                                         'amount': h['amount']} for h in dh]
+                deal['closed'] = True
+                deal['step'] = 'done'
+                deal['closeReason'] = 'Успешно завершена'
+                deal['closedAt'] = stamp
+                deal['serverSettled'] = True
+                what = 'Coins выдал баты' if deal.get('postConv') == 'coins' else 'USDT ушли клиенту'
+                deal.setdefault('log', []).append({
+                    'ts': stamp, 'at': int(time.time() * 1000), 'role': 'operator',
+                    'text': f'Закрыта: перевод подтверждён — {what}, {dpo["usdt"]:.2f} USDT'})
+                _stand_note(state, f"stand:payout:{deal['id']}", 'manager', deal,
+                            f"{'DEMO · ' if deal.get('demoTransfers') else ''}{deal.get('code') or deal['id']}: "
+                            f"перевод подтверждён, сделка закрыта")
             prefix = 'DEMO · ' if main.get('demoTransfers') else ''
             proof = 'тестовые переводы подтверждены' if prefix else 'все переводы пачки подтверждены'
             _stand_note(state, f"stand:coins:{main['id']}", 'operator', main,
