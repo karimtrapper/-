@@ -2227,6 +2227,10 @@ class StandState(Base):
     version = Column(Integer, default=0)
     updated_by = Column(String(50))
     updated_at = Column(DateTime, default=datetime.utcnow)
+    # id уведомлений, уже ушедших в чат. Сравнения с прошлым состоянием мало:
+    # клиент за секунду шлёт несколько сохранений, и два запроса успевают
+    # прочитать одно и то же «прошлое» — в чат падал дубль.
+    notified = Column(Text, default='[]')
 
 
 # Создание таблиц
@@ -2267,7 +2271,19 @@ def _stand_seed_users():
         db.close()
 
 
+def _stand_migrate():
+    """create_all не добавляет колонку в уже существующую таблицу."""
+    from sqlalchemy import text as _t
+    try:
+        with engine.begin() as conn:
+            conn.execute(_t("ALTER TABLE stand_state ADD COLUMN notified TEXT DEFAULT '[]'"))
+        print('[STAND] stand_state.notified добавлена')
+    except Exception:
+        pass
+
+
 if STAND_MODE:
+    _stand_migrate()
     _stand_seed_users()
 
 
@@ -4743,8 +4759,13 @@ def current_role():
 
 # ==================== ОБЩЕЕ СОСТОЯНИЕ ЗАДАЧНИКА (СТЕНД) ====================
 
-def _stand_row(db):
-    row = db.query(StandState).filter(StandState.id == 1).first()
+def _stand_row(db, lock=False):
+    q = db.query(StandState).filter(StandState.id == 1)
+    # При записи берём строку под блокировку: два сохранения подряд иначе
+    # читают один и тот же список отправленных и дублируют уведомление.
+    if lock and 'postgresql' in DATABASE_URL:
+        q = q.with_for_update()
+    row = q.first()
     if not row:
         row = StandState(id=1, data='{}', version=0)
         db.add(row)
@@ -4791,16 +4812,17 @@ def _stand_tg_send(text):
         print(f'[STAND] Телеграм не принял уведомление: {exc}')
 
 
-def _stand_notify(old_data, new_data):
+def _stand_notify(sent_ids, new_data):
     """Шлём только те уведомления, которых раньше не было.
 
-    Сравниваем на сервере, а не на клиенте: одну и ту же доску тянут несколько
-    браузеров, и каждый отправил бы своё — в чат прилетели бы дубли.
+    Считаем на сервере, а не на клиенте: одну доску тянут несколько браузеров,
+    и каждый отправил бы своё. Список уже отправленных храним в БД, а не выводим
+    сравнением с прошлым состоянием: два сохранения подряд успевают прочитать
+    одно и то же «прошлое» и дублируют сообщение.
     """
-    old_ids = {str(n.get('id')) for n in (old_data.get('notes') or [])}
-    fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in old_ids]
+    fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in sent_ids]
     if not fresh:
-        return
+        return []
     deals = {d.get('id'): d for d in (new_data.get('deals') or [])}
     lines = []
     for n in reversed(fresh):          # в состоянии новые лежат сверху
@@ -4815,10 +4837,11 @@ def _stand_notify(old_data, new_data):
             link = f'<a href="{base}/tasks?deal={d.get("id")}">{label}</a>' if base else f'<i>{label}</i>'
             tail = f"\n{link}"
         lines.append(f"🔔 <b>{who}</b>\n{n.get('text') or ''}{tail}")
-    text = '\n\n'.join(lines[:5])
+    msg = '\n\n'.join(lines[:5])
     if len(fresh) > 5:
-        text += f"\n\n…и ещё {len(fresh) - 5}"
-    threading.Thread(target=_stand_tg_send, args=(text,), daemon=True).start()
+        msg += f"\n\n…и ещё {len(fresh) - 5}"
+    threading.Thread(target=_stand_tg_send, args=(msg,), daemon=True).start()
+    return [str(n.get('id')) for n in fresh]
 
 
 @app.route('/api/stand/state', methods=['PUT'])
@@ -4836,20 +4859,25 @@ def stand_state_put():
         return jsonify({'success': False, 'error': 'no_data'}), 400
     db = get_session()
     try:
-        row = _stand_row(db)
+        row = _stand_row(db, lock=True)
         base = payload.get('version')
         if base is not None and int(base) != (row.version or 0):
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0,
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
-        prev = json.loads(row.data or '{}')
+        try:
+            sent = set(json.loads(row.notified or '[]'))
+        except Exception:
+            sent = set()
         row.data = json.dumps(payload['data'], ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
         row.updated_at = datetime.utcnow()
+        just_sent = _stand_notify(sent, payload['data'])
+        if just_sent:
+            row.notified = json.dumps((list(sent) + just_sent)[-300:])
         db.commit()
-        _stand_notify(prev, payload['data'])
         return jsonify({'success': True, 'version': row.version})
     finally:
         db.close()
@@ -4867,6 +4895,7 @@ def stand_state_reset():
     try:
         row = _stand_row(db)
         row.data = '{}'
+        row.notified = '[]'
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name')
         row.updated_at = datetime.utcnow()
