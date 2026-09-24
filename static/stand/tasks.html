@@ -410,7 +410,12 @@ let standVer=null, standPush=null, standBusy=false, standMe=null;
 function standSnapshot(){ const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; }); return o; }
 function standApply(data){
   if(!data||typeof data!=='object')return;
-  STAND_SHARED.forEach(k=>{ if(data[k]!==undefined)S[k]=data[k]; });
+  /* Снимок применяем целиком, а не только присутствующие ключи. Иначе сброс
+     доски (сервер отдаёт пустой объект) ничего не очищал: старые сделки
+     оставались в памяти у всех открытых вкладок и возвращались первым же
+     сохранением. */
+  const blank=load();
+  STAND_SHARED.forEach(k=>{ S[k]=(data[k]!==undefined)?data[k]:blank[k]; });
   S=migrate(S);
 }
 function standTyping(){
@@ -5906,6 +5911,17 @@ function seedDemo(){
   seedCnv({broker:'Крипта-Платежи',requestNo:'51',rate:'81,20',at:'21.09, 18:04',
     sources:[{dealId:x.id,payer:'Бранова О.',date:'21.09',rub:393680,usdt:4833.24,usdtFact:4833.24}],
     txs:[{hash:'0x5512aa7c…31bd',net:'TRC20',amount:4833.24,to:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',toLabel:'кошелёк Груши'}]});
+  /* Стенд смотрят вчетвером: если все демо-задачи лежат у менеджера,
+     операционист заходит на пустой экран и решает, что сервис сломан.
+     Одна живая заявка лежит на нём. */
+  const q=newDeal({source:'tg',sourceRef:'Анна Левченко',client:'Левченко Анна',
+    type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам',
+    object:'Sansiri Phuket, CRA412',amountThb:350000,curBase:'thb',step:'s5',isTask:true});
+  q.comment='клиент ждёт курс сегодня';
+  seedLog(q,[[0,'manager','Сделка создана · Telegram · Анна Левченко'],
+             [2,'manager','Запрос курса ушёл операционисту · клиент ждёт курс сегодня']]);
+  noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
+    ' · Левченко Анна · клиент ждёт курс сегодня',q.id);
   save();render();toast('Добавлены примеры — сделки с полным путём');
 }
 
