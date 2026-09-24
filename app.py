@@ -23,6 +23,23 @@ import logging
 import gspread
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
+# ==================== ТЕСТОВЫЙ СТЕНД ====================
+# STAND_MODE=1 — копия сервиса для обкатки процесса с несколькими ролями.
+# Предохранитель стоит ДО чтения любых интеграционных переменных: полагаться на
+# «не забыли выставить десять env» нельзя — один забытый флаг отправит тестовую
+# сделку в боевой Телеграм, в Реестр и в Битрикс. Здесь внешка глушится разом.
+STAND_MODE = os.environ.get('STAND_MODE') == '1'
+if STAND_MODE:
+    for _silent in ('TELEGRAM_BOT_TOKEN', 'REF_LOGIN_BOT_TOKEN', 'CRM_WEBHOOK_URL',
+                    'DOVERKA_WEBHOOK_URL', 'WL_BOT_URL', 'WL_BOT_API_KEY',
+                    'GOOGLE_SA_JSON', 'GOOGLE_OAUTH_REFRESH_TOKEN',
+                    'METRIKA_TOKEN', 'OPENROUTER_API_KEY'):
+        os.environ[_silent] = ''
+    for _off in ('REESTR_SYNC_ENABLED', 'PAYMENT_POLL_ENABLED', 'PAYIN_ADDR_BACKFILL',
+                 'TRONSCAN_WARM_ENABLED', 'KYC_RETENTION_ENABLED'):
+        os.environ[_off] = '0'
+    print('[STAND] Тестовый стенд: внешние интеграции выключены')
+
 # ==================== FLASK APP ====================
 from werkzeug.middleware.proxy_fix import ProxyFix
 # Расчётное ядро конвертаций вынесено в отдельный модуль (чистые функции, без
@@ -2196,8 +2213,62 @@ class AgreementDoc(Base):
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
 
+class StandState(Base):
+    """Общее состояние задачника на тестовом стенде.
+
+    Один JSON-документ на всех: прототип задачника раньше жил в localStorage,
+    и каждый видел свой мирок — менеджер отправлял задачу, а операционист о ней
+    не знал. Для теста процесса нужно ровно обратное: одна доска на команду.
+    Версия — чтобы одновременная запись двух ролей не затирала чужой шаг молча.
+    """
+    __tablename__ = 'stand_state'
+    id = Column(Integer, primary_key=True)
+    data = Column(Text, default='{}')
+    version = Column(Integer, default=0)
+    updated_by = Column(String(50))
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
+
+
+def _stand_seed_users():
+    """Пользователи стенда: по человеку на роль.
+
+    Заводим только недостающих и только на стенде. Пароль один на всех из
+    STAND_PASSWORD: это площадка с выдуманными сделками, разводить тут
+    парольную гигиену дороже, чем она стоит, а лишний барьер убьёт тест —
+    людям надо зайти с телефона и потыкать, а не вспоминать пароль.
+    """
+    seed = [('karim', 'Карим', 'admin'),
+            ('marina', 'Марина', 'manager'),
+            ('artem', 'Артём', 'operator'),
+            ('vitaliy', 'Виталий', 'findir'),
+            ('teodor', 'Теодор', 'teodor')]
+    pwd = os.environ.get('STAND_PASSWORD', 'grusha-stand')
+    db = SessionLocal()
+    try:
+        for username, name, role in seed:
+            u = db.query(AdminUser).filter_by(username=username).first()
+            if u:
+                if (u.role or 'admin') != role:
+                    u.role = role
+                continue
+            db.add(AdminUser(username=username, display_name=name, role=role,
+                             password_hash=AdminUser.hash_password(pwd)))
+        db.commit()
+        print('[STAND] Пользователи ролей готовы: ' +
+              ', '.join(f'{u}/{r}' for u, _, r in seed))
+    except Exception as exc:
+        db.rollback()
+        print(f'[STAND] Не удалось засеять пользователей: {exc}')
+    finally:
+        db.close()
+
+
+if STAND_MODE:
+    _stand_seed_users()
 
 
 def _rebuild_agreements_without_name_constraint():
@@ -4610,10 +4681,119 @@ def auth_me():
             'user': {
                 'id': flask_session['user_id'],
                 'username': flask_session.get('username'),
-                'display_name': flask_session.get('display_name')
+                'display_name': flask_session.get('display_name'),
+                'role': current_role(),
+                'stand': STAND_MODE,
             }
         })
     return jsonify({'success': False}), 401
+
+
+# ==================== РОЛИ СТЕНДА ====================
+# На проде роль у всех admin — CRM исторически общая. Стенд нужен, чтобы
+# проверить обратное: кто что видит, когда у каждого своя часть работы.
+STAND_ROLES = {
+    'admin':    'Админ',
+    'manager':  'Клиентский менеджер',
+    'operator': 'Операционист',
+    'findir':   'Фин. директор',
+    'teodor':   'Теодор',
+}
+
+
+def current_role():
+    """Роль текущего пользователя из БД, а не из cookie.
+
+    Из сессии роль не берём намеренно: поменял роль в базе — она должна
+    примениться сразу, без разлогина. Стенд для того и нужен, чтобы роли
+    крутить на ходу.
+    """
+    uid = flask_session.get('user_id')
+    if not uid:
+        return None
+    db = get_session()
+    try:
+        row = db.query(AdminUser.role).filter(AdminUser.id == uid).first()
+    finally:
+        db.close()
+    return (row[0] if row else None) or 'admin'
+
+
+# ==================== ОБЩЕЕ СОСТОЯНИЕ ЗАДАЧНИКА (СТЕНД) ====================
+
+def _stand_row(db):
+    row = db.query(StandState).filter(StandState.id == 1).first()
+    if not row:
+        row = StandState(id=1, data='{}', version=0)
+        db.add(row)
+        db.commit()
+    return row
+
+
+@app.route('/api/stand/state', methods=['GET'])
+def stand_state_get():
+    """Состояние задачника целиком: клиент опрашивает его раз в пару секунд."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        return jsonify({'success': True, 'version': row.version or 0,
+                        'data': json.loads(row.data or '{}'),
+                        'updated_by': row.updated_by,
+                        'role': current_role()})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/state', methods=['PUT'])
+def stand_state_put():
+    """Запись состояния с проверкой версии.
+
+    Две роли жмут кнопки одновременно — без версии тот, кто сохранил вторым,
+    молча затёр бы чужой шаг. При расхождении возвращаем актуальное состояние,
+    клиент применяет его и говорит человеку, что доску подвинул коллега.
+    """
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    payload = request.get_json(silent=True) or {}
+    if 'data' not in payload:
+        return jsonify({'success': False, 'error': 'no_data'}), 400
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        base = payload.get('version')
+        if base is not None and int(base) != (row.version or 0):
+            return jsonify({'success': False, 'error': 'conflict',
+                            'version': row.version or 0,
+                            'data': json.loads(row.data or '{}'),
+                            'updated_by': row.updated_by}), 409
+        row.data = json.dumps(payload['data'], ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/reset', methods=['POST'])
+def stand_state_reset():
+    """Сбросить доску — начать прогон сделки заново."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        row.data = '{}'
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name')
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version})
+    finally:
+        db.close()
 
 @app.route('/api/auth/setup', methods=['POST'])
 @limiter.limit("3/minute")
@@ -4712,6 +4892,26 @@ def kyc_index():
 def kyc_static(filename):
     """Статика KYC (CSS, изображения)"""
     return send_from_directory('static/kyc', filename)
+
+@app.route('/tasks')
+def tasks_index():
+    """Задачник стенда: тот же прототип, но состояние общее и роль из логина."""
+    if not STAND_MODE:
+        return redirect('/crm')
+    # before_request сторожит только /api/ и /crm — этот путь закрываем сами
+    if not flask_session.get('user_id'):
+        return redirect('/login')
+    response = send_from_directory('static/stand', 'tasks.html')
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response
+
+
+@app.route('/tasks/<path:filename>')
+def tasks_static(filename):
+    if not STAND_MODE:
+        return redirect('/crm')
+    return send_from_directory('static/stand', filename)
+
 
 @app.route('/crm')
 def crm_index():
