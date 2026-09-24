@@ -822,6 +822,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     <nav class="nav">
         <div class="nav-logo">CRM Сделок</div>
         <div class="nav-tabs">
+            <a class="nav-tab stand-only" href="/tasks" style="display:none;text-decoration:none;">✅ Задачник</a>
             <button class="nav-tab active" data-section="dashboard">Дашборд</button>
             <button class="nav-tab" data-section="deals">Сделки</button>
             <button class="nav-tab" data-section="documents">📄 Документы</button>
@@ -5644,6 +5645,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         /* Роли живут только на стенде: в боевой CRM все админы равны, и рисовать
            там выбор роли значило бы обещать разделение, которого нет. */
         let STAND_ROLES = null;
+        // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
+        // а не после захода в «Аккаунты».
+        document.addEventListener('DOMContentLoaded', loadStandRoles);
         async function loadStandRoles() {
             try {
                 const res = await fetch(`${API_URL}/api/stand/roles`);
