@@ -380,8 +380,7 @@ a.hash:hover{background:#BAE6FD}
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
-  <button class="ghost" onclick="seedDemo()">Добавить примеры</button>
-  <button class="ghost" onclick="resetAll()">Сбросить всё</button>
+  <span id="admintools"></span>
 </div>
 
 <nav class="top-nav">
@@ -1090,7 +1089,10 @@ function notesRead(){ notesFor(S.role).forEach(n=>n.read=true); save(); render()
 function noteGo(id){
   const n=notes().find(x=>String(x.id)===String(id)); if(!n)return;
   n.read=true; S.notesOpen=false;
-  if(n.dealId&&deal(n.dealId)){S.open=n.dealId;S.view='deal';}
+  if(n.dealId&&deal(n.dealId)){
+    const d=deal(n.dealId);
+    S.open=n.dealId; S.view=(stepWho(d,d.step)===S.role)?'task':'deal';
+  }
   save();render();
 }
 function bellHtml(){
@@ -1973,6 +1975,12 @@ function render(){
   /* На стенде роль даёт логин. Переключатель оставлен админу — Кариму нужно
      смотреть чужими глазами, остальным подменять себя незачем. */
   const canSwitch=!STAND||standMe==='admin';
+  /* Сброс доски и засев примеров общие для всех — их прячем от коллег,
+     иначе один человек посреди прогона снесёт работу остальным. */
+  const at=document.getElementById('admintools');
+  if(at) at.innerHTML=canSwitchRole()
+    ? `<button class="ghost" onclick="seedDemo()">Добавить примеры</button>
+       <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
@@ -2023,6 +2031,8 @@ function restoreFocus(){if(!FOCUS)return;const e=document.getElementById(FOCUS.i
 
 /* ---------- модалка телеграма ---------- */
 function closeModal(){S.modal=null;save();render();}
+/* Роль меняется только у админа: остальным её даёт логин */
+function canSwitchRole(){ return !STAND||standMe==='admin'; }
 function modalGo(){const m=S.modal;S.modal=null;S.role=m.to;S.open=m.id;S.view='task';S.tab='tasks';save();render();}
 function modalLater(){S.modal=null;save();render();toast('Напомним через 15 минут');}
 /* у каждого шага своя главная информация — общий шаблон бесполезен */
@@ -2233,8 +2243,8 @@ function viewModal(){
           <b>${st.title}</b> — ${d.client} · ${d.code}<br>
           ${lines.map(l=>l.b?`<b>${l.t}</b>`:`<span class="dim">${l.t}</span>`).join('<br>')}
           <div class="tgbtns">
-            <button class="tgbtn" onclick="modalGo()">Открыть задачу</button>
-            <button class="tgbtn" onclick="modalGo()">Взять в работу</button>
+            <button class="tgbtn" onclick="${canSwitchRole()?'modalGo()':'closeModal()'}">Открыть задачу</button>
+            <button class="tgbtn" onclick="${canSwitchRole()?'modalGo()':'closeModal()'}">Взять в работу</button>
             <button class="tgbtn" onclick="modalLater()">Напомнить через 15 минут</button>
           </div>
           <div class="tgtime">${(now().split(', ')[1])||''}</div>
@@ -2242,8 +2252,13 @@ function viewModal(){
       </div>
       ${tgPayBlock(d,m.step)}
       <div class="row" style="margin-top:16px">
-        <button class="btn btn-primary" onclick="modalGo()">Перейти как ${ROLES[m.to].t.toLowerCase()}</button>
-        <button class="btn btn-outline" onclick="closeModal()">Остаться здесь</button>
+        ${canSwitchRole()
+          ? `<button class="btn btn-primary" onclick="modalGo()">Перейти как ${ROLES[m.to].t.toLowerCase()}</button>
+             <button class="btn btn-outline" onclick="closeModal()">Остаться здесь</button>`
+          /* Чужой ролью на стенде не поработаешь: у каждого свой логин. Кнопка
+             «перейти как» обещала бы доступ, которого нет. */
+          : `<button class="btn btn-primary" onclick="closeModal()">Понятно</button>
+             <span class="sub2" style="align-self:center">Уведомление уже ушло в чат — задачу возьмёт ${ROLES[m.to].n}</span>`}
       </div>
     </div></div></div>`;
 }
@@ -2277,7 +2292,11 @@ function viewTasks(){
   }
   if(!mine.length){
     h+=`<div class="card"><div class="empty"><div class="big">Задач на вас нет</div>
-      ${S.role==='manager'?'Создайте сделку во вкладке «Сделки» — появится первая задача.':'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.'}</div></div>`;
+      ${S.role==='manager'
+      ?'Создайте сделку во вкладке «Сделки» — появится первая задача.'
+      :(STAND&&!canSwitchRole()
+        ?'Задачи прилетают, когда предыдущая роль передаёт работу. Как только менеджер доведёт сделку до вас, уведомление придёт в чат.'
+        :'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.')}</div></div>`;
   }else{
     h+=`<div class="card" style="padding:0;overflow:hidden">`+mine.map(d=>{
       const st=STEPS[d.step],p=progress(d),a=approx(d),last=d.log[d.log.length-1];
@@ -2785,6 +2804,10 @@ function createGo(){
   const d=newDeal({...D,step:'s5',isTask:true,...draftAmounts(D)});
   d.comment=(D.note||'').trim();
   log(d,'Запрос курса ушёл операционисту'+(d.comment?' · '+d.comment:''));
+  /* Первая задача приходила молча: go() тут не вызывается, сделка сразу рождается
+     на шаге операциониста. Без этого человек узнавал о работе, только открыв доску. */
+  noteAdd('operator','Задача на вас: '+(STEPS['s5']?STEPS['s5'].title:'Ответить курс')+
+    ' · '+(d.client||'')+(d.comment?' · '+d.comment:''),d.id);
   /* менеджеру показываем карточку: задача уже не его, ему важно видеть саму сделку */
   S.draft=null;S.open=d.id;S.view='deal';save();render();
   toast('Заявка создана — курс запрашивает операционист');
@@ -3180,6 +3203,10 @@ function editClose(){
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
    вести по шагам незачем — нужен один экран со всеми полями и расчётами. */
 function startManual(){
+  /* Черновик ручной сделки создаётся сразу, и брошенный на полпути он оставался
+     в общем списке как «Без имени». На стенде это мусор у всех на виду —
+     подчищаем прошлые пустышки, прежде чем завести новую. */
+  S.deals=(S.deals||[]).filter(x=>!(x.manualNew&&!x.client&&!x.amountRub&&!x.amountThb&&!x.amountUsdt));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
     payType:'По реквизитам',curBase:'rub',step:'manual'});
   d.manual=true;d.manualNew=true;
@@ -4925,7 +4952,7 @@ function stepCard(d){
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):
         `<div class="li" style="cursor:default"><span class="av">—</span><div><div class="t1">Мелких обменов в очереди нет</div>
         <div class="t2">Сделка типа «Обмен валюты», проведённая без шагов, попадает сюда сама</div></div>
-        <button class="btn btn-outline btn-sm" onclick="event.stopPropagation();seedEx()">Добавить примеры</button></div>`}`;})()}
+        ${canSwitchRole()?`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();seedEx()">Добавить примеры</button>`:''}</div>`}`;})()}
     </div>
     <p class="fh">Удержание считается на всю пачку: 0,3 % плюс 40 ₽ за платёжное поручение. По сделкам оно делится по доле рублей, поэтому суммы «к брокеру» чуть меньше того, что заплатил клиент.</p>
     ${sel.length?`<div class="derived" style="margin-top:12px">

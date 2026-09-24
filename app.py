@@ -4860,6 +4860,9 @@ def stand_state_reset():
     """Сбросить доску — начать прогон сделки заново."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'only_admin',
+                        'detail': 'Сбросить доску может только админ'}), 403
     db = get_session()
     try:
         row = _stand_row(db)
