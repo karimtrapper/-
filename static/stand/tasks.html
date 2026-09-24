@@ -3056,6 +3056,7 @@ function overview(d,st,mine,p,wh){
       ${d.partial?row('Часть по инвойсу',(d.partNo||'')+' из '+money(d.invoiceTotal,'฿')):''}
     </table></div>
 
+  ${(d.closed&&d.closeReason==='Успешно завершена'&&!d.manual)?crmGapsBlock(d,'Сделка закрыта, но в карточке CRM не хватает'):''}
   <div class="card" style="margin-bottom:16px">
     <div class="sec pi">PAY-IN</div>
     <table class="tbl">
@@ -3246,6 +3247,50 @@ const FILLS={
   s27 :{b:'Сделка',    w:'итог: статус, закрытие, прибыль'}
 };
 /* На каком шаге обычно заполняется блок сделки — чтобы пустой блок объяснял себя сам */
+/* Что из карточки CRM осталось пустым. Задачи — это путь, которым заполняется та же
+   сделка (Карим, 24.09): пройдя сделку по шагам, менеджер не должен потом идти в форму
+   дописывать Pay-In, Pay-Out и конвертацию. В CRM нет отдельной проверки при закрытии —
+   сделка закрывается, когда из полей считается прибыль. Поэтому здесь ровно те поля,
+   из которых CRM считает прибыль для этого типа сделки (app.py: _recalculate_deal_financials,
+   _apply_mf_realty, _apply_mf_freehold), плюс кто клиент и откуда деньги.
+   Имя поля CRM — в скобках, шаг — где оно должно было заполниться. */
+function crmGaps(d){
+  const g=[], E=econ(d), po=d.payout||{}, rub=!isCrypto(d);
+  const need=(ok,label,step)=>{if(!ok)g.push({label:label,step:step});};
+  need(d.clientId||d.client,'Клиент (client_id)','Заявка');
+  need(d.manager,'Менеджер (manager_name)','Заявка');
+  need(d.payType,'Метод Pay-In (payin_method)','Заявка');
+  if(rub){
+    /* у обмена «без шагов» рубли внесены суммой сделки — это и есть payin_amount_rub */
+    need(d.incomeAmount||(d.payinParts||[]).length||(d.amountRub&&d.type!=='Оплата недвижимости'),'Рубли прихода (payin_amount_rub, payin_parts)','Ждём приход');
+    need(num(d.rates.broker),'Курс RUB→USDT (payin_rate_rub_usdt)','Отправка брокеру для конвертации');
+  }
+  need(E.payin,'USDT прихода (payin_amount_usdt)',rub?'Ждём USDT от брокера':'Ждём приход');
+  need((d.payinHashes||[]).length,'Хеши прихода (payin_tx_hashes)',rub?'Ждём USDT от брокера':'Ждём приход');
+  if(d.type==='Оплата недвижимости'){
+    need(d.amountThb,'Инвойс, ฿ (invoice_amount_thb)','Заявка');
+    need(num(d.rates.usdtThb),'Курс покупки ฿/USDT (buy_rate_thb_usdt)','Ответить курс');
+    need(num(d.rates.client),'Курс клиенту (sell_rate_thb_usdt)','Отдать расчёт клиенту');
+    need((d.payTo&&d.payTo.purpose)||d.object,'Назначение платежа (realty_purpose)','Реквизиты для оплаты');
+    need(mfList(d).length||hashSum(po.hashes)!=null,'Переводы в MF Corp, факт (payout_tx_hashes)','Одобрить перевод');
+    need(d.docs&&d.docs.inv,'Инвойс застройщика (doc_invoice_url)','Сбор документов');
+    need(d.docs&&d.docs.receipt,'Подтверждение оплаты (doc_payment_url)','Оплатить инвойс');
+  }else{
+    need(d.paySrc,'Источник Pay-Out (payout_source)','Что делаем с USDT');
+    if(d.paySrc!=='client') need(po.thb||d.amountThb,'Выдано, ฿ (payout_amount_thb)','Что делаем с USDT');
+    need(E.cost!=null,'Себестоимость выдачи, USDT (payout_amount_usdt)','Что делаем с USDT / Одобрить перевод');
+    if(d.paySrc==='coins'||d.paySrc==='client') need((po.hashes||[]).length,'Хеши выдачи (payout_tx_hashes)','Одобрить перевод');
+    if(d.paySrc==='founder') need(po.reimbursement,'Возмещение фаундеру (reimbursement_id)','Возмещения — хеш перевода');
+  }
+  need(E.ready,'Прибыль (profit_usdt, net_profit_usdt) — не считается','');
+  return g;
+}
+function crmGapsBlock(d,title){
+  const g=crmGaps(d);
+  if(!g.length) return `<div class="alert a-ok" style="margin:0 0 14px"><div><b>Карточка CRM заполнена</b> — всё, из чего CRM считает прибыль по этой сделке, собрано по дороге.</div></div>`;
+  return `<div class="alert a-warn" style="margin:0 0 14px"><div><b>${title||'В карточке CRM не хватает'}: ${g.length}</b>
+    <ul style="margin:6px 0 0 18px;padding:0">${g.map(x=>`<li>${x.label}${x.step?` <span style="color:var(--text-muted)">— шаг «${x.step}»</span>`:''}</li>`).join('')}</ul></div></div>`;
+}
 function fillStep(block){
   const k=Object.keys(FILLS).find(x=>FILLS[x].b===block);
   return k?{key:k,title:STEPS[k].title,who:STEPS[k].who}:null;
@@ -5330,6 +5375,7 @@ function stepCard(d){
     const miss=ok.filter(x=>!x[1]).length;
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-miss} из ${ok.length} полей собрано по дороге</span></div>
+    ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
     ${d.docs.receipt?`<div class="paybox">
       <div class="payrow" style="border-bottom:none"><div><div class="k">ЧЕК ОТ ОПЕРАЦИОНИСТА</div>
         <div class="v">оплата ${money(pt.amount||ap.thb,'฿')}${pt.dev?(' · '+pt.dev):''} — отправьте клиенту ${filesOf(d,'receipt').length>1?'все файлы':'этот файл'}</div></div></div>
@@ -5972,7 +6018,10 @@ function seedDemo(){
   g1.payinParts=[{amountRub:700000,payer:'Гусев И.',date:'20.09',kind:'bank'},
                  {amountRub:500000,payer:'Гусев И.',date:'21.09',kind:'acquiring',net:495000,fee:5000}];
   g1.notes='Клиент просил разбить платёж: часть по реквизитам, часть наличными через FOEX.';
-  seedDocs(g1,['pass','inv','spa']);
+  seedDocs(g1,['pass','inv','spa','receipt']);
+  /* Закрытая демо-сделка — эталон того, что задачи оставляют в карточке CRM: без
+     переводов в MF Corp и подтверждения оплаты проверка карточки её браковала (24.09). */
+  g1.mfPayout=[{hash:'0x41d0a7…c2b8',net:'TRC-20',amount:20717.95}];
   seedLog(g1,[
     [0,'manager','Сделка создана · Telegram · Игорь Гусев · клиент новый'],
     [12,'manager','Запрос курса отправлен операционисту'],
@@ -6007,7 +6056,8 @@ function seedDemo(){
   g2.payinHashes=[{amount:20942.02,network:'TRC20',hash:'0x33ba07c1…4de2'}];
   g2.clientId=1;g2.refId=1;g2.refKnown=true;g2.refSrc='закреплён за клиентом';
   g2.agents=agentsDefault(1);g2.agents[1].paid=true;g2.agents[1].paidAt='21.09.2026';
-  seedDocs(g2,['inv']);
+  seedDocs(g2,['inv','receipt']);
+  g2.mfPayout=[{hash:'0x9e3311…70aa',net:'TRC-20',amount:20751.20}];
   seedLog(g2,[
     [0,'manager','Сделка создана · Telegram · Игорь Гусев · клиент узнан по источнику'],
     [7,'manager','Запрос курса отправлен операционисту'],
@@ -6071,7 +6121,8 @@ function seedDemo(){
   x.incomeAmount=393680;
   x.pay={usdt:4833.24,hash:'0x5512aa7c…31bd'};
   x.payinHashes=[{amount:4833.24,network:'TRC20',hash:'0x5512aa7c…31bd'}];
-  x.payout={method:'наличные в офисе',source:'из своих (фаундер)',founder:'Андрей',
+  x.paySrc='founder';
+  x.payout={method:'наличные в офисе',source:SOURCES_PAY.founder.t,founder:'Андрей',ownBaht:true,
     thb:148000,usdt:4713.38,rate:'31,40',hash:'0x77ee01b4…92ca',
     reimbursement:{id:'CNV-0007',kind:'автовозмещение',hash:'0x31655d15…8e02'}};
   x.clientId=3;x.refId=3;x.refKnown=true;x.refSrc='спросили у клиента';
