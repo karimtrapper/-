@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 12:09</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 14:54</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -817,6 +817,12 @@ function cnvMembers(d){
   const l=c?(c.sources||[]).map(x=>deal(x.dealId)).filter(Boolean):[];
   return l.length?l:[d];
 }
+/* Что по пачке ушло в Coins: сделка, баты, курс, отправленные USDT и хеши */
+function coinsSends(d){
+  return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{const tr=x.transfer||{}, l=sendList(x);
+    return {code:x.code, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
+      usdt:sendSum(x)||pcAmount(x)||0, hashes:l.map(t=>t.hash||t.ref).filter(Boolean)};});
+}
 function cnvShareOf(d,x){
   const c=convOf(d);
   if(!c) return (x.pay&&x.pay.usdt)||null;
@@ -847,6 +853,20 @@ function transferBack(id,v){
   save();render();
 }
 function pcAmount(x){return num(cleanNum(String((x.transfer||{}).amount||'')));}
+/* Мелкая сделка пачки закрывается, только когда по ней больше нечего отправлять
+   (Карим, 24.09). Без перевода с кошелька — IPPS без возврата, «оставить на кошельке» —
+   сразу после решения по USDT. С переводом — Coins, клиенту, фаундеру, IPPS с возвратом —
+   когда перевод ушёл в сеть. Раньше все мелкие закрывались при получении USDT, и по
+   выдаче с IPPS или из кассы никто не получал задачи. */
+function packSettle(d,phase){
+  cnvMembers(d).forEach(x=>{
+    if(x.id===d.id||x.closed) return;
+    const o=POST_CONV.find(p=>p.k===x.postConv), what=o?o.t:(x.postConv||'—');
+    if(phase==='decided'&&pcSends(x)){log(x,'Ждёт перевода с кошелька — закроется, когда он уйдёт в сеть');return;}
+    x.step='done';x.closed=true;x.closeReason='Успешно завершена';x.closedAt=now();
+    log(x,phase==='decided'?'Закрыта: перевода с кошелька нет — '+what:'Закрыта: перевод ушёл в сеть — '+what);
+  });
+}
 function pcOut(d){return Math.round(cnvMembers(d).reduce((s,x)=>s+(pcSends(x)?(pcAmount(x)||0):0),0)*100)/100;}
 const NETS=['TRC-20','ERC-20'];
 function pcNet(x){return (x.transfer||{}).net||'TRC-20';}
@@ -1707,6 +1727,7 @@ const STEPS={
   s26 :{n:26,who:'operator',title:'Оплатить инвойс'},
   s27 :{n:27,who:'manager' ,title:'Закрытие сделки'},
   ready:{n:0,who:null,title:'Готова к конвертации'},
+  pack :{n:0,who:null,title:'В пачке — ждёт выдачи'},
   done :{n:99,who:null,title:'Закрыта'}
 };
 /* этапы по порядку. Номера шагов (4,5,6,8,11…) — строки доски Section 8,
@@ -1965,14 +1986,16 @@ function docClose(){S.doc=null;save();render();}
 function pendingEx(exceptId){
   const taken={};
   S.deals.forEach(d=>{if(d.id!==exceptId)(d.conv||[]).forEach(x=>taken[x]=1);});
-  return S.deals.filter(x=>!x.closed&&x.step==='ready'&&x.id!==exceptId&&!taken[x.id]);
+  /* Крипта конвертации не требует: USDT клиента уже у нас. В рублёвой пачке она
+     шла с 0 ₽, а её баты попадали в «должны выдать» (прогон 24.09). */
+  return S.deals.filter(x=>!x.closed&&x.step==='ready'&&!isCrypto(x)&&x.id!==exceptId&&!taken[x.id]);
 }
 function exSum(l){return l.reduce((s,x)=>s+(x.amountRub||0),0);}
 function exSpread(x){return x.spread==null?0.3:x.spread;}
 function exMargin(l){return Math.round(l.reduce((s,x)=>s+(x.amountRub||0)*exSpread(x)/100,0));}
 function convAll(id){const d=deal(id);d.conv=pendingEx(id).map(x=>x.id);
   log(d,'В обмен добраны мелкие: '+d.conv.length+' на '+money(exSum(d.conv.map(deal)),'₽'));
-  save();render();toast('Взяли '+d.conv.length+' мелк. обмена');}
+  save();render();toast('Взяли '+d.conv.length+' '+plural(d.conv.length,'мелкий обмен','мелких обмена','мелких обменов'));}
 function convNone(id){const d=deal(id);d.conv=[];save();render();toast('Мелкие обмены сняты');}
 function seedEx(){
   [['wa','+66 92 888 0412','Гурьев Денис',50000,'Крипта'],
@@ -2295,7 +2318,7 @@ function viewTasks(){
     const conv=mine.filter(d=>d.step==='s18');
     h+=`<div class="card" style="margin-bottom:16px">
       <div class="card-title">Ждут конвертации
-        <span class="sub">${pend.length} мелк. обмена · ${money(exSum(pend),'₽')} · наценка ≈ ${money(exMargin(pend),'₽')}</span>
+        <span class="sub">${pend.length} ${plural(pend.length,'мелкий обмен','мелких обмена','мелких обменов')} · ${money(exSum(pend),'₽')} · наценка ≈ ${money(exMargin(pend),'₽')}</span>
         ${conv.length?`<button class="btn btn-primary btn-sm" onclick="openDeal(${conv[0].id})">Добавить в обмен ${conv[0].code}</button>`:''}</div>
       <div class="list">${pend.map(x=>`<div class="li" onclick="openDeal(${x.id})"><span class="av">₽</span>
         <div><div class="t1">${x.code} · ${x.client}</div>
@@ -2877,8 +2900,8 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
-    else if(!mine) body=`<div class="card"><div class="alert a-info">Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
-      Переключите роль наверху, чтобы продолжить.</div><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
+    else if(!mine) body=`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
+      ${canSwitchRole()?'Переключите роль наверху, чтобы продолжить.':'Когда шаг сделают, задача придёт к вам, если следующий ход ваш.'}</div></div><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else body=goalCard(d)+ctxCard(d)+stepCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
@@ -2903,7 +2926,7 @@ function viewDeal(d){
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
   <ul class="tl">${d.log.slice().reverse().slice(0,6).map((l,i)=>
     `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${l.ts} · ${ROLES[l.role]?ROLES[l.role].t:''}</div></div></li>`).join('')}</ul>
-  ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} событий</button>`:''}</div>
+  ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
   ${!d.closed?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
@@ -3097,7 +3120,7 @@ function pathCard(d){
   const longest=known.slice().sort((a,b)=>b.ms-a.ms)[0];
   const byRole={};
   known.forEach(r=>{const k=r.l.role||'—';byRole[k]=(byRole[k]||0)+r.ms;});
-  return `<div class="card" style="margin-bottom:16px"><div class="card-title">Путь сделки<span class="sub">${L.length} событий</span></div>
+  return `<div class="card" style="margin-bottom:16px"><div class="card-title">Путь сделки<span class="sub">${L.length} ${plural(L.length,'событие','события','событий')}</span></div>
     <div class="stats-grid" style="margin-bottom:16px">
       <div class="stat-card info"><div class="stat-value num" style="font-size:18px">${total!=null?dur(total):'—'}</div><div class="stat-label">всего в работе</div></div>
       <div class="stat-card"><div class="stat-value num" style="font-size:18px">${L.length}</div><div class="stat-label">событий</div></div>
@@ -4256,9 +4279,17 @@ function rerate(id,why){
 }
 /* Пересборка пакета руками менеджера убрана: цифры ставит операционист, он же
    подписывает договор. Менеджер только запрашивает курсы заново (Карим, 24.09). */
-function ret(id){const d=deal(id);const q=prompt('Чего не хватило во входе?');if(!q)return;
-  log(d,'Возврат с вопросом: '+q);const b={s5:'s4',s11:'s8',s24:'s23'}[d.step];
-  if(b)d.step=b;save();render();toast('Возвращено постановщику');}
+/* Возврат идёт через go(): иначе шаг менялся молча и тот, кому вернули, не получал
+   уведомления. На оплате (s26) не хватает реквизитов — их заполняет менеджер на s15;
+   без этого маршрута кнопка писала «Возвращено», а задача оставалась у операциониста. */
+function ret(id){const d=deal(id);const q=prompt('Чего не хватает, чтобы сделать шаг?');if(!q)return;
+  const b={s5:'s4',s11:'s8',s24:'s23',s26:'s15'}[d.step];
+  if(!b){log(d,'Вопрос по шагу: '+q);save();render();toast('Вопрос записан в журнал — вернуть этот шаг некуда');return;}
+  const to=stepWho(d,b);
+  go(d,b,'Возврат с вопросом: '+q);
+  const n=notes().find(x=>x.dealId===d.id&&x.role===to);
+  if(n&&n.text.indexOf('Задача на вас')===0) n.text+=' · вопрос: '+q;
+  save();render();toast('Вернули: '+(STEPS[b]?STEPS[b].title:b));}
 function incomeExact(id){
   const d=deal(id),a=approx(d);
   /* приходит то, что ждём: сумма могла быть поправлена руками */
@@ -4326,8 +4357,16 @@ function stepGoal(d){
         nums:[['К отправке',money2(own+добрано,'₽')+(добрано?' · из них по сделке '+money2(own,'₽'):'')],
               ['Курс брокера',d.rates.broker||'спросить'],
               ['Сделок в пачке',String(1+((d.conv||[]).length))]]};})();
-    case 's18w': return {t:'Получить USDT и хэш — это факт прихода',
-      nums:[['Ждём USDT',E.parts[0].calc!=null?usd(E.parts[0].calc):'—'],['Курс заявки',d.rates.broker||'—'],['Отправлено',money2(d.incomeAmount||d.amountRub,'₽')]]};
+    case 's18w': return (function(){
+      /* Как и на отправке: брокеру ушла вся пачка, а шапка показывала одну сделку
+         и считала удержание так, будто она одна (прогон 24.09). */
+      const c=convOf(d);
+      const plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):(E.parts[0].calc);
+      const rub=c?c.sources.reduce((s,x)=>s+(x.rub||0),0):(d.incomeAmount||d.amountRub);
+      const n=c?c.sources.length:1;
+      return {t:'Получить USDT и хэш — это факт прихода',
+        nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
+              ['Отправлено',money2(rub,'₽')+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]]};})();
     case 's22': return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
             ['Кошелёк',(dealWallet(d)||{}).name||'не выбран'],
@@ -4344,8 +4383,11 @@ function stepGoal(d){
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
       return {t:'Одобрить вторым ключом — деньги уйдут в сеть',
       nums:[['Сумма',usd(pcOut(d))],['Переводов',String(n)],['Подписей','1 из 2']]};}
-    case 's25': return {t:'Известить Coins и приложить чек конвертации',
-      nums:[['Сумма',d.pay.usdt?usd(d.pay.usdt):'—'],['Хеш',d.pay.outHash||'—'],['Получателю',money2(ap.thb,'฿')]]};
+    case 's25': {
+      const cs=coinsSends(d), sum=Math.round(cs.reduce((s,x)=>s+x.usdt,0)*100)/100;
+      return {t:'Известить Coins и приложить чек конвертации',
+        nums:[['Ушло в Coins',sum?usd(sum):'—'],['Переводов',String(cs.reduce((s,x)=>s+x.hashes.length,0))],
+              ['Выдать',money2(cs.reduce((s,x)=>s+x.thb,0),'฿')]]};}
     case 's26': {const pt=d.payTo||{};
       return {t:'Оплатить инвойс получателю и приложить чек',
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
@@ -4443,7 +4485,7 @@ function pcCard(d,x,share,w){
         <p class="fh">получателю ушли баты с баланса IPPS, USDT остались у нас. Если баланс пополняли с конкретного кошелька — вернём туда, иначе задачи владельцу кошелька не будет</p></div>`:''}
       ${(k!=='coins'&&pcSends(x))?`
       <div class="fg"><label class="fl">Сумма USDT<span class="rq">*</span></label>
-        <input class="fc num" id="ca_${x.id}" value="${tr.amount||''}" placeholder="${share?share.toFixed(2):'100'}"
+        <input class="fc num" id="ca_${x.id}" value="${tr.amount||''}" placeholder="${share?share.toFixed(2):''}"
           onchange="transferSet(${x.id},'amount',this.value)"></div>`:''}
     </div>
     ${pcSends(x)?`<div class="fr">
@@ -4473,6 +4515,14 @@ function pcCard(d,x,share,w){
     </div>`:''}
     ${k==='keep'?`<div class="alert a-info" style="margin:8px 0 0"><div>С кошелька ничего не уходит: выдача идёт с баланса IPPS, из кассы или со счёта. Шаги подписи по этой сделке не нужны.</div></div>`:''}
     ${(k==='ipps'&&!tr.back)?`<div class="alert a-info" style="margin:8px 0 0"><div>Сумма конвертации по этой сделке уже известна, получателю платим батами с баланса IPPS. Перевода с криптокошелька нет — владельцу кошелька задачи не будет.</div></div>`:''}
+    ${(function(){
+      /* Отправляем больше, чем эта сделка принесла, — значит по ней уходим в минус
+         или возвращаем чужие деньги. Экран молчал: Соколова ушла в Coins на $21 больше
+         доли, возврат фаундеру $100 прошёл по сделке с долей $0 (прогон 24.09). */
+      const out=pcSends(x)?(pcAmount(x)||0):0;
+      if(!out||share==null||out<=share+0.01) return '';
+      return `<div class="alert a-warn" style="margin:8px 0 0"><div>Уходит ${usd(out)} при доле сделки ${usd(share)} —
+        на ${usd(out-share)} больше, чем она принесла. ${k==='coins'?'По этой сделке будем в минусе: проверьте курс Coins и баты.':'Проверьте сумму — лишнее уйдёт из денег других сделок пачки.'}</div></div>`;})()}
     ${k?`<div class="payrow" style="margin-top:8px;border-bottom:none">
       <div><div class="k">Текст задачи</div><div class="v">${pcTaskText(x,k,w)}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap"
@@ -5030,7 +5080,9 @@ function stepCard(d){
       <div class="fg"><label class="fl">Выбрать из входящих</label>
         <select class="fc" onchange="if(this.value)cnvTxPick(${d.id},this.value)">
           <option value="">— входящие переводы —</option>
-          ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))).map(t=>
+          ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
+            /* во входящих для пачки — только то, что пришло после отправки рублей */
+            &&!(c&&c.sentTs&&!(t.ts&&t.ts>=c.sentTs))).map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
         </select></div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
@@ -5064,7 +5116,7 @@ function stepCard(d){
     const left=(got!=null)?Math.round((got-out)*100)/100:null;
     const undone=mem.filter(x=>!x.postConv).length;
     return `<div class="card"><div class="card-title">Что делаем с USDT
-      <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+(mem.length===1?' сделка':' сделки'):''}</span></div>
+      <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
     ${w?walletLine(w):`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`}
     <div class="alert a-info"><div>USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.</div></div>
     ${mem.length>1?`<div class="card-title" style="font-size:14px;margin:16px 0 4px">Назначение по каждой сделке пачки</div>
@@ -5158,13 +5210,18 @@ function stepCard(d){
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Если не подписать за сутки — транзакция протухнет и фин диру придётся завешивать заново.</p>
     </div>`;},
 
-  s25:()=>`<div class="card"><div class="card-title">Известить Coins</div>
-    <div class="alert a-ok"><div>Транзакция подтверждена в сети. Хеш и сумма подставлены — вводить нечего.</div></div>
-    <div class="fr">
-      <div class="fg"><label class="fl">Хеш отправки</label><input class="fc" readonly value="${d.pay.outHash||'—'}"></div>
-      <div class="fg"><label class="fl">Сумма</label><input class="fc num" readonly value="${money(d.pay.usdt)} USDT"></div>
-    </div>
-    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Известил, чек загружен</button></div></div>`,
+  s25:()=>{
+    /* Coins сверяет сумму и хеш с тем, что пришло к ним. Раньше тут стояла доля сделки
+       в пачке ($14 256,54 вместо отправленных 11 217,95) и хеш только первого перевода —
+       с такими цифрами Coins известили бы неверно (прогон 24.09). */
+    const cs=coinsSends(d);
+    const rows=cs.map(x=>`<tr><td>${x.code}</td><td class="num">${money(x.thb,'฿')}</td><td>${x.rate||'—'}</td>
+      <td class="num">${moneyKop(x.usdt)} USDT</td><td>${x.hashes.map(h=>'<span class="addr">'+h+'</span>').join('<br>')||'—'}</td></tr>`).join('');
+    return `<div class="card"><div class="card-title">Известить Coins</div>
+    <div class="alert a-ok"><div>Переводы подтверждены в сети. По каждой сделке — сколько ушло в Coins и какими хешами; в рабочей системе хеши придут из сети.</div></div>
+    ${cs.length?`<table class="tbl"><tr><th>Сделка</th><th>Выдать</th><th>Курс Coins</th><th>Ушло</th><th>Хеши</th></tr>${rows}</table>`
+      :'<div class="alert a-warn"><div>В этой пачке нет задач в Coins — извещать некого.</div></div>'}
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Известил, чек загружен</button></div></div>`;},
 
   s26:()=>{
     const pt=d.payTo||{}, sum=pt.amount||ap.thb||0;
@@ -5311,7 +5368,10 @@ function act(id,step){
     d.dev=d.dev||d.payTo.dev; d.bank=d.bank||(d.payTo.bank+' · '+d.payTo.acc);
     log(d,'Реквизиты для оплаты заполнены: '+d.payTo.dev+' · '+d.payTo.bank+' · '+d.payTo.acc+
       ' · '+money(d.payTo.amount,'฿')+' · назначение «'+d.payTo.purpose+'»');
-    const F=flowOf(d), i=F.indexOf('s15'), nxt=F[i+1]||'s26';
+    /* Реквизиты правят и по возврату с оплаты: тогда деньги уже сконвертированы и
+       разосланы, и «следующий по пути» шаг (отправка брокеру) повёл бы сделку по
+       второму кругу. Решение по USDT принято — значит, назад на оплату. */
+    const F=flowOf(d), i=F.indexOf('s15'), nxt=d.postConv?'s26':(F[i+1]||'s26');
     go(d,nxt,'Реквизиты готовы — дальше оплата');
     toast('Ушло дальше по пути');return;}
   if(step==='s18'){
@@ -5332,9 +5392,23 @@ function act(id,step){
         return {dealId:x.id,payer:x.client,date:now().slice(0,5),
           rub:x.incomeAmount||x.amountRub||0,
           usdt:rate?Math.round(bs.sent*share/rate*100)/100:null};}),
-      txs:[]};
+      txs:[],sentTs:Date.now()};
     S.convs.push(cn);
     members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;});
+    /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
+       кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
+       и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
+    if(STAND){
+      const plan=Math.round(cn.sources.reduce((a,x)=>a+(x.usdt||0),0)*100)/100;
+      if(plan>0){
+        const p1=Math.round(plan*0.6*100)/100, hx=()=>Math.random().toString(16).slice(2,10)+'…'+Math.random().toString(16).slice(2,6);
+        const t0=Date.now();
+        [[p1,t0+60000],[Math.round((plan-p1)*100)/100,t0+120000]].forEach(function(a,i){
+          txPool().push({id:Date.now()+i,amount:a[0],net:'TRC20',hash:hx(),ts:a[1],cnv:cn.id,
+            at:new Date(a[1]).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}),
+            from:'T'+b0.replace(/[^A-Za-z]/g,'').slice(0,8)+'…'+(i?'b2':'a1')});});
+      }
+    }
     /* фиксируем, с какой маржой шли в эту конвертацию — потом видно, кто просел */
     const mg=convMargin(d,rubTotal,rate);
     if(mg) log(d,'Проверка перед отправкой: получим '+usd(mg.usdtIn)+', баты обойдутся в '+usd(mg.cost)+
@@ -5372,8 +5446,8 @@ function act(id,step){
       });
     }
     d.pay.usdt=d.pay.usdt||got;
-    (d.conv||[]).forEach(xid=>{const x=deal(xid);if(x){x.rates.broker=d.rates.broker;x.step='done';x.closed=true;
-      x.closeReason='Успешно завершена';x.closedAt=now();log(x,'Сконвертирована в обмене '+d.code+', курс '+d.rates.broker);}});
+    (d.conv||[]).forEach(xid=>{const x=deal(xid);if(x){x.rates.broker=d.rates.broker;x.step='pack';
+      log(x,'Сконвертирована в обмене '+d.code+', курс '+d.rates.broker+' — ждёт решения по выдаче');}});
     const selD=(d.conv||[]).map(deal).filter(Boolean);
     if(selD.length) log(d,'В обмен вошли мелкие: '+selD.length+' на '+money(exSum(selD),'₽')+', наценка '+money(exMargin(selD),'₽'));
     log(d,'USDT получены: '+usd(got)+' · переводов '+c.txs.length+' · '+c.txs.map(t=>t.hash).join(', '));
@@ -5402,6 +5476,7 @@ function act(id,step){
         : ' · перевода с кошелька нет'));
       if(x.id!==d.id) log(d,'По сделке '+x.code+': '+(o?o.t:x.postConv)+(pcSends(x)?' · '+(tr.amount||'—')+' USDT':''));
     });
+    packSettle(d,'decided');
     const F=flowOf(d), i=F.indexOf('s22'), nxt=F[i+1]||'s26';
     const mine=POST_CONV.find(p=>p.k===d.postConv);
     go(d,nxt,'Решение по USDT: '+(mine?mine.t:d.postConv)+(mem.length>1?' · задач по пачке: '+mem.length:''));
@@ -5426,11 +5501,12 @@ function act(id,step){
     if(multi){
       d.pay.tx=(sendList(d)[0]||{}).ref||null;
       d.pay.check=c?c.value:'';
-      go(d,'s24',((w&&w.owner)||'фин дир')+' подписал '+sends.length+
+      go(d,'s24',(function(t){return t.charAt(0).toUpperCase()+t.slice(1);})(walletSigner(w))+' подписал '+sends.length+
         (sends.length===1?' перевод':' перевода')+' — 1 из 2, ждём одобрения Теодора');
       toast('Ушло Теодору');return;}
     d.pay.outHash=(sendList(d)[0]||{}).hash||(sendList(d)[0]||{}).ref||null;
     d.pay.usdt=d.pay.usdt||pcAmount(d)||d.pay.usdt;
+    packSettle(d,'sent');
     const F=flowOf(d), i=F.indexOf('s23'), nxt=F[i+1]||'s26';
     go(d,nxt,'Отправлено с личного кошелька '+((w&&w.owner)||'владельца')+' · переводов '+sends.length);
     toast('Отправлено');return;}
@@ -5447,6 +5523,7 @@ function act(id,step){
       log(x,'Одобрено Теодором — ушло в сеть · '+x.transfer.sends.map(t=>t.hash).join(', '));});
     d.pay.outHash=(sendList(d)[0]||{}).hash||null;
     log(d,'Теодор одобрил — 2 из 2, в сеть ушло '+sends.length+(sends.length===1?' перевод':' перевода'));
+    packSettle(d,'sent');
     go(d,'s25','Подтверждено в сети — задача операционисту создана автоматически');toast('Подписано, отправка подтверждена');return;}
   if(step==='s25'){go(d,'s26','Coins извещён, чек конвертации загружен');toast('Дальше — оплата инвойса');return;}
   if(step==='s26'){
@@ -5746,6 +5823,9 @@ function seedLog(d,items,agoMin){
   d.log=[];
   items.forEach(function(it){
     ts+=it[0]*60000;
+    /* сдвиги накопительные: сумма больше окна давала «деньги пришли» через час
+       после засева (прогон 24.09). Событие в будущем не пишем. */
+    ts=Math.min(ts,Date.now());
     d.log.push({at:ts,role:it[1],text:it[2],
       ts:new Date(ts).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})});
   });
@@ -5935,23 +6015,31 @@ function seedDemo(){
      четыре обмена, которые в неё можно добрать (Карим, 24.09). */
   const big=newDeal({clientId:2,source:'tg',sourceRef:'Анна Левченко',client:'Левченко Анна',
     type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам',
-    object:'Sansiri Phuket, CRA412',amountThb:350000,amountRub:1164000,curBase:'thb',step:'s18'});
-  big.incomeAmount=1164000;
-  big.rates={client:'3,32',rubUsdt:'103,50',usdtThb:'31,20',broker:'103,50',at:Date.now()-40*60000};
-  big.payinParts=[{amountRub:1164000,payer:'Левченко А.',date:'24.09',kind:'bank'}];
+    object:'Sansiri Phuket, CRA412',amountThb:350000,amountRub:931000,curBase:'thb',step:'s18'});
+  /* Курсы как у всей доски (81,10 / 31,20, клиенту 2,66). Было 103,50 и 3,32 — на отправке
+     брокеру это давало «уходим в минус −15 %», пока не впишешь реальный курс. И реквизиты
+     уже заполнены: сделка прошла шаг менеджера, иначе на оплате тупик (прогон 24.09). */
+  big.incomeAmount=931000;
+  big.rates={client:'2,66',rubUsdt:'81,10',usdtThb:'31,20',broker:'81,10',at:Date.now()-120*60000};
+  big.payinParts=[{amountRub:931000,payer:'Левченко А.',date:'24.09',kind:'bank'}];
+  big.payTo={dev:'Sansiri Public Company Limited',amount:350000,bank:'Kasikornbank',acc:'012-3-45678-9',
+    inv:'INV-CRA412-0917',purpose:'Payment for unit CRA412, invoice INV-CRA412-0917, Levchenko Anna',due:'30.09'};
+  big.dev=big.payTo.dev; big.bank=big.payTo.bank+' · '+big.payTo.acc;
   seedDocs(big,['pass','inv','spa']);
   seedLog(big,[
     [0,'manager','Сделка создана · Telegram · Анна Левченко'],
-    [22,'operator','Курсы отданы: RUB→USDT 103,50 · USDT→THB 31,20'],
-    [40,'manager','Клиент согласен с курсом 3,32'],
-    [65,'operator','Пакет документов собран'],
-    [90,'manager','Деньги пришли: 1 164 000 ₽ — ждём конвертацию']],150);
+    [22,'operator','Курсы отданы: RUB→USDT 81,10 · USDT→THB 31,20'],
+    [18,'manager','Клиент согласен с курсом 2,66'],
+    [25,'operator','Пакет документов собран'],
+    [25,'manager','Деньги пришли: 931 000 ₽'],
+    [4,'manager','Реквизиты для оплаты заполнены: Sansiri Public Company Limited · Kasikornbank · 012-3-45678-9 · 350 000 ฿ · назначение «Payment for unit CRA412, invoice INV-CRA412-0917, Levchenko Anna»']],150);
   noteAdd('operator','Задача на вас: '+(STEPS['s18']?STEPS['s18'].title:'Отправка брокеру')+
-    ' · Левченко Анна · 1 164 000 ₽ готовы к конвертации',big.id);
+    ' · Левченко Анна · 931 000 ₽ готовы к конвертации',big.id);
 
   /* Мелочь в очереди: разные клиенты, суммы и способы оплаты — на них и видно,
      как наценка считается по каждой сделке, а курс берётся на общий объём. */
-  [[6,'wa','+66 92 888 0412','Гурьев Денис',84000,'Крипта',95],
+  /* Гурьев был «Крипта» с суммой в рублях — крипта в рублёвую пачку не идёт (24.09) */
+  [[6,'wa','+66 92 888 0412','Гурьев Денис',84000,'По реквизитам',95],
    [7,'tg','Ким Сергей','Ким Сергей',156000,'СБП',70],
    [8,'wa','+7 903 774 1290','Мартиросян Карен',64000,'Наличные',35],
    [9,'tg','Полякова Инна','Полякова Инна',238000,'По реквизитам',18]].forEach(function(a){
