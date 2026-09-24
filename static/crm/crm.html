@@ -8758,18 +8758,32 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (binanceTxHash) data.payout_tx_hash = binanceTxHash;
                 }
 
-                const response = await fetch(url, {
+                let response = await fetch(url, {
                     method: method,
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
                 });
-                const result = await response.json();
+                let result = await response.json();
+                if (response.status === 409 && result.requires_confirmation) {
+                    const confirmed = await showConfirm(
+                        `${result.warning}\n\nСумма к возмещению по сделке будет больше суммы перевода в сети. Вы уверены, что хотите сохранить её?`,
+                        'Да, сохранить');
+                    if (!confirmed) return;
+                    data.confirm_payout_tx_overage = true;
+                    response = await fetch(url, {
+                        method,
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    });
+                    result = await response.json();
+                }
 
                 if (result.success) {
                     const dealId = result.deal?.id || '';
                     showToast(isEditMode ? `Сделка #${dealId} обновлена` : `Сделка #${dealId} создана`, 'success');
-                    // Остаток карты ушёл в минус — сделку сохранили, но пополнения надо проверить
-                    if (result.warning) showToast(result.warning, 'error', 7000);
+                    // Остаток карты в минусе или доля больше ушедшего в сети:
+                    // сделку сохранили, но цифру надо перепроверить
+                    if (result.warning) showToast(result.warning, 'error', 10000);
                     this.reset();
                     stdAgents = []; renderStdAgents();
                     sberReset();
@@ -10117,6 +10131,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         с кошелька ${t.wallet_label ? '<b>' + escapeHtml(t.wallet_label) + '</b> ' : ''}
                         <code>${(t.from_address || '').slice(0, 14)}…</code> — туда же пойдёт возврат</div>` : ''}
                     ${payoutTxHint(t.hash) ? `<div style="font-size:0.78rem;color:#b45309;padding:0 4px 2px 8px;">${payoutTxHint(t.hash)}</div>` : ''}
+                    <div class="payout-tx-over" style="font-size:0.78rem;color:#b91c1c;font-weight:600;padding:0 4px 2px 8px;${payoutTxOverNote(t) ? '' : 'display:none;'}">${payoutTxOverNote(t)}</div>
                 </div>`).join('') +
                 `<div style="text-align:right;font-weight:700;color:#b91c1c;">Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}</div>`;
             payoutRefreshInfo();
@@ -10261,6 +10276,22 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (typeof calculateProfit === 'function') calculateProfit();
         }
 
+        function payoutTxOverNote(t) {
+            /* Доля больше, чем ушло по хешу в сети. Сервер это принимает —
+               выдача бывает несколькими переводами, а отмечают один, и терять
+               настоящую себестоимость из-за этого нельзя. Но молчать тоже:
+               иначе расхождение всплывёт только на возмещении, когда оунеру
+               вернём не ту сумму. */
+            const led = payoutTxLedger[t.hash];
+            const onchain = (t.onchain_usdt != null) ? t.onchain_usdt
+                          : (led && led.amount_usdt ? led.amount_usdt : null);
+            const share = t.amount_usdt;
+            if (onchain == null || !share) return '';
+            const over = +(share - onchain).toFixed(2);
+            if (over <= 0.01) return '';
+            return `⚠️ по этому хешу в сети ушло $${onchain.toFixed(2)} — доля больше на $${over.toFixed(2)}. Сохранить можно, но проверь, не было ли второго перевода.`;
+        }
+
         function payoutTxShareChanged(i, value) {
             const n = parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
             payoutTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
@@ -10268,6 +10299,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const total = box?.querySelector('div[style*="text-align:right"]');
             if (total) total.innerHTML = `Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}`;
             payoutRefreshInfo();
+            payoutRefreshOverNotes();
+        }
+
+        function payoutRefreshOverNotes() {
+            /* Перерисовываем только заметки: renderPayoutTxPool пересоздаёт
+               input и сбивает каретку прямо во время набора суммы. */
+            const box = document.getElementById('payoutTxPoolBox');
+            if (!box) return;
+            box.querySelectorAll('.payout-tx-over').forEach((el, i) => {
+                const note = payoutTxOverNote(payoutTxPool[i]);
+                el.innerHTML = note;
+                el.style.display = note ? 'block' : 'none';
+            });
         }
 
         function removePayoutTx(i) {
@@ -10335,6 +10379,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                не понять, что этот перевод уже оплатил чужую выдачу. */
             const t = payoutTxLedger[hash];
             if (!t || t.used_usdt <= 0.01) return '';
+            if (t.free_usdt < -0.01) return `⚠️ перебор $${Math.abs(t.free_usdt).toFixed(2)} · `;
             return t.free_usdt > 0.01
                 ? `♻️ свободно $${t.free_usdt.toFixed(2)} · `
                 : '✅ разобран · ';
@@ -10345,6 +10390,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             if (!t) return '';
             if (t.used_usdt <= 0.01) return '';
             const deals = (t.deal_ids || []).map(id => '#' + id).join(', ');
+            if (t.free_usdt < -0.01) {
+                return `по переводу разнесено $${t.used_usdt.toFixed(2)}${deals ? ' (' + deals + ')' : ''} при ушедших в сети $${t.amount_usdt.toFixed(2)} — перебор $${Math.abs(t.free_usdt).toFixed(2)}`;
+            }
             return `по переводу уже разнесено $${t.used_usdt.toFixed(2)}${deals ? ' (' + deals + ')' : ''}, свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}`;
         }
 
@@ -10361,7 +10409,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const led = payoutTxLedger[hash];
             // Подставляем свободный остаток: перевод на 1952 мог уже оплатить
             // выдачу другой сделке, и целиком его брать нельзя
-            const suggested = led ? led.free_usdt : (isNaN(amount) ? null : amount);
+            const suggested = led ? Math.max(led.free_usdt, 0) : (isNaN(amount) ? null : amount);
             payoutTxPool.push({
                 hash,
                 amount_usdt: suggested,
@@ -10386,6 +10434,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Остатки по переводам должны приехать раньше списка: иначе опции
             // отрисуются без пометки «свободно / разобран»
             await loadPayoutTxLedger();
+            // Сделку на редактирование открывают раньше, чем приедет реестр, и
+            // перебор по уже сохранённой доле оставался бы без предупреждения
+            payoutRefreshOverNotes();
             const btn = document.getElementById('payoutTxRefreshBtn');
             if (btn) { btn.disabled = true; btn.textContent = '…'; }
             // Пустой селект читается как «переводов нет», хотя на холодном кэше
@@ -11727,10 +11778,13 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                         ? `<span style="color:#6b7280;"> → вернуть <strong>${formatNumber(deal.payout_amount_usdt || 0)} USDT</strong></span>
                                            <div style="font-size:0.8rem;color:#92400e;padding-left:1.5rem;">свои баты, конвертации не было</div>`
                                         : '';
+                                    const payoutCost = !deal.payout_no_conversion && deal.payout_amount_usdt
+                                        ? `<span style="color:#92400e;"> → к возмещению <strong>${formatNumber(deal.payout_amount_usdt)} USDT</strong></span>`
+                                        : '';
                                     return `
                                     <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem; background: white; border-radius: 4px; margin-bottom: 0.25rem; cursor: pointer;">
                                         <input type="checkbox" class="reimburse-deal" data-founder="${founder.founder_name}" data-deal-id="${deal.id}" data-thb="${thbForCheckbox}" checked onchange="updateReimbursementTotal('${founder.founder_name}')">
-                                        <span style="flex:1;">Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong>${noConv}</span>
+                                        <span style="flex:1;">Сделка #${deal.id} · <span style="color:#6b7280">${formatDate(deal.created_at)}</span> · ${escapeHtml(deal.client_name)}: <strong>${label}</strong>${noConv}${payoutCost}</span>
                                         <input type="number" step="0.01" class="reimburse-alloc" data-founder="${founder.founder_name}" data-deal-id="${deal.id}"
                                                placeholder="доля $" title="Сколько из перевода уходит на эту сделку"
                                                style="width:120px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;"

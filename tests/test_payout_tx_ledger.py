@@ -75,7 +75,7 @@ def cleanup_rows():
         s.close()
 
 
-def _create_deal(cli, payout_thb, tx_hash, share_usdt):
+def _create_deal(cli, payout_thb, tx_hash, share_usdt, *, confirm=False):
     """Сделка с выдачей из личных фаундера, оплаченной долей перевода."""
     return cli.post('/api/deals', json={
         'client_name': 'Тест выдачи', 'deal_type': 'pay_in',
@@ -83,6 +83,7 @@ def _create_deal(cli, payout_thb, tx_hash, share_usdt):
         'payout_method': 'transfer', 'payout_source': 'founder_personal',
         'payout_founder_name': 'Андрей', 'payout_amount_thb': payout_thb,
         'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': share_usdt}],
+        'confirm_payout_tx_overage': confirm,
     })
 
 
@@ -125,19 +126,50 @@ class TestRemainder:
         assert r.status_code in (200, 201), r.get_json()
         assert _tx(tx_hash).free_usdt() == pytest.approx(67.12)
 
-    def test_over_remainder_rejected(self, cli, tx_hash):
-        """Больше остатка выдать нельзя — иначе себестоимость задваивается."""
+    def test_over_remainder_requires_confirmation(self, cli, tx_hash):
+        """Без подтверждения превышение откатывается целиком.
+
+        Выдача бывает несколькими переводами, а отмечают один: отказ не
+        предотвращал ошибку, а стирал настоящую себестоимость (сделка просто
+        не сохранялась). Решает человек — но перебор должен быть назван.
+        """
         _create_deal(cli, 16600, tx_hash, 509.42)
         r = _create_deal(cli, 45000, tx_hash, 1952.0)
         assert r.status_code == 409, r.get_json()
-        body = r.get_json()
-        assert 'свободно' in body['error']
-        assert '1,442.58' in body['error'] or '1442.58' in body['error']
+        assert r.get_json()['requires_confirmation'] is True
+        warn = r.get_json().get('warning') or ''
+        assert 'перевод' in warn.lower()
+        assert '1,442.58' in warn or '1442.58' in warn      # свободно было
+        assert '1,952.00' in warn or '1952.00' in warn      # отнесли
+        assert '509.42' in warn                             # перебор
+        assert _tx(tx_hash).free_usdt() == pytest.approx(1442.58)
 
-    def test_same_hash_full_amount_twice_rejected(self, cli, tx_hash):
-        """Ровно та дыра, из-за которой всё затевалось."""
+        accepted = _create_deal(cli, 45000, tx_hash, 1952.0, confirm=True)
+        assert accepted.status_code == 201, accepted.get_json()
+        assert accepted.get_json().get('warning')
+        assert _tx(tx_hash).free_usdt() == pytest.approx(-509.42)
+
+    def test_over_remainder_keeps_onchain_ceiling(self, cli, tx_hash):
+        """Потолок перевода остаётся сетевым: перебор виден как минус."""
+        _create_deal(cli, 16600, tx_hash, 509.42)
+        _create_deal(cli, 45000, tx_hash, 1952.0, confirm=True)
+        tx = _tx(tx_hash)
+        assert tx.amount_usdt == pytest.approx(1952.0)
+        assert tx.free_usdt() == pytest.approx(-509.42)
+
+    def test_exact_remainder_saves_without_warning(self, cli, tx_hash):
+        """Сошлось ровно — предупреждать не о чем."""
+        _create_deal(cli, 16600, tx_hash, 509.42)
+        r = _create_deal(cli, 45000, tx_hash, 1442.58)
+        assert r.status_code in (200, 201), r.get_json()
+        assert not r.get_json().get('warning')
+
+    def test_same_hash_full_amount_twice_warns(self, cli, tx_hash):
+        """Та самая дыра: сохраняем, но говорим о ней вслух."""
         assert _create_deal(cli, 45000, tx_hash, 1952.0).status_code in (200, 201)
-        assert _create_deal(cli, 45000, tx_hash, 1952.0).status_code == 409
+        r = _create_deal(cli, 45000, tx_hash, 1952.0, confirm=True)
+        assert r.status_code in (200, 201), r.get_json()
+        assert r.get_json().get('warning')
 
     def test_share_lowered_returns_remainder(self, cli, tx_hash):
         """Уменьшили долю в сделке — остаток вернулся в перевод."""
@@ -360,3 +392,74 @@ class TestBatchTransfer:
         assert r.status_code in (200, 201), r.get_json()
         assert _tx(tx_hash).amount_usdt == pytest.approx(3645.40)
         assert _tx(tx_hash).free_usdt() == pytest.approx(1.50)
+
+
+class TestBackfilledCeilingMeetsNetwork:
+    """Кейс 23.09: доля из CRM разошлась с сетью, и сделка перестала сохраняться.
+
+    Перевод 16e12f3d4560… попал в реестр бэкфиллом — source='manual', сумма
+    равна заявленной доле 2461.918, сеть не опрашивалась. На следующем
+    сохранении CRM впервые сверилась с TronScan и увидела настоящие 2365.00:
+    доля стала больше потолка, и сделка отваливалась с 409 «ушло $2 365.00,
+    свободно $2 365.00 — нельзя отнести на сделку $2 461.92».
+
+    Отказ был хуже расхождения: выдача идёт несколькими переводами, а отмечен
+    один, и настоящая себестоимость просто не записывалась.
+    """
+
+    @pytest.fixture
+    def onchain_2365(self, monkeypatch):
+        monkeypatch.setattr(appmod, '_tron_tx_info', lambda h: {
+            'amount_usdt': 2365.0, 'from_address': WALLET, 'to_address': EXCHANGE})
+
+    def test_resave_over_ceiling_goes_through_with_warning(self, cli, tx_hash,
+                                                           monkeypatch, onchain_2365):
+        s = get_session()
+        try:
+            s.add(PayoutTx(tx_hash=tx_hash, amount_usdt=2461.918, source='manual',
+                           from_address=WALLET, to_address=EXCHANGE,
+                           notes='бэкфилл: сумма из CRM, с сетью не сверена'))
+            s.commit()
+        finally:
+            s.close()
+
+        first = _create_deal(cli, 79495, tx_hash, 2461.918)
+        assert first.status_code == 409, first.get_json()
+        assert first.get_json()['requires_confirmation'] is True
+        assert _tx(tx_hash).source == 'manual'  # сетевая сверка откатилась
+        r = _create_deal(cli, 79495, tx_hash, 2461.918, confirm=True)
+        assert r.status_code == 201, r.get_json()
+        deal_id = r.get_json()['deal']['id']
+
+        # Потолок подтянулся из сети, доля осталась той, что ввёл менеджер
+        tx = _tx(tx_hash)
+        assert tx.amount_usdt == pytest.approx(2365.0)
+        assert tx.source == 'tronscan'
+        assert tx.free_usdt() == pytest.approx(-96.92)
+
+        warn = r.get_json().get('warning') or ''
+        assert '2,365.00' in warn and '2,461.92' in warn
+        assert '96.92' in warn
+
+        # Повторное сохранение той же сделки тоже проходит — раньше был 409
+        r2 = cli.put(f'/api/deals/{deal_id}', json={
+            'payout_amount_thb': 79495,
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 2461.918}]})
+        assert r2.status_code == 409, r2.get_json()
+        assert r2.get_json()['requires_confirmation'] is True
+        r3 = cli.put(f'/api/deals/{deal_id}', json={
+            'payout_amount_thb': 79495,
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 2461.918}],
+            'confirm_payout_tx_overage': True})
+        assert r3.status_code == 200, r3.get_json()
+        assert r3.get_json().get('warning')
+
+    def test_share_corrected_to_onchain_clears_warning(self, cli, tx_hash, onchain_2365):
+        """Менеджер поправил долю до реальных 2365 — предупреждения больше нет."""
+        deal_id = _create_deal(cli, 79495, tx_hash, 2461.918, confirm=True).get_json()['deal']['id']
+        r = cli.put(f'/api/deals/{deal_id}', json={
+            'payout_amount_thb': 79495,
+            'payout_tx_hashes': [{'hash': tx_hash, 'amount_usdt': 2365.0}]})
+        assert r.status_code == 200, r.get_json()
+        assert not r.get_json().get('warning')
+        assert _tx(tx_hash).free_usdt() == pytest.approx(0.0)

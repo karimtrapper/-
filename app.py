@@ -7318,10 +7318,19 @@ def _payout_tx_get_or_create(session, tx_hash, claim_usdt, part=None):
 def _sync_payout_tx_uses(session, deal, parts):
     """Синхронизирует доли сделки в переводах выдачи.
 
-    Зеркало _sync_payin_tx_uses. Инвариант тот же: сумма долей по переводу не
-    больше того, что реально ушло (допуск копейка). Превышение — двойной учёт
-    себестоимости: один перевод оплатил бы две выдачи целиком.
+    Зеркало _sync_payin_tx_uses, но мягче. Раньше доля больше ушедшего в сети
+    была отказом (409) — защитой от двойного учёта себестоимости. На практике
+    выдача идёт несколькими переводами, а в CRM отмечают один: запрет не
+    предотвращал ошибку, а стирал реальную себестоимость — сделка просто не
+    сохранялась, и сколько выдали на самом деле, никто уже не узнавал.
+
+    Теперь превышение записывается как есть и возвращается предупреждением:
+    решает человек, а не инвариант. Приход (_sync_payin_tx_uses) остаётся
+    строгим — там лишняя доля это деньги, которых не было.
+
+    Возвращает список предупреждений (пустой, когда всё сходится).
     """
+    warnings = []
     wanted = {p['hash']: p for p in (parts or []) if p.get('hash')}
 
     for use in session.query(PayoutTxUse).filter(PayoutTxUse.deal_id == deal.id).all():
@@ -7394,10 +7403,18 @@ def _sync_payout_tx_uses(session, deal, parts):
 
             if (tx.used_usdt() > (tx.amount_usdt or 0) + 0.01
                     and tx.source in ('tronscan', 'etherscan')):
+                # free — остаток без доли ЭТОЙ сделки. Считать иначе нельзя:
+                # used_usdt() уже включает share, и «свободно» совпадало бы с
+                # суммой перевода — сообщение читалось как бессмыслица
+                # («ушло $2 365.00, свободно $2 365.00»). Перебор называем вслух.
                 free = round((tx.amount_usdt or 0) - tx.used_usdt() + share, 2)
-                raise ValueError(
-                    f'Из перевода {tx_hash[:12]}… ушло ${tx.amount_usdt:,.2f}, '
-                    f'свободно ${free:,.2f} — нельзя отнести на сделку ${share:,.2f}')
+                over = round(share - free, 2)
+                warnings.append(
+                    f'Перевод {tx_hash[:12]}…: в сети ушло ${tx.amount_usdt:,.2f}, '
+                    f'свободно было ${free:,.2f}, а на сделку отнесли ${share:,.2f} '
+                    f'— на ${over:,.2f} больше. Проверь сумму к возмещению.')
+
+    return warnings
 
 
 def _payout_cost_from_transfers(deal):
@@ -7886,13 +7903,14 @@ def create_deal():
 
         # Фактические переводы выдачи с кошелька оунера. Недвижимость разбирает
         # свои переводы внутри _apply_mf_* — здесь только обмен.
+        tx_warnings = []
         if 'payout_tx_hashes' in data and deal.deal_kind not in REALTY_KINDS:
             _apply_payout_transfers(deal, data)
             _enrich_payout_transfers(session, deal)
             # Доли сделки в переводах выдачи: один перевод оплачивает выдачи
             # нескольким клиентам, поэтому остаток ведётся реестром
             try:
-                _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
             except ValueError as e:
                 session.rollback()
                 return jsonify({'success': False, 'error': str(e)}), 409
@@ -7943,7 +7961,7 @@ def create_deal():
             # они жили только JSON-ом в сделке и не создавались в общем реестре.
             if deal.deal_kind in REALTY_KINDS and 'payout_tx_hashes' in data:
                 try:
-                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                    tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
                 except ValueError as e:
                     session.rollback()
                     return jsonify({'success': False, 'error': str(e)}), 409
@@ -7958,6 +7976,11 @@ def create_deal():
                 _mirror_legacy_agent(session, deal)
 
         _clear_profit_if_payin_unknown(deal)
+
+        if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
+            session.rollback()
+            return jsonify({'success': False, 'requires_confirmation': True,
+                            'warning': ' · '.join(tx_warnings)}), 409
 
         # Выдача с карты завершена в момент создания: возмещения ждать не надо.
         # Но «прибыль известна» — только когда приход тоже посчитан в USDT.
@@ -8031,8 +8054,9 @@ def create_deal():
                     print(f'[Telegram] Error on create: {e}')
 
         payload = {'success': True, 'deal': deal.to_dict()}
-        if card_warning:
-            payload['warning'] = card_warning
+        notes = ([card_warning] if card_warning else []) + tx_warnings
+        if notes:
+            payload['warning'] = ' · '.join(notes)
         return jsonify(payload), 201
     except Exception as e:
         import traceback
@@ -8224,6 +8248,7 @@ def update_deal(deal_id):
         # и прибыль считалась по ещё пустой себестоимости: #580 ушла в TG с
         # «Прибыль $0.00» при 268.65 − 251.42 = 17.23, а у сделки с агентом на
         # revshare от нулевой прибыли обнулилась бы и выплата партнёру
+        tx_warnings = []
         card_warning = _sync_card_allocation(session, deal)
 
         if deal.deal_kind in REALTY_KINDS:
@@ -8233,7 +8258,7 @@ def update_deal(deal_id):
                 _apply_mf_freehold(deal, data)
             if 'payout_tx_hashes' in data:
                 try:
-                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                    tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
                 except ValueError as e:
                     session.rollback()
                     return jsonify({'success': False, 'error': str(e)}), 409
@@ -8249,7 +8274,7 @@ def update_deal(deal_id):
                 _apply_payout_transfers(deal, data)
                 _enrich_payout_transfers(session, deal)
                 try:
-                    _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
+                    tx_warnings += _sync_payout_tx_uses(session, deal, _payout_transfer_parts(deal))
                 except ValueError as e:
                     session.rollback()
                     return jsonify({'success': False, 'error': str(e)}), 409
@@ -8291,6 +8316,11 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': no_conv_error}), 400
 
         _clear_profit_if_payin_unknown(deal)
+
+        if tx_warnings and data.get('confirm_payout_tx_overage') is not True:
+            session.rollback()
+            return jsonify({'success': False, 'requires_confirmation': True,
+                            'warning': ' · '.join(tx_warnings)}), 409
 
         # Приход досчитали в USDT — себестоимость известна, сделка закрывается
         # сама, а webhook / DM агентам / GSheet / Telegram уходят общей веткой
@@ -8366,8 +8396,9 @@ def update_deal(deal_id):
                 print(f'[GSheet] Update error: {e}')
 
         payload = {'success': True, 'deal': deal.to_dict()}
-        if card_warning:
-            payload['warning'] = card_warning
+        notes = ([card_warning] if card_warning else []) + tx_warnings
+        if notes:
+            payload['warning'] = ' · '.join(notes)
         return jsonify(payload)
     except Exception as e:
         import traceback
