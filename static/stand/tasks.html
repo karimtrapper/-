@@ -1768,7 +1768,12 @@ function go(d,step,text){
   taskToDeal(d,step);
   d.step=step; log(d,text||('→ '+(STEPS[step]?STEPS[step].title:step)));
   const to=stepWho(d,step);
-  if(to&&to!==prev) S.modal={id:d.id,step:step,to:to};
+  if(to&&to!==prev){
+    S.modal={id:d.id,step:step,to:to};
+    /* Работа ушла другому человеку — он про это узнает, только если сказать.
+       Уведомление тут одно на переход: сервер разошлёт его в Телеграм. */
+    noteAdd(to,'Задача на вас: '+(STEPS[step]?STEPS[step].title:step),d.id);
+  }
   save(); render();
 }
 /* Кто делает шаг отправки — зависит от кошелька: мультисиг подписывает Виталий,

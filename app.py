@@ -4746,6 +4746,54 @@ def stand_state_get():
         db.close()
 
 
+STAND_ROLE_PEOPLE = {'manager': 'Марина · менеджер', 'operator': 'Артём · операционист',
+                     'findir': 'Виталий · фин. директор', 'teodor': 'Теодор', 'admin': 'Админ'}
+
+
+def _stand_tg_send(text):
+    """Отправка в чат стенда отдельным ботом.
+
+    Токен намеренно НЕ TELEGRAM_BOT_TOKEN: боевой бот пишет в рабочие чаты, и
+    дать его стенду — значит однажды прислать команде выдуманную сделку как
+    настоящую. Здесь свой бот и свой чат, больше он никуда не достучится.
+    """
+    token = os.environ.get('STAND_TG_TOKEN', '').strip()
+    chat = os.environ.get('STAND_TG_CHAT', '').strip()
+    if not token or not chat:
+        return
+    try:
+        requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
+                      json={'chat_id': chat, 'text': text, 'parse_mode': 'HTML',
+                            'disable_web_page_preview': True}, timeout=10)
+    except Exception as exc:
+        print(f'[STAND] Телеграм не принял уведомление: {exc}')
+
+
+def _stand_notify(old_data, new_data):
+    """Шлём только те уведомления, которых раньше не было.
+
+    Сравниваем на сервере, а не на клиенте: одну и ту же доску тянут несколько
+    браузеров, и каждый отправил бы своё — в чат прилетели бы дубли.
+    """
+    old_ids = {str(n.get('id')) for n in (old_data.get('notes') or [])}
+    fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in old_ids]
+    if not fresh:
+        return
+    deals = {d.get('id'): d for d in (new_data.get('deals') or [])}
+    lines = []
+    for n in reversed(fresh):          # в состоянии новые лежат сверху
+        who = STAND_ROLE_PEOPLE.get(n.get('role'), n.get('role') or '')
+        d = deals.get(n.get('dealId')) or {}
+        tail = ''
+        if d:
+            tail = f"\n<i>{d.get('code') or ''} · {d.get('client') or ''}</i>"
+        lines.append(f"🔔 <b>{who}</b>\n{n.get('text') or ''}{tail}")
+    text = '\n\n'.join(lines[:5])
+    if len(fresh) > 5:
+        text += f"\n\n…и ещё {len(fresh) - 5}"
+    threading.Thread(target=_stand_tg_send, args=(text,), daemon=True).start()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -4768,11 +4816,13 @@ def stand_state_put():
                             'version': row.version or 0,
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
+        prev = json.loads(row.data or '{}')
         row.data = json.dumps(payload['data'], ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
         row.updated_at = datetime.utcnow()
         db.commit()
+        _stand_notify(prev, payload['data'])
         return jsonify({'success': True, 'version': row.version})
     finally:
         db.close()
