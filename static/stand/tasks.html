@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 24.09 · проверка переводов</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 00:50 · крипта</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -597,7 +597,7 @@ function avgRate(){return (S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
 function avgUsdt(){return (S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
 /* Валюта, в которой платит клиент. Крипта — это USDT, рублей в такой сделке нет
    вообще: ни курса RUB→USDT, ни поступления на Сбер, ни конвертации. */
-const SIGN={rub:'₽',usdt:'$',thb:'฿'};
+const SIGN={rub:'₽',usdt:'USDT',thb:'฿'};  // клиенту — USDT, а не «$»: для людей это разные деньги
 function payCur(d){return (d.payType==='Крипта'||d.curBase==='usdt')?'usdt':'rub';}
 /* Клиент часто спрашивает оба варианта: «а если криптой — дешевле?».
    Себестоимость бата разная: в рублях добавляется нога RUB→USDT со своим спредом,
@@ -614,7 +614,7 @@ function refreshAvg(){
   const v=Math.round(avgRate()*(1+(Math.random()-0.5)*0.03)*10000)/10000;
   const u=Math.round(avgUsdt()*(1+(Math.random()-0.5)*0.02)*10000)/10000;
   S.avg={v:v,at:Date.now()};S.avgU={v:u,at:Date.now()};save();render();
-  toast('Курсы дня обновлены: '+String(v).replace('.',',')+' ₽/฿ · '+String(u).replace('.',',')+' ฿/$');
+  toast('Курсы дня обновлены: '+String(v).replace('.',',')+' ₽/฿ · '+String(u).replace('.',',')+' ฿/USDT');
 }
 function approx(d){
   const cur=payCur(d), usdt=cur==='usdt';
@@ -1835,7 +1835,10 @@ const STEPS={
 /* Шага «запрос курса» в пути больше нет: запрос уходит в момент создания заявки.
    Он остаётся только у сделок, заведённых до этой правки. */
 const FLOW_RUB =['s5','s6','s8','s11','s12','s14','s15','s18','s18w','s22','s23','s24','s25','s26','s27'];
-const FLOW_USDT=['s5','s6','s8','s11','s12','s14','s15',      's23','s24','s25','s26','s27'];
+/* Крипта: конвертации у брокера нет, но решение «что делаем с USDT» есть — без него
+   Coins не назначен, отправлять нечего, и путь вставал на подписи с нулём переводов
+   (прогон крипто-лизхолда 25.09). */
+const FLOW_USDT=['s5','s6','s8','s11','s12','s14','s15','s22','s23','s24','s25','s26','s27'];
 const FLOW_ALIAS={s11b:'s11',s14m:'s14'};
 function flowOf(d){
   let F=isCrypto(d)?FLOW_USDT:FLOW_RUB;
@@ -2013,7 +2016,11 @@ function docFields(d){
     partNo:d.partNo||'', invoiceTotal:d.invoiceTotal||'',
     /* реквизиты компании */
     agent:MF.name, agentReg:MF.reg, agentDir:MF.dir,
-    payTo:MF.rubName+' · ИНН '+MF.inn+' · '+MF.bank+' · р/с '+MF.acc,
+    /* Крипто-клиент платит USDT на кошелёк компании; рублёвые реквизиты ему не нужны —
+       в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
+    payTo:isCrypto(d)
+      ? 'USDT · сеть TRC-20 · кошелёк '+MF.name+': '+((walletById('grusha')||{}).addr||'')
+      : MF.rubName+' · ИНН '+MF.inn+' · '+MF.bank+' · р/с '+MF.acc,
     purpose:'Оплата по агентскому договору № '+d.code+', НДС не облагается',
     feeNote:'Комиссия включена в курс, отдельно не взимается',
     validTill:''
@@ -2216,13 +2223,13 @@ function tgLines(d,step){
       break;
     case 's12':
       L.push({t:`Пакет документов готов — отправьте клиенту`,b:true});
-      L.push({t:`К оплате ${money(ap.pay,ap.sign)} · курс ${d.rates.client||'—'} ${isCrypto(d)?'฿/$':'₽/฿'}`});break;
+      L.push({t:`К оплате ${money(ap.pay,ap.sign)} · курс ${d.rates.client||'—'} ${isCrypto(d)?'฿/USDT':'₽/฿'}`});break;
     case 's11b':
       L.push({t:`Договор собран — проверьте перед отправкой`,b:true});
       L.push({t:`${d.kind||d.type} · ${both}`});break;
     case 's18':
       L.push({t:`Деньги получены: ${money(d.incomeAmount||ap.pay,ap.sign)}`,b:true});
-      L.push({t:`К оплате получателю ${money(ap.thb,'฿')} · курс сделки ${d.rates.client||'—'} ₽/฿`});break;
+      L.push({t:`К оплате получателю ${money(ap.thb,'฿')} · курс сделки ${d.rates.client||'—'} ${isCrypto(d)?'฿/USDT':'₽/฿'}`});break;
     case 's23':
       L.push({t:`Создать платёж на ${money(d.pay.usdt)} USDT`,b:true});
       L.push({t:`Сеть TRON · TRC-20 · сделка ${d.code}`});break;
@@ -3148,7 +3155,7 @@ function overview(d,st,mine,p,wh){
         ?row('Отправлено',usd(E.sentUsd),'комиссия 0,8% + 50 $ = '+usd(E.bankFee))+row('Дойдёт застройщику',usd(E.sentUsd-E.bankFee))
         :row('Отправлено в компанию',money(E.sentThb,'฿'),'комиссия '+E.companyPct.toFixed(2)+'% = '+money(E.feeThb,'฿')+' / '+usd(E.feeUsd))}
       ${row('Курс покупки',String(E.buy).replace('.',','),'฿ за 1 USDT')}
-      ${d.rates.client?row('Курс клиенту',d.rates.client+(isCrypto(d)?' ฿/$':' ₽/฿')):''}
+      ${d.rates.client?row('Курс клиенту',d.rates.client+(isCrypto(d)?' ฿/USDT':' ₽/฿')):''}
       ${row('Себестоимость',usd(E.cost))}
     </table>
     ${d.pay.outHash?`<div class="box box-red">
@@ -3368,11 +3375,11 @@ function ctxCard(d){
     ${fact('Что делаем',d.type+(d.kind?' · '+d.kind:''),'платит: '+(d.payType||'не указано'))}
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,'฿'):'оплата целиком')}
     ${fact('Получатель получает',money(ap.thb,'฿')+(ap.approx==='thb'?' ≈':''),'клиент отдаёт '+money(ap.pay,ap.sign)+(ap.approx==='pay'?' ≈':''))}
-    ${fact('Курс клиенту',(d.rates.client||'—')+' '+(isCrypto(d)?'฿/$':'₽/฿'),(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
+    ${fact('Курс клиенту',(d.rates.client||'—')+' '+(isCrypto(d)?'฿/USDT':'₽/฿'),(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>DOCT[k]).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
     ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts,last.text):''}
   </div>
-  ${FILLS[d.step]?`<div class="alert a-ok" style="margin:16px 0 0"><div><b>Эта задача заполняет в сделке: ${FILLS[d.step].b}</b> — ${FILLS[d.step].w}.</div></div>`:''}
+  ${FILLS[d.step]?`<div class="alert a-ok" style="margin:16px 0 0"><div><b>Эта задача заполняет в сделке: ${FILLS[d.step].b}</b> — ${(d.step==='s5'&&isCrypto(d))?'курс USDT→THB у Coins или Bitazza — рублей в сделке нет':FILLS[d.step].w}.</div></div>`:''}
   ${d.docComment?`<div class="alert a-info" style="margin:16px 0 0"><div><b>Комментарий постановщика:</b> ${d.docComment}</div></div>`:''}
   ${d.reRequest?`<div class="alert a-warn" style="margin:16px 0 0"><div>Курс запрашивали заново ${d.reRequest} раз${d.reRequest>1?'а':''} — клиент возвращался. Прошлые цифры в истории справа.</div></div>`:''}
   </div>`;
@@ -4474,6 +4481,21 @@ function costRate(d){
   if(isCrypto(d)) return ut||null;              // ฿ за 1 USDT по себестоимости
   return (ru&&ut)?(ru/ut):null;                 // ₽ за 1 ฿ по себестоимости
 }
+/* Себестоимость для наценки менеджеру — как считается прибыль сделки (econ).
+   Фрихолд: 0,8 % + $50 за перевод — это расход, он в себестоимости.
+   Лизхолд: комиссия компании (1 %) — не расход, а доход во втором кармане (баты
+   в MF Corp), поэтому себестоимость — голый курс; подпись напоминает, что часть
+   наценки живёт в батах (разбор 25.09). Для «курс уехал» — рыночный costRate. */
+function costRateAll(d){
+  const ru=num(d.rates.rubUsdt), ut=num(d.rates.usdtThb), thb=d.amountThb||approx(d).thb||0;
+  if(!ut||!thb) return {rate:costRate(d),fee:''};
+  let usdt=thb/ut, fee='';
+  if(d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'){usdt=usdt*1.008+50;fee='с переводом 0,8 % + $50';}
+  else if(d.type==='Оплата недвижимости'){const pct=(d.companyPct==null?1:d.companyPct);
+    fee='из наценки '+String(pct).replace('.',',')+' % — комиссия компании, останется батами в MF Corp';}
+  if(isCrypto(d)) return {rate:thb/usdt,fee:fee};
+  return {rate:ru?usdt*ru/thb:null,fee:fee};
+}
 function cleanNum(v){return String(v==null?'':v).replace(/[^\d.,]/g,'');}
 /* На этом шаге правятся все цифры: клиент мог согласиться на другую сумму, а
    контрагент — передоговориться о курсе. Меняем одно — пересчитывается зависимое. */
@@ -4546,7 +4568,11 @@ function incomeExact(id){
   if(isCrypto(d)){
     d.incomeAmount=exp;
     d.amountUsdt=d.amountUsdt||a.pay; d.pay.usdt=a.pay;
-    d.pay.hash='0x'+Math.random().toString(16).slice(2,10)+'…'+Math.random().toString(16).slice(2,6);
+    /* Клиент платит на мультисиг Груши — с него потом и отправляем в Coins. Приход
+       тестовый: помечен DEMO, и переводы по сделке идут в тестовом режиме. */
+    d.walletId=d.walletId||'grusha'; d.demoTransfers=true;
+    d.pay.hash='demo:payin:'+d.id+':'+Date.now();
+    d.payinHashes=[{amount:a.pay,network:'TRC20',hash:d.pay.hash}];
     log(d,'Симуляция: тестовый приход USDT подтверждён в сети: '+money(a.pay,'$'));
     go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
     toast('Деньги пришли — заполните реквизиты оплаты');return;}
@@ -4587,13 +4613,16 @@ function stepGoal(d){
     case 's4': return {t:'Получить курсы контрагентов, чтобы посчитать клиенту',
       nums:[['Получателю',money2(ap.thb,'฿')],['Клиент отдаёт',money2(ap.pay,ap.sign)+(ap.approx?' ≈':'')],
             ['Тип',d.type+(d.kind?' · '+d.kind:'')]]};
-    case 's5': return {t:'Вернуть два числа: курс брокера и курс партнёра',
+    case 's5': return isCrypto(d)
+      ? {t:'Вернуть курс USDT → THB — рублей в сделке нет',
+         nums:[['USDT → THB',d.rates.usdtThb||'ждём'],['Объём',money2(ap.pay,ap.sign)],['Получателю',money2(ap.thb,'฿')]]}
+      : {t:'Вернуть два числа: курс брокера и курс партнёра',
       nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['USDT → THB',d.rates.usdtThb||'ждём'],
             ['Объём',money2(ap.pay,ap.sign)]]};
     case 's6': return {t:'Назвать клиенту один курс и одну сумму',
-      nums:[['Курс клиенту',(d.rates.client||'—')+(isCrypto(d)?' ฿/$':' ₽/฿')],
+      nums:[['Курс клиенту',(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿')],
             ['Клиент отдаёт',money2(ap.pay,ap.sign)],['Получателю',money2(ap.thb,'฿')]],
-      sub:'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')};
+      sub:isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')};
     case 's8': return {t:d.isOld?'Собрать инвойс — остальное есть в старом договоре':'Собрать паспорт и инвойс клиента',
       nums:[['Нужно',d.isOld?'1 документ':'2 документа'],['Приложено',String(['pass','inv','spa','ipds'].filter(k=>d.docs[k]).length)],
             ['Сумма',money2(ap.thb,'฿')]]};
@@ -4604,7 +4633,7 @@ function stepGoal(d){
       nums:[['Сумма к оплате',money2(ap.pay,ap.sign)],['Курс сделки',d.rates.client||'—'],['Документов',String(Object.keys(d.docs||{}).filter(k=>d.docs[k]).length)]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's12': return {t:'Отправить клиенту договор и реквизиты — и дождаться оплаты',
-      nums:[['К оплате',money2(ap.pay,ap.sign)],['Курс клиенту',(d.rates.client||'—')+(isCrypto(d)?' ฿/$':' ₽/฿')],
+      nums:[['К оплате',money2(ap.pay,ap.sign)],['Курс клиенту',(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿')],
             ['Получатель получит',money2(ap.thb,'฿')]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's14': return {t:'Дождаться денег от клиента и опознать их',
@@ -5001,11 +5030,11 @@ function stepCard(d){
           oninput="rememberFocus();syncClient(${d.id},'thb')">
         <p class="fh">клиент согласился на другую сумму — правьте здесь, курс останется, сумма клиенту пересчитается</p></div>
       <div class="fg"><label class="fl">Наценка к себестоимости</label>
-        <input class="fc num" readonly value="${(function(){const cost=costRate(d);const r=num(d.rates.client);
+        <input class="fc num" readonly value="${(function(){const cost=costRateAll(d).rate;const r=num(d.rates.client);
           if(!cost||!r)return '—';
           const m=isCrypto(d)?((cost/r-1)*100):((r/cost-1)*100);
           return (m>=0?'+':'')+m.toFixed(2)+' %';})()}">
-        <p class="fh">себестоимость ${(function(){const c=costRate(d);return c?String(Math.round(c*10000)/10000).replace('.',','):'—';})()} ${isCrypto(d)?'฿/$':'₽/฿'}</p></div>
+        <p class="fh">себестоимость ${(function(){const c=costRateAll(d);return c.rate?String(Math.round(c.rate*10000)/10000).replace('.',',')+' '+(isCrypto(d)?'฿/USDT':'₽/฿')+(c.fee?' · '+c.fee:''):'—';})()}</p></div>
     </div>
     ${calcBtn(d)}
     ${quotesSummary(d)}
@@ -5074,7 +5103,7 @@ function stepCard(d){
       <div class="sec po" style="margin:0 0 10px">ГЛАВНОЕ · СУММА И КУРС</div>
       <div class="fr">
         ${fld('amountThb','Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1})}
-        ${fld('rate','Курс сделки, '+(isCrypto(d)?'฿/$':'₽/฿'),{req:1,num:1,big:1})}
+        ${fld('rate','Курс сделки, '+(isCrypto(d)?'฿/USDT':'₽/฿'),{req:1,num:1,big:1})}
         ${fld('amountPay','Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1})}
       </div>
       <p class="fh" style="margin-top:2px">Эти три числа уходят в договор, приложение и счёт — их и сверяют с инвойсом. Остальное ниже.</p>
@@ -5132,7 +5161,7 @@ function stepCard(d){
   s11b:()=>{
     const rows=[]; 
     if(!d.isOld) rows.push(['dog','Д','Агентский договор','полный, клиент новый · ФИО и паспорт из скана']);
-    rows.push(['app','П','Приложение с платежом',money(ap.thb,'฿')+' · курс '+(d.rates.client||'—')+' ₽/฿']);
+    rows.push(['app','П','Приложение с платежом',money(ap.thb,'฿')+' · курс '+(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿')]);
     rows.push(['bill','С','Счёт на оплату',money(ap.pay,ap.sign)+' — ровно столько ждём'+(isCrypto(d)?' на кошелёк':' на счёте')]);
     return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${d.docVersion||1}</span></div>
     <div class="alert a-ok"><div>Пакет собран по полям, которые вы подтвердили. Каждый документ можно скачать в PDF или DOC — в DOC правят руками, когда случай нестандартный.</div></div>
@@ -5177,7 +5206,7 @@ function stepCard(d){
         Запросите курсы заново и пересогласуйте с клиентом: новый расчёт соберёт новый пакет.</div></div>`;})()}
 
     <div class="sim" style="margin-top:12px"><div class="h">Симуляция · в жизни курс дня приходит из стакана</div>
-      <p>Курс дня сейчас ${isCrypto(d)?String(Math.round(avgUsdt()*100)/100).replace('.',',')+' ฿/$':String(Math.round(avgRate()*10000)/10000).replace('.',',')+' ₽/฿'}. Подвиньте его, чтобы увидеть, как сработает проверка.</p>
+      <p>Курс дня сейчас ${isCrypto(d)?String(Math.round(avgUsdt()*100)/100).replace('.',',')+' ฿/USDT':String(Math.round(avgRate()*10000)/10000).replace('.',',')+' ₽/฿'}. Подвиньте его, чтобы увидеть, как сработает проверка.</p>
       <button class="btn btn-secondary btn-sm" onclick="marketMove(-1)">−1 %</button>
       <button class="btn btn-secondary btn-sm" onclick="marketMove(1)">+1 %</button>
       <button class="btn btn-outline btn-sm" onclick="marketReset(${d.id})">Вернуть к курсу сделки</button></div>
@@ -5194,14 +5223,14 @@ function stepCard(d){
 
   s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':'рубли на счёт Сбера'}</span></div>
     ${isCrypto(d)?`<div class="fr">
-      <div class="fg"><label class="fl">Сумма</label><input class="fc num" readonly value="${money(ap.pay,'$')}"></div>
+      <div class="fg"><label class="fl">Сумма</label><input class="fc num" readonly value="${money(ap.pay,'USDT')}"></div>
       <div class="fg"><label class="fl">Кошелёк</label><input class="fc addr" readonly value="${(walletById('grusha')||{}).addr} · TRC-20"></div>
       <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± 5 USDT"></div>
     </div>
     <div class="alert a-info"><div>Криптоприход сверяется по сети, а не по выписке: ждём хеш и подтверждения в TRON. Назначение платежа тут не при чём — сделку опознаём по сумме и адресу отправителя.</div></div>
     <div class="sim"><div class="h">Симуляция · в жизни это видит наблюдатель за кошельком</div>
       <p>В настоящем продукте приход ловится по сети автоматически. Здесь нажмите сами.</p>
-      <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Пришло ровно ${money(ap.pay,'$')}</button>
+      <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Пришло ровно ${money(ap.pay,'USDT')}</button>
       <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Пришло на 5 USDT меньше</button></div>`
     :(function(){const ex=expectOf(d);
       return `<div class="fr">
@@ -5242,7 +5271,7 @@ function stepCard(d){
     <div class="alert a-info"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не наше «Оплата по агентскому договору».</div></div>
     <div class="fr">
       <div class="fg w2"><label class="fl">Получатель<span class="rq">*</span></label>
-        <input class="fc" id="p_dev" value="${(pt.dev||d.dev||'').replace(/"/g,'&quot;')}" placeholder="The Base Central Co., Ltd."></div>
+        <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?docFields(d).dev:'')||'').replace(/"/g,'&quot;')}" placeholder="The Base Central Co., Ltd."></div>
       <div class="fg"><label class="fl">Сумма, ฿<span class="rq">*</span></label>
         <input class="fc num big" id="p_amt" value="${(pt.amount||d.amountThb||ap.thb)?Number(pt.amount||d.amountThb||ap.thb).toLocaleString('ru-RU'):''}"></div>
     </div>
@@ -5252,7 +5281,7 @@ function stepCard(d){
       <div class="fg"><label class="fl">Номер счёта<span class="rq">*</span></label>
         <input class="fc addr" id="p_acc" value="${(pt.acc||'').replace(/"/g,'&quot;')}" placeholder="0432-8-91104-2"></div>
       <div class="fg"><label class="fl">Инвойс</label>
-        <input class="fc" id="p_inv" value="${(pt.inv||d.invNo||'').replace(/"/g,'&quot;')}" placeholder="INV-4072"></div>
+        <input class="fc" id="p_inv" value="${(pt.inv||d.invNo||(d.docVersion?docFields(d).invNo:'')||'').replace(/"/g,'&quot;')}" placeholder="INV-4072"></div>
     </div>
     <div class="fg"><label class="fl">Назначение платежа для банка<span class="rq">*</span>
         <span class="sub2"> это увидит банк получателя</span></label>
@@ -5534,10 +5563,15 @@ function stepCard(d){
     const pt=d.payTo||{};
     const receiptFiles=filesOf(d,'receipt');
     const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-    const ok=[['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],
-      ['Хеш обмена',d.pay.hash],['Транзакция отправки',d.pay.tx],
-      ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]];
-    const miss=ok.filter(x=>!x[1]).length;
+    /* У крипты нет обмена у брокера: курс RUB→USDT и «хеш обмена» ей не нужны. Раньше
+       список был общий, и у крипто-сделки кнопка закрытия не разблокировалась никогда
+       (прогон 25.09). Блокирует закрытие теперь проверка карточки CRM (crmGaps). */
+    const ok=(isCrypto(d)
+      ? [['Курс клиенту, ฿/USDT',d.rates.client],['Хеш прихода USDT',d.pay.hash]]
+      : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеш обмена',d.pay.hash]])
+      .concat([['Транзакция отправки',d.pay.tx],
+      ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]]);
+    const miss=ok.filter(x=>!x[1]).length+crmGaps(d).length;
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-miss} из ${ok.length} полей собрано по дороге</span></div>
     ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
@@ -5784,6 +5818,7 @@ function act(id,step){
     toast('К отправке '+usd(pcOut(d)));return;}
   if(step==='s23'){
     const sends=cnvMembers(d).filter(pcSends), multi=needsSecondSign(d);
+    if(!sends.length){toast('Отправлять нечего: не выбрано назначение USDT — верните на шаг «Что делаем с USDT»');return;}
     const over=sends.find(x=>sendDeclared(x)>(pcAmount(x)||0)+0.005);
     if(over){toast(over.code+': добавленные переводы превышают сумму задачи — проверьте части');return;}
     const miss=sends.find(x=>sendDeclared(x)<(pcAmount(x)||0)-0.005);
