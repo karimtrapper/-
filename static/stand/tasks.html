@@ -5909,7 +5909,19 @@ async function standBoot(){
   await standPull(true);
   if(!S.deals.length&&standMe==='admin'){ seedDemo(); }
   else render();
+  standOpenFromLink();
   setInterval(()=>standPull(false),2500);
+}
+/* Переход из уведомления: ?deal=<id|код> открывает ту самую задачу.
+   Без этого ссылка вела на общий список и человек искал сделку глазами. */
+function standOpenFromLink(){
+  const q=new URLSearchParams(location.search), ref=q.get('deal');
+  if(!ref)return;
+  const d=S.deals.find(x=>String(x.id)===String(ref)||x.code===ref);
+  if(!d){toast('Сделка '+ref+' не найдена — возможно, доску сбросили');return;}
+  S.open=d.id; S.tab='tasks'; S.view=(stepWho(d,d.step)===S.role)?'task':'card';
+  render();
+  history.replaceState(null,'',location.pathname);
 }
 if(STAND&&!SCREEN){ standBoot(); }
 else if(SCREEN){ if(bootScreen()) render(); }

@@ -2245,6 +2245,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <label class="form-label">Telegram</label>
                             <input type="text" class="form-control" id="adminTelegram" placeholder="@username" required>
                         </div>
+                        <!-- Стенд: входа через Telegram там нет, поэтому логин, пароль и роль -->
+                        <div class="form-group stand-only" style="flex:1.5;display:none;">
+                            <label class="form-label">Логин</label>
+                            <input type="text" class="form-control" id="adminLogin" placeholder="valera">
+                        </div>
+                        <div class="form-group stand-only" style="flex:1.5;display:none;">
+                            <label class="form-label">Пароль</label>
+                            <input type="text" class="form-control" id="adminPassword" placeholder="придумайте">
+                        </div>
+                        <div class="form-group stand-only" style="flex:2;display:none;">
+                            <label class="form-label">Роль</label>
+                            <select class="form-control" id="adminRole"></select>
+                        </div>
                         <div class="form-group" style="display:flex;align-items:flex-end;">
                             <button type="submit" class="btn btn-primary">Добавить</button>
                         </div>
@@ -3708,7 +3721,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     case 'partners': loadPartners(); break;
                     case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
-                case 'admins': loadAdmins(); break;
+                case 'admins': loadStandRoles().then(loadAdmins); break;
                     case 'exchangers': rxLoad(); break;
                 }
 
@@ -5610,17 +5623,74 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await res.json();
                 if (!data.success) { box.innerHTML = '<p style="color:#94a3b8">Ошибка загрузки</p>'; return; }
                 box.innerHTML = data.admins.map(a => `
-                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
                         <div>
-                            <div style="font-weight:600;">${a.display_name}</div>
-                            <div style="font-size:12px;color:#64748b;">${a.telegram || '—'} ${a.bound ? '· 🟢 привязан' : '· ⚪ ждёт входа'}</div>
+                            <div style="font-weight:600;">${a.display_name}
+                                ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + a.username + '</b> · ' : ''}${a.telegram || '—'} ${a.bound ? '· 🟢 привязан' : (STAND_ROLES ? '' : '· ⚪ ждёт входа')}</div>
                         </div>
-                        <div style="display:flex;gap:6px;">
-                            <button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite('${(a.display_name||'').replace(/'/g,"\\'")}', '${(a.telegram||'').replace(/'/g,"\\'")}')">📋 Приглашение</button>
+                        <div style="display:flex;gap:6px;align-items:center;">
+                            ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
+                                ${Object.keys(STAND_ROLES).map(r => `<option value="${r}"${(a.role||'admin')===r?' selected':''}>${STAND_ROLES[r]}</option>`).join('')}
+                              </select>
+                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Пароль</button>` : ''}
+                            ${STAND_ROLES ? '' : `<button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite('${(a.display_name||'').replace(/'/g,"\\'")}', '${(a.telegram||'').replace(/'/g,"\\'")}')">📋 Приглашение</button>`}
                             <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
                         </div>
                     </div>`).join('') || '<p style="color:#94a3b8">Пока нет админов</p>';
             } catch (e) { box.innerHTML = '<p style="color:#94a3b8">Ошибка сети</p>'; }
+        }
+
+        /* Роли живут только на стенде: в боевой CRM все админы равны, и рисовать
+           там выбор роли значило бы обещать разделение, которого нет. */
+        let STAND_ROLES = null;
+        async function loadStandRoles() {
+            try {
+                const res = await fetch(`${API_URL}/api/stand/roles`);
+                if (!res.ok) return;
+                const d = await res.json();
+                if (!d.success) return;
+                STAND_ROLES = d.roles;
+                document.querySelectorAll('.stand-only').forEach(el => el.style.display = '');
+                // На стенде Telegram-входа нет — заголовок не должен обещать обратное
+                const sec = document.querySelector('#admins .card-title');
+                if (sec) sec.textContent = 'Аккаунты стенда · роли';
+                const hint = document.querySelector('#admins p');
+                if (hint) hint.innerHTML = 'Каждому свой логин, пароль и роль. Роль решает, ' +
+                    'какие задачи человек видит в задачнике. Менять её можно на ходу — ' +
+                    'перезаходить не нужно.';
+                const sel = document.getElementById('adminRole');
+                if (sel) sel.innerHTML = Object.keys(STAND_ROLES)
+                    .map(r => `<option value="${r}">${STAND_ROLES[r]}</option>`).join('');
+                const tg = document.getElementById('adminTelegram');
+                if (tg) { tg.required = false; tg.placeholder = '@username (не обязателен)'; }
+            } catch (e) {}
+        }
+
+        async function setAdminRole(id, role) {
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({role})
+                });
+                const d = await res.json();
+                if (d.success) { showToast('Роль обновлена: ' + (STAND_ROLES[role] || role)); loadAdmins(); }
+                else showToast(d.error || 'Ошибка', 'error');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        async function setAdminPassword(id, name) {
+            const password = prompt(`Новый пароль для «${name}»:`);
+            if (!password) return;
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, {
+                    method: 'PUT', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({password})
+                });
+                const d = await res.json();
+                if (d.success) showToast('Пароль изменён');
+                else showToast(d.error || 'Ошибка', 'error');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
         }
 
         // Готовый текст-приглашение для нового админа (копируется в буфер)
@@ -5655,6 +5725,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     display_name: document.getElementById('adminName').value.trim(),
                     telegram: document.getElementById('adminTelegram').value.trim(),
                 };
+                if (STAND_ROLES) {
+                    payload.username = (document.getElementById('adminLogin').value || '').trim();
+                    payload.password = (document.getElementById('adminPassword').value || '').trim();
+                    payload.role = document.getElementById('adminRole').value;
+                }
                 try {
                     const res = await fetch(`${API_URL}/api/admins`, {
                         method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)
@@ -5662,8 +5737,19 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const d = await res.json();
                     if (d.success) {
                         form.reset(); loadAdmins();
-                        // сразу копируем приглашение — осталось только отправить
-                        copyAdminInvite(d.admin.display_name, d.admin.telegram);
+                        if (STAND_ROLES) {
+                            // На стенде отдаём готовые доступы: пароль виден только сейчас
+                            const text = `${d.admin.display_name}, доступ к тестовому стенду:\n` +
+                                `${location.origin}/tasks\nлогин: ${d.admin.username}\n` +
+                                `пароль: ${d.admin.password || '(задайте кнопкой «Пароль»)'}\n` +
+                                `роль: ${STAND_ROLES[d.admin.role] || d.admin.role}`;
+                            navigator.clipboard.writeText(text).then(
+                                () => showToast('Доступы скопированы — отправьте человеку'),
+                                () => prompt('Скопируйте доступы:', text));
+                        } else {
+                            // сразу копируем приглашение — осталось только отправить
+                            copyAdminInvite(d.admin.display_name, d.admin.telegram);
+                        }
                     }
                     else showToast(d.error || 'Ошибка', 'error');
                 } catch (e) { showToast('Ошибка сети', 'error'); }
@@ -5698,7 +5784,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 case 'partners': loadPartners(); break;
                 case 'referrers': loadReferrers(); break;
                 case 'payoutRequests': loadPayoutRequests(); break;
-                case 'admins': loadAdmins(); break;
+                case 'admins': loadStandRoles().then(loadAdmins); break;
                     case 'exchangers': rxLoad(); break;
             }
 

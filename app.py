@@ -4582,21 +4582,31 @@ def create_admin():
     telegram = (data.get('telegram') or '').strip()
     if not display_name:
         return jsonify({'success': False, 'error': 'Укажите имя'}), 400
-    if not telegram:
+    if not telegram and not STAND_MODE:
         return jsonify({'success': False, 'error': 'Укажите Telegram (@username)'}), 400
+    if STAND_MODE and not (data.get('username') or telegram):
+        return jsonify({'success': False, 'error': 'Укажите логин'}), 400
     db = get_session()
     try:
-        base = re.sub(r'[^A-Za-z0-9_]', '', telegram.lstrip('@')) or f'admin{secrets.token_hex(2)}'
+        base = re.sub(r'[^A-Za-z0-9_]', '', (data.get('username') or telegram).lstrip('@')) \
+            or f'admin{secrets.token_hex(2)}'
         username = base; i = 1
         while db.query(AdminUser).filter_by(username=username).first():
             i += 1; username = f'{base}{i}'
+        # На стенде Telegram-вход выключен, поэтому пароль реальный и возвращается
+        # один раз: иначе заведённым аккаунтом невозможно воспользоваться.
+        password = (data.get('password') or '').strip() if STAND_MODE else ''
         admin = AdminUser(
             username=username, display_name=display_name,
-            password_hash=AdminUser.hash_password(secrets.token_hex(16)),  # случайный — пароль-вход отключён
+            password_hash=AdminUser.hash_password(password or secrets.token_hex(16)),
             telegram=telegram,
+            role=(data.get('role') or 'admin') if STAND_MODE else 'admin',
         )
         db.add(admin); db.commit()
-        return jsonify({'success': True, 'admin': admin.to_dict()})
+        out = admin.to_dict()
+        if STAND_MODE and password:
+            out['password'] = password
+        return jsonify({'success': True, 'admin': out})
     finally:
         db.close()
 
@@ -4615,6 +4625,10 @@ def update_admin(admin_id):
         if 'telegram' in data:
             admin.telegram = (data['telegram'] or '').strip()
             admin.telegram_user_id = None  # смена username → перепривязка при следующем входе
+        if STAND_MODE and data.get('role') in STAND_ROLES:
+            admin.role = data['role']
+        if STAND_MODE and (data.get('password') or '').strip():
+            admin.password_hash = AdminUser.hash_password(data['password'].strip())
         db.commit()
         return jsonify({'success': True, 'admin': admin.to_dict()})
     finally:
@@ -4665,6 +4679,14 @@ def auth_login():
         return jsonify({'success': True, 'user': user.display_name or user.username})
     finally:
         db.close()
+
+@app.route('/api/stand/roles', methods=['GET'])
+def stand_roles():
+    """Список ролей для админки — чтобы фронт не держал свою копию."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    return jsonify({'success': True, 'roles': STAND_ROLES})
+
 
 @app.route('/api/auth/logout', methods=['POST'])
 def auth_logout():
@@ -4786,7 +4808,12 @@ def _stand_notify(old_data, new_data):
         d = deals.get(n.get('dealId')) or {}
         tail = ''
         if d:
-            tail = f"\n<i>{d.get('code') or ''} · {d.get('client') or ''}</i>"
+            # Ссылка ведёт в саму задачу: без неё человек открывал общий список
+            # и искал сделку глазами — на телефоне это гарантированный отказ.
+            base = os.environ.get('STAND_BASE_URL', '').rstrip('/')
+            label = f"{d.get('code') or ''} · {d.get('client') or ''}"
+            link = f'<a href="{base}/tasks?deal={d.get("id")}">{label}</a>' if base else f'<i>{label}</i>'
+            tail = f"\n{link}"
         lines.append(f"🔔 <b>{who}</b>\n{n.get('text') or ''}{tail}")
     text = '\n\n'.join(lines[:5])
     if len(fresh) > 5:
