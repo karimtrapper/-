@@ -13071,6 +13071,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         // ==================== URL Parameters Population ====================
         function populateFromUrl() {
             const params = new URLSearchParams(window.location.search);
+            // Переход из задачника стенда: /crm?deal=<id> открывает эту сделку
+            const deepDeal = Number(params.get('deal'));
+            if (deepDeal) setTimeout(() => showDealDetails(deepDeal), 600);
             const batchForm = document.getElementById('addCashBatchForm');
 
             if (batchForm) {

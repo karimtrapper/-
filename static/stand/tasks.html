@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 02:11 · кошелёк прихода</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 05:25 · сделка в CRM</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -3150,6 +3150,7 @@ function overview(d,st,mine,p,wh){
     </table></div>
 
   ${(d.closed&&d.closeReason==='Успешно завершена'&&!d.manual)?crmGapsBlock(d,'Сделка закрыта, но в карточке CRM не хватает'):''}
+  ${d.crmDealId?`<div class="alert a-ok" style="margin:0 0 14px"><div><b>В CRM: сделка #${d.crmDealId}</b> · внесена ${d.crmAt||''} — <a href="/crm?deal=${d.crmDealId}" target="_blank">открыть в CRM</a></div></div>`:''}
   <div class="card" style="margin-bottom:16px">
     <div class="sec pi">PAY-IN</div>
     <table class="tbl">
@@ -3377,6 +3378,86 @@ function crmGaps(d){
   }
   need(E.ready,'Прибыль (profit_usdt, net_profit_usdt) — не считается','');
   return g;
+}
+/* Сделка в CRM из задачника (Карим, 25.09): на закрытии менеджер ещё раз
+   смотрит, что уйдёт в CRM, при нужде правит и одной кнопкой вносит сделку в CRM
+   стенда со статусом «завершена». Поля — формат POST /api/deals, как их шлёт форма
+   CRM; прибыль сервер считает сам по тем же правилам (_apply_mf_realty и т.д.). */
+const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','Крипта':'crypto_direct','Наличные':'partners_cash'};
+const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'cash_batch',coins:'binance',client:'binance',founder:'founder_personal'};
+function crmNet(n){return String(n||'TRC20').toLowerCase().replace('-','');}
+function crmPayload(d){
+  const E=econ(d), po=d.payout||{}, rub=!isCrypto(d), prop=d.type==='Оплата недвижимости';
+  const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
+  const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
+  const p={client_name:d.client, manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
+    payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
+    payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
+    payin_amount_usdt:r2(E.payin),
+    payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
+    payin_tx_hashes:hx(d.payinHashes),
+    notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:''),
+    /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
+       с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
+       Справочник агентов стенда живёт в задачнике, поэтому id не шлём — CRM
+       привяжет профиль по точному имени, если он у неё есть. */
+    agents:(d.agents||[]).map(a=>({name:a.name,tier:a.tier||1,comp_model:a.comp||'revshare',
+      percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0}))};
+  const mf=hx(mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})));
+  const buy=num(d.rates.usdtThb);
+  if(prop&&d.kind!=='Фрихолд'){
+    Object.assign(p,{deal_kind:'mf_realty',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
+      invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:buy||null,
+      sell_rate_thb_usdt:(E.payin&&d.amountThb)?Math.round(d.amountThb/E.payin*10000)/10000:null,
+      company_percent:d.companyPct==null?1:d.companyPct,payout_tx_hashes:mf});
+  }else if(prop){
+    const base=(buy&&d.amountThb)?d.amountThb/buy:null;
+    Object.assign(p,{deal_kind:'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
+      invoice_amount_usd:r2(base),transfer_fee_percent:0.8,transfer_fee_fixed_usd:50,
+      transfer_sent_usd:r2(mf.reduce((a,t)=>a+(+t.amount_usdt||0),0))||r2(base!=null?base*1.008+50:null),payout_tx_hashes:mf});
+  }else{
+    Object.assign(p,{deal_kind:'exchange',payout_method:'transfer',
+      payout_source:PAYOUT_CRM[d.paySrc]||'cash_batch',
+      payout_amount_thb:d.paySrc==='client'?null:(po.thb||d.amountThb||null),
+      payout_amount_usdt:r2(E.cost),payout_tx_hashes:hx(po.hashes),
+      payout_founder_name:d.paySrc==='founder'?(po.founder||null):null,
+      payout_no_conversion:d.paySrc==='founder'?!!po.ownBaht:false,
+      needs_reimbursement:d.paySrc==='founder'&&!po.reimbursement});
+  }
+  return p;
+}
+/* Превью «что уйдёт в CRM» — человеческими словами, а не именами полей */
+function crmPreview(d){
+  const p=crmPayload(d), rows=[];
+  const add=(k,v)=>{if(v!=null&&v!=='')rows.push([k,v]);};
+  add('Клиент',p.client_name); add('Менеджер',p.manager_name);
+  add('Тип',{mf_realty:'Недвижимость через MF Corp · лизхолд',mf_freehold:'Фрихолд',exchange:'Обмен'}[p.deal_kind]);
+  add('Pay-In',(d.payType||'')+(p.payin_amount_rub?' · '+money(p.payin_amount_rub,'₽'):'')+(p.payin_amount_usdt!=null?' · '+moneyKop(p.payin_amount_usdt)+' USDT':'')+(p.payin_rate_rub_usdt?' · курс '+String(p.payin_rate_rub_usdt).replace('.',','):''));
+  add('Хеши прихода',p.payin_tx_hashes.map(h=>h.hash).join(', ')||'—');
+  if(p.deal_kind==='mf_realty'){add('Инвойс',money(p.invoice_amount_thb,'฿'));add('Курс покупки / клиенту',(p.buy_rate_thb_usdt?String(p.buy_rate_thb_usdt).replace('.',','):'—')+' / '+(p.sell_rate_thb_usdt?String(p.sell_rate_thb_usdt).replace('.',','):'—')+' ฿ за 1 USDT');add('Комиссия компании',p.company_percent+' %');}
+  if(p.deal_kind==='mf_freehold'){add('Инвойс',usd(p.invoice_amount_usd));add('Отправлено',usd(p.transfer_sent_usd)+' · 0,8 % + $50');}
+  if(p.deal_kind==='exchange'){add('Pay-Out',(p.payout_source||'')+' · '+money(p.payout_amount_thb,'฿')+' · себестоимость '+usd(p.payout_amount_usdt));}
+  add('Переводы выдачи',(p.payout_tx_hashes||[]).map(h=>h.hash+' · '+moneyKop(h.amount_usdt)+' USDT').join(', ')||'—');
+  if((p.agents||[]).length) add('Агенты',p.agents.map(a=>a.name+' · ур.'+a.tier+' · '+(a.comp_model==='fixed'?usd(a.fixed_usdt):a.percent+' % '+a.comp_model)).join('; '));
+  add('Статус','Успешно завершена');
+  return `<table class="tbl">${rows.map(([k,v])=>`<tr><th>${k}</th><td>${String(v).replace(/[<>&]/g,'')}</td></tr>`).join('')}</table>`;
+}
+async function crmPushClose(id){
+  const d=deal(id);
+  if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
+  const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
+  if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
+  const body=crmPayload(d);
+  try{
+    const r=await fetch(d.crmDealId?'/api/deals/'+d.crmDealId:'/api/deals',{method:d.crmDealId?'PUT':'POST',
+      credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const j=await r.json();
+    if(!j.success){toast('CRM не приняла сделку: '+(j.error||r.status));log(d,'CRM отказала: '+(j.error||r.status));save();render();return;}
+    const cd=j.deal||{};
+    d.crmDealId=cd.id||d.crmDealId; d.crmAt=now();
+    log(d,'Внесена в CRM: сделка #'+d.crmDealId+' · статус «завершена»'+(cd.net_profit_usdt!=null?' · прибыль по CRM '+usd(cd.net_profit_usdt):''));
+    closeDeal(d,'Успешно завершена');
+  }catch(e){toast('CRM недоступна — сделка не закрыта');}
 }
 function crmGapsBlock(d,title){
   const g=crmGaps(d);
@@ -5630,12 +5711,15 @@ function stepCard(d){
     </div>`
     :`<div class="alert a-warn"><div>Чека нет — операционист ещё не приложил его на шаге оплаты.</div></div>`}
 
+    <div class="card-title" style="font-size:14px;margin:18px 0 8px">Что уйдёт в CRM
+      <span class="sub">проверьте перед закрытием — сделка появится в CRM со статусом «завершена»</span></div>
+    ${crmPreview(d)}
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Что собралось по сделке
       <span class="sub">если что-то не так — поправьте в карточке до закрытия</span></div>
     <div class="list">${ok.map(([k,v])=>`<div class="li" style="cursor:default"><span class="av">${v?'✓':'—'}</span>
       <div><div class="t1">${k}</div><div class="t2">${v||'не заполнено'}</div></div><span class="t3"></span></div>`).join('')}</div>
     <div class="row" style="margin-top:14px">
-      <button class="btn btn-success" ${(miss||!d.sentToClient)?'disabled':''} onclick="act(${d.id},'s27')">Закрыть сделку</button>
+      <button class="btn btn-success" ${(miss||!d.sentToClient)?'disabled':''} onclick="crmPushClose(${d.id})">Проверил — внести в CRM и закрыть «Успешно»</button>
       <button class="btn btn-outline" onclick="editOpen(${d.id})">Поправить данные сделки</button></div>
     ${miss?`<p class="fh">Не закрыть, пока не собрано: ${ok.filter(x=>!x[1]).map(x=>x[0].toLowerCase()).join(', ')}.</p>`:''}</div>`;},
   }[d.step];
