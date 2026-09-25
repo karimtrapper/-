@@ -6,7 +6,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const names = ['docDownload', 'docOpen', 'fileValid', 'fileBlob', 'demoPdfData',
-  'filesOf', 'fileSync', 'fileAdd', 'fileDel'];
+  'filesOf', 'fileSync', 'fileAdd', 'fileAddReal', 'fileAppend', 'fileDel'];
 const source = names.map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, `нет функции ${name}`);
