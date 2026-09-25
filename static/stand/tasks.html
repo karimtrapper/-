@@ -42,9 +42,16 @@ button{font-family:inherit}
 .proto .ghost:hover{color:#fff;border-color:var(--navy-400)}
 
 .top-nav{background:var(--navy-800);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--navy-700)}
-.top-nav a{color:var(--navy-300);text-decoration:none;padding:8px 20px;border-radius:var(--r-sm);font-weight:600;font-size:14px}
+.top-nav a{color:var(--navy-300);text-decoration:none;padding:8px 20px;border-radius:var(--r-sm);font-weight:600;font-size:14px;white-space:nowrap}
 .top-nav a.active{background:var(--coral);color:#fff}
-.top-nav .who{margin-left:auto;font-size:12.5px;color:var(--navy-400);border:1px solid var(--navy-600);padding:6px 13px;border-radius:var(--r-sm);font-weight:500}
+.top-nav .who{margin-left:auto;font-size:12.5px;color:var(--navy-400);border:1px solid var(--navy-600);padding:6px 13px;border-radius:var(--r-sm);font-weight:500;white-space:nowrap}
+/* На 390px шапка (3 ссылки + роль) шире экрана и уводит всю страницу вбок —
+   на узких экранах переносим «роль» на вторую строку вместо горизонтального скролла (Карим, 25.09) */
+@media(max-width:480px){
+  .top-nav{flex-wrap:wrap;row-gap:6px;padding:8px 12px}
+  .top-nav a{padding:7px 12px;font-size:13px}
+  .top-nav .who{margin-left:0;flex:0 0 100%;text-align:center}
+}
 .nav{background:var(--bg);border-bottom:1px solid var(--border);padding:0 16px}
 .nav-tabs{display:flex;gap:4px;padding:8px 0;overflow-x:auto;scrollbar-width:none;flex-wrap:nowrap}
 .nav-tabs .nav-tab{white-space:nowrap;flex:0 0 auto}
@@ -80,8 +87,11 @@ body.screen-mode.embed .container{padding-top:14px}
 .fc.big{font-size:20px;font-weight:700;letter-spacing:-.01em;padding-top:10px;padding-bottom:10px}
 @media(max-width:620px){.fc.big{font-size:18px}}
 /* Хеши и ссылки — длинные неразрывные строки. Без переноса они задают ширину
-   страницы, и на телефоне весь экран уезжает вбок. */
-.li .t1,.li .t2,.v,.tbl td,.fh,.derived,.alert{overflow-wrap:anywhere}
+   страницы, и на телефоне весь экран уезжает вбок. Таймлайн «Коротко о пути» и
+   обычные (не .tbl) таблицы вроде журнала «Весь путь» раньше сюда не входили —
+   адрес кошелька в тексте лога вылезал за край правой колонки (Карим, 25.09). */
+.li .t1,.li .t2,.v,.tbl td,.fh,.derived,.alert,.tl .t,.tl .s,.side{overflow-wrap:anywhere}
+td{overflow-wrap:anywhere}
 .addr{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;letter-spacing:.01em;word-break:break-all}
 .li .t3 .pick{display:block;font-size:11.5px;font-weight:600;color:var(--text-muted);letter-spacing:.01em}
 .li.on .t3 .pick{color:var(--green-dark)}
@@ -101,6 +111,18 @@ body.screen-mode.embed .container{padding-top:14px}
 .btn-secondary{background:var(--navy-100);color:var(--navy-700)}.btn-secondary:hover{background:var(--navy-200)}
 .btn-outline{background:none;border:1.5px solid var(--border);color:var(--text-sec)}.btn-outline:hover{border-color:var(--navy-400);color:var(--text)}
 .btn-sm{padding:8px 14px;font-size:13px;min-height:36px}
+.btn-lg{padding:16px 22px;font-size:16px;min-height:56px}
+/* s27: чек от операциониста — главное на шаге, поэтому крупный акцентный блок
+   в самом верху карточки, а служебное (CRM-превью и т.п.) — ниже и спокойнее (Карим, 25.09) */
+.checktop{border:1.5px solid var(--coral);border-radius:var(--r);padding:18px;margin-bottom:16px}
+.checktop .checklab{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--coral-hover)}
+.checktop .checksum{font-size:26px;font-weight:800;letter-spacing:-.02em;margin-top:4px;overflow-wrap:anywhere}
+.checktop .checksum .to{font-size:15px;font-weight:600;color:var(--text-sec);margin-left:4px}
+.checkfile{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+  border-top:1px solid var(--border-light);padding:12px 0}
+.checkfile .fname{font-size:15px;font-weight:700;overflow-wrap:anywhere}
+.checkfile .fmeta{font-size:12.5px;color:var(--text-sec);margin-top:2px}
+.checkfile .fops{display:flex;gap:8px;flex-wrap:wrap}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
 .fg{margin-bottom:14px}
@@ -164,6 +186,15 @@ tr:last-child td{border-bottom:none}
 .li .t1{font-size:13.5px;font-weight:600;line-height:1.3}
 .li .t2{font-size:12.5px;color:var(--text-sec);margin-top:2px}
 .li .t3{font-size:12.5px;color:var(--text-sec);white-space:nowrap}
+/* Зона загрузки файла: строка подсвечивается, пока над ней держат файл — тот же
+   вид для всех мест приёма (docRow, fileBlock, «Заменить своим») (Карим, 25.09) */
+.li.drag-over{outline:2px dashed var(--coral);outline-offset:-2px;background:var(--coral-light)}
+.list.drag-over{outline:2px dashed var(--coral);outline-offset:-2px;background:var(--coral-light)}
+.dz-big{border:2px dashed var(--border);border-radius:var(--r);padding:22px 16px;text-align:center;cursor:pointer;transition:.12s}
+.dz-big:hover{border-color:var(--navy-400)}
+.dz-big.drag-over{border-color:var(--coral);background:var(--coral-light)}
+.dz-big .dzt{font-size:14px;font-weight:700}
+.dz-big .dzs{font-size:12.5px;color:var(--text-sec);margin-top:4px}
 
 .side h4{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-sec);margin-bottom:13px}
 .side p{font-size:13px;color:var(--navy-600);line-height:1.65}
@@ -204,6 +235,19 @@ tr:last-child td{border-bottom:none}
   max-width:100%;overflow-wrap:anywhere}
 a.hash:hover{background:#BAE6FD}
 .cp{cursor:pointer;user-select:none;margin-left:3px}
+/* s25 «Известить Coins»: хеш — главная задача шага, поэтому крупный, моноширинный,
+   целиком, с переносом по символам, а не обрезкой (Карим, 25.09) */
+.hashrow{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border-light)}
+.hashrow:last-child{border-bottom:none}
+.hashtxt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;font-weight:600;
+  color:var(--text);overflow-wrap:anywhere;word-break:break-all;flex:1 1 240px;min-width:0}
+.hashops{display:flex;align-items:center;gap:6px;flex-wrap:wrap;white-space:nowrap}
+.coinsrow{border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;margin-bottom:12px}
+.coinsrow .crhead{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.coinsrow .crtitle{font-size:15px;font-weight:700}
+.coinsrow .crsub{font-size:12.5px;color:var(--text-sec);margin-top:2px}
+.coinsrow .crgrouplab{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-top:10px}
+.coinsrow .crgrouplab.warn{color:#B91C1C}
 .agrow{border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:8px;background:var(--bg)}
 .agtop,.agbot{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .agbot{margin-top:8px}
@@ -923,11 +967,15 @@ function cnvMembers(d){
   const l=c?(c.sources||[]).map(x=>deal(x.dealId)).filter(Boolean):[];
   return l.length?l:[d];
 }
-/* Что по пачке ушло в Coins: сделка, баты, курс, отправленные USDT и хеши */
+/* Что по пачке ушло в Coins: сделка, баты, курс, отправленные USDT и хеши.
+   sends — все зарегистрированные переводы с их статусом (не только подтверждённые):
+   на s25 нужно видеть неподтверждённые тоже, отдельно от подтверждённых, иначе
+   операционист извещает Coins не про все переводы (Карим, 25.09). */
 function coinsSends(d){
-  return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{const tr=x.transfer||{}, l=sendList(x).filter(t=>t.status==='confirmed');
-    return {code:x.code, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
-      usdt:sendSum(x), hashes:l.map(t=>t.hash||t.ref).filter(Boolean)};});
+  return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{
+    const tr=x.transfer||{}, all=sendList(x).filter(t=>t.hash||t.ref), l=all.filter(t=>t.status==='confirmed');
+    return {code:x.code, client:x.client, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
+      usdt:sendSum(x), hashes:l.map(t=>t.hash||t.ref).filter(Boolean), sends:all};});
 }
 function cnvShareOf(d,x){
   const c=convOf(d);
@@ -1912,6 +1960,23 @@ function hashLink(hash,net,amount){
     `<a class="hash" href="${explorer(hash,n)}" target="_blank" rel="noopener">${hash}</a> `+
     `<span class="cp" title="Скопировать" onclick="event.stopPropagation();copyHash('${hash}')">📋</span>`;
 }
+/* Хеш крупно и целиком — для шага «Известить Coins», где хеш и есть главная задача,
+   а не мелкая подпись в таблице (Карим, 25.09). Перенос — только по символам
+   (.hashtxt ниже), обрезки нет: Coins сверяет хеш посимвольно. */
+function hashBig(hash,net,status){
+  if(!hash)return '';
+  const demo=String(hash).startsWith('demo:');
+  const n=(net||'TRC20').toUpperCase();
+  const badge={pending:'ждём подтверждения',failed:'ошибка перевода',mismatch:'не совпали реквизиты',error:'сеть недоступна'}[status];
+  return `<div class="hashrow">
+    <span class="hashtxt">${htmlText(hash)}</span>
+    <span class="hashops">
+      ${badge?`<span class="src" style="color:#B91C1C">${badge}</span>`:''}
+      ${demo?'<span class="src">DEMO</span>'
+        :`<a class="btn btn-outline btn-sm" href="${explorer(hash,n)}" target="_blank" rel="noopener">Открыть в Tronscan</a>`}
+      <button class="btn btn-outline btn-sm" onclick="copyHash('${hash}')">Копировать</button>
+    </span></div>`;
+}
 function conv(id){return (S.convs||[]).find(c=>c.id===id);}
 function convOf(d){return d.cnvId?conv(d.cnvId):null;}
 /* Суммы с копейками: money() покажет «1 697 252,8» — один знак читается как обрезанный.
@@ -2316,26 +2381,34 @@ async function docIssue(id,F,ch,comment){
   if(ch.length) log(d,'Поля пакета поправлены вручную: '+ch.map(k=>DOC_LABEL[k]||k).join(', '));
   go(d,'s11b','Пакет документов создан, версия '+d.docVersion);toast('Создано — проверьте файлы');
 }
-/* «Заменить своим» — настоящий файл уходит на сервер и дальше идёт вместо сгенерированного */
+/* «Заменить своим» — настоящий файл уходит на сервер и дальше идёт вместо сгенерированного.
+   Вынесено из onchange в отдельную функцию: тот же путь нужен и для перетаскивания
+   файла на строку документа, не только для клика по кнопке (Карим, 25.09). */
+async function issuedUploadFile(id,k,f){
+  if(!f)return;
+  if(f.size>10*1024*1024){toast('Файл больше 10 МБ');return;}
+  if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return;}
+  const fd=new FormData();fd.append('dealId',id);fd.append('kind',k);fd.append('file',f);
+  standBusy=true;
+  try{
+    const r=await fetch('/api/stand/docs/upload',{method:'POST',credentials:'same-origin',body:fd});
+    const j=await r.json().catch(()=>({success:false,error:'Сервер ответил '+r.status}));
+    if(j.success&&j.data){standVer=j.version;standApply(j.data);render();toast('Файл загружен — дальше пойдёт он');}
+    else toast(j.error||'Файл не загружен');
+  }catch(e){toast('Сервер недоступен — файл не загружен');}
+  finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
+}
 function issuedUpload(id,k){
   const inp=document.createElement('input');
   inp.type='file';inp.accept='.pdf,.doc,.docx';inp.style.display='none';
-  inp.onchange=async()=>{
-    const f=inp.files&&inp.files[0];inp.remove();
-    if(!f)return;
-    if(f.size>10*1024*1024){toast('Файл больше 10 МБ');return;}
-    if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return;}
-    const fd=new FormData();fd.append('dealId',id);fd.append('kind',k);fd.append('file',f);
-    standBusy=true;
-    try{
-      const r=await fetch('/api/stand/docs/upload',{method:'POST',credentials:'same-origin',body:fd});
-      const j=await r.json().catch(()=>({success:false,error:'Сервер ответил '+r.status}));
-      if(j.success&&j.data){standVer=j.version;standApply(j.data);render();toast('Файл загружен — дальше пойдёт он');}
-      else toast(j.error||'Файл не загружен');
-    }catch(e){toast('Сервер недоступен — файл не загружен');}
-    finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
-  };
+  inp.onchange=()=>{const f=inp.files&&inp.files[0];inp.remove();issuedUploadFile(id,k,f);};
   document.body.appendChild(inp);inp.click();
+}
+/* Перетащили файл на строку документа — тот же путь, что «Заменить своим» */
+function issuedUploadDrop(e,id,k){
+  e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove('drag-over');
+  const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0];
+  if(f)issuedUploadFile(id,k,f);
 }
 function issuedDrop(id,k){
   const d=deal(id); if(!d.issued||!d.issued[k])return;
@@ -2497,6 +2570,11 @@ document.addEventListener('input',e=>{const t=e.target;
   if(t.hasAttribute('oninput')||t.hasAttribute('onchange'))return;
   DRAFTS[(S.open||S.tab||'')+'|'+t.id]=t.value;},true);
 document.addEventListener('pointerdown',()=>{lastPointer=Date.now();},true);
+/* Перетащили файл мимо зоны загрузки — без этого браузер открывает его в новой
+   вкладке вместо самой зоны drop (Карим, 25.09). Сами зоны (fileDrop/issuedUploadDrop)
+   тоже гасят событие — этот обработчик страхует остальную страницу. */
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>e.preventDefault());
 function draftsRestore(){
   const p=(S.open||S.tab||'')+'|';
   Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)!==0)return;
@@ -4654,7 +4732,8 @@ function need(map){
    кнопки непонятно, что с ней делать (Карим, 22.09). */
 function docRow(d,k,t,req){
   const on=d.docs[k],m=(d.docMeta||{})[k];
-  return `<div class="li ${on?'on':''}" style="cursor:default">
+  return `<div class="li ${on?'on':''}" style="cursor:default"
+    ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'${k}')">
     <span class="av">${on?'✓':'+'}</span>
     <div><div class="t1">${t}</div>
       <div class="t2">${on?(m?m.file+' · '+m.size+' · '+m.at:'загружен'):'ещё не приложен — '+req}</div></div>
@@ -4772,42 +4851,57 @@ function fileSync(d,k){
   if(l.length) d.docMeta[k]={file:l[0].file+(l.length>1?' и ещё '+(l.length-1):''),size:l[0].size,at:l[0].at};
   else delete d.docMeta[k];
 }
+/* Проверка и добавление одного настоящего File — общий путь для выбора через диалог
+   и для перетаскивания файла в зону (Карим, 25.09): раньше это жило только внутри
+   input.onchange, и drop пришлось бы дублировать логику заново. */
+function fileAddReal(id,k,f){
+  if(!f)return;
+  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.data||'').length,0),0);
+  const ext=String(f.name||'').split('.').pop().toLowerCase();
+  const allowed={'application/pdf':['pdf'],'image/png':['png'],
+    'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
+  if(!Object.prototype.hasOwnProperty.call(allowed,f.type)||!allowed[f.type].includes(ext)){
+    toast('Разрешены только PDF, PNG, JPEG или WEBP');return;}
+  if(f.size>2*1024*1024){toast('Файл больше 2 МБ');return;}
+  if(total()+Math.ceil(f.size*4/3)+64>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+  const reader=new FileReader();
+  reader.onerror=()=>toast('Не удалось прочитать файл');
+  reader.onload=()=>fileAppend(id,k,{file:f.name.replace(/[<>\"'`&\x00-\x1f]/g,'_'),
+    size:Math.max(1,Math.ceil(f.size/1024))+' КБ',at:now(),
+    mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false});
+  reader.readAsDataURL(f);
+}
+function fileAppend(id,k,f){
+  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.data||'').length,0),0);
+  const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
+  const l=filesOf(d,k);
+  if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
+  if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
+  if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+  l.push(f);fileSync(d,k);
+  log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
+  save();render();toast(f.demo?'Тестовый PDF добавлен':'Файл приложен');
+}
 function fileAdd(id,k){
   const demo=arguments[2]===true;
-  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,f)=>m+(f.data||'').length,0),0);
-  const append=f=>{
-    const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
-    const l=filesOf(d,k);
-    if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
-    if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
-    if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
-    l.push(f);fileSync(d,k);
-    log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
-    save();render();toast(f.demo?'Тестовый PDF добавлен':'Файл приложен');
-  };
   if(demo){
-    const data=demoPdfData();append({file:'DEMO_'+k+'.pdf',size:'тестовый PDF',at:now(),
+    const data=demoPdfData();fileAppend(id,k,{file:'DEMO_'+k+'.pdf',size:'тестовый PDF',at:now(),
       mime:'application/pdf',bytes:atob(data.split(',')[1]).length,data:data,demo:true});return;
   }
   const input=document.createElement('input');input.type='file';
   input.accept='.pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp';
-  input.onchange=()=>{
-    const f=input.files&&input.files[0];if(!f)return;
-    const ext=String(f.name||'').split('.').pop().toLowerCase();
-    const allowed={'application/pdf':['pdf'],'image/png':['png'],
-      'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
-    if(!Object.prototype.hasOwnProperty.call(allowed,f.type)||!allowed[f.type].includes(ext)){
-      toast('Разрешены только PDF, PNG, JPEG или WEBP');return;}
-    if(f.size>2*1024*1024){toast('Файл больше 2 МБ');return;}
-    if(total()+Math.ceil(f.size*4/3)+64>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
-    const reader=new FileReader();
-    reader.onerror=()=>toast('Не удалось прочитать файл');
-    reader.onload=()=>append({file:f.name.replace(/[<>\"'`&\x00-\x1f]/g,'_'),
-      size:Math.max(1,Math.ceil(f.size/1024))+' КБ',at:now(),
-      mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false});
-    reader.readAsDataURL(f);
-  };
+  input.onchange=()=>{const f=input.files&&input.files[0];fileAddReal(id,k,f);};
   input.click();
+}
+/* Перетащили один или несколько файлов в зону загрузки — каждый идёт тем же путём,
+   что и выбор через диалог. dragover/dragleave не здесь: preventDefault там нужен,
+   чтобы браузер не открыл файл вкладкой при промахе мимо зоны (Карим, 25.09). */
+function dzOver(e){e.preventDefault();e.stopPropagation();e.currentTarget.classList.add('drag-over');}
+function dzLeave(e){e.currentTarget.classList.remove('drag-over');}
+function fileDrop(e,id,k){
+  e.preventDefault();e.stopPropagation();e.currentTarget.classList.remove('drag-over');
+  const files=Array.from((e.dataTransfer&&e.dataTransfer.files)||[]);
+  files.forEach(f=>fileAddReal(id,k,f));
 }
 function fileDel(id,k,i){
   const d=deal(id), l=filesOf(d,k);
@@ -4825,7 +4919,7 @@ const FILE_TAIL={
 function fileBlock(d,k,label,hint){
   const l=filesOf(d,k);
   const safe=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  return `<div class="list">
+  return `<div class="list" ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'${k}')">
     ${l.length?l.map((f,i)=>`<div class="li on" style="cursor:default">
       <span class="av">✓</span>
       <div><div class="t1">${safe(f.file)}${f.demo?' · DEMO':''}</div><div class="t2">${safe(f.size)} · ${safe(f.at)}</div></div>
@@ -4834,7 +4928,7 @@ function fileBlock(d,k,label,hint){
         <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
         <button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button></span></div>`).join('')
     :`<div class="li" style="cursor:default"><span class="av">+</span>
-      <div><div class="t1">${label}</div><div class="t2">${hint}</div></div>
+      <div><div class="t1">${label}</div><div class="t2">${hint}${hint?' · ':''}можно перетащить файл сюда</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`}
   </div>
 
@@ -5263,9 +5357,13 @@ function stepGoal(d){
       nums:[['Сумма',usd(pcOut(d))],['Переводов',String(n)],['Подписей','1 из 2']]};}
     case 's25': {
       const cs=coinsSends(d), sum=Math.round(cs.reduce((s,x)=>s+x.usdt,0)*100)/100;
+      /* Хеш — главное, что уходит Coins, поэтому его видно уже в шапке шага,
+         не только в таблице ниже (Карим, 25.09) */
+      const hashRows=cs.flatMap(x=>x.hashes.map(h=>[cs.length>1?'Хеш · '+x.code:'Хеш',h]));
       return {t:'Известить Coins и приложить чек конвертации',
         nums:[['Ушло в Coins',sum?usd(sum):'—'],['Переводов',String(cs.reduce((s,x)=>s+x.hashes.length,0))],
-              ['Выдать',money2(cs.reduce((s,x)=>s+x.thb,0),'฿')]]};}
+              ['Выдать',money2(cs.reduce((s,x)=>s+x.thb,0),'฿')]],
+        rows:hashRows};}
     case 's26': {const pt=d.payTo||{};
       return {t:'Оплатить инвойс получателю и приложить чек',
       nums:[['К оплате',money2(pt.amount||ap.thb,'฿')],['Получатель',pt.dev||d.dev||'—'],['Счёт',pt.acc||'—']],
@@ -5764,7 +5862,8 @@ function stepCard(d){
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
     <div class="list">
       ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
-        return `<div class="li" style="cursor:default"><span class="av">${av[k]}</span>
+        return `<div class="li" style="cursor:default"
+          ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="issuedUploadDrop(event,${d.id},'${k}')"><span class="av">${av[k]}</span>
         <div><div class="t1">${title[k]}${own?' <span class="badge b-done">свой файл</span>':''}</div>
           <div class="t2">${htmlText(f.file)}${own?' · '+htmlText(own.size||'')+' · загрузил '+htmlText(own.at||''):' · '+sub[k]}</div></div>
         <span class="t3" style="white-space:nowrap">
@@ -6166,16 +6265,35 @@ function stepCard(d){
     </div>`;},
 
   s25:()=>{
-    /* Coins сверяет сумму и хеш с тем, что пришло к ним. Раньше тут стояла доля сделки
-       в пачке ($14 256,54 вместо отправленных 11 217,95) и хеш только первого перевода —
-       с такими цифрами Coins известили бы неверно (прогон 24.09). */
+    /* Coins сверяет сумму и хеш с тем, что пришло к ним — хеш здесь главная задача
+       шага, поэтому он крупный, моноширинный и целиком, подтверждённые переводы
+       отдельно от неподтверждённых, и есть готовый текст для чата с Coins одной
+       кнопкой (Карим, 25.09). Раньше хеш был мелкой оранжевой подписью в таблице,
+       переносился посреди строки, и показывался только первый подтверждённый перевод —
+       остальные части пачки Coins не видел вовсе (прогон 24.09/25.09). */
     const cs=coinsSends(d);
-    const rows=cs.map(x=>`<tr><td>${x.code}</td><td class="num">${money(x.thb,'฿')}</td><td>${x.rate||'—'}</td>
-      <td class="num">${moneyKop(x.usdt)} USDT</td><td>${x.hashes.map(h=>'<span class="addr">'+h+'</span>').join('<br>')||'—'}</td></tr>`).join('');
+    const rows=cs.map(x=>{
+      const confirmed=(x.sends||[]).filter(t=>t.status==='confirmed');
+      const rest=(x.sends||[]).filter(t=>t.status!=='confirmed');
+      const allHashes=confirmed.concat(rest).map(t=>t.hash||t.ref).filter(Boolean);
+      const copyTxt=[x.code+(x.client?' · '+x.client:''),
+        'Выдать: '+money(x.thb,'฿'),'Курс Coins: '+(x.rate||'—'),
+        'Ушло USDT: '+moneyKop(x.usdt),
+        (allHashes.length>1?'Хеши':'Хеш')+': '+(allHashes.join(', ')||'нет')].join('\n');
+      return `<div class="coinsrow">
+        <div class="crhead">
+          <div><div class="crtitle">${x.code}${x.client?' · '+x.client:''}</div>
+            <div class="crsub">Выдать <b>${money(x.thb,'฿')}</b> · курс Coins ${x.rate||'—'} · ушло <b>${moneyKop(x.usdt)} USDT</b></div></div>
+          <button class="btn btn-secondary btn-sm" onclick="copyAsk(${JSON.stringify(copyTxt).replace(/"/g,'&quot;')})">Копировать всё для Coins</button>
+        </div>
+        ${confirmed.length?`<div class="crgrouplab">Подтверждено (${confirmed.length})</div>${confirmed.map(t=>hashBig(t.hash||t.ref,t.net)).join('')}`:''}
+        ${rest.length?`<div class="crgrouplab warn">Не подтверждено (${rest.length})</div>${rest.map(t=>hashBig(t.hash||t.ref,t.net,t.status)).join('')}`:''}
+        ${!allHashes.length?`<p class="fh">Переводов с хешем по этой сделке ещё нет.</p>`:''}
+      </div>`;
+    }).join('');
     return `<div class="card"><div class="card-title">Известить Coins</div>
     <div class="alert a-ok"><div>${d.demoTransfers?'DEMO: тестовые переводы подтверждены в сценарии.':'Переводы подтверждены в сети.'} По каждой сделке — фактическая сумма и хеши. Передайте их Coins.</div></div>
-    ${cs.length?`<table class="tbl"><tr><th>Сделка</th><th>Выдать</th><th>Курс Coins</th><th>Ушло</th><th>Хеши</th></tr>${rows}</table>`
-      :'<div class="alert a-warn"><div>В этой пачке нет задач в Coins — извещать некого.</div></div>'}
+    ${cs.length?rows:'<div class="alert a-warn"><div>В этой пачке нет задач в Coins — извещать некого.</div></div>'}
     ${d.pay.coinsNotified?`<div class="alert a-info"><div>Coins извещён. После поступления батов сверьте выписку SCB и внесите факт. Это ручное подтверждение операциониста.</div></div>
     <div class="fr"><div class="fg"><label class="fl">Пришло на SCB по этой сделке, ฿</label>
     <input class="fc num" id="coins_thb" placeholder="${coinsThb(d)}" value="${(d.transfer||{}).thb||coinsThb(d)}"></div>
@@ -6204,9 +6322,11 @@ function stepCard(d){
     <div class="derived" style="margin-top:12px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
       <span>Спишется <b>${money(sum,'฿')}</b> со счёта SCB · остаток станет <b>${money(balOf('scb')-sum,'฿')}</b></span></div>
-    <div class="card-title" style="font-size:14px;margin:18px 0 8px">Чек об оплате
+    <div class="card-title" style="font-size:15px;margin:18px 0 8px">Чек об оплате
       <span class="sub">уйдёт менеджеру — он отправит его клиенту</span></div>
-    ${fileBlock(d,'receipt','Чек банка об оплате','обязательно — его отправят клиенту; платили частями — приложите все')}
+    <div style="border:1.5px dashed var(--coral);border-radius:var(--r);padding:4px">
+      ${fileBlock(d,'receipt','Чек банка об оплате','обязательно — его отправят клиенту; платили частями — приложите все')}
+    </div>
     <div class="row" style="margin-top:14px">
       <button class="btn btn-primary" onclick="act(${d.id},'s26')">Оплачено — отправить чек менеджеру</button>
       <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;},
@@ -6224,30 +6344,31 @@ function stepCard(d){
       .concat([['Транзакция отправки',d.pay.tx],
       ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]]);
     const miss=ok.filter(x=>!x[1]).length+crmGaps(d).length;
+    /* Чек — главное на этом шаге: сумма, получатель и файл крупно в самом верху,
+       «Чек отправлен клиенту» — явная главная кнопка сразу под ним. Служебное
+       (CRM-превью, список полей) — ниже и мельче, по иерархии важности (Карим, 25.09) */
     return `<div class="card"><div class="card-title">Чек клиенту и закрытие
       <span class="sub">${ok.length-miss} из ${ok.length} полей собрано по дороге</span></div>
-    ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
-    ${receiptFiles.length?`<div class="paybox">
-      <div class="payrow" style="border-bottom:none"><div><div class="k">ЧЕК ОТ ОПЕРАЦИОНИСТА</div>
-        <div class="v">оплата ${money(pt.amount||ap.thb,'฿')}${pt.dev?(' · '+pt.dev):''} — отправьте клиенту ${receiptFiles.length>1?'все файлы':'этот файл'}</div></div></div>
-      ${receiptFiles.map((f,i)=>`<div class="payrow">
-        <div style="min-width:0"><div class="k">Файл ${i+1}</div><div class="v">${safe(f.file)}${f.demo?' · DEMO':''} · ${safe(f.size)}</div></div>
-        <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="docOpen(${d.id},'receipt',${i})">Открыть</button>
-        <button class="btn btn-secondary btn-sm" style="white-space:nowrap" onclick="docDownload(${d.id},'receipt',${i})">Скачать</button></div>`).join('')}
-    </div>
-    <div class="list" style="margin-top:12px">
-      <div class="li ${d.sentToClient?'on':''}" onclick="sentToggle(${d.id})">
-        <span class="av">${d.sentToClient?'✓':'+'}</span>
-        <div><div class="t1">Чек отправлен клиенту</div>
-        <div class="t2">${d.sentToClient?('отмечено · '+(d.sentAt||'')):'отправьте чек в чат клиента и отметьте здесь'}</div></div>
-        <span class="t3">${d.sentToClient?'готово':'отметить'}</span></div>
+    ${receiptFiles.length?`<div class="checktop">
+      <div class="checklab">Чек от операциониста</div>
+      <div class="checksum">${money(pt.amount||ap.thb,'฿')}${pt.dev?`<span class="to">→ ${safe(pt.dev)}</span>`:''}</div>
+      ${receiptFiles.map((f,i)=>`<div class="checkfile">
+        <div><div class="fname">${safe(f.file)}${f.demo?' · DEMO':''}</div><div class="fmeta">${safe(f.size)}</div></div>
+        <div class="fops">
+          <button class="btn btn-primary" onclick="docOpen(${d.id},'receipt',${i})">Открыть</button>
+          <button class="btn btn-secondary" onclick="docDownload(${d.id},'receipt',${i})">Скачать</button>
+        </div></div>`).join('')}
+      <button class="btn btn-success btn-lg" style="width:100%;margin-top:14px" onclick="sentToggle(${d.id})">
+        ${d.sentToClient?'✓ Чек отправлен клиенту':'Отметить — чек отправлен клиенту'}</button>
+      <p class="fh" style="text-align:center;margin-top:6px">${d.sentToClient?('отмечено · '+(d.sentAt||'')):'отправьте чек в чат клиента, затем отметьте здесь'}</p>
     </div>`
     :`<div class="alert a-warn"><div>Чека нет — операционист ещё не приложил его на шаге оплаты.</div></div>`}
 
-    <div class="card-title" style="font-size:14px;margin:18px 0 8px">Что уйдёт в CRM
+    ${crmGapsBlock(d,'До закрытия в карточке CRM не хватает')}
+    <div class="card-title" style="font-size:13px;margin:18px 0 8px;color:var(--text-sec)">Что уйдёт в CRM
       <span class="sub">проверьте перед закрытием — сделка появится в CRM со статусом «завершена»</span></div>
     ${crmPreview(d)}
-    <div class="card-title" style="font-size:14px;margin:18px 0 8px">Что собралось по сделке
+    <div class="card-title" style="font-size:13px;margin:18px 0 8px;color:var(--text-sec)">Что собралось по сделке
       <span class="sub">если что-то не так — поправьте в карточке до закрытия</span></div>
     <div class="list">${ok.map(([k,v])=>`<div class="li" style="cursor:default"><span class="av">${v?'✓':'—'}</span>
       <div><div class="t1">${k}</div><div class="t2">${v||'не заполнено'}</div></div><span class="t3"></span></div>`).join('')}</div>
