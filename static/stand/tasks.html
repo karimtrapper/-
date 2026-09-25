@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 10:07 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 10:14 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -2471,7 +2471,7 @@ function viewTasks(){
   if(!mine.length){
     h+=`<div class="card"><div class="empty"><div class="big">Задач на вас нет</div>
       ${S.role==='manager'
-      ?'Создайте сделку во вкладке «Сделки» — появится первая задача.'
+      ?'Нажмите «+ Новая задача» — заявка сразу уйдёт операционисту за курсом.'
       :(STAND&&!canSwitchRole()
         ?'Задачи прилетают, когда предыдущая роль передаёт работу. Как только менеджер доведёт сделку до вас, уведомление придёт в чат.'
         :'Задачи прилетают, когда предыдущая роль передаёт работу. Переключитесь на менеджера и проведите сделку дальше.')}</div></div>`;
@@ -3588,14 +3588,8 @@ function setDealKind(id,v){
    отличается имя клиента и чат»). Свободный ввод оставлен для номеров и офлайна. */
 /* Пул входящих транзакций кошелька — то же, что «-- Выбрать из входящих --» в CRM:
    хэши не набивают руками, их забирают из списка того, что реально пришло. */
-function txPoolInit(){return [
-  {id:1,amount:14706.33,net:'TRC20',hash:'0x7c4f19ab…a91e',at:'21.09, 07:41',from:'TTradexPay…8f2a'},
-  {id:2,amount:20942.02,net:'TRC20',hash:'0x33ba07c1…4de2',at:'21.09, 07:44',from:'TTradexPay…8f2a'},
-  {id:3,amount:4833.24,net:'TRC20',hash:'0x5512aa7c…31bd',at:'21.09, 18:22',from:'TPro100Tr…41cc'},
-  {id:4,amount:6202.47,net:'ERC20',hash:'0x94734e4b…657b',at:'21.09, 12:03',from:'0xFoexCash…9b1d'},
-  {id:5,amount:11647.25,net:'TRC20',hash:'0x2ab94f10…5d77',at:'22.09, 09:15',from:'TClientWal…77ab'},
-  {id:6,amount:3180.00,net:'TRC20',hash:'0x6d10ffa2…22c9',at:'22.09, 11:02',from:'TUnknown…0c4e'}
-];}
+/* Входящие USDT не выдумываем: переводы брокера приходят «вебхуком» после отправки рублей */
+function txPoolInit(){return [];}
 function txPool(){ if(!S.txpool)S.txpool=txPoolInit(); return S.txpool; }
 function txUsed(hash){ return S.deals.some(d=>(d.payinHashes||[]).some(h=>h.hash===hash)); }
 /* Переводы брокера кладём в пачку: сумма приходит вместе с транзакцией, руками её
@@ -6036,10 +6030,8 @@ function incomesInit(){
       out.push({id:++id,date:(d.createdAt||'').slice(0,5),payer:d.client,rub:d.incomeAmount,
         kind:d.payType==='СБП'?'СБП':'банк',dealId:d.id,cnvId:d.cnvId||null,excluded:false});
   });
-  /* приходы, которые ещё ни к чему не привязаны — их и сводят руками */
-  out.push({id:++id,date:'22.09',payer:'Мартиросян К.',rub:64000,kind:'СБП',dealId:null,cnvId:null,excluded:false});
-  out.push({id:++id,date:'22.09',payer:'Соколова М.',rub:212000,kind:'СБП',dealId:null,cnvId:null,excluded:false});
-  out.push({id:++id,date:'21.09',payer:'—',rub:5,kind:'СБП',dealId:null,cnvId:null,excluded:true});
+  /* Свободных приходов не выдумываем: на стенде как в проде они появляются только
+     «вебхуком банка» (кнопка на ожидании прихода), Карим, 25.09 */
   return out;
 }
 function incomes(){ if(!S.incomes)S.incomes=incomesInit(); return S.incomes; }
