@@ -5563,6 +5563,8 @@ def stand_prod_agents_sync():
     """Подтянуть агентов из прода в справочник стенда и в его CRM (по коду)."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if (current_role() or '') not in ('admin', 'manager'):
+        return jsonify({'success': False, 'error': 'Агентов из прода подтягивает админ или менеджер'}), 403
     try:
         agents = _stand_prod_agents()
     except (RuntimeError, requests.RequestException, ValueError) as exc:
@@ -5590,6 +5592,72 @@ def stand_prod_agents_sync():
     finally:
         db.close()
     return jsonify({'success': True, 'agents': agents})
+
+
+@app.route('/api/stand/incoming/unlink', methods=['POST'])
+def stand_incoming_unlink():
+    """Отвязать подтверждённый приход USDT от брокера, выбранный по ошибке.
+
+    Подтверждённый хеш через общее сохранение доски убрать нельзя — это защита от
+    подделки. Но ошибиться выбором во входящих можно (Карим, 25.09), поэтому
+    отвязка идёт отдельным действием с причиной и записью в журнал — пока по пачке
+    не зарегистрировано ни одной отправки. Если USDT уже были приняты, пачка
+    возвращается на «Ждём USDT», а доли прихода у сделок пачки обнуляются."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    tx_hash, reason = str(data.get('hash') or '').strip(), str(data.get('reason') or '').strip()
+    if not tx_hash or not reason:
+        return jsonify({'success': False, 'error': 'Нужны хеш и причина'}), 400
+    role = current_role() or 'система'
+    if role not in ('admin', 'operator', 'findir'):
+        return jsonify({'success': False, 'error': 'Отвязать приход может операционист или фин дир'}), 403
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deals = {d.get('id'): d for d in state.get('deals', [])}
+        deal = deals.get(deal_id)
+        conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
+        if not deal or not conv:
+            return jsonify({'success': False, 'error': 'Пачка не найдена'}), 404
+        members = [deals.get(s.get('dealId')) for s in conv.get('sources') or []]
+        members = [m for m in members if m]
+        main = next((m for m in members if m.get('step') in ('s18w', 's22')), deal)
+        if main.get('step') not in ('s18w', 's22') or any((m.get('transfer') or {}).get('sends') for m in members):
+            return jsonify({'success': False, 'error': 'По пачке уже есть отправки — приход не отвязать'}), 409
+        before = len(conv.get('txs') or [])
+        conv['txs'] = [t for t in conv.get('txs') or [] if t.get('hash') != tx_hash]
+        if len(conv['txs']) == before:
+            return jsonify({'success': False, 'error': 'Такого прихода в пачке нет'}), 404
+        stamp = datetime.now().strftime('%d.%m, %H:%M')
+        entry = lambda text: {'ts': stamp, 'at': int(time.time() * 1000), 'role': role, 'text': text}
+        if conv.get('status') == 'received':
+            conv['status'] = 'sent'
+            conv.pop('receivedAt', None)
+            for src in conv.get('sources') or []:
+                src['usdtFact'] = None
+                m = deals.get(src.get('dealId'))
+                if m:
+                    m['payinHashes'] = []
+                    pay = m.setdefault('pay', {})
+                    pay['usdt'] = None
+                    pay['hash'] = None
+            main['step'] = 's18w'
+            main.setdefault('log', []).append(entry('Приём USDT отменён — вернулись на «Ждём USDT»'))
+        main.setdefault('log', []).append(entry(f'Отвязан приход {tx_hash}: {reason}'))
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = 'отвязка прихода USDT'
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version, 'data': state})
+    finally:
+        db.close()
 
 
 def _stand_payin_receiver(state, deal):
@@ -5965,6 +6033,11 @@ def stand_docs_issue():
         deal['docVersion'] = version
         deal['docFields'] = F
         deal['docMiss'] = []
+        # Договор выпущен — клиент теперь знакомый: следующая сделка пойдёт допником
+        # и не будет заново просить паспорт (приёмка 25.09)
+        for client in state.get('clients') or []:
+            if client.get('id') == deal.get('clientId'):
+                client['docs'] = True
         # Новая версия пакета: свои файлы и отметка «отправил клиенту» относились к старой
         dropped = sorted((deal.get('issued') or {}).keys())
         deal['issued'] = {}

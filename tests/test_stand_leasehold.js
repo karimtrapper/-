@@ -160,11 +160,11 @@ const round2 = x => Math.round(x * 100) / 100;
   assert.equal(d.pay.coinsNotified, true);
   assert.equal(scb, 2100000);
   inputs.coins_thb = '353000'; inputs.coins_ref = 'SCB-QA-1';
-  ctx.act(1, 's25');
-  assert.equal(d.step, 's25', 'расхождение требует причину');
   inputs.coins_gap = 'Комиссия Coins 500 THB';
+  // расхождение с заявкой шаг не запирает — пишется в журнал (Карим, 25.09)
   ctx.act(1, 's25');
   assert.equal(d.step, 's26');
+  assert.ok(d.log.some(l => String(l.text || l).includes('расхождение с заявкой')), 'расхождение записано');
   assert.equal(scb, 2453000);
   assert.equal(d.pay.coinsCredit.thb, 353000);
   ctx.act(1, 's26');

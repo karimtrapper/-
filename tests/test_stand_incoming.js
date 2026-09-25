@@ -24,6 +24,8 @@ function fixture(overrides = {}) {
     approx: d => ({pay: d.amountRub, cur: 'rub'}), docFields: () => ({purpose: 'Договор СД-1'}),
     isCrypto: () => false, editApply: () => {}, save: () => {}, render: () => {},
     log: (d, message) => d.log.push(message), go: (d, step) => { d.step = step; },
+    // после прихода — сразу конвертация, реквизиты менеджер вносит параллельно
+    afterPayin: d => { d.step = 's18'; d.reqTask = 'open'; },
     toast: message => events.push(message), money: (n) => String(n),
     now: () => '24.09, 12:00', val: id => (ctx.inputs || {})[id] || '',
     need: () => false, Number, Math, String, Set};
@@ -40,7 +42,8 @@ function fixture(overrides = {}) {
   assert.equal(S.incomes[0].dealId, 1);
   assert.equal(deal.payinParts[0].incId, S.incomes[0].id);
   assert.equal(deal.incomeAmount, 100000);
-  assert.equal(deal.step, 's15');
+  assert.equal(deal.step, 's18');
+  assert.equal(deal.reqTask, 'open');
   ctx.sberTake(1, S.incomes[0].id);
   assert.equal(deal.payinParts.length, 1, 'повторный захват не дублирует приход');
 }
@@ -60,7 +63,8 @@ function fixture(overrides = {}) {
   S.incomes.push({id: 5, rub: 40000, kind: 'банк', acc: '…0286 · Сбер',
     purpose: 'Договор СД-1', dealId: null, excluded: false});
   ctx.sberTake(1, 4); ctx.sberTake(1, 5); ctx.payinDone(1);
-  assert.equal(deal.step, 's15');
+  assert.equal(deal.step, 's18');
+  assert.equal(deal.reqTask, 'open');
   assert.equal(deal.incomeAmount, 100000);
 }
 {

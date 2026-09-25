@@ -495,8 +495,61 @@ def test_prod_agents_sync_maps_fields_skips_test_and_upserts_referrers(monkeypat
 
 def test_prod_agents_sync_without_key_is_clear_error(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     monkeypatch.delenv('STAND_PROD_RO_KEY', raising=False)
     with appmod.app.test_client() as client:
         res = client.post('/api/stand/prod-agents')
     assert res.status_code == 502 and 'STAND_PROD_RO_KEY' in res.json['error']
+
+
+def test_prod_agents_sync_only_admin_or_manager(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'operator')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    with appmod.app.test_client() as client:
+        assert client.post('/api/stand/prod-agents').status_code == 403
+
+
+def _unlink_board(step='s22', status='received', sends=None):
+    return {'deals': [{'id': 1, 'step': step, 'cnvId': 'CNV-1', 'postConv': 'coins', 'log': [],
+                       'payinHashes': [{'hash': HASH, 'amount': 100}], 'pay': {'usdt': 100, 'hash': HASH},
+                       'transfer': {'sends': sends or []}}],
+            'convs': [{'id': 'CNV-1', 'status': status, 'receivedAt': 'x', 'walletId': 'grusha',
+                       'sources': [{'dealId': 1, 'rub': 1000, 'usdtFact': 100}],
+                       'txs': [{'hash': HASH, 'net': 'TRC20', 'amount': 100, 'status': 'confirmed'},
+                               {'hash': 'b' * 64, 'net': 'TRC20', 'amount': 5, 'status': 'confirmed'}]}]}
+
+
+def test_unlink_confirmed_incoming_returns_pack_to_waiting(monkeypatch):
+    """Ошибочно выбранный подтверждённый приход отвязывается с причиной; принятая пачка
+    возвращается на «Ждём USDT», доли прихода у сделок обнуляются (Карим, 25.09)."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'operator')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    _put_board(_unlink_board())
+    with appmod.app.test_client() as client:
+        assert client.post('/api/stand/incoming/unlink', json={'dealId': 1, 'hash': HASH}).status_code == 400
+        res = client.post('/api/stand/incoming/unlink', json={'dealId': 1, 'hash': HASH, 'reason': 'не тот перевод'})
+        assert res.status_code == 200, res.json
+        st = client.get('/api/stand/state').json['data']
+    conv, deal = st['convs'][0], st['deals'][0]
+    assert [t['hash'] for t in conv['txs']] == ['b' * 64]
+    assert conv['status'] == 'sent' and deal['step'] == 's18w'
+    assert deal['payinHashes'] == [] and deal['pay']['usdt'] is None
+    assert any('не тот перевод' in l['text'] for l in deal['log'])
+
+
+def test_unlink_blocked_after_sends_and_for_manager(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    _put_board(_unlink_board())
+    with appmod.app.test_client() as client:
+        assert client.post('/api/stand/incoming/unlink',
+                           json={'dealId': 1, 'hash': HASH, 'reason': 'x'}).status_code == 403
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'operator')
+    _put_board(_unlink_board(step='s23', sends=[{'ref': 'demo:1:x', 'amount': 100}]))
+    with appmod.app.test_client() as client:
+        assert client.post('/api/stand/incoming/unlink',
+                           json={'dealId': 1, 'hash': HASH, 'reason': 'x'}).status_code == 409
