@@ -5677,6 +5677,427 @@ def stand_payin_check():
     finally:
         db.close()
 
+# ==================== ДОКУМЕНТЫ СТЕНДА ====================
+# Договор, приложение и счёт на стенде выпускает тот же генератор, что и CRM
+# (_docs_new_agreement / _docs_payment). Раньше стенд рисовал HTML-макеты, а
+# «Скачать PDF» отвечал тостом — клиенту нечего было отправить (Карим, 25.09).
+
+STAND_DOC_KIND = {'agreement': 'dog', 'addendum': 'app', 'invoice': 'bill'}
+STAND_DOC_TYPES = {'Лизхолд': 'leasehold', 'Аренда': 'rental', 'Фрихолд': 'freehold'}
+STAND_DOC_LABELS = {
+    'fio': 'ФИО', 'fioLat': 'ФИО латиницей', 'passNo': 'номер паспорта',
+    'amountThb': 'сумма инвойса, ฿', 'rate': 'курс сделки', 'amountPay': 'сумма клиенту',
+    'payTo': 'куда платит клиент', 'validTill': 'реквизиты действуют до',
+    'purpose': 'назначение платежа', 'object': 'объект', 'dev': 'получатель платежа',
+    'invNo': 'номер инвойса',
+}
+# ключ генератора → поле пакета на шаге «Подготовить договор»
+STAND_DOC_FIELD_OF = {
+    'client_name_ru': 'fio', 'client_name_en': 'fioLat', 'client_passport_no': 'passNo',
+    'total_payin': 'amountPay', 'transfer_amount': 'amountThb', 'rate': 'rate',
+    'payin_details': 'payTo', 'payin_wallet': 'payTo', 'payin_network': 'payTo',
+    'payin_recipient': 'payTo', 'payin_recipient_role': 'payTo',
+    'rate_valid_until': 'validTill', 'payment_reference': 'purpose',
+}
+STAND_UPLOAD_EXT = {'.pdf': 'application/pdf', '.doc': 'application/msword',
+                    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}
+STAND_UPLOAD_MAX = 10 * 1024 * 1024
+
+
+def _stand_num(value):
+    """«350 000», «2,6137», 910000 → Decimal; пусто или мусор → None."""
+    from decimal import Decimal, InvalidOperation
+    raw = str(value if value is not None else '').replace(' ', '').replace(' ', '')
+    raw = raw.replace(' ', '').replace(',', '.')
+    try:
+        number = Decimal(raw)
+    except InvalidOperation:
+        return None
+    return number if number.is_finite() and number > 0 else None
+
+
+def _stand_plain(number):
+    """Decimal без экспоненты и хвостовых нулей: 2.613700 → «2.6137»."""
+    text = format(number.normalize(), 'f')
+    return text
+
+
+def _stand_doc_request(state, deal, F):
+    """Сделка стенда → deal_type, fields и money для генератора документов.
+
+    Возвращает {'error': ..., 'fields': [ключи стенда], 'detail': ...}, если
+    выпускать нельзя: пусто в обязательном поле или курс не сходится с суммами.
+    """
+    from decimal import Decimal
+    import doc_routes
+    crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
+    if deal.get('type') == 'Оплата недвижимости':
+        deal_type = STAND_DOC_TYPES.get(deal.get('kind') or 'Лизхолд', 'leasehold')
+    else:
+        deal_type = 'payment'
+
+    parsed = (deal.get('docParse') or {}).get('fields') or {}
+    fields = {k: str(v).strip() for k, v in parsed.items()
+              if isinstance(v, (str, int, float)) and not isinstance(v, bool) and str(v).strip()}
+
+    def take(key, stand_key):
+        value = str(F.get(stand_key) if F.get(stand_key) is not None else '').strip()
+        if value:
+            fields[key] = value
+        elif stand_key in F:
+            # оператор стёр распознанное — в документ оно не идёт
+            fields.pop(key, None)
+
+    for key, stand_key in (('client_name_ru', 'fio'), ('client_name_en', 'fioLat'),
+                           ('client_passport_no', 'passNo'), ('client_passport_issue_date', 'passIss'),
+                           ('client_passport_issued_by', 'passOrg'), ('client_birth_date', 'born'),
+                           ('recipient_name', 'dev'), ('invoice_no', 'invNo'),
+                           ('invoice_date', 'invDate')):
+        take(key, stand_key)
+    obj = str(F.get('object') or '').strip()
+    auto_obj = ', '.join(str(x) for x in (parsed.get('project_name'), parsed.get('unit_no')) if x)
+    if obj and obj != auto_obj:
+        # объект поправили руками — в документ идёт он, а не распознанный проект и юнит
+        fields['project_name'] = obj
+        fields.pop('unit_no', None)
+    notes = []
+    if not any(fields.get(k) for k in ('recipient_bank', 'recipient_account', 'recipient_swift',
+                                        'recipient_bik')):
+        # Реквизиты застройщика приходят из распознанного инвойса; на шаге s11 их
+        # не правят. Не распознались — ссылаемся на сам инвойс, а не оставляем
+        # плейсхолдер: он заблокировал бы выпуск всего пакета.
+        inv = fields.get('invoice_no')
+        fields['recipient_bank'] = ('по реквизитам инвойса получателя' + (f' № {inv}' if inv else '')
+                                    + ' / as per the recipient invoice' + (f' No. {inv}' if inv else ''))
+        notes.append('Реквизиты получателя не распознаны — в приложении ссылка на инвойс')
+
+    missing = [k for k in ('fio', 'passNo') if not str(F.get(k) or '').strip()]
+    # Основание платежа в приложении — инвойс застройщика. Без его номера у лизхолда
+    # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
+    if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
+        missing.append('invNo')
+    thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
+    missing += [k for k, v in (('amountThb', thb), ('rate', rate), ('amountPay', pay)) if v is None]
+
+    today = datetime.utcnow() + timedelta(hours=7)
+    money = {'pair': 'USDT_THB' if crypto else 'RUB_THB',
+             'payin_method': 'usdt' if crypto else 'bank',
+             'rate_basis': doc_routes.DIRECT_RATE if crypto else doc_routes.INVERSE_RATE,
+             'rate_valid_until': str(F.get('validTill') or '').strip()
+                                 or f'{today:%d.%m.%Y}, 23:59 (GMT+7)'}
+    if thb and pay:
+        money['total_payin'] = _stand_plain(pay)
+        money['transfer_amount'] = _stand_plain(thb)
+    if thb and pay and rate:
+        # Курс сделки: ₽ за 1 ฿ у рублей, ฿ за 1 USDT у крипты. Сумма клиенту
+        # округлена до целых рублей / центов, поэтому точный курс из сумм
+        # отличается в шестом знаке — в документ идёт он, иначе генератор
+        # справедливо скажет, что курс и суммы не сходятся.
+        exact = (thb / pay) if crypto else (pay / thb)
+        if abs(rate - exact) <= Decimal('0.000001'):
+            money['rate'] = _stand_plain(rate)
+        elif abs(rate - exact) / rate <= Decimal('0.001'):
+            money['rate'] = _stand_plain(exact.quantize(Decimal('0.000001')))
+        else:
+            unit = '฿ за 1 USDT' if crypto else '₽ за 1 ฿'
+            return {'error': 'rate_mismatch', 'fields': ['rate', 'amountPay'],
+                    'detail': f'Курс {_stand_plain(rate)} не сходится с суммами: '
+                              f'{_stand_plain(pay)} и {_stand_plain(thb)} ฿ дают '
+                              f'{exact.quantize(Decimal("0.0001"))} {unit}. Поправьте курс или сумму клиенту'}
+
+    if crypto:
+        wallet_id = deal.get('walletId') or 'grusha'
+        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None) or {}
+        addr = _stand_payin_receiver(state, deal) or ''
+        if not re.fullmatch(r'T[1-9A-HJ-NP-Za-km-z]{33}', addr):
+            missing.append('payTo')
+        company = (wallet.get('owner') or 'компания') == 'компания'
+        money.update(payin_network='TRON (TRC-20)', payin_wallet=addr,
+                     payin_recipient='MF Corporation Company Limited' if company
+                     else (wallet.get('name') or wallet.get('owner') or ''),
+                     payin_recipient_role='Агент / Agent' if company
+                     else 'Уполномоченное лицо Агента / Agent’s authorised person')
+    else:
+        pay_to = str(F.get('payTo') or '').strip()
+        if not pay_to:
+            missing.append('payTo')
+        money.update(payin_recipient=pay_to.split(' · ')[0] if pay_to else '',
+                     payin_recipient_role='Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)',
+                     payin_details=pay_to.replace(' · ', '\n'),
+                     payment_reference=str(F.get('purpose') or '').strip())
+    fee = str(F.get('feeNote') or '').strip()
+    if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
+        money['fee_note'] = fee
+    if missing:
+        missing = list(dict.fromkeys(missing))
+        return {'error': 'missing_fields', 'fields': missing,
+                'detail': 'Не заполнено: ' + ', '.join(STAND_DOC_LABELS.get(k, k) for k in missing)}
+    return {'deal_type': deal_type, 'fields': fields, 'money': money, 'crypto': crypto,
+            'notes': notes}
+
+
+def _stand_doc_error(payload):
+    """Ответ генератора → понятная ошибка для шага s11 (поля стенда, по-русски)."""
+    error = payload.get('error')
+    if error == 'missing_fields':
+        keys = list(dict.fromkeys(STAND_DOC_FIELD_OF.get(k, k) for k in payload.get('fields') or []))
+        return {'success': False, 'error': 'missing_fields', 'fields': keys,
+                'labels': [STAND_DOC_LABELS.get(k, k) for k in keys],
+                'detail': 'Генератору не хватает: ' + ', '.join(STAND_DOC_LABELS.get(k, k) for k in keys)}
+    if error == 'incomplete_document':
+        return {'success': False, 'error': error, 'fields': [],
+                'detail': 'В документе остались пустые места: ' + '; '.join((payload.get('problems') or [])[:3])}
+    return {'success': False, 'error': error or 'server_error', 'fields': [],
+            'detail': payload.get('detail') or 'Документы не выпущены'}
+
+
+@app.route('/api/stand/docs/issue', methods=['POST'])
+def stand_docs_issue():
+    """Выпустить пакет документов сделки стенда настоящим генератором.
+
+    Новый клиент → договор + приложение 1 + счёт; у клиента уже есть договор
+    этого типа и маршрута → допник + счёт. Повторный вызов по той же сделке
+    («Поправить и пересоздать») перевыпускает тот же договор / допник новой
+    версией. Файлы — в AgreementDoc, в сделку пишется список docsIssued.
+    """
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    submitted = data.get('docFields')
+    if submitted is not None and not isinstance(submitted, dict):
+        return jsonify({'success': False, 'error': 'docFields: ожидается объект'}), 400
+    # Роль — до сессий записи: current_role() закрывает общую scoped-сессию
+    role = current_role() or 'система'
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
+        if deal.get('step') not in ('s11', 's11b'):
+            return jsonify({'success': False, 'error': 'not_on_step',
+                            'detail': 'Пакет выпускает операционист на шаге «Подготовить договор»'}), 409
+        F = dict(deal.get('docFields') or {})
+        F.update({k: v for k, v in (submitted or {}).items()
+                  if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        req = _stand_doc_request(state, deal, F)
+        prior = dict(deal.get('docPack') or {})
+    finally:
+        db.close()
+    if req.get('error'):
+        keys = req.get('fields') or []
+        return jsonify({'success': False, 'error': req['error'], 'fields': keys,
+                        'labels': [STAND_DOC_LABELS.get(k, k) for k in keys],
+                        'detail': req['detail']}), 400
+
+    import docgen
+    deal_type, fields, money = req['deal_type'], req['fields'], req['money']
+    note = '. '.join(req.get('notes') or [])
+    db = get_session()
+    try:
+        a = None
+        if prior.get('agreementId'):
+            a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
+        if a is not None and prior.get('mode') == 'agreement':
+            payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a)
+            mode = 'agreement'
+        elif a is not None and prior.get('mode') == 'addendum':
+            payload, code = _docs_payment(db, a, fields, money, payment_no=prior.get('paymentNo'))
+            mode = 'addendum'
+        else:
+            route_key = money['pair'] + ':' + money['payin_method']
+            existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
+            if existing is not None:
+                payload, code = _docs_payment(db, existing, fields, money)
+                mode = 'addendum'
+            else:
+                payload, code = _docs_new_agreement(db, deal_type, fields, money)
+                mode = 'agreement'
+                if deal.get('isOld'):
+                    note = '. '.join(filter(None, [
+                        'Клиент отмечен знакомым, но его договора этого типа и маршрута '
+                        'в базе нет — выпущен полный договор', note]))
+        if code != 200:
+            return jsonify(_stand_doc_error(payload)), code
+    except Exception as exc:
+        db.rollback()
+        app.logger.exception('stand_docs_issue')
+        return jsonify({'success': False, 'error': 'server_error',
+                        'detail': 'Документы не выпущены: ' + str(exc)[:200]}), 500
+    finally:
+        db.close()
+
+    agreement, issued, used = payload['agreement'], payload['issued'], payload['money']
+    purpose = ''
+    if used.get('payin_method') == 'bank':
+        purpose = used.get('payment_reference') or docgen.payment_reference(
+            fields, 'bank', used.get('part'))
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка исчезла с доски'}), 409
+        at = int(time.time() * 1000)
+        version = int(deal.get('docVersion') or 0) + 1
+        entries = [{'kind': STAND_DOC_KIND[x['kind']], 'docId': x['id'], 'file': x['filename'],
+                    'mime': x['mime'], 'size': x['size'], 'number': x['number'],
+                    'version': version, 'at': at} for x in issued]
+        deal['docsIssued'] = ((deal.get('docsIssued') or []) + entries)[-40:]
+        deal['docPack'] = {
+            'version': version, 'mode': mode, 'agreementId': agreement['id'],
+            'agreementNumber': agreement['number'], 'number': entries[-1]['number'],
+            'paymentNo': payload.get('payment_no') or 1, 'dealType': deal_type,
+            'pair': used['pair'], 'method': used['payin_method'],
+            'amount': used.get('total_payin'), 'currency': used.get('payin_currency'),
+            'transfer': used.get('transfer_amount'), 'rate': used.get('rate'),
+            'purpose': purpose, 'network': used.get('payin_network', ''),
+            'wallet': used.get('payin_wallet', ''), 'recipient': used.get('payin_recipient', ''),
+            'note': note, 'at': at}
+        deal['docVersion'] = version
+        deal['docFields'] = F
+        deal['docMiss'] = []
+        # Новая версия пакета: свои файлы и отметка «отправил клиенту» относились к старой
+        dropped = sorted((deal.get('issued') or {}).keys())
+        deal['issued'] = {}
+        deal.pop('docsSent', None)
+        names = {'dog': 'договор', 'app': 'приложение', 'bill': 'счёт'}
+        text = (f"Выпущен пакет документов, версия {version}: "
+                + ', '.join(f"{names[e['kind']]} {e['file']}" for e in entries)
+                + (f'. {note}' if note else '')
+                + (f". Свои файлы ({', '.join(dropped)}) заменены новой версией" if dropped else ''))
+        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+                                           'at': at, 'role': role, 'text': text})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = 'выпуск документов'
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version, 'data': state,
+                        'pack': deal['docPack'], 'issued': entries})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/docs/zip', methods=['GET'])
+def stand_docs_zip():
+    """«Скачать всё»: текущая версия пакета одним архивом, свои файлы вместо сгенерированных."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    try:
+        deal_id = int(request.args.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    import io
+    import zipfile
+    from flask import Response
+    from urllib.parse import quote
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        pack = (deal or {}).get('docPack') or {}
+        if not pack:
+            return jsonify({'success': False, 'error': 'Пакет документов ещё не выпущен'}), 404
+        current = {e['kind']: e['docId'] for e in deal.get('docsIssued') or []
+                   if e.get('version') == pack.get('version')}
+        for kind, own in (deal.get('issued') or {}).items():
+            if isinstance(own, dict) and own.get('docId'):
+                current[kind] = own['docId']
+        ids = [current[k] for k in ('dog', 'app', 'bill') if k in current]
+        docs = db.query(AgreementDoc).filter(AgreementDoc.id.in_(ids)).all() if ids else []
+        # только файлы договора этой сделки — чужой docId в состоянии не вытащит лишнего
+        docs = [x for x in docs if x.agreement_id == pack.get('agreementId')]
+        if not docs:
+            return jsonify({'success': False, 'error': 'Файлы не найдены'}), 404
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for x in sorted(docs, key=lambda x: ids.index(x.id)):
+                zf.writestr(x.filename, x.data or b'')
+        name = f"Documents_{deal.get('code') or deal_id}_v{pack.get('version')}.zip"
+        return Response(buf.getvalue(), mimetype='application/zip', headers={
+            'Content-Disposition': f"attachment; filename*=UTF-8''{quote(name)}"})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/docs/upload', methods=['POST'])
+def stand_docs_upload():
+    """«Заменить своим»: настоящий файл операциониста вместо сгенерированного.
+
+    Файл ложится в тот же договор (AgreementDoc kind=manual_<вид>), в сделке —
+    в issued[<dog|app|bill>]; сгенерированный остаётся и возвращается одной кнопкой.
+    """
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    try:
+        deal_id = int(request.form.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    kind = request.form.get('kind')
+    server_kind = {v: k for k, v in STAND_DOC_KIND.items()}.get(kind)
+    if not server_kind:
+        return jsonify({'success': False, 'error': 'kind: dog, app или bill'}), 400
+    f = request.files.get('file')
+    if not f or not f.filename:
+        return jsonify({'success': False, 'error': 'Файл не приложен'}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in STAND_UPLOAD_EXT:
+        return jsonify({'success': False, 'error': 'Нужен PDF, DOC или DOCX'}), 400
+    raw = f.read(STAND_UPLOAD_MAX + 1)
+    if not raw:
+        return jsonify({'success': False, 'error': 'Файл пустой'}), 400
+    if len(raw) > STAND_UPLOAD_MAX:
+        return jsonify({'success': False, 'error': 'Файл больше 10 МБ'}), 400
+    role = current_role() or 'система'
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        pack = (deal or {}).get('docPack') or {}
+        if not deal or not pack.get('agreementId'):
+            return jsonify({'success': False, 'error': 'Сначала выпустите пакет документов'}), 409
+        if kind == 'dog' and pack.get('mode') != 'agreement':
+            return jsonify({'success': False, 'error': 'В этом пакете нет договора — только допник и счёт'}), 409
+        doc = _docs_save(db, pack['agreementId'], 'manual_' + server_kind, pack.get('number'),
+                         pack.get('paymentNo') or 1, os.path.basename(f.filename)[:200], raw,
+                         STAND_UPLOAD_EXT[ext])
+        db.commit()
+        doc_id, filename = doc.id, doc.filename
+    finally:
+        db.close()
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify({'success': False, 'error': 'Сделка исчезла с доски'}), 409
+        size = f'{len(raw) / 1024:.0f} КБ' if len(raw) < 1024 * 1024 else f'{len(raw) / 1048576:.1f} МБ'
+        deal.setdefault('issued', {})[kind] = {'file': filename, 'size': size, 'docId': doc_id,
+                                               'mime': STAND_UPLOAD_EXT[ext],
+                                               'at': datetime.now().strftime('%d.%m, %H:%M')}
+        deal['docVersion'] = int(deal.get('docVersion') or 0) + 1
+        deal.pop('docsSent', None)
+        names = {'dog': 'договор', 'app': 'приложение', 'bill': 'счёт'}
+        deal.setdefault('log', []).append({
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000), 'role': role,
+            'text': f"Загружен свой файл вместо сгенерированного: {names[kind]} · {filename} · версия {deal['docVersion']}"})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = 'загрузка документа'
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version, 'data': state, 'docId': doc_id})
+    finally:
+        db.close()
+
+
 @app.route('/api/auth/setup', methods=['POST'])
 @limiter.limit("3/minute")
 def auth_setup():
@@ -17516,62 +17937,61 @@ def docs_parse():
     return jsonify(merged)
 
 
-@app.route('/api/docs/agreements', methods=['POST'])
-def docs_create_agreement():
-    """Создать рамочный договор и выпустить первый пакет: договор + инвойс.
+def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None):
+    """Действующий договор клиента этого типа на этом маршруте (пара + способ оплаты)."""
+    import doc_routes
+    candidates = db.query(Agreement).filter(Agreement.client_key == client_key,
+                                           Agreement.deal_type == deal_type).all()
+    for candidate in candidates:
+        # Старый шаблон не фиксировал маршрут и мог содержать другую валюту.
+        # Архив сохраняем, но он не блокирует исправленный рамочный договор.
+        if candidate.route_key == 'legacy' or candidate.id == exclude_id:
+            continue
+        old = json.loads(candidate.money_json or '{}')
+        try:
+            old = doc_routes.normalize(old, deal_type)
+            old_key = old['pair'] + ':' + old['payin_method']
+        except ValueError:
+            old_key = candidate.route_key
+        if old_key == route_key:
+            return candidate
+    return None
 
-    Пара (клиент, тип сделки) уникальна: повторный платёж идёт через
-    /payment, а не через второй договор.
+
+def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None):
+    """Ядро выпуска рамочного договора: договор + приложение 1 + инвойс.
+
+    → (тело ответа, HTTP-код). Общее для CRM (POST /api/docs/agreements) и стенда.
+    `reissue` — уже выпущенный договор, который перевыпускаем новой версией
+    (стенд, «Поправить и пересоздать»): номер сохраняется, файлы добавляются.
     """
     import docgen
-    try:
-        body = _docs_request_payload()
-    except ValueError as exc:
-        return jsonify({'success': False, 'error': 'invalid_payload', 'detail': str(exc)}), 400
-    fields, money = body['fields'], body['money']
-    deal_type = body.get('deal_type')
-    client_id = body.get('client_id')
-
-    if deal_type not in DOCS_DEAL_TYPES:
-        return jsonify({'success': False, 'error': 'bad_deal_type'}), 400
-    missing = _docs_validate(deal_type, fields, money)
     import doc_routes
+    if deal_type not in DOCS_DEAL_TYPES:
+        return {'success': False, 'error': 'bad_deal_type'}, 400
+    missing = _docs_validate(deal_type, fields, money)
     try:
         money = doc_routes.normalize(money, deal_type)
         missing += doc_routes.validate(money, deal_type)
     except ValueError as exc:
-        return jsonify({'success': False, 'error': 'invalid_route', 'detail': str(exc)}), 400
+        return {'success': False, 'error': 'invalid_route', 'detail': str(exc)}, 400
     if missing:
-        return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
+        return {'success': False, 'error': 'missing_fields', 'fields': missing}, 400
 
     client_name = (fields.get('client_name_ru') or fields.get('client_name_en') or '').strip()
     money['deal_type'] = deal_type
-    db = get_session()
-    try:
-        client_key = _docs_client_key(fields)
-        route_key = money['pair'] + ':' + money['payin_method']
-        candidates = db.query(Agreement).filter(Agreement.client_key == client_key,
-                                               Agreement.deal_type == deal_type).all()
-        dup = None
-        for candidate in candidates:
-            # Старый шаблон не фиксировал маршрут и мог содержать другую валюту.
-            # Архив сохраняем, но он не блокирует исправленный рамочный договор.
-            if candidate.route_key == 'legacy':
-                continue
-            old = json.loads(candidate.money_json or '{}')
-            try:
-                old = doc_routes.normalize(old, deal_type)
-                old_key = old['pair'] + ':' + old['payin_method']
-            except ValueError:
-                old_key = candidate.route_key
-            if old_key == route_key:
-                dup = candidate
-                break
-        if dup:
-            return jsonify({'success': False, 'error': 'already_exists',
-                            'agreement_id': dup.id, 'number': dup.number,
-                            'detail': 'У клиента уже есть договор этого типа и маршрута — новый платёж оформляется допником'}), 409
+    client_key = _docs_client_key(fields)
+    route_key = money['pair'] + ':' + money['payin_method']
+    dup = _docs_route_agreement(db, client_key, deal_type, route_key,
+                                exclude_id=reissue.id if reissue is not None else None)
+    if dup:
+        return {'success': False, 'error': 'already_exists',
+                'agreement_id': dup.id, 'number': dup.number,
+                'detail': 'У клиента уже есть договор этого типа и маршрута — новый платёж оформляется допником'}, 409
 
+    if reissue is not None:
+        number = reissue.number
+    else:
         # Номер = MF-<3 цифры паспорта>-<ДДММ>-<N>. У одного клиента в один день
         # может появиться договор второго типа — тогда хвост сдвигаем, иначе
         # два разных договора получат один номер.
@@ -17582,18 +18002,18 @@ def docs_create_agreement():
                 AgreementDoc.number == docgen.make_number(fields.get('client_passport_no', ''), None, seq)).first():
             seq += 1
         number = docgen.make_number(fields.get('client_passport_no', ''), None, seq)
-        money['part'] = 1
-        # Договор — рамочный, приложения в нём остаются бланками: клиент
-        # подписывает его один раз и держит неизменным.
-        data, _ = docgen.build_agreement(deal_type, fields, money, number=number)
-        addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1)
-        invoice = docgen.build_commercial_invoice(fields, money, number, deal_type)
-        problems = (docgen.check(data, allow_forms=True)
-                    + docgen.check(addendum) + docgen.check(invoice))
-        if problems:
-            return jsonify({'success': False, 'error': 'incomplete_document',
-                            'problems': problems}), 422
+    money['part'] = 1
+    # Договор — рамочный, приложения в нём остаются бланками: клиент
+    # подписывает его один раз и держит неизменным.
+    data, _ = docgen.build_agreement(deal_type, fields, money, number=number)
+    addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1)
+    invoice = docgen.build_commercial_invoice(fields, money, number, deal_type)
+    problems = (docgen.check(data, allow_forms=True)
+                + docgen.check(addendum) + docgen.check(invoice))
+    if problems:
+        return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
 
+    if reissue is None:
         a = Agreement(client_id=int(client_id) if client_id else None,
                       client_name=client_name, client_key=client_key,
                       route_key=route_key,
@@ -17602,24 +18022,49 @@ def docs_create_agreement():
                       money_json=json.dumps(money, ensure_ascii=False), payments_count=1)
         db.add(a)
         db.flush()
+    else:
+        a = reissue
+        a.client_name, a.client_key, a.route_key = client_name, client_key, route_key
+        a.fields_json = json.dumps(fields, ensure_ascii=False)
+        a.money_json = json.dumps(money, ensure_ascii=False)
 
-        safe = re.sub(r'[^\w\-.]+', '_', client_name)[:40] or 'client'
-        # Три отдельных файла и все в PDF: договор живёт у клиента всегда,
-        # допник и инвойс — на конкретный платёж.
-        for kind, raw, base in (
-                ('agreement', data, f'MF_Agreement_{deal_type}_{safe}_{number}'),
-                ('addendum', addendum, f'MF_Addendum_1_{safe}_{number}'),
-                ('invoice', invoice, f'MF_Commercial_Invoice_{number}')):
-            body, fname, mime = docgen.as_pdf(raw, base)
-            _docs_save(db, a.id, kind, number, 1, fname, body, mime)
+    safe = re.sub(r'[^\w\-.]+', '_', client_name)[:40] or 'client'
+    # Три отдельных файла и все в PDF: договор живёт у клиента всегда,
+    # допник и инвойс — на конкретный платёж.
+    saved = []
+    for kind, raw, base in (
+            ('agreement', data, f'MF_Agreement_{deal_type}_{safe}_{number}'),
+            ('addendum', addendum, f'MF_Addendum_1_{safe}_{number}'),
+            ('invoice', invoice, f'MF_Commercial_Invoice_{number}')):
+        out, fname, mime = docgen.as_pdf(raw, base)
+        saved.append(_docs_save(db, a.id, kind, number, 1, fname, out, mime))
 
-        for slot, f in _docs_collect_uploads():
-            raw = f.read()
-            if raw:
-                _docs_save(db, a.id, f'source_{slot or "other"}', None, 1, f.filename, raw,
-                           f.mimetype or 'application/octet-stream')
-        db.commit()
-        return jsonify({'success': True, 'agreement': a.to_dict()})
+    for slot, f in uploads:
+        raw = f.read()
+        if raw:
+            _docs_save(db, a.id, f'source_{slot or "other"}', None, 1, f.filename, raw,
+                       f.mimetype or 'application/octet-stream')
+    db.commit()
+    return {'success': True, 'agreement': a.to_dict(), 'issued': [x.to_dict() for x in saved],
+            'money': money}, 200
+
+
+@app.route('/api/docs/agreements', methods=['POST'])
+def docs_create_agreement():
+    """Создать рамочный договор и выпустить первый пакет: договор + инвойс.
+
+    Пара (клиент, тип сделки) уникальна: повторный платёж идёт через
+    /payment, а не через второй договор.
+    """
+    try:
+        body = _docs_request_payload()
+    except ValueError as exc:
+        return jsonify({'success': False, 'error': 'invalid_payload', 'detail': str(exc)}), 400
+    db = get_session()
+    try:
+        payload, code = _docs_new_agreement(db, body.get('deal_type'), body['fields'], body['money'],
+                                            body.get('client_id'), _docs_collect_uploads())
+        return jsonify(payload), code
     except Exception as exc:
         db.rollback()
         app.logger.exception('docs_create_agreement')
@@ -17628,10 +18073,86 @@ def docs_create_agreement():
         db.close()
 
 
+def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None):
+    """Ядро очередного платежа: доп. соглашение + инвойс со ссылкой на рамочный договор.
+
+    → (тело ответа, HTTP-код). `payment_no` — перевыпуск допника того же платежа
+    новой версией (стенд, «Поправить и пересоздать»): счётчик платежей не растёт.
+    """
+    import docgen
+    import doc_routes
+    submitted_fields = submitted_fields or {}
+    submitted_money = submitted_money or {}
+    fields = json.loads(a.fields_json or '{}')
+    fields.update(submitted_fields)
+    money = json.loads(a.money_json or '{}')
+    money.update(submitted_money)
+    money['deal_type'] = a.deal_type
+    try:
+        previous_basis = json.loads(a.money_json or '{}').get('rate_basis', doc_routes.INVERSE_RATE)
+        if ('rate_basis' in submitted_money and 'rate' not in submitted_money
+                and submitted_money['rate_basis'] != previous_basis and money.get('rate')):
+            raise ValueError('При смене направления курса укажите курс этого платежа')
+        if 'rate' in submitted_money:
+            # Старый клиент API без маркера всё ещё передаёт обратный курс.
+            # Нельзя наследовать направление предыдущего платежа.
+            money['rate_basis'] = submitted_money.get('rate_basis', doc_routes.INVERSE_RATE)
+        if a.route_key == 'legacy':
+            raise ValueError('Это договор старого шаблона. Создайте новый договор с выбранной валютной парой и способом оплаты; старые файлы сохраняются')
+        money = doc_routes.normalize(money, a.deal_type)
+        original = doc_routes.normalize(json.loads(a.money_json or '{}'), a.deal_type)
+        if (money['pair'], money['payin_method']) != (original['pair'], original['payin_method']):
+            raise ValueError('Изменился маршрут: создайте новый договор для этой пары и способа оплаты')
+        # Каждый новый платёж требует реквизитов из новой формы, не из старого инвойса.
+        for key in (*doc_routes.ROUTE_FIELDS, 'rate_valid_until', 'payment_reference'):
+            money[key] = submitted_money.get(key, '')
+        route_missing = doc_routes.validate(money, a.deal_type)
+    except ValueError as exc:
+        return {'success': False, 'error': 'invalid_route', 'detail': str(exc)}, 400
+
+    missing = _docs_validate(a.deal_type, fields, money) + route_missing
+    if missing:
+        return {'success': False, 'error': 'missing_fields', 'fields': missing}, 400
+
+    # Номер платежа для клиента и хвост номера документа — разные счётчики:
+    # хвост может уехать вперёд, если у клиента есть договор другого типа
+    # с тем же номером. Клиенту показываем «Платёж № 2», а не № 3.
+    if not payment_no:
+        payment_no = (a.payments_count or 1) + 1
+    money['part'] = payment_no
+    # Хвост номера = номер платежа. Совпадение с чужим документом
+    # разрешаем сдвигом, но внутри одного договора номера не пересекаются.
+    tail = payment_no
+    number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
+    while db.query(AgreementDoc.id).join(Agreement).filter(
+            AgreementDoc.number == number, Agreement.id != a.id).first():
+        tail += 1
+        number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
+    add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
+    money['parent_number'] = a.number
+    inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
+    problems = docgen.check(add) + docgen.check(inv)
+    if problems:
+        return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
+
+    safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
+    saved = []
+    for kind, raw, base in (
+            ('addendum', add, f'MF_Addendum_{payment_no}_{safe}_{number}'),
+            ('invoice', inv, f'MF_Commercial_Invoice_{number}')):
+        out, fname, mime = docgen.as_pdf(raw, base)
+        saved.append(_docs_save(db, a.id, kind, number, payment_no, fname, out, mime))
+    a.payments_count = max(a.payments_count or 1, payment_no)
+    a.fields_json = json.dumps(fields, ensure_ascii=False)
+    a.money_json = json.dumps(money, ensure_ascii=False)
+    db.commit()
+    return {'success': True, 'agreement': a.to_dict(), 'issued': [x.to_dict() for x in saved],
+            'money': money, 'payment_no': payment_no}, 200
+
+
 @app.route('/api/docs/agreements/<int:agreement_id>/payment', methods=['POST'])
 def docs_add_payment(agreement_id):
     """Очередной платёж: доп. соглашение + инвойс со ссылкой на рамочный договор."""
-    import docgen
     try:
         body = _docs_request_payload()
     except ValueError as exc:
@@ -17641,72 +18162,8 @@ def docs_add_payment(agreement_id):
         a = db.query(Agreement).filter(Agreement.id == agreement_id).first()
         if not a:
             return jsonify({'success': False, 'error': 'not_found'}), 404
-
-        fields = json.loads(a.fields_json or '{}')
-        fields.update(body.get('fields') or {})
-        money = json.loads(a.money_json or '{}')
-        money.update(body.get('money') or {})
-        money['deal_type'] = a.deal_type
-        import doc_routes
-        try:
-            submitted_money = body.get('money') or {}
-            previous_basis = json.loads(a.money_json or '{}').get('rate_basis', doc_routes.INVERSE_RATE)
-            if ('rate_basis' in submitted_money and 'rate' not in submitted_money
-                    and submitted_money['rate_basis'] != previous_basis and money.get('rate')):
-                raise ValueError('При смене направления курса укажите курс этого платежа')
-            if 'rate' in submitted_money:
-                # Старый клиент API без маркера всё ещё передаёт обратный курс.
-                # Нельзя наследовать направление предыдущего платежа.
-                money['rate_basis'] = submitted_money.get('rate_basis', doc_routes.INVERSE_RATE)
-            if a.route_key == 'legacy':
-                raise ValueError('Это договор старого шаблона. Создайте новый договор с выбранной валютной парой и способом оплаты; старые файлы сохраняются')
-            money = doc_routes.normalize(money, a.deal_type)
-            original = doc_routes.normalize(json.loads(a.money_json or '{}'), a.deal_type)
-            if (money['pair'], money['payin_method']) != (original['pair'], original['payin_method']):
-                raise ValueError('Изменился маршрут: создайте новый договор для этой пары и способа оплаты')
-            # Каждый новый платёж требует реквизитов из новой формы, не из старого инвойса.
-            for key in (*doc_routes.ROUTE_FIELDS, 'rate_valid_until', 'payment_reference'):
-                money[key] = (body.get('money') or {}).get(key, '')
-            route_missing = doc_routes.validate(money, a.deal_type)
-        except ValueError as exc:
-            return jsonify({'success': False, 'error': 'invalid_route', 'detail': str(exc)}), 400
-
-        missing = _docs_validate(a.deal_type, fields, money) + route_missing
-        if missing:
-            return jsonify({'success': False, 'error': 'missing_fields', 'fields': missing}), 400
-
-        # Номер платежа для клиента и хвост номера документа — разные счётчики:
-        # хвост может уехать вперёд, если у клиента есть договор другого типа
-        # с тем же номером. Клиенту показываем «Платёж № 2», а не № 3.
-        payment_no = (a.payments_count or 1) + 1
-        money['part'] = payment_no
-        # Хвост номера = номер платежа. Совпадение с чужим документом
-        # разрешаем сдвигом, но внутри одного договора номера не пересекаются.
-        tail = payment_no
-        number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-        while db.query(AgreementDoc.id).join(Agreement).filter(
-                AgreementDoc.number == number, Agreement.id != a.id).first():
-            tail += 1
-            number = docgen.make_number(fields.get('client_passport_no', ''), None, tail)
-        add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
-        money['parent_number'] = a.number
-        inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
-        problems = docgen.check(add) + docgen.check(inv)
-        if problems:
-            return jsonify({'success': False, 'error': 'incomplete_document',
-                            'problems': problems}), 422
-
-        safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
-        for kind, raw, base in (
-                ('addendum', add, f'MF_Addendum_{payment_no}_{safe}_{number}'),
-                ('invoice', inv, f'MF_Commercial_Invoice_{number}')):
-            body, fname, mime = docgen.as_pdf(raw, base)
-            _docs_save(db, a.id, kind, number, payment_no, fname, body, mime)
-        a.payments_count = payment_no
-        a.fields_json = json.dumps(fields, ensure_ascii=False)
-        a.money_json = json.dumps(money, ensure_ascii=False)
-        db.commit()
-        return jsonify({'success': True, 'agreement': a.to_dict()})
+        payload, code = _docs_payment(db, a, body.get('fields'), body.get('money'))
+        return jsonify(payload), code
     except Exception as exc:
         db.rollback()
         app.logger.exception('docs_add_payment')
