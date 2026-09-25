@@ -420,7 +420,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 22:30 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 23:30 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -3401,7 +3401,7 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
-    else if(!mine&&S.role==='manager'&&reqOpen(d)) body=`<div class="alert a-info" style="margin-bottom:14px"><div>Параллельно: операционист сейчас на шаге «${st.title}». Реквизиты нужны к оплате инвойса — без них операционист не заплатит.</div></div>`+ctxCard(d)+stepCard(Object.assign({},d,{step:'s15'}));
+    else if(!mine&&S.role==='manager'&&reqOpen(d)) body=`<div class="alert a-info" style="margin-bottom:14px"><div>Параллельно: операционист сейчас на шаге «${st.title}». Реквизиты нужны к оплате инвойса — без них операционист не заплатит.</div></div>`+ctxCard(d)+stepCard(Object.assign({},d,{step:'s15',_side:true}));
     else if(!mine) body=`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
       ${canSwitchRole()?'Переключите роль наверху, чтобы продолжить.':'Когда шаг сделают, задача придёт к вам, если следующий ход ваш.'}</div></div>
       <div class="row"><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button>
@@ -6017,7 +6017,7 @@ function stepCard(d){
         <span class="sub2"> это увидит банк получателя</span></label>
       <input class="fc" id="p_purp" value="${(pt.purpose||'').replace(/"/g,'&quot;')}" placeholder="Payment for unit B1204, invoice INV-4072">
       <p class="fh">то, что требует застройщик или его банк: номер юнита, номер инвойса, имя покупателя</p></div>
-    <div class="row">${d.step==='s15'
+    <div class="row">${!d._side
       ?`<button class="btn btn-primary" onclick="act(${d.id},'s15')">Передать операционисту на оплату</button>`
       :`<button class="btn btn-primary" onclick="reqSave(${d.id})">Сохранить реквизиты</button>`}</div></div>`;},
 
@@ -6341,7 +6341,9 @@ function stepCard(d){
     const ok=(isCrypto(d)
       ? [['Курс клиенту, ฿/USDT',d.rates.client],['Хеш прихода USDT',d.pay.hash]]
       : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеш обмена',d.pay.hash]])
-      .concat([['Транзакция отправки',d.pay.tx],
+      /* личный кошелёк закрывает отправку сервером (settle), минуя act s23 — тогда хеш
+         лежит в pay.outHash и в отправках, а pay.tx пуст (приёмка 25.09) */
+      .concat([['Транзакция отправки',d.pay.tx||d.pay.outHash||((sendList(d).find(x=>x.status==='confirmed')||{}).ref)],
       ['Чек оплаты инвойса',receiptFiles.length?((d.docMeta||{}).receipt||{}).file:null]]);
     const miss=ok.filter(x=>!x[1]).length+crmGaps(d).length;
     /* Чек — главное на этом шаге: сумма, получатель и файл крупно в самом верху,

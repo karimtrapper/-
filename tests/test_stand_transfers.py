@@ -553,3 +553,34 @@ def test_unlink_blocked_after_sends_and_for_manager(monkeypatch):
     with appmod.app.test_client() as client:
         assert client.post('/api/stand/incoming/unlink',
                            json={'dealId': 1, 'hash': HASH, 'reason': 'x'}).status_code == 409
+
+
+def test_manager_can_edit_requisites_on_operator_steps(monkeypatch):
+    """Реквизиты — параллельная задача менеджера: на s22/s26 он может менять только их,
+    любая другая правка сделки на чужом шаге по-прежнему запрещена (Карим, 25.09)."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    for step in ('s22', 's26'):
+        _put_board({'deals': [{'id': 1, 'step': step, 'reqTask': 'open', 'log': [], 'pay': {}}],
+                    'convs': [], 'wallets': []})
+        with appmod.app.test_client() as client:
+            cur = client.get('/api/stand/state').json
+            data = cur['data']
+            data['deals'][0].update(payTo={'dev': 'Dev Co', 'acc': '123', 'bank': 'SCB', 'amount': 100,
+                                           'purpose': 'inv 1'}, reqTask='done', dev='Dev Co')
+            data['deals'][0]['log'].append({'text': 'Реквизиты для оплаты заполнены'})
+            ok = client.put('/api/stand/state', json={'version': cur['version'], 'data': data})
+            assert ok.status_code == 200, (step, ok.json)
+            cur = client.get('/api/stand/state').json
+            data = cur['data']
+            data['deals'][0]['step'] = 's27'
+            bad = client.put('/api/stand/state', json={'version': cur['version'], 'data': data})
+            assert bad.status_code == 409, step
+    _put_board({'deals': [{'id': 1, 'step': 's26', 'log': [], 'pay': {'invoicePaid': True}}],
+                'convs': [], 'wallets': []})
+    with appmod.app.test_client() as client:
+        cur = client.get('/api/stand/state').json
+        data = cur['data']
+        data['deals'][0]['payTo'] = {'acc': '999'}
+        assert client.put('/api/stand/state', json={'version': cur['version'], 'data': data}).status_code == 409

@@ -5047,6 +5047,9 @@ def _stand_valid_receipt(deal):
     return False
 
 
+STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes'}
+
+
 def _stand_guard_transition(previous, new_state, actor=None):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     for old_conv in previous.get('convs', []):
@@ -5105,7 +5108,13 @@ def _stand_guard_transition(previous, new_state, actor=None):
                                if w.get('id') == wallet_id), None)
                 required = ((wallet or {}).get('role') or
                             ('teodor' if wallet_id in ('teodor', 'andrey') else 'findir'))
-            if required and actor != required:
+            # Реквизиты для оплаты — параллельная задача менеджера (Карим, 25.09): их
+            # можно править на любом шаге, пока инвойс не оплачен. Менеджеру пропускаем
+            # правку, если менялись только реквизиты и их след в журнале.
+            changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)}
+            manager_reqs = (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
+                            and changed <= STAND_MANAGER_REQ_FIELDS)
+            if required and actor != required and not manager_reqs:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
             if deal.get('closed') or deal.get('step') == 'done':
