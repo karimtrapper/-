@@ -218,3 +218,10 @@ def test_zip_contains_current_pack_with_own_file(stand):
     names = zipfile.ZipFile(io.BytesIO(r.data)).namelist()
     assert len(names) == 3 and 'bill.pdf' in names
     assert any(n.startswith('MF_Agreement_leasehold') for n in names)
+
+
+def test_leasehold_without_invoice_number_names_the_field(stand):
+    stand.put_board([_deal(10)])
+    r = stand.post('/api/stand/docs/issue', json={'dealId': 10, 'docFields': _fields(invNo='')})
+    assert r.status_code == 400
+    assert r.json['fields'] == ['invNo'] and 'номер инвойса' in r.json['detail']

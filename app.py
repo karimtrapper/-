@@ -5625,6 +5625,7 @@ STAND_DOC_LABELS = {
     'amountThb': 'сумма инвойса, ฿', 'rate': 'курс сделки', 'amountPay': 'сумма клиенту',
     'payTo': 'куда платит клиент', 'validTill': 'реквизиты действуют до',
     'purpose': 'назначение платежа', 'object': 'объект', 'dev': 'получатель платежа',
+    'invNo': 'номер инвойса',
 }
 # ключ генератора → поле пакета на шаге «Подготовить договор»
 STAND_DOC_FIELD_OF = {
@@ -5707,6 +5708,10 @@ def _stand_doc_request(state, deal, F):
         notes.append('Реквизиты получателя не распознаны — в приложении ссылка на инвойс')
 
     missing = [k for k in ('fio', 'passNo') if not str(F.get(k) or '').strip()]
+    # Основание платежа в приложении — инвойс застройщика. Без его номера у лизхолда
+    # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
+    if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
+        missing.append('invNo')
     thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
     missing += [k for k, v in (('amountThb', thb), ('rate', rate), ('amountPay', pay)) if v is None]
 

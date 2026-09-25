@@ -2232,6 +2232,7 @@ function docsSentSet(id,on){
   save();render();
 }
 function docOpen(id,k,index){
+  if(k==='dog'||k==='app'||k==='bill'){docDownload(id,k,'file');return;}
   const d=deal(id), files=filesOf(d,k);
   if(files.length||k==='receipt'||k==='signed'){
     const f=files[index==null?0:index], blob=f&&fileBlob(f);
@@ -2471,33 +2472,7 @@ function viewDoc(){
       <tr><th>Паспорт</th><td>${F.num}, выдан ${F.iss}</td></tr>
       <tr><th>Дата рождения</th><td>${F.born}</td></tr>
       <tr><th>Источник средств</th><td>Заработная плата, накопления</td></tr>
-      <tr><th>Публичное должностное лицо</th><td>Нет</td></tr></table></div>`,
-  dog:()=>`<div class="pa"><h5>Агентский договор № ${d.code}-${P.kind==='Фрихолд'?'ФХ':(P.kind==='Аренда'?'АР':'ЛХ')}</h5>
-    <div class="meta">г. Бангкок · ${dt} · версия ${d.docVersion||1}</div>
-    <p><b>${P.agent}</b>, рег. № ${P.agentReg}, в лице ${P.agentDir}, Агент, с одной стороны, и <b>${P.fio}</b> (${P.fioLat}), паспорт ${P.passNo}, выдан ${P.passIss} ${P.passOrg}, Принципал, с другой стороны, заключили настоящий договор.</p>
-    <p><b>1. Предмет.</b> Агент по поручению Принципала за вознаграждение совершает оплату в пользу ${P.dev} по объекту ${P.object||'—'} (${P.kind||'—'})${P.invNo?', инвойс '+P.invNo:''}.</p>
-    <p><b>2. Расчёты.</b> Принципал перечисляет Агенту сумму по курсу, зафиксированному в приложении. ${P.feeNote}.</p>
-    <div class="sign"><span>Агент ____________</span><span>Принципал ____________</span></div>
-    <p style="font-size:11.5px;color:#6B7280;margin-top:14px">${d.docFields?'Часть полей поправлена вручную на шаге подготовки.':'Все поля подставлены автоматически: паспорт, инвойс, расчёт сделки.'}</p></div>`,
-  app:()=>`<div class="pa"><h5>Приложение № ${d.docVersion||1} к договору ${d.code}</h5>
-    <div class="meta">платёж и курс · ${dt}</div>
-    <table class="pa-t"><tr><th>Получатель</th><td>${P.dev}${P.object?' · '+P.object:''}</td></tr>
-      <tr><th>Сумма к оплате</th><td>${money(Number(P.amountThb)||ap.thb,'฿')}</td></tr>
-      <tr><th>Курс сделки</th><td>${P.rate||'—'} ${isCrypto(d)?'฿ за 1 USDT':'₽/฿'}${P.rateAt?' · зафиксирован '+P.rateAt:''}</td></tr>
-      <tr><th>Сумма принципала</th><td>${money(Number(P.amountPay)||ap.pay,ap.sign)}</td></tr>
-      ${P.invoiceTotal?`<tr><th>Часть оплаты</th><td>${P.partNo||''} по инвойсу на ${money(Number(P.invoiceTotal),'฿')}</td></tr>
-      <tr><th>Остаток</th><td>${money((Number(P.invoiceTotal)||0)-(Number(P.amountThb)||0),'฿')}</td></tr>`:''}
-      <tr><th>Способ оплаты клиента</th><td>${d.payType||'—'}</td></tr>
-      <tr><th>Куда платит клиент</th><td>${P.payTo}</td></tr>
-      ${P.validTill?`<tr><th>Реквизиты действуют до</th><td>${P.validTill}</td></tr>`:''}</table>
-    <div class="sign"><span>Агент ____________</span><span>Принципал ____________</span></div></div>`,
-  bill:()=>`<div class="pa"><h5>Счёт на оплату № ${d.code}</h5>
-    <div class="meta">${dt} · оплата по агентскому договору</div>
-    <table class="pa-t"><tr><th>Плательщик</th><td>${P.fio}</td></tr>
-      <tr><th>Получатель</th><td>${P.payTo}</td></tr>
-      ${P.purpose?`<tr><th>Назначение</th><td>${P.purpose}</td></tr>`:''}
-      <tr><th>Сумма</th><td><b>${money(Number(P.amountPay)||ap.pay,ap.sign)}</b></td></tr></table>
-    <p style="font-size:12px;color:#6B7280">${isCrypto(d)?'Ровно эта сумма ждётся на кошельке. Разница больше 5 USDT — и приход не сойдётся автоматически.':'Ровно эта сумма ждётся на счёте. Разница больше 1 000 ₽ — и поступление не сойдётся автоматически.'}</p></div>`
+      <tr><th>Публичное должностное лицо</th><td>Нет</td></tr></table></div>`
   };
   const body=(V[k]||(()=>'<div class="pa">Макет для этого документа пока не нарисован.</div>'))();
   return `<div class="ov" onclick="if(event.target===this)docClose()"><div class="modal wide">
@@ -3214,7 +3189,7 @@ function cnvRow(d){
 function overview(d,st,mine,p,wh){
   const ap=approx(d), F=fake(d), E=econ(d);
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
-  const pkg=d.docVersion?(d.isOld?['app','bill']:['dog','app','bill']):[];
+  const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
   const started=d.log.length&&d.log[0].at, last=d.log.length&&d.log[d.log.length-1].at;
   return `${d.closed
@@ -3361,11 +3336,8 @@ function overview(d,st,mine,p,wh){
   </div>`:`<div class="card" style="margin-bottom:16px"><div class="sec fin">ФИНАНСЫ</div>
     <div class="alert a-info" style="margin:0"><div>Прибыль посчитается, когда будут известны ${d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход'}. ${isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.'}</div></div></div>`}
 
-  ${(got.length||pkg.length)?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${got.length+pkg.length} шт.</span></div>
-    <div class="list">${got.concat(pkg).map(k=>`<div class="li" onclick="docOpen(${d.id},'${k}')">
-      <span class="av">${DOCT[k][0]}</span><div><div class="t1">${DOCT[k]}</div>
-      <div class="t2">${(d.docMeta||{})[k]?d.docMeta[k].file+' · '+d.docMeta[k].size:'сформирован системой'}</div></div>
-      <span class="t3">открыть</span></div>`).join('')}</div></div>`:''}
+  ${docN?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
+    <div class="list">${docRows.issued.join('')}${docRows.client.join('')}</div></div>`:''}
 
   <div class="row"><button class="btn btn-secondary" onclick="editOpen(${d.id})">Редактировать</button>
   <button class="btn btn-outline" onclick="setView('path')">Подробно: какие были статусы и сколько заняли</button>
@@ -3607,16 +3579,41 @@ function ctxCard(d){
 }
 /* Документы видны не только на своём шаге: после сдачи шага их всё равно открывают. */
 
-/* Документы видны не только на своём шаге: после сдачи шага их всё равно открывают. */
+/* Документы видны не только на своём шаге: после сдачи шага их всё равно открывают.
+   Показываем настоящие файлы: что приложил менеджер и что выпустил генератор. */
+function docIssuedTitle(d,k){
+  const P=d.docPack||{};
+  return {dog:'Агентский договор',app:P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',bill:'Счёт на оплату'}[k];
+}
+/* Строки документов сделки: сначала выпущенный пакет, потом файлы клиента */
+function docListRows(d,small){
+  const fs=small?' style="font-size:12.5px"':'';
+  const issued=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]).map(([k,f])=>
+    `<div class="li" style="cursor:default"><span class="av">${{dog:'Д',app:'П',bill:'С'}[k]}</span>
+      <div><div class="t1"${fs}>${docIssuedTitle(d,k)}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
+        <div class="t2" style="word-break:break-all">${htmlText(f.file)}</div></div>
+      <span class="t3"><button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">${docExt(f)}</button></span></div>`);
+  const client=[];
+  ['pass','inv','spa','ipds'].filter(k=>d.docs[k]).forEach(k=>{
+    const files=filesOf(d,k);
+    if(!files.length){client.push(`<div class="li" style="cursor:default"><span class="av">${DOCT[k][0]}</span>
+      <div><div class="t1"${fs}>${DOCT[k]}</div><div class="t2">отмечен, но файл не приложен</div></div></div>`);return;}
+    files.forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">${DOCT[k][0]}</span>
+      <div><div class="t1"${fs}>${DOCT[k]}${files.length>1?' · '+(i+1):''}</div><div class="t2" style="word-break:break-all">${htmlText(f.file||'')}</div></div>
+      <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
+        <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button></span></div>`));
+  });
+  return {issued,client};
+}
 function docSide(d){
-  const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
-  const pkg=d.docVersion?(d.isOld?['app','bill']:['dog','app','bill']):[];
-  if(!got.length&&!pkg.length)return '';
-  const row=k=>`<div class="li" onclick="docOpen(${d.id},'${k}')"><span class="av">${DOCT[k][0]}</span>
-    <div><div class="t1" style="font-size:12.5px">${DOCT[k]}</div></div><span class="t3">открыть</span></div>`;
+  const {issued,client}=docListRows(d,true);
+  const wait=!d.docPack&&!d.closed;
+  if(!issued.length&&!client.length&&!wait)return '';
   return `<div class="card side" style="margin-top:14px"><h4>Документы</h4>
-    <div class="list">${got.map(row).join('')}${pkg.map(row).join('')}</div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:10px">Макеты с выдуманными данными — видно, что лежит в сделке.</p></div>`;
+    ${issued.length?`<div class="list">${issued.join('')}</div>`
+      :wait?`<p style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px">Договор, приложение и счёт появятся после «Создать договор» у операциониста.</p>`:''}
+    ${issued.length&&d.docPack?`<p style="font-size:12px;color:var(--text-muted);margin:8px 0 10px">Пакет версии ${d.docPack.version} · <a href="javascript:void(0)" onclick="docDownloadAll(${d.id})">скачать всё</a></p>`:''}
+    ${client.length?`<div class="list">${client.join('')}</div>`:''}</div>`;
 }
 
 /* Редактирование сделки. Реферал меняется только здесь и на экране создания —
