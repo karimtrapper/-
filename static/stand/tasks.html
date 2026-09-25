@@ -2094,23 +2094,142 @@ function docDownload(id,k,ext){
     setTimeout(()=>URL.revokeObjectURL(url),60000);
     log(d,'Скачан файл: '+(DOCT[k]||k)+' · '+f.file);save();return;
   }
-  toast('Скачивание макета '+String(ext).toUpperCase()+' пока не реализовано');
+  /* Договор, приложение и счёт — настоящие файлы генератора (или свой файл
+     операциониста), лежат на сервере: /api/docs/file/<id> */
+  const d=deal(id), f=docFileOf(d,k);
+  if(!f){toast('Документ ещё не выпущен — операционист создаёт его на шаге «Подготовить договор»');return;}
+  docFetch('/api/docs/file/'+f.docId,f.file||docFileName(d,k,'pdf'),d,'Скачан документ: '+(DOCT[k]||k)+' · '+f.file);
 }
-function issuedUpload(id,k){
+/* Текущая версия пакета: что выпустил генератор, со своими файлами поверх */
+function docPackFiles(d){const p=d.docPack;if(!p)return [];return (d.docsIssued||[]).filter(x=>x.version===p.version);}
+function docFileOf(d,k){
+  const own=(d.issued||{})[k];
+  if(own&&own.docId)return Object.assign({own:true,kind:k},own);
+  return docPackFiles(d).find(x=>x.kind===k)||null;
+}
+function docExt(f){const m=String((f&&(f.mime||f.file))||'').toLowerCase();
+  return m.includes('pdf')?'PDF':(m.includes('word')||m.endsWith('.docx')||m.endsWith('.doc'))?'DOCX':'файл';}
+async function docFetch(url,name,d,text){
+  try{
+    const r=await fetch(url,{credentials:'same-origin'});
+    if(!r.ok){let j={};try{j=await r.json();}catch(e){}toast(j.error||('Файл не отдался: '+r.status));return;}
+    const blob=await r.blob(), u=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=u;a.download=name||'document';a.style.display='none';
+    document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(u),60000);
+    if(d&&text){log(d,text);save();}
+  }catch(e){toast('Сервер недоступен — файл не скачан');}
+}
+function docDownloadAll(id){
   const d=deal(id);
-  const name=prompt('Имя файла, который загружаете:',docFileName(d,k,'docx'));
-  if(!name)return;
-  d.issued=d.issued||{};
-  d.issued[k]={file:name.trim(),size:'—',at:now()};
-  d.docVersion=(d.docVersion||1)+1;
-  log(d,'Загружен свой файл вместо сгенерированного: '+(DOCT[k]||k)+' · '+name.trim()+' · версия '+d.docVersion);
-  save();render();toast('Файл загружен — дальше пойдёт он');
+  if(!d.docPack){toast('Пакет ещё не выпущен');return;}
+  docFetch('/api/stand/docs/zip?dealId='+id,'Documents_'+String(d.code||id).replace(/\s/g,'')+'_v'+d.docPack.version+'.zip',
+    d,'Скачан весь пакет документов, версия '+d.docPack.version);
+}
+/* Выпуск пакета настоящим генератором (тем же, что в CRM). Сервер сам пишет
+   в сделку список файлов и версию; сюда возвращается свежая доска. */
+async function docIssue(id,F,ch,comment){
+  if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return;}
+  if(S.docIssuing)return;
+  S.docIssuing=id;standBusy=true;render();toast('Выпускаю документы…');
+  let j=null;
+  try{
+    const r=await fetch('/api/stand/docs/issue',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({dealId:id,docFields:F})});
+    try{j=await r.json();}catch(e){j={success:false,detail:'Сервер ответил '+r.status};}
+    if(j.success&&j.data){standVer=j.version;standApply(j.data);}
+  }catch(e){j={success:false,detail:'Сервер недоступен — документы не выпущены'};}
+  finally{standBusy=false;S.docIssuing=null;}
+  const d=deal(id);
+  if(!d){render();return;}
+  if(!j.success){
+    d.docFields=F;d.docMiss=j.fields||[];d.docErr=j.detail||j.error||'Документы не выпущены';
+    save();render();toast(d.docErr);
+    const k=(j.fields||[])[0], el=k&&document.getElementById('df_'+k);
+    if(el){el.scrollIntoView({block:'center'});el.focus();}
+    return;}
+  d.docMiss=[];d.docErr='';
+  d.amountThb=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
+  /* объект из пакета — в карточку сделки, иначе в шапке всех шагов «не указан» */
+  if(String(F.object||'').trim()) d.object=String(F.object).trim();
+  const pay=num(cleanNum(String(F.amountPay)));
+  if(isCrypto(d)) d.amountUsdt=pay; else d.amountRub=pay;
+  d.docComment2=comment;
+  if(ch.length) log(d,'Поля пакета поправлены вручную: '+ch.map(k=>DOC_LABEL[k]||k).join(', '));
+  go(d,'s11b','Пакет документов создан, версия '+d.docVersion);toast('Создано — проверьте файлы');
+}
+/* «Заменить своим» — настоящий файл уходит на сервер и дальше идёт вместо сгенерированного */
+function issuedUpload(id,k){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.pdf,.doc,.docx';inp.style.display='none';
+  inp.onchange=async()=>{
+    const f=inp.files&&inp.files[0];inp.remove();
+    if(!f)return;
+    if(f.size>10*1024*1024){toast('Файл больше 10 МБ');return;}
+    if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return;}
+    const fd=new FormData();fd.append('dealId',id);fd.append('kind',k);fd.append('file',f);
+    standBusy=true;
+    try{
+      const r=await fetch('/api/stand/docs/upload',{method:'POST',credentials:'same-origin',body:fd});
+      const j=await r.json().catch(()=>({success:false,error:'Сервер ответил '+r.status}));
+      if(j.success&&j.data){standVer=j.version;standApply(j.data);render();toast('Файл загружен — дальше пойдёт он');}
+      else toast(j.error||'Файл не загружен');
+    }catch(e){toast('Сервер недоступен — файл не загружен');}
+    finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
+  };
+  document.body.appendChild(inp);inp.click();
 }
 function issuedDrop(id,k){
   const d=deal(id); if(!d.issued||!d.issued[k])return;
   const f=d.issued[k].file; delete d.issued[k];
+  d.docsSent=null;
   log(d,'Свой файл убран, вернулся сгенерированный: '+(DOCT[k]||k)+' (был '+f+')');
   save();render();toast('Вернули сгенерированный');
+}
+/* Верх шага s12: что отправить клиенту. Каждый документ — своей строкой с
+   назначением («подписать и вернуть», «сумма и курс», «по нему платит»), чтобы
+   менеджер не забыл ни один и не искал их по сделке (Карим, 25.09). */
+function docSendBlock(d){
+  const P=d.docPack, ap=approx(d);
+  if(!P) return `<div class="alert a-warn"><div>Файлов пакета нет — операционист ещё не выпустил документы генератором. Сумма к оплате — <b>${money(ap.pay,ap.sign)}</b>.</div></div>`;
+  const esc=v=>JSON.stringify(String(v||'')).replace(/"/g,'&quot;');
+  const what={
+    dog:['Агентский договор','Клиент подписывает и присылает скан обратно — без подписи платёж не проводим'],
+    app:[P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',
+         'Сумма и курс этого платежа: '+money(ap.pay,ap.sign)+' → '+money(ap.thb,'฿')+' по курсу '+(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿')+'. Клиент сверяет и подписывает'],
+    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':' на счёт MF в Сбере')]};
+  const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
+  const sent=d.docsSent;
+  return `<div class="paybox" style="margin-bottom:16px">
+    <div class="chtitle" style="margin-bottom:8px">Отправить клиенту
+      <span>версия ${P.version} · ${rows.length} документа</span></div>
+    ${rows.map(([k,f])=>`<div class="payrow">
+      <div><div class="v" style="font-weight:600">${what[k][0]}${f.own?' <span class="badge b-done">свой файл</span>':''}</div>
+        <div class="k" style="text-transform:none;letter-spacing:0">${htmlText(what[k][1])}</div>
+        <div class="k" style="text-transform:none;letter-spacing:0">${htmlText(f.file)}</div></div>
+      <button class="btn btn-primary btn-sm" style="white-space:nowrap" onclick="docDownload(${d.id},'${k}','file')">Скачать ${docExt(f)}</button>
+    </div>`).join('')}
+    ${isCrypto(d)
+      ?`<div class="payrow"><div><div class="k">Кошелёк для оплаты · сеть ${htmlText(P.network||'TRON (TRC-20)')}</div>
+          <div class="v addr" style="font-size:17px;font-weight:700;word-break:break-all">${htmlText(P.wallet)}</div>
+          <div class="k" style="text-transform:none;letter-spacing:0">Назначения платежа у перевода USDT нет — клиент присылает хеш перевода</div></div>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${esc(P.wallet)})">копировать</button></div>`
+      :`<div class="payrow"><div><div class="k">Назначение платежа — клиент вставляет в банк дословно</div>
+          <div class="v" style="font-size:17px;font-weight:700">${htmlText(P.purpose)}</div></div>
+        <button class="btn btn-outline btn-sm" onclick="copyAsk(${esc(P.purpose)})">копировать</button></div>`}
+    <div class="row" style="margin-top:10px;align-items:center">
+      <button class="btn btn-secondary btn-sm" onclick="docDownloadAll(${d.id})">Скачать всё</button>
+      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="dsent_${d.id}" ${sent?'checked':''} onchange="docsSentSet(${d.id},this.checked)">
+        Отправил клиенту${sent?' <span class="src">'+htmlText(sent.at)+'</span>':''}</label>
+    </div></div>`;
+}
+/* Менеджер отмечает, что пакет ушёл клиенту — иначе «Ждём приход» напомнит */
+function docsSentSet(id,on){
+  const d=deal(id);
+  d.docsSent=on?{at:now(),version:(d.docPack||{}).version||d.docVersion||1}:null;
+  log(d,on?'Документы отправлены клиенту (версия '+d.docsSent.version+')':'Снята отметка «Отправил клиенту»');
+  save();render();
 }
 function docOpen(id,k,index){
   const d=deal(id), files=filesOf(d,k);
@@ -5375,40 +5494,44 @@ function stepCard(d){
     ${fld('feeNote','Оговорка о комиссии',{area:1})}
 
     <div class="fg" style="margin-top:14px"><label class="fl">Комментарий — что поправили и почему</label><textarea class="fc" id="c">${d.docComment2||''}</textarea></div>
-    ${(d.docMiss||[]).length?`<div class="alert a-warn"><div><b>Не создано:</b> не заполнено — ${d.docMiss.map(k=>DOC_LABEL[k]||k).join(', ')}. Поля отмечены красным выше.</div></div>`:''}
-    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s11')">Создать ${d.isOld?'допник и счёт':'договор'}</button>
+    ${d.docErr?`<div class="alert a-warn"><div><b>Не создано.</b> ${htmlText(d.docErr)}.</div></div>`
+      :(d.docMiss||[]).length?`<div class="alert a-warn"><div><b>Не создано:</b> не заполнено — ${d.docMiss.map(k=>DOC_LABEL[k]||k).join(', ')}. Поля отмечены красным выше.</div></div>`:''}
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s11')" ${S.docIssuing===d.id?'disabled':''}>${S.docIssuing===d.id?'Выпускаю…':'Создать '+(d.isOld?'допник и счёт':'договор')}</button>
     <button class="btn btn-secondary" onclick="docReset(${d.id})">Вернуть автозаполнение</button>
     <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div>
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">«Вернуть автозаполнение» сбросит ручные правки и подставит значения из паспорта, инвойса и расчёта заново.</p>
     </div>`;},
 
   s11b:()=>{
-    const rows=[]; 
-    if(!d.isOld) rows.push(['dog','Д','Агентский договор','полный, клиент новый · ФИО и паспорт из скана']);
-    rows.push(['app','П','Приложение с платежом',money(ap.thb,'฿')+' · курс '+(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿')]);
-    rows.push(['bill','С','Счёт на оплату',money(ap.pay,ap.sign)+' — ровно столько ждём'+(isCrypto(d)?' на кошелёк':' на счёте')]);
-    return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${d.docVersion||1}</span></div>
-    <div class="alert a-ok"><div>Пакет собран по полям, которые вы подтвердили. Каждый документ можно скачать в PDF или DOC — в DOC правят руками, когда случай нестандартный.</div></div>
+    const P=d.docPack, files=docPackFiles(d);
+    const title={dog:'Агентский договор',app:P&&P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 — платёж по договору',bill:'Счёт на оплату'};
+    const av={dog:'Д',app:'П',bill:'С'};
+    const sub={dog:'рамочный, ФИО и паспорт клиента',
+      app:money(ap.thb,'฿')+' получателю · курс '+(d.rates.client||'—')+(isCrypto(d)?' ฿/USDT':' ₽/฿'),
+      bill:money(ap.pay,ap.sign)+' — ровно столько ждём'+(isCrypto(d)?' на кошелёк':' на счёте')};
+    const kinds=['dog','app','bill'].filter(k=>files.some(x=>x.kind===k));
+    return `<div class="card"><div class="card-title">Выпущено<span class="sub">версия ${P?P.version:(d.docVersion||1)}${P?' · № '+htmlText(P.number):''}</span></div>
+    ${!P?`<div class="alert a-warn"><div>Пакет ещё не выпущен генератором — нажмите «Поправить и пересоздать».</div></div>`
+      :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
+    ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
     <div class="list">
-      ${rows.map(([k,av,t,sub])=>{const own=(d.issued||{})[k];
-        return `<div class="li" style="cursor:default"><span class="av">${av}</span>
-        <div><div class="t1">${t}${own?' <span class="badge b-done">свой файл</span>':''}</div>
-          <div class="t2">${own?own.file+' · '+own.size+' · загрузил операционист '+own.at:sub}</div></div>
+      ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
+        return `<div class="li" style="cursor:default"><span class="av">${av[k]}</span>
+        <div><div class="t1">${title[k]}${own?' <span class="badge b-done">свой файл</span>':''}</div>
+          <div class="t2">${htmlText(f.file)}${own?' · '+htmlText(own.size||'')+' · загрузил '+htmlText(own.at||''):' · '+sub[k]}</div></div>
         <span class="t3" style="white-space:nowrap">
-          ${own
-            ? `<button class="btn btn-outline btn-sm" onclick="issuedDrop(${d.id},'${k}')">Вернуть сгенерированный</button>`
-            : `<button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}')">Открыть</button>
-               <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','pdf')">PDF</button>
-               <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','doc')">DOC</button>`}
-          <button class="btn btn-secondary btn-sm" onclick="issuedUpload(${d.id},'${k}')">${own?'Заменить':'Загрузить свой'}</button>
+          <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}','file')">Скачать ${docExt(f)}</button>
+          ${own?`<button class="btn btn-outline btn-sm" onclick="issuedDrop(${d.id},'${k}')">Вернуть сгенерированный</button>`:''}
+          <button class="btn btn-secondary btn-sm" onclick="issuedUpload(${d.id},'${k}')">Заменить своим</button>
         </span></div>`;}).join('')}
     </div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Откройте любой — видно, какие поля подставились из паспорта, инвойса и курса. Не сошлось — «Поправить и пересоздать», версия вырастет. Если случай нестандартный, скачайте DOC, поправьте руками и загрузите свой файл — дальше пойдёт он.</p>
+    ${P?`<div class="row" style="margin-top:10px"><button class="btn btn-outline btn-sm" onclick="docDownloadAll(${d.id})">Скачать всё одним архивом</button></div>`:''}
+    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Не сошлось — «Поправить и пересоздать»: поля вернутся на правку, новый выпуск получит следующую версию, прежние файлы останутся в базе. Случай нестандартный — поправьте файл руками и «Заменить своим» (PDF, DOC или DOCX до 10 МБ): дальше пойдёт он.</p>
     <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s11b')">Всё верно — отправить менеджеру</button>
     <button class="btn btn-outline" onclick="go(deal(${d.id}),'s11','Пересоздать пакет')">Поправить и пересоздать</button></div></div>`;},
 
   s12:()=>`<div class="card"><div class="card-title">Документы готовы — что дальше</div>
-    <div class="alert a-ok"><div>Договор, приложение и счёт можно отправлять клиенту. Сумма к оплате — <b>${money(ap.pay,ap.sign)}</b>.</div></div>
+    ${docSendBlock(d)}
     <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.</p>
 
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Подписанные документы
@@ -5923,18 +6046,15 @@ function act(id,step){
       toast('Не заполнено: '+miss.map(k=>DOC_LABEL[k]||k).join(', '));
       const el=document.getElementById('df_'+miss[0]); if(el){el.scrollIntoView({block:'center'});el.focus();}
       return;}
-    d.docMiss=[];
-    d.amountThb=num(cleanNum(String(F.amountThb)));d.rates.client=F.rate;
-    /* объект из пакета — в карточку сделки, иначе в шапке всех шагов «не указан» */
-    if(String(F.object||'').trim()) d.object=String(F.object).trim();
-    const pay=num(cleanNum(String(F.amountPay)));
-    if(isCrypto(d)) d.amountUsdt=pay; else d.amountRub=pay;
-    d.docComment2=c?c.value:'';
-    d.docVersion=(d.docVersion||0)+1;
-    if(ch.length) log(d,'Поля пакета поправлены вручную: '+ch.map(k=>DOC_LABEL[k]||k).join(', '));
-    go(d,'s11b','Пакет документов создан, версия '+d.docVersion);toast('Создано — проверьте');return;}
-  if(step==='s11b'){go(d,'s12','Документы отправлены менеджеру');toast('Ушло менеджеру');return;}
+    d.docMiss=[];d.docErr='';
+    /* Договор, приложение и счёт выпускает сервер тем же генератором, что CRM */
+    docIssue(d.id,F,ch,c?c.value:'');return;}
+  if(step==='s11b'){if(!d.docPack){toast('Пакет не выпущен — «Поправить и пересоздать»');return;}
+    go(d,'s12','Документы отправлены менеджеру');toast('Ушло менеджеру');return;}
   if(step==='s12'){
+    /* Пакет выпущен, но менеджер не отметил отправку — клиент мог остаться без договора и счёта */
+    if(d.docPack&&!d.docsSent){toast('Сначала отправьте клиенту документы и отметьте «Отправил клиенту»');
+      const el=document.getElementById('dsent_'+d.id);if(el)el.scrollIntoView({block:'center'});return;}
     if(isCrypto(d)&&!d.payerWallet&&!d.payerUnknown){toast('Укажите кошелёк клиента или отметьте, что привяжете перевод по хешу');return;}
     const w=isCrypto(d)?payinWallet(d):null;
     go(d,'s14',isCrypto(d)?'Ожидание прихода: на '+(w?w.name+' '+w.addr:'—')+(d.payerWallet?' с кошелька клиента '+d.payerWallet:' · кошелёк клиента неизвестен, привязка по хешу'):'Ожидание прихода поставлено');
