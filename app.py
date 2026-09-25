@@ -5527,6 +5527,92 @@ def stand_incoming_check():
     finally:
         db.close()
 
+
+def _stand_payin_receiver(state, deal):
+    """Кошелёк, на который крипто-клиент платит USDT по сделке стенда."""
+    from stand_transfers import DEFAULT_WALLETS
+    wallet_id = deal.get('walletId') or 'grusha'
+    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+    return (wallet or {}).get('addr') or DEFAULT_WALLETS.get(wallet_id)
+
+
+@app.route('/api/stand/payin/check', methods=['POST'])
+def stand_payin_check():
+    """Проверить по сети перевод крипто-клиента и записать его в приход сделки.
+
+    Клиент обычно шлёт сначала тестовый перевод, потом остаток — хешей бывает
+    несколько. Кошелёк клиента берём из первого хеша, если менеджер его не указал;
+    перевод с другого кошелька записываем с пометкой, решает менеджер."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    data = request.get_json(silent=True) or {}
+    try:
+        deal_id = int(data.get('dealId'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
+    tx_hash = normalize_ref(data.get('hash'), 'trc20')
+    if not tx_hash or tx_hash.startswith('demo:'):
+        return jsonify({'success': False, 'error': 'Нужен полный хеш TRC-20 из 64 символов или ссылка Tronscan'}), 400
+    db = get_session()
+    try:
+        state = json.loads(_stand_row(db).data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal or not (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'):
+            return jsonify({'success': False, 'error': 'Крипто-сделка не найдена'}), 404
+        if deal.get('step') != 's14':
+            return jsonify({'success': False, 'error': 'Сделка не ждёт прихода'}), 409
+        receiver = _stand_payin_receiver(state, deal)
+    finally:
+        db.close()
+    checked = verify_transfer(tx_hash, 'trc20', None, receiver, None)
+    # Роль берём до сессии записи: current_role() закрывает общую scoped-сессию,
+    # и изменения, сделанные до её вызова, молча теряются (приёмка 25.09)
+    role = current_role() or 'система'
+    if checked['status'] != 'confirmed':
+        return jsonify({'success': False, 'status': checked['status'],
+                        'error': checked.get('checkError') or 'Перевод ещё не подтверждён в сети'}), 422
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal or deal.get('step') != 's14':
+            return jsonify({'success': False, 'error': 'Сделка изменилась — повторите проверку'}), 409
+        if _stand_payin_receiver(state, deal) != receiver:
+            return jsonify({'success': False, 'error': 'Кошелёк прихода изменился — повторите проверку'}), 409
+        used = any(normalize_ref(h.get('hash'), 'trc20') == tx_hash
+                   for d in state.get('deals', []) for h in d.get('payinHashes') or []) or any(
+            normalize_ref(t.get('hash'), 'trc20') == tx_hash
+            for c in state.get('convs', []) for t in c.get('txs') or [])
+        if used:
+            return jsonify({'success': False, 'error': 'Этот хеш уже привязан к сделке'}), 409
+        started = ((deal.get('log') or [{}])[0] or {}).get('at')
+        if started and checked.get('timestampMs') and checked['timestampMs'] < int(started):
+            return jsonify({'success': False, 'error': 'Перевод сделан раньше, чем завели сделку'}), 422
+        sender = checked.get('from')
+        payer = deal.get('payerWallet')
+        tx = {'hash': tx_hash, 'network': 'TRC20', 'amount': checked['verifiedAmount'],
+              'from': sender, 'to': receiver, 'verified': True,
+              'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs')}
+        if payer and sender and payer != sender:
+            tx['otherSender'] = True
+        deal.setdefault('payinHashes', []).append(tx)
+        deal.setdefault('log', []).append({
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'at': int(time.time() * 1000),
+            'role': role,
+            'text': f"Приход проверен в сети: {checked['verifiedAmount']} USDT с {sender}"
+                    + (' — это не кошелёк клиента из сделки' if tx.get('otherSender') else '')})
+        if not payer and sender:
+            deal['payerWallet'] = sender
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = 'проверка прихода USDT'
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state})
+    finally:
+        db.close()
+
 @app.route('/api/auth/setup', methods=['POST'])
 @limiter.limit("3/minute")
 def auth_setup():

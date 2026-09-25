@@ -360,3 +360,99 @@ def test_small_coins_and_client_close_with_payout_hashes_when_pack_confirmed():
     assert small['payout']['usdt'] == 600 and small['payout']['hash'] == HASH
     appmod._stand_settle_verified(state, state['deals'])
     assert sum(1 for n in state['notes'] if n['id'] == 'stand:payout:2') == 1
+
+
+def _put_board(state):
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch):
+    """Тестовый + основной перевод крипто-клиента: кошелёк клиента берётся из первого хеша,
+    перевод с чужого кошелька помечается, дубль и перевод до сделки не принимаются."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    state = {'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's14', 'walletId': 'grusha',
+                        'payinHashes': [], 'log': [{'at': 1700000000000, 'text': 'заведена'}]}],
+             'convs': [], 'wallets': []}
+    _put_board(state)
+    seen = {}
+
+    def fake(ref, network, sender, receiver, amount, **kw):
+        seen['receiver'], seen['sender'] = receiver, sender
+        return {'status': 'confirmed', 'verifiedAmount': fake.amount, 'verifiedAt': 'now',
+                'from': fake.sender, 'to': receiver, 'timestampMs': fake.ts}
+    fake.amount, fake.sender, fake.ts = 1.0, TO, 1700000000001
+    monkeypatch.setattr(appmod, 'verify_transfer', fake)
+
+    def role_lookup():
+        # как настоящая current_role: закрывает общую scoped-сессию
+        appmod.get_session().close()
+        return 'manager'
+    monkeypatch.setattr(appmod, 'current_role', role_lookup)
+    with appmod.app.test_client() as client:
+        first = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': HASH})
+        assert first.status_code == 200, first.json
+        stored = client.get('/api/stand/state').json
+        assert stored['version'] == first.json['version'], 'проверенный хеш сохранён в базе'
+        assert stored['data']['deals'][0]['payinHashes'][0]['hash'] == HASH
+        deal = first.json['data']['deals'][0]
+        assert seen == {'receiver': FROM, 'sender': None}
+        assert deal['payerWallet'] == TO
+        assert deal['payinHashes'][0]['verified'] is True
+        assert not deal['payinHashes'][0].get('otherSender')
+
+        dup = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': HASH})
+        assert dup.status_code == 409
+
+        fake.amount, fake.sender = 599.0, FROM
+        other = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': 'b' * 64})
+        assert other.status_code == 200
+        assert other.json['data']['deals'][0]['payinHashes'][1]['otherSender'] is True
+
+        fake.ts = 1699999999999
+        early = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': 'c' * 64})
+        assert early.status_code == 422
+
+        forged = other.json['data']
+        forged['deals'][0]['payinHashes'][0]['amount'] = 5000
+        forged['deals'][0]['payinHashes'].append({'hash': 'd' * 64, 'amount': 10, 'verified': True,
+                                                  'network': 'TRC20'})
+        applied = client.put('/api/stand/state', json={'version': other.json['version'], 'data': forged})
+        assert applied.status_code == 200
+        hs = applied.json['data']['deals'][0]['payinHashes']
+        assert hs[0]['amount'] == 1.0, 'сумму проверенного хеша браузер не переписывает'
+        assert 'verified' not in hs[2], 'отметку «проверено» браузер не ставит'
+
+
+def test_crypto_payin_check_rejects_ruble_deal_and_wrong_step(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    _put_board({'deals': [{'id': 1, 'payType': 'По реквизитам', 'step': 's14', 'log': []},
+                          {'id': 2, 'payType': 'Крипта', 'step': 's15', 'log': []}],
+                'convs': [], 'wallets': []})
+    with appmod.app.test_client() as client:
+        assert client.post('/api/stand/payin/check', json={'dealId': 1, 'hash': HASH}).status_code == 404
+        assert client.post('/api/stand/payin/check', json={'dealId': 2, 'hash': HASH}).status_code == 409
+        assert client.post('/api/stand/payin/check', json={'dealId': 2, 'hash': 'demo:2:x'}).status_code == 400
+
+
+def test_verify_without_amount_and_sender_takes_both_from_chain():
+    """Приход крипто-клиента: сумму и отправителя не знаем — берём из сети (баг приёмки 25.09:
+    _amount(None) давал 0, и любой настоящий перевод считался несовпавшим)."""
+    result = verify_transfer(HASH, 'TRC-20', None, TO, None,
+                             get=lambda *a, **kw: Response(200, chain()))
+    assert result['status'] == 'confirmed'
+    assert result['verifiedAmount'] == 600
+    assert result['from'] == FROM
+    other = verify_transfer(HASH, 'TRC-20', None, FROM, None,
+                            get=lambda *a, **kw: Response(200, chain()))
+    assert other['status'] == 'mismatch', 'перевод не на наш кошелёк не засчитывается'

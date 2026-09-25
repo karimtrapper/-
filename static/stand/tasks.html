@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 11:40 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 14:10 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -3385,7 +3385,7 @@ function crmPayload(d){
     payin_amount_usdt:r2(E.payin),
     payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
     payin_tx_hashes:hx(d.payinHashes),
-    notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:''),
+    notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
        Справочник агентов стенда живёт в задачнике, поэтому id не шлём — CRM
@@ -4704,17 +4704,7 @@ function ret(id){const d=deal(id);const q=prompt('Чего не хватает, 
 function incomeExact(id){
   const d=deal(id),a=approx(d);
   const ex=expectOf(d), exp=isCrypto(d)?a.pay:Number(ex.amount);
-  if(isCrypto(d)){
-    d.incomeAmount=exp;
-    d.amountUsdt=d.amountUsdt||a.pay; d.pay.usdt=a.pay;
-    /* Клиент платит на мультисиг Груши — с него потом и отправляем в Coins. Приход
-       тестовый: помечен DEMO, и переводы по сделке идут в тестовом режиме. */
-    d.walletId=d.walletId||'grusha'; d.demoTransfers=true;
-    d.pay.hash='demo:payin:'+d.id+':'+Date.now();
-    d.payinHashes=[{amount:a.pay,network:'TRC20',hash:d.pay.hash}];
-    log(d,'Симуляция: тестовый приход USDT подтверждён в сети: '+money(a.pay,'USDT'));
-    go(d,'s15','Деньги у нас — менеджер заполняет реквизиты для оплаты');
-    toast('Деньги пришли — заполните реквизиты оплаты');return;}
+  if(isCrypto(d)){payinDemo(id,'rest');return;}
   if(d.step!=='s14'||!Number.isFinite(exp)||exp<=0){toast('Проверьте ожидаемую сумму');return;}
   const pool=incomes(), incId=Math.max(0,...pool.map(x=>Number(x.id)||0))+1;
   pool.push({id:incId,date:now().slice(0,5),payer:d.client,rub:exp,kind:'банк',
@@ -4725,10 +4715,7 @@ function incomeExact(id){
 function incomeOff(id){
   const d=deal(id),a=approx(d);
   const ex=expectOf(d), exp=isCrypto(d)?a.pay:Number(ex.amount);
-  if(isCrypto(d)){
-    d.incomeAmount=Math.round((exp-5)*100)/100;
-    log(d,'Симуляция: поступление USDT меньше ожидания на 5');
-    go(d,'s14m');toast('Не сошлось — нужен ручной разбор');return;}
+  if(isCrypto(d)){payinDemo(id,'short');return;}
   if(d.step!=='s14'||!Number.isFinite(exp)||exp<=0){toast('Проверьте ожидаемую сумму');return;}
   const short=Math.min(exp,Math.max(Number(ex.tol)+1,0.01));
   const actual=Math.round((exp-short)*100)/100;
@@ -4739,6 +4726,75 @@ function incomeOff(id){
   log(d,'Симуляция: создан тестовый приход #'+incId+' на '+money(actual,'₽'));
   sberTake(id,incId);
   payinDone(id);}
+
+/* Крипто-приход частями (Карим, 25.09). Клиент обычно шлёт сначала тестовый
+   перевод, потом остаток. Кошелёк клиента можно указать заранее, а можно не знать:
+   сервер возьмёт отправителя из первого проверенного хеша. Перевод с другого
+   кошелька не засчитывается молча — менеджер подтверждает, что это клиент. */
+var PAYIN_TOL=5;
+function rnd2(v){return Math.round(v*100)/100;}
+function payinGot(d){return rnd2((d.payinHashes||[]).reduce((s,h)=>s+(Number(h.amount)||0),0));}
+function payerWalletSet(id,v){
+  const d=deal(id), a=String(v||'').trim();
+  if(a&&!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a)){toast('Нужен адрес TRC-20: начинается с T, 34 символа');render();return;}
+  if((d.payerWallet||'')===a)return;
+  log(d,a?'Кошелёк клиента: '+a:'Кошелёк клиента убран');
+  d.payerWallet=a||null;
+  /* уже записанные переводы сверяем с новым адресом */
+  (d.payinHashes||[]).forEach(h=>{if(h.from) h.otherSender=!!a&&h.from!==a;});
+  save();render();toast(a?'Кошелёк клиента записан':'Кошелёк клиента убран');
+}
+function payinSenderOk(id,i){
+  const d=deal(id), h=(d.payinHashes||[])[i]; if(!h)return;
+  h.senderOk=true;
+  log(d,'Перевод '+money(h.amount,'USDT')+' с '+(h.from||'—')+' засчитан: менеджер подтвердил, что это клиент');
+  payinSettle(id);
+}
+/* После каждого перевода: сошлось в допуске — деньги у нас; меньше — ждём остаток;
+   переплата — ручной разбор. */
+function payinSettle(id){
+  const d=deal(id), exp=approx(d).pay, got=payinGot(d);
+  if(d.step!=='s14'){save();render();return;}
+  if((d.payinHashes||[]).some(h=>h.otherSender&&!h.senderOk)){save();render();toast('Перевод не с кошелька клиента — уточните у клиента');return;}
+  if(got<exp-PAYIN_TOL){save();render();toast('Получено '+money(got,'USDT')+' — ждём ещё '+money(rnd2(exp-got),'USDT'));return;}
+  const hs=d.payinHashes||[];
+  d.incomeAmount=got; d.amountUsdt=d.amountUsdt||exp;
+  /* Переводы дальше по сделке — тестовыми событиями, как у рублёвой пачки */
+  d.walletId=d.walletId||'grusha'; d.demoTransfers=true;
+  d.pay.hash=(hs.slice().sort((x,y)=>(Number(y.amount)||0)-(Number(x.amount)||0))[0]||{}).hash||null;
+  if(got>exp+PAYIN_TOL){
+    d.incomeReview=['Переплата: пришло '+money(got,'USDT')+' вместо '+money(exp,'USDT')];
+    go(d,'s14m');toast('Пришло больше ожидания — нужен ручной разбор');return;}
+  d.pay.usdt=got;
+  go(d,'s15','Деньги у нас: '+money(got,'USDT')+(hs.length>1?' за '+hs.length+' перевода':'')+' — менеджер заполняет реквизиты для оплаты');
+  toast('Деньги пришли — заполните реквизиты оплаты');
+}
+/* Клиент сказал, что больше не пришлёт: недобор разбирают руками с причиной */
+function payinShort(id){
+  const d=deal(id), exp=approx(d).pay, got=payinGot(d);
+  if(!(got>0)){toast('Пока не пришло ни одного перевода');return;}
+  d.incomeAmount=got;
+  d.incomeReview=['Недоплата: пришло '+money(got,'USDT')+' из '+money(exp,'USDT')];
+  go(d,'s14m');toast('Недобор — укажите причину');
+}
+async function payinCheck(id){
+  const ref=String(val('ph_'+id)||'').trim();
+  if(!ref){toast('Вставьте хеш или ссылку на Tronscan');return;}
+  if(!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш из 64 символов или ссылка с ним');return;}
+  const j=await standAction('/api/stand/payin/check',{dealId:id,hash:ref});
+  if(j&&j.tx){toast('Проверено в сети: '+money(j.tx.amount,'USDT'));payinSettle(id);}
+}
+function payinDemo(id,kind){
+  const d=deal(id), exp=approx(d).pay, left=rnd2(exp-payinGot(d));
+  if(d.step!=='s14')return;
+  const amount=kind==='test'?1:kind==='short'?rnd2(left-10):left;
+  if(!(amount>0)){toast('Всё уже пришло');return;}
+  const h={amount,network:'TRC20',hash:'demo:payin:'+id+':'+Date.now(),demo:true};
+  if(d.payerWallet) h.from=d.payerWallet;
+  d.payinHashes=(d.payinHashes||[]).concat(h);
+  log(d,'Вебхук · демо: на кошелёк пришло '+money(amount,'USDT')+(kind==='test'?' — тестовый перевод':''));
+  payinSettle(id);
+}
 
 /* ---------- карточки шагов ---------- */
 /* Ожидаемый результат шага. У каждой задачи есть «что должно получиться» — и ради
@@ -5359,23 +5415,43 @@ function stepCard(d){
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
     </div>
 
+    ${isCrypto(d)?`<div class="fg" style="margin-top:16px"><label class="fl">Кошелёк клиента, с которого придёт USDT <span class="sub2">необязательно</span></label>
+      <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="T… · сеть TRC-20" onchange="payerWalletSet(${d.id},this.value)">
+      <p class="fh">Обычно клиент сначала шлёт тестовый перевод. Не знаете адрес — оставьте пустым: он подставится из первого хеша на ожидании прихода. Если адрес указан, перевод с другого кошелька не засчитается без вашего подтверждения.</p></div>`:''}
+
     <div class="row" style="margin-top:16px"><button class="btn btn-primary" onclick="act(${d.id},'s12')">Ждём приход</button>
     <button class="btn btn-outline" onclick="askClose(${d.id})">Закрыть сделку</button></div></div>`,
 
   s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':'рубли на счёт Сбера'}</span></div>
-    ${isCrypto(d)?`<div class="fr">
-      <div class="fg"><label class="fl">Сумма</label><input class="fc num" readonly value="${money(ap.pay,'USDT')}"></div>
-      <div class="fg"><label class="fl">Кошелёк</label>${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
-        <p class="fh addr" style="word-break:break-all">${(payinWallet(d)||{}).addr||''} · TRC-20</p></div>
-      <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± 5 USDT"></div>
+    ${isCrypto(d)?(function(){
+      const exp=ap.pay, got=payinGot(d), left=rnd2(exp-got), hs=d.payinHashes||[], w=payinWallet(d)||{}, pt=(d.docFields||{}).payTo;
+      return `<div class="fr">
+      <div class="fg"><label class="fl">Ждём</label><input class="fc num" readonly value="${money(exp,'USDT')}"></div>
+      <div class="fg"><label class="fl">Наш кошелёк</label>${payinWalletSelect(d,!!(d.incomeAmount||hs.length))}
+        <p class="fh addr" style="word-break:break-all">${w.addr||''} · TRC-20</p></div>
+      <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± ${PAYIN_TOL} USDT"></div>
     </div>
-    ${(function(){const w=payinWallet(d), pt=(d.docFields||{}).payTo;
-      return (w&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:'';})()}
-    <div class="alert a-info"><div>Криптоприход сверяется по сети, а не по выписке: ждём хеш и подтверждения в TRON. Назначение платежа тут не при чём — сделку опознаём по сумме и адресу отправителя.</div></div>
+    ${(w.addr&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:''}
+    <div class="fg"><label class="fl">Кошелёк клиента <span class="sub2">откуда платит</span></label>
+      <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="подставится из первого проверенного хеша" onchange="payerWalletSet(${d.id},this.value)"></div>
+    ${hs.length?`<div class="hashbox">
+      ${hs.map((h,i)=>`<div class="hrow" style="flex-wrap:wrap">
+        <b class="pos">+${money(h.amount,'USDT')}</b>${i===0&&hs.length>1&&Number(h.amount)<=10?' <span class="src">тестовый</span>':''}
+        ${hashLink(h.hash,h.network||'TRC20')}
+        ${h.verified?'<span class="src">сеть ✓</span>':''}
+        <span class="fh" style="margin:0">${h.from?'с '+h.from:'отправитель неизвестен'}</span>
+        ${h.otherSender&&!h.senderOk?`<span class="neg">не кошелёк клиента</span> <button class="btn btn-secondary btn-sm" onclick="payinSenderOk(${d.id},${i})">Это клиент — засчитать</button>`:''}</div>`).join('')}
+      <span class="hsum">получено <b>${money(got,'USDT')}</b> из ${money(exp,'USDT')}${left>PAYIN_TOL?' · ждём ещё <b>'+money(left,'USDT')+'</b>':''}</span></div>`:''}
+    <div class="fg" style="margin-top:12px"><label class="fl">Хеш перевода клиента <span class="sub2">тестовый и основной — каждый отдельно</span></label>
+      <div class="row" style="margin-top:0;flex-wrap:nowrap"><input class="fc" id="ph_${d.id}" placeholder="64 символа или ссылка tronscan.org">
+        <button class="btn btn-primary btn-sm" onclick="payinCheck(${d.id})">Проверить в сети</button></div>
+      <p class="fh">Сервер находит перевод в TRON и сам берёт сумму и отправителя; руками сумму не вводим. Засчитываются только переводы на наш кошелёк после того, как завели сделку.</p></div>
     <div class="sim"><div class="h">Вебхук · демо — приход на кошелёк (в проде его ловит наблюдатель за кошельком)</div>
-      <p>В настоящем продукте приход ловится по сети автоматически. Здесь нажмите сами.</p>
-      <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Пришло ровно ${money(ap.pay,'USDT')}</button>
-      <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Пришло на 5 USDT меньше</button></div>`
+      <p>В настоящем продукте переводы ловятся по сети автоматически. Здесь нажмите сами — по одной кнопке на перевод.</p>
+      ${hs.length?'':`<button class="btn btn-secondary btn-sm" onclick="payinDemo(${d.id},'test')">Тестовый перевод 1 USDT</button>`}
+      <button class="btn btn-success btn-sm" onclick="payinDemo(${d.id},'rest')">Пришло ${hs.length?'остальное':'ровно'} ${money(left,'USDT')}</button>
+      <button class="btn btn-secondary btn-sm" onclick="payinDemo(${d.id},'short')">Пришло на 10 USDT меньше</button></div>
+    ${got>0&&left>PAYIN_TOL?`<div class="row" style="margin-top:12px"><button class="btn btn-outline" onclick="payinShort(${d.id})">Больше не придёт — разобрать недобор</button></div>`:''}`;})()
     :(function(){const ex=expectOf(d);
       return `<div class="fr">
       <div class="fg"><label class="fl">Ждём сумму</label>

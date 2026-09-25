@@ -25,6 +25,9 @@ SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
 
 
 def _amount(value):
+    # None — «сумма не задана»: её берём из сети, а не считаем нулём
+    if value is None:
+        return None
     try:
         number = Decimal(str(value or '0').replace(' ', '').replace('\u00a0', '').replace(',', '.'))
         return number if number.is_finite() and number >= 0 else None
@@ -124,6 +127,18 @@ def preserve_server_fields(old_state, new_state):
             deal.pop(protected, None)
             if previous.get(protected):
                 deal[protected] = True
+        # Отметку «проверено в сети» на хеше прихода ставит только сервер
+        old_payin = {h.get('hash'): h for h in previous.get('payinHashes') or [] if h.get('verified')}
+        for h in deal.get('payinHashes') or []:
+            if not isinstance(h, dict):
+                continue
+            trusted = old_payin.get(h.get('hash'))
+            fields = ('verified', 'verifiedAt', 'timestampMs', 'otherSender') + (
+                () if str(h.get('hash') or '').startswith('demo:') else ('from', 'to'))
+            for field in fields:
+                h.pop(field, None)
+            if trusted:
+                h.update({f: trusted[f] for f in fields + ('amount',) if f in trusted})
         payout = deal.get('payout')
         if isinstance(payout, dict):
             payout.pop('reimbursement', None)
