@@ -456,3 +456,47 @@ def test_verify_without_amount_and_sender_takes_both_from_chain():
     other = verify_transfer(HASH, 'TRC-20', None, FROM, None,
                             get=lambda *a, **kw: Response(200, chain()))
     assert other['status'] == 'mismatch', 'перевод не на наш кошелёк не засчитывается'
+
+
+def test_prod_agents_sync_maps_fields_skips_test_and_upserts_referrers(monkeypatch):
+    """Агенты стенда берутся из прода: без TEST-профилей, без токенов кабинетов,
+    и заводятся в CRM стенда, чтобы закрытие сделки нашло профиль по имени."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setenv('STAND_PROD_RO_KEY', 'ro')
+    prod = {'referrers': [
+        {'id': 22, 'name': 'Artyom Belyaev', 'code': 'GR-ARTYOM', 'comp_model': 'markup',
+         'default_percent': 10.0, 'markup_percent': 1.0, 'payout_currency': 'USDT',
+         'telegram': '@evol04', 'lang': 'ru', 'active': True, 'token': 'SECRET'},
+        {'id': 6, 'name': 'TEST Partner', 'code': 'GR-TEST', 'comp_model': 'revshare',
+         'default_percent': 5, 'markup_percent': 0, 'active': True, 'token': 'X'}]}
+    seen = {}
+
+    def fake_get(url, headers=None, timeout=None):
+        seen['url'], seen['key'] = url, (headers or {}).get('X-Api-Key')
+        return Response(200, prod)
+    monkeypatch.setattr(appmod.requests, 'get', fake_get)
+    with appmod.app.test_client() as client:
+        res = client.post('/api/stand/prod-agents')
+    assert res.status_code == 200, res.json
+    agents = res.json['agents']
+    assert seen['url'].endswith('/api/referrers') and seen['key'] == 'ro'
+    assert [a['name'] for a in agents] == ['Artyom Belyaev']
+    assert agents[0]['comp'] == 'markup' and agents[0]['percent'] == 1.0
+    assert 'token' not in agents[0]
+    db = appmod.get_session()
+    try:
+        ref = db.query(appmod.Referrer).filter(appmod.Referrer.code == 'GR-ARTYOM').first()
+        assert ref and ref.name == 'Artyom Belyaev' and ref.token != 'SECRET' and ref.is_test
+    finally:
+        db.close()
+
+
+def test_prod_agents_sync_without_key_is_clear_error(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.delenv('STAND_PROD_RO_KEY', raising=False)
+    with appmod.app.test_client() as client:
+        res = client.post('/api/stand/prod-agents')
+    assert res.status_code == 502 and 'STAND_PROD_RO_KEY' in res.json['error']

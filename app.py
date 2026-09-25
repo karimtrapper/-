@@ -5528,6 +5528,70 @@ def stand_incoming_check():
         db.close()
 
 
+PROD_CRM_URL = 'https://grusha.up.railway.app'
+
+
+def _stand_prod_agents():
+    """Агенты (рефереры) из прод-CRM по ключу только на чтение.
+
+    На стенде своих агентов нет — пустой справочник не даёт пройти сделку с
+    партнёром (Карим, 25.09). Токены кабинетов из прода не копируем."""
+    key = os.environ.get('STAND_PROD_RO_KEY', '')
+    if not key:
+        raise RuntimeError('На стенде не задан STAND_PROD_RO_KEY')
+    resp = requests.get(f'{PROD_CRM_URL}/api/referrers', headers={'X-Api-Key': key}, timeout=15)
+    if resp.status_code != 200:
+        raise RuntimeError(f'Прод-CRM ответила {resp.status_code}')
+    out = []
+    for r in (resp.json() or {}).get('referrers') or []:
+        name = (r.get('name') or '').strip()
+        if not name or name.upper().startswith('TEST'):
+            continue
+        comp = r.get('comp_model') or 'revshare'
+        out.append({'prodId': r.get('id'), 'name': name, 'code': r.get('code') or '',
+                    'lang': r.get('lang') or 'ru', 'comp': comp,
+                    'percent': float((r.get('markup_percent') if comp == 'markup' else r.get('default_percent')) or 0),
+                    'markupPercent': float(r.get('markup_percent') or 0),
+                    'revsharePercent': float(r.get('default_percent') or 0),
+                    'cur': r.get('payout_currency') or 'USDT', 'tg': r.get('telegram') or '',
+                    'active': bool(r.get('active', True))})
+    return out
+
+
+@app.route('/api/stand/prod-agents', methods=['POST'])
+def stand_prod_agents_sync():
+    """Подтянуть агентов из прода в справочник стенда и в его CRM (по коду)."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    try:
+        agents = _stand_prod_agents()
+    except (RuntimeError, requests.RequestException, ValueError) as exc:
+        return jsonify({'success': False, 'error': str(exc)[:200]}), 502
+    import secrets as _secrets
+    db = get_session()
+    try:
+        for a in agents:
+            if not a['code']:
+                continue
+            ref = db.query(Referrer).filter(Referrer.code == a['code']).first()
+            if not ref:
+                ref = Referrer(code=a['code'], token=_secrets.token_hex(12), name=a['name'])
+                db.add(ref)
+            ref.name = a['name']
+            ref.comp_model = a['comp']
+            ref.default_percent = a['revsharePercent']
+            ref.markup_percent = a['markupPercent']
+            ref.payout_currency = a['cur']
+            ref.telegram = a['tg']
+            ref.lang = a['lang']
+            ref.active = a['active']
+            ref.is_test = True   # стенд: никаких уведомлений реальным партнёрам
+        db.commit()
+    finally:
+        db.close()
+    return jsonify({'success': True, 'agents': agents})
+
+
 def _stand_payin_receiver(state, deal):
     """Кошелёк, на который крипто-клиент платит USDT по сделке стенда."""
     from stand_transfers import DEFAULT_WALLETS

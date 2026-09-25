@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 15:20 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 17:30 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -406,6 +406,55 @@ const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU'];
 let standVer=null, standPush=null, standBusy=false, standMe=null;
+/* Последний снимок с сервера — база для слияния, когда доску одновременно правят
+   двое. Раньше при конфликте версии своя правка молча выбрасывалась: операционист
+   отправлял курс, а он пропадал (Карим, 25.09 — «приняло только с третьего раза»). */
+let standBase=null;
+function standClone(o){return JSON.parse(JSON.stringify(o||{}));}
+function jeq(a,b){return JSON.stringify(a)===JSON.stringify(b);}
+/* Слияние трёх версий: база (что видели), моя, серверная. Меняли разное — берём оба
+   изменения; одно и то же — побеждает серверная, и об этом говорим. */
+function standMerge(base,mine,theirs){
+  const out={}, conflicts=[];
+  STAND_SHARED.forEach(k=>{
+    const b=base[k], m=mine[k], t=theirs[k];
+    if(m===undefined&&t===undefined)return;
+    if(jeq(m,b)){if(t!==undefined)out[k]=t;return;}
+    if(jeq(t,b)){if(m!==undefined)out[k]=m;return;}
+    const byId=a=>Array.isArray(a)&&a.every(x=>x&&typeof x==='object'&&x.id!=null);
+    if(byId(m)&&byId(t)&&(b==null||byId(b))){
+      const bm=new Map((b||[]).map(x=>[x.id,x])), mm=new Map(m.map(x=>[x.id,x])), tm=new Map(t.map(x=>[x.id,x]));
+      const ids=[...new Set([...t.map(x=>x.id),...m.map(x=>x.id)])], arr=[], extra=[];
+      ids.forEach(id=>{
+        const bx=bm.get(id), mx=mm.get(id), tx=tm.get(id);
+        if(jeq(mx,bx)){if(tx!==undefined)arr.push(tx);return;}
+        if(jeq(tx,bx)){if(mx!==undefined)arr.push(mx);return;}
+        if(tx!==undefined)arr.push(tx);
+        /* две новые сделки с одним номером — свою не теряем, даём следующий номер */
+        if(k==='deals'&&bx===undefined&&mx&&tx) extra.push(mx);
+        else conflicts.push(k+':'+id);
+      });
+      extra.forEach(x=>{const id=Math.max(0,...arr.map(y=>Number(y.id)||0))+1;
+        arr.push(Object.assign({},x,{id:id,code:'СД-'+id}));});
+      out[k]=arr;return;
+    }
+    if(m&&t&&typeof m==='object'&&typeof t==='object'&&!Array.isArray(m)&&!Array.isArray(t)){
+      const o={};
+      new Set([...Object.keys(t),...Object.keys(m)]).forEach(kk=>{
+        const bb=(b||{})[kk];
+        if(jeq(m[kk],bb)){if(t[kk]!==undefined)o[kk]=t[kk];}
+        else if(jeq(t[kk],bb)){if(m[kk]!==undefined)o[kk]=m[kk];}
+        else{o[kk]=t[kk];conflicts.push(k+'.'+kk);}
+      });
+      out[k]=o;return;
+    }
+    if(typeof m==='number'&&typeof t==='number'){out[k]=Math.max(m,t);return;}
+    if(t!==undefined)out[k]=t; conflicts.push(k);
+  });
+  if(Array.isArray(out.deals)&&typeof out.seq==='number')
+    out.seq=Math.max(out.seq,...out.deals.map(x=>Number(x.id)||0));
+  return {data:out,conflicts};
+}
 
 function standSnapshot(){ const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; }); return o; }
 function standApply(data){
@@ -430,10 +479,13 @@ async function standPull(force){
     const j=await r.json(); if(!j.success)return;
     if(j.role&&j.role!==S.role&&j.role!=='admin'){S.role=j.role;}
     if(standVer===j.version&&!force)return;
+    /* клик уже начался — перерисовка заменила бы кнопку под пальцем, и нажатие
+       терялось бы. Догоним на следующем тике. */
+    if(!force&&Date.now()-lastPointer<1500)return;
     /* Пока человек печатает, чужое состояние не подставляем — иначе ввод
        затрётся на полуслове. Догоним на следующем тике. */
     if(standTyping()&&!force)return;
-    standVer=j.version; standApply(j.data); render();
+    standVer=j.version; standBase=standClone(j.data); standApply(j.data); render();
   }catch(e){}
 }
 async function standSave(){
@@ -445,11 +497,18 @@ async function standSave(){
       body:JSON.stringify({version:standVer,data:standSnapshot()})});
     if(r.status===409){
       const j=await r.json();
-      standVer=j.version; standApply(j.data); render();
-      toast(j.error&&j.error!=='conflict'?j.error:('Доску только что поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — показал свежую'));
+      if(j.error&&j.error!=='conflict'){
+        standVer=j.version; standBase=standClone(j.data); standApply(j.data); render(); toast(j.error);
+      }else{
+        /* Доску поменял коллега: сливаем его правки с нашими и досылаем */
+        const mine=standSnapshot(), m=standMerge(standBase||{},mine,j.data||{});
+        standVer=j.version; standBase=standClone(j.data); standApply(m.data); if(!standTyping())render();
+        if(!jeq(m.data,j.data)) standPush=true;
+        if(m.conflicts.length) toast('Ту же сделку одновременно поменял'+(j.updated_by?' '+j.updated_by:' коллега')+' — оставил его версию, проверьте свою правку');
+      }
     }else{
       const j=await r.json();
-      if(j.success){standVer=j.version;if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}}
+      if(j.success){standVer=j.version;if(j.data)standBase=standClone(j.data);if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}}
       else toast(j.detail||j.error||'Сервер не сохранил изменения');
     }
   }catch(e){ toast('Не сохранилось — проверьте связь'); }
@@ -593,8 +652,21 @@ function money(v,c){return (v==null||v==='')?'—':Number(v).toLocaleString('ru-
 
 /* средний курс дня. В проде — из справочника курсов (api.exgreen.pro), обновляется сам.
    Здесь живёт в состоянии и обновляется кнопкой, чтобы было видно: ориентир пересчитывается. */
-function avgRate(){return (S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
-function avgUsdt(){return (S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
+/* Курс дня — настоящий рынок из /api/rates (RUB→USDT Doverka, USDT→THB Binance),
+   как в калькуляторе. Раньше он был выдуман и «обновлялся» случайным числом, отсюда
+   ложное «курс уехал на 4,31 %» (Карим, 25.09). Живёт у каждого в браузере, в общую
+   доску не пишется. */
+const MARKET={rubThb:null,usdt:null,at:null};
+async function fetchMarket(){
+  try{const r=await fetch('/api/rates',{credentials:'same-origin'});const j=await r.json();
+    if(j&&j.rub_usdt&&j.usdt_thb){MARKET.rubThb=Math.round(j.rub_usdt/j.usdt_thb*10000)/10000;
+      MARKET.usdt=Math.round(j.usdt_thb*10000)/10000;MARKET.at=Date.now();return true;}}catch(e){}
+  return false;
+}
+function avgRate(){return MARKET.rubThb||(S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
+function avgUsdt(){return MARKET.usdt||(S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
+/* снимок рынка в момент фиксации курса — от него считается «курс поехал» */
+function marketMark(d){if(MARKET.at) d.rates.mkt=isCrypto(d)?avgUsdt():avgRate();}
 /* Валюта, в которой платит клиент. Крипта — это USDT, рублей в такой сделке нет
    вообще: ни курса RUB→USDT, ни поступления на Сбер, ни конвертации. */
 const SIGN={rub:'₽',usdt:'USDT',thb:'฿'};  // клиенту — USDT, а не «$»: для людей это разные деньги
@@ -610,11 +682,10 @@ function payCur(d){return (d.payType==='Крипта'||d.curBase==='usdt')?'usdt
    — комментарий на каждом шаге: он честнее фиксирует, что клиент на самом деле просил. */
 function mainKey(o){return o.payType==='Крипта'?'usdt':(o.payType==='Наличные'?'cash':'rub');}
 function isCrypto(d){return payCur(d)==='usdt';}
-function refreshAvg(){
-  const v=Math.round(avgRate()*(1+(Math.random()-0.5)*0.03)*10000)/10000;
-  const u=Math.round(avgUsdt()*(1+(Math.random()-0.5)*0.02)*10000)/10000;
-  S.avg={v:v,at:Date.now()};S.avgU={v:u,at:Date.now()};save();render();
-  toast('Курсы дня обновлены: '+String(v).replace('.',',')+' ₽/฿ · '+String(u).replace('.',',')+' ฿/USDT');
+async function refreshAvg(){
+  const ok=await fetchMarket(); render();
+  toast(ok?'Курс дня с рынка: '+String(MARKET.rubThb).replace('.',',')+' ₽/฿ · '+String(MARKET.usdt).replace('.',',')+' ฿/USDT'
+          :'Рынок сейчас не ответил — попробуйте позже');
 }
 function approx(d){
   const cur=payCur(d), usdt=cur==='usdt';
@@ -631,10 +702,10 @@ function approx(d){
 function avgLine(d){
   const usdt=d&&isCrypto(d);
   const v=usdt?avgUsdt():avgRate(), unit=usdt?'฿ за 1 USDT':'₽/฿';
-  const at=usdt?(S.avgU&&S.avgU.at):(S.avg&&S.avg.at);
+  const at=MARKET.at;
   return `<div class="derived">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17l6-6 4 4 7-7"/><path d="M14 8h6v6"/></svg>
-    <span>Средний курс дня <b class="num">${String(v).replace('.',',')}</b> ${unit} · ${at?ago(at):'по умолчанию'}</span>
+    <span>Курс дня по рынку <b class="num">${String(v).replace('.',',')}</b> ${unit} · ${at?ago(at):'рынок не ответил — ориентир по умолчанию'}</span>
     <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="refreshAvg()">Обновить курс дня</button>
   </div>`;
 }
@@ -1017,7 +1088,7 @@ async function standAction(path,payload){
   try{
     const r=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
-    if(j.success){if(j.data){standVer=j.version;standApply(j.data);render();}return j;}
+    if(j.success){if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}return j;}
     toast(j.detail||j.error||'Не удалось проверить');return null;
   }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым');return null;}
   finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
@@ -1287,6 +1358,7 @@ function quoteSet(id,cpId,dir){
   else d.quotes.push({cpId:cpId,name:c.name,dir:dir,rate:v,at:Date.now()});
   quoteApply(d);
   S.qEdit=null;
+  delete DRAFTS[(S.open||S.tab||'')+'|q_'+cpId+'_'+dir];
   const best=quoteBest(d,dir);
   const better=best&&(!wasBest||wasBest.cpId!==best.cpId||wasBest.rate!==best.rate);
   log(d,(ex?'Курс обновлён':'Курс получен')+' — '+c.name+' ('+(dir==='rub'?'RUB→USDT':'USDT→THB')+'): '+v+
@@ -1321,7 +1393,7 @@ function quoteApply(d){
   const r=quoteUsed(d,'rub'), t=quoteUsed(d,'thb');
   if(r) d.rates.rubUsdt=r.rate;
   if(t) d.rates.usdtThb=t.rate;
-  if(r||t) d.rates.at=Date.now();
+  if(r||t){d.rates.at=Date.now();marketMark(d);}
 }
 function quotePick(id,cpId,dir){
   const d=deal(id), c=cpById(cpId); if(!c)return;
@@ -1453,6 +1525,25 @@ const THAI_BANKS=['Kasikorn (KBank)','SCB','Bangkok Bank','Krungthai','TTB','Kru
    выглядело кашей: в списке партнёра появлялись чужие сделки с пометкой «вручную». */
 /* Рефереры — только те, кого завели руками («Создать реферера»), выдуманных нет */
 function refsInit(){return [];}
+/* Агенты — из прод-CRM (Карим, 25.09: «в тестовом стенде нет агентов, они должны быть
+   из прода»). Сервер стенда читает прод по ключу только на чтение и заводит их же в
+   CRM стенда, чтобы закрытие сделки нашло профиль. Свои агенты стенда не теряются. */
+async function refsSync(quiet){
+  try{
+    const r=await fetch('/api/stand/prod-agents',{method:'POST',credentials:'same-origin'});
+    const j=await r.json();
+    if(!j.success){if(!quiet)toast(j.error||'Не удалось взять агентов из прода');return false;}
+    const prod=j.agents.map(a=>({id:a.prodId,name:a.name,code:a.code,lang:a.lang,comp:a.comp,
+      percent:a.percent,cur:a.cur,tg:a.tg,active:a.active,token:'',parentId:null,l2:10,prod:true}));
+    const codes=new Set(prod.map(a=>a.code));
+    const own=refs().filter(x=>!x.prod&&!codes.has(x.code));
+    const ids=new Set(prod.map(a=>a.id));
+    S.refs=prod.concat(own.map(x=>ids.has(x.id)?Object.assign({},x,{id:(Number(x.id)||0)+100000}):x));
+    save();render();
+    if(!quiet)toast('Агенты из прода: '+prod.length);
+    return true;
+  }catch(e){if(!quiet)toast('Прод не ответил — агенты не обновлены');return false;}
+}
 function refFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return refs().slice(0,8);
   return refs().filter(r=>(r.name+' '+r.code+' '+(r.tg||'')).toLowerCase().includes(q)).slice(0,8);
@@ -1919,6 +2010,7 @@ function taskToDeal(d,step){
 }
 function go(d,step,text){
   const prev=S.role;
+  draftsClear(d.id);
   taskToDeal(d,step);
   d.step=step; log(d,text||('→ '+(STEPS[step]?STEPS[step].title:step)));
   const to=stepWho(d,step);
@@ -2042,7 +2134,7 @@ function docFields(d){
       : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik,
     /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
        USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
-    purpose:isCrypto(d)?'':'Оплата по агентскому договору № '+d.code+', НДС не облагается',
+    purpose:isCrypto(d)?'':(d.purposeSet||''),
     feeNote:'Комиссия включена в курс, отдельно не взимается',
     validTill:''
   };
@@ -2058,13 +2150,13 @@ const DOC_LABEL={fio:'ФИО',fioLat:'латиница',passNo:'номер па�
   rateAt:'момент фиксации курса',partNo:'номер платежа',invoiceTotal:'инвойс целиком',
   agent:'агент',agentReg:'рег. номер',agentDir:'подписант',payTo:'реквизиты',purpose:'назначение',
   feeNote:'оговорка о комиссии',validTill:'срок реквизитов'};
-function docReset(id){const d=deal(id);d.docFields=null;save();render();toast('Поля подставлены заново');}
+function docReset(id){const d=deal(id);d.docFields=null;draftsClear(id);save();render();toast('Поля подставлены заново');}
 const DOC_SRC={fio:'паспорт',fioLat:'паспорт',passNo:'паспорт',passIss:'паспорт',passOrg:'паспорт',born:'паспорт',
   dev:'инвойс',invNo:'инвойс',invDate:'инвойс',object:'инвойс / SPA',
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
   partNo:'сделка',invoiceTotal:'инвойс',
   agent:'реквизиты MF Corp',agentReg:'реквизиты MF Corp',agentDir:'реквизиты MF Corp',
-  payTo:'реквизиты MF Corp',purpose:'шаблон',feeNote:'шаблон',validTill:'вручную'};
+  payTo:'реквизиты MF Corp',purpose:'менеджер',feeNote:'шаблон',validTill:'вручную'};
 function docFieldSave(id){
   const d=deal(id), cur=docFields(d), out={}, ch=[];
   Object.keys(DOC_SRC).forEach(k=>{
@@ -2162,7 +2254,7 @@ function render(){
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
-    ? `<button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
+    ? `<button class="ghost" onclick="refsSync()">Агенты из прода</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
@@ -2198,6 +2290,7 @@ function render(){
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
+  draftsRestore();
   restoreFocus();
 }
 function setRole(r){S.role=r;S.open=null;S.draft=null;S.modal=null;S.tab='tasks';save();render();}
@@ -2206,6 +2299,25 @@ function openDeal(id){S.open=id;S.view='deal';save();render();}
 function openTask(id){S.open=id;S.view='task';save();render();}
 function setView(v){S.view=v;save();render();}
 function back(){S.open=null;S.draft=null;save();render();}
+/* Черновики полей, которые читаются только по кнопке: комментарии, ответ курса, хеш.
+   Опрос сервера раз в 2,5 с перерисовывает экран — набранное в них пропадало
+   (Карим, 25.09: комментарии на создании договора не оставались). Поля с
+   oninput/onchange сами пишут в сделку — их не трогаем. */
+const DRAFTS={};
+let lastPointer=0;
+document.addEventListener('input',e=>{const t=e.target;
+  if(!t||!t.id||!(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))return;
+  if(t.type==='file'||t.type==='checkbox'||t.type==='radio'||t.readOnly)return;
+  if(t.hasAttribute('oninput')||t.hasAttribute('onchange'))return;
+  DRAFTS[(S.open||S.tab||'')+'|'+t.id]=t.value;},true);
+document.addEventListener('pointerdown',()=>{lastPointer=Date.now();},true);
+function draftsRestore(){
+  const p=(S.open||S.tab||'')+'|';
+  Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)!==0)return;
+    const el=document.getElementById(k.slice(p.length));
+    if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA')&&el.value!==DRAFTS[k])el.value=DRAFTS[k];});
+}
+function draftsClear(key){const p=key+'|';Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)===0)delete DRAFTS[k];});}
 let FOCUS=null;
 function rememberFocus(){const a=document.activeElement;if(a&&a.id)FOCUS={id:a.id,pos:a.selectionStart};}
 function restoreFocus(){if(!FOCUS)return;const e=document.getElementById(FOCUS.id);
@@ -2703,7 +2815,9 @@ function viewCreate(){
       <p class="fh" style="margin-top:8px">Сверху последние ${shown.length}; остальные — поиском.</p>`
       :`<p class="fh" style="margin-top:9px">Найдено ${f.length} из ${all.length}${D.q?' · по запросу «'+D.q+'»':''}</p>`}`:
     `<div class="alert a-warn" style="margin-top:4px"><div>Ничего не нашлось по «${D.q}». Проверьте написание или выберите «Без переписки».</div></div>`}`:
-    `<div class="alert a-info"><div>Переписки нет — клиент позвонил или пришёл по рекомендации. Найдите его по имени в справочнике ниже или заведите нового: карточка нужна, чтобы к ней привязались договор и паспорт.</div></div>`}
+    (D.source==='none'
+      ?`<div class="alert a-info"><div>Переписки нет — клиент позвонил или пришёл по рекомендации. Найдите его по имени в справочнике ниже или заведите нового: карточка нужна, чтобы к ней привязались договор и паспорт.</div></div>`
+      :`<div class="alert a-info"><div>Список чатов ${SOURCES[D.source]} сюда пока не подтягивается. Впишите чат вручную или создавайте задачу без привязки — чат необязателен, канал запишется.</div></div>`)}
     ${srcManualBlock(D)}
     ${(D.srcPrev&&D.srcPrev.sourceRef)?`<div class="row" style="margin-top:10px">
       <button class="btn btn-outline btn-sm" onclick="draftSrcCancel()">Оставить как было — ${SOURCES[D.srcPrev.source]}${D.srcPrev.sourceRef?' · '+D.srcPrev.sourceRef:''}</button></div>`:''}
@@ -2964,7 +3078,8 @@ function ensureClient(D){
 }
 function draftValid(){
   const D=S.draft;
-  if(D.source!=='none'&&!D.sourceRef){toast('Выберите чат или сделку — из неё подставится клиент');return false;}
+  /* Чат не обязателен: на стенде списка чатов нет, а задача без привязки — обычное
+     дело (Карим, 25.09). Канал записываем, чат можно вписать позже. */
   if(!D.clientId&&!D.client){toast('Выберите клиента из справочника или создайте нового');return false;}
   if(D.type==='Оплата недвижимости'&&!D.kind){toast('Уточните тип сделки — лизхолд, фрихолд или аренда');return false;}
   if(!D.payType){toast('Уточните, как клиент платит');return false;}
@@ -4414,6 +4529,8 @@ async function docParse(id,quiet){
     if(dd.docFields&&!dd.docVersion){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
       dd.docFields=Object.assign({},auto,Object.fromEntries(Object.entries(keep).filter(([k,v])=>String(v||'').trim()&&v!==auto[k]&&!['fio','fioLat','passNo','passIss','passOrg','born','dev','invNo','invDate','object'].includes(k))));}
     log(dd,'Документы распознаны: '+Object.keys(dd.docParse.fields).length+' полей'+(dd.docParse.warnings.length?' · замечаний '+dd.docParse.warnings.length:''));
+    /* свежий результат распознавания важнее недописанного руками в полях пакета */
+    Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(id+'|df_')===0)delete DRAFTS[k];});
     save();render();if(!quiet)toast('Документы распознаны');
   }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
 }
@@ -4581,7 +4698,7 @@ function selfRate(id){
   const d=deal(id), crypto=isCrypto(d);
   const r1=val('m1'), r2=val('m2');
   if(!r2||(!crypto&&!r1)){toast(crypto?'Нужен курс USDT→THB':'Нужны оба курса');return;}
-  d.rates.rubUsdt=crypto?null:r1; d.rates.usdtThb=r2; d.rates.at=Date.now();
+  d.rates.rubUsdt=crypto?null:r1; d.rates.usdtThb=r2; d.rates.at=Date.now(); marketMark(d);
   d.selfRate=true; d.self=false;
   d.comment=val('c')||d.comment;
   go(d,'s6','Курс проставил менеджер сам — операциониста не привлекали');
@@ -4594,26 +4711,14 @@ function selfRate(id){
    (Карим, 24.09). Порог тот же, что проговаривают клиенту, — 0,5 %. */
 const RATE_DRIFT=0.5;
 function rateDrift(d){
-  const fixed=costRate(d);
-  if(!fixed) return null;
+  const fixed=num(d.rates.mkt);
+  if(!fixed||!MARKET.at) return null;
   const now=isCrypto(d)?avgUsdt():(avgRate());
   if(!now) return null;
   /* в крипте себестоимость ฿ за 1 USDT: рост курса нам выгоден, в рублях наоборот */
   const pct=(now-fixed)/fixed*100;
   return {fixed:fixed,now:now,pct:pct,over:Math.abs(pct)>RATE_DRIFT,
           worse:isCrypto(d)?(pct<0):(pct>0)};
-}
-function marketMove(pct){
-  S.avg=S.avg||{v:2.6}; S.avgU=S.avgU||{v:31.2};
-  S.avg.v=Math.round(S.avg.v*(1+pct/100)*10000)/10000;
-  S.avgU.v=Math.round(S.avgU.v*(1+pct/100)*10000)/10000;
-  S.avg.at=Date.now(); S.avgU.at=Date.now();
-  save();render();toast('Курс дня сдвинут на '+(pct>0?'+':'')+pct+' %');
-}
-function marketReset(id){
-  const d=deal(id), c=costRate(d);
-  if(c){ if(isCrypto(d)) S.avgU.v=c; else S.avg.v=c; }
-  save();render();toast('Курс дня равен курсу сделки');
 }
 function costRate(d){
   const ru=num(d.rates.rubUsdt), ut=num(d.rates.usdtThb);
@@ -4766,11 +4871,24 @@ function payinSenderOk(id,i){
   log(d,'Перевод '+money(h.amount,'USDT')+' с '+(h.from||'неопознанного адреса')+' засчитан: менеджер подтвердил, что это клиент');
   payinSettle(id);
 }
+/* Привязали не тот платёж — возвращаемся на ожидание: рублёвые приходы отвязываются
+   и снова свободны в «Поступлениях», крипто-хеши остаются — лишний убирается
+   кнопкой «убрать» (Карим, 25.09). */
+function payinBack(id){
+  const d=deal(id); if(d.step!=='s14m')return;
+  if(!isCrypto(d)){
+    (d.payinParts||[]).forEach(p=>{const x=incomes().find(z=>z.id===p.incId);if(x&&x.dealId===d.id)x.dealId=null;});
+    d.payinParts=[];
+  }
+  d.incomeAmount=null; d.incomeReview=null;
+  go(d,'s14','Вернули на ожидание прихода — привязан не тот платёж');
+  toast('Выберите правильный платёж');
+}
 /* Не наш перевод — убираем из сделки, в сумму он не шёл */
 function payinDrop(id,i){
-  const d=deal(id), h=(d.payinHashes||[])[i]; if(!h||!payinForeign(d,h))return;
+  const d=deal(id), h=(d.payinHashes||[])[i]; if(!h||d.step!=='s14')return;
   d.payinHashes.splice(i,1);
-  log(d,'Перевод '+money(h.amount,'USDT')+' с '+(h.from||'неопознанного адреса')+' убран из сделки: не от клиента');
+  log(d,'Перевод '+money(h.amount,'USDT')+' с '+(h.from||'неопознанного адреса')+' убран из сделки'+(payinForeign(d,h)?': не от клиента':''));
   save();render();toast('Перевод убран из сделки');
 }
 /* После каждого перевода: сошлось в допуске — деньги у нас; меньше — ждём остаток;
@@ -4821,6 +4939,28 @@ function payinDemo(id,kind){
   log(d,'Вебхук · демо: на кошелёк пришло '+money(amount,'USDT')+(kind==='test'?' — тестовый перевод':'')+
     (h.unknownSender?' с неопознанного адреса':' с кошелька клиента'));
   payinSettle(id);
+}
+
+/* Назначение платежа указывает менеджер — он знает, что требует банк и застройщик
+   (Карим, 25.09). Обязательно и наверху: без него договор не собрать. У крипты
+   назначения нет. Операционист видит его первым полем пакета и может поправить. */
+function purposeSet(id,v){const d=deal(id);d.purposeSet=String(v||'').trim();
+  if(d.docFields&&!d.docVersion) d.docFields.purpose=d.purposeSet;save();}
+function purposeFill(id,kind){const d=deal(id);
+  const inv=parsed(d,'invoice_no'), dev=parsed(d,'recipient_name');
+  const v=kind==='inv'?('Оплата инвойса '+(inv||'№ ___')+(dev?'. '+dev:''))
+    :'Оплата по агентскому договору № '+d.code+', НДС не облагается';
+  d.purposeSet=v; if(d.docFields&&!d.docVersion) d.docFields.purpose=v;
+  log(d,'Назначение платежа: '+v);save();render();}
+function purposeBlock(d){
+  const inv=parsed(d,'invoice_no');
+  return `<div class="fg" style="margin-bottom:14px"><label class="fl">Назначение платежа<span class="rq">*</span>
+      <span class="sub2"> клиент впишет его в перевод — как требует банк и застройщик</span></label>
+    <textarea class="fc${String(d.purposeSet||'').trim()?'':' bad'}" id="p8_purpose" rows="2" placeholder="например: Оплата инвойса BBB1-2026018. Botanica Bangtao Beach 1 Co., Ltd."
+      onchange="purposeSet(${d.id},this.value)">${d.purposeSet||''}</textarea>
+    <div class="row" style="margin-top:6px">
+      <button class="btn btn-outline btn-sm" onclick="purposeFill(${d.id},'agent')">По агентскому договору</button>
+      <button class="btn btn-outline btn-sm" onclick="purposeFill(${d.id},'inv')">По инвойсу${inv?' '+inv:''}</button></div></div>`;
 }
 
 /* ---------- карточки шагов ---------- */
@@ -5190,15 +5330,16 @@ function stepCard(d){
     <div class="alert a-warn"><div><b>${d.type}${d.kind?' · '+d.kind:''} · платит ${d.payType||'не указано'}.</b> Получателю нужно ${money(ap.thb,'฿')}, клиент отдаёт ${money(ap.pay,ap.sign)}${ap.approx?' ≈':''}.</div></div>
     ${isCrypto(d)?`<div class="alert a-info"><div>Рублёвой ноги в сделке нет — курс у брокера не спрашиваем, нужен только <b>USDT→THB</b>.</div></div>`:''}
     ${(function(){const r=quoteBest(d,'rub'), t=quoteBest(d,'thb');
-      return `<div class="fr">
-      ${isCrypto(d)?'':`<div class="fg"><label class="fl">Курс в сделку · RUB → USDT</label>
-        <input class="fc num" readonly value="${r?r.rate+' · '+r.name:'ещё нет ответов'}">
-        <p class="fh">берём лучший из ответов ниже</p></div>`}
-      <div class="fg"><label class="fl">Курс в сделку · USDT → THB</label>
-        <input class="fc num" readonly value="${t?t.rate+' · '+t.name:'ещё нет ответов'}">
-        <p class="fh">берём лучший из ответов ниже</p></div>
-      <div class="fg"></div>
-    </div>`;})()}
+      /* Не поле ввода: операционист принимал его за то, что надо заполнить (Карим, 25.09).
+         Это итог — сюда сам встаёт лучший из ответов, вписанных ниже. */
+      const cell=(dir,q)=>`<div class="fg"><div class="fl">${dir}</div>
+        <div style="font-size:15px;padding:6px 0">${q?`<b>${q.rate}</b> · ${q.name}`:'<span style="color:var(--text-muted)">ещё нет ответов</span>'}</div></div>`;
+      return `<div class="derived" style="margin-bottom:6px;display:block">
+      <div style="font-size:12.5px;margin-bottom:6px"><b>Что уйдёт в сделку</b> — заполнять не нужно: сюда сам встаёт лучший из ответов, которые вы впишете ниже.</div>
+      <div class="fr" style="margin:0">
+      ${isCrypto(d)?'':cell('RUB → USDT',r)}
+      ${cell('USDT → THB',t)}
+      <div class="fg"></div></div></div>`;})()}
     <div class="card-title" style="font-size:14px;margin:20px 0 11px">Что спросить — суммы уже подставлены</div>
     ${ap.approx?avgLine(d)+'<div style="height:11px"></div>':''}
     ${isCrypto(d)?'':(function(){const q='Какой курс на '+money(ap.pay,'₽')+'?';
@@ -5239,12 +5380,12 @@ function stepCard(d){
         <input class="fc num" id="r2c" value="${d.rates.usdtThb||''}" placeholder="31,20"
           oninput="rememberFocus();syncClient(${d.id},'usdtThb')"></div>
       <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ${isCrypto(d)?'฿ за 1 USDT':'₽ за 1 ฿'}</span></label>
-        <input class="fc num" id="r3" value="${d.rates.client||''}" placeholder="${isCrypto(d)?'31,05':'2,8445'}"
+        <input class="fc num" id="r3" value="${d.rates.client||''}" placeholder="впишите курс"
           oninput="rememberFocus();syncClient(${d.id},'rate')"></div>
     </div>
     <div class="fr">
       <div class="fg"><label class="fl">Сумма клиенту<span class="rq">*</span><span class="sub2"> столько он отдаёт, ${isCrypto(d)?'USDT':'₽'}</span></label>
-        <input class="fc num" id="r4" value="${(isCrypto(d)?d.amountUsdt:d.amountRub)||''}" placeholder="${isCrypto(d)?'11 647':'2 850 000'}"
+        <input class="fc num" id="r4" value="${(isCrypto(d)?d.amountUsdt:d.amountRub)||''}" placeholder="или впишите сумму"
           oninput="rememberFocus();syncClient(${d.id},'sum')">
         <p class="fh">правится вместе с курсом: поменяли одно — второе пересчитается</p></div>
       <div class="fg"><label class="fl">Получателю<span class="sub2"> ฿, тоже правится</span></label>
@@ -5268,6 +5409,7 @@ function stepCard(d){
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Клиент пропал и вернулся через неделю — курс давно другой. «Запросить заново» создаёт операционисту новую задачу, прошлые цифры останутся в истории.</p></div>`;},
 
   s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
+    ${isCrypto(d)?'':purposeBlock(d)}
     ${d.isOld?`<p class="fh" style="margin:-4px 0 10px">Клиент знакомый: паспорт уже лежит в прошлой сделке и в договоре — прикладывать заново не нужно. Если он поменялся, загрузите новый.</p>`:''}
     <div class="list">
       ${/* Паспорт показываем всегда: у знакомого клиента он не обязателен, но если
@@ -5328,6 +5470,7 @@ function stepCard(d){
         ${fld('amountPay','Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1})}
       </div>
       <p class="fh" style="margin-top:2px">Эти три числа уходят в договор, приложение и счёт — их и сверяют с инвойсом. Остальное ниже.</p>
+      ${isCrypto(d)?'':fld('purpose','Назначение платежа — его клиент впишет в перевод',{req:1,area:1})}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>
@@ -5371,7 +5514,6 @@ function stepCard(d){
       ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
       <p class="fh">адрес подставится в «Куда платит клиент»; мультисиг — дальше подпись фин дира и Теодора, личный — отправляет владелец</p></div></div>`:''}
     ${fld('payTo','Куда платит клиент',{area:1})}
-    ${isCrypto(d)?'':fld('purpose','Назначение платежа',{area:1})}
     ${fld('feeNote','Оговорка о комиссии',{area:1})}
 
     <div class="fg" style="margin-top:14px"><label class="fl">Комментарий — что поправили и почему</label><textarea class="fc" id="c">${d.docComment2||''}</textarea></div>
@@ -5422,18 +5564,13 @@ function stepCard(d){
       const p=Math.abs(dr.pct).toFixed(2).replace('.',',');
       if(!dr.over) return `<div class="derived" style="margin-top:16px">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Курс держится: с момента расчёта${fixed?' ('+fixed+')':''} ушёл на <b>${p} %</b> — это в пределах 0,5 %, условия пересогласовывать не нужно.</span></div>`;
+        <span>Рынок держится: с момента расчёта${fixed?' ('+fixed+')':''} ушёл на <b>${p} %</b> — это в пределах 0,5 %, условия пересогласовывать не нужно.</span></div>`;
       return `<div class="alert ${dr.worse?'a-warn':'a-info'}" style="margin-top:16px"><div>
-        <b>Курс уехал на ${p} %</b> с момента расчёта${fixed?' ('+fixed+')':''} — это больше порога 0,5 %, о котором мы предупреждаем клиента.
+        <b>Рынок ушёл на ${p} %</b> с момента расчёта${fixed?' ('+fixed+')':''} — это больше порога 0,5 %, о котором мы предупреждаем клиента.
         ${dr.worse?'Сейчас условия хуже наших: если клиент заплатит по старому курсу, маржа просядет.'
                   :'Сейчас условия лучше наших — клиенту можно предложить новый курс.'}
         Запросите курсы заново и пересогласуйте с клиентом: новый расчёт соберёт новый пакет.</div></div>`;})()}
 
-    <div class="sim" style="margin-top:12px"><div class="h">Вебхук · демо — курс дня (в проде приходит из стакана сам)</div>
-      <p>Курс дня сейчас ${isCrypto(d)?String(Math.round(avgUsdt()*100)/100).replace('.',',')+' ฿/USDT':String(Math.round(avgRate()*10000)/10000).replace('.',',')+' ₽/฿'}. Подвиньте его, чтобы увидеть, как сработает проверка.</p>
-      <button class="btn btn-secondary btn-sm" onclick="marketMove(-1)">−1 %</button>
-      <button class="btn btn-secondary btn-sm" onclick="marketMove(1)">+1 %</button>
-      <button class="btn btn-outline btn-sm" onclick="marketReset(${d.id})">Вернуть к курсу сделки</button></div>
 
     <div class="chtitle" style="margin-top:16px">Курс поехал, пока клиент думал
       <span>цифры меняет операционист — он же подписывает пакет</span></div>
@@ -5478,7 +5615,8 @@ function stepCard(d){
         <span class="fh" style="margin:0">${h.from?'с '+h.from:'отправитель не опознан'}</span>
         ${f?`<span class="neg">${h.unknownSender?'не опознан как клиент':'не кошелёк клиента'} — в сумму не идёт</span>
           <button class="btn btn-secondary btn-sm" onclick="payinSenderOk(${d.id},${i})">Это клиент — засчитать</button>
-          <button class="btn btn-outline btn-sm" onclick="payinDrop(${d.id},${i})">Не наш — убрать</button>`:''}</div>`;}).join('')}
+          <button class="btn btn-outline btn-sm" onclick="payinDrop(${d.id},${i})">Не наш — убрать</button>`
+          :`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="payinDrop(${d.id},${i})">убрать</button>`}</div>`;}).join('')}
       <span class="hsum">получено <b>${money(got,'USDT')}</b> из ${money(exp,'USDT')}${left>PAYIN_TOL?' · ждём ещё <b>'+money(left,'USDT')+'</b>':''}</span></div>`:''}
     <div class="fg" style="margin-top:12px"><label class="fl">Добавить перевод по хешу <span class="sub2">скинули с другого кошелька, перевод не подтянулся сам — каждый хеш отдельно</span></label>
       <div class="row" style="margin-top:0;flex-wrap:nowrap"><input class="fc" id="ph_${d.id}" placeholder="64 символа или ссылка tronscan.org">
@@ -5518,6 +5656,11 @@ function stepCard(d){
   s14m:()=>`<div class="card"><div class="card-title">Разобрать поступление</div>
     <div class="alert a-warn"><div>Ждали <b>${money(Number(expectOf(d).amount),ap.sign)}</b>, в выбранных приходах <b>${money(payinSum(d)||d.incomeAmount,ap.sign)}</b>.
       ${(d.incomeReview||[]).length?`<br>${d.incomeReview.join('; ')}.`:'Проверьте причину несовпадения.'}</div></div>
+    ${isCrypto(d)?'':`<div class="hashbox" style="margin-bottom:12px">
+      ${(d.payinParts||[]).map((p,i)=>`<div class="hrow"><b>${money(p.amountRub,'₽')}</b>
+        <span class="fh" style="margin:0">${p.payer||'—'} · ${p.date||''}${p.acc?' · '+p.acc:''}${p.purpose?' · «'+String(p.purpose).replace(/[<>&]/g,'')+'»':''}</span>
+        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="sberDrop(${d.id},${i})">Отвязать</button></div>`).join('')}</div>`}
+    <div class="row" style="margin:0 0 14px"><button class="btn btn-secondary" onclick="payinBack(${d.id})">Не тот платёж — вернуться и выбрать другой</button></div>
     <div class="fg"><label class="fl">Почему привязываем<span class="rq">*</span></label>
       <textarea class="fc" id="c" placeholder="Банк клиента удержал комиссию, клиент прислал чек"></textarea></div>
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s14m')">Привязать к сделке</button>
@@ -5911,13 +6054,15 @@ function act(id,step){
     }
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
+    if(!isCrypto(d)&&!String(d.purposeSet||'').trim()){toast('Укажите назначение платежа — клиент впишет его в перевод');
+      const el=document.getElementById('p8_purpose');if(el){el.scrollIntoView({block:'center'});el.focus();}return;}
     if(!d.isOld&&!d.docs.pass){toast('Нужен паспорт');return;}
     if(!d.docs.inv){toast('Нужен инвойс');return;}
     d.docComment=c?c.value:'';go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
-    const miss=DOC_REQ.filter(k=>!String(F[k]==null?'':F[k]).trim());
+    const miss=DOC_REQ.concat(isCrypto(d)?[]:['purpose']).filter(k=>!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
       d.docMiss=miss;save();render();
       toast('Не заполнено: '+miss.map(k=>DOC_LABEL[k]||k).join(', '));
@@ -6766,6 +6911,9 @@ async function standBoot(){
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
   }catch(e){}
   await standPull(true);
+  fetchMarket().then(ok=>{if(ok)render();});
+  if(!refs().some(r=>r.prod)) refsSync(true);
+  setInterval(()=>fetchMarket().then(ok=>{if(ok&&!standTyping())render();}),300000);
   /* Доска как в проде: пустая, без примеров (Карим, 25.09) */
   render();
   standOpenFromLink();
