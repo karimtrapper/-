@@ -17205,6 +17205,11 @@ def _docs_client_key(fields):
 
 
 def _docs_openrouter_key():
+    # На стенде OPENROUTER_API_KEY погашен предохранителем (им пользуются и другие
+    # платные вызовы). Распознаванию документов даём отдельный ключ STAND_DOCPARSE_KEY:
+    # стенд должен работать как прод — поля договора из настоящих файлов (Карим, 25.09).
+    if STAND_MODE:
+        return os.environ.get('STAND_DOCPARSE_KEY', '')
     return os.environ.get('OPENROUTER_API_KEY', '')
 
 

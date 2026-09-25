@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 05:25 · сделка в CRM</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 10:07 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -1003,7 +1003,10 @@ function transferMode(id,mode){
   if(convOf(d)&&(convOf(d).txs||[]).length){toast('Режим закреплён приходами этой пачки');return;}
   mem.forEach(x=>x.demoTransfers=mode==='demo');save();render();
 }
-function transferModeBlock(d){return `<div class="fg"><label class="fl">Проверка переводов</label>
+/* Сети на стенде нет: подтверждение перевода приходит «вебхуком» — кнопкой с пометкой
+   демо. Переключатель режима убран, тестовый режим включён всегда (Карим, 25.09). */
+function transferModeBlock(d){return '';}
+function transferModeBlockOld(d){return `<div class="fg"><label class="fl">Проверка переводов</label>
   <select class="fc" onchange="transferMode(${d.id},this.value)" ${sendList(d).length?'disabled':''}>
   <option value="network" ${!d.demoTransfers?'selected':''}>Настоящие хеши — проверка в сети</option>
   <option value="demo" ${d.demoTransfers?'selected':''}>Тестовый сценарий — без движения денег</option></select>
@@ -1433,14 +1436,8 @@ function brokerSend(rub,fee){
    иначе «заработал» и «к выплате» разъезжаются с фактом при первой же правке. */
 /* Клиент — сущность CRM, а не строка в сделке: за ним закреплены договоры,
    паспорт и история. Поэтому в сделке он выбирается из справочника. */
-function clientsInit(){return [
-  {id:1,name:'Гусев Игорь',tg:'Игорь Гусев',docs:true,refId:1},
-  {id:2,name:'Левченко Анна',tg:'Левченко Анна',docs:true,refId:1},
-  {id:3,name:'Бранова Ольга',tg:'Ольга Бранова',docs:false,refId:3},
-  {id:4,name:'Ким Сергей',tg:'Валентин Сергеевич · агентство',docs:false,refId:2},
-  {id:5,name:'Соколова Мария',tg:'+66 81 234 5566',docs:false,refId:null},
-  {id:6,name:'Мартиросян Карен',tg:'Мартиросян Карен',docs:false,refId:null}
-];}
+/* Справочник клиентов стенда начинается пустым — карточки заводятся со сделками */
+function clientsInit(){return [];}
 function clients(){ if(!S.clients)S.clients=clientsInit(); return S.clients; }
 function clientById(id){return clients().find(c=>c.id===id);}
 function clientFind(q){
@@ -1454,20 +1451,8 @@ const THAI_BANKS=['Kasikorn (KBank)','SCB','Bangkok Bank','Krungthai','TTB','Kru
    кто привёл его самого, и ему капает своя ставка с тех же сделок. Так работает
    программа 30/10 — раньше я заводил второй уровень руками в каждой сделке, и это
    выглядело кашей: в списке партнёра появлялись чужие сделки с пометкой «вручную». */
-function refsInit(){return [
-  {id:1,name:'Lidia SID Thailand',code:'GR-LIDIA',lang:'ru',comp:'markup',percent:0.5,
-   cur:'USDT',tg:'@lidia_sid',active:true,token:'a7f3c1',parentId:2,l2:10},
-  {id:2,name:'Валера',code:'GR-VALERA',lang:'ru',comp:'revshare',percent:10,
-   cur:'USDT',tg:'@valera_phuket',active:true,token:'b21d90',parentId:null,l2:10},
-  {id:3,name:'Roman',code:'GR-ROMAN',lang:'ru',comp:'fixed',percent:25,
-   cur:'USDT',tg:'@roman_bkk',active:true,token:'c55e07',parentId:null,l2:10},
-  {id:4,name:'Theodore Partners',code:'GR-THEODORE',lang:'en',comp:'revshare',percent:7,
-   cur:'USDT',tg:'@theodore_intl',active:false,token:'d09a44',parentId:null,l2:10},
-  {id:5,name:'Анна Левченко',code:'GR-ANNA',lang:'ru',comp:'revshare',percent:8,
-   cur:'USDT',tg:'@anna_lev',active:true,token:'e11b62',parentId:2,l2:10},
-  {id:6,name:'Phuket Home',code:'GR-PHOME',lang:'en',comp:'markup',percent:0.7,
-   cur:'USDT',tg:'@phuket_home',active:true,token:'f3c980',parentId:null,l2:10}
-];}
+/* Рефереры — только те, кого завели руками («Создать реферера»), выдуманных нет */
+function refsInit(){return [];}
 function refFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return refs().slice(0,8);
   return refs().filter(r=>(r.name+' '+r.code+' '+(r.tg||'')).toLowerCase().includes(q)).slice(0,8);
@@ -1904,12 +1889,9 @@ function progress(d){
 
 const CLOSE_REASONS=['Не устроил курс','Ушёл к конкуренту','Передумал покупать','Не наш профиль','Перестал отвечать','Не прошёл проверку'];
 const SOURCES={bitrix:'Битрикс',tg:'Telegram',wa:'WhatsApp',none:'Без переписки'};
-const TG_CHATS=['Валентина × Груша','Валентина П.','Валентин Сергеевич · агентство','Игорь Гусев','Анна Левченко',
-  'Пхукет · чат жильцов','Мартиросян Карен','Соколова Мария','Гурьев Денис','Ким Сергей','Школа Милы · родители',
-  'Ольга Бранова','Rawai Property · агентство','Теодор','Артём · операционист'];
-const WA_CHATS=['+66 81 234 5566','+7 916 220 1180','+66 92 888 0412','+66 88 010 7742','+7 903 774 1290',
-  'Sansiri Sales · Phuket','+66 61 445 9903'];
-const BX_DEALS=['Левченко Анна','Мартиросян К.','Соколова М.','Борзунов Игорь','Гусев Игорь','Ким Сергей','Гурьев Денис'];
+const TG_CHATS=[];  // как в проде: чаты приходят из интеграции, на стенде — «вписать вручную»
+const WA_CHATS=[];
+const BX_DEALS=[];
 
 /* ============ операции ============ */
 function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
@@ -2032,16 +2014,21 @@ function fake(d){
    из расчёта сделки или из реквизитов компании. Всё редактируется — распознавание
    ошибается, а подписывать будут то, что здесь. */
 const MF={name:'MF Corporation Company Limited',reg:'0835565024547',dir:'Miss Katika Sakornnoi',
-  bank:'ПАО Сбербанк',acc:'40807810438000012345',inn:'9909726886',rubName:'ООО «МФ КОРПОРЕЙШН»'};
+  /* настоящие рублёвые реквизиты (выписка Сбера, счёт с 06.03.2026); раньше стоял выдуманный р/с */
+  bank:'ПАО Сбербанк',acc:'40807810938720000286',inn:'9909726886',kpp:'770387001',
+  ks:'30101810400000000225',bik:'044525225',rubName:'ООО «ЭМ ЭФ КОРПОРЕЙШН»'};
 function docFields(d){
   const F=fake(d), ap=approx(d);
   const saved=d.docFields||{};
   const auto={
     /* из паспорта */
-    fio:d.client, fioLat:(lat(F.fam)+' '+lat(F.nam)).trim(), passNo:F.num, passIss:F.iss,
-    passOrg:F.org, born:F.born,
+    fio:parsed(d,'client_name_ru')||d.client, fioLat:parsed(d,'client_name_en'),
+    passNo:parsed(d,'client_passport_no'), passIss:parsed(d,'client_passport_issue_date'),
+    passOrg:parsed(d,'client_passport_issued_by'), born:parsed(d,'client_birth_date'),
     /* из инвойса и SPA */
-    dev:F.dev, invNo:F.invNo, invDate:d.createdAt, object:d.object||'',
+    dev:parsed(d,'recipient_name')||d.dev||'', invNo:parsed(d,'invoice_no')||d.invNo||'',
+    invDate:parsed(d,'invoice_date'),
+    object:d.object||[parsed(d,'project_name'),parsed(d,'unit_no')].filter(Boolean).join(', '),
     /* из расчёта сделки */
     kind:d.kind||'', amountThb:ap.thb||'', rate:d.rates.client||'',
     amountPay:ap.pay||'', rateAt:d.rates.at?new Date(d.rates.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'',
@@ -2052,7 +2039,7 @@ function docFields(d){
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
       ? payToCrypto(payinWallet(d))
-      : MF.rubName+' · ИНН '+MF.inn+' · '+MF.bank+' · р/с '+MF.acc,
+      : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik,
     purpose:'Оплата по агентскому договору № '+d.code+', НДС не облагается',
     feeNote:'Комиссия включена в курс, отдельно не взимается',
     validTill:''
@@ -2171,9 +2158,7 @@ function render(){
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
-    ? `<button class="ghost" onclick="seedDemo()">Добавить примеры</button>
-       <button class="ghost" onclick="seedLeaseholdTest()">Тест лизхолда → Coins</button>
-       <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
+    ? `<button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
@@ -4403,6 +4388,49 @@ function demoPdfData(){
   pdf+='trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
   return 'data:application/pdf;base64,'+btoa(pdf);
 }
+/* Распознавание загруженных документов — тот же /api/docs/parse, что в CRM
+   (docparse.py, OpenRouter). Раньше стенд подставлял выдуманный паспорт и инвойс;
+   теперь поля договора и реквизиты берутся из настоящих файлов (Карим, 25.09). */
+const PARSE_SLOT={pass:'passport',inv:'invoice',spa:'spa'};
+async function docParse(id,quiet){
+  const d=deal(id); if(!d)return;
+  const fd=new FormData(); let n=0;
+  for(const k of Object.keys(PARSE_SLOT)){
+    for(const f of filesOf(d,k)){
+      if(!f.data)continue;
+      const blob=await (await fetch(f.data)).blob();
+      fd.append(PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
+    }
+  }
+  if(!n){if(!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');return;}
+  fd.append('deal_type',d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
+  d.docParseState='идёт';render();
+  try{
+    const r=await fetch('/api/docs/parse',{method:'POST',credentials:'same-origin',body:fd});
+    const j=await r.json();
+    const dd=deal(id);
+    if(!j.success){dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
+    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file),at:now()};
+    dd.docParseState='готово';
+    /* поля пакета, которые ещё не правили руками, пересобираются из распознанного */
+    if(dd.docFields&&!dd.docVersion){const keep=dd.docFields;dd.docFields=null;const auto=docFields(dd);
+      dd.docFields=Object.assign({},auto,Object.fromEntries(Object.entries(keep).filter(([k,v])=>String(v||'').trim()&&v!==auto[k]&&!['fio','fioLat','passNo','passIss','passOrg','born','dev','invNo','invDate','object'].includes(k))));}
+    log(dd,'Документы распознаны: '+Object.keys(dd.docParse.fields).length+' полей'+(dd.docParse.warnings.length?' · замечаний '+dd.docParse.warnings.length:''));
+    save();render();if(!quiet)toast('Документы распознаны');
+  }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
+}
+function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
+function docParseLine(d){
+  const st=d.docParseState, P=(d.docParse||{}).fields||{};
+  const have=['pass','inv','spa'].some(k=>filesOf(d,k).length);
+  if(!have) return '';
+  const got=Object.keys(P).length;
+  return `<div class="derived" style="margin-top:14px">
+    <span>${st==='идёт'?'Распознаём документы…'
+      :(got?`Из документов распознано: <b>${[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ')||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`
+      :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.'))}</span>
+    <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
+}
 function filesOf(d,k){
   d.files=d.files||{};
   /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
@@ -4483,7 +4511,7 @@ function fileBlock(d,k,label,hint){
       <div><div class="t1">${label}</div><div class="t2">${hint}</div></div>
       <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`}
   </div>
-  ${!l.length?`<div class="row" style="margin-top:8px"><button class="btn btn-outline btn-sm" onclick="fileAdd(${d.id},'${k}',true)">+ Добавить тестовый PDF</button></div>`:''}
+
   ${l.length?`<div class="row" style="margin-top:8px">
     <button class="btn btn-outline btn-sm" onclick="fileAdd(${d.id},'${k}')">+ Ещё файл</button>
     <span class="fh" style="align-self:center">${l.length} ${l.length===1?'файл':(l.length<5?'файла':'файлов')}${FILE_TAIL[k]?' — '+FILE_TAIL[k]:''}</span></div>`:''}`;
@@ -4958,8 +4986,8 @@ function sendBlock(x,edit,multi){
       ${t.checkError?`<p class="fh neg">${htmlText(t.checkError)}</p>`:''}
       <div class="row"><button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>
       ${edit&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="sendDel(${x.id},${i})">Убрать</button>`:''}
-      ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">DEMO: подтвердить эту часть</button>
-      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">DEMO: ошибка</button>`:''}</div></div>`).join('');
+      ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">Вебхук · демо: перевод подтверждён</button>
+      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">Вебхук · демо: перевод не прошёл</button>`:''}</div></div>`).join('');
   return `<div class="hashbox" style="margin-top:10px">
     ${rows||'<div class="hempty">Переводов ещё нет</div>'}
     ${edit?`<div class="fr" style="margin-top:10px">
@@ -4970,7 +4998,7 @@ function sendBlock(x,edit,multi){
         <input class="fc num" id="sa_${x.id}" placeholder="${Math.max(0,need-sendDeclared(x)).toFixed(2)}">
         <p class="fh">Пусто — зарегистрируем ещё не добавленный остаток. Проверка сверит его с сетью.</p></div></div>
       <div class="row"><button class="btn btn-outline btn-sm" onclick="sendAdd(${x.id})">Добавить хеш</button>
-        ${x.demoTransfers?`<button class="btn btn-secondary btn-sm" onclick="sendAdd(${x.id},true)">DEMO: добавить ожидающую часть</button>`:''}
+        ${x.demoTransfers?`<button class="btn btn-secondary btn-sm" onclick="sendAdd(${x.id},true)">Зарегистрировать перевод (демо-хеш)</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="checkSends(${x.id})">Проверить переводы</button></div>`:''}
     <p class="fh">Подтверждено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${ok?' — вся сумма подтверждена':` · ждём ещё <b>${usd(left)}</b>`}.
     Зарегистрировано ${usd(sendDeclared(x))}.${sum>need+0.005?` <b class="neg">Переплата ${usd(sum-need)} — проверьте возврат излишка.</b>`:''}</p></div>`;
@@ -5169,9 +5197,7 @@ function stepCard(d){
       ${docRow(d,'spa','SPA с застройщиком','если есть')}
       ${docRow(d,'ipds','Анкета ИПДС','если есть')}
     </div>
-    ${d.docs.pass?`<div class="derived" style="margin-top:14px">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-      <span>Из паспорта распознано: <b>${lat(F.fam)} ${lat(F.nam)}</b> · ${F.num} · до ${F.exp}. Эти поля уедут в договор — операционист их не перебивает руками.</span></div>`:''}
+    ${docParseLine(d)}
     <div class="fg" style="margin-top:14px"><label class="fl">Комментарий операционисту</label><textarea class="fc" id="c" placeholder="Что нестандартного в этом пакете">${d.docComment||''}</textarea></div>
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s8')">Передать операционисту</button></div></div>`,
 
@@ -5197,6 +5223,7 @@ function stepCard(d){
     };
     return `<div class="card"><div class="card-title">Документы клиента
       <span class="sub">сверьте поля ниже с этими файлами — значения распознаны из них</span></div>
+    ${docParseLine(d)}
     ${(function(){const keys=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
       if(!keys.length)return `<div class="alert a-warn" style="margin:0"><div>Документов нет — сверять поля не с чем. Вернитесь к менеджеру, если пакет не приложен.</div></div>`;
       return `<div class="docstrip">${keys.map(k=>{const m=(d.docMeta||{})[k]||{};
@@ -5321,7 +5348,7 @@ function stepCard(d){
                   :'Сейчас условия лучше наших — клиенту можно предложить новый курс.'}
         Запросите курсы заново и пересогласуйте с клиентом: новый расчёт соберёт новый пакет.</div></div>`;})()}
 
-    <div class="sim" style="margin-top:12px"><div class="h">Симуляция · в жизни курс дня приходит из стакана</div>
+    <div class="sim" style="margin-top:12px"><div class="h">Вебхук · демо — курс дня (в проде приходит из стакана сам)</div>
       <p>Курс дня сейчас ${isCrypto(d)?String(Math.round(avgUsdt()*100)/100).replace('.',',')+' ฿/USDT':String(Math.round(avgRate()*10000)/10000).replace('.',',')+' ₽/฿'}. Подвиньте его, чтобы увидеть, как сработает проверка.</p>
       <button class="btn btn-secondary btn-sm" onclick="marketMove(-1)">−1 %</button>
       <button class="btn btn-secondary btn-sm" onclick="marketMove(1)">+1 %</button>
@@ -5347,7 +5374,7 @@ function stepCard(d){
     ${(function(){const w=payinWallet(d), pt=(d.docFields||{}).payTo;
       return (w&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:'';})()}
     <div class="alert a-info"><div>Криптоприход сверяется по сети, а не по выписке: ждём хеш и подтверждения в TRON. Назначение платежа тут не при чём — сделку опознаём по сумме и адресу отправителя.</div></div>
-    <div class="sim"><div class="h">Симуляция · в жизни это видит наблюдатель за кошельком</div>
+    <div class="sim"><div class="h">Вебхук · демо — приход на кошелёк (в проде его ловит наблюдатель за кошельком)</div>
       <p>В настоящем продукте приход ловится по сети автоматически. Здесь нажмите сами.</p>
       <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Пришло ровно ${money(ap.pay,'USDT')}</button>
       <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Пришло на 5 USDT меньше</button></div>`
@@ -5369,7 +5396,7 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
-    <div class="sim"><div class="h">Тестовая симуляция прихода</div>
+    <div class="sim"><div class="h">Вебхук банка · демо — приход рублей (в проде его присылает банк)</div>
       <p>Кнопки создают помеченную тестовую запись в разделе «Поступления» и привязывают её к этой сделке. Фактический приход выберите в списке ниже.</p>
       <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Создать тестовый приход ${money(Number(ex.amount),'₽')}</button>
       <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Создать тестовую недоплату</button></div>
@@ -5390,15 +5417,15 @@ function stepCard(d){
     <div class="alert a-info"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не наше «Оплата по агентскому договору».</div></div>
     <div class="fr">
       <div class="fg w2"><label class="fl">Получатель<span class="rq">*</span></label>
-        <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?docFields(d).dev:'')||'').replace(/"/g,'&quot;')}" placeholder="The Base Central Co., Ltd."></div>
+        <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?docFields(d).dev:'')||parsed(d,'recipient_name')||'').replace(/"/g,'&quot;')}" placeholder="The Base Central Co., Ltd."></div>
       <div class="fg"><label class="fl">Сумма, ฿<span class="rq">*</span></label>
         <input class="fc num big" id="p_amt" value="${(pt.amount||d.amountThb||ap.thb)?Number(pt.amount||d.amountThb||ap.thb).toLocaleString('ru-RU'):''}"></div>
     </div>
     <div class="fr">
       <div class="fg"><label class="fl">Банк<span class="rq">*</span></label>
-        <input class="fc" id="p_bank" value="${(pt.bank||'').replace(/"/g,'&quot;')}" placeholder="Kasikornbank"></div>
+        <input class="fc" id="p_bank" value="${(pt.bank||parsed(d,'recipient_bank')||'').replace(/"/g,'&quot;')}" placeholder="Kasikornbank"></div>
       <div class="fg"><label class="fl">Номер счёта<span class="rq">*</span></label>
-        <input class="fc addr" id="p_acc" value="${(pt.acc||'').replace(/"/g,'&quot;')}" placeholder="0432-8-91104-2"></div>
+        <input class="fc addr" id="p_acc" value="${(pt.acc||parsed(d,'recipient_account')||'').replace(/"/g,'&quot;')}" placeholder="0432-8-91104-2"></div>
       <div class="fg"><label class="fl">Инвойс</label>
         <input class="fc" id="p_inv" value="${(pt.inv||d.invNo||(d.docVersion?docFields(d).invNo:'')||'').replace(/"/g,'&quot;')}" placeholder="INV-4072"></div>
     </div>
@@ -5443,7 +5470,7 @@ function stepCard(d){
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):
         `<div class="li" style="cursor:default"><span class="av">—</span><div><div class="t1">Мелких обменов в очереди нет</div>
         <div class="t2">Сделка типа «Обмен валюты», проведённая без шагов, попадает сюда сама</div></div>
-        ${canSwitchRole()?`<button class="btn btn-outline btn-sm" onclick="event.stopPropagation();seedEx()">Добавить примеры</button>`:''}</div>`}`;})()}
+        </div>`}`;})()}
     </div>
     <p class="fh">Удержание считается на всю пачку: 0,3 % плюс 40 ₽ за платёжное поручение. По сделкам оно делится по доле рублей, поэтому суммы «к брокеру» чуть меньше того, что заплатил клиент.</p>
     ${sel.length?`<div class="derived" style="margin-top:12px">
@@ -5776,7 +5803,8 @@ function act(id,step){
   if(step==='s8'){
     if(!d.isOld&&!d.docs.pass){toast('Нужен паспорт');return;}
     if(!d.docs.inv){toast('Нужен инвойс');return;}
-    d.docComment=c?c.value:'';go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');return;}
+    d.docComment=c?c.value:'';go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');
+    if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
     const miss=DOC_REQ.filter(k=>!String(F[k]==null?'':F[k]).trim());
@@ -5846,7 +5874,7 @@ function act(id,step){
     /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
        кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
        и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
-    members.forEach(x=>x.demoTransfers=!!d.demoTransfers);
+    d.demoTransfers=true; members.forEach(x=>x.demoTransfers=true);
     if(d.demoTransfers){
       const plan=Math.round(cn.sent/num(cn.rate)*100)/100;
       if(plan>0){
@@ -6626,8 +6654,8 @@ async function standBoot(){
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
   }catch(e){}
   await standPull(true);
-  if(!S.deals.length&&standMe==='admin'){ seedDemo(); }
-  else render();
+  /* Доска как в проде: пустая, без примеров (Карим, 25.09) */
+  render();
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);
 }
