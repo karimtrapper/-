@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 10:14 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 11:40 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -2040,11 +2040,15 @@ function docFields(d){
     payTo:isCrypto(d)
       ? payToCrypto(payinWallet(d))
       : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik,
-    purpose:'Оплата по агентскому договору № '+d.code+', НДС не облагается',
+    /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
+       USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
+    purpose:isCrypto(d)?'':'Оплата по агентскому договору № '+d.code+', НДС не облагается',
     feeNote:'Комиссия включена в курс, отдельно не взимается',
     validTill:''
   };
-  return Object.assign({},auto,saved);
+  const out=Object.assign({},auto,saved);
+  if(isCrypto(d)) out.purpose='';
+  return out;
 }
 /* Обязательные поля пакета — по ним подсвечивается незаполненное */
 const DOC_REQ=['fio','passNo','object','amountThb','rate','amountPay'];
@@ -2372,7 +2376,7 @@ function viewDoc(){
     <div class="meta">${dt} · оплата по агентскому договору</div>
     <table class="pa-t"><tr><th>Плательщик</th><td>${P.fio}</td></tr>
       <tr><th>Получатель</th><td>${P.payTo}</td></tr>
-      <tr><th>Назначение</th><td>${P.purpose}</td></tr>
+      ${P.purpose?`<tr><th>Назначение</th><td>${P.purpose}</td></tr>`:''}
       <tr><th>Сумма</th><td><b>${money(Number(P.amountPay)||ap.pay,ap.sign)}</b></td></tr></table>
     <p style="font-size:12px;color:#6B7280">${isCrypto(d)?'Ровно эта сумма ждётся на кошельке. Разница больше 5 USDT — и приход не сойдётся автоматически.':'Ровно эта сумма ждётся на счёте. Разница больше 1 000 ₽ — и поступление не сойдётся автоматически.'}</p></div>`
   };
@@ -5284,7 +5288,7 @@ function stepCard(d){
       ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
       <p class="fh">адрес подставится в «Куда платит клиент»; мультисиг — дальше подпись фин дира и Теодора, личный — отправляет владелец</p></div></div>`:''}
     ${fld('payTo','Куда платит клиент',{area:1})}
-    ${fld('purpose','Назначение платежа',{area:1})}
+    ${isCrypto(d)?'':fld('purpose','Назначение платежа',{area:1})}
     ${fld('feeNote','Оговорка о комиссии',{area:1})}
 
     <div class="fg" style="margin-top:14px"><label class="fl">Комментарий — что поправили и почему</label><textarea class="fc" id="c">${d.docComment2||''}</textarea></div>
