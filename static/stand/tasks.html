@@ -376,7 +376,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 19:00 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 20:00 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -2144,6 +2144,13 @@ function docFields(d){
 }
 /* Обязательные поля пакета — по ним подсвечивается незаполненное */
 const DOC_REQ=['fio','passNo','object','amountThb','rate','amountPay'];
+/* Один список обязательных с сервером (_stand_doc_request): назначение — у рублей,
+   номер инвойса — основание платежа в приложении у лизхолда и фрихолда. Раньше
+   экран и сервер проверяли разное, и пустые поля всплывали по одному (приёмка 25.09). */
+function docReq(d){
+  return DOC_REQ.concat(isCrypto(d)?[]:['purpose'],
+    (d.type==='Оплата недвижимости'&&(d.kind==='Лизхолд'||d.kind==='Фрихолд'))?['invNo']:[]);
+}
 const DOC_LABEL={fio:'ФИО',fioLat:'латиница',passNo:'номер паспорта',passIss:'дата выдачи',
   passOrg:'кем выдан',born:'дата рождения',dev:'получатель',invNo:'номер инвойса',invDate:'дата инвойса',
   object:'объект',kind:'форма владения',amountThb:'сумма ฿',rate:'курс',amountPay:'сумма клиенту',
@@ -3096,10 +3103,14 @@ function payWays(D){
 }
 /* Две разные задачи клиента: «мне нужно заплатить N бат» и «у меня есть N рублей».
    От того, какая сумма задана, зависит, что мы считаем, — поэтому спрашиваем прямо. */
+/* «Есть сумма» — в валюте, которой клиент платит. Раньше у обмена бралась валюта
+   пары для «нужно оплатить» и баты подменялись рублями — у USDT→THB сумма в USDT
+   уходила в сделку рублями (приёмка 25.09: 50 000 → 17 544 ฿). */
+const PAIR_PAYCUR={'RUB → THB':'rub','USDT → THB':'usd','RUB → USDT':'rub','THB → USDT':'thb'};
 function askModes(D){
-  const cur=D.type!=='Обмен валюты'?(D.payType==='Крипта'?'usd':'rub'):PAIR_CFG[pairOf(D)].cur;
+  const have=D.type!=='Обмен валюты'?(D.payType==='Крипта'?'usd':'rub'):(PAIR_PAYCUR[pairOf(D)]||'rub');
   return [{k:'need',t:'Нужно оплатить',n:'клиент называет сумму в батах — считаем, сколько он отдаст',cur:'thb'},
-          {k:'have',t:'Есть сумма',n:'клиент называет, сколько у него есть — считаем, сколько получится батов',cur:cur==='thb'?'rub':cur}];
+          {k:'have',t:'Есть сумма',n:'клиент называет, сколько у него есть — считаем, сколько получится батов',cur:have}];
 }
 function draftMode(k){
   const D=S.draft, m=askModes(D).find(x=>x.k===k); if(!m)return;
@@ -3109,7 +3120,7 @@ function draftPair(v){
   const D=S.draft,c=PAIR_CFG[v];
   D.pair=v;
   if(c.ways.indexOf(D.payType)<0) D.payType=c.ways[0];
-  D.cur=c.cur;
+  D.cur=(D.mode==='have')?(PAIR_PAYCUR[v]||c.cur):c.cur;
   save();render();
 }
 /* Реферер и агенты разъезжаются: реферера оставили, агентов убрали — платить некому.
@@ -3255,7 +3266,9 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine) body=`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
       ${canSwitchRole()?'Переключите роль наверху, чтобы продолжить.':'Когда шаг сделают, задача придёт к вам, если следующий ход ваш.'}</div></div><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
-    else body=goalCard(d)+ctxCard(d)+stepCard(d);
+    /* На s12 документы для клиента — первым делом, выше сводки сделки: менеджер не
+       должен их искать (Карим, 25.09 — «в самом видном месте»). */
+    else body=(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+ctxCard(d)+stepCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
@@ -5608,7 +5621,7 @@ function stepCard(d){
       ${fld('kind','Форма владения',{req:1})}
     </div>
     <div class="fr">
-      ${fld('invNo','Номер инвойса')}
+      ${fld('invNo','Номер инвойса',{req:docReq(d).indexOf('invNo')>=0})}
       ${fld('invDate','Дата инвойса')}
       ${fld('validTill','Реквизиты действуют до',{ph:'если указан срок'})}
     </div>
@@ -5670,7 +5683,7 @@ function stepCard(d){
     <button class="btn btn-outline" onclick="go(deal(${d.id}),'s11','Пересоздать пакет')">Поправить и пересоздать</button></div></div>`;},
 
   s12:()=>`<div class="card"><div class="card-title">Документы готовы — что дальше</div>
-    ${docSendBlock(d)}
+    <p class="fh" style="margin-top:-4px">Файлы для клиента — в самом верху страницы, блок «Отправить клиенту».</p>
     <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Ожидание ставится руками: мы не всегда ждём деньги. Если клиент передумал — закрывайте с причиной, а не оставляйте висеть.</p>
 
     <div class="card-title" style="font-size:14px;margin:18px 0 8px">Подписанные документы
@@ -6182,7 +6195,7 @@ function act(id,step){
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
-    const miss=DOC_REQ.concat(isCrypto(d)?[]:['purpose']).filter(k=>!String(F[k]==null?'':F[k]).trim());
+    const miss=docReq(d).filter(k=>!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
       d.docMiss=miss;save();render();
       toast('Не заполнено: '+miss.map(k=>DOC_LABEL[k]||k).join(', '));

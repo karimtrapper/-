@@ -5772,6 +5772,9 @@ def _stand_doc_request(state, deal, F):
         notes.append('Реквизиты получателя не распознаны — в приложении ссылка на инвойс')
 
     missing = [k for k in ('fio', 'passNo') if not str(F.get(k) or '').strip()]
+    # Назначение платежа указывает менеджер; у рублёвого перевода оно обязательно (у крипты его нет)
+    if not crypto and not str(F.get('purpose') or '').strip():
+        missing.append('purpose')
     # Основание платежа в приложении — инвойс застройщика. Без его номера у лизхолда
     # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
     if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
