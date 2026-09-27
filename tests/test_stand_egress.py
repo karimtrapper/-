@@ -8,9 +8,11 @@ guard посчитали бы работающим, даже если он не 
 из последней строки stdout.
 """
 import json
+import os
 import subprocess
 import sys
 import textwrap
+from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,17 +56,20 @@ def run_script(body, stand_mode='1', extra_env=None, timeout=30):
     if stand_mode is not None:
         env['STAND_MODE'] = stand_mode
     if extra_env:
-        env.update(extra_env)
+        for key, value in extra_env.items():
+            if value is None:
+                env.pop(key, None)
+            else:
+                env[key] = value
+    # cwd субпроцесса — ROOT (ниже), а не временная папка: get_gsheet_client
+    # ищет фолбэк-файл через os.path.dirname(__file__) app.py, то есть рядом
+    # с самим app.py, а не в текущей директории процесса. DATABASE_URL —
+    # абсолютный путь во /tmp, chdir для этого не нужен.
     preamble = textwrap.dedent(f'''
         import sys, os, json, tempfile
         sys.path.insert(0, {str(ROOT)!r})
         _workdir = tempfile.mkdtemp(prefix='stand-egress-test-')
-        os.chdir(_workdir)
-        with open('google_sa.json', 'w') as _f:
-            json.dump({{'type': 'service_account', 'client_email': 'x@x.iam.gserviceaccount.com',
-                       'private_key': '-----BEGIN PRIVATE KEY-----\\nfake\\n-----END PRIVATE KEY-----\\n',
-                       'token_uri': 'https://oauth2.googleapis.com/token'}}, _f)
-        os.environ['DATABASE_URL'] = 'sqlite:///' + _workdir + '/test.db'
+        os.environ.setdefault('DATABASE_URL', 'sqlite:///' + _workdir + '/test.db')
         def OUT(d):
             print(json.dumps(d, default=str))
     ''')
@@ -82,6 +87,24 @@ def run_script(body, stand_mode='1', extra_env=None, timeout=30):
         return json.loads(last_line), proc
     except json.JSONDecodeError:
         raise AssertionError(f'последняя строка stdout не JSON: {last_line!r}\\nSTDERR:\\n{proc.stderr}')
+
+
+@contextmanager
+def google_sa_file_at_root():
+    """Кладёт google_sa.json туда, где его реально ищет get_gsheet_client
+    (рядом с app.py), и гарантированно убирает файл после теста — даже если
+    subprocess упал."""
+    path = ROOT / 'google_sa.json'
+    assert not path.exists(), 'google_sa.json уже существует в репозитории — не трогаю чужой файл'
+    path.write_text(json.dumps({
+        'type': 'service_account', 'client_email': 'x@x.iam.gserviceaccount.com',
+        'private_key': '-----BEGIN PRIVATE KEY-----\nfake\n-----END PRIVATE KEY-----\n',
+        'token_uri': 'https://oauth2.googleapis.com/token',
+    }))
+    try:
+        yield path
+    finally:
+        path.unlink(missing_ok=True)
 
 
 # ─────────────────────────── негативный контроль ───────────────────────────
@@ -350,10 +373,6 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
 
         out = {}
 
-        # get_gsheet_client: локальный google_sa.json лежит в cwd, но STAND_MODE
-        # обязан вернуть None, не читая файл.
-        out['gsheet_client_none'] = app.get_gsheet_client() is None
-
         # bitrix_deals._post блокируется до HTTP, даже с валидным BITRIX_WEBHOOK.
         import bitrix_deals
         try:
@@ -404,10 +423,15 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
         r = client.post('/api/stand/prod-agents')
         out['prod_agents'] = (r.status_code, r.get_json().get('error'))
 
+        r = client.get('/api/doverka/payments')
+        out['doverka_payments'] = (r.status_code, r.get_json().get('error'))
+
+        r = client.get('/api/doverka/currencies')
+        out['doverka_currencies'] = (r.status_code, r.get_json().get('error'))
+
         OUT(out)
     ''')
     assert proc.returncode == 0, proc.stderr
-    assert result['gsheet_client_none'] is True
     assert result['bitrix_blocked'] is True
     assert result['create_payment'] == [403, 'stand_blocked']
     assert result['docs_parse'] == [403, 'stand_blocked']
@@ -417,3 +441,432 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
     assert result['egress_status_anon'] == 401
     assert result['egress_status_manager'] == 403
     assert result['egress_status_admin'] == [200, True]
+    assert result['doverka_payments'] == [403, 'stand_blocked']
+    assert result['doverka_currencies'] == [403, 'stand_blocked']
+
+
+def test_get_gsheet_client_ignores_local_service_account_file():
+    """STAND_MODE гасит GOOGLE_SA_JSON/OAuth env, но локальный google_sa.json
+    рядом с app.py — их обходит (P0 из независимого аудита 28.09). Кладём файл
+    туда, где его реально ищет os.path.dirname(__file__), и убираем после теста."""
+    with google_sa_file_at_root():
+        result, proc = run_script('''
+            import stand_egress
+            stand_egress.install()
+            import app
+            OUT({'gsheet_client_none': app.get_gsheet_client() is None})
+        ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['gsheet_client_none'] is True
+
+
+def test_gsheet_client_uses_local_file_outside_stand_mode():
+    """Негативный контроль: вне STAND_MODE тот же файл реально читается и
+    доходит до разбора ключа (падает на невалидном fake PEM) — доказывает,
+    что предыдущий тест проверяет настоящий фолбэк, а не «файла и так никто
+    не находит»."""
+    with google_sa_file_at_root():
+        result, proc = run_script('''
+            import app
+            try:
+                app.get_gsheet_client()
+                OUT({'raised': False, 'detail': None})
+            except Exception as e:
+                OUT({'raised': True, 'detail': str(e)[:200]})
+        ''', stand_mode='0')
+    assert proc.returncode == 0, proc.stderr
+    # Ключ фиктивный и не распарсится — важно, что до разбора вообще дошло
+    # (значит, файл был прочитан), а не что итог — рабочий клиент.
+    assert result['raised'] is True
+
+
+# ───────────────── фиксы по независимому аудиту 28.09 (P1×2 + 2) ───────────
+
+def test_db_host_exact_port_enforced_not_just_ip():
+    """P1: раньше проверялся только IP базы, порт игнорировался — соединение
+    на IP базы:443 или на её же хосте:443 проходило при DSN на 5432. Порт по
+    умолчанию (нет в DSN) — 5432. Повторяет сценарий T1-probes.py."""
+    result, proc = run_script('''
+        import socket
+        _real_getaddrinfo = socket.getaddrinfo
+        # Как в T1-probes.py: подменяем резолвер ДО install(), чтобы любой хост
+        # резолвился в один и тот же «адрес базы».
+        socket.getaddrinfo = lambda host, port, *a, **k: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.10', port))]
+
+        import stand_egress
+        stand_egress.install()
+
+        def probe(addr):
+            try:
+                with socket.socket() as s:
+                    s.settimeout(1)
+                    s.connect(addr)
+                return True
+            except Exception:
+                return False
+
+        OUT({
+            'db_right_port': probe(('192.0.2.10', 5432)),
+            'db_wrong_port': probe(('192.0.2.10', 443)),
+            'db_host_wrong_port': probe(('stand-db.railway.internal', 443)),
+            'foreign_ip': probe(('198.51.100.20', 443)),
+        })
+    ''', extra_env={'DATABASE_URL': 'postgresql://fake:fake@stand-db.railway.internal:5432/candidate'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['db_right_port'] is True, 'точный host:port базы обязан проходить'
+    assert result['db_wrong_port'] is False, 'тот же IP на чужом порту — блок'
+    assert result['db_host_wrong_port'] is False, 'тот же хост на чужом порту — блок'
+    assert result['foreign_ip'] is False
+
+
+def test_db_port_defaults_to_5432_when_dsn_omits_it():
+    result, proc = run_script('''
+        import socket
+        socket.getaddrinfo = lambda host, port, *a, **k: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.10', port))]
+        import stand_egress
+        stand_egress.install()
+        def probe(addr):
+            try:
+                with socket.socket() as s:
+                    s.settimeout(1); s.connect(addr)
+                return True
+            except Exception:
+                return False
+        OUT({
+            'default_port_allowed': probe(('192.0.2.10', 5432)),
+            'other_port_blocked': probe(('192.0.2.10', 5433)),
+        })
+    ''', extra_env={'DATABASE_URL': 'postgresql://fake:fake@stand-db.railway.internal/candidate'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['default_port_allowed'] is True
+    assert result['other_port_blocked'] is False
+
+
+def test_udp_sendto_and_sendmsg_blocked_to_external_address():
+    """sendto/sendmsg — тихий отказ (UDP fire-and-forget, вызывающий код обычно
+    не оборачивает их в try/except), но реальный транспорт не вызывается —
+    считаем по счётчику блокировок и по неизменной длине трекера снаружи."""
+    result, proc = run_script('''
+        import socket
+        _orig_sendto = socket.socket.sendto
+        calls = []
+        def _tracking_sendto(self, *args):
+            calls.append(args[-1])
+            return _orig_sendto(self, *args)
+        socket.socket.sendto = _tracking_sendto
+
+        import stand_egress
+        stand_egress.install()
+
+        before = stand_egress.status()['blocked_count']
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            n = s.sendto(b'FAKE', ('198.51.100.20', 9999))
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            m = s.sendmsg([b'FAKE'], [], 0, ('198.51.100.20', 9999))
+        after = stand_egress.status()['blocked_count']
+        calls_for_external = len(calls)
+
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            loop_n = s.sendto(b'ok', ('127.0.0.1', 9999))
+
+        OUT({'sendto_return': n, 'sendmsg_return': m,
+             'lower_transport_calls': calls_for_external,
+             'blocked_count_grew_by_2': after - before == 2,
+             'loopback_sendto_ok': loop_n == 2})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['lower_transport_calls'] == 0, 'внешний UDP не должен доходить до транспорта'
+    assert result['sendto_return'] == 4  # len(b'FAKE') — тихий "успех", данные никуда не ушли
+    assert result['sendmsg_return'] == 4
+    assert result['blocked_count_grew_by_2'] is True
+    assert result['loopback_sendto_ok'] is True
+
+
+def test_tg_call_network_error_does_not_leak_token():
+    """P1: requests оборачивает URL (…/bot<TOKEN>/method) прямо в текст
+    исключения — прежний код отдавал str(e) наружу. Теперь — стабильный код
+    ошибки, ни исключение, ни URL никуда не уходят и не логируются."""
+    result, proc = run_script('''
+        import io, contextlib
+        from unittest.mock import patch
+        import requests
+        import stand_egress
+        stand_egress.install()
+        stand_egress.set_policy(lambda *a: True)
+
+        class FakeSession:
+            trust_env = True
+            def post(self, url, **kwargs):
+                raise requests.exceptions.ConnectionError(
+                    'HTTPSConnectionPool: Max retries exceeded with url: ' + url)
+            def close(self):
+                pass
+
+        captured = io.StringIO()
+        with patch('requests.Session', return_value=FakeSession()):
+            with contextlib.redirect_stdout(captured):
+                res = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+
+        token = os.environ['STAND_TG_TOKEN']
+        OUT({
+            'error': res.get('error'),
+            'token_in_error': token in (res.get('error') or ''),
+            'token_in_stdout': token in captured.getvalue(),
+        })
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['error'] == 'tg_network_error'
+    assert result['token_in_error'] is False
+    assert result['token_in_stdout'] is False
+
+
+# ───────────────── ранее отмеченные непокрытыми точки выхода ───────────────
+
+def test_stand_tg_send_group_disabled_no_network():
+    """_stand_tg_send (группа STAND_TG_CHAT) выключена насовсем — план п.1.2:
+    T5 заменит на личку через tg_call. Токен и chat_id в env валидны, но
+    функция не должна даже пытаться открыть соединение."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import app
+        before = stand_egress.status()['blocked_count']
+        sent = app._stand_tg_send('SYNTHETIC AUDIT MESSAGE')
+        after = stand_egress.status()['blocked_count']
+        OUT({'sent': sent, 'blocked_count_unchanged': after == before})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['sent'] is False
+    assert result['blocked_count_unchanged'] is True
+
+
+def test_verify_transfer_network_disabled_in_stand_mode():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import stand_transfers as st
+
+        def boom(*a, **kw):
+            raise AssertionError('сеть не должна вызываться на стенде')
+
+        r_trc20 = st.verify_transfer('a' * 64, 'trc20',
+                                     'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                                     'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                                     100, get=boom)
+        r_erc20 = st.verify_transfer('0x' + 'a' * 64, 'erc20',
+                                     '0x' + 'c' * 40, '0x' + 'b' * 40, 100,
+                                     get=boom, etherscan_key='fake')
+        OUT({'trc20_status': r_trc20['status'], 'erc20_status': r_erc20['status']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['trc20_status'] == 'pending'
+    assert result['erc20_status'] == 'pending'
+
+
+def test_referral_links_empty_bot_and_wa_links_in_stand_mode():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import app
+        links = app.referral_links('GR-TEST', 'ru')
+        OUT(links)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['bot_link'] == ''
+    assert result['wa_link'] == ''
+    assert result['referral_link']  # сама ссылка на калькулятор остаётся
+
+
+def test_transfer_poll_thread_not_started_by_default():
+    result, proc = run_script('''
+        import threading
+        import stand_egress
+        stand_egress.install()
+        import app
+        import time
+        time.sleep(0.2)
+        names = [t.name for t in threading.enumerate()]
+        OUT({'poll_thread_running': 'stand-transfer-poll' in names})
+    ''', extra_env={'STAND_TRANSFER_POLL_ENABLED': None})  # снимаем ключ — проверяем дефолт
+    assert proc.returncode == 0, proc.stderr
+    assert result['poll_thread_running'] is False
+
+
+# ───────────── фиксы по QA-раунду 2 (proxy, chat_id, логи, деньги) ─────────
+
+def test_env_proxy_stripped_and_ignored_even_for_direct_stand_egress_import():
+    """QA E10/E11: с HTTPS_PROXY/ALL_PROXY в env запрос к api.telegram.org уходил
+    в CONNECT-туннель прокси (адрес прокси — loopback, он разрешён), а реальная
+    цель на сокетном уровне не видна вообще. install() обязан стереть env-прокси
+    сам — тест импортирует только stand_egress, без app.py."""
+    result, proc = run_script('''
+        import http.server, threading, os, requests
+
+        class Proxy(http.server.BaseHTTPRequestHandler):
+            hits = []
+            def do_CONNECT(self):
+                Proxy.hits.append(self.path)
+                self.send_error(403)
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Proxy)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        os.environ['HTTPS_PROXY'] = f'http://127.0.0.1:{srv.server_port}'
+        os.environ['ALL_PROXY'] = f'http://127.0.0.1:{srv.server_port}'
+
+        import stand_egress
+        stand_egress.install()
+
+        try:
+            requests.get('https://api.telegram.org/botWRONG:TOKEN/getMe', timeout=2)
+        except Exception:
+            pass
+
+        OUT({
+            'proxy_env_left': {k: os.environ.get(k) for k in
+                               ('HTTPS_PROXY', 'ALL_PROXY', 'HTTP_PROXY', 'NO_PROXY')},
+            'proxy_connects': Proxy.hits,
+            'guard_blocks': stand_egress.status()['blocked_count'],
+        })
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['proxy_env_left'] == {'HTTPS_PROXY': None, 'ALL_PROXY': None,
+                                        'HTTP_PROXY': None, 'NO_PROXY': None}
+    assert result['proxy_connects'] == [], 'запрос не должен был даже дойти до прокси'
+    assert result['guard_blocks'] >= 1
+
+
+def test_tg_call_rejects_non_int_and_bool_chat_id():
+    """QA E08: int('555') тихо принимал строку — chat_id обязан быть настоящим
+    int, не строкой и не bool (bool — подкласс int в Python)."""
+    result, proc = run_script(_fake_telegram_server_script() + '''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.set_policy(lambda *a: True)  # разрешающая политика — не должна спасать плохой тип
+
+        r_str = stand_egress.tg_call('sendMessage', {'chat_id': '555', 'text': 'x'},
+                                     _base_url=f'http://127.0.0.1:{_tg_port}')
+        r_bool = stand_egress.tg_call('sendMessage', {'chat_id': True, 'text': 'x'},
+                                      _base_url=f'http://127.0.0.1:{_tg_port}')
+        r_float = stand_egress.tg_call('sendMessage', {'chat_id': 555.0, 'text': 'x'},
+                                       _base_url=f'http://127.0.0.1:{_tg_port}')
+        OUT({'str_error': r_str.get('error'), 'bool_error': r_bool.get('error'),
+             'float_error': r_float.get('error'), 'hits': len(FakeTG.requests)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['str_error'] == 'invalid_chat_id'
+    assert result['bool_error'] == 'invalid_chat_id'
+    assert result['float_error'] == 'invalid_chat_id'
+    assert result['hits'] == 0
+
+
+def test_no_secrets_leak_across_blocked_scenarios_stdout_stderr():
+    """QA E16: requests вшивает полный URL (…/bot<TOKEN>/method, ?secret=...)
+    в текст исключения — прогоняем все прямые Telegram/webhook-функции с
+    фейковыми секретами и проверяем, что ни один секрет не просочился ни в
+    stdout, ни в stderr subprocess."""
+    result, proc = run_script('''
+        import io, contextlib
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            app.send_webhook_async('https://webhook.invalid/path?secret=WEBHOOK_SECRET_SENTINEL', {'x': 1})
+            import time; time.sleep(0.2)
+            app._tg_answer_callback('BOT_TOKEN_SENTINEL', 'q', 'x')
+            app._tg_edit_message('BOT_TOKEN_SENTINEL', {'message': {'chat': {'id': 555}, 'message_id': 1}}, 'x')
+            app._tg_send_document('BOT_TOKEN_SENTINEL', 555, b'X', 'test.pdf', 'x')
+            app.send_telegram_notification('x')
+            import os
+            os.environ['REF_LOGIN_BOT_TOKEN'] = 'DM_TOKEN_SENTINEL'
+            app._login_bot_username_cache = None
+            class FakeRef:
+                telegram_user_id = 555
+            app.send_referrer_dm(FakeRef(), 'x')
+
+        out = buf.getvalue()
+        OUT({
+            'webhook_secret': 'WEBHOOK_SECRET_SENTINEL' in out,
+            'bot_token': 'BOT_TOKEN_SENTINEL' in out,
+            'dm_token': 'DM_TOKEN_SENTINEL' in out,
+        })
+    ''', extra_env={'TELEGRAM_BOT_TOKEN': None, 'REF_LOGIN_BOT_TOKEN': None})
+    assert proc.returncode == 0, proc.stderr
+    assert result['webhook_secret'] is False
+    assert result['bot_token'] is False
+    assert result['dm_token'] is False
+    assert 'WEBHOOK_SECRET_SENTINEL' not in proc.stdout and 'WEBHOOK_SECRET_SENTINEL' not in proc.stderr
+    assert 'BOT_TOKEN_SENTINEL' not in proc.stdout and 'BOT_TOKEN_SENTINEL' not in proc.stderr
+    assert 'DM_TOKEN_SENTINEL' not in proc.stdout and 'DM_TOKEN_SENTINEL' not in proc.stderr
+
+
+def test_manual_sync_gsheet_stand_blocked_not_500():
+    """QA E03: раньше отдавал голый 500 no_credentials — теперь понятный
+    200 stand_blocked, как /api/rates."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import app
+        app.app.config['TESTING'] = True
+        app.limiter.enabled = False
+        client = app.app.test_client()
+        db = app.get_session()
+        try:
+            admin = app.AdminUser(username='adm-test', role='admin', password_hash=b'x')
+            db.add(admin); db.commit(); admin_id = admin.id
+        finally:
+            db.close()
+        with client.session_transaction() as sess:
+            sess['user_id'] = admin_id
+        r = client.post('/api/deals/sync-gsheet', json={'deal_ids': [1]})
+        OUT({'status': r.status_code, 'body': r.get_json()})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 200
+    assert result['body']['stand_blocked'] is True
+    assert result['body']['success'] is False
+
+
+def test_referrer_thb_receipt_closes_despite_blocked_telegram():
+    """QA E06: заявка на выплату рефереру в батах не должна виснуть 502-й
+    из-за того, что DM и командное уведомление на стенде в принципе не могут
+    дойти — деньги (закрытие заявки + сохранение чека) двигаются локально."""
+    result, proc = run_script('''
+        import io
+        import stand_egress
+        stand_egress.install()
+        import app
+        app.app.config['TESTING'] = True
+        app.limiter.enabled = False
+        client = app.app.test_client()
+
+        db = app.get_session()
+        try:
+            admin = app.AdminUser(username='adm-test', role='admin', password_hash=b'x')
+            ref = app.Referrer(name='QA Ref', code='QA-REF-2', token='qa-token-2',
+                               default_percent=10, telegram_user_id=555, active=True, is_test=False)
+            db.add_all([admin, ref]); db.commit()
+            admin_id, ref_id = admin.id, ref.id
+            req = app.PayoutRequest(referrer_id=ref_id, amount_usdt=3, wallet='QA',
+                                    contact_method='telegram', contact_value='QA',
+                                    status='new', payout_method='thb', thb_amount=100)
+            db.add(req); db.commit()
+            req_id = req.id
+        finally:
+            db.close()
+
+        with client.session_transaction() as sess:
+            sess['user_id'] = admin_id
+        r = client.post(f'/api/payout-requests/{req_id}/receipt',
+                        data={'file': (io.BytesIO(b'fake receipt'), 'receipt.pdf')},
+                        content_type='multipart/form-data')
+        OUT({'status': r.status_code, 'body': r.get_json()})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 200
+    assert result['body']['success'] is True
+    assert result['body']['request']['status'] == 'paid'

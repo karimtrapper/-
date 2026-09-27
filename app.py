@@ -45,6 +45,15 @@ if STAND_MODE:
     for _off in ('REESTR_SYNC_ENABLED', 'PAYMENT_POLL_ENABLED', 'PAYIN_ADDR_BACKFILL',
                  'TRONSCAN_WARM_ENABLED', 'KYC_RETENTION_ENABLED'):
         os.environ[_off] = '0'
+    # env-прокси — отдельная дыра в guard'е: connect() видит адрес прокси
+    # (часто loopback — он всегда разрешён), а реальная цель (api.telegram.org
+    # и т.п.) едет внутри HTTP CONNECT и на сокетном уровне не видна вообще.
+    # requests/urllib/httpx читают эти переменные сами при каждом запросе —
+    # стираем их до того, как что-либо успеет сходить в сеть.
+    for _proxy_var in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+                       'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                       'FTP_PROXY', 'ftp_proxy'):
+        os.environ.pop(_proxy_var, None)
     # Сетевой предохранитель: fail-closed сокеты, единственный канал наружу —
     # Telegram изнутри stand_egress.tg_call(). См. docstring модуля — что
     # гарантирует и чего не гарантирует эта защита.
@@ -4467,7 +4476,7 @@ def send_webhook_async(url, data):
             response = requests.post(url, json=data, timeout=10)
             print(f"✅ Webhook sent: {response.status_code}")
         except Exception as e:
-            print(f"❌ Webhook error: {e}")
+            print(f"❌ Webhook error: {_redacted_net_error(e)}")
     if url:
         threading.Thread(target=_send).start()
 
@@ -14630,6 +14639,11 @@ def delete_reimbursement(reimbursement_id):
 @app.route('/api/deals/sync-gsheet', methods=['POST'])
 def manual_sync_gsheet():
     """Ручной синк сделок в Google Sheet по списку ID"""
+    if STAND_MODE:
+        # get_gsheet_client() всё равно вернёт None (см. функцию), но без этой
+        # проверки менеджер получал голый 500 no_credentials, будто сломалось.
+        return jsonify({'success': False, 'stand_blocked': True,
+                        'error': 'На стенде синхронизация с таблицей выключена'})
     session = get_session()
     try:
         data = request.get_json()
@@ -14685,6 +14699,15 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
+def _redacted_net_error(e):
+    """Имя типа исключения без текста — requests вшивает в str(e) полный URL
+    запроса (…/bot<TOKEN>/method, ?secret=...), и это встречалось в логах
+    буквально: guard теперь детерминированно валит эти вызовы на стенде, так
+    что секрет попадал бы в stdout при каждой сделке. Тип исключения для
+    диагностики достаточно — сам URL и токен туда не нужны."""
+    return type(e).__name__
+
+
 def send_telegram_notification(text, thread_id=None, fallback_without_thread=False):
     """Отправляет сообщение ботом в чат.
 
@@ -14729,7 +14752,7 @@ def send_telegram_notification(text, thread_id=None, fallback_without_thread=Fal
             return fallback.status_code == 200
         return False
     except Exception as e:
-        print(f'[Telegram] Error: {e}')
+        print(f'[Telegram] Error: {_redacted_net_error(e)}')
         return False
 
 # ── Вход реферера через Telegram Login Widget ──────────────────────────────
@@ -14920,7 +14943,7 @@ def send_referrer_dm(referrer, text, buttons=None):
                           json=payload, timeout=10)
         return r.status_code == 200
     except Exception as e:
-        print(f'[ReferrerDM] error: {e}')
+        print(f'[ReferrerDM] error: {_redacted_net_error(e)}')
         return False
 
 
@@ -14941,7 +14964,7 @@ def _tg_send_document(token, chat_id, blob, filename, caption, thread_id=None):
             return ((r.json().get('result') or {}).get('document') or {}).get('file_id')
         print(f'[TG sendDocument] {r.status_code}: {r.text[:200]}')
     except Exception as e:
-        print(f'[TG sendDocument] error: {e}')
+        print(f'[TG sendDocument] error: {_redacted_net_error(e)}')
     return None
 
 
@@ -14977,7 +15000,7 @@ def notify_agents_new_deal(db, deal):
             btn = ref_t(referrer, '💸 Вывести', '💸 Withdraw')
             send_referrer_dm(referrer, msg, buttons=[[{'text': btn, 'url': url}]])
     except Exception as e:
-        print(f'[ReferrerDM] new deal notify error: {e}')
+        print(f'[ReferrerDM] new deal notify error: {_redacted_net_error(e)}')
 
 
 def _tg_answer_callback(token, cq_id, text):
@@ -14986,7 +15009,7 @@ def _tg_answer_callback(token, cq_id, text):
         requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
                       json={'callback_query_id': cq_id, 'text': text}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] answerCallback error: {e}')
+        print(f'[LKBot] answerCallback error: {_redacted_net_error(e)}')
 
 
 def _tg_edit_message(token, cq, new_text):
@@ -15001,7 +15024,7 @@ def _tg_edit_message(token, cq, new_text):
                       json={'chat_id': chat, 'message_id': mid, 'text': new_text,
                             'parse_mode': 'HTML'}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] editMessage error: {e}')
+        print(f'[LKBot] editMessage error: {_redacted_net_error(e)}')
 
 
 @app.route('/api/tg/lk-webhook', methods=['POST'])
@@ -15061,7 +15084,7 @@ def lk_bot_webhook():
                                 f"account ({who}) — the attempt was rejected.\n\n"
                                 f"If that was you, sign in with your linked account."))
                     except Exception as e:
-                        print(f'[LKBot] attempt notify error: {e}')
+                        print(f'[LKBot] attempt notify error: {_redacted_net_error(e)}')
             else:
                 admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
                 if admin:
@@ -15080,7 +15103,7 @@ def lk_bot_webhook():
                 requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                               json={'chat_id': chat_id, 'text': reply}, timeout=10)
             except Exception as e:
-                print(f'[LKBot] login reply error: {e}')
+                print(f'[LKBot] login reply error: {_redacted_net_error(e)}')
         return jsonify({'ok': True})
 
     cq = update.get('callback_query')
@@ -16160,6 +16183,8 @@ if os.environ.get('KYC_RETENTION_ENABLED', '1') == '1':
 @app.route('/api/bitrix/active-deals', methods=['GET'])
 def bitrix_active_deals():
     """Незакрытые сделки основной воронки — список для оператора."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         return jsonify({'success': True, 'deals': bitrix_deals.get_active_deals()})
@@ -16176,6 +16201,8 @@ def bitrix_analyze_deal(deal_id):
     сделку этого контакта, её CLOSEDATE становится отсечкой, чтобы суммы
     прошлого обмена не приехали в новую сделку.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         from deal_chat_analyzer import analyze_chat
@@ -16231,6 +16258,8 @@ def bitrix_close_won(deal_id):
     Порядок именно такой: если запись в CRM не прошла, в Bitrix ничего не
     двигаем — иначе сделка «выиграна», а денег в учёте нет.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16253,6 +16282,8 @@ def bitrix_close_won(deal_id):
 def bitrix_close_lose(deal_id):
     """Переводит сделку в LOSE. Lose-сделку в CalcCRM фронт создаёт ДО вызова —
     без неё отказ не попадёт в конверсию."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16274,6 +16305,8 @@ def search_bitrix_contacts():
     query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify({'success': True, 'contacts': []})
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
 
     import bitrix_deals
     try:
@@ -17128,7 +17161,11 @@ def payout_request_receipt(req_id):
                 blob, f.filename,
                 f"📄 Чек по заявке #{req.id} — {ref_label} · {thb_fmt} ฿",
                 thread_id=os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112'))
-            if not dm_file_id and not team_file_id:
+            # На стенде Telegram отключён целиком (см. stand_egress) — DM и
+            # командное уведомление там в принципе не могут дойти. Реальные
+            # деньги на стенде не двигаются, поэтому отправку тихо пропускаем,
+            # а не валим закрытие денежной заявки 502-й.
+            if not dm_file_id and not team_file_id and not STAND_MODE:
                 return jsonify({'success': False,
                                 'error': 'Не удалось отправить чек в Telegram — заявка не закрыта'}), 502
 
