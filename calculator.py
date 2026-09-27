@@ -258,6 +258,10 @@ class ExchangeRateProvider:
         Returns:
             dict: {"usdt_thb": float, "rub_usdt": float}
         """
+        if os.environ.get('STAND_MODE') == '1':
+            # Binance/Rapira — реальные внешние сервисы; на стенде сеть выключена
+            # целиком (все вызывающие роуты уже отдают «на стенде выключено»).
+            return {"usdt_thb": None, "rub_usdt": None}
         usdt_thb = await ExchangeRateProvider.get_binance_rate("USDTTHB")
         rub_usdt = await ExchangeRateProvider.get_rapira_rate()
 
@@ -280,6 +284,13 @@ class ExchangeRateProvider:
         """
         import time
         start_time = time.time()
+
+        if os.environ.get('STAND_MODE') == '1':
+            # Playwright запускает отдельный процесс Chromium со своим сетевым
+            # стеком — Python socket-guard его не видит, поэтому курс через
+            # браузер на стенде выключаем кодом, а не полагаемся на сеть.
+            return {'error': 'stand_blocked', 'direction': direction,
+                    'usdt': None, 'thb': None, 'rate': None, 'time': 0}
 
         try:
             async with async_playwright() as p:
