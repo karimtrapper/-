@@ -113,6 +113,9 @@ def _seed(engine, app_module, *, admin_username, marker):
         )
         s.add(admin)
 
+        manager = m.Manager(name=f'Менеджер {marker}')
+        s.add(manager)
+
         client = m.Client(name=f'Клиент {marker}', telegram='@client_' + marker)
         s.add(client)
         s.flush()
@@ -120,7 +123,8 @@ def _seed(engine, app_module, *, admin_username, marker):
         referrer_token = _secrets.token_hex(16)
         referrer = m.Referrer(
             name=f'Реферер {marker}', code=f'GR-{marker}', token=referrer_token,
-            telegram='@ref_' + marker, total_earned_usdt=123.45, total_paid_usdt=100.0,
+            telegram='@ref_' + marker, telegram_user_id=777000111, auth_mode='telegram',
+            total_earned_usdt=123.45, total_paid_usdt=100.0,
         )
         s.add(referrer)
 
@@ -168,6 +172,12 @@ def _seed(engine, app_module, *, admin_username, marker):
         )
         s.add(agreement_doc)
 
+        payment_link = m.PaymentLinkOrder(
+            order_id=f'ORDER-{marker}', payment_id=f'payment-uuid-{marker}', amount=12345,
+            link=f'https://pay.example/checkout/secret-{marker}', status='PENDING',
+        )
+        s.add(payment_link)
+
         s.commit()
         return {
             'admin_id': admin.id,
@@ -177,6 +187,8 @@ def _seed(engine, app_module, *, admin_username, marker):
             'partner_token': partner_token,
             'kyc_token': kyc_token,
             'nonce': nonce.nonce,
+            'payment_link_order_id': payment_link.order_id,
+            'payment_id': payment_link.payment_id,
         }
     finally:
         s.close()
@@ -313,6 +325,25 @@ def test_full_cycle(pg_cluster, seeded, tmp_path):
             cur.execute('SELECT id, data, version, notified FROM stand_state')
             rows = cur.fetchall()
             assert rows == [(1, '{}', 0, '[]')]
+
+        # Внешние люди — недостижимы даже в теории (решение лидера после QA-репро).
+        cur.execute('SELECT telegram, telegram_user_id, auth_mode FROM referrers')
+        ref_telegram, ref_tg_id, auth_mode = cur.fetchone()
+        assert ref_telegram is None
+        assert ref_tg_id is None
+        assert auth_mode == 'link'
+
+        cur.execute('SELECT telegram FROM clients')
+        assert cur.fetchone()[0] is None
+
+        cur.execute('SELECT contact_value FROM payout_requests')
+        assert cur.fetchone()[0] != '@ref_prod'
+
+        cur.execute('SELECT order_id, payment_id, link FROM payment_link_orders')
+        order_id, payment_id, link = cur.fetchone()
+        assert order_id == seeded['prod']['payment_link_order_id']  # бухгалтерский след — не трогаем
+        assert payment_id == seeded['prod']['payment_id']
+        assert link == ''  # публичная ссылка на оплату — обнулена
     finally:
         conn.close()
 
@@ -423,3 +454,93 @@ def test_filter_dump_text_strips_pg17_only_guc():
     assert 'statement_timeout' in filtered
     assert 'client_encoding' in filtered
     assert sum(removed.values()) == 1
+
+
+def test_dump_prod_redacts_password_not_just_full_dsn(tmp_path):
+    """QA-репро: сторонний pg_dump печатает пароль отдельно от DSN (например,
+    в собственной диагностике). Полное совпадение всей DSN-строки такое не
+    ловит — редакция обязана вырезать САМ пароль, где бы он ни встретился."""
+    fake_pg_dump = tmp_path / 'fake_pg_dump'
+    fake_pg_dump.write_text('#!/bin/sh\necho "connection failed: password=fakepass123" >&2\nexit 1\n')
+    fake_pg_dump.chmod(0o700)
+
+    out_dir = tmp_path / 'leak'
+    proc = _run(
+        'dump-prod', '--prod-url', 'postgresql://alice:fakepass123@127.0.0.1:1/fakeprod',
+        '--out-dir', str(out_dir), '--pg-dump-bin', str(fake_pg_dump), expect_ok=False,
+    )
+    assert proc.returncode != 0
+    log_path = next(out_dir.glob('*.stderr.log'))
+    log_text = log_path.read_text()
+    assert 'fakepass123' not in log_text
+    assert 'password=<REDACTED>' in log_text.lower() or '<redacted>' in log_text.lower()
+
+
+def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp_path):
+    """Число строк и денежные суммы могут совпасть, а конкретная строка — нет.
+    verify-candidate обязан ловить порчу через построчный хеш, а не только
+    агрегаты (QA-репро: правка deal_agents.payout_usdt/deals.client_name/PK
+    managers.id раньше проходила сверку молча).
+
+    Собственные, уникальные для этого теста базы — `seeded` привязан к общим
+    fakeprod/fakestand кластера (module-scope) и переиспользуется другим
+    тестом, повторный `_seed` туда упал бы на UNIQUE(username)."""
+    base = pg_cluster['base']
+    port = pg_cluster['port']
+    admin_url = _dsn_dbname(base, 'postgres')
+
+    for name in ('fakeprod_corrupt', 'fakestand_corrupt', 'scratch_corrupt', 'scratch_corrupt_backup'):
+        conn = psycopg2.connect(admin_url)
+        conn.autocommit = True
+        conn.cursor().execute(f'CREATE DATABASE {name}')
+        conn.close()
+
+    prod_url = _dsn_dbname(base, 'fakeprod_corrupt')
+    stand_url = _dsn_dbname(base, 'fakestand_corrupt')
+    scratch_url = _dsn_dbname(base, 'scratch_corrupt')
+    scratch_backup_url = _dsn_dbname(base, 'scratch_corrupt_backup')
+
+    prod_engine = create_engine(prod_url)
+    stand_engine = create_engine(stand_url)
+    _seed(prod_engine, app_models, admin_username='karim_c', marker='prodc')
+    _seed(stand_engine, app_models, admin_username='stand_karim_c', marker='standc')
+    prod_engine.dispose()
+    stand_engine.dispose()
+
+    dump_dir = tmp_path / 'dump'
+    backup_dir = tmp_path / 'backup'
+    counts_path = tmp_path / 'counts.json'
+
+    dump_info = json.loads(_run('dump-prod', '--prod-url', prod_url, '--out-dir', str(dump_dir),
+                                 '--pg-dump-bin', PG_DUMP16).stdout)
+    dump_path = dump_info['dump_path']
+    _run('inspect-dump', '--dump', dump_path, '--scratch-url', scratch_url,
+         '--counts-out', str(counts_path), '--psql-bin', PSQL16)
+
+    backup_info = json.loads(_run('backup-stand', '--stand-url', stand_url, '--out-dir', str(backup_dir),
+                                   '--scratch-url', scratch_backup_url, '--pg-dump-bin', PG_DUMP16,
+                                   '--psql-bin', PSQL16).stdout)
+
+    candidate_db = 'stand_prodcopy_corrupt'
+    _run('restore-candidate', '--stand-admin-url', admin_url, '--candidate-db', candidate_db,
+         '--dump', dump_path, '--expect-host', '127.0.0.1', '--expect-port', str(port),
+         '--prod-host-guard', '203.0.113.1:5432', '--backup-dir', str(backup_dir),
+         '--i-understand', '--psql-bin', PSQL16)
+    candidate_url = _dsn_dbname(base, candidate_db)
+
+    baseline = _run('verify-candidate', '--candidate-url', candidate_url, '--counts-json', str(counts_path))
+    assert json.loads(baseline.stdout)['ok'] is True
+
+    def _corrupt_and_check(sql):
+        conn = psycopg2.connect(candidate_url)
+        conn.autocommit = True
+        conn.cursor().execute(sql)
+        conn.close()
+        proc = _run('verify-candidate', '--candidate-url', candidate_url,
+                    '--counts-json', str(counts_path), expect_ok=False)
+        assert proc.returncode != 0, f'{sql!r} должно было провалить verify-candidate'
+        assert json.loads(proc.stdout)['ok'] is False
+
+    _corrupt_and_check("UPDATE deal_agents SET payout_usdt = 99999")
+    _corrupt_and_check("UPDATE deals SET client_name = 'CORRUPTED'")
+    _corrupt_and_check("UPDATE managers SET id = 999999")

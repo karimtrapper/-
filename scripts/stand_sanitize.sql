@@ -65,6 +65,43 @@ UPDATE admin_users
  WHERE lower(username) IN ('karim', 'marina', 'artem', 'vitaliy', 'teodor')
    AND username NOT LIKE 'prod_%';
 
+-- ── Внешние люди: не должны быть достижимы со стенда даже в теории ─────────
+-- Решение лидера: любая колонка с telegram id/username реферера, клиента,
+-- партнёра или агента — в NULL. Партнёры и агенты (deal_agents) своих
+-- telegram-колонок в схеме не имеют (у партнёра только token, у агента —
+-- только имя-снапшот), поэтому список ниже — referrers и clients целиком.
+UPDATE referrers
+   SET telegram = NULL,
+       telegram_user_id = NULL,
+       -- auth_mode='telegram' без telegram_user_id ломает вход в кабинет;
+       -- переключаем на 'link' — доступ по перевыпущенному token сохраняется.
+       auth_mode = CASE WHEN auth_mode = 'telegram' THEN 'link' ELSE auth_mode END
+ WHERE telegram IS NOT NULL OR telegram_user_id IS NOT NULL;
+
+UPDATE clients SET telegram = NULL WHERE telegram IS NOT NULL;
+
+-- contact_value реферера на заявке выплаты — это его же @username/телефон/ник
+-- (contact_method='telegram'|'whatsapp'), тот же класс риска, что и telegram
+-- реферера выше. NOT NULL в схеме — нейтральное значение вместо NULL.
+UPDATE payout_requests
+   SET contact_value = 'sanitized'
+ WHERE contact_value IS NOT NULL AND contact_value <> 'sanitized';
+
+-- Публичная ссылка на оплату у стороннего провайдера (grushab-2-b.ru) — по
+-- ней открывается страница оплаты клиента без какого-либо логина на стенде.
+-- order_id/payment_id — бухгалтерский след того же провайдера, НЕ трогаем
+-- (решение лидера): переход по ним снаружи блокирует gate/UI, а не отзыв номера.
+UPDATE payment_link_orders SET link = '' WHERE link IS NOT NULL AND link <> '';
+
+-- Не трогаем (решение лидера, зафиксировано для аудита):
+--   deals.doc_invoice_url / doc_contract_url / doc_payment_url,
+--   agreement_docs.drive_url
+-- — доступ к файлам на Google Drive контролирует Google, не код стенда;
+-- команда и так видит эти ссылки в проде, отдельного риска клон не добавляет.
+-- payin_tx_hash/payout_tx_hash/doverka_transaction_id/doverka_payout_hash,
+-- payout_requests.wallet — идентификаторы блокчейн-транзакций и адреса
+-- кошельков: финансовый след, а не канал связи с человеком.
+
 -- ── Хранимые в БД вебхуки/чаты/настройки исходящих ─────────────────────────
 -- В текущей схеме (app.py) все адреса вебхуков, chat_id и API-ключи интеграций
 -- живут в env (WL_BOT_URL, DOVERKA_WEBHOOK_URL, STAND_TG_CHAT, ...), в БД для

@@ -26,6 +26,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
@@ -55,6 +56,9 @@ CANDIDATE_DB_RE = re.compile(r'^stand_prodcopy_[A-Za-z0-9_]+$')
 MONEY_QUERIES = {
     'deals_profit_usdt_sum': ('deals', 'SELECT COALESCE(SUM(profit_usdt), 0) FROM deals'),
     'deals_net_profit_usdt_sum': ('deals', 'SELECT COALESCE(SUM(net_profit_usdt), 0) FROM deals'),
+    'deals_payout_amount_usdt_sum': ('deals', 'SELECT COALESCE(SUM(payout_amount_usdt), 0) FROM deals'),
+    'deals_referrer_payout_usdt_sum': ('deals', 'SELECT COALESCE(SUM(referrer_payout_usdt), 0) FROM deals'),
+    'deal_agents_payout_usdt_sum': ('deal_agents', 'SELECT COALESCE(SUM(payout_usdt), 0) FROM deal_agents'),
     'referrers_total_earned_usdt_sum': ('referrers', 'SELECT COALESCE(SUM(total_earned_usdt), 0) FROM referrers'),
     'referrers_total_paid_usdt_sum': ('referrers', 'SELECT COALESCE(SUM(total_paid_usdt), 0) FROM referrers'),
     'payout_requests_amount_usdt_sum': ('payout_requests', 'SELECT COALESCE(SUM(amount_usdt), 0) FROM payout_requests'),
@@ -63,16 +67,58 @@ MONEY_QUERIES = {
     'agreement_docs_count': ('agreement_docs', 'SELECT COUNT(*) FROM agreement_docs'),
 }
 
+# Колонки, которые санация меняет осознанно (см. stand_sanitize.sql) — не
+# участвуют в построчном хеше содержимого таблицы, иначе verify-candidate
+# всегда бы падал именно на них. Всё остальное содержимое таблицы обязано
+# совпасть с эталоном побитово.
+HASH_EXCLUDE_COLUMNS = {
+    'partners': {'token'},
+    'referrers': {'token', 'telegram', 'telegram_user_id', 'auth_mode'},
+    'kyc_requests': {'token'},
+    'clients': {'telegram'},
+    'payment_link_orders': {'link'},
+    'payout_requests': {'contact_value'},
+    'admin_users': {'username', 'password_hash', 'telegram_user_id', 'login_disabled', 'notify_enabled'},
+}
+
+# Значение-маркер NULL внутри хеша — отличает NULL от пустой строки. Не должно
+# встречаться в реальных данных; коллизия маловероятна и не критична (хеш —
+# защита от случайной порчи данных в конвейере, а не криптографическая подпись).
+_HASH_NULL_MARKER = '@@STAND_COPY_PROD_NULL@@'
+
 
 # ─────────────────────────── общие мелкие помощники ───────────────────────────
 
-def _redact(text, *secrets):
-    """Убирает DSN из текста перед тем, как он попадёт в файл или stdout."""
+def _secrets_from_url(url):
+    """DSN целиком + отдельно пароль из неё.
+
+    Сторонний pg_dump (или обёртка над ним) может напечатать пароль сам по
+    себе, вне DSN (например `password=...` в диагностике) — редактировать
+    только полную строку DSN недостаточно.
+    """
+    if not url:
+        return []
+    out = [url]
+    try:
+        password = urlsplit(url).password
+    except ValueError:
+        password = None
+    if password:
+        out.append(password)
+    return out
+
+
+def _redact(text, *urls):
+    """Убирает DSN и пароль из текста перед тем, как он попадёт в файл или stdout."""
     out = text or ''
-    for s in secrets:
-        if s:
+    for url in urls:
+        for s in _secrets_from_url(url):
             out = out.replace(s, '<REDACTED>')
-    return re.sub(r'postgres(?:ql)?://[^\s\'"]+', '<REDACTED-DSN>', out)
+    out = re.sub(r'postgres(?:ql)?://[^\s\'"]+', '<REDACTED-DSN>', out)
+    # Защита от «password=...»/PGPASSWORD в произвольном месте вывода —
+    # не полагаемся только на разбор конкретного DSN, который нам передали.
+    out = re.sub(r'(?i)\b(pg)?password\s*[=:]\s*\S+', lambda m: f'{m.group(1) or ""}password=<REDACTED>', out)
+    return out
 
 
 def _parse_dsn(url):
@@ -163,10 +209,26 @@ def _run_psql(target_url, sql_text=None, sql_file=None, single_transaction=False
 
 
 def restore_dump_filtered(dump_gz_path, target_url, psql_bin=DEFAULT_PSQL_BIN):
-    """Restore .sql.gz дампа в target_url с фильтром несовместимых строк."""
+    """Restore .sql.gz дампа в target_url с фильтром несовместимых строк.
+
+    Отфильтрованный SQL пишем во временный файл (а не подаём через stdin):
+    при ошибке psql печатает `psql:<путь>:<номер строки>: ERROR ...` — с
+    реальным путём и номером строки внутри ОТФИЛЬТРОВАННОГО дампа, по которому
+    можно найти проблемное место, вместо бесполезного `<stdin>`. DSN в это
+    сообщение не попадает — редактируется тем же `_redact`, что и остальной
+    stderr psql.
+    """
     text = _load_gz_text(dump_gz_path)
     filtered_text, removed = filter_dump_text(text)
-    _run_psql(target_url, sql_text=filtered_text, psql_bin=psql_bin)
+    fd, tmp_path = tempfile.mkstemp(suffix='.sql', prefix='stand_copy_prod_filtered_')
+    with os.fdopen(fd, 'w', encoding='utf-8') as f:
+        f.write(filtered_text)
+    try:
+        _run_psql(target_url, sql_file=tmp_path, psql_bin=psql_bin)
+    except RuntimeError as e:
+        raise RuntimeError(f'{e} (отфильтрованный дамп сохранён для диагностики: {tmp_path})') from e
+    else:
+        os.unlink(tmp_path)
     return removed
 
 
@@ -196,8 +258,58 @@ def _foreign_keys(cur):
     ]
 
 
+def _pk_columns(cur, table):
+    cur.execute("""
+        SELECT kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+        WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public' AND tc.table_name = %s
+        ORDER BY kcu.ordinal_position
+    """, (table,))
+    return [r[0] for r in cur.fetchall()]
+
+
+def _table_columns(cur, table):
+    cur.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = %s
+        ORDER BY column_name
+    """, (table,))
+    return [r[0] for r in cur.fetchall()]
+
+
+def compute_table_hash(cur, table, exclude_cols):
+    """md5 всего содержимого таблицы (кроме exclude_cols), в порядке PK.
+
+    Ловит ЛЮБОЕ изменение данных — не только число строк или отдельные суммы:
+    другое значение хоть в одной незаисключённой колонке хоть одной строки
+    меняет итоговый md5. Колонки внутри строки объединены chr(1), строки между
+    собой — chr(2); NULL заменяется на маркер, отличимый от пустой строки.
+    Порядок колонок в хеше — по алфавиту, одинаков независимо от ADD COLUMN
+    (санация добавляет новые колонки в конец физически, но они попадают в
+    exclude_cols по имени и не участвуют в хеше ни на одной из сторон сверки).
+    """
+    pk_cols = _pk_columns(cur, table)
+    all_cols = _table_columns(cur, table)
+    hash_cols = [c for c in all_cols if c not in exclude_cols]
+    if not hash_cols:
+        return None, []
+    order_cols = pk_cols or hash_cols  # нет PK — сортируем по всем хешируемым колонкам
+
+    col_exprs = ', '.join(f"coalesce(\"{c}\"::text, '{_HASH_NULL_MARKER}')" for c in hash_cols)
+    order_exprs = ', '.join(f'"{c}"' for c in order_cols)
+    query = (
+        f'SELECT md5(coalesce(string_agg(row_data, chr(2) ORDER BY {order_exprs}), \'\')) '
+        f'FROM (SELECT {order_exprs}, concat_ws(chr(1), {col_exprs}) AS row_data FROM "{table}") t'
+    )
+    cur.execute(query)
+    (digest,) = cur.fetchone()
+    return digest, hash_cols
+
+
 def compute_snapshot(target_url):
-    """Счётчики строк, денежные агрегаты, next-value sequences и FK-карта."""
+    """Счётчики строк, хеши содержимого, денежные агрегаты, sequences и FK-карта."""
     conn = psycopg2.connect(target_url)
     conn.set_session(readonly=True, autocommit=True)
     try:
@@ -214,6 +326,15 @@ def compute_snapshot(target_url):
         for t in tables:
             cur.execute(f'SELECT COUNT(*) FROM "{t}"')
             table_counts[t] = cur.fetchone()[0]
+
+        table_hashes = {}
+        table_hash_columns = {}
+        for t in tables:
+            if t in DOCUMENTED_DIFF_TABLES:
+                continue  # содержимое целиком и осознанно заменяется санацией — сверять нечего
+            digest, hash_cols = compute_table_hash(cur, t, HASH_EXCLUDE_COLUMNS.get(t, set()))
+            table_hashes[t] = digest
+            table_hash_columns[t] = hash_cols
 
         money = {}
         for key, (needed_table, sql) in MONEY_QUERIES.items():
@@ -238,6 +359,8 @@ def compute_snapshot(target_url):
 
         return {
             'tables': table_counts,
+            'table_hashes': table_hashes,
+            'table_hash_columns': table_hash_columns,
             'money': money,
             'sequences': sequences,
             'foreign_keys': foreign_keys,
@@ -357,13 +480,21 @@ def cmd_backup_stand(args):
     finally:
         conn.close()
 
-    # Проверочный restore в одноразовую локальную базу + сверка числа строк по таблицам.
+    # Проверочный restore в одноразовую локальную базу + сверка строк и содержимого.
     removed = restore_dump_filtered(dump_path, args.scratch_url, psql_bin=args.psql_bin)
-    live_counts = compute_snapshot(args.stand_url)['tables']
-    scratch_counts = compute_snapshot(args.scratch_url)['tables']
-    mismatches = {t: (c, scratch_counts.get(t)) for t, c in live_counts.items() if c != scratch_counts.get(t)}
-    if mismatches:
-        print(f'Проверочный restore бэкапа стенда разошёлся по строкам: {mismatches}', file=sys.stderr)
+    live_snapshot = compute_snapshot(args.stand_url)
+    scratch_snapshot = compute_snapshot(args.scratch_url)
+    mismatches = {
+        t: (c, scratch_snapshot['tables'].get(t))
+        for t, c in live_snapshot['tables'].items() if c != scratch_snapshot['tables'].get(t)
+    }
+    hash_mismatches = {
+        t: (h, scratch_snapshot['table_hashes'].get(t))
+        for t, h in live_snapshot['table_hashes'].items() if h != scratch_snapshot['table_hashes'].get(t)
+    }
+    if mismatches or hash_mismatches:
+        print(f'Проверочный restore бэкапа стенда разошёлся: строки={mismatches}, содержимое={hash_mismatches}',
+              file=sys.stderr)
         sys.exit(1)
 
     manifest = {
@@ -482,10 +613,18 @@ def cmd_restore_candidate(args):
             'login_nonces — удалены все строки',
             'admin_users.login_disabled = true, notify_enabled = false, telegram_user_id = NULL, password_hash — заведомо невалидный',
             'admin_users.username — karim/marina/artem/vitaliy/teodor -> prod_<логин> при совпадении',
+            'referrers.telegram = NULL, referrers.telegram_user_id = NULL, auth_mode telegram -> link',
+            'clients.telegram = NULL',
+            'payout_requests.contact_value — заменён нейтральным значением',
+            'payment_link_orders.link — обнулена (публичная ссылка на оплату у провайдера)',
             'stand_state — сброшено в id=1, data={}, version=0, notified=[]',
         ],
         'not_touched': [
-            'payment_link_orders.order_id/payment_id — бухгалтерский след провайдера, не секрет',
+            'payment_link_orders.order_id/payment_id — бухгалтерский след провайдера, не секрет (решение лидера)',
+            'deals.doc_invoice_url/doc_contract_url/doc_payment_url — доступ контролирует Google, не стенд',
+            'agreement_docs.drive_url — то же самое',
+            'payin_tx_hash/payout_tx_hash/doverka_transaction_id/doverka_payout_hash/wallet — финансовый '
+            'след (хэши транзакций, номера кошельков), не канал связи с человеком',
         ],
         'backup_manifest_used': manifest['dump_path'],
     }, ensure_ascii=False, indent=2))
@@ -523,6 +662,24 @@ def cmd_verify_candidate(args):
     documented.append({
         'note': 'partners.token/referrers.token/kyc_requests.token перевыпущены — значения не сравниваются, только наличие/количество',
     })
+    documented.append({
+        'note': 'referrers.telegram/telegram_user_id/auth_mode, clients.telegram, payout_requests.contact_value, '
+                'payment_link_orders.link — обнулены санацией (внешний человек/провайдер не должен быть достижим со стенда)',
+    })
+    documented.append({
+        'note': 'deals.doc_invoice_url/doc_contract_url/doc_payment_url и agreement_docs.drive_url — '
+                'сохранены намеренно: доступ к ним контролирует Google (не стенд), команда и так видит их в проде',
+    })
+
+    for t, exp_hash in expected.get('table_hashes', {}).items():
+        if t in DOCUMENTED_DIFF_TABLES:
+            continue
+        act_hash = actual['table_hashes'].get(t)
+        if act_hash != exp_hash:
+            hashed_cols = expected.get('table_hash_columns', {}).get(t, [])
+            problems.append(
+                f'таблица {t}: содержимое разошлось с эталоном (хеш по колонкам {hashed_cols} не совпал)'
+            )
 
     for key, exp_val in expected['money'].items():
         act_val = actual['money'].get(key)
