@@ -14010,6 +14010,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             </div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
+                            ${STAND_ROLES ? `<button class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;" onclick="window.open('/api/stand/ref-preview/${r.id}', '_blank', 'noopener')">Кабинет ↗</button>` : ''}
                             <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="editReferrer(${r.id})">Изм.</button>
                             <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
