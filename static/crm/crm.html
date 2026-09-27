@@ -5645,9 +5645,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         /* Роли живут только на стенде: в боевой CRM все админы равны, и рисовать
            там выбор роли значило бы обещать разделение, которого нет. */
         let STAND_ROLES = null;
+        /* QA (перепроверка 28.09, FAIL №4): признак стенда не должен зависеть только
+           от того, успел ли загрузиться /api/stand/roles — сетевой сбой именно этого
+           запроса на живом стенде раньше открывал боевые ссылки как на проде.
+           /api/auth/me уже отдаёт то же поле 'stand' (app.py) — берём оттуда
+           независимый второй сигнал. Стенд — если ЛЮБОЙ из двух сигналов это
+           подтвердил. Если /api/auth/me вообще не ответил — считаем окружение
+           непроверенным и не рисуем боевые ссылки (fail-closed), см. standLinkState(). */
+        let AUTH_STAND = null;  // null — ещё не проверено или проверка не удалась
+        async function loadAuthStand() {
+            try {
+                const res = await fetch(`${API_URL}/api/auth/me`);
+                const d = await res.json();
+                AUTH_STAND = (d && d.success && d.user) ? !!d.user.stand : null;
+            } catch (e) { AUTH_STAND = null; }
+        }
         // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
         // а не после захода в «Аккаунты».
         document.addEventListener('DOMContentLoaded', loadStandRoles);
+        document.addEventListener('DOMContentLoaded', loadAuthStand);
         async function loadStandRoles() {
             try {
                 const res = await fetch(`${API_URL}/api/stand/roles`);
@@ -14029,12 +14045,35 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
 
             const baseUrl = window.location.origin;
-            /* На стенде реальный TG-бот рефералов и WhatsApp реального человека не должны
-               ни отрисовываться, ни копироваться в буфер — даже если их прислал сервер
-               (сервер чистит T1, но UI на это не полагается, QA FAIL №7). Признак стенда —
-               тот же STAND_ROLES, что уже используют роли админов чуть выше по файлу. */
-            const standUI = typeof STAND_ROLES !== 'undefined' && !!STAND_ROLES;
-            list.innerHTML = rows.map(r => `
+            /* На стенде реальный TG-бот рефералов, WhatsApp реального человека и сайт
+               реальной воронки не должны ни отрисовываться, ни копироваться в буфер —
+               даже если их прислал сервер (сервер чистит T1, но UI на это не полагается,
+               QA FAIL №7). Раньше признаком стенда была только загрузка STAND_ROLES
+               (/api/stand/roles): если этот конкретный запрос не успевал загрузиться на
+               живом стенде, ссылки показывались как на проде (QA перепроверка, FAIL №4).
+               Теперь берём ИЛИ этого сигнала, ИЛИ 'stand' из /api/auth/me — он уже
+               отвечает залогиненному на проде тоже, так что поведение прода не меняется.
+               Если /api/auth/me вообще не ответил — окружение не проверено, и ссылки на
+               реальных людей всё равно не рисуем (fail-closed). */
+            const rolesStand = typeof STAND_ROLES !== 'undefined' && !!STAND_ROLES;
+            const authStand = typeof AUTH_STAND !== 'undefined' ? AUTH_STAND : null;
+            const isStand = rolesStand || authStand === true;
+            const unverified = !isStand && authStand !== false;
+            const linkCell = (real, label) => {
+                if (isStand) return {value: 'на стенде выключено',
+                    onclick: `showToast('На стенде ссылка ${label} выключена')`};
+                if (unverified) return {value: 'не удалось проверить окружение',
+                    onclick: `showToast('Не удалось проверить окружение — ссылка ${label} скрыта')`};
+                return null;
+            };
+            list.innerHTML = rows.map(r => {
+                const site = linkCell(r.referral_link, 'на сайт') ||
+                    {value: r.referral_link, onclick: "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')"};
+                const bot = linkCell(r.bot_link, 'на бота') ||
+                    {value: r.bot_link, onclick: "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')"};
+                const wa = linkCell(r.wa_link, 'WhatsApp') ||
+                    {value: r.wa_link ? 'WhatsApp ↗' : '', onclick: `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`};
+                return `
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div style="flex:1;min-width:0;">
                             <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
@@ -14052,20 +14091,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div style="display:flex;gap:8px;margin-top:6px;">
-                                <input type="text" readonly value="${standUI ? 'на стенде выключено' : r.referral_link}" title="Сайт"
+                                <input type="text" readonly value="${site.value}" title="Сайт"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
-                                    onclick="${standUI ? "showToast('На стенде ссылка на сайт выключена')" : "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')"}">
-                                <input type="text" readonly value="${standUI ? 'на стенде выключено' : r.bot_link}" title="Telegram"
+                                    onclick="${site.onclick}">
+                                <input type="text" readonly value="${bot.value}" title="Telegram"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#eff6ff;"
-                                    onclick="${standUI ? "showToast('На стенде ссылка на бота выключена')" : "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')"}">
+                                    onclick="${bot.onclick}">
                             </div>
                             <div style="display:flex;gap:8px;margin-top:4px;">
                                 <input type="text" readonly value="${baseUrl}/ref/${r.token}" title="Статистика"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
                                     onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка статистики скопирована')">
-                                <input type="text" readonly value="${standUI ? '' : (r.wa_link ? 'WhatsApp ↗' : '')}" title="WhatsApp"
+                                <input type="text" readonly value="${wa.value}" title="WhatsApp"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;cursor:pointer;"
-                                    onclick="${standUI ? "showToast('На стенде ссылка WhatsApp выключена')" : `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`}">
+                                    onclick="${wa.onclick}">
                             </div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
@@ -14081,7 +14120,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
                         </div>
                     </div>
-                `).join('');
+                `;
+            }).join('');
         }
 
         // Поиск контактов Bitrix с debounce

@@ -1,7 +1,13 @@
-// QA (Codex) FAIL №7 и №8: даже если сервер один раз пришлёт боевые ссылки в
-// данных (bot_link/wa_link реферала, deep-link на grusha_lk_bot), фронт на стенде
-// не должен их рисовать, копировать в буфер или открывать — защита должна жить в
-// UI и не зависеть от того, что именно вернул конкретный ответ API (Карим, 28.09).
+// QA (Codex) FAIL №4/№6/№7/№8: даже если сервер один раз пришлёт боевые ссылки в
+// данных (bot_link/wa_link/referral_link реферала, deep-link на grusha_lk_bot),
+// фронт на стенде не должен их рисовать, копировать в буфер или открывать —
+// защита должна жить в UI и не зависеть от одного сигнала. Перепроверка 28.09
+// потребовала: 1) признак стенда в crm.html не должен зависеть только от того,
+// успел ли загрузиться /api/stand/roles — берём ИЛИ этот сигнал, ИЛИ 'stand' из
+// /api/auth/me; если auth/me не ответил, окружение считается непроверенным и
+// боевые ссылки всё равно не рисуются (fail-closed); 2) в кабинете реферала бот
+// открывается только при явном /api/health {stand:false} — если health не
+// ответил, вместо открытия бота показывается «повторите» (тоже fail-closed).
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,7 +28,7 @@ function extractIndented(src, name, prefix = 'function') {
 const crmHtml = fs.readFileSync(path.join(__dirname, '../static/crm/crm.html'), 'utf8');
 const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.html'), 'utf8');
 
-// ---------- FAIL №7: static/crm/crm.html — renderReferrers() ----------
+// ---------- FAIL №4/№7: static/crm/crm.html — renderReferrers() ----------
 {
   const source = extractIndented(crmHtml, 'renderReferrers');
   const referrer = {
@@ -32,38 +38,45 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     referral_link: 'https://grusha.space/?ref=QA',
   };
 
-  function render(standRoles) {
+  function render(vars) {
     const list = {innerHTML: ''};
-    const ctx = {
+    const ctx = Object.assign({
       _referrersCache: [referrer],
       document: {getElementById: id => (id === 'referrersList' ? list : null)},
       window: {location: {origin: 'http://127.0.0.1:1'}},
       showToast: () => {},
-      STAND_ROLES: standRoles,
-    };
+    }, vars);
     vm.createContext(ctx);
     vm.runInContext(source, ctx);
     ctx.renderReferrers();
     return list.innerHTML;
   }
+  const hasReal = html => html.includes('https://t.me/Grushath_bot')
+    && html.includes('https://wa.me/66810000000') && html.includes('https://grusha.space');
+  const hasNone = html => !html.includes('https://t.me/Grushath_bot')
+    && !html.includes('https://wa.me/66810000000') && !html.includes('https://grusha.space');
 
-  // Прод (STAND_ROLES===null, как до /api/stand/roles): ссылки видны как раньше.
-  const prodHtml = render(null);
-  assert.ok(prodHtml.includes('https://t.me/Grushath_bot'), 'на проде ссылка на бота рисуется как обычно');
-  assert.ok(prodHtml.includes('https://wa.me/66810000000'), 'на проде WA-ссылка доступна для копирования как обычно');
-  assert.ok(prodHtml.includes('https://grusha.space/?ref=QA'), 'на проде ссылка на сайт видна как обычно');
+  // Прод, оба сигнала это подтверждают: ссылки видны как обычно.
+  assert.ok(hasReal(render({STAND_ROLES: null, AUTH_STAND: false})), 'прод: оба сигнала false/null → ссылки видны');
 
-  // Стенд (STAND_ROLES заполнен /api/stand/roles): ни ссылка на бота, ни WA, ни сайт не рисуются.
-  const standHtml = render({admin: 'Админ'});
-  assert.ok(!standHtml.includes('https://t.me/Grushath_bot'), 'на стенде боевая ссылка на бота не должна попадать в разметку');
-  assert.ok(!standHtml.includes('https://wa.me/66810000000'), 'на стенде боевой WhatsApp не должен попадать в разметку');
-  assert.ok(!standHtml.includes('https://grusha.space'), 'на стенде боевая ссылка на сайт (воронка) не должна попадать в разметку');
-  assert.ok(standHtml.includes('на стенде выключено') || standHtml.toLowerCase().includes('выключен'),
-    'на стенде должна быть честная пометка вместо ссылки');
+  // Стенд по STAND_ROLES (auth/me ещё не успел ответить) — раньше это был дефект (FAIL №4).
+  assert.ok(hasNone(render({STAND_ROLES: {admin: 'Админ'}, AUTH_STAND: null})),
+    'STAND_ROLES подтвердил стенд — ссылки скрыты, даже если auth/me ещё не ответил');
 
-  // Функция не должна падать, если STAND_ROLES вообще не объявлена в области видимости
-  // (например, при выдёргивании функции в изолированный тест) — typeof-проверка обязана
-  // это покрывать без ReferenceError.
+  // Стенд по AUTH_STAND (/api/stand/roles упал с ошибкой, STAND_ROLES остался null) —
+  // именно этот сценарий раньше показывал боевые ссылки как на проде.
+  assert.ok(hasNone(render({STAND_ROLES: null, AUTH_STAND: true})),
+    'FAIL №4: сбой /api/stand/roles не должен выдавать стенд за прод, если /api/auth/me говорит stand:true');
+
+  // /api/auth/me не ответил вообще (AUTH_STAND остаётся null) и роли тоже не подтвердили
+  // стенд — окружение не проверено, fail-closed: ссылки всё равно скрыты.
+  const unverified = render({STAND_ROLES: null, AUTH_STAND: null});
+  assert.ok(hasNone(unverified), 'окружение не проверено — боевые ссылки не рисуем (fail-closed)');
+  assert.ok(unverified.includes('не удалось проверить окружение'), 'должна быть честная причина, а не молчание');
+
+  // Функция не должна падать, если STAND_ROLES/AUTH_STAND вообще не объявлены
+  // (например, при выдёргивании функции в изолированный тест) — typeof-проверка
+  // обязана это покрывать без ReferenceError; поведение — тоже fail-closed.
   {
     const list = {innerHTML: ''};
     const ctx = {
@@ -75,23 +88,25 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     vm.createContext(ctx);
     vm.runInContext(source, ctx);
     assert.doesNotThrow(() => ctx.renderReferrers());
+    assert.ok(hasNone(list.innerHTML), 'без обоих сигналов — тоже fail-closed, а не боевые ссылки по умолчанию');
   }
 
-  console.log('crm renderReferrers: FAIL №7 закрыт — 3 сценария PASS');
+  console.log('crm renderReferrers: FAIL №4/№7 закрыты — 5 сценариев PASS');
 }
 
-// ---------- FAIL №8: static/referrer/index.html — startBotLogin() ----------
+// ---------- FAIL №6/№8: static/referrer/index.html — startBotLogin() ----------
 (async () => {
   const source = extractIndented(refHtml, 'startBotLogin', 'async function');
 
-  async function run(healthResponse) {
+  async function run(healthBehavior) {
     const opened = [];
     const st = {textContent: '', innerHTML: ''};
     const ctx = {
       document: {getElementById: () => st},
       fetch: async (url) => {
         if (String(url).includes('/api/health')) {
-          return {json: async () => healthResponse};
+          if (healthBehavior === 'error') throw new Error('health failed');
+          return {json: async () => ({stand: healthBehavior === 'stand'})};
         }
         return {json: async () => ({success: true, nonce: 'n', link: 'https://t.me/grusha_lk_bot?start=login_n'})};
       },
@@ -106,51 +121,41 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
     return {opened, text: st.textContent};
   }
 
-  // На стенде /api/health отдаёт stand:true — бот не открывается вообще, даже
-  // если ответ tg-start (замокан выше) содержит боевую ссылку на grusha_lk_bot.
+  // На стенде /api/health явно отдаёт stand:true — бот не открывается.
   {
-    const {opened, text} = await run({success: true, stand: true});
+    const {opened, text} = await run('stand');
     assert.equal(opened.length, 0, 'на стенде окно с ботом открываться не должно');
     assert.ok(text && text.length > 0, 'должна быть понятная пометка вместо тишины');
   }
-  // На проде (stand:false) поведение не меняется — бот открывается как раньше.
+  // На проде /api/health явно отдаёт stand:false — поведение не меняется.
   {
-    const {opened} = await run({success: true, stand: false});
+    const {opened} = await run('prod');
     assert.equal(opened.length, 1);
     assert.ok(opened[0].includes('grusha_lk_bot'));
   }
-  // /api/health недоступен (сеть мигнула) — по умолчанию считаем, что это НЕ стенд,
-  // чтобы реальным партнёрам на проде вход не сломался из-за временной ошибки сети.
+  // FAIL №6: /api/health недоступен — раньше это трактовалось как «прод» и бот
+  // открывался; теперь это fail-closed — бот НЕ открывается, показывается «повторите».
   {
-    const opened = [];
-    const st = {textContent: '', innerHTML: ''};
-    const ctx = {
-      document: {getElementById: () => st},
-      fetch: async (url) => {
-        if (String(url).includes('/api/health')) throw new Error('network blip');
-        return {json: async () => ({success: true, nonce: 'n', link: 'https://t.me/grusha_lk_bot?start=login_n'})};
-      },
-      window: {open: u => opened.push(u)},
-      setInterval: () => 1, clearInterval: () => {},
-      Date, encodeURIComponent,
-      token: 'x', t: x => x, botPollTimer: null,
-    };
-    vm.createContext(ctx);
-    vm.runInContext(source, ctx);
-    await ctx.startBotLogin();
-    assert.equal(opened.length, 1, 'сетевая ошибка health-check не должна сама по себе блокировать прод-вход');
+    const {opened, text} = await run('error');
+    assert.equal(opened.length, 0, 'health недоступен — бот не должен открываться (fail-closed)');
+    assert.ok(text && text.length > 0, 'должна быть пометка «не удалось проверить», а не тишина');
   }
 
-  console.log('referrer startBotLogin: FAIL №8 закрыт — 3 сценария PASS');
+  console.log('referrer startBotLogin: FAIL №6/№8 закрыты — 3 сценария PASS');
 })().catch(e => { console.error(e.stack); process.exitCode = 1; });
 
 // ---------- п.5: собственный кабинет реферала (сайт/бот/WA в статистике) ----------
+// Та же fail-closed логика: IS_STAND инициализируется null, а не false, и
+// checkStand() при ошибке health оставляет его null — реальные ссылки не рисуются.
 {
-  for (const [id, field] of [['url-site', 'd\\.referral_link'], ['url-bot', 'd\\.bot_link'], ['url-wa', 'd\\.wa_link']]) {
-    const re = new RegExp(`id="${id}">\\$\\{IS_STAND \\? t\\('stand_link_disabled'\\) : esc\\(${field}\\)\\}`);
-    assert.ok(re.test(refHtml), `${id} должен показывать пометку вместо ${field} на стенде`);
+  assert.ok(/let IS_STAND = null/.test(refHtml), 'IS_STAND должен начинаться с null (непроверено), а не false (прод по умолчанию)');
+  for (const field of ['d.referral_link', 'd.bot_link', 'd.wa_link']) {
+    assert.ok(refHtml.includes(`refLinkText(${field})`), `${field} должен идти через refLinkText()`);
   }
+  const refLinkTextSrc = extractIndented(refHtml, 'refLinkText');
+  assert.ok(/IS_STAND === false/.test(refLinkTextSrc), 'реальная ссылка показывается только при явном IS_STAND===false');
   assert.ok(refHtml.includes('async function checkStand()'), 'должна быть функция проверки стенда через /api/health');
+  assert.ok(refHtml.includes("catch (e) { IS_STAND = null; }"), 'сбой /api/health должен оставлять IS_STAND непроверенным, а не считать прод');
   assert.ok(refHtml.includes('checkStand().then(loadStats)'), 'проверка стенда должна выполняться до первого рендера кабинета');
-  console.log('referrer cabinet (сайт/бот/WA): п.5 закрыт — источники проверены статически');
+  console.log('referrer cabinet (сайт/бот/WA): п.5 закрыт (fail-closed) — источники проверены статически');
 }

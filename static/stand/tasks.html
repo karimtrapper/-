@@ -807,6 +807,23 @@ function migrate(st){
   st.convs=st.convs||[]; st.cseq=st.cseq||0; st.cnv=st.cnv||null;
   if(!st.bal||typeof st.bal.ipps!=='number') st.bal=balInit();
   if(!Array.isArray(st.refs)||!st.refs.length) st.refs=refsInit();
+  /* Миграция: до этой правки ручные агенты («Создать реферера» прямо в задачнике)
+     имели такие же простые числовые id, как строки настоящей таблицы referrers —
+     после refsSync() совпадение id молча переадресовывало выплату чужому человеку
+     (QA перепроверка, FAIL №7). Разводим пространства один раз: ручным — 'm:<n>',
+     старые числовые id пробрасываем по всем местам, где они использовались. */
+  if(st.refs.some(r=>!r.prod&&typeof r.id==='number')){
+    const remap={};
+    let n=Math.max(0,...st.refs.filter(r=>typeof r.id==='string'&&r.id.indexOf('m:')===0)
+      .map(r=>Number(r.id.slice(2))||0));
+    st.refs.forEach(r=>{ if(!r.prod&&typeof r.id==='number'){ n++; remap[r.id]='m:'+n; r.id='m:'+n; } });
+    st.refs.forEach(r=>{ if(r.parentId!=null&&remap[r.parentId]!==undefined) r.parentId=remap[r.parentId]; });
+    st.deals.forEach(d=>{
+      if(d.refId!=null&&remap[d.refId]!==undefined) d.refId=remap[d.refId];
+      (d.agents||[]).forEach(a=>{ if(a.refId!=null&&remap[a.refId]!==undefined) a.refId=remap[a.refId]; });
+    });
+    (st.clients||[]).forEach(c=>{ if(c.refId!=null&&remap[c.refId]!==undefined) c.refId=remap[c.refId]; });
+  }
   if(!Array.isArray(st.clients)||!st.clients.length) st.clients=clientsInit();
   if(!Array.isArray(st.wallets)||!st.wallets.length) st.wallets=WALLETS.map(w=>Object.assign({},w));
   st.walletNew=!!st.walletNew;
@@ -1837,9 +1854,10 @@ async function refsSync(quiet){
           cur:a.payout_currency||'USDT',tg:a.telegram||'',active:a.active!==false,
           token:'',parentId:null,l2:10,prod:true};});
     const codes=new Set(prod.map(a=>a.code));
+    /* Ручные агенты — id вида 'm:<n>' (см. refAdd), с числовыми id из /api/referrers
+       им никогда не совпасть, переименовывать при коллизии больше не нужно. */
     const own=refs().filter(x=>!x.prod&&!codes.has(x.code));
-    const ids=new Set(prod.map(a=>a.id));
-    S.refs=prod.concat(own.map(x=>ids.has(x.id)?Object.assign({},x,{id:(Number(x.id)||0)+100000}):x));
+    S.refs=prod.concat(own);
     save();render();
     if(!quiet)toast('Рефереры из базы стенда: '+prod.length);
     return true;
@@ -3487,9 +3505,16 @@ function draftRefNew(){
   D.refId=r.id;D.refKnown=true;D.refSrc='создан при заведении сделки';D.rq='';D.agents=agentsDefault(r.id);
   save();render();toast('Реферер создан: '+name+' — настройте модель в разделе «Рефералы»');
 }
+/* Ручные агенты стенда живут в отдельном пространстве id ('m:<n>') — числа
+   остаются только за настоящей таблицей referrers (id из /api/referrers).
+   Раньше оба вида имели простые числовые id, и после refsSync() чужой прод-агент
+   мог получить тот же id, что и ручной, — сделка тогда слала бы referrer_id
+   чужого человека под именем своего агента (QA перепроверка, FAIL №7). */
 function refAdd(o){
-  const id=Math.max(0,...refs().map(r=>r.id))+1;
-  const r={id:id,name:o.name||'Без имени',code:o.code||('GR-'+String(id).padStart(3,'0')),
+  const n=Math.max(0,...refs().filter(r=>typeof r.id==='string'&&r.id.indexOf('m:')===0)
+    .map(r=>Number(r.id.slice(2))||0))+1;
+  const id='m:'+n;
+  const r={id:id,name:o.name||'Без имени',code:o.code||('GR-M'+String(n).padStart(3,'0')),
     lang:o.lang||'ru',comp:o.comp||'revshare',percent:o.percent==null?10:o.percent,
     cur:o.cur||'USDT',tg:o.tg||'',active:o.active!==false,
     token:Math.random().toString(16).slice(2,8),parentId:o.parentId||null,l2:o.l2==null?10:o.l2};
@@ -4062,13 +4087,15 @@ function crmPayload(d){
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
        referrer_id шлём только для агентов из настоящей таблицы referrers (refsSync,
-       a.prod===true) — id там стабильный и совпадает с тем, что ждёт CRM. Для
-       агентов, заведённых руками прямо в задачнике («own», в базе их нет), id не
-       шлём вовсе — сервер сам поищет по точному имени (аудитор, 28.09: имена
+       a.prod===true) И только если имя агента в сделке всё ещё совпадает с именем
+       этой записи — refId в сделке мог остаться от давнего refsSync, а под тем же
+       id в базе давно другой человек (QA перепроверка, FAIL №7). Не совпало —
+       id не шлём вовсе, сервер сам поищет по точному имени (аудитор, 28.09: имена
        бывают неуникальны, id надёжнее, но выдумывать чужой id нельзя). */
     agents:(d.agents||[]).map(a=>{
       const src=(a.refId!=null)?refById(a.refId):null;
-      return {referrer_id:(src&&src.prod)?src.id:undefined,name:a.name,tier:a.tier||1,
+      const nameOk=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
+      return {referrer_id:(src&&src.prod&&nameOk)?src.id:undefined,name:a.name,tier:a.tier||1,
         comp_model:a.comp||'revshare',
         percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
     })};
