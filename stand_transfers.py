@@ -104,7 +104,7 @@ def preserve_server_fields(old_state, new_state):
                 if isinstance(i, dict)}
     protected = ('id', 'source', 'uuid', 'date', 'arrivedAt', 'payer', 'rub',
                  'grossRub', 'feeRub',
-                 'kind', 'acc', 'purpose', 'docNumber', 'demo')
+                 'kind', 'acc', 'accSource', 'purpose', 'docNumber', 'demo')
     for income_id, previous in old_incomes.items():
         incoming = received.get(income_id)
         if incoming is None:

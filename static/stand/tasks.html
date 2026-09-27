@@ -607,10 +607,11 @@ async function fetchSberMirrorStatus(){
 function sberMirrorLabel(){
   const x=sberMirrorStatus;
   if(!x)return 'зеркало Сбера: проверяем';
-  if(!x.enabled)return 'зеркало Сбера: выключено · ограниченное окно 300';
-  if(x.last_error||!x.last_success_at)return 'зеркало Сбера: не отвечает · ограниченное окно 300';
+  const assumption=' · '+(x.account_assumption||'счёт проставлен по допущению: SberNotifier следит за одним счётом');
+  if(!x.enabled)return 'зеркало Сбера: выключено · ограниченное окно 300'+assumption;
+  if(x.last_error||!x.last_success_at)return 'зеркало Сбера: не отвечает · ограниченное окно 300'+assumption;
   return 'зеркало Сбера: обновлено '+new Date(x.last_success_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+
-    ' · в окне '+x.last_seen_count+', новых '+x.last_new_count+' · ограниченное окно 300';
+    ' · в окне '+x.last_seen_count+', новых '+x.last_new_count+' · ограниченное окно 300'+assumption;
 }
 function sberText(value){return String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* Последний снимок с сервера — база для слияния, когда доску одновременно правят

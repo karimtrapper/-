@@ -2,7 +2,10 @@
 
 import json
 import logging
+import os
+import subprocess
 from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -75,7 +78,8 @@ def test_poll_upsert_board_and_human_link_survive(stand, monkeypatch):
     assert record['source'] == 'sber'
     assert record['rub'] == item['amount_rub']
     assert record['purpose'] == item['purpose']
-    assert record['acc'] == ''
+    assert record['acc'] == '…0286 · Сбер'
+    assert record['accSource'] == 'sber_notifier_single_account'
     assert record['docNumber'] == '42'
     assert version == 1
     db = appmod.get_session()
@@ -87,9 +91,13 @@ def test_poll_upsert_board_and_human_link_survive(stand, monkeypatch):
     record['cnvId'] = 9
     record['excluded'] = True
     record['rub'] = 1
+    record['acc'] = 'чужой счёт'
+    record['accSource'] = 'browser'
     response = stand.put('/api/stand/state', json={'version': version, 'data': data})
     assert response.status_code == 200
     assert response.json['data']['incomes'][0]['rub'] == item['amount_rub']
+    assert response.json['data']['incomes'][0]['acc'] == '…0286 · Сбер'
+    assert response.json['data']['incomes'][0]['accSource'] == 'sber_notifier_single_account'
     assert mirror.poll(appmod)
     saved = board()[0]['incomes'][0]
     assert (saved['dealId'], saved['cnvId'], saved['excluded']) == (44, 9, True)
@@ -98,6 +106,7 @@ def test_poll_upsert_board_and_human_link_survive(stand, monkeypatch):
     assert stand.get('/api/stand/sber-mirror/status').json['enabled'] is True
     assert mirror.status(appmod)['window_limit'] == 300
     assert mirror.status(appmod)['last_seen_count'] == 1
+    assert 'одним счётом' in mirror.status(appmod)['account_assumption']
 
 
 def test_history_cutoff_and_board_protection(stand, monkeypatch):
@@ -195,3 +204,17 @@ def test_client_cannot_reserve_bank_id_before_sql_bridge(stand, monkeypatch):
     saved = board()[0]['incomes']
     assert len(saved) == 1
     assert (saved[0]['source'], saved[0]['rub'], saved[0]['dealId']) == ('sber', 12345.67, None)
+
+
+def test_mirrored_income_passes_account_check_in_tasks(stand, monkeypatch):
+    item = income()
+    item['amount_rub'] = 100000
+    item['purpose'] = 'Договор СД-1'
+    monkeypatch.setattr(mirror.stand_egress, 'read_get',
+                        lambda *a: (200, {'success': True, 'incomes': [item]}))
+    assert mirror.poll(appmod)
+    record = board()[0]['incomes'][0]
+    env = dict(os.environ, MIRRORED_INCOME_JSON=json.dumps(record, ensure_ascii=False))
+    result = subprocess.run(['node', str(Path(__file__).with_name('test_stand_incoming.js'))],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stdout + result.stderr

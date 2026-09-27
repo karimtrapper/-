@@ -3,10 +3,13 @@
 import json
 import math
 import os
+import re
 import sys
 import threading
 from contextlib import nullcontext
 from datetime import datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
 
 from sqlalchemy import text
 
@@ -15,6 +18,25 @@ import stand_egress
 WINDOW_LIMIT = 300
 LOCK_KEY = 741098231
 _thread = None
+ACCOUNT_ASSUMPTION = 'Счёт проставлен по допущению: SberNotifier следит за одним счётом'
+
+
+@lru_cache(maxsize=1)
+def _sber_account_label():
+    """Взять счёт MF из того же определения, что использует задачник.
+
+    У банковского API нет номера счёта. При смене разметки MF в HTML лучше
+    остановить мост с ошибкой, чем незаметно подставить чужие реквизиты.
+    """
+    html = (Path(__file__).parent / 'static/stand/tasks.html').read_text(encoding='utf-8')
+    start = html.find('const MF={')
+    if start < 0:
+        raise ValueError('не найдены реквизиты MF')
+    definition = html[start:html.find('};', start)]
+    account = re.search(r"\bacc:'(\d{20})'", definition)
+    if not account:
+        raise ValueError('не найден счёт MF')
+    return '…' + account.group(1)[-4:] + ' · Сбер'
 
 
 def enabled(appmod):
@@ -31,7 +53,7 @@ def _days():
 
 
 def _board_income(row):
-    """В выписке нет номера счёта; пустое поле оставляет сверку честной."""
+    """Счёт MF помечен как допущение об одном счёте SberNotifier."""
     operation = row.operation_date or ''
     day = operation[:10]
     if len(day) == 10 and day[4] == '-' and day[7] == '-':
@@ -42,7 +64,8 @@ def _board_income(row):
     return {'id': 'sber:' + row.uuid, 'uuid': row.uuid, 'source': 'sber',
             'date': day, 'arrivedAt': operation, 'payer': row.payer or '',
             'rub': row.amount_rub, 'grossRub': round(row.amount_rub + acquiring['fee_rub'], 2),
-            'feeRub': round(acquiring['fee_rub'], 2), 'kind': kind, 'acc': '',
+            'feeRub': round(acquiring['fee_rub'], 2), 'kind': kind,
+            'acc': _sber_account_label(), 'accSource': 'sber_notifier_single_account',
             'purpose': row.purpose or '', 'docNumber': row.doc_number or '',
             'dealId': None, 'cnvId': None, 'excluded': False}
 
@@ -203,6 +226,7 @@ def status(appmod):
         state = db.query(appmod.StandSberMirrorState).filter_by(id=1).first()
         return {'success': True, 'enabled': enabled(appmod),
                 'window_limit': WINDOW_LIMIT, 'limited_window': True,
+                'account_assumption': ACCOUNT_ASSUMPTION,
                 'last_seen_count': state.last_seen_count or 0 if state else 0,
                 'last_success_at': state.last_success_at.isoformat() + 'Z'
                 if state and state.last_success_at else None,
