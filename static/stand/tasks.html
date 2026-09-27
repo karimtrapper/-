@@ -2229,7 +2229,7 @@ function afterPayin(d,text){
 }
 function reqSave(id){
   const d=deal(id); if(!d)return;
-  if(need({p_dev:'получатель',p_amt:'сумма',p_bank:'банк',p_acc:'номер счёта',p_purp:'назначение для банка'}))return;
+  if(need({p_dev:'получатель',p_amt:'сумма',p_bank:'банк',p_acc:'номер счёта'}))return;
   d.payTo={dev:val('p_dev'),amount:num(cleanNum(val('p_amt'))),bank:val('p_bank'),
     acc:val('p_acc'),inv:val('p_inv'),purpose:val('p_purp')};
   d.dev=d.dev||d.payTo.dev; d.bank=d.bank||(d.payTo.bank+' · '+d.payTo.acc);
@@ -2368,7 +2368,9 @@ function docFields(d){
       : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik,
     /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
        USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
-    purpose:isCrypto(d)?'':(d.purposeSet||''),
+    /* Назначение перевода клиента в Сбер пишет операционист в договоре — шаблон он правит,
+       менеджер потом копирует готовое. На сборе документов его ещё никто не знает (Карим, 27.09) */
+    purpose:isCrypto(d)?'':('Оплата по агентскому договору № '+d.code+', НДС не облагается'),
     feeNote:'Комиссия включена в курс, отдельно не взимается',
     validTill:''
   };
@@ -2397,7 +2399,7 @@ const DOC_SRC={fio:'паспорт',fioLat:'паспорт',passNo:'паспор
   kind:'сделка',amountThb:'расчёт',rate:'расчёт',amountPay:'расчёт',rateAt:'момент фиксации курса',
   partNo:'сделка',invoiceTotal:'инвойс',
   agent:'реквизиты MF Corp',agentReg:'реквизиты MF Corp',agentDir:'реквизиты MF Corp',
-  payTo:'реквизиты MF Corp',purpose:'менеджер',feeNote:'шаблон',validTill:'вручную'};
+  payTo:'реквизиты MF Corp',purpose:'пишет операционист',feeNote:'шаблон',validTill:'вручную'};
 function docFieldSave(id){
   const d=deal(id), cur=docFields(d), out={}, ch=[];
   Object.keys(DOC_SRC).forEach(k=>{
@@ -5360,28 +5362,6 @@ function payinDemo(id,kind){
   payinSettle(id);
 }
 
-/* Назначение платежа указывает менеджер — он знает, что требует банк и застройщик
-   (Карим, 25.09). Обязательно и наверху: без него договор не собрать. У крипты
-   назначения нет. Операционист видит его первым полем пакета и может поправить. */
-function purposeSet(id,v){const d=deal(id);d.purposeSet=String(v||'').trim();
-  if(d.docFields&&!d.docVersion) d.docFields.purpose=d.purposeSet;save();}
-function purposeFill(id,kind){const d=deal(id);
-  const inv=parsed(d,'invoice_no'), dev=parsed(d,'recipient_name');
-  const v=kind==='inv'?('Оплата инвойса '+(inv||'№ ___')+(dev?'. '+dev:''))
-    :'Оплата по агентскому договору № '+d.code+', НДС не облагается';
-  d.purposeSet=v; if(d.docFields&&!d.docVersion) d.docFields.purpose=v;
-  log(d,'Назначение платежа: '+v);save();render();}
-function purposeBlock(d){
-  const inv=parsed(d,'invoice_no');
-  return `<div class="fg" style="margin-bottom:14px"><label class="fl">Назначение платежа<span class="rq">*</span>
-      <span class="sub2"> клиент впишет его в перевод — как требует банк и застройщик</span></label>
-    <textarea class="fc${String(d.purposeSet||'').trim()?'':' bad'}" id="p8_purpose" rows="2" placeholder="например: Оплата инвойса BBB1-2026018. Botanica Bangtao Beach 1 Co., Ltd."
-      onchange="purposeSet(${d.id},this.value)">${d.purposeSet||''}</textarea>
-    <div class="row" style="margin-top:6px">
-      <button class="btn btn-outline btn-sm" onclick="purposeFill(${d.id},'agent')">По агентскому договору</button>
-      <button class="btn btn-outline btn-sm" onclick="purposeFill(${d.id},'inv')">По инвойсу${inv?' '+inv:''}</button></div></div>`;
-}
-
 /* ---------- карточки шагов ---------- */
 /* Ожидаемый результат шага. У каждой задачи есть «что должно получиться» — и ради
    этого человек её открыл. Раньше ключевые числа тонули среди пояснений: сумма, курс
@@ -5833,7 +5813,6 @@ function stepCard(d){
     <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Клиент пропал и вернулся через неделю — курс давно другой. «Запросить заново» создаёт операционисту новую задачу, прошлые цифры останутся в истории.</p></div>`;},
 
   s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
-    ${isCrypto(d)?'':purposeBlock(d)}
     ${d.isOld?`<p class="fh" style="margin:-4px 0 10px">Клиент знакомый: паспорт уже лежит в прошлой сделке и в договоре — прикладывать заново не нужно. Если он поменялся, загрузите новый.</p>`:''}
     <div class="list">
       ${/* Паспорт показываем всегда: у знакомого клиента он не обязателен, но если
@@ -5894,7 +5873,7 @@ function stepCard(d){
         ${fld('amountPay','Сумма клиенту, '+ap.sign,{req:1,num:1,big:1,money:1})}
       </div>
       <p class="fh" style="margin-top:2px">Эти три числа уходят в договор, приложение и счёт — их и сверяют с инвойсом. Остальное ниже.</p>
-      ${isCrypto(d)?'':fld('purpose','Назначение платежа — его клиент впишет в перевод',{req:1,area:1})}
+      ${isCrypto(d)?'':fld('purpose','Назначение платежа в Сбер — клиент впишет его в перевод',{req:1,area:1})}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>
@@ -6101,8 +6080,8 @@ function stepCard(d){
       <div class="fg"><label class="fl">Инвойс</label>
         <input class="fc" id="p_inv" value="${(pt.inv||d.invNo||(d.docVersion?docFields(d).invNo:'')||'').replace(/"/g,'&quot;')}" placeholder="INV-4072"></div>
     </div>
-    <div class="fg"><label class="fl">Назначение платежа для банка<span class="rq">*</span>
-        <span class="sub2"> это увидит банк получателя</span></label>
+    <div class="fg"><label class="fl">Назначение платежа для банка застройщика
+        <span class="sub2"> если ещё неизвестно — оставьте пустым: его впишет операционист при оплате</span></label>
       <input class="fc" id="p_purp" value="${(pt.purpose||'').replace(/"/g,'&quot;')}" placeholder="Payment for unit B1204, invoice INV-4072">
       <p class="fh">то, что требует застройщик или его банк: номер юнита, номер инвойса, имя покупателя</p></div>
     <div class="row">${!d._side
@@ -6404,7 +6383,10 @@ function stepCard(d){
       ${line('Банк',pt.bank,1)}
       ${line('Номер счёта',pt.acc,1)}
       ${line('Сумма',money(sum,'฿'),1)}
-      ${line('Назначение для банка',pt.purpose,1)}
+      <div class="payrow" style="flex-direction:column;align-items:stretch">
+        <div class="k">Назначение для банка застройщика<span class="rq" style="color:var(--coral)"> *</span> — правится до оплаты</div>
+        <div class="hrow" style="margin:6px 0 0"><input class="fc" id="pay_purp" value="${(pt.purpose||'').replace(/"/g,'&quot;')}" placeholder="Payment for unit …, invoice …">
+          <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="copyAsk(val('pay_purp'))">копировать</button></div></div>
       ${pt.inv?line('Инвойс',pt.inv,0):''}
     </div>
     <div class="derived" style="margin-top:12px">
@@ -6518,8 +6500,6 @@ function act(id,step){
     }
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
-    if(!isCrypto(d)&&!String(d.purposeSet||'').trim()){toast('Укажите назначение платежа — клиент впишет его в перевод');
-      const el=document.getElementById('p8_purpose');if(el){el.scrollIntoView({block:'center'});el.focus();}return;}
     if(!d.isOld&&!d.docs.pass){toast('Нужен паспорт');return;}
     if(!d.docs.inv){toast('Нужен инвойс');return;}
     d.docComment=c?c.value:'';go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');
@@ -6556,7 +6536,7 @@ function act(id,step){
     if(isCrypto(d))d.pay.usdt=d.incomeAmount;
     afterPayin(d,'Привязано вручную');return;}
   if(step==='s15'){
-    if(need({p_dev:'получатель',p_amt:'сумма',p_bank:'банк',p_acc:'номер счёта',p_purp:'назначение для банка'}))return;
+    if(need({p_dev:'получатель',p_amt:'сумма',p_bank:'банк',p_acc:'номер счёта'}))return;
     d.payTo={dev:val('p_dev'),amount:num(cleanNum(val('p_amt'))),bank:val('p_bank'),
       acc:val('p_acc'),inv:val('p_inv'),purpose:val('p_purp')};
     d.dev=d.dev||d.payTo.dev; d.bank=d.bank||(d.payTo.bank+' · '+d.payTo.acc);
@@ -6725,6 +6705,9 @@ function act(id,step){
     if(!pt.acc){toast('Нет реквизитов — верните задачу менеджеру');return;}
     if(d.postConv==='coins'&&!d.pay.coinsCredit){toast('Сначала подтвердите зачисление батов от Coins на SCB');return;}
     if(d.pay.invoicePaid){toast('Оплата инвойса уже учтена');return;}
+    const purp=String(val('pay_purp')||'').trim();
+    if(!purp){toast('Впишите назначение платежа для банка застройщика');const el=document.getElementById('pay_purp');if(el)el.focus();return;}
+    if(purp!==(pt.purpose||'')){log(d,'Назначение для банка застройщика: '+purp);d.payTo=Object.assign({},pt,{purpose:purp});}
     if(!d.docs.receipt){toast('Приложите чек банка — его отправят клиенту');return;}
     const sum=pt.amount||approx(d).thb||0;
     const taken=balTake('scb',sum,null);

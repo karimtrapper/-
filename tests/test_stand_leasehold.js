@@ -171,6 +171,10 @@ const round2 = x => Math.round(x * 100) / 100;
   assert.equal(d.step, 's26', 'без чека нельзя списать инвойс');
   assert.equal(scb, 2453000);
   d.docs.receipt = true;
+  // назначение для банка застройщика обязательно в момент оплаты (Карим, 27.09)
+  ctx.act(1, 's26');
+  assert.equal(d.step, 's26', 'без назначения для банка не платим');
+  inputs.pay_purp = 'Payment for unit A-101, invoice INV-1';
   ctx.act(1, 's26');
   assert.equal(d.step, 's27');
   assert.equal(scb, 2103000);
