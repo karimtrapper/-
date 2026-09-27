@@ -362,6 +362,27 @@ def test_small_coins_and_client_close_with_payout_hashes_when_pack_confirmed():
     assert sum(1 for n in state['notes'] if n['id'] == 'stand:payout:2') == 1
 
 
+def test_network_confirmation_is_written_to_history_once():
+    """Подтверждение сети по каждому переводу пишется в историю главной (Карим, 27.09)."""
+    state = board()
+    main, small = state['deals']
+    main['step'] = 's24'
+    main['transfer']['sends'] = [{'ref': HASH, 'hash': HASH, 'net': 'TRC-20', 'amount': 100,
+                                  'status': 'confirmed', 'verifiedAmount': 100}]
+    small['postConv'] = 'client'
+    small['transfer']['sends'][0].update(status='confirmed', verifiedAmount=600)
+    appmod._stand_settle_verified(state, state['deals'])
+    texts = [entry['text'] for entry in main.get('log', [])]
+    confirmed = [t for t in texts if t.startswith('Перевод подписан и подтверждён в сети')]
+    assert confirmed == [f'Перевод подписан и подтверждён в сети · {HASH} · 100,00 USDT',
+                         f'Перевод подписан и подтверждён в сети · {HASH} · 600,00 USDT · '
+                         f'{small.get("code") or small["id"]}']
+    assert all(entry['role'] == 'teodor' for entry in main['log']
+               if entry['text'].startswith('Перевод подписан'))
+    appmod._stand_settle_verified(state, state['deals'])
+    assert len([e for e in main['log'] if e['text'].startswith('Перевод подписан')]) == 2
+
+
 def _put_board(state):
     db = appmod.get_session()
     try:

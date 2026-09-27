@@ -5260,6 +5260,23 @@ def _stand_settle_verified(state, members):
             main['mfPayout'] = [{'hash': h['hash'], 'net': h['network'],
                                  'amount': h['amount']} for h in hashes]
             main.setdefault('pay', {})['outHash'] = payout['hash']
+            # В истории — подтверждение сети по каждому переводу пачки: раньше после
+            # «Теодору нужно подписать» сразу шло «известил Coins», и по журналу было не
+            # понять, кто и когда выпустил деньги (аудит 27.09 №7, Карим, 27.09).
+            verb = 'подписан' if multisig else 'отправлен'
+            signer = 'teodor' if multisig else ((wallet or {}).get('role') or 'teodor')
+            logged = datetime.now().strftime('%d.%m, %H:%M')
+            for deal in outgoing:
+                for s in (deal.get('transfer') or {}).get('sends') or []:
+                    if s.get('status') != 'confirmed':
+                        continue
+                    ref = normalize_ref(s.get('hash') or s.get('ref'),
+                                        normalize_network(s.get('net') or 'TRC-20')) or s.get('ref')
+                    main.setdefault('log', []).append({
+                        'ts': logged, 'at': int(time.time() * 1000), 'role': signer,
+                        'text': (f'Перевод {verb} и подтверждён в сети · {ref} · '
+                                 f'{float(s.get("verifiedAmount") or 0):,.2f}'.replace(',', ' ').replace('.', ',') + ' USDT'
+                                 + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
             main['step'] = 's25'
             main['serverTransferComplete'] = True
             # Мелкие сделки пачки с Coins и переводом клиенту: клиент получает деньги,

@@ -283,6 +283,24 @@ a.hash:hover{background:#BAE6FD}
 .doccard .dn{font-weight:700;font-size:13.5px}
 .doccard .df{font-size:12px;color:var(--text-muted);flex:1}
 .paybox{background:var(--navy-50);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-top:14px}
+/* Выбор кошелька карточками: по строке в списке не было видно, чей кошелёк, какой
+   у него адрес и нужен ли мультисиг (Карим, 27.09). На телефоне — в столбик. */
+.wcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px;margin-top:2px}
+.wcard{position:relative;display:flex;flex-direction:column;gap:6px;min-width:0;border:1.5px solid var(--border);
+  border-radius:var(--r-sm);padding:11px 12px 11px 38px;background:var(--bg);cursor:pointer;transition:border-color .15s}
+.wcard input{position:absolute;left:13px;top:13px;width:16px;height:16px;margin:0;cursor:pointer;accent-color:var(--green-dark)}
+.wcard:hover{border-color:var(--navy-400)}
+.wcard.on{border-color:var(--green-dark);background:var(--green-light);box-shadow:inset 0 0 0 1px var(--green-dark)}
+.wcard.bad{opacity:.55;background:var(--navy-50);cursor:not-allowed}
+.wcard.bad input,.wcard.ro input{cursor:not-allowed}
+.wcard.ro{cursor:default}
+.wc-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.wc-o{font-size:12.5px;color:var(--text-muted)}
+.wc-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-sec)}
+@media(max-width:620px){.wcards{grid-template-columns:1fr}}
+/* Суть сделки у Теодора — одна строка на сделку пачки */
+.sumline{font-size:14px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);margin-bottom:8px;overflow-wrap:anywhere}
+.sumline .k{display:block;font-size:12px;color:var(--text-muted);margin-bottom:2px}
 .payrow{display:flex;align-items:flex-start;gap:10px;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border-light)}
 .payrow:last-of-type{border-bottom:none}
 .payrow .k{font-size:12px;color:var(--text-muted)}
@@ -1016,10 +1034,29 @@ function payinWalletSet(id,wid){
   log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+(w.multisig?' · мультисиг':' · личный, отправляет владелец'));
   save();render();toast('Кошелёк прихода: '+w.name);
 }
+/* Имя осталось от select — вызовы и логика payinWalletSet прежние, но выбор теперь
+   карточками: название, владелец, адрес целиком и кто отправляет дальше (Карим, 27.09) */
 function payinWalletSelect(d,disabled){
-  const cur=payinWallet(d);
-  return `<select class="fc" id="pw_${d.id}" onchange="payinWalletSet(${d.id},this.value)" ${disabled?'disabled':''}>
-    ${wallets().map(w=>`<option value="${w.id}"${cur&&cur.id===w.id?' selected':''}>${w.name} · ${w.owner} · ${w.multisig?'мультисиг':'личный'}</option>`).join('')}</select>`;
+  return walletCards(d,payinWallet(d),'payinWalletSet',disabled,'pw_'+d.id);
+}
+const ADDR_RE={'TRC-20':/^T[1-9A-HJ-NP-Za-km-z]{33}$/,'ERC-20':/^0x[0-9a-fA-F]{40}$/};
+function addrValid(a,net){const re=ADDR_RE[net||'TRC-20'];return !!re&&re.test(String(a||'').trim());}
+function walletSends(w){return w.multisig?'мультисиг — подписывает фин дир, одобряет Теодор'
+  :'личный — отправляет сам '+(w.owner||'владелец');}
+/* Карточки-радио вместо списка. Кошелёк без корректного адреса TRC-20 серый и не
+   выбирается: брокер или клиент прислали бы USDT в никуда. Когда выбор уже закреплён
+   (деньги пришли), показываем только выбранный. */
+function walletCards(d,cur,fn,disabled,name){
+  const list=disabled?wallets().filter(w=>cur&&w.id===cur.id):wallets();
+  return `<div class="wcards" role="radiogroup">${list.map(w=>{
+    const ok=addrValid(w.addr,'TRC-20'), on=!!cur&&cur.id===w.id, off=disabled||!ok;
+    return `<label class="wcard${on?' on':''}${ok?'':' bad'}${disabled?' ro':''}">
+      <input type="radio" name="${name}" value="${w.id}"${on?' checked':''}${off?' disabled':''} onchange="${fn}(${d.id},this.value)">
+      <div class="wc-h"><b>${htmlText(w.name)}</b><span class="wc-o">владелец: ${htmlText(w.owner||'—')}</span></div>
+      <div class="addr">${ok?htmlText(w.addr):'нет корректного адреса TRC-20 · '+htmlText(w.addr||'адрес не указан')}</div>
+      <div class="wc-f"><span>${walletSends(w)}</span>${ok?`<button type="button" class="btn btn-outline btn-sm" style="white-space:nowrap"
+        onclick="event.preventDefault();event.stopPropagation();copyAsk(${htmlText(JSON.stringify(w.addr))})">копировать</button>`:''}</div>
+    </label>`;}).join('')}</div>`;
 }
 /* Куда брокер прислал USDT — кошелёк пачки, а не всегда общий кошелёк Груши */
 function cnvTo(c){
@@ -1027,7 +1064,9 @@ function cnvTo(c){
   return {to:w?w.addr:'—',toLabel:w?w.name:'кошелёк'};
 }
 function walletPick(id,wid){
-  const d=deal(id), c=convOf(d);
+  const d=deal(id), c=convOf(d), w=walletById(wid);
+  /* карточка без адреса не выбирается, но и программно такой кошелёк не ставим (Карим, 27.09) */
+  if(w&&!addrValid(w.addr,'TRC-20')){toast('У «'+w.name+'» нет корректного адреса TRC-20 — уточните его');render();return;}
   if(c) c.walletId=wid||null; else d.walletId=wid||null;
   save();render();
 }
@@ -1035,6 +1074,8 @@ function walletFormOn(v){S.walletNew=!!v;save();render();}
 function walletAdd(id){
   if(need({nw_name:'название кошелька',nw_own:'владелец',nw_addr:'адрес'}))return;
   const multi=val('nw_type')==='multisig';
+  if(!addrValid(val('nw_addr'),'TRC-20')){const e=document.getElementById('nw_addr');if(e)e.classList.add('bad');
+    toast('Адрес не похож на кошелёк TRC-20 — T и ещё 33 символа');return;}
   const w={id:'w'+Date.now(),name:val('nw_name'),owner:val('nw_own'),
     role:multi?'findir':'teodor',addr:val('nw_addr'),multisig:multi,
     note:multi?'мультисиг: владелец подписывает, Теодор одобряет':'личный: владелец отправляет сам и вносит хеш'};
@@ -1083,7 +1124,7 @@ function cnvMembers(d){
 function coinsSends(d){
   return cnvMembers(d).filter(x=>x.postConv==='coins').map(x=>{
     const tr=x.transfer||{}, all=sendList(x).filter(t=>t.hash||t.ref), l=all.filter(t=>t.status==='confirmed');
-    return {code:x.code, client:x.client, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
+    return {id:x.id, code:x.code, client:x.client, thb:num(cleanNum(String(tr.thb||'')))||approx(x).thb||0, rate:tr.rate,
       usdt:sendSum(x), hashes:l.map(t=>t.hash||t.ref).filter(Boolean), sends:all};});
 }
 function cnvShareOf(d,x){
@@ -1268,8 +1309,36 @@ function sendAdd(id,demo){
   log(x,'Зарегистрирован перевод '+usd(amount)+' · ждёт подтверждения · '+ref);
   save();render();toast('Добавлено — ждём подтверждения');
 }
-function sendDel(id,i){const x=deal(id),l=sendList(x).slice();if(l[i]?.status==='confirmed'){toast('Подтверждённый перевод нельзя удалить');return;}l.splice(i,1);
-  x.transfer=Object.assign({},x.transfer||{});x.transfer.sends=l;save();render();}
+/* Удаление перевода — в журнал: убрать перевод на десятки тысяч долларов молча
+   было можно (аудит 27.09 №6, Карим, 27.09) */
+function sendDel(id,i){const x=deal(id),l=sendList(x).slice();if(l[i]?.status==='confirmed'){toast('Подтверждённый перевод нельзя удалить');return;}
+  const t=l[i];if(!t)return;l.splice(i,1);
+  x.transfer=Object.assign({},x.transfer||{});x.transfer.sends=l;
+  log(x,'Перевод убран: '+usd(t.amount)+' · '+(t.ref||t.hash||'без хеша')+' · статус был «'+({pending:'ждём подтверждения',failed:'ошибка перевода',mismatch:'не совпали реквизиты',error:'сеть недоступна'}[t.status]||t.status||'—')+'»');
+  save();render();}
+/* Зачем уходит перевод — словами, для цели подписанта и сути сделки у Теодора.
+   Заголовок был «Чем платим получателю — N ฿ застройщику», рядом стоял банк
+   застройщика, и подписант решал, что платит застройщику (аудит 27.09 №4). */
+function sendPurpose(x){
+  const tr=x.transfer||{}, a=(tr.amount||'—')+' USDT';
+  if(x.postConv==='coins') return 'Переводим '+a+' в Coins на конвертацию';
+  if(x.postConv==='client') return 'Переводим '+a+' клиенту на его кошелёк';
+  if(x.postConv==='refund') return 'Возвращаем '+a+' фаундеру'+(tr.to?' ('+tr.to+')':'');
+  if(x.postConv==='ipps') return 'Возвращаем '+a+' на наш кошелёк'+(tr.to?' ('+tr.to+')':'');
+  return 'Переводим '+a;
+}
+function sendHead(d){
+  const l=cnvMembers(d).filter(pcSends);
+  if(!l.length) return 'Отправлять с кошелька нечего';
+  const m=l.find(x=>x.id===d.id)||l[0];
+  return sendPurpose(m)+(l.length>1?' · и ещё '+(l.length-1)+' '+plural(l.length-1,'перевод','перевода','переводов')+' по пачке':'');
+}
+/* Кому принадлежит адрес получателя: «Coins.co.th · TRC-20» */
+function sendTo(x){return ((x.transfer||{}).to||pcDefaultTo(x.postConv,x)||'получатель')+' · '+pcNet(x);}
+/* «Передать Теодору / Андрею / Виталию» — имя владельца в дательном падеже */
+function toWhom(n){n=String(n||'').trim();if(!n)return 'владельцу';
+  if(/й$/.test(n))return n.slice(0,-1)+'ю';if(/[ая]$/.test(n))return n.slice(0,-1)+'е';
+  if(/[бвгджзклмнпрстфхцчшщ]$/i.test(n))return n+'у';return n;}
 function multiFor(x){const w=dealWallet(x);return !w||w.multisig;}
 /* Откуда сумма батов в Coins: получателю + комиссия компании, которая остаётся на SCB
    (Карим, 25.09 — «нужно показывать, почему эта сумма, чтобы было видно процент»).
@@ -1313,12 +1382,17 @@ function pcTaskText(x,k,w){
     /* Coins выплачивает только на счёт MF Corp (SCB), дальше инвойс платим сами. Раньше
        тут стоял банк застройщика из реквизитов: скопировав текст в чат Coins, операционист
        отправил бы баты и комиссию компании прямо застройщику (прогон 25.09). */
-    const where='на счёт MF Corporation Co., Ltd. в SCB';
-    return head+'нужно выдать '+money(thb,'฿')+' '+where+'. '+
-      (tr.rate&&tr.amount
-        ? 'По курсу '+tr.rate+' это '+tr.amount+' USDT — отправим с '+from+'.'
-        : 'Курс по этой сделке ещё не назван — как назовёте, посчитаем сумму USDT и отправим.')+
-      ' Оплата от MF Corporation.';
+    /* Задача Coins одной строкой: сколько, с какого кошелька, на какой их адрес, в какой
+       сети и зачем — адреса целиком. Имени клиента нет: текст уходит третьей стороне
+       (Карим, 27.09). Адрес Coins берём из поля «Кошелёк получателя». */
+    const pt=x.payTo||{}, inv=pt.amount||x.amountThb||ap2.thb||0;
+    const src=w?'с кошелька '+w.name+' ('+w.addr+')':'с нашего кошелька';
+    const dst=tr.addr?'на кошелёк Coins ('+tr.addr+')':'на кошелёк Coins — впишите адрес';
+    return 'Сделка '+x.code+'. '+(tr.amount?'Отправляем '+tr.amount+' USDT ':'Отправляем USDT (сумма — после курса) ')+
+      src+' '+dst+', сеть '+net+', на конвертацию. '+
+      'Нужно '+money(thb,'฿')+' на счёт MF Corporation Co., Ltd. в SCB — для оплаты инвойса застройщику ('+
+      money(inv,'฿')+(pt.dev?', '+pt.dev:'')+'). '+
+      (tr.rate?'Курс '+tr.rate+'.':'Курс ещё не назван.')+' Оплата от MF Corporation.';
   }
   if(k==='ipps')  return tr.back
     ? head+'вернуть '+(tr.amount||'сумму уточняем')+' USDT на '+(tr.to||'кошелёк')+' — '+to+'. Получателю баты ушли с баланса IPPS.'
@@ -1550,6 +1624,11 @@ function quoteSet(id,cpId,dir){
 function quoteEdit(id,cpId,dir){S.qEdit=(S.qEdit===cpId+'|'+dir?null:cpId+'|'+dir);save();render();}
 function quoteDel(id,cpId,dir){
   const d=deal(id);
+  /* Ответ убрали — значит, его не было или записали не тому контрагенту. Без этой
+     строки в журнале оставался курс, которого контрагент не давал (Tradex 82,10,
+     аудит 27.09 №22, Карим, 27.09) */
+  const q=(d.quotes||[]).find(x=>x.cpId===cpId&&x.dir===dir), c=cpById(cpId);
+  if(q) log(d,'Курс убран — '+(c?c.name:q.name)+' ('+(dir==='rub'?'RUB→USDT':'USDT→THB')+'): '+q.rate+' — в расчёте его больше нет');
   d.quotes=(d.quotes||[]).filter(q=>!(q.cpId===cpId&&q.dir===dir));
   quoteApply(d); save();render();
 }
@@ -2070,6 +2149,12 @@ function hashLink(hash,net,amount){
     `<a class="hash" href="${explorer(hash,n)}" target="_blank" rel="noopener">${hash}</a> `+
     `<span class="cp" title="Скопировать" onclick="event.stopPropagation();copyHash('${hash}')">📋</span>`;
 }
+/* Все хеши прихода, а не первый: приход бывает частями, в т. ч. тестовым переводом,
+   и по одному хешу происхождение денег не сверить (аудит 27.09 №18, Карим, 27.09) */
+function payinHashRows(txs){
+  return (txs||[]).filter(t=>t&&t.hash).map(t=>hashLink(t.hash,t.net||t.network,t.amount)+
+    (String(t.hash).startsWith('demo:')&&t.amount!=null?' <b class="pos">+'+usd(t.amount)+'</b>':'')).join('<br>');
+}
 /* Хеш крупно и целиком — для шага «Известить Coins», где хеш и есть главная задача,
    а не мелкая подпись в таблице (Карим, 25.09). Перенос — только по символам
    (.hashtxt ниже), обрезки нет: Coins сверяет хеш посимвольно. */
@@ -2406,7 +2491,10 @@ function docFieldSave(id){
     const el=document.getElementById('df_'+k); if(!el)return;
     const v=el.value.trim();
     out[k]=v;
-    if(String(cur[k]==null?'':cur[k])!==v) ch.push(k);
+    /* Числа сравниваем как числа: «650000» в сделке и «650 000» в поле — одно и то же,
+       а в журнал уходило «Поля пакета поправлены вручную» (аудит 27.09 №22, Карим, 27.09) */
+    const a=String(cur[k]==null?'':cur[k]), n=t=>{t=t.replace(/[\s\u00a0]/g,'').replace(',','.');return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):null;};
+    if(n(a)!=null&&n(v)!=null?n(a)!==n(v):a!==v) ch.push(k);
   });
   d.docFields=out;
   return ch;
@@ -4105,6 +4193,24 @@ function txUsed(hash){ return S.deals.some(d=>(d.payinHashes||[]).some(h=>h.hash
    во сколько обойдутся баты, которые мы должны. Видно сразу, в плюсе мы или нет
    (Карим, 22.09). */
 function brokerDraft(id,v){const d=deal(id);d.brokerDraft=cleanNum(v);save();render();}
+/* Брокер на отправке — тот, чей курс взят в расчёт клиенту (quoteUsed), а не зашитый
+   Tradex: рубли уходили одному брокеру по курсу другого (аудит 27.09 №1). Сменили
+   брокера — подставляем его ответ со шага курсов; не давал — поле пустое, курс
+   вписывают руками (Карим, 27.09). brokerDraft===null — поле ещё не трогали. */
+function brokerName(n){return String(n||'').split(' · ')[0].trim();}
+function brokerOpts(){
+  const l=BROKERS.slice(0,-1);
+  cps().filter(c=>cpDir(c,'rub')).forEach(c=>{const n=brokerName(c.name);if(n&&l.indexOf(n)<0)l.push(n);});
+  return l.concat(BROKERS.slice(-1));
+}
+function brokerQuote(d,b){return b?(quotes(d,'rub').find(q=>brokerName(q.name)===b&&num(q.rate))||null):null;}
+function brokerPicked(d){if(d.brokerPick)return d.brokerPick;const q=quoteUsed(d,'rub');return q?brokerName(q.name):'';}
+function brokerRate(d){if(d.brokerDraft!=null)return d.brokerDraft;const q=brokerQuote(d,brokerPicked(d));return q?q.rate:'';}
+function brokerPickSet(id,v){
+  const d=deal(id), q=brokerQuote(d,v);
+  d.brokerPick=v||null; d.brokerDraft=q?q.rate:'';
+  save();render();
+}
 function convMargin(d,total,rate){
   const ut=num(d.rates.usdtThb)||avgUsdt();
   if(!rate||!ut||!total) return null;
@@ -4120,7 +4226,7 @@ function convMargin(d,total,rate){
     minRate:thb?sent/(thb/ut):null};
 }
 function convMarginBlock(d,total){
-  const rate=num(d.brokerDraft||d.rates.broker);
+  const rate=num(brokerRate(d)||d.rates.broker);
   if(!rate) return `<div class="alert a-info"><div>Поставьте курс брокера — сразу посчитаем, в плюсе мы по этой пачке или нет.</div></div>`;
   const m=convMargin(d,total,rate);
   if(!m) return '';
@@ -5406,10 +5512,16 @@ function stepGoal(d){
          добранных обменах цифра расходилась с тем, что ниже в карточке. */
       const own=d.incomeAmount||d.amountRub||0;
       const добрано=exSum((d.conv||[]).map(deal).filter(Boolean));
+      /* Брокеру уходит сумма за вычетом удержания 0,3 % + 40 ₽ — её и показываем
+         главной, сумма от клиента — подписью: сверка с заявкой брокера расходилась
+         на 5 227 ₽ (аудит 27.09 №2, Карим, 27.09) */
+      const bs=brokerSend(own+добрано), bp=brokerPicked(d);
       return {t:'Отдать рубли брокеру и зафиксировать курс',
-        nums:[['К отправке',money2(own+добрано,'₽')+(добрано?' · из них по сделке '+money2(own,'₽'):'')],
-              ['Курс брокера',d.rates.broker||'спросить'],
-              ['Сделок в пачке',String(1+((d.conv||[]).length))]]};})();
+        nums:[['Уйдёт брокеру',own+добрано?moneyKop(bs.sent,'₽'):'—'],
+              ['Курс брокера',(brokerRate(d)||'спросить')+(bp?' · '+bp:'')],
+              ['Сделок в пачке',String(1+((d.conv||[]).length))]],
+        sub:'Пришло от клиента '+money2(own,'₽')+(добрано?' + мелкие обмены '+money2(добрано,'₽'):'')+
+          ' · удержание '+moneyKop(bs.held,'₽')+' (0,3 % + 40 ₽) брокеру не уходит'};})();
     case 's18w': return (function(){
       /* Как и на отправке: брокеру ушла вся пачка, а шапка показывала одну сделку
          и считала удержание так, будто она одна (прогон 24.09). */
@@ -5417,16 +5529,20 @@ function stepGoal(d){
       const plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):(E.parts[0].calc);
       const rub=c?c.sources.reduce((s,x)=>s+(x.rub||0),0):(d.incomeAmount||d.amountRub);
       const n=c?c.sources.length:1;
+      /* «Отправлено» — то, что реально ушло брокеру (c.sent), а не сумма от клиента (27.09) */
       return {t:'Получить USDT и хэш — это факт прихода',
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
-              ['Отправлено',money2(rub,'₽')+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]]};})();
+              ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
+        sub:c&&c.sent?'пришло от клиента '+money2(rub,'₽')+' · удержано '+moneyKop(c.held,'₽'):''};})();
     case 's22': return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
             ['Кошелёк',(dealWallet(d)||{}).name||'не выбран'],
             ['Подпись',dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
     case 's23': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
-      return {t:(dealWallet(d)&&dealWallet(d).multisig)
+      /* цель — зачем уходят деньги, а не «чем платим получателю» (аудит 27.09 №4) */
+      return {t:sendHead(d),
+        sub:(dealWallet(d)&&dealWallet(d).multisig)
         ?(n>1?'Подписать '+n+' перевода — дальше их одобрит Теодор':'Подписать перевод — дальше его одобрит Теодор')
         :(n>1?'Отправить '+n+' перевода и внести хеш по каждому':'Отправить перевод и внести хеш'),
       nums:[['К отправке',usd(pcOut(d))],
@@ -5434,14 +5550,19 @@ function stepGoal(d){
             ['С кошелька',(dealWallet(d)||{}).name||'не выбран']]};}
     case 's24': {
       const n=cnvMembers(d).filter(x=>pcSends(x)).length;
-      return {t:'Одобрить вторым ключом — деньги уйдут в сеть',
+      return {t:'Проверить суть сделки и подписать перевод в кошельке',
       nums:[['Сумма',usd(pcOut(d))],['Переводов',String(n)],['Подписей','1 из 2']]};}
     case 's25': {
       const cs=coinsSends(d), sum=Math.round(cs.reduce((s,x)=>s+x.usdt,0)*100)/100;
       /* Хеш — главное, что уходит Coins, поэтому его видно уже в шапке шага,
          не только в таблице ниже (Карим, 25.09) */
       const hashRows=cs.flatMap(x=>x.hashes.map(h=>[cs.length>1?'Хеш · '+x.code:'Хеш',h]));
-      return {t:'Известить Coins и приложить чек конвертации',
+      /* Две фазы — две цели: сначала известить Coins, потом сверить баты на SCB.
+         «Приложить чек конвертации» убрано — загрузки на шаге нет (аудит 27.09 №13, 14) */
+      if(d.pay.coinsNotified) return {t:'Сверить поступление батов на SCB и внести факт',
+        nums:[['Ждём на SCB',money2(cs.reduce((s,x)=>s+x.thb,0),'฿')],['Ушло в Coins',sum?usd(sum):'—'],
+              ['Счёт','MF Corporation · SCB']]};
+      return {t:'Известить Coins: суммы и хеши переводов',
         nums:[['Ушло в Coins',sum?usd(sum):'—'],['Переводов',String(cs.reduce((s,x)=>s+x.hashes.length,0))],
               ['Выдать',money2(cs.reduce((s,x)=>s+x.thb,0),'฿')]],
         rows:hashRows};}
@@ -5478,10 +5599,9 @@ function walletLine(w){
     <button class="btn btn-outline btn-sm" style="margin-left:auto;white-space:nowrap"
       onclick="copyAsk(${JSON.stringify(w.addr).replace(/"/g,'&quot;')})">копировать адрес</button></div>`;
 }
+/* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d){
-  const w=dealWallet(d);
-  return `${w?walletLine(w):''}
-    ${S.walletNew?`<div class="paybox" style="margin-top:12px">
+  return `${S.walletNew?`<div class="paybox" style="margin-top:12px">
       <div class="chtitle" style="margin-bottom:10px">Новый кошелёк <span>появится в списке и встанет в эту сделку</span></div>
       <div class="fr">
         <div class="fg"><label class="fl">Название<span class="rq">*</span></label>
@@ -5571,8 +5691,9 @@ function pcCard(d,x,share,w){
         <input class="fc" id="cto_${x.id}" value="${tr.to||pcDefaultTo(k,x)}"
           onchange="transferSet(${x.id},'to',this.value)"></div>
       <div class="fg"><label class="fl">Кошелёк получателя<span class="rq">*</span></label>
-        <input class="fc addr" id="cad_${x.id}" value="${tr.addr||''}" placeholder="адрес целиком, без сокращений"
-          onchange="transferSet(${x.id},'addr',this.value)"></div>`}
+        <input class="fc addr${tr.addr&&!addrValid(tr.addr,pcNet(x))?' bad':''}" id="cad_${x.id}" value="${htmlText(tr.addr||'')}" placeholder="адрес целиком, без сокращений"
+          onchange="transferSet(${x.id},'addr',this.value)">
+        ${tr.addr&&!addrValid(tr.addr,pcNet(x))?`<p class="fh neg">Это не адрес ${pcNet(x)}: ${pcNet(x)==='ERC-20'?'0x и 40 знаков 0–9, a–f':'T и ещё 33 символа'}. Проверьте адрес и сеть.</p>`:''}</div>`}
       <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label>
         <select class="fc" id="cnt_${x.id}" onchange="transferSet(${x.id},'net',this.value)">
           ${NETS.map(n=>`<option${pcNet(x)===n?' selected':''}>${n}</option>`).join('')}</select>
@@ -5609,10 +5730,10 @@ function sendBlock(x,edit,multi){
       ${x.demoTransfers?'<span class="src">DEMO</span>':''}</div>
       <p class="addr" style="word-break:break-all">${htmlText(t.ref)}</p>
       ${t.checkError?`<p class="fh neg">${htmlText(t.checkError)}</p>`:''}
-      <div class="row"><button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>
+      <div class="row sops"><button class="btn btn-outline btn-sm" onclick="copyAsk(${htmlText(JSON.stringify(String(t.ref)))})">Копировать</button>
       ${edit&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="sendDel(${x.id},${i})">Убрать</button>`:''}
-      ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">Вебхук · демо: перевод подтверждён</button>
-      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">Вебхук · демо: перевод не прошёл</button>`:''}</div></div>`).join('');
+      ${canDemo&&t.status!=='confirmed'?`<button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'confirmed')">Вебхук · демо — перевод подтверждён в сети</button>
+      <button class="btn btn-outline btn-sm" onclick="demoSend(${x.id},${i},'failed')">Вебхук · демо — перевод не прошёл</button>`:''}</div></div>`).join('');
   return `<div class="hashbox" style="margin-top:10px">
     ${rows||'<div class="hempty">Переводов ещё нет</div>'}
     ${edit?`<div class="fr" style="margin-top:10px">
@@ -5641,7 +5762,11 @@ function taskFacts(d,x){
     ${f('Клиент',x.client,SOURCES[x.source]?('из '+SOURCES[x.source]+(x.sourceRef?' · '+x.sourceRef:'')):'')}
     ${f('Клиент заплатил',paid||'—',(x.payType||'')+(x.readyAt?' · без задачника':''))}
     ${f('Стало USDT',fact!=null?usd(fact):'—',c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
-    ${f('Получателю',ap2.thb?money(ap2.thb,'฿'):'—',x.bank||'')}
+    ${x.postConv==='coins'
+      /* Банк застройщика здесь не показываем: подписант читал его рядом с адресом
+         Coins и думал, что платит застройщику (аудит 27.09 №4, Карим, 27.09) */
+      ?f('Coins выдаст на SCB MF Corp',money(num(cleanNum(String(tr.thb||'')))||coinsThb(x),'฿'),'из них инвойс '+money((x.payTo||{}).amount||ap2.thb,'฿'))
+      :f('Получателю',ap2.thb?money(ap2.thb,'฿'):'—','')}
   </div>`;
 }
 
@@ -5677,7 +5802,7 @@ function packTasks(d,edit){
             <span style="font-weight:500;color:var(--text-muted)">${pcNet(x)}</span></span></div>
         ${taskFacts(d,x)}
         <div class="payrow">
-          <div style="min-width:0"><div class="k">Адрес получателя · ${tr.to||'—'}</div>
+          <div style="min-width:0"><div class="k">Адрес получателя · ${htmlText(sendTo(x))}</div>
             <div class="v addr">${tr.addr||'адрес не указан'}</div></div>
           <button class="btn btn-outline btn-sm" style="white-space:nowrap"
             onclick="copyAsk(${JSON.stringify(tr.addr||'').replace(/"/g,'&quot;')})">копировать адрес</button></div>
@@ -5687,6 +5812,36 @@ function packTasks(d,edit){
       got!=null?` из пришедших <b>${usd(got)}</b>`:''}${
       (got!=null&&got-out>0.01)?` — на кошельке останется <b>${usd(Math.round((got-out)*100)/100)}</b>`:''}.</p>
   </div>`;
+}
+/* Суть сделки для Теодора — по его шаблону из Telegram: получили → брокер выдал →
+   отправляем → что остаётся. Все числа из уже посчитанного: пачка, задачи перевода,
+   econ() — своих формул здесь нет (Карим, 27.09). По строке на сделку пачки. */
+function signSummary(d){
+  const c=convOf(d), w=dealWallet(d);
+  const wl=w?htmlText(w.name)+' (<span class="addr">'+htmlText(w.addr)+'</span>)':'наш кошелёк';
+  const hs=l=>(l||[]).filter(h=>h&&h.hash).map(h=>'<span class="addr">'+htmlText(h.hash)+'</span>').join(', ')||'хешей нет';
+  return cnvMembers(d).map(x=>{
+    const tr=x.transfer||{}, E=econ(x), pt=x.payTo||{}, k=x.postConv;
+    const src=c?(c.sources||[]).find(y=>y.dealId===x.id):null;
+    const share=src?(src.usdtFact!=null?src.usdtFact:src.usdt):null;
+    const payers=[...new Set((x.payinParts||[]).map(p=>p.payer).filter(Boolean))].join(', ')||x.client;
+    const bits=[];
+    if(isCrypto(x)) bits.push('Получили '+usd(hashSum(x.payinHashes)||x.pay.usdt)+' от клиента на '+wl+' (хеши прихода: '+hs(x.payinHashes)+')');
+    else{
+      bits.push('Получили '+money(x.incomeAmount||x.amountRub,'₽')+' по реквизитам ('+htmlText(payers)+')');
+      bits.push(c?'брокер '+htmlText(c.broker)+' выдал '+usd(share)+' на '+wl+' (хеши прихода: '+hs(c.txs)+')':'конвертации не было');
+    }
+    const amt='<b>'+htmlText(tr.amount||'—')+' USDT</b>', to='<span class="addr">'+htmlText(tr.addr||'адрес не указан')+'</span>';
+    if(k==='coins') bits.push('отправляем '+amt+' на кошелёк Coins '+to+' ('+pcNet(x)+') на конвертацию '+
+      money(num(cleanNum(String(tr.thb||'')))||coinsThb(x),'฿')+' для оплаты инвойса '+htmlText(pt.dev||x.dev||'застройщику'));
+    else if(k==='client') bits.push('отправляем '+amt+' клиенту на '+to+' ('+pcNet(x)+')');
+    else if(k==='refund'&&pcSends(x)) bits.push('возвращаем '+amt+' фаундеру '+htmlText(tr.to||'')+' на '+to+' ('+pcNet(x)+')');
+    else if(k==='ipps'&&pcSends(x)) bits.push('возвращаем '+amt+' на '+htmlText(tr.to||'наш кошелёк')+' '+to);
+    else bits.push('с кошелька по этой сделке ничего не уходит'+(share!=null?' — '+usd(share)+' остаются на кошельке':''));
+    if(pcSends(x)&&E.ready&&E.crypto!=null) bits.push((E.crypto<0?'<b class="neg">по сделке не хватает '+usd(-E.crypto)+'</b> — доплата из денег пачки':'на кошельке остаётся '+usd(E.crypto))+
+      (E.pockets==='два'&&E.feeThb!=null?', в компании (SCB) остаётся '+money(E.feeThb,'฿'):''));
+    return `<div class="sumline"><span class="k">${x.code}${x.id===d.id?'':' · в пачке'} · ${htmlText(x.type)}${x.kind?' · '+htmlText(x.kind):''}</span>${bits.join(' → ')}</div>`;
+  }).join('');
 }
 function stepCard(d){
   const ap=approx(d),F=fake(d);
@@ -5977,8 +6132,7 @@ function stepCard(d){
     ${isCrypto(d)?`<div class="chtitle" style="margin-top:18px">Как ждём приход
       <span>наблюдатель узнаёт перевод клиента по кошельку, а не по сумме — клиент часто сначала шлёт тест</span></div>
     <div class="fr">
-      <div class="fg"><label class="fl">На наш кошелёк</label>${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
-        <p class="fh addr" style="word-break:break-all">${(payinWallet(d)||{}).addr||''} · TRC-20</p></div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">На наш кошелёк · сеть TRC-20</label>${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}</div>
       <div class="fg w2"><label class="fl">С кошелька клиента<span class="rq">*</span></label>
         <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="T… · сеть TRC-20" onchange="payerWalletSet(${d.id},this.value)" ${d.payerUnknown?'disabled':''}>
         <label class="fh" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pwu_${d.id}" ${d.payerUnknown?'checked':''} onchange="payerUnknownSet(${d.id},this.checked)">
@@ -5993,8 +6147,7 @@ function stepCard(d){
       const exp=ap.pay, got=payinGot(d), left=rnd2(exp-got), hs=d.payinHashes||[], w=payinWallet(d)||{}, pt=(d.docFields||{}).payTo;
       return `<div class="fr">
       <div class="fg"><label class="fl">Ждём</label><input class="fc num" readonly value="${money(exp,'USDT')}"></div>
-      <div class="fg"><label class="fl">Наш кошелёк</label>${payinWalletSelect(d,!!(d.incomeAmount||hs.length))}
-        <p class="fh addr" style="word-break:break-all">${w.addr||''} · TRC-20</p></div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">Наш кошелёк · сеть TRC-20</label>${payinWalletSelect(d,!!(d.incomeAmount||hs.length))}</div>
       <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± ${PAYIN_TOL} USDT"></div>
     </div>
     ${(w.addr&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:''}
@@ -6093,8 +6246,10 @@ function stepCard(d){
     const sel=(d.conv||[]).filter(x=>deal(x));
     const selD=sel.map(deal);
     const free=extra.filter(x=>sel.indexOf(x.id)<0);
-    const base=d.amountRub||ap.rub||0;
+    /* та же сумма, что уйдёт в пачку при отправке (act s18): факт прихода, а не расчёт */
+    const base=d.incomeAmount||d.amountRub||ap.rub||0;
     const total=base+exSum(selD);
+    const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
     return `<div class="card"><div class="card-title">Отправка брокеру для конвертации<span class="sub">курс берётся на общий объём</span></div>
     ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — их можно отправить брокеру этим же переводом и по этому же курсу. Наценка по ним ≈ ${money(exMargin(free),'₽')}. Не возьмёте — полежат до следующего обмена.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap" onclick="convAll(${d.id})">Взять все</button></div>`:''}
@@ -6130,19 +6285,22 @@ function stepCard(d){
     <div class="fr" style="margin-top:14px">
       <div class="fg"><label class="fl">Объём обмена</label><input class="fc num" readonly value="${money(total,'₽')} · ${1+sel.length} сдел."></div>
       <div class="fg"><label class="fl">Брокер<span class="rq">*</span></label>
-        <select class="fc" id="b0">${BROKERS.map(x=>`<option${x==='Tradex'?' selected':''}>${x}</option>`).join('')}</select></div>
+        <select class="fc" id="b0" onchange="brokerPickSet(${d.id},this.value)">
+          <option value="">— выбрать брокера —</option>
+          ${brokerOpts().map(x=>`<option${x===bp?' selected':''}>${htmlText(x)}</option>`).join('')}</select>
+        <p class="fh">${used&&brokerName(used.name)===bp?'его курс взят в расчёт клиенту'
+          :(used?'в расчёте клиенту был '+htmlText(brokerName(used.name))+', '+used.rate:'курсов брокеров в сделке нет')}</p></div>
       <div class="fg"><label class="fl">Курс обмена RUB→USDT<span class="rq">*</span></label>
-        <input class="fc num" id="b1" value="${d.brokerDraft||''}" placeholder="81,40"
-          oninput="rememberFocus();brokerDraft(${d.id},this.value)"></div>
+        <input class="fc num" id="b1" value="${htmlText(brokerRate(d))}" placeholder="курс брокера, ₽ за 1 USDT"
+          oninput="rememberFocus();brokerDraft(${d.id},this.value)">
+        <p class="fh">${bp?(bq?'на шаге курсов '+htmlText(bp)+' давал '+bq.rate+' — подтвердите у брокера':htmlText(bp)+' курс не давал — впишите, что он назвал'):'сначала выберите брокера'}</p></div>
       <div class="fg"><label class="fl">Уйдёт брокеру<span style="color:var(--text-muted);font-weight:400"> за вычетом удержания</span></label>
         <input class="fc num" readonly value="${(function(){const b=brokerSend(total);return moneyKop(b.sent,'₽');})()}"></div>
       <div class="fg"><label class="fl">Ждём примерно<span style="color:var(--text-muted);font-weight:400"> по курсу дня</span></label>
         <input class="fc num" readonly value="${(function(){const r=num(d.rates.broker)||num(d.rates.rubUsdt)||81.4;return usd(brokerSend(total).sent/r);})()}"></div>
-      <div class="fg w2"><label class="fl">Куда брокер пришлёт USDT<span class="rq">*</span></label>
-        <select class="fc" id="b2" onchange="walletPick(${d.id},this.value)">
-          <option value="">— выбрать кошелёк —</option>
-          ${wallets().map(w=>`<option value="${w.id}"${d.walletId===w.id?' selected':''}>${w.name} · ${w.owner}${w.multisig?' · мультисиг':' · одна подпись'}</option>`).join('')}
-        </select>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">Куда брокер пришлёт USDT · сеть TRC-20<span class="rq">*</span></label>
+        <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
+        ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}
         <p class="fh">от владельца зависит, кто отправляет дальше: мультисиг — фин дир и вторая подпись, личный — владелец сам</p></div>
     </div>
     ${walletBlock(d)}
@@ -6154,7 +6312,7 @@ function stepCard(d){
     </div>
     ${convMarginBlock(d,total)}
     <div class="alert a-info"><div>Сейчас фиксируем только состав и курс, который назвал брокер. USDT придут позже — сумму и хеш впишете на следующем шаге, когда они реально появятся на кошельке.</div></div>
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18')">Рубли отправлены брокеру</button></div></div>`;},
+    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18')">Отправил брокеру — ждём USDT</button></div></div>`;},
 
   s18w:()=>{
     const c=convOf(d), plan=c?c.sources.reduce((s,x)=>s+(x.usdt||0),0):null;
@@ -6163,7 +6321,8 @@ function stepCard(d){
       <span class="sub">${c?c.name+' · '+c.broker:'пачка не найдена'}</span></div>
     <div class="alert a-warn"><div>Рубли ушли ${c?c.at:''} — ждём USDT. Пока не пришли, отправлять получателю нечего: на кошельке денег нет.</div></div>
     <div class="fr">
-      <div class="fg"><label class="fl">Отправлено брокеру</label><input class="fc num" readonly value="${c?money(c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽'):'—'}"></div>
+      <div class="fg"><label class="fl">Отправлено брокеру</label><input class="fc num" readonly value="${c?(c.sent?moneyKop(c.sent,'₽'):money(c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')):'—'}">
+        ${c&&c.sent?`<p class="fh">пришло от клиента ${money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')} · удержано ${moneyKop(c.held,'₽')}</p>`:''}</div>
       <div class="fg"><label class="fl">Курс заявки</label><input class="fc num" readonly value="${c?c.rate:'—'}"></div>
       <div class="fg"><label class="fl">Ждём по курсу</label><input class="fc num" readonly value="${plan!=null?usd(plan):'—'}"></div>
     </div>
@@ -6219,7 +6378,7 @@ function stepCard(d){
 
     ${(gap!=null&&gap<-0.01)?`<div class="alert a-warn"><div><b>Пришло меньше, чем ждали.</b> Разница ${usd(Math.abs(gap))} — либо брокер недослал, либо ждём второй перевод. Добавьте его, когда придёт, или закройте шаг как есть: прибыль посчитается от фактической суммы.</div></div>`:''}
     <div class="alert a-info"><div>Сумму не вводим руками — она приходит вместе с транзакцией. Переводов может быть несколько, они суммируются. Дальше прибыль считается от этой суммы, а не от расчёта по курсу.</div></div>
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">USDT получены — к отправке</button>
+    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">USDT получены — решить, что с ними делать</button>
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни это запрос брокеру')">Брокер задерживает</button></div></div>`;},
 
   s22:()=>{
@@ -6253,7 +6412,11 @@ function stepCard(d){
       `<div class="alert a-ok"><div>${needsSecondSign(d)
         ? 'Кошелёк с мультисигом: <b>'+walletSigner(w)+'</b> подписывает переводы, <b>Теодор</b> одобряет — тогда они уходят в сеть.'
         : 'Личный кошелёк <b>'+((w||{}).owner||'владельца')+'</b>: он отправляет сам и вносит хеши. Второй подписи нет.'}</div></div>`}
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s22')">${out?'Дальше — платёж':'Дальше'}</button></div></div>`;},
+    ${(function(){
+      /* Кнопка называет, что произойдёт: кому уходит перевод (аудит 27.09 №26) */
+      const t=!mem.some(x=>pcSends(x))?(d.type==='Оплата недвижимости'?'Дальше — оплата инвойса':'Дальше')
+        :(needsSecondSign(d)?'Передать фин диру на подпись':'Передать '+toWhom((w||{}).owner)+' на отправку');
+      return `<div class="row"><button class="btn btn-success" onclick="act(${d.id},'s22')">${t}</button></div>`;})()}</div>`;},
 
   s23:()=>{
     const need=ap.thb||0, rate=num(d.rates.usdtThb)||avgUsdt();
@@ -6263,7 +6426,7 @@ function stepCard(d){
     const got=c?c.txs.reduce((s,x)=>s+(x.amount||0),0):null;
     const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
     const cost=sObj.cur==='usdt'?need/rate:null;
-    return `<div class="card"><div class="card-title">Чем платим получателю<span class="sub">${money(need,'฿')} застройщику</span></div>
+    return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}<span class="sub">${(dealWallet(d)||{}).name?'с кошелька '+htmlText(dealWallet(d).name):''}</span></div>
 
     ${c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${c.name} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
@@ -6272,7 +6435,7 @@ function stepCard(d){
         ${c.held?trow('Удержано',moneyKop(c.held,'₽'),'валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' · на рублёвый счёт '+moneyKop(c.feeOurs||0,'₽')+' (отдельный контур)'):''}
         ${c.sent?trow('Отправлено брокеру',moneyKop(c.sent,'₽'),'по курсу '+c.rate):''}
         ${got!=null?trow('Получено USDT',usd(got),plan!=null&&Math.abs(got-plan)>0.01?('ждали '+usd(plan)+', разница '+usd(got-plan)):'сошлось с заявкой'):trow('Получено USDT','ещё не пришли','пачка в статусе «рубли ушли»')}
-        ${c.txs.length?trow('Хеш прихода',hashLink(c.txs[0].hash,c.txs[0].net)+'<br><span style="font-size:12px;color:var(--text-muted)">'+(c.txs[0].to||'')+(c.txs[0].toLabel?' · '+c.txs[0].toLabel:'')+'</span>'):''}
+        ${c.txs.length?trow(c.txs.length>1?'Хеши прихода ('+c.txs.length+')':'Хеш прихода',payinHashRows(c.txs)):''}
         ${trow('Доля этой сделки',usd(mine.usdt),money(mine.rub,'₽')+' из общего прихода')}
       </table>
       ${c.sources.length>1?`<p style="font-size:12.5px;color:var(--text-muted);margin-top:10px">В пачке также: ${c.sources.filter(x=>x.dealId!==d.id).map(x=>(deal(x.dealId)||{}).code+' '+x.payer+' — '+usd(x.usdt)).join(' · ')}</p>`:''}
@@ -6286,49 +6449,25 @@ function stepCard(d){
       <div class="fg"><label class="fl">Что проверили — это увидит Теодор</label>
         <textarea class="fc" id="c" placeholder="Деньги на кошельке, адреса сверены с задачами операциониста">${d.pay.check||''}</textarea></div>
       <div class="alert a-warn"><div>Кошелёк с мультисигом: <b>${walletSigner(w)}</b> завешивает каждый перевод и подписывает первым — будет 1 из 2, дальше одобряет Теодор. Транзакция живёт сутки: не одобрят — завешивать заново.</div></div>
-      <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s23')">Подписал всё — передать Теодору</button></div>`
+      <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s23')">Подписал — передать Теодору</button></div>`
       :`
       <div class="alert a-info"><div>Личный кошелёк <b>${w?w.owner:'владельца'}</b> — второй подписи нет. Отправьте переводы и внесите хеш по каждому: по ним приход сойдётся, когда сделку будут сводить.</div></div>
-      <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s23')">Отправил — хеши внесены</button></div>`;})()}
+      <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s23')">Отправил — проверить перевод в сети</button></div>`;})()}
     </div>`;},
 
   s24:()=>{
-    const c=convOf(d), rate=num(d.rates.usdtThb)||avgUsdt();
-    const mine=c?(c.sources.find(x=>x.dealId===d.id)||{}):{};
+    /* Теодору — суть сделки и ни одной кнопки: подпись ставится в кошельке, дальше
+       шаг уводит подтверждение сети (на стенде — демо-вебхук). Инструменты фин дира
+       («Добавить хеш», «Убрать», «Проверить») у него убраны: второй подписант мог
+       подменить перевод (аудит 27.09 №5, 6, Карим, 27.09) */
     const sObj=SOURCES_PAY[d.paySrc]||SOURCES_PAY.coins;
-    return `<div class="card"><div class="card-title">Вторая подпись<span class="sub">подпишите в кошельке — сервис дождётся подтверждения сети</span></div>
-
-    ${packTasks(d,true)}
-    <div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
-      <div class="sec po" style="margin:0 0 10px">ЧТО ПОДПИСЫВАЕТЕ</div>
-      <table class="tbl">
-        ${trow('Сумма',usd(pcAmount(d)),'уйдёт с: '+((dealWallet(d)||{}).name||'кошелёк не выбран')+' · <span class="addr">'+((dealWallet(d)||{}).addr||'адрес не указан')+'</span>')}
-        ${trow('Кому','<span class="addr">'+(((d.transfer||{}).addr)||'адрес не указан')+'</span>',((d.transfer||{}).to||'')+' · '+pcNet(d))}
-        ${trow('За что',d.code+' · '+d.client,d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:''))}
-        ${trow('Получателю уйдёт',money(ap.thb,'฿'),'через '+(sObj?sObj.t:'—'))}
-      </table>
-    </div>
-
-    <div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
-      <div class="sec snd" style="margin:0 0 10px">ОТКУДА ЭТИ ДЕНЬГИ</div>
-      ${c?`<table class="tbl">
-        ${trow('Пачка',c.name+' · '+c.broker,c.status==='received'?'USDT получены':'рубли ушли, USDT ещё в пути')}
-        ${trow('Клиент заплатил',money(mine.rub,'₽'),'по сделке '+d.code)}
-        ${c.held?trow('Удержано',moneyKop(c.held,'₽'),'контроль '+moneyKop(c.feeCtrl||0,'₽')+' · на счёт '+moneyKop(c.feeOurs||0,'₽')):''}
-        ${trow('Курс конвертации',c.rate,'RUB → USDT')}
-        ${c.txs.length?trow('Хеш прихода',hashLink(c.txs[0].hash,c.txs[0].net)):trow('Хеш прихода','ещё нет','USDT от брокера не пришли')}
-      </table>`:`<div class="alert a-warn" style="margin:0"><div>${isCrypto(d)?'Конвертации не было — клиент платил криптой, USDT пришли от него напрямую с хешем '+(d.pay.hash||'—')+'.':'Пачки нет — деньги не проходили через брокера. Проверьте, откуда они.'}</div></div>`}
-    </div>
-
+    return `<div class="card"><div class="card-title">Суть сделки<span class="sub">по шаблону из Telegram — проверьте и подпишите</span></div>
+    ${signSummary(d)}
+    <div class="alert a-info"><div><b>Подпишите перевод в кошельке — дальше всё пойдёт само.</b> Как только сеть подтвердит перевод, задача перейдёт операционисту — известить Coins.</div></div>
     ${sObj&&sObj.debt?`<div class="box box-amber"><b>Это возмещение вам.</b> Вы выдали баты со своего кошелька,
       сейчас подписываете возврат ${usd(d.pay.usdt)} себе же на <span class="addr">${((d.transfer||{}).addr)||'адрес не указан'}</span>.</div>`:''}
-
-    <div class="alert a-ok"><div><b>Фин дир проверил:</b> ${d.pay.check||'комментарий не оставлен'}</div></div>
-    <div class="fg"><label class="fl">Ссылка на транзакцию</label><input class="fc" readonly value="${d.pay.tx||'—'}"></div>
-
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s24')">Проверить подтверждение в сети</button>
-    <button class="btn btn-outline" onclick="ret(${d.id})">Отклонить с причиной</button></div>
-    <p style="font-size:12px;color:var(--text-muted);margin-top:11px">Эта кнопка проверяет статус. Саму подпись нужно поставить в кошельке. Незавершённый или ошибочный перевод не закрывает сделку.</p>
+    <div class="alert a-ok"><div><b>Фин дир проверил:</b> ${d.pay.check?htmlText(d.pay.check):'комментарий не оставлен'}</div></div>
+    ${packTasks(d,false)}
     </div>`;},
 
   s25:()=>{
@@ -6343,10 +6482,12 @@ function stepCard(d){
       const confirmed=(x.sends||[]).filter(t=>t.status==='confirmed');
       const rest=(x.sends||[]).filter(t=>t.status!=='confirmed');
       const allHashes=confirmed.concat(rest).map(t=>t.hash||t.ref).filter(Boolean);
-      const copyTxt=[x.code+(x.client?' · '+x.client:''),
-        'Выдать: '+money(x.thb,'฿'),'Курс Coins: '+(x.rate||'—'),
-        'Ушло USDT: '+moneyKop(x.usdt),
-        (allHashes.length>1?'Хеши':'Хеш')+': '+(allHashes.join(', ')||'нет')].join('\n');
+      /* Текст уходит третьей стороне — без имени клиента; откуда, куда, сеть и хеши
+         целиком, и куда выдать баты (аудит 27.09 №13, Карим, 27.09) */
+      const xd=deal(x.id)||{}, xw=dealWallet(xd), xtr=xd.transfer||{};
+      const copyTxt='Отправили '+moneyKop(x.usdt)+' USDT с '+((xw&&xw.addr)||'нашего кошелька')+
+        ' на '+(xtr.addr||'ваш кошелёк')+', сеть '+pcNet(xd)+', '+(allHashes.length>1?'хеши: ':'хеш: ')+(allHashes.join(', ')||'нет')+
+        '; выдайте '+money(x.thb,'฿')+' на счёт MF Corporation Co., Ltd. в SCB.';
       return `<div class="coinsrow">
         <div class="crhead">
           <div><div class="crtitle">${x.code}${x.client?' · '+x.client:''}</div>
@@ -6358,16 +6499,17 @@ function stepCard(d){
         ${!allHashes.length?`<p class="fh">Переводов с хешем по этой сделке ещё нет.</p>`:''}
       </div>`;
     }).join('');
-    return `<div class="card"><div class="card-title">Известить Coins</div>
+    return `<div class="card"><div class="card-title">${d.pay.coinsNotified?'Баты на SCB — сверить с выпиской':'Известить Coins'}</div>
     <div class="alert a-ok"><div>${d.demoTransfers?'DEMO: тестовые переводы подтверждены в сценарии.':'Переводы подтверждены в сети.'} По каждой сделке — фактическая сумма и хеши. Передайте их Coins.</div></div>
     ${cs.length?rows:'<div class="alert a-warn"><div>В этой пачке нет задач в Coins — извещать некого.</div></div>'}
     ${d.pay.coinsNotified?`<div class="alert a-info"><div>Coins извещён. После поступления батов сверьте выписку SCB и внесите факт. Это ручное подтверждение операциониста.</div></div>
     <div class="fr"><div class="fg"><label class="fl">Пришло на SCB по этой сделке, ฿</label>
-    <input class="fc num" id="coins_thb" placeholder="${coinsThb(d)}" value="${(d.transfer||{}).thb||coinsThb(d)}"></div>
+    <input class="fc num" id="coins_thb" placeholder="сумма из чека или выписки SCB" value="">
+    <p class="fh">по заявке в Coins ждём ${money(num(cleanNum(String((d.transfer||{}).thb||'')))||coinsThb(d),'฿')} — впишите, сколько пришло на самом деле</p></div>
     <div class="fg"><label class="fl">Номер операции / ссылка на выписку</label><input class="fc" id="coins_ref" placeholder="референс зачисления"></div></div>
     <div class="fg"><label class="fl">Причина расхождения<span class="sub2"> необязательно — расхождение запишется само</span></label><input class="fc" id="coins_gap"></div>
-    <button class="btn btn-primary" onclick="act(${d.id},'s25')">Баты поступили — к оплате инвойса</button>`:
-    `<div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Суммы и хеши переданы Coins</button></div>`}</div>`;},
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Баты на SCB сверены — оплатить инвойс</button></div>`:
+    `<div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s25')">Известил Coins — ждём баты на SCB</button></div>`}</div>`;},
 
   s26:()=>{
     const pt=d.payTo||{}, sum=pt.amount||ap.thb||0;
@@ -6398,7 +6540,7 @@ function stepCard(d){
       ${fileBlock(d,'receipt','Чек банка об оплате','обязательно — его отправят клиенту; платили частями — приложите все')}
     </div>
     <div class="row" style="margin-top:14px">
-      <button class="btn btn-primary" onclick="act(${d.id},'s26')">Оплачено — отправить чек менеджеру</button>
+      <button class="btn btn-primary" onclick="act(${d.id},'s26')">Оплатил инвойс — передать чек менеджеру</button>
       <button class="btn btn-outline" onclick="ret(${d.id})">Вернуть с вопросом</button></div></div>`;},
 
   s27:()=>{
@@ -6408,9 +6550,11 @@ function stepCard(d){
     /* У крипты нет обмена у брокера: курс RUB→USDT и «хеш обмена» ей не нужны. Раньше
        список был общий, и у крипто-сделки кнопка закрытия не разблокировалась никогда
        (прогон 25.09). Блокирует закрытие теперь проверка карточки CRM (crmGaps). */
+    /* все хеши прихода, включая тестовые переводы, а не один (аудит 27.09 №18) */
+    const inHashes=(d.payinHashes||[]).map(h=>h.hash).filter(Boolean).join(', ')||d.pay.hash;
     const ok=(isCrypto(d)
-      ? [['Курс клиенту, ฿/USDT',d.rates.client],['Хеш прихода USDT',d.pay.hash]]
-      : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеш обмена',d.pay.hash]])
+      ? [['Курс клиенту, ฿/USDT',d.rates.client],['Хеши прихода USDT',inHashes]]
+      : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеши обмена',inHashes]])
       /* личный кошелёк закрывает отправку сервером (settle), минуя act s23 — тогда хеш
          лежит в pay.outHash и в отправках, а pay.tx пуст (приёмка 25.09) */
       .concat([['Транзакция отправки',d.pay.tx||d.pay.outHash||((sendList(d).find(x=>x.status==='confirmed')||{}).ref)],
@@ -6550,8 +6694,8 @@ function act(id,step){
     go(d,nxt,'Реквизиты готовы — дальше оплата');
     toast('Ушло дальше по пути');return;}
   if(step==='s18'){
-    const b0=val('b0')||'Tradex',b1=cleanNum(val('b1')),b2=val('b2');
-    if(need({b1:'курс, который назвал брокер',b2:'кошелёк, куда придут USDT'}))return;
+    const b0=val('b0'),b1=cleanNum(val('b1')),b2=val('b2');
+    if(need({b0:'брокер',b1:'курс, который назвал брокер',b2:'кошелёк, куда придут USDT'}))return;
     d.rates.broker=b1;
     const rate=num(b1);
     if(!Number.isFinite(rate)||rate<=0){toast('Курс брокера должен быть больше нуля');return;}
@@ -6570,7 +6714,7 @@ function act(id,step){
           usdt:rate?Math.round(bs.sent*share/rate*100)/100:null};}),
       txs:[],sentTs:Date.now()};
     S.convs.push(cn);
-    members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;});
+    members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;x.brokerPick=null;});
     /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
        кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
        и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
@@ -6595,6 +6739,11 @@ function act(id,step){
     const wl=walletById(b2);
     log(d,'Рубли отправлены брокеру: '+cn.name+' · '+b0+' · '+moneyKop(bs.sent,'₽')+' по курсу '+b1+
       ' (удержано '+moneyKop(bs.held,'₽')+') · придут на '+(wl?wl.name:'—'));
+    /* Брокер или курс не те, что в расчёте клиенту, — фиксируем в журнале: иначе
+       по истории не понять, почему прибыль разошлась с расчётом (Карим, 27.09) */
+    const qu=quoteUsed(d,'rub');
+    if(qu&&(brokerName(qu.name)!==b0||num(qu.rate)!==rate))
+      log(d,'Брокер при отправке: '+b0+', курс '+b1+' (в расчёте был '+brokerName(qu.name)+', '+qu.rate+')');
     members.forEach(x=>{x.walletId=b2;});
     go(d,'s18w','Рубли ушли брокеру — ждём USDT');toast('Ждём USDT от '+b0);return;}
   if(step==='s18w'){
@@ -6651,6 +6800,11 @@ function act(id,step){
     if(noAmt){bad(noAmt,'не указана сумма USDT',(noAmt.postConv==='coins'?'cr_':'ca_')+noAmt.id);return;}
     const noAddr=mem.find(x=>pcSends(x)&&!String((x.transfer||{}).addr||'').trim());
     if(noAddr){bad(noAddr,'не указан кошелёк получателя','cad_'+noAddr.id);return;}
+    /* Адрес должен быть адресом выбранной сети: принимало «4490404» (фидбэк 27.09) */
+    const badAddr=mem.find(x=>pcSends(x)&&!addrValid((x.transfer||{}).addr,pcNet(x)));
+    if(badAddr){const tr=badAddr.transfer||{};
+      bad(badAddr,'«'+tr.addr+'» — не адрес '+pcNet(badAddr)+(pcNet(badAddr)==='ERC-20'?' (0x и 40 знаков)':' (T и ещё 33 символа)')+'. Проверьте адрес и сеть',
+        (pcInside(badAddr.postConv)&&tr.walletId?'cw_':'cad_')+badAddr.id);return;}
     mem.forEach(x=>{
       const o=POST_CONV.find(p=>p.k===x.postConv);
       const tr=x.transfer||{};
