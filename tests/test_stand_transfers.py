@@ -14,6 +14,31 @@ TO = 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p'
 HASH = 'a' * 64
 
 
+@pytest.fixture(autouse=True)
+def authenticated_stand_client(monkeypatch):
+    """Старые сценарии стенда проходят через настоящую тестовую cookie."""
+    original = appmod.app.test_client
+
+    def client_factory(*args, **kwargs):
+        client = original(*args, **kwargs)
+        if appmod.STAND_MODE:
+            db = appmod.get_session()
+            try:
+                user = db.query(appmod.AdminUser).filter_by(username='stand_transfer_test').first()
+                if not user:
+                    user = appmod.AdminUser(username='stand_transfer_test', role='admin',
+                                            password_hash=appmod.AdminUser.hash_password('test'))
+                    db.add(user); db.commit()
+                uid = user.id
+            finally:
+                db.close()
+            with client.session_transaction() as sess:
+                sess['user_id'] = uid
+        return client
+
+    monkeypatch.setattr(appmod.app, 'test_client', client_factory)
+
+
 class Response:
     def __init__(self, status, data):
         self.status_code = status

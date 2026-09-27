@@ -69,6 +69,18 @@ def stand(monkeypatch):
         finally:
             db.close()
     with appmod.app.test_client() as client:
+        db = appmod.get_session()
+        try:
+            user = db.query(appmod.AdminUser).filter_by(username='stand_docs_test').first()
+            if not user:
+                user = appmod.AdminUser(username='stand_docs_test', role='operator',
+                                        password_hash=appmod.AdminUser.hash_password('test'))
+                db.add(user); db.commit()
+            uid = user.id
+        finally:
+            db.close()
+        with client.session_transaction() as sess:
+            sess['user_id'] = uid
         client.put_board = put
         yield client
 

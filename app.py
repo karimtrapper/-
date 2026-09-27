@@ -71,6 +71,14 @@ app.config['SESSION_COOKIE_SECURE'] = True            # Только HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True           # Нет доступа из JS
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # Защита от CSRF
 
+
+@app.after_request
+def stand_referrer_policy(response):
+    """На стенде URL кабинета с токеном не уходит в Referer внешних ресурсов."""
+    if STAND_MODE:
+        response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
 # Rate limiting
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -154,6 +162,42 @@ def check_auth():
     """Проверка авторизации для всех /api/* и /crm кроме публичных"""
     path = request.path
 
+    if STAND_MODE:
+        # На копии прод-данных проверяем cookie до публичных путей и API-ключей.
+        login_paths = {'/login', '/api/auth/login', '/api/auth/logout',
+                       '/api/auth/me', '/api/health', '/kyc/grusha-logo.png',
+                       '/static/kyc/grusha-logo.png'}
+        if path in login_paths:
+            return None
+        uid = flask_session.get('user_id')
+        if uid:
+            db = get_session()
+            try:
+                user = db.query(AdminUser).get(uid)
+                valid = bool(user and not user.login_disabled)
+            finally:
+                db.close()
+            if not valid:
+                flask_session.clear()
+                uid = None
+        if not uid:
+            if path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'unauthorized'}), 401
+            return redirect('/login')
+        blocked = (path in {'/api/auth/tg-start', '/api/auth/tg-poll',
+                            '/api/auth/tg-login', '/api/auth/tg-config',
+                            '/api/auth/setup', '/api/sber-incomes/ingest'}
+                   or (path.startswith('/api/ref/') and path.rsplit('/', 1)[-1]
+                       in {'tg-start', 'tg-poll', 'tg-login', 'tg-config'})
+                   or path.startswith(('/api/tg/', '/api/webhook/')))
+        if blocked:
+            return jsonify({'success': False, 'error': 'stand_blocked'}), 403
+        if (path.startswith('/api/admins')
+                or path in {'/api/stand/reset', '/api/stand/egress-status'}):
+            if current_role() != 'admin':
+                return jsonify({'success': False, 'error': 'only_admin'}), 403
+        return None
+
     # Статика, калькулятор, KYC-страница, логин, партнёрский ЛК — пропускаем
     if not path.startswith('/api/') and not path.startswith('/crm'):
         return None
@@ -166,7 +210,7 @@ def check_auth():
     # Локальный стенд без логина: только при явном флаге И только на sqlite.
     # На проде DATABASE_URL — Postgres, поэтому обход невозможен даже если
     # переменную выставят по ошибке.
-    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+    if not STAND_MODE and os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
         return None
 
     # Сервисный доступ для ботов (DealCloser, SberNotifier) — непротухающий API-ключ.
@@ -199,7 +243,8 @@ def check_auth():
     # Удаление админа из whitelist → мгновенный разлог (cookie сам по себе не даёт доступ).
     db = get_session()
     try:
-        still_admin = db.query(AdminUser.id).filter(AdminUser.id == uid).first() is not None
+        still_admin = db.query(AdminUser.id).filter(
+            AdminUser.id == uid, AdminUser.login_disabled.is_(False)).first() is not None
     finally:
         db.close()
     if not still_admin:
@@ -295,6 +340,8 @@ class AdminUser(Base):
     password_hash = Column(String(128), nullable=False)
     display_name = Column(String(100))
     role = Column(String(20), default='admin')  # admin / manager (на будущее)
+    login_disabled = Column(Boolean, default=False)
+    notify_enabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     telegram = Column(String(50))            # @username из whitelist
     telegram_user_id = Column(BigInteger)     # привязанный TG id (trust-on-first-login)
@@ -327,6 +374,8 @@ class AdminUser(Base):
             'display_name': self.display_name or self.username,
             'telegram': self.telegram, 'bound': bool(self.telegram_user_id),
             'role': self.role or 'admin',
+            'login_disabled': bool(self.login_disabled),
+            'notify_enabled': bool(self.notify_enabled),
         }
 
 
@@ -2248,9 +2297,8 @@ def _stand_seed_users():
     """Пользователи стенда: по человеку на роль.
 
     Заводим только недостающих и только на стенде. Пароль один на всех из
-    STAND_PASSWORD: это площадка с выдуманными сделками, разводить тут
-    парольную гигиену дороже, чем она стоит, а лишний барьер убьёт тест —
-    людям надо зайти с телефона и потыкать, а не вспоминать пароль.
+    STAND_PASSWORD. После копии прод-данных существующие роли, пароли и флаги
+    сохраняем: старт приложения не должен отменять решение администратора.
     """
     seed = [('karim', 'Карим', 'admin'),
             ('marina', 'Марина', 'manager'),
@@ -2263,10 +2311,9 @@ def _stand_seed_users():
         for username, name, role in seed:
             u = db.query(AdminUser).filter_by(username=username).first()
             if u:
-                if (u.role or 'admin') != role:
-                    u.role = role
                 continue
             db.add(AdminUser(username=username, display_name=name, role=role,
+                             notify_enabled=(username == 'karim'),
                              password_hash=AdminUser.hash_password(pwd)))
         db.commit()
         print('[STAND] Пользователи ролей готовы: ' +
@@ -2287,6 +2334,23 @@ def _stand_migrate():
         print('[STAND] stand_state.notified добавлена')
     except Exception:
         pass
+
+
+def _migrate_admin_access():
+    """Добавляет флаги и в старую базу; повторный старт сохраняет значения."""
+    from sqlalchemy import text as _t
+    with engine.begin() as conn:
+        for name in ('login_disabled', 'notify_enabled'):
+            ddl = f'ALTER TABLE admin_users ADD COLUMN {name} BOOLEAN DEFAULT FALSE'
+            if 'postgresql' in DATABASE_URL:
+                conn.execute(_t(ddl.replace('ADD COLUMN', 'ADD COLUMN IF NOT EXISTS')))
+            else:
+                from sqlalchemy import inspect
+                if name not in {c['name'] for c in inspect(conn).get_columns('admin_users')}:
+                    conn.execute(_t(ddl))
+
+
+_migrate_admin_access()
 
 
 if STAND_MODE:
@@ -4475,7 +4539,7 @@ import partner_rates
 def login_page():
     """Страница входа"""
     # Локальный стенд без логина — форма входа там только мешает
-    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+    if not STAND_MODE and os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
         return redirect('/crm')
     if flask_session.get('user_id'):
         return redirect('/crm')
@@ -4487,11 +4551,17 @@ def _match_admin_by_tg(db, tg_id, tg_username):
     tg_id = int(tg_id)
     admin = db.query(AdminUser).filter(AdminUser.telegram_user_id == tg_id).first()
     if admin:
-        return admin
+        return None if admin.login_disabled else admin
     uname = (tg_username or '').lstrip('@').strip().lower()
     if not uname:
         return None
-    for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None)).all():
+    # Совпавший @username отключённого аккаунта не должен привязать его id
+    # к другому активному аккаунту при поиске по имени.
+    for a in db.query(AdminUser).filter(AdminUser.login_disabled.is_(True)).all():
+        if (a.telegram or '').lstrip('@').strip().lower() == uname:
+            return None
+    for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None),
+                                        AdminUser.login_disabled.is_(False)).all():
         if (a.telegram or '').lstrip('@').strip().lower() == uname:
             a.telegram_user_id = tg_id
             db.commit()
@@ -4515,7 +4585,7 @@ def auth_tg_login():
     db = get_session()
     try:
         admin = _match_admin_by_tg(db, data.get('id'), data.get('username'))
-        if not admin:
+        if not admin or admin.login_disabled:
             return jsonify({'success': False, 'error': 'Этот Telegram не в списке администраторов'}), 403
         flask_session['user_id'] = admin.id
         flask_session['username'] = admin.username
@@ -4572,7 +4642,7 @@ def auth_tg_poll():
         if not ln.admin_id:
             return jsonify({'success': False, 'status': 'pending'})
         admin = db.query(AdminUser).get(ln.admin_id)
-        if not admin:
+        if not admin or admin.login_disabled:
             return jsonify({'success': False, 'status': 'denied'})
         ln.used = True
         db.commit()
@@ -4609,6 +4679,12 @@ def create_admin():
         return jsonify({'success': False, 'error': 'Укажите Telegram (@username)'}), 400
     if STAND_MODE and not (data.get('username') or telegram):
         return jsonify({'success': False, 'error': 'Укажите логин'}), 400
+    if STAND_MODE and data.get('role', 'admin') not in STAND_ROLES:
+        return jsonify({'success': False, 'error': 'Неизвестная роль'}), 400
+    if STAND_MODE:
+        for field in ('login_disabled', 'notify_enabled'):
+            if field in data and not isinstance(data[field], bool):
+                return jsonify({'success': False, 'error': f'{field} должен быть boolean'}), 400
     db = get_session()
     try:
         base = re.sub(r'[^A-Za-z0-9_]', '', (data.get('username') or telegram).lstrip('@')) \
@@ -4624,6 +4700,8 @@ def create_admin():
             password_hash=AdminUser.hash_password(password or secrets.token_hex(16)),
             telegram=telegram,
             role=(data.get('role') or 'admin') if STAND_MODE else 'admin',
+            login_disabled=bool(data.get('login_disabled', False)) if STAND_MODE else False,
+            notify_enabled=bool(data.get('notify_enabled', False)) if STAND_MODE else False,
         )
         db.add(admin); db.commit()
         out = admin.to_dict()
@@ -4638,11 +4716,26 @@ def create_admin():
 def update_admin(admin_id):
     """Правка имени/telegram админа. Смена telegram сбрасывает привязку id — перепривязка при следующем входе."""
     data = request.get_json() or {}
+    if STAND_MODE and 'role' in data and data['role'] not in STAND_ROLES:
+        return jsonify({'success': False, 'error': 'Неизвестная роль'}), 400
     db = get_session()
     try:
+        if STAND_MODE and 'postgresql' in DATABASE_URL:
+            # Две одновременные правки не должны отключить друг другу последнего админа.
+            db.execute(text('LOCK TABLE admin_users IN SHARE ROW EXCLUSIVE MODE'))
         admin = db.query(AdminUser).get(admin_id)
         if not admin:
             return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        if STAND_MODE:
+            active_admins = db.query(AdminUser).filter(
+                AdminUser.role == 'admin', AdminUser.login_disabled.is_(False)).count()
+            disabling_admin = (admin.role == 'admin' and not admin.login_disabled
+                               and (data.get('role', admin.role) != 'admin'
+                                    or data.get('login_disabled') is True))
+            if admin.id == flask_session.get('user_id') and disabling_admin:
+                return jsonify({'success': False, 'error': 'Нельзя отключить или разжаловать себя'}), 400
+            if disabling_admin and active_admins <= 1:
+                return jsonify({'success': False, 'error': 'Нельзя отключить последнего админа'}), 400
         if 'display_name' in data:
             admin.display_name = (data['display_name'] or '').strip()
         if 'telegram' in data:
@@ -4650,6 +4743,12 @@ def update_admin(admin_id):
             admin.telegram_user_id = None  # смена username → перепривязка при следующем входе
         if STAND_MODE and data.get('role') in STAND_ROLES:
             admin.role = data['role']
+        if STAND_MODE:
+            for field in ('login_disabled', 'notify_enabled'):
+                if field in data:
+                    if not isinstance(data[field], bool):
+                        return jsonify({'success': False, 'error': f'{field} должен быть boolean'}), 400
+                    setattr(admin, field, data[field])
         if STAND_MODE and (data.get('password') or '').strip():
             admin.password_hash = AdminUser.hash_password(data['password'].strip())
         db.commit()
@@ -4663,11 +4762,18 @@ def delete_admin(admin_id):
     """Удаление админа из whitelist. Нельзя удалить последнего — иначе никто не сможет войти."""
     db = get_session()
     try:
-        if db.query(AdminUser).count() <= 1:
+        if STAND_MODE and 'postgresql' in DATABASE_URL:
+            db.execute(text('LOCK TABLE admin_users IN SHARE ROW EXCLUSIVE MODE'))
+        if not STAND_MODE and db.query(AdminUser).count() <= 1:
             return jsonify({'success': False, 'error': 'Нельзя удалить последнего админа'}), 400
         admin = db.query(AdminUser).get(admin_id)
         if not admin:
             return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        if STAND_MODE and admin.role == 'admin' and not admin.login_disabled:
+            active_admins = db.query(AdminUser).filter(
+                AdminUser.role == 'admin', AdminUser.login_disabled.is_(False)).count()
+            if active_admins <= 1:
+                return jsonify({'success': False, 'error': 'Нельзя удалить последнего админа'}), 400
         db.delete(admin); db.commit()
         return jsonify({'success': True})
     finally:
@@ -4688,7 +4794,7 @@ def auth_login():
     db = get_session()
     try:
         user = db.query(AdminUser).filter_by(username=username).first()
-        if not user or not user.check_password(password):
+        if not user or user.login_disabled or not user.check_password(password):
             return jsonify({'success': False, 'error': 'Неверный логин или пароль'}), 401
 
         # Сохраняем rehash если произошла миграция SHA-256 → bcrypt
@@ -4721,6 +4827,16 @@ def auth_logout():
 def auth_me():
     """Текущий пользователь"""
     if flask_session.get('user_id'):
+        if STAND_MODE:
+            db = get_session()
+            try:
+                user = db.query(AdminUser).get(flask_session['user_id'])
+                active = bool(user and not user.login_disabled)
+            finally:
+                db.close()
+            if not active:
+                flask_session.clear()
+                return jsonify({'success': False}), 401
         return jsonify({
             'success': True,
             'user': {
@@ -14837,6 +14953,16 @@ def apply_referrer_tg_binding(referrer, tg_id, tg_username):
 
 def ref_session_authorized(referrer, token) -> bool:
     """True если реферер в link-режиме ИЛИ в сессии есть валидная привязка по токену."""
+    if STAND_MODE:
+        if flask_session.get('stand_ref_preview') != referrer.id:
+            return False
+        uid = flask_session.get('user_id')
+        db = SessionLocal()
+        try:
+            admin = db.query(AdminUser).get(uid) if uid else None
+            return bool(admin and admin.role == 'admin' and not admin.login_disabled)
+        finally:
+            db.close()
     if (referrer.auth_mode or 'link') != 'telegram':
         return True
     auth = flask_session.get('ref_auth') or {}
@@ -16315,6 +16441,24 @@ def search_bitrix_contacts():
 
 
 # ==================== REFERRAL SYSTEM ====================
+
+@app.route('/api/stand/ref-preview/<int:referrer_id>', methods=['GET'])
+def stand_ref_preview(referrer_id):
+    """Открывает кабинет в админской сессии без Telegram-привязки реферера."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'only_admin'}), 403
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer or not referrer.active:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        token = referrer.token
+    finally:
+        db.close()
+    flask_session['stand_ref_preview'] = referrer_id
+    return redirect(f'/ref/{token}')
 
 @app.route('/ref/<token>')
 def referrer_page(token):
