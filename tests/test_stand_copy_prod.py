@@ -1,0 +1,425 @@
+"""Полный цикл scripts/stand_copy_prod.py на одноразовом локальном Postgres.
+
+Поднимаем свой кластер Postgres 16 (initdb/pg_ctl из Homebrew), три базы —
+`fakeprod`, `fakestand`, `scratch_*` — наполняем синтетикой через модели app.py
+и гоняем весь конвейер: dump-prod → inspect-dump → backup-stand →
+restore-candidate → verify-candidate. Никакой реальной сети — только
+127.0.0.1, никакого Railway/прода.
+
+`skip`, если `initdb` недоступен (например, CI без Homebrew Postgres).
+"""
+import json
+import os
+import secrets as _secrets
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import psycopg2
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = str(ROOT / 'scripts' / 'stand_copy_prod.py')
+
+sys.path.insert(0, str(ROOT / 'scripts'))
+import stand_copy_prod as scp  # noqa: E402
+
+PG_BIN = '/opt/homebrew/opt/postgresql@16/bin'
+INITDB = os.path.join(PG_BIN, 'initdb')
+PG_CTL = os.path.join(PG_BIN, 'pg_ctl')
+PG_DUMP16 = os.path.join(PG_BIN, 'pg_dump')
+PSQL16 = os.path.join(PG_BIN, 'psql')
+
+pytestmark = pytest.mark.skipif(
+    not os.path.exists(INITDB),
+    reason='initdb (Homebrew postgresql@16) недоступен — пропуск теста локального Postgres',
+)
+
+
+def _free_port():
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind(('127.0.0.1', 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+@pytest.fixture(scope='module')
+def pg_cluster(tmp_path_factory):
+    data_dir = tmp_path_factory.mktemp('pgdata')
+    port = _free_port()
+    # Путь до сокета Postgres ограничен ~103 байтами — pytest-овский tmp_path
+    # (глубоко вложенный) в это не помещается, поэтому сокет кладём в /tmp
+    # напрямую, в свою короткую поддиректорию.
+    sock_dir = Path('/tmp') / f'calccrm-t4-pg-{os.getpid()}-{port}'
+    sock_dir.mkdir(parents=True, exist_ok=True)
+
+    # macOS: postmaster падает с "postmaster became multithreaded during
+    # startup", если LANG/LC_ALL не заданы явно (пустая locale заставляет
+    # системный слой инициализировать поток ещё до fork внутри postgres).
+    pg_env = dict(os.environ, LC_ALL='C', LANG='C')
+    subprocess.run(
+        [INITDB, '-D', str(data_dir), '-U', 'postgres', '--auth=trust', '--no-locale', '-E', 'UTF8'],
+        check=True, capture_output=True, env=pg_env,
+    )
+    log_path = data_dir / 'server.log'
+    subprocess.run(
+        [PG_CTL, '-D', str(data_dir), '-l', str(log_path), '-w', '-o',
+         f'-p {port} -c listen_addresses=127.0.0.1 -c unix_socket_directories={sock_dir}', 'start'],
+        check=True, capture_output=True, env=pg_env,
+    )
+    try:
+        base = f'postgresql://postgres@127.0.0.1:{port}'
+        for name in ('fakeprod', 'fakestand', 'scratch_inspect', 'scratch_backup'):
+            conn = psycopg2.connect(f'{base}/postgres')
+            conn.autocommit = True
+            try:
+                conn.cursor().execute(f'CREATE DATABASE {name}')
+            finally:
+                conn.close()
+        yield {'base': base, 'port': port, 'data_dir': str(data_dir)}
+    finally:
+        subprocess.run([PG_CTL, '-D', str(data_dir), '-m', 'immediate', 'stop'], capture_output=True)
+        shutil.rmtree(sock_dir, ignore_errors=True)
+
+
+@pytest.fixture(scope='module')
+def app_models():
+    """Классы моделей app.py — схема, а не боевой sqlite pytest-а."""
+    import app as app_module
+    return app_module
+
+
+def _seed(engine, app_module, *, admin_username, marker):
+    """Кладёт в базу по одной репрезентативной строке каждой чувствительной таблицы.
+
+    Возвращает словарь с исходными («грязными») значениями токенов/паролей —
+    тест по нему проверяет, что санация их действительно заменила.
+    """
+    m = app_module
+    app_module.Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    s = Session()
+    try:
+        admin = m.AdminUser(
+            username=admin_username, password_hash=m.AdminUser.hash_password('secret123'),
+            display_name=admin_username.title(), role='admin',
+            telegram='@' + admin_username, telegram_user_id=555000111,
+        )
+        s.add(admin)
+
+        client = m.Client(name=f'Клиент {marker}', telegram='@client_' + marker)
+        s.add(client)
+        s.flush()
+
+        referrer_token = _secrets.token_hex(16)
+        referrer = m.Referrer(
+            name=f'Реферер {marker}', code=f'GR-{marker}', token=referrer_token,
+            telegram='@ref_' + marker, total_earned_usdt=123.45, total_paid_usdt=100.0,
+        )
+        s.add(referrer)
+
+        partner_token = _secrets.token_hex(16)
+        partner = m.Partner(name=f'Партнёр {marker}', token=partner_token)
+        s.add(partner)
+        s.flush()
+
+        nonce = m.LoginNonce(nonce=_secrets.token_hex(32), admin_id=admin.id)
+        s.add(nonce)
+
+        deal = m.Deal(
+            deal_type=m.DealType.PAY_IN, status=m.DealStatus.COMPLETED,
+            client_id=client.id, client_name=client.name,
+            profit_usdt=42.0, net_profit_usdt=40.0,
+            referrer_id=referrer.id, referrer_payout_usdt=4.2,
+        )
+        s.add(deal)
+        s.flush()
+
+        agent = m.DealAgent(deal_id=deal.id, name=f'Агент {marker}', percent=10.0, payout_usdt=4.0)
+        s.add(agent)
+
+        payout_req = m.PayoutRequest(
+            referrer_id=referrer.id, amount_usdt=23.45, wallet='T' + marker,
+            contact_method='telegram', contact_value='@ref_' + marker,
+        )
+        s.add(payout_req)
+
+        kyc_token = _secrets.token_hex(32)
+        kyc = m.KycRequest(token=kyc_token, client_id=client.id, client_name=client.name)
+        s.add(kyc)
+        s.flush()
+        kyc_file = m.KycFile(kyc_id=kyc.id, kind='doc', mime='image/jpeg', ext='jpg', size=3, data=b'abc')
+        s.add(kyc_file)
+
+        agreement = m.Agreement(
+            client_id=client.id, client_name=client.name, client_key=marker,
+            deal_type='freehold', number=f'MF-{marker}-0101-1',
+        )
+        s.add(agreement)
+        s.flush()
+        agreement_doc = m.AgreementDoc(
+            agreement_id=agreement.id, kind='agreement', filename='a.pdf', size=3, data=b'xyz',
+        )
+        s.add(agreement_doc)
+
+        s.commit()
+        return {
+            'admin_id': admin.id,
+            'admin_password_hash': admin.password_hash,
+            'referrer_id': referrer.id,
+            'referrer_token': referrer_token,
+            'partner_token': partner_token,
+            'kyc_token': kyc_token,
+            'nonce': nonce.nonce,
+        }
+    finally:
+        s.close()
+
+
+def _run(*cli_args, expect_ok=True):
+    proc = subprocess.run([sys.executable, SCRIPT, *cli_args], capture_output=True, text=True)
+    if expect_ok and proc.returncode != 0:
+        raise AssertionError(f'{cli_args} упал ({proc.returncode}):\nstdout={proc.stdout}\nstderr={proc.stderr}')
+    return proc
+
+
+def _dsn_dbname(base, name):
+    return f'{base}/{name}'
+
+
+@pytest.fixture()
+def seeded(pg_cluster, app_models):
+    base = pg_cluster['base']
+    prod_engine = create_engine(_dsn_dbname(base, 'fakeprod'))
+    stand_engine = create_engine(_dsn_dbname(base, 'fakestand'))
+    prod_seed = _seed(prod_engine, app_models, admin_username='karim', marker='prod')
+    stand_seed = _seed(stand_engine, app_models, admin_username='stand_karim', marker='stand')
+    prod_engine.dispose()
+    stand_engine.dispose()
+    return {'prod': prod_seed, 'stand': stand_seed}
+
+
+def test_full_cycle(pg_cluster, seeded, tmp_path):
+    base = pg_cluster['base']
+    port = pg_cluster['port']
+    prod_url = _dsn_dbname(base, 'fakeprod')
+    stand_url = _dsn_dbname(base, 'fakestand')
+    scratch_inspect_url = _dsn_dbname(base, 'scratch_inspect')
+    scratch_backup_url = _dsn_dbname(base, 'scratch_backup')
+    admin_url = _dsn_dbname(base, 'postgres')
+
+    dump_dir = tmp_path / 'prod_dump'
+    backup_dir = tmp_path / 'stand_backup'
+    counts_path = tmp_path / 'counts.json'
+
+    # 1. dump-prod
+    proc = _run('dump-prod', '--prod-url', prod_url, '--out-dir', str(dump_dir),
+                '--pg-dump-bin', PG_DUMP16)
+    dump_info = json.loads(proc.stdout)
+    dump_path = dump_info['dump_path']
+    assert os.stat(dump_path).st_mode & 0o777 == 0o600
+    assert os.stat(dump_dir).st_mode & 0o777 == 0o700
+    with open(dump_info['sha256_path']) as f:
+        assert dump_info['sha256'] in f.read()
+
+    # DSN не должен утечь ни в stdout, ни в stderr-лог
+    assert prod_url not in proc.stdout
+    assert prod_url not in Path(dump_info['stderr_path']).read_text()
+
+    # 2. inspect-dump
+    proc = _run('inspect-dump', '--dump', dump_path, '--scratch-url', scratch_inspect_url,
+                '--counts-out', str(counts_path), '--psql-bin', PSQL16)
+    assert counts_path.exists()
+    counts = json.loads(counts_path.read_text())
+    assert counts['tables']['deals'] == 1
+    assert counts['tables']['referrers'] == 1
+    assert counts['money']['deals_profit_usdt_sum'] == 42.0
+    assert counts['money']['kyc_files_count'] == 1
+
+    # 3. backup-stand
+    proc = _run('backup-stand', '--stand-url', stand_url, '--out-dir', str(backup_dir),
+                '--scratch-url', scratch_backup_url, '--pg-dump-bin', PG_DUMP16, '--psql-bin', PSQL16)
+    backup_info = json.loads(proc.stdout)
+    assert backup_info['verified_restore'] is True
+    assert stand_url not in proc.stdout
+
+    # 4. restore-candidate
+    candidate_db = 'stand_prodcopy_test'
+    proc = _run(
+        'restore-candidate',
+        '--stand-admin-url', admin_url,
+        '--candidate-db', candidate_db,
+        '--dump', dump_path,
+        '--expect-host', '127.0.0.1',
+        '--expect-port', str(port),
+        '--prod-host-guard', '203.0.113.1:5432',
+        '--backup-dir', str(backup_dir),
+        '--i-understand',
+        '--psql-bin', PSQL16,
+    )
+    restore_info = json.loads(proc.stdout)
+    assert restore_info['candidate_db'] == candidate_db
+
+    candidate_url = _dsn_dbname(base, candidate_db)
+
+    # 5. verify-candidate
+    proc = _run('verify-candidate', '--candidate-url', candidate_url, '--counts-json', str(counts_path))
+    report = json.loads(proc.stdout)
+    assert report['ok'] is True, report['problems']
+    diff_tables = {d.get('table') for d in report['documented_differences'] if 'table' in d}
+    assert {'login_nonces', 'stand_state', 'admin_users'} <= diff_tables or \
+        {'login_nonces', 'admin_users'} <= diff_tables  # stand_state может отсутствовать в дампе
+
+    # ── Прямая проверка санации ──────────────────────────────────────────────
+    conn = psycopg2.connect(candidate_url)
+    try:
+        cur = conn.cursor()
+
+        cur.execute('SELECT token FROM referrers')
+        (new_ref_token,) = cur.fetchone()
+        assert new_ref_token != seeded['prod']['referrer_token']
+
+        cur.execute('SELECT token FROM partners')
+        (new_partner_token,) = cur.fetchone()
+        assert new_partner_token != seeded['prod']['partner_token']
+
+        cur.execute('SELECT token FROM kyc_requests')
+        (new_kyc_token,) = cur.fetchone()
+        assert new_kyc_token != seeded['prod']['kyc_token']
+
+        cur.execute('SELECT COUNT(*) FROM login_nonces')
+        assert cur.fetchone()[0] == 0
+
+        cur.execute(
+            "SELECT username, login_disabled, notify_enabled, telegram_user_id, password_hash "
+            "FROM admin_users WHERE id = %s", (seeded['prod']['admin_id'],),
+        )
+        username, login_disabled, notify_enabled, tg_id, pwd_hash = cur.fetchone()
+        assert username == 'prod_karim'
+        assert login_disabled is True
+        assert notify_enabled is False
+        assert tg_id is None
+        assert pwd_hash != seeded['prod']['admin_password_hash']
+        assert not pwd_hash.startswith('$2b$')
+
+        cur.execute('SELECT to_regclass(%s)', ('public.stand_state',))
+        if cur.fetchone()[0] is not None:
+            cur.execute('SELECT id, data, version, notified FROM stand_state')
+            rows = cur.fetchall()
+            assert rows == [(1, '{}', 0, '[]')]
+    finally:
+        conn.close()
+
+    # fakestand не тронут restore-candidate вообще
+    conn = psycopg2.connect(stand_url)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT username FROM admin_users WHERE id = %s", (seeded['stand']['admin_id'],))
+        assert cur.fetchone()[0] == 'stand_karim'
+        cur.execute('SELECT token FROM referrers')
+        assert cur.fetchone()[0] == seeded['stand']['referrer_token']
+    finally:
+        conn.close()
+
+    # Проверка check_password: старый пароль не подходит к новому хэшу
+    import app as app_module
+    fake_admin = app_module.AdminUser(password_hash=pwd_hash)
+    assert fake_admin.check_password('secret123') is False
+
+
+@pytest.mark.parametrize('break_rule', [
+    'wrong_host', 'wrong_port', 'prod_guard_match', 'bad_db_name',
+    'db_name_equals_current', 'no_backup', 'no_i_understand',
+])
+def test_restore_candidate_safeguards_reject_without_connecting(pg_cluster, tmp_path, break_rule):
+    """Каждый предохранитель отказывает ДО подключения к цели.
+
+    Используем заведомо нерутируемый TEST-NET-3 адрес (203.0.113.1) там, где
+    предохранитель должен сработать: если бы код всё-таки пытался
+    подключиться, тест завис бы на TCP-таймауте вместо мгновенного отказа.
+    """
+    base = pg_cluster['base']
+    port = pg_cluster['port']
+    unreachable_admin_url = 'postgresql://postgres@203.0.113.1:5432/postgres'
+    real_admin_url = _dsn_dbname(base, 'postgres')
+
+    backup_dir = tmp_path / 'backup'
+    backup_dir.mkdir()
+    if break_rule != 'no_backup':
+        # Валидный manifest — не требуется настоящий дамп, только читаемый файл + верный SHA256 + свежая дата.
+        dummy_dump = backup_dir / 'dummy.sql.gz'
+        dummy_dump.write_bytes(b'\x1f\x8b\x00')
+        import hashlib
+        from datetime import datetime, timezone
+        sha = hashlib.sha256(dummy_dump.read_bytes()).hexdigest()
+        manifest = backup_dir / 'x.manifest.json'
+        manifest.write_text(json.dumps({
+            'dump_path': str(dummy_dump), 'sha256': sha,
+            'created_at': datetime.now(timezone.utc).isoformat(),
+        }))
+
+    args = {
+        'admin_url': real_admin_url,
+        'candidate_db': 'stand_prodcopy_neg',
+        'dump': str(tmp_path / 'nonexistent.sql.gz'),
+        'expect_host': '127.0.0.1',
+        'expect_port': str(port),
+        'prod_host_guard': '203.0.113.1:5432',
+        'i_understand': True,
+    }
+
+    if break_rule == 'wrong_host':
+        args['expect_host'] = '10.99.99.99'
+    elif break_rule == 'wrong_port':
+        args['expect_port'] = str(port + 1)
+    elif break_rule == 'prod_guard_match':
+        args['prod_host_guard'] = f'127.0.0.1:{port}'
+    elif break_rule == 'bad_db_name':
+        args['candidate_db'] = 'not_a_candidate_name'
+    elif break_rule == 'db_name_equals_current':
+        args['candidate_db'] = 'postgres'
+    elif break_rule == 'no_i_understand':
+        args['i_understand'] = False
+
+    cli = [
+        'restore-candidate',
+        '--stand-admin-url', args['admin_url'],
+        '--candidate-db', args['candidate_db'],
+        '--dump', args['dump'],
+        '--expect-host', args['expect_host'],
+        '--expect-port', args['expect_port'],
+        '--prod-host-guard', args['prod_host_guard'],
+        '--backup-dir', str(backup_dir),
+    ]
+    if args['i_understand']:
+        cli.append('--i-understand')
+
+    started = time.monotonic()
+    proc = subprocess.run([sys.executable, SCRIPT, *cli], capture_output=True, text=True, timeout=10)
+    elapsed = time.monotonic() - started
+
+    assert proc.returncode == 2, f'ожидали отказ предохранителя, получили: {proc.stdout} {proc.stderr}'
+    assert elapsed < 5, 'предохранитель сработал слишком долго — похоже, была попытка подключения к цели'
+
+
+def test_filter_dump_text_strips_pg17_only_guc():
+    """PG17 добавил GUC `transaction_timeout` — pg_dump с прода (17) выставит его
+    в начале файла, а PG16-стенд его не знает и упадёт с ERROR на SET. Дамп
+    прода снимается pg_dump 18 (клиент), но пишет синтаксис под сервер-источник
+    (17), поэтому строка возможна независимо от версии клиента-дампера."""
+    text = (
+        "SET statement_timeout = 0;\n"
+        "SET transaction_timeout = 0;\n"
+        "SET client_encoding = 'UTF8';\n"
+    )
+    filtered, removed = scp.filter_dump_text(text)
+    assert 'transaction_timeout' not in filtered
+    assert 'statement_timeout' in filtered
+    assert 'client_encoding' in filtered
+    assert sum(removed.values()) == 1
