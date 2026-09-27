@@ -148,3 +148,24 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
 }
 
 console.log('stand ops: broker default, address validation, sendDel log, numeric diff, Coins text PASS');
+
+// После Coins в CRM уходит факт SCB и курс Coins, а не процент от номинала:
+// иначе прибыль CRM расходилась с карточкой ($343,23 против $295,16, QA 27.09).
+{
+  const E = {payin: 21300, sentThb: 655000};
+  const base = {code: 'СД-1472', type: 'Оплата недвижимости', kind: 'Лизхолд', client: 'Тест',
+    payType: 'По реквизитам', amountThb: 650000, rates: {usdtThb: '31,20', broker: '81,40'},
+    payTo: {purpose: 'Lease payment'}, companyPct: 1, payinHashes: [], agents: []};
+  const ctx = run(['crmPayload'], {
+    econ: () => E, isCrypto: () => false, num, mfList: () => [], crmNet: n => n,
+  }, "const PAYIN_CRM={}; const PAYOUT_CRM={};");
+  const p = ctx.crmPayload(Object.assign({}, base, {postConv: 'coins', transfer: {rate: '31,5'}}));
+  assert.equal(p.company_sent_thb, 655000, 'факт SCB уходит в CRM');
+  assert.equal(p.buy_rate_thb_usdt, 31.5, 'курс покупки — тот, по которому Coins выдал баты');
+  assert.ok(!('company_percent' in p), 'процент CRM посчитает из факта сама');
+  // без конвертации через Coins — прежний процент компании
+  const q = ctx.crmPayload(Object.assign({}, base, {postConv: 'ipps'}));
+  assert.equal(q.company_percent, 1);
+  assert.equal(q.buy_rate_thb_usdt, 31.2);
+  assert.ok(!('company_sent_thb' in q));
+}

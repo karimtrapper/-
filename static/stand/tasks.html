@@ -4030,10 +4030,17 @@ function crmPayload(d){
   const mf=hx(mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})));
   const buy=num(d.rates.usdtThb);
   if(prop&&d.kind!=='Фрихолд'){
+    /* После Coins в CRM уходит факт, а не процент: сколько батов реально пришло на SCB
+       (company_sent_thb) и по какому курсу Coins их выдал. Иначе CRM считала комиссию
+       от номинала и прибыль в CRM расходилась с карточкой (QA 27.09: $343,23 против
+       $295,16 при недоборе 1 500 ฿). Формула та же, что в CRM, — compute_mf_realty. */
+    const coinsRate=d.postConv==='coins'?num((d.transfer||{}).rate):null;
     Object.assign(p,{deal_kind:'mf_realty',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
-      invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:buy||null,
+      invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:coinsRate||buy||null,
       sell_rate_thb_usdt:(E.payin&&d.amountThb)?Math.round(d.amountThb/E.payin*10000)/10000:null,
-      company_percent:d.companyPct==null?1:d.companyPct,payout_tx_hashes:mf});
+      payout_tx_hashes:mf});
+    if(coinsRate&&E.sentThb) p.company_sent_thb=E.sentThb;
+    else p.company_percent=d.companyPct==null?1:d.companyPct;
   }else if(prop){
     const base=(buy&&d.amountThb)?d.amountThb/buy:null;
     Object.assign(p,{deal_kind:'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
@@ -4057,7 +4064,7 @@ function crmPayload(d){
 const PAYIN_LABEL={sber_reqs:'Сбер (реквизиты)',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Партнеры (наличные)'};
 const PAYOUT_LABEL={cash_batch:'Касса',bank_card:'Карта банка',binance:'Binance',founder_personal:'Личные фаундера'};
 const CRM_NUM=['payin_amount_rub','payin_amount_usdt','payin_rate_rub_usdt','invoice_amount_thb','buy_rate_thb_usdt',
-  'company_percent','invoice_amount_usd','transfer_sent_usd','payout_amount_thb','payout_amount_usdt'];
+  'company_percent','company_sent_thb','invoice_amount_usd','transfer_sent_usd','payout_amount_thb','payout_amount_usdt'];
 function crmPayloadFinal(d){
   const p=crmPayload(d), e=d.crmEdit||{};
   Object.keys(e).forEach(k=>{ if(k==='agents'){
@@ -4148,7 +4155,7 @@ function crmForm(d){
       </div>
       <div class="fr">
         ${inp('buy_rate_thb_usdt','Курс покупки (наш) · Coins USDT→THB',{hint:'฿ за 1 USDT — по нему Coins выдал баты'})}
-        ${inp('company_percent','Комиссия компании, %')}
+        ${'company_sent_thb' in p?inp('company_sent_thb','Отправлено в компанию, THB',{hint:'факт на SCB — процент CRM посчитает сама'}):inp('company_percent','Комиссия компании, %')}
       </div>
       ${hashes('payout_tx_hashes','Переводы в MF Corp (факт)')}`:''}
       ${p.deal_kind==='mf_freehold'?`<div class="psec psnd">Оплата застройщику (фрихолд)</div>
