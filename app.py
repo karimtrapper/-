@@ -2289,6 +2289,19 @@ class StandState(Base):
     notified = Column(Text, default='[]')
 
 
+class StandSberMirrorState(Base):
+    """Курсор и состояние зеркала переживают перезапуск процесса."""
+    __tablename__ = 'stand_sber_mirror_state'
+    id = Column(Integer, primary_key=True)
+    last_uuid = Column(String(64))
+    last_operation_date = Column(String(40))
+    last_remote_id = Column(Integer)
+    last_success_at = Column(DateTime)
+    last_new_count = Column(Integer, default=0)
+    last_seen_count = Column(Integer, default=0)
+    last_error = Column(String(100))
+
+
 # Создание таблиц
 Base.metadata.create_all(bind=engine)
 
@@ -4910,6 +4923,15 @@ def stand_state_get():
                         'role': current_role()})
     finally:
         db.close()
+
+
+@app.route('/api/stand/sber-mirror/status', methods=['GET'])
+def stand_sber_mirror_status():
+    """Показать доступность зеркала любому вошедшему сотруднику."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    from stand_sber_mirror import status
+    return jsonify(status(sys.modules[__name__]))
 
 
 STAND_ROLE_PEOPLE = {'manager': 'Марина · менеджер', 'operator': 'Артём · операционист',
@@ -18554,6 +18576,10 @@ if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()
+
+if 'pytest' not in sys.modules:
+    from stand_sber_mirror import start as _start_stand_sber_mirror
+    _start_stand_sber_mirror(sys.modules[__name__])
 
 
 if __name__ == '__main__':
