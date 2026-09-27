@@ -196,6 +196,8 @@ tr:last-child td{border-bottom:none}
 .dz-big .dzt{font-size:14px;font-weight:700}
 .dz-big .dzs{font-size:12.5px;color:var(--text-sec);margin-top:4px}
 
+.side .li{grid-template-columns:34px 1fr;row-gap:8px}
+.side .li>:nth-child(3){grid-column:1 / -1;white-space:normal;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .side h4{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-sec);margin-bottom:13px}
 .side p{font-size:13px;color:var(--navy-600);line-height:1.65}
 .tl{list-style:none}
@@ -524,7 +526,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 27.09 16:00 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 27.09 18:30 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -2675,6 +2677,11 @@ document.addEventListener('input',e=>{const t=e.target;
   if(t.hasAttribute('oninput')||t.hasAttribute('onchange'))return;
   DRAFTS[(S.open||S.tab||'')+'|'+t.id]=t.value;},true);
 document.addEventListener('pointerdown',()=>{lastPointer=Date.now();},true);
+/* Выпадающие списки без обработчика тоже читаются только по кнопке — брокер на
+   «Отправке брокеру» сбрасывался на Tradex при каждой перерисовке (раскадровка 27.09) */
+document.addEventListener('change',e=>{const t=e.target;
+  if(!t||!t.id||t.tagName!=='SELECT'||t.hasAttribute('onchange'))return;
+  DRAFTS[(S.open||S.tab||'')+'|'+t.id]=t.value;},true);
 /* Перетащили файл мимо зоны загрузки — без этого браузер открывает его в новой
    вкладке вместо самой зоны drop (Карим, 25.09). Сами зоны (fileDrop/issuedUploadDrop)
    тоже гасят событие — этот обработчик страхует остальную страницу. */
@@ -2684,7 +2691,7 @@ function draftsRestore(){
   const p=(S.open||S.tab||'')+'|';
   Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)!==0)return;
     const el=document.getElementById(k.slice(p.length));
-    if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA')&&el.value!==DRAFTS[k])el.value=DRAFTS[k];});
+    if(el&&(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.tagName==='SELECT')&&el.value!==DRAFTS[k])el.value=DRAFTS[k];});
 }
 function draftsClear(key){const p=key+'|';Object.keys(DRAFTS).forEach(k=>{if(k.indexOf(p)===0)delete DRAFTS[k];});}
 let FOCUS=null;
