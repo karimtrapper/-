@@ -14,7 +14,30 @@ def _run(code, tmp_path, stand=True):
                LOCAL_NO_AUTH='0', REESTR_SYNC_ENABLED='0', PAYMENT_POLL_ENABLED='0',
                PAYIN_ADDR_BACKFILL='0', TRONSCAN_WARM_ENABLED='0',
                KYC_RETENTION_ENABLED='0', STAND_TRANSFER_POLL_ENABLED='0')
-    result = subprocess.run([sys.executable, '-c', code], cwd=os.path.dirname(os.path.dirname(__file__)),
+    # Дочерний процесс обходит conftest, поэтому сеть закрываем до импорта app.
+    no_network = '''
+import socket
+_connect = socket.socket.connect
+_connect_ex = socket.socket.connect_ex
+_getaddrinfo = socket.getaddrinfo
+def _local_address(address):
+    if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
+        raise RuntimeError('Внешняя сеть запрещена в subprocess-тесте')
+def _safe_connect(sock, address):
+    _local_address(address)
+    return _connect(sock, address)
+def _safe_connect_ex(sock, address):
+    _local_address(address)
+    return _connect_ex(sock, address)
+def _safe_getaddrinfo(host, *args, **kwargs):
+    if host not in (None, '127.0.0.1', '::1', 'localhost'):
+        raise RuntimeError('Внешний DNS запрещён в subprocess-тесте')
+    return _getaddrinfo(host, *args, **kwargs)
+socket.socket.connect = _safe_connect
+socket.socket.connect_ex = _safe_connect_ex
+socket.getaddrinfo = _safe_getaddrinfo
+'''
+    result = subprocess.run([sys.executable, '-c', no_network + code], cwd=os.path.dirname(os.path.dirname(__file__)),
                             env=env, capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -101,6 +124,10 @@ with m.app.test_client() as c:
     db = m.get_session()
     assert m._match_admin_by_tg(db, 777, 'produser') is not None  # re-enabled above
     disabled = db.query(m.AdminUser).get(did); disabled.login_disabled = True; db.commit()
+    assert m._match_admin_by_tg(db, 777, 'produser') is None
+    other = m.AdminUser(username='active_duplicate', telegram='@produser',
+                        password_hash=m.AdminUser.hash_password('x'))
+    db.add(other); db.commit()
     assert m._match_admin_by_tg(db, 777, 'produser') is None
     disabled.telegram_user_id = None; db.commit()
     assert m._match_admin_by_tg(db, 888, 'produser') is None

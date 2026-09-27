@@ -4549,13 +4549,17 @@ def login_page():
 def _match_admin_by_tg(db, tg_id, tg_username):
     """Находит админа по привязанному id, иначе по @username (trust-on-first-login → бинд id)."""
     tg_id = int(tg_id)
-    admin = db.query(AdminUser).filter(AdminUser.telegram_user_id == tg_id,
-                                       AdminUser.login_disabled.is_(False)).first()
+    admin = db.query(AdminUser).filter(AdminUser.telegram_user_id == tg_id).first()
     if admin:
-        return admin
+        return None if admin.login_disabled else admin
     uname = (tg_username or '').lstrip('@').strip().lower()
     if not uname:
         return None
+    # Совпавший @username отключённого аккаунта не должен привязать его id
+    # к другому активному аккаунту при поиске по имени.
+    for a in db.query(AdminUser).filter(AdminUser.login_disabled.is_(True)).all():
+        if (a.telegram or '').lstrip('@').strip().lower() == uname:
+            return None
     for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None),
                                         AdminUser.login_disabled.is_(False)).all():
         if (a.telegram or '').lstrip('@').strip().lower() == uname:
