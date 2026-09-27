@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Задачник CalcCRM — кликабельный прототип</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -414,13 +414,117 @@ a.hash:hover{background:#BAE6FD}
   .payrow{flex-wrap:wrap}
   .payrow>.btn{width:100%;margin-top:6px}
 }
+/* ===== Телефон (Карим, 27.09): вёрстка по компонентам, а не ужатый десктоп =====
+   Работают с телефона на ходу: менеджер отвечает клиенту, операционист жмёт шаг.
+   Шапка — одна строка, навигация разделов — вкладками, которые прилипают к верху;
+   главное действие шага — под большим пальцем внизу; модалки — листом снизу. */
+.bellbtn{display:inline-flex;align-items:center;gap:6px}
+.bellbtn svg{flex-shrink:0}
+.bellbtn .c{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
+  border-radius:999px;background:var(--coral);color:#fff;font-size:11px;font-weight:700}
+@media(max-width:620px){
+  /* шапка: роль, колокольчик и сборка в одну строку, подписи — прочь */
+  .proto{position:static;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));gap:8px;flex-wrap:nowrap}
+  .proto .lab{display:none}
+  .proto .build{order:3;margin-left:auto;font-size:10.5px;padding:2px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
+  .proto #roles{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-width:0}
+  .proto #roles::-webkit-scrollbar{display:none}
+  .proto .rolebtn{padding:7px 12px;font-size:13px;white-space:nowrap;min-height:36px}
+  .proto .spacer{display:none}
+  .proto #admintools:empty{display:none}
+  /* у админа — своя строка: переключатель ролей и инструменты доски не влезают в одну */
+  .proto:has(#admintools:not(:empty)){flex-wrap:wrap;row-gap:6px}
+  .proto #admintools{order:4;flex:1 1 100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .proto #admintools .ghost{white-space:nowrap;padding:6px 10px;font-size:12px;min-height:36px}
+  .bellbtn{min-height:40px;min-width:44px;padding:6px 10px;justify-content:center}
+  .bellbtn .bl{display:none}
+  .notebox{position:fixed;top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;max-height:72vh;
+    border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:env(safe-area-inset-bottom)}
+  /* разделы CRM: компактная полоса, прокрутка вбок, имя роли уже есть в шапке */
+  .top-nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:6px 12px;gap:6px}
+  .top-nav::-webkit-scrollbar{display:none}
+  .top-nav a{padding:7px 12px;font-size:13px}
+  .top-nav .who{display:none}
+  /* вкладки задачника прилипают к верху: до «Задачника» и «Сделок» — один тап
+     с любого места длинной карточки. Край затухает — видно, что есть ещё. */
+  .nav{position:sticky;top:0;z-index:150;padding:0 12px;box-shadow:0 1px 0 var(--border)}
+  .nav-tabs{padding:6px 0;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .nav-tab{padding:9px 13px;font-size:14px;min-height:40px}
+  .container{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
+  .page-h{font-size:20px}
+  /* шапка сделки: код и имя первой строкой, тип — второй, прогресс во всю ширину */
+  .strip{gap:4px 10px;padding:12px 14px}
+  .strip .sp{display:none}
+  .strip .it{flex:1 1 100%}
+  .strip>span:last-child{margin-left:0!important;flex:1 1 100%;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .prog{margin-left:0;flex:1}
+  .prog .bar{flex:1;width:auto}
+  /* «Карточка · Текущая задача · История» — сегментный переключатель на всю ширину */
+  .vtabs{flex-wrap:nowrap;gap:0;margin:-4px 0 14px;background:var(--navy-100);border-radius:10px;padding:3px}
+  .vtab{flex:1 1 0;text-align:center;padding:9px 6px;font-size:13px;border-radius:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vtab.on{border-color:transparent}
+  .vtab .lg{display:none}
+  .vtab{text-transform:capitalize}
+  /* «Что это за сделка»: факты в две колонки — вдвое короче, суть видна сразу */
+  .facts{grid-template-columns:1fr 1fr;gap:12px 14px}
+  /* карточки и цель шага плотнее: больше полезного на первом экране */
+  .card{padding:16px 14px}
+  .goalt{font-size:17px;margin-bottom:12px}
+  .goalnums{grid-template-columns:1fr 1fr;gap:10px}
+  .goalnums .v{font-size:15.5px}
+  .goalnums .v.big{font-size:22px;grid-column:1 / -1}
+  .goalnums>div:first-child{grid-column:1 / -1}
+  .card-title{font-size:15.5px;margin-bottom:12px}
+  /* поля: 16px — иначе iPhone увеличивает страницу при фокусе на поле */
+  .fc,.qinp,select.fc{font-size:16px}
+  .fc.big{font-size:18px}
+  .fr{grid-template-columns:1fr;gap:0 12px}
+  /* главное действие шага — под пальцем: ряд с основной кнопкой прилипает к низу
+     экрана, пока видна его карточка; основная кнопка — во всю ширину. Только если
+     ряд последний в карточке: в «Новой заявке» и на закрытии после кнопок ещё идут
+     поля — прилипшая кнопка их закрывала (приёмка 27.09) */
+  .card>.row:last-child:has(>.btn-primary,>.btn-success){position:sticky;bottom:0;z-index:20;margin:16px -14px -16px;
+    padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:rgba(255,255,255,.94);
+    -webkit-backdrop-filter:saturate(1.4) blur(10px);backdrop-filter:saturate(1.4) blur(10px);
+    border-top:1px solid var(--border);border-radius:0 0 var(--r) var(--r)}
+  .row>.btn-primary,.row>.btn-success{flex:1 1 100%}
+  .row>.btn{min-height:46px}
+  /* модалки — лист снизу: до кнопок дотягивается большой палец */
+  .ov{align-items:flex-end;padding:0}
+  .modal,.modal.wide,.modal.big{max-width:none;border-radius:var(--r-lg) var(--r-lg) 0 0;max-height:92vh;overflow:auto;
+    padding-bottom:env(safe-area-inset-bottom)}
+  .modal.big .modal-b{max-height:none}
+  /* тост — полосой сверху во всю ширину, не обрезается по краям */
+  .toast{left:12px;right:12px;transform:none;top:max(12px,env(safe-area-inset-top));text-align:center;font-size:14px}
+  /* правая колонка под основной: «Коротко о пути» и документы — после работы */
+  .side{padding:14px}
+  .docstrip{grid-template-columns:1fr}
+  /* хеши на s25: операции под хешем, кнопки крупнее */
+  .hashtxt{font-size:14px;flex-basis:100%}
+  .hashops{white-space:normal}
+  .hashops .btn{min-height:40px}
+  .coinsrow{padding:12px}
+  /* «Отправить клиенту»: имя файла над кнопкой, кнопка во всю ширину */
+  .payrow{flex-direction:column;align-items:stretch}
+  .payrow>.btn{width:100%}
+  .checktop{padding:14px}
+  .checktop .checksum{font-size:22px}
+  .checkfile .fops{width:100%}
+  .checkfile .fops .btn{flex:1 1 0}
+  .stats-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .stat-value{font-size:22px}
+}
+@media(max-width:620px) and (pointer:coarse){
+  .chip{min-height:40px}
+  .btn-sm{min-height:40px}
+}
 </style>
 </head>
 <body>
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 25.09 23:30 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 27.09 16:00 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -1395,8 +1499,9 @@ function noteGo(id){
 }
 function bellHtml(){
   const u=notesUnread(S.role), list=notesFor(S.role).slice(0,8);
-  return `<button class="ghost" onclick="notesOpen()" style="position:relative">
-      🔔 Уведомления${u?`<span class="c" style="margin-left:6px">${u}</span>`:''}</button>
+  return `<button class="ghost bellbtn" onclick="notesOpen()" aria-label="Уведомления${u?': '+u+' новых':''}">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <span class="bl">Уведомления</span>${u?`<span class="c">${u}</span>`:''}</button>
     ${S.notesOpen?`<div class="notebox">
       <div class="noteh">Уведомления · ${ROLES[S.role]?ROLES[S.role].t:''}
         ${list.length?`<button class="btn btn-outline btn-sm" onclick="notesRead()">Отметить прочитанными</button>`:''}</div>
@@ -3425,9 +3530,9 @@ function viewDeal(d){
     /* Вкладка задачника появляется только если по сделке были задачи: у внесённой
        руками смотреть нечего, и лишняя вкладка сбивает (Карим, 23.09). */
     const had=!d.manual;
-    return `<div class="vtabs">${tab('deal','Карточка сделки')}${
-      had?tab('task',d.closed?'Последний шаг':'Текущая задача'):''}${
-      had?tab('path','Задачник — история'):''}</div>`;})()}
+    return `<div class="vtabs">${tab('deal','Карточка<span class="lg"> сделки</span>')}${
+      had?tab('task',d.closed?'<span class="lg">Последний </span>шаг':'<span class="lg">Текущая </span>задача'):''}${
+      had?tab('path','<span class="lg">Задачник — </span>история'):''}</div>`;})()}
   <div class="cols"><div>${body}</div>
   <div><div class="card side"><h4>Коротко о пути</h4>
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
