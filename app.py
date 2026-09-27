@@ -5048,6 +5048,21 @@ def _stand_valid_receipt(deal):
 
 
 STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes'}
+# Подписанный договор и файлы клиента менеджер загружает на любом шаге (Карим, 27.09):
+# путь это не двигает, поэтому пропускаем правку, если менялись только эти документы.
+STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'ipds'}
+
+
+def _stand_manager_docs_only(before, deal, changed):
+    if not changed <= {'files', 'docs', 'docMeta', 'log'}:
+        return False
+    for key in changed - {'log'}:
+        old, new = before.get(key) or {}, deal.get(key) or {}
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            return False
+        if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in STAND_MANAGER_DOC_KINDS):
+            return False
+    return True
 
 
 def _stand_guard_transition(previous, new_state, actor=None):
@@ -5112,8 +5127,9 @@ def _stand_guard_transition(previous, new_state, actor=None):
             # можно править на любом шаге, пока инвойс не оплачен. Менеджеру пропускаем
             # правку, если менялись только реквизиты и их след в журнале.
             changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)}
-            manager_reqs = (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
-                            and changed <= STAND_MANAGER_REQ_FIELDS)
+            manager_reqs = ((actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
+                             and changed <= STAND_MANAGER_REQ_FIELDS)
+                            or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed)))
             if required and actor != required and not manager_reqs:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):

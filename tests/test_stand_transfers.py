@@ -605,3 +605,33 @@ def test_manager_can_edit_requisites_on_operator_steps(monkeypatch):
         data = cur['data']
         data['deals'][0]['payTo'] = {'acc': '999'}
         assert client.put('/api/stand/state', json={'version': cur['version'], 'data': data}).status_code == 409
+
+
+def test_manager_can_upload_signed_contract_on_any_step(monkeypatch):
+    """Подписанный договор менеджер загружает на любом шаге, в том числе на чужом
+    (Карим, 27.09). Чек оплаты или другие поля сделки так менять нельзя."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    signed = {'file': 'signed.pdf', 'size': '1 КБ', 'at': '27.09', 'mime': 'application/pdf',
+              'bytes': 10, 'data': 'data:application/pdf;base64,JVBERi0=', 'demo': False}
+    for step in ('s22', 's26'):
+        _put_board({'deals': [{'id': 1, 'step': step, 'log': [], 'pay': {}, 'docs': {'inv': True},
+                               'files': {'inv': []}, 'docMeta': {}}],
+                    'convs': [], 'wallets': []})
+        with appmod.app.test_client() as client:
+            cur = client.get('/api/stand/state').json
+            data = cur['data']
+            deal = data['deals'][0]
+            deal['files']['signed'] = [signed]
+            deal['docs']['signed'] = True
+            deal['docMeta']['signed'] = {'file': 'signed.pdf', 'size': '1 КБ', 'at': '27.09'}
+            deal['log'].append({'text': 'Приложен файл: Подписанный пакет от клиента · signed.pdf'})
+            ok = client.put('/api/stand/state', json={'version': cur['version'], 'data': data})
+            assert ok.status_code == 200, (step, ok.json)
+            cur = client.get('/api/stand/state').json
+            data = cur['data']
+            data['deals'][0]['files']['receipt'] = [signed]
+            data['deals'][0]['docs']['receipt'] = True
+            bad = client.put('/api/stand/state', json={'version': cur['version'], 'data': data})
+            assert bad.status_code == 409, step
