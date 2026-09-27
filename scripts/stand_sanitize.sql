@@ -55,7 +55,11 @@ UPDATE admin_users
        -- Синтаксически невалидный bcrypt-хэш: не начинается с '$2b$', поэтому
        -- check_password() идёт по legacy-ветке (sha256-сравнение строк) и
        -- всегда возвращает False — ни исключения, ни случайного совпадения.
-       password_hash = 'sanitized:' || md5(random()::text || clock_timestamp()::text || id::text);
+       password_hash = 'sanitized:' || md5(random()::text || clock_timestamp()::text || id::text),
+       -- Прод-админ отключён (login_disabled=true выше в этом же UPDATE) — его
+       -- @username в Telegram не должен оставаться в базе стенда: это тоже
+       -- канал связи с реальным человеком, а не только пароль/сессия.
+       telegram = NULL;
 
 -- Логины, совпадающие с реальными сотрудниками стенда — переименовываем,
 -- чтобы пять стендовых аккаунтов (заводит _stand_seed_users) не столкнулись
@@ -70,15 +74,23 @@ UPDATE admin_users
 -- партнёра или агента — в NULL. Партнёры и агенты (deal_agents) своих
 -- telegram-колонок в схеме не имеют (у партнёра только token, у агента —
 -- только имя-снапшот), поэтому список ниже — referrers и clients целиком.
+-- Без WHERE: строка с auth_mode='telegram', но уже пустыми telegram/
+-- telegram_user_id (например заявка без привязки) раньше не попадала под
+-- условие WHERE и оставалась в режиме 'telegram' — правим её тоже.
 UPDATE referrers
    SET telegram = NULL,
        telegram_user_id = NULL,
        -- auth_mode='telegram' без telegram_user_id ломает вход в кабинет;
        -- переключаем на 'link' — доступ по перевыпущенному token сохраняется.
-       auth_mode = CASE WHEN auth_mode = 'telegram' THEN 'link' ELSE auth_mode END
- WHERE telegram IS NOT NULL OR telegram_user_id IS NOT NULL;
+       auth_mode = CASE WHEN auth_mode = 'telegram' THEN 'link' ELSE auth_mode END;
 
 UPDATE clients SET telegram = NULL WHERE telegram IS NOT NULL;
+
+-- clients.phone/notes и другие свободные текстовые поля клиентов — СОХРАНЯЕМ
+-- намеренно (решение лидера): весь стенд за логином, исходящие интеграции
+-- заглушены (T1), это рабочие данные команды для проверки «как в проде», а
+-- не публичный канал связи. Построчный хеш в verify-candidate всё равно
+-- ловит их порчу — просто не требует замены на NULL/заглушку.
 
 -- contact_value реферера на заявке выплаты — это его же @username/телефон/ник
 -- (contact_method='telegram'|'whatsapp'), тот же класс риска, что и telegram

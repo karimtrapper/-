@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import psycopg2
 
@@ -52,6 +52,11 @@ FILTERED_SET_PATTERNS = [
 DOCUMENTED_DIFF_TABLES = {'login_nonces', 'stand_state'}
 
 CANDIDATE_DB_RE = re.compile(r'^stand_prodcopy_[A-Za-z0-9_]+$')
+
+# Токен-колонки, которые санация обязана перевыпустить. inspect-dump
+# записывает их исходные значения в counts.json, verify-candidate проверяет,
+# что ни одно из них не «просочилось» в кандидата как есть.
+TOKEN_COLUMNS = {'partners': 'token', 'referrers': 'token', 'kyc_requests': 'token'}
 
 MONEY_QUERIES = {
     'deals_profit_usdt_sum': ('deals', 'SELECT COALESCE(SUM(profit_usdt), 0) FROM deals'),
@@ -78,23 +83,21 @@ HASH_EXCLUDE_COLUMNS = {
     'clients': {'telegram'},
     'payment_link_orders': {'link'},
     'payout_requests': {'contact_value'},
-    'admin_users': {'username', 'password_hash', 'telegram_user_id', 'login_disabled', 'notify_enabled'},
+    'admin_users': {'username', 'password_hash', 'telegram', 'telegram_user_id', 'login_disabled', 'notify_enabled'},
 }
 
-# Значение-маркер NULL внутри хеша — отличает NULL от пустой строки. Не должно
-# встречаться в реальных данных; коллизия маловероятна и не критична (хеш —
-# защита от случайной порчи данных в конвейере, а не криптографическая подпись).
-_HASH_NULL_MARKER = '@@STAND_COPY_PROD_NULL@@'
 
 
 # ─────────────────────────── общие мелкие помощники ───────────────────────────
 
 def _secrets_from_url(url):
-    """DSN целиком + отдельно пароль из неё.
+    """DSN целиком + отдельно пароль из неё, в «сыром» и URL-декодированном виде.
 
     Сторонний pg_dump (или обёртка над ним) может напечатать пароль сам по
     себе, вне DSN (например `password=...` в диагностике) — редактировать
-    только полную строку DSN недостаточно.
+    только полную строку DSN недостаточно. `urlsplit(...).password` не
+    декодирует percent-encoding (пароль `x@y` в DSN выглядит как `x%40y`),
+    а диагностика может напечатать пароль в любой из двух форм.
     """
     if not url:
         return []
@@ -105,6 +108,9 @@ def _secrets_from_url(url):
         password = None
     if password:
         out.append(password)
+        decoded = unquote(password)
+        if decoded != password:
+            out.append(decoded)
     return out
 
 
@@ -285,7 +291,16 @@ def compute_table_hash(cur, table, exclude_cols):
     Ловит ЛЮБОЕ изменение данных — не только число строк или отдельные суммы:
     другое значение хоть в одной незаисключённой колонке хоть одной строки
     меняет итоговый md5. Колонки внутри строки объединены chr(1), строки между
-    собой — chr(2); NULL заменяется на маркер, отличимый от пустой строки.
+    собой — chr(2).
+
+    NULL кодируется через `quote_nullable()`: для настоящего NULL она отдаёт
+    голый текст `NULL` без кавычек, а для ЛЮБОГО текстового значения — это
+    значение в кавычках (внутренние кавычки удвоены). Реальные данные не
+    могут дать на выходе `quote_nullable` голый `NULL` — они всегда в
+    кавычках, — поэтому строка со значением-меткой в данных (например
+    буквально `NULL`) не совпадёт по хешу с настоящим NULL. Фиксированный
+    строковый маркер вместо этого был бы уязвим к ровно такой коллизии.
+
     Порядок колонок в хеше — по алфавиту, одинаков независимо от ADD COLUMN
     (санация добавляет новые колонки в конец физически, но они попадают в
     exclude_cols по имени и не участвуют в хеше ни на одной из сторон сверки).
@@ -297,7 +312,7 @@ def compute_table_hash(cur, table, exclude_cols):
         return None, []
     order_cols = pk_cols or hash_cols  # нет PK — сортируем по всем хешируемым колонкам
 
-    col_exprs = ', '.join(f"coalesce(\"{c}\"::text, '{_HASH_NULL_MARKER}')" for c in hash_cols)
+    col_exprs = ', '.join(f'quote_nullable("{c}"::text)' for c in hash_cols)
     order_exprs = ', '.join(f'"{c}"' for c in order_cols)
     query = (
         f'SELECT md5(coalesce(string_agg(row_data, chr(2) ORDER BY {order_exprs}), \'\')) '
@@ -357,6 +372,12 @@ def compute_snapshot(target_url):
 
         foreign_keys = _foreign_keys(cur)
 
+        token_values = {}
+        for t, col in TOKEN_COLUMNS.items():
+            if t in table_set:
+                cur.execute(f'SELECT "{col}" FROM "{t}" WHERE "{col}" IS NOT NULL')
+                token_values[t] = [r[0] for r in cur.fetchall()]
+
         return {
             'tables': table_counts,
             'table_hashes': table_hashes,
@@ -364,6 +385,7 @@ def compute_snapshot(target_url):
             'money': money,
             'sequences': sequences,
             'foreign_keys': foreign_keys,
+            'token_values': token_values,
         }
     finally:
         conn.close()
@@ -386,6 +408,79 @@ def check_orphans(target_url, foreign_keys):
             n = cur.fetchone()[0]
             if n:
                 problems.append({**fk, 'orphan_rows': n})
+    finally:
+        conn.close()
+    return problems
+
+
+def check_sanitize_invariants(candidate_url, expected_token_values):
+    """Пост-инварианты санации — проверяются ВСЕГДА, а не молча пропускаются.
+
+    login_nonces/stand_state/payment_link_orders.link и токены — колонки и
+    таблицы, которые санация меняет намеренно (см. stand_sanitize.sql), и
+    именно поэтому исключены из побайтового хеша содержимого. Но «исключено
+    из хеша» не значит «не проверяется вовсе»: здесь мы утверждаем ТОЧНОЕ
+    ожидаемое состояние после санации и падаем, если оно нарушено.
+    """
+    problems = []
+    conn = psycopg2.connect(candidate_url)
+    conn.set_session(readonly=True, autocommit=True)
+    try:
+        cur = conn.cursor()
+
+        if _table_exists(cur, 'login_nonces'):
+            cur.execute('SELECT COUNT(*) FROM login_nonces')
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'login_nonces не пуст после санации: {n} строк')
+
+        if _table_exists(cur, 'stand_state'):
+            cur.execute('SELECT id, data, version, notified FROM stand_state')
+            rows = cur.fetchall()
+            if rows != [(1, '{}', 0, '[]')]:
+                problems.append(f'stand_state не в ожидаемом пустом состоянии: {rows}')
+
+        if _table_exists(cur, 'payment_link_orders'):
+            cur.execute("SELECT COUNT(*) FROM payment_link_orders WHERE link IS NOT NULL AND link <> ''")
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'payment_link_orders.link не обнулена у {n} строк')
+
+        for table, col in TOKEN_COLUMNS.items():
+            old_values = set(expected_token_values.get(table) or [])
+            if not old_values or not _table_exists(cur, table):
+                continue
+            cur.execute(f'SELECT "{col}" FROM "{table}"')
+            new_values = {r[0] for r in cur.fetchall()}
+            leaked = old_values & new_values
+            if leaked:
+                problems.append(f'{table}.{col}: {len(leaked)} значений совпадает с дампом — токен не перевыпущен')
+
+        if _table_exists(cur, 'referrers'):
+            cur.execute('SELECT COUNT(*) FROM referrers WHERE telegram IS NOT NULL OR telegram_user_id IS NOT NULL')
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'referrers.telegram/telegram_user_id не обнулены у {n} строк')
+            cur.execute("SELECT COUNT(*) FROM referrers WHERE auth_mode = 'telegram'")
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f"referrers.auth_mode остался 'telegram' у {n} строк (ожидался 'link')")
+
+        if _table_exists(cur, 'clients'):
+            cur.execute('SELECT COUNT(*) FROM clients WHERE telegram IS NOT NULL')
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'clients.telegram не обнулен у {n} строк')
+
+        if _table_exists(cur, 'admin_users'):
+            cur.execute('SELECT COUNT(*) FROM admin_users WHERE login_disabled IS NOT TRUE')
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'admin_users.login_disabled не выставлен у {n} строк (прод-админы должны быть отключены)')
+            cur.execute('SELECT COUNT(*) FROM admin_users WHERE telegram IS NOT NULL')
+            n = cur.fetchone()[0]
+            if n:
+                problems.append(f'admin_users.telegram не обнулен у {n} прод-админов')
     finally:
         conn.close()
     return problems
@@ -611,7 +706,7 @@ def cmd_restore_candidate(args):
             'referrers.token — перевыпущен',
             'kyc_requests.token — перевыпущен',
             'login_nonces — удалены все строки',
-            'admin_users.login_disabled = true, notify_enabled = false, telegram_user_id = NULL, password_hash — заведомо невалидный',
+            'admin_users.login_disabled = true, notify_enabled = false, telegram = NULL, telegram_user_id = NULL, password_hash — заведомо невалидный',
             'admin_users.username — karim/marina/artem/vitaliy/teodor -> prod_<логин> при совпадении',
             'referrers.telegram = NULL, referrers.telegram_user_id = NULL, auth_mode telegram -> link',
             'clients.telegram = NULL',
@@ -625,6 +720,8 @@ def cmd_restore_candidate(args):
             'agreement_docs.drive_url — то же самое',
             'payin_tx_hash/payout_tx_hash/doverka_transaction_id/doverka_payout_hash/wallet — финансовый '
             'след (хэши транзакций, номера кошельков), не канал связи с человеком',
+            'clients.phone/notes и другие свободные текстовые поля клиентов — решение лидера: стенд целиком '
+            'за логином, исходящие заглушены, это рабочие данные команды',
         ],
         'backup_manifest_used': manifest['dump_path'],
     }, ensure_ascii=False, indent=2))
@@ -660,15 +757,22 @@ def cmd_verify_candidate(args):
             'reason': 'login_disabled/notify_enabled/password_hash/telegram_user_id/username изменены санацией, количество строк совпадает',
         })
     documented.append({
-        'note': 'partners.token/referrers.token/kyc_requests.token перевыпущены — значения не сравниваются, только наличие/количество',
+        'note': 'partners.token/referrers.token/kyc_requests.token перевыпущены — значения не сравниваются побайтово, '
+                'но проверяется, что ни одно старое значение не осталось (см. пост-инварианты ниже)',
     })
     documented.append({
-        'note': 'referrers.telegram/telegram_user_id/auth_mode, clients.telegram, payout_requests.contact_value, '
-                'payment_link_orders.link — обнулены санацией (внешний человек/провайдер не должен быть достижим со стенда)',
+        'note': 'referrers.telegram/telegram_user_id/auth_mode, clients.telegram, admin_users.telegram, '
+                'payout_requests.contact_value, payment_link_orders.link — обнулены санацией (внешний '
+                'человек/провайдер не должен быть достижим со стенда); точное состояние проверяют пост-инварианты',
     })
     documented.append({
         'note': 'deals.doc_invoice_url/doc_contract_url/doc_payment_url и agreement_docs.drive_url — '
                 'сохранены намеренно: доступ к ним контролирует Google (не стенд), команда и так видит их в проде',
+    })
+    documented.append({
+        'note': 'clients.phone/notes и другие свободные текстовые поля клиентов — сохранены намеренно '
+                '(решение лидера): стенд целиком за логином, исходящие интеграции заглушены, это рабочие данные '
+                'команды для проверки «как в проде»; их порчу всё равно ловит построчный хеш',
     })
 
     for t, exp_hash in expected.get('table_hashes', {}).items():
@@ -696,6 +800,10 @@ def cmd_verify_candidate(args):
     orphans = check_orphans(args.candidate_url, actual['foreign_keys'])
     if orphans:
         problems.append(f'сиротские FK-ссылки: {orphans}')
+
+    # Таблицы/колонки санации — не «пропущены молча», а проверены на точный
+    # ожидаемый пост-инвариант (см. check_sanitize_invariants).
+    problems.extend(check_sanitize_invariants(args.candidate_url, expected.get('token_values', {})))
 
     report = {'ok': not problems, 'problems': problems, 'documented_differences': documented}
     print(json.dumps(report, ensure_ascii=False, indent=2))

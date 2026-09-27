@@ -116,7 +116,7 @@ def _seed(engine, app_module, *, admin_username, marker):
         manager = m.Manager(name=f'Менеджер {marker}')
         s.add(manager)
 
-        client = m.Client(name=f'Клиент {marker}', telegram='@client_' + marker)
+        client = m.Client(name=f'Клиент {marker}', telegram='@client_' + marker, phone='+79001234567')
         s.add(client)
         s.flush()
 
@@ -309,13 +309,14 @@ def test_full_cycle(pg_cluster, seeded, tmp_path):
         assert cur.fetchone()[0] == 0
 
         cur.execute(
-            "SELECT username, login_disabled, notify_enabled, telegram_user_id, password_hash "
+            "SELECT username, login_disabled, notify_enabled, telegram, telegram_user_id, password_hash "
             "FROM admin_users WHERE id = %s", (seeded['prod']['admin_id'],),
         )
-        username, login_disabled, notify_enabled, tg_id, pwd_hash = cur.fetchone()
+        username, login_disabled, notify_enabled, telegram, tg_id, pwd_hash = cur.fetchone()
         assert username == 'prod_karim'
         assert login_disabled is True
         assert notify_enabled is False
+        assert telegram is None
         assert tg_id is None
         assert pwd_hash != seeded['prod']['admin_password_hash']
         assert not pwd_hash.startswith('$2b$')
@@ -333,8 +334,10 @@ def test_full_cycle(pg_cluster, seeded, tmp_path):
         assert ref_tg_id is None
         assert auth_mode == 'link'
 
-        cur.execute('SELECT telegram FROM clients')
-        assert cur.fetchone()[0] is None
+        cur.execute('SELECT telegram, phone FROM clients')
+        client_telegram, client_phone = cur.fetchone()
+        assert client_telegram is None
+        assert client_phone == '+79001234567'  # решение лидера: свободные поля клиентов — сохраняем намеренно
 
         cur.execute('SELECT contact_value FROM payout_requests')
         assert cur.fetchone()[0] != '@ref_prod'
@@ -476,6 +479,30 @@ def test_dump_prod_redacts_password_not_just_full_dsn(tmp_path):
     assert 'password=<REDACTED>' in log_text.lower() or '<redacted>' in log_text.lower()
 
 
+def test_dump_prod_redacts_url_encoded_password_in_both_forms(tmp_path):
+    """Пароль в DSN процент-закодирован (`x%40y` = `x@y`); `urlsplit(...).password`
+    отдаёт «сырую» закодированную форму — стороннее ПО может напечатать в
+    диагностике как её, так и декодированную. Обе должны исчезнуть из лога."""
+    fake_pg_dump = tmp_path / 'fake_pg_dump'
+    fake_pg_dump.write_text(
+        '#!/bin/sh\n'
+        'echo "raw form: x%40y%23z" >&2\n'
+        'echo "decoded form: x@y#z" >&2\n'
+        'exit 1\n'
+    )
+    fake_pg_dump.chmod(0o700)
+
+    out_dir = tmp_path / 'leak_encoded'
+    proc = _run(
+        'dump-prod', '--prod-url', 'postgresql://alice:x%40y%23z@127.0.0.1:1/fakeprod',
+        '--out-dir', str(out_dir), '--pg-dump-bin', str(fake_pg_dump), expect_ok=False,
+    )
+    assert proc.returncode != 0
+    log_text = next(out_dir.glob('*.stderr.log')).read_text()
+    assert 'x%40y%23z' not in log_text
+    assert 'x@y#z' not in log_text
+
+
 def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp_path):
     """Число строк и денежные суммы могут совпасть, а конкретная строка — нет.
     verify-candidate обязан ловить порчу через построчный хеш, а не только
@@ -544,3 +571,27 @@ def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp
     _corrupt_and_check("UPDATE deal_agents SET payout_usdt = 99999")
     _corrupt_and_check("UPDATE deals SET client_name = 'CORRUPTED'")
     _corrupt_and_check("UPDATE managers SET id = 999999")
+
+    # NULL-коллизия: clients.notes у сида остаётся NULL. Если бы хеш кодировал
+    # NULL фиксированным строковым маркером, запись ЛИТЕРАЛЬНО этого маркера
+    # была бы неотличима от настоящего NULL. quote_nullable() отличает их —
+    # см. compute_table_hash — эта проверка ловит именно такую регрессию.
+    _corrupt_and_check("UPDATE clients SET notes = 'NULL' WHERE notes IS NULL")
+
+    # Санируемые таблицы/колонки не должны молча пропускаться verify-candidate —
+    # у них есть точный пост-инвариант (check_sanitize_invariants), а не только
+    # исключение из хеша.
+    _corrupt_and_check("INSERT INTO login_nonces (nonce) VALUES ('regression-nonce')")
+    _corrupt_and_check("UPDATE stand_state SET data = 'BAD' WHERE id = 1")
+    _corrupt_and_check("UPDATE payment_link_orders SET link = 'https://pay.example/reused'")
+    _corrupt_and_check("UPDATE referrers SET telegram_user_id = 123456789")
+    _corrupt_and_check("UPDATE referrers SET auth_mode = 'telegram'")
+    _corrupt_and_check("UPDATE admin_users SET telegram = '@leaked'")
+    _corrupt_and_check("UPDATE admin_users SET login_disabled = false")
+
+    # Токен "не перевыпущен" — берём исходное (дамповое) значение из counts.json
+    # и подкладываем его обратно в кандидата. verify-candidate обязан заметить
+    # совпадение со старым токеном явно (пост-инвариант), не только "как будто
+    # значение другое, но раз оно исключено из хеша — сойдёт".
+    old_token = json.loads(counts_path.read_text())['token_values']['referrers'][0]
+    _corrupt_and_check(f"UPDATE referrers SET token = '{old_token}'")
