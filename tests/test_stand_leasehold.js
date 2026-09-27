@@ -171,11 +171,16 @@ const round2 = x => Math.round(x * 100) / 100;
   assert.equal(d.step, 's26', 'без чека нельзя списать инвойс');
   assert.equal(scb, 2453000);
   d.docs.receipt = true;
-  // назначение для банка застройщика обязательно в момент оплаты (Карим, 27.09)
+  // назначение для банка застройщика вносит менеджер в реквизитах; без него не платим,
+  // а поле на оплате операционист не правит — только копирует (Карим, 27.09)
+  inputs.pay_purp = 'операционист вписал сам';
   ctx.act(1, 's26');
-  assert.equal(d.step, 's26', 'без назначения для банка не платим');
-  inputs.pay_purp = 'Payment for unit A-101, invoice INV-1';
+  assert.equal(d.step, 's26', 'без назначения от менеджера не платим');
+  assert.ok(toasts.some(t => t.includes('Менеджер не указал назначение')), 'просим вернуть с вопросом');
+  assert.equal(scb, 2453000);
+  d.payTo.purpose = 'Payment for unit A-101, invoice INV-1';
   ctx.act(1, 's26');
+  assert.equal(d.payTo.purpose, 'Payment for unit A-101, invoice INV-1', 'назначение на оплате не переписывается');
   assert.equal(d.step, 's27');
   assert.equal(scb, 2103000);
   assert.equal(d.payout.usdt, 11217.95);
@@ -184,4 +189,50 @@ const round2 = x => Math.round(x * 100) / 100;
   assert.equal(scb, 2103000, 'повторное действие не списывает деньги');
 }
 
-console.log('stand leasehold: send statuses, cents, economics, Coins/SCB PASS');
+// Реквизиты для оплаты: назначение для банка застройщика обязательно и в задаче s15,
+// и в параллельной задаче менеджера (reqSave) — Карим, 27.09.
+{
+  for (const [fn, call] of [['act', ctx => ctx.act(1, 's15')], ['reqSave', ctx => ctx.reqSave(1)]]) {
+    const d = {id: 1, step: 's15', closed: false, pay: {}, rates: {}, log: [], reqTask: 'open'};
+    const asked = [];
+    const ctx = run([fn], {
+      S: {deals: [d]}, deal: () => d, document: {getElementById: () => null},
+      saveNote: () => {}, need: map => { asked.push(Object.keys(map)); return true; },
+      val: () => '', toast: () => {}, Math,
+    });
+    call(ctx);
+    assert.ok(asked[0].includes('p_purp'), fn + ': назначение для банка застройщика обязательно');
+    assert.equal(d.payTo, undefined, fn + ': без полей реквизиты не сохраняются');
+  }
+}
+
+// ФИО в договор — только из паспорта или прошлой сделки знакомого клиента, не из заявки.
+{
+  const base = {id: 7, code: 'СД-7', client: 'Иванов Сергей', rates: {}, kind: 'Лизхолд',
+    type: 'Оплата недвижимости', docs: {}, payType: 'По реквизитам'};
+  const mk = (d, fields, deals) => run(['docFields', 'prevPassport', 'parsed', 'fioNorm', 'fioHint', 'lat'], {
+    S: {deals: deals || [d]}, fake: () => ({}), approx: () => ({}),
+    isCrypto: () => false, payinWallet: () => null, payToCrypto: () => '',
+    MF: {name: 'MF', reg: '1', dir: 'X', rubName: 'ООО', inn: '1', kpp: '1', bank: 'Сбер', acc: '1', ks: '1', bik: '1'},
+    TR: {}, htmlText: String, Object, String,
+  });
+  let d = Object.assign({}, base);
+  let ctx = mk(d);
+  assert.equal(ctx.docFields(d).fio, '', 'не распознано — пусто, имя из заявки не подставляется');
+  assert.equal(ctx.fioHint(d), '', 'нечего сравнивать — подсказки нет');
+  d = Object.assign({}, base, {docParse: {fields: {client_name_en: 'QA TESTOV TEST'}}});
+  ctx = mk(d);
+  assert.equal(ctx.docFields(d).fio, '');
+  assert.equal(ctx.docFields(d).fioLat, 'QA TESTOV TEST');
+  assert.ok(ctx.fioHint(d).includes('В заявке клиент записан как «Иванов Сергей»'), 'расхождение подсказано');
+  d = Object.assign({}, base, {docParse: {fields: {client_name_ru: 'Сергей Иванов'}}});
+  ctx = mk(d);
+  assert.equal(ctx.fioHint(d), '', 'то же имя в другом порядке — без подсказки');
+  // знакомый клиент: паспорт из прошлой сделки
+  const prev = {id: 3, clientId: 5, docFields: {fio: 'Иванов Сергей Петрович', passNo: '75 123'}};
+  d = Object.assign({}, base, {isOld: true, clientId: 5});
+  ctx = mk(d, null, [prev, d]);
+  assert.equal(ctx.docFields(d).fio, 'Иванов Сергей Петрович');
+}
+
+console.log('stand leasehold: send statuses, cents, economics, Coins/SCB, реквизиты, ФИО PASS');
