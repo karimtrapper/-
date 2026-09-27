@@ -839,7 +839,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="partners">Партнёры</button>
             <button class="nav-tab" data-section="referrers">Рефереры</button>
             <button class="nav-tab" data-section="payoutRequests">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
-            <button class="nav-tab" data-section="admins">🔐 Сотрудники</button>
+            <button class="nav-tab" data-section="admins">🔐 Админы</button>
             <button class="nav-tab stand-only" data-section="myTelegram" style="display:none;">Мой Telegram</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
@@ -5647,7 +5647,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div>
                             <div style="font-weight:600;">${a.display_name}
                                 ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
-                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram привязан' : '· ⚪ Telegram не привязан'}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram привязан' : (STAND_ROLES ? '· ⚪ Telegram не привязан' : '· ⚪ ждёт входа')}</div>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;">
                             ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
@@ -5680,6 +5680,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // На стенде Telegram-входа нет — заголовок не должен обещать обратное
                 const sec = document.querySelector('#admins .card-title');
                 if (sec) sec.textContent = 'Сотрудники';
+                const nav = document.querySelector('.nav-tab[data-section="admins"]');
+                if (nav) nav.textContent = '🔐 Сотрудники';
                 const hint = document.querySelector('#admins p');
                 if (hint) hint.innerHTML = 'Каждому свой логин, пароль и роль. Роль решает, ' +
                     'какие задачи человек видит в задачнике. Менять её можно на ходу — ' +
