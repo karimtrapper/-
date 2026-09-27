@@ -526,7 +526,7 @@ a.hash:hover{background:#BAE6FD}
 
 <div class="proto">
   <span class="lab">Тестовый стенд · роль</span>
-  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 27.09 21:00 · как прод</span>
+  <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 27.09 21:40 · как прод</span>
   <span id="roles"></span>
   <span id="bell"></span>
   <span class="spacer"></span>
@@ -820,8 +820,6 @@ async function fetchMarket(){
 }
 function avgRate(){return MARKET.rubThb||(S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
 function avgUsdt(){return MARKET.usdt||(S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
-/* снимок рынка в момент фиксации курса — от него считается «курс поехал» */
-function marketMark(d){if(MARKET.at) d.rates.mkt=isCrypto(d)?avgUsdt():avgRate();}
 /* Валюта, в которой платит клиент. Крипта — это USDT, рублей в такой сделке нет
    вообще: ни курса RUB→USDT, ни поступления на Сбер, ни конвертации. */
 const SIGN={rub:'₽',usdt:'USDT',thb:'฿'};  // клиенту — USDT, а не «$»: для людей это разные деньги
@@ -1566,7 +1564,7 @@ function quoteApply(d){
   const r=quoteUsed(d,'rub'), t=quoteUsed(d,'thb');
   if(r) d.rates.rubUsdt=r.rate;
   if(t) d.rates.usdtThb=t.rate;
-  if(r||t){d.rates.at=Date.now();marketMark(d);}
+  if(r||t) d.rates.at=Date.now();
 }
 function quotePick(id,cpId,dir){
   const d=deal(id), c=cpById(cpId); if(!c)return;
@@ -5120,7 +5118,7 @@ function selfRate(id){
   const d=deal(id), crypto=isCrypto(d);
   const r1=val('m1'), r2=val('m2');
   if(!r2||(!crypto&&!r1)){toast(crypto?'Нужен курс USDT→THB':'Нужны оба курса');return;}
-  d.rates.rubUsdt=crypto?null:r1; d.rates.usdtThb=r2; d.rates.at=Date.now(); marketMark(d);
+  d.rates.rubUsdt=crypto?null:r1; d.rates.usdtThb=r2; d.rates.at=Date.now();
   d.selfRate=true; d.self=false;
   d.comment=val('c')||d.comment;
   go(d,'s6','Курс проставил менеджер сам — операциониста не привлекали');
@@ -5128,20 +5126,6 @@ function selfRate(id){
 }
 /* Курс и сумма клиенту — одно и то же число с двух сторон. Менеджер называет клиенту
    и то и другое, поэтому правится любое, а второе пересчитывается (Карим, 22.09). */
-/* Курс зафиксирован в момент расчёта, а клиент может думать сутки. Если рынок уехал
-   больше чем на порог, условия надо пересогласовывать — считаем это сами, а не на глаз
-   (Карим, 24.09). Порог тот же, что проговаривают клиенту, — 0,5 %. */
-const RATE_DRIFT=0.5;
-function rateDrift(d){
-  const fixed=num(d.rates.mkt);
-  if(!fixed||!MARKET.at) return null;
-  const now=isCrypto(d)?avgUsdt():(avgRate());
-  if(!now) return null;
-  /* в крипте себестоимость ฿ за 1 USDT: рост курса нам выгоден, в рублях наоборот */
-  const pct=(now-fixed)/fixed*100;
-  return {fixed:fixed,now:now,pct:pct,over:Math.abs(pct)>RATE_DRIFT,
-          worse:isCrypto(d)?(pct<0):(pct>0)};
-}
 function costRate(d){
   const ru=num(d.rates.rubUsdt), ut=num(d.rates.usdtThb);
   if(isCrypto(d)) return ut||null;              // ฿ за 1 USDT по себестоимости
@@ -6003,23 +5987,10 @@ function stepCard(d){
     ${fileBlock(d,'signed','Подписанный пакет от клиента','если клиент прислал скан — приложите, можно несколько файлов')}
     ${d.docs.signed?`<p class="fh">Подпись относится к версии ${d.docVersion||1}. Если пересчитаете условия, пакет уйдёт на пересборку, а эта подпись перестанет соответствовать документу — попросите подписать новую версию.</p>`:''}
 
-    ${(function(){const dr=rateDrift(d);
-      const fixed=d.rates.at?ago(d.rates.at):null;
-      if(!dr) return '';
-      const p=Math.abs(dr.pct).toFixed(2).replace('.',',');
-      if(!dr.over) return `<div class="derived" style="margin-top:16px">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
-        <span>Рынок держится: с момента расчёта${fixed?' ('+fixed+')':''} ушёл на <b>${p} %</b> — это в пределах 0,5 %, условия пересогласовывать не нужно.</span></div>`;
-      return `<div class="alert ${dr.worse?'a-warn':'a-info'}" style="margin-top:16px"><div>
-        <b>Рынок ушёл на ${p} %</b> с момента расчёта${fixed?' ('+fixed+')':''} — это больше порога 0,5 %, о котором мы предупреждаем клиента.
-        ${dr.worse?'Сейчас условия хуже наших: если клиент заплатит по старому курсу, маржа просядет.'
-                  :'Сейчас условия лучше наших — клиенту можно предложить новый курс.'}
-        Запросите курсы заново и пересогласуйте с клиентом: новый расчёт соберёт новый пакет.</div></div>`;})()}
-
 
     <div class="chtitle" style="margin-top:16px">Курс поехал, пока клиент думал
       <span>цифры меняет операционист — он же подписывает пакет</span></div>
-    <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Клиент ещё не заплатил, а курс изменился — запросите курсы заново. Задача уйдёт операционисту${d.selfRate?'':' и вернётся с новыми курсами'}; вы пересогласуете условия с клиентом, и пакет соберётся заново. Прежние цифры останутся в журнале.</p>
+    <p style="font-size:13px;color:var(--navy-600);line-height:1.65">${d.rates.at?'Курс сделки получен от контрагентов '+ago(d.rates.at)+'. ':''}Настоящий курс знают только контрагенты — если клиент думал долго или просит пересчитать, запросите курсы заново. Задача уйдёт операционисту${d.selfRate?'':' и вернётся с новыми курсами'}; вы пересогласуете условия с клиентом, и пакет соберётся заново. Прежние цифры останутся в журнале.</p>
     <div class="row" style="margin-top:10px">
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
     </div>
