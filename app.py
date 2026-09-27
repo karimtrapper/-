@@ -17848,7 +17848,13 @@ def health_check():
         'success': True, 'status': 'ok',
         'service': 'CalcCRM Unified Service',
         'database': 'postgresql' if 'postgresql' in DATABASE_URL else 'sqlite',
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        # Публичный и уже нужный анонимным страницам (кабинет реферала) признак
+        # стенда — тот же флаг, что и в /api/auth/me. Без него у referrer/index.html
+        # не было способа узнать, что она на стенде, и отключить вход через боевого
+        # бота, даже если конкретный ответ /api/ref/.../tg-start вдруг вернёт его
+        # (QA FAIL №8, Карим 28.09).
+        'stand': STAND_MODE,
     })
 
 # ==================== STATIC FILES ====================

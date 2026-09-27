@@ -1817,24 +1817,33 @@ const THAI_BANKS=['Kasikorn (KBank)','SCB','Bangkok Bank','Krungthai','TTB','Kru
    выглядело кашей: в списке партнёра появлялись чужие сделки с пометкой «вручную». */
 /* Рефереры — только те, кого завели руками («Создать реферера»), выдуманных нет */
 function refsInit(){return [];}
-/* Агенты — из прод-CRM (Карим, 25.09: «в тестовом стенде нет агентов, они должны быть
-   из прода»). Сервер стенда читает прод по ключу только на чтение и заводит их же в
-   CRM стенда, чтобы закрытие сделки нашло профиль. Свои агенты стенда не теряются. */
+/* Агенты — из базы стенда (Карим, 25.09: «в тестовом стенде нет агентов, они должны
+   быть из прода»). Раньше сервер стенда читал прод напрямую по read-only ключу
+   (/api/stand/prod-agents); T1 этот путь выключил (403 stand_blocked) — после заливки
+   прод-копии рефереры уже лежат в локальной таблице referrers, читать их наружу не
+   нужно (Карим/аудитор, 28.09). id теперь настоящий id из этой таблицы, а не
+   отдельный prodId — его и посылаем в crmPayload как referrer_id (см. crmPayload).
+   Свои агенты, заведённые прямо в задачнике («own», без записи в базе), остаются
+   и матчатся сервером по имени, как раньше. */
 async function refsSync(quiet){
   try{
-    const r=await fetch('/api/stand/prod-agents',{method:'POST',credentials:'same-origin'});
+    const r=await fetch('/api/referrers',{credentials:'same-origin'});
     const j=await r.json();
-    if(!j.success){if(!quiet)toast(j.error||'Не удалось взять агентов из прода');return false;}
-    const prod=j.agents.map(a=>({id:a.prodId,name:a.name,code:a.code,lang:a.lang,comp:a.comp,
-      percent:a.percent,cur:a.cur,tg:a.tg,active:a.active,token:'',parentId:null,l2:10,prod:true}));
+    if(!j.success){if(!quiet)toast(j.error||'Не удалось загрузить справочник рефереров');return false;}
+    const prod=(j.referrers||[]).filter(a=>{const n=(a.name||'').trim();return n&&!/^TEST/i.test(n);})
+      .map(a=>{const comp=a.comp_model||'revshare';
+        return {id:a.id,name:a.name.trim(),code:a.code||'',lang:a.lang||'ru',comp:comp,
+          percent:+((comp==='markup'?a.markup_percent:a.default_percent)||0),
+          cur:a.payout_currency||'USDT',tg:a.telegram||'',active:a.active!==false,
+          token:'',parentId:null,l2:10,prod:true};});
     const codes=new Set(prod.map(a=>a.code));
     const own=refs().filter(x=>!x.prod&&!codes.has(x.code));
     const ids=new Set(prod.map(a=>a.id));
     S.refs=prod.concat(own.map(x=>ids.has(x.id)?Object.assign({},x,{id:(Number(x.id)||0)+100000}):x));
     save();render();
-    if(!quiet)toast('Агенты из прода: '+prod.length);
+    if(!quiet)toast('Рефереры из базы стенда: '+prod.length);
     return true;
-  }catch(e){if(!quiet)toast('Прод не ответил — агенты не обновлены');return false;}
+  }catch(e){if(!quiet)toast('Справочник рефереров недоступен — агенты не обновлены');return false;}
 }
 function refFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return refs().slice(0,8);
@@ -2776,7 +2785,7 @@ function render(){
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
-    ? `<button class="ghost" onclick="refsSync()">Агенты из прода</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
+    ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
@@ -4052,10 +4061,17 @@ function crmPayload(d){
     notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
-       Справочник агентов стенда живёт в задачнике, поэтому id не шлём — CRM
-       привяжет профиль по точному имени, если он у неё есть. */
-    agents:(d.agents||[]).map(a=>({name:a.name,tier:a.tier||1,comp_model:a.comp||'revshare',
-      percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0}))};
+       referrer_id шлём только для агентов из настоящей таблицы referrers (refsSync,
+       a.prod===true) — id там стабильный и совпадает с тем, что ждёт CRM. Для
+       агентов, заведённых руками прямо в задачнике («own», в базе их нет), id не
+       шлём вовсе — сервер сам поищет по точному имени (аудитор, 28.09: имена
+       бывают неуникальны, id надёжнее, но выдумывать чужой id нельзя). */
+    agents:(d.agents||[]).map(a=>{
+      const src=(a.refId!=null)?refById(a.refId):null;
+      return {referrer_id:(src&&src.prod)?src.id:undefined,name:a.name,tier:a.tier||1,
+        comp_model:a.comp||'revshare',
+        percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
+    })};
   const mf=hx(mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})));
   const buy=num(d.rates.usdtThb);
   if(prop&&d.kind!=='Фрихолд'){
@@ -4239,6 +4255,10 @@ async function crmPushClose(id){
     d.crmDealId=cd.id||d.crmDealId; d.crmAt=now();
     if(edits.length) log(d,'Перед внесением в CRM поправлено: '+edits.join('; '));
     log(d,'Внесена в CRM: сделка #'+d.crmDealId+' · статус «завершена»'+(cd.net_profit_usdt!=null?' · прибыль по CRM '+usd(cd.net_profit_usdt):''));
+    /* Успех после подтверждённого превышения тоже приходит с предупреждением
+       (тот же j.warning, что при 409) — CRM (crm.html) его показывает, задачник
+       раньше молчал. Цифру нужно перепроверить, поэтому тост держим дольше (QA FAIL №4). */
+    if(j.warning){toast(j.warning);log(d,'Предупреждение CRM: '+j.warning);}
     closeDeal(d,'Успешно завершена');
   }catch(e){toast('CRM недоступна — сделка не закрыта');}
 }

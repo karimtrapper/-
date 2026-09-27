@@ -61,6 +61,19 @@ function fixture(responses, confirmAnswer) {
     assert.equal(d.closed, true);
     assert.ok(!toasts.some(t => t.includes('отменено')));
   }
+  // QA FAIL №4: успех ПОСЛЕ подтверждённого повтора тоже может прийти с warning
+  // (та же цифра расхода, что была в 409) — это нужно показать, а не проглотить.
+  {
+    const {ctx, d, toasts} = fixture([
+      {status: 409, json: {success: false, requires_confirmation: true, warning: 'QA: превышение $100'}},
+      {status: 200, json: {success: true, deal: {id: 15}, warning: 'QA: превышение $100'}},
+    ], true);
+    await ctx.crmPushClose(1);
+    assert.equal(d.crmDealId, 15);
+    assert.equal(d.closed, true);
+    assert.ok(toasts.some(x => x.includes('QA: превышение $100')),
+      'предупреждение об успешном закрытии с превышением должно быть показано человеку');
+  }
   // 409 → человек отказывается → второго запроса нет, сделка не закрыта
   {
     const {ctx, d, toasts, calls} = fixture([
@@ -84,5 +97,5 @@ function fixture(responses, confirmAnswer) {
     assert.equal(d.crmDealId, 7);
     assert.equal(d.closed, true);
   }
-  console.log('stand crmPushClose: 3 сценария PASS');
+  console.log('stand crmPushClose: 4 сценария PASS');
 })();

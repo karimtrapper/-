@@ -14029,6 +14029,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
             }
 
             const baseUrl = window.location.origin;
+            /* На стенде реальный TG-бот рефералов и WhatsApp реального человека не должны
+               ни отрисовываться, ни копироваться в буфер — даже если их прислал сервер
+               (сервер чистит T1, но UI на это не полагается, QA FAIL №7). Признак стенда —
+               тот же STAND_ROLES, что уже используют роли админов чуть выше по файлу. */
+            const standUI = typeof STAND_ROLES !== 'undefined' && !!STAND_ROLES;
             list.innerHTML = rows.map(r => `
                     <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
                         <div style="flex:1;min-width:0;">
@@ -14047,20 +14052,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div style="display:flex;gap:8px;margin-top:6px;">
-                                <input type="text" readonly value="${r.referral_link}" title="Сайт"
+                                <input type="text" readonly value="${standUI ? 'на стенде выключено' : r.referral_link}" title="Сайт"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
-                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')">
-                                <input type="text" readonly value="${r.bot_link}" title="Telegram"
+                                    onclick="${standUI ? "showToast('На стенде ссылка на сайт выключена')" : "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка сайт скопирована')"}">
+                                <input type="text" readonly value="${standUI ? 'на стенде выключено' : r.bot_link}" title="Telegram"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#eff6ff;"
-                                    onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')">
+                                    onclick="${standUI ? "showToast('На стенде ссылка на бота выключена')" : "this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка TG скопирована')"}">
                             </div>
                             <div style="display:flex;gap:8px;margin-top:4px;">
                                 <input type="text" readonly value="${baseUrl}/ref/${r.token}" title="Статистика"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
                                     onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка статистики скопирована')">
-                                <input type="text" readonly value="${r.wa_link ? 'WhatsApp ↗' : ''}" title="WhatsApp"
+                                <input type="text" readonly value="${standUI ? '' : (r.wa_link ? 'WhatsApp ↗' : '')}" title="WhatsApp"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;cursor:pointer;"
-                                    onclick="navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')">
+                                    onclick="${standUI ? "showToast('На стенде ссылка WhatsApp выключена')" : `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`}">
                             </div>
                         </div>
                         <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
