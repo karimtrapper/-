@@ -692,8 +692,8 @@ def test_verify_transfer_ignores_direct_get_and_prod_key_in_stand_mode():
                                      'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                                      'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                                      100, get=boom)
-        # erc20 без STAND_ETHERSCAN_API_KEY (только прод-ключ передан вызывающим) —
-        # честный отказ до сети, прод-ключ 'fake' не используется.
+        # erc20 — решение Карима: на стенде из сетей только TRC-20, ERC-20
+        # отказывает до сети всегда, даже если бы был передан прод-ключ.
         r_erc20 = st.verify_transfer('0x' + 'a' * 64, 'erc20',
                                      '0x' + 'c' * 40, '0x' + 'b' * 40, 100,
                                      get=boom, etherscan_key='fake')
@@ -703,36 +703,29 @@ def test_verify_transfer_ignores_direct_get_and_prod_key_in_stand_mode():
     assert proc.returncode == 0, proc.stderr
     assert result['trc20_status'] == 'pending'
     assert result['erc20_status'] == 'error'
-    assert 'настро' in (result['erc20_error'] or '')
+    assert 'ERC-20' in (result['erc20_error'] or '')
     assert result['read_get_calls'] == ['tron_tx_info']
 
 
-def test_verify_transfer_uses_stand_etherscan_key_via_read_get():
-    """С заданным STAND_ETHERSCAN_API_KEY ERC-20 проверка идёт через read_get
-    с валидными op/params, а не через прямой requests.get."""
+def test_verify_transfer_erc20_disabled_on_stand_even_with_stand_etherscan_key():
+    """Решение Карима: на стенде из сетей только TRC-20 — ERC-20 отказывает
+    до сети даже при заданном STAND_ETHERSCAN_API_KEY, read_get не вызывается."""
     result, proc = run_script('''
         import stand_egress
         stand_egress.install()
         import stand_transfers as st
 
-        seen = []
         def fake_read_get(op, params=None, _base_url=None):
-            seen.append((op, params))
-            if op == 'eth_tx_receipt':
-                return 200, {'result': None}, None  # ещё нет receipt
-            raise AssertionError(f'неожиданный op={op}')
+            raise AssertionError(f'read_get не должен вызываться для ERC-20: {op}')
         stand_egress.read_get = fake_read_get
 
         r = st.verify_transfer('0x' + 'a' * 64, 'erc20',
                                '0x' + 'c' * 40, '0x' + 'b' * 40, 100)
-        OUT({'status': r['status'], 'seen': seen})
+        OUT({'status': r['status'], 'checkError': r.get('checkError')})
     ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
     assert proc.returncode == 0, proc.stderr
-    assert result['status'] == 'pending'
-    op, params = result['seen'][0]
-    assert op == 'eth_tx_receipt'
-    assert set(params) == {'chainid', 'module', 'action', 'txhash'}
-    assert 'apikey' not in params, 'ключ канал добавляет сам, а не вызывающий код'
+    assert result['status'] == 'error'
+    assert 'ERC-20' in (result['checkError'] or '')
 
 
 def test_referral_links_empty_bot_and_wa_links_in_stand_mode():

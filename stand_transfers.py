@@ -275,11 +275,14 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
     if os.environ.get('STAND_MODE') == '1':
+        if network == 'erc20':
+            # Решение Карима: на стенде из сетей только TRC-20. ERC-20/Etherscan
+            # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан —
+            # это явный выключатель, а не отсутствие ключа как раньше.
+            return _result('error', checkError='На стенде проверка ERC-20 выключена')
         # На стенде ходим в сеть только через контролируемый канал чтения T9
         # (stand_egress.read_get) — сокет-guard блокирует прямой requests.get.
-        # Ключ Etherscan свой, стендовый: прод-ключ на стенд не копируем.
         get = _stand_get
-        etherscan_key = os.environ.get('STAND_ETHERSCAN_API_KEY', '').strip() or None
         tronscan_key = tronscan_key or os.environ.get('TRONSCAN_API_KEY')
     try:
         if network == 'trc20':

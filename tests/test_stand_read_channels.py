@@ -1391,3 +1391,138 @@ def test_read_ctx_inactive_during_body_read_phase_of_slow_drip():
     assert proc.returncode == 0, proc.stderr
     assert result['elapsed'] < 0.4
     assert result['active_seen_during_read'] is False
+
+
+# ───── Решение Карима: на стенде из сетей только TRC-20 (ERC-20 выключен) ───
+
+def test_verify_transfer_erc20_disabled_on_stand_even_with_key_set():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import stand_transfers as st
+
+        def fail_if_called(op, params=None, _base_url=None):
+            raise AssertionError(f'read_get не должен вызываться для ERC-20: {op}')
+        stand_egress.read_get = fail_if_called
+
+        r = st.verify_transfer('0x' + 'a' * 64, 'erc20',
+                               '0x' + 'c' * 40, '0x' + 'b' * 40, 100)
+        OUT({'status': r['status'], 'checkError': r.get('checkError')})
+    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 'error'
+    assert 'ERC-20' in (result['checkError'] or '')
+
+
+def test_verify_transfer_trc20_unaffected_by_erc20_disable():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import stand_transfers as st
+
+        def fake_read_get(op, params=None, _base_url=None):
+            assert op == 'tron_tx_info'
+            return 200, {}, None
+        stand_egress.read_get = fake_read_get
+
+        r = st.verify_transfer('a' * 64, 'trc20',
+                               'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                               'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p', 100)
+        OUT({'status': r['status']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 'pending'
+
+
+def test_app_etherscan_tx_info_disabled_on_stand_even_with_key():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        def fail_if_called(*a, **k):
+            raise AssertionError('read_get/requests.get не должны вызываться для ERC-20 на стенде')
+        with patch('requests.get', side_effect=fail_if_called), \\
+             patch.object(stand_egress, 'read_get', fail_if_called):
+            result = app._etherscan_tx_info('0x' + 'a' * 64)
+        OUT({'result': result})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0', 'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['result'] == {}
+
+
+def test_app_tx_lookup_route_erc20_disabled_on_stand():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+        app.app.config['TESTING'] = True
+        app.limiter.enabled = False
+        client = app.app.test_client()
+
+        db = app.get_session()
+        try:
+            admin = app.AdminUser(username='adm-erc-test', role='admin', password_hash=b'x')
+            db.add(admin); db.commit(); admin_id = admin.id
+        finally:
+            db.close()
+        with client.session_transaction() as sess:
+            sess['user_id'] = admin_id
+
+        def fail_if_called(*a, **k):
+            raise AssertionError('сеть не должна вызываться')
+        with patch('requests.get', side_effect=fail_if_called), \\
+             patch.object(stand_egress, 'read_get', fail_if_called):
+            r = client.get('/api/tx/lookup?hash=' + '0x' + 'a' * 64 + '&network=erc20')
+        OUT({'status': r.status_code, 'body': r.get_json()})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0', 'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 503
+    assert 'ERC-20' in result['body']['error']
+
+
+# ── QA: непрерывный приток байтов не должен маскировать проверку дедлайна ───
+
+def test_continuous_drip_still_respects_deadline_not_full_body():
+    """200 байт по 1 каждые 20мс (~4с всего) с дедлайном 0.3с — операция
+    обязана завершиться заметно раньше полной передачи, около самого
+    дедлайна (не позже 0.5с): read1() возвращает частичные куски по мере
+    поступления, поэтому дедлайн проверяется на каждой итерации цикла, а не
+    только после того, как придёт вся заявленная Content-Length."""
+    result, proc = run_script('''
+        import http.server, threading, time as _time
+        class DripHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b'x' * 200
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                for b in body:
+                    try:
+                        self.wfile.write(bytes([b])); self.wfile.flush()
+                    except Exception:
+                        return
+                    _time.sleep(.02)
+            def log_message(self, *a):
+                pass
+        _srv = http.server.HTTPServer(('127.0.0.1', 0), DripHandler)
+        _port = _srv.server_port
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+        import time
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _port)
+        stand_egress._READ_TOTAL_DEADLINE = 0.3
+
+        start = time.monotonic()
+        result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        elapsed = time.monotonic() - start
+        OUT({'result': result, 'elapsed': round(elapsed, 2)})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result['result'] == [None, None, 'read_timeout']
+    assert result['elapsed'] <= 0.5, f"должен завершиться у дедлайна, не ждать полную передачу (~4с): {result['elapsed']}"

@@ -14058,48 +14058,38 @@ def _etherscan_tx_info(tx_hash):
     ручную сумму с пометкой «не сверено». Однозначно неуспешную транзакцию или
     receipt без USDT отклоняем: такой хэш нельзя использовать как подтверждение.
     """
-    # Отсутствие ключа проверяем ДО валидации хэша — как и раньше: без ключа
-    # функция тихо отдаёт {} независимо от формата tx_hash, а не падает на
-    # чужом формате хэша, который до сети всё равно не дойдёт.
+    # Отсутствие ключа/выключенная сеть проверяем ДО валидации хэша — как и
+    # раньше: функция тихо отдаёт {} независимо от формата tx_hash, а не
+    # падает на чужом формате хэша, который до сети всё равно не дойдёт.
     if STAND_MODE:
-        # Свой стендовый ключ (STAND_ETHERSCAN_API_KEY), прод-ключ на стенд не копируем.
-        if not os.environ.get('STAND_ETHERSCAN_API_KEY', '').strip():
-            return {}
-    elif not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
+        # Решение Карима: на стенде из сетей только TRC-20 — ERC-20/Etherscan
+        # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан.
+        app.logger.info('На стенде проверка ERC-20 выключена (только TRC-20)')
+        return {}
+    if not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return {}
     normalized_hash = _normalize_ethereum_tx_hash(tx_hash)
     if not normalized_hash:
         raise TransactionVerificationError(
             'Некорректный хэш Ethereum: нужен 0x и 64 шестнадцатеричных символа')
     try:
-        if STAND_MODE:
-            # Сеть — только через канал чтения T9, никогда прямой requests.get.
-            import stand_egress
-            status_code, payload, err = stand_egress.read_get('eth_tx_receipt', {
-                'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
-                'txhash': normalized_hash})
-            if err or status_code != 200:
-                if err:
-                    app.logger.warning(f'Etherscan receipt channel error {normalized_hash[:18]}…: {err}')
-                return {}
-        else:
-            api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
-            response = requests.get(
-                ETHERSCAN_API_URL,
-                params={
-                    'chainid': '1',
-                    'module': 'proxy',
-                    'action': 'eth_getTransactionReceipt',
-                    'txhash': normalized_hash,
-                    'apikey': api_key,
-                },
-                timeout=8,
-            )
-            if response.status_code != 200:
-                app.logger.warning(
-                    f'Etherscan receipt HTTP {response.status_code} for {normalized_hash[:18]}…')
-                return {}
-            payload = response.json() or {}
+        api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
+        response = requests.get(
+            ETHERSCAN_API_URL,
+            params={
+                'chainid': '1',
+                'module': 'proxy',
+                'action': 'eth_getTransactionReceipt',
+                'txhash': normalized_hash,
+                'apikey': api_key,
+            },
+            timeout=8,
+        )
+        if response.status_code != 200:
+            app.logger.warning(
+                f'Etherscan receipt HTTP {response.status_code} for {normalized_hash[:18]}…')
+            return {}
+        payload = response.json() or {}
     except Exception as exc:
         app.logger.warning(f'Etherscan receipt error {normalized_hash[:18]}…: {exc}')
         return {}
@@ -14253,6 +14243,10 @@ def lookup_tx_by_network():
     if network == 'unknown':
         return jsonify({'success': False,
                         'error': 'Выберите сеть: TRC-20 или ERC-20'}), 400
+    if network == 'erc20' and STAND_MODE:
+        # Решение Карима: на стенде из сетей только TRC-20.
+        return jsonify({'success': False, 'error': 'На стенде проверка ERC-20 выключена',
+                        'manual_fallback': True}), 503
     if network == 'erc20' and not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return jsonify({'success': False, 'error': 'Etherscan API не настроен',
                         'manual_fallback': True}), 503
