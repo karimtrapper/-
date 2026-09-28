@@ -243,6 +243,19 @@ with sync_playwright() as playwright:
         diffs=[(i,c,t) for i,(c,t) in enumerate(zip_longest(crm_fields,task_fields)) if c!=t]
         print('first form differences:',json.dumps(diffs[:5],ensure_ascii=False)[:1000])
     assert crm_fields==task_fields
+    pick(crm,'payinMethod','sber_wl')
+    pick(host,'payinMethod','sber_wl')
+    assert crm.locator('#sberKindSelect').input_value()==host.locator('#sberKindSelect').input_value()=='acquiring'
+    crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("2118")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvail")?.textContent.includes("2118")')
+    assert crm.locator('#sberIncomesAvail').inner_text()==host.locator('#sberIncomesAvail').inner_text()
+    pick(crm,'payinMethod','sber_reqs')
+    pick(host,'payinMethod','sber_reqs')
+    assert crm.locator('#sberKindSelect').input_value()==host.locator('#sberKindSelect').input_value()=='transfer'
+    crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("T17 Transfer")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvail")?.textContent.includes("T17 Transfer")')
+    assert crm.locator('#sberIncomesAvail').inner_text()==host.locator('#sberIncomesAvail').inner_text()
+    print('SBP/acquiring and requisites/transfer auto filters CRM/tasks: PASS')
     pick(crm,'sberKindSelect','')
     pick(host,'sberKindSelect','')
     crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("T17 Transfer")',timeout=10000)
