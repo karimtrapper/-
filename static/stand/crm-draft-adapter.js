@@ -80,7 +80,7 @@ function crmDraftSanitize(form) {
     'stdAgentsPreset(\'flat\')','stdAgentsAdd()',
     "customAgentsPreset('cascade')","customAgentsPreset('flat')","customAgentsAdd()",
     'createCustomDeal()','loadOutgoingTxForSelect(true)',
-    'loadOutgoingTxForBinance(true)']);
+    'loadOutgoingTxForBinance(true)','mfSuggestPercent()']);
   for(const el of [form,...form.querySelectorAll('*')]) {
     for(const attr of [...el.attributes]) {
       if(attr.name==='onclick'&&calls.has(attr.value))el.dataset.crmCall=attr.value;
@@ -482,12 +482,11 @@ function crmDraftWire(active) {
     if(el.id==='payoutFounderHash')active.core.lookupPayoutFounderTx();
     if(el.name==='payin_rate_rub_usdt'){active.core.setPayinMode('rate');active.core.autoCalcUsdt();}
     if(el.name==='payin_amount_usdt'){active.core.setPayinMode('usdt');active.core.autoCalcUsdt();}
-    if(['mfInvoiceThb','mfBuyRate','mfSellRate','mfSpread','mfPercent','mfSentThb',
-       'fhInvoiceUsd','fhSentUsd','fhFeePercent','fhFeeFixed'].includes(el.id)){
-      if(el.id==='mfSpread'){
-        const buy=crmDraftNum(crmDraftRead(root,'mfBuyRate')),spread=crmDraftNum(el.value);
-        if(buy!=null&&spread!=null)crmDraftValue(root,'mfSellRate',(buy*(1-spread/100)).toFixed(4));
-      }
+    if(['mfInvoiceThb','mfBuyRate','mfSellRate','mfSpread','mfPercent','mfSentThb'].includes(el.id)){
+      if(el.id==='mfSpread')active.core.mfSpreadChanged();
+      else active.core.mfRecalc({mfInvoiceThb:'invoice',mfPercent:'percent',mfSentThb:'sent'}[el.id]);
+    }
+    if(['fhInvoiceUsd','fhSentUsd','fhFeePercent','fhFeeFixed'].includes(el.id)){
       crmDraftPreview(active);
     }
     if(el.id==='clientSearchInput'){
@@ -518,6 +517,7 @@ function crmDraftWire(active) {
         'createCustomDeal()':()=>editSave(active.id),
         'loadOutgoingTxForSelect(true)':()=>core.loadOutgoingTxForSelect(true),
         'loadOutgoingTxForBinance(true)':()=>core.loadOutgoingTxForBinance(true),
+        'mfSuggestPercent()':()=>core.mfSuggestPercent(),
       };
       actions[call]?.();
     }

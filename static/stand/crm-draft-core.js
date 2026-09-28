@@ -16,7 +16,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
-    const mfRecalc = adapters.realtyPayoutRecalc;
+    const mfRecalcNow = adapters.realtyPayoutRecalc;
     const fhRecalc = adapters.realtyPayoutRecalc;
     // The bounded CRM custom calculator is included below; no CRM boot.
     let payinExtra = [];
@@ -1523,6 +1523,45 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             payinExtraSummary();
         }
 
+        function mfInputs() {
+            const num = id => {
+                const v = parseFloat(document.getElementById(id)?.value);
+                return isNaN(v) ? null : v;
+            };
+            return {
+                invoice_amount_thb: num('mfInvoiceThb'),
+                buy_rate_thb_usdt: num('mfBuyRate'),
+                sell_rate_thb_usdt: num('mfSellRate'),
+                payin_amount_usdt: ((parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || 0)
+                                    + payinExtraTotalUsdt()) || null,
+                company_percent: num('mfPercent'),
+                company_sent_thb: num('mfSentThb'),
+                payout_tx_hashes: mfPayoutTxPool,
+                agents: stdAgentsSerialize(),
+            };
+        }
+
+        function mfSpreadChanged() {
+            const buy = parseFloat(document.getElementById('mfBuyRate')?.value);
+            const spread = parseFloat(document.getElementById('mfSpread')?.value);
+            if (buy && !isNaN(spread)) {
+                document.getElementById('mfSellRate').value = (buy * (1 - spread / 100)).toFixed(4);
+            }
+            mfRecalc();
+        }
+
+        let _mfTimer = null;
+        function mfRecalc(source) {
+            // Комиссию задают с одной стороны — вторую очищаем, чтобы не спорили
+            if (source === 'percent') document.getElementById('mfSentThb').value = '';
+            if (source === 'sent') document.getElementById('mfPercent').value = '';
+            // Сумма отправки всегда привязана к конкретному инвойсу: сменили инвойс —
+            // старый факт больше не относится к делу, иначе процент улетает в космос
+            if (source === 'invoice') document.getElementById('mfSentThb').value = '';
+            clearTimeout(_mfTimer);
+            _mfTimer = setTimeout(mfRecalcNow, 250);
+        }
+
         function renderMfSummary(r) {
             _mfLast = r;
             const box = document.getElementById('mfSummary');
@@ -1575,6 +1614,25 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 ${(r.company_percent > 3 || r.company_percent < 0) ? `<div style="margin-top:6px;color:#b45309;font-size:0.9rem;">⚠️ Комиссия компании ${r.company_percent.toFixed(2)}% — обычно около 1%. Проверь сумму отправки: она привязана к текущему инвойсу.</div>` : ''}
                 ${short ? `<div style="margin-top:6px;color:#dc2626;font-size:0.9rem;">⚠️ Не хватает ${money(-r.crypto_shortfall_usdt)} в крипте на выплаты — придётся конвертировать баты обратно или платить из кармана. Нажми «Подобрать процент».</div>` : ''}
               </div>`;
+        }
+
+        async function mfSuggestPercent() {
+            const payload = mfInputs();
+            if (!payload.invoice_amount_thb || !payload.buy_rate_thb_usdt) {
+                showToast('Сначала заполни сумму инвойса и курс покупки', 'error');
+                return;
+            }
+            const resp = await fetch(`${API_URL}/api/deals/mf-realty/preview`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (!data.success) { showToast('Ошибка: ' + data.error, 'error'); return; }
+            const pct = data.result.suggested_company_percent;
+            document.getElementById('mfPercent').value = pct;
+            document.getElementById('mfSentThb').value = '';
+            showToast(`Максимум ${pct}% — при большем не хватит крипты на выплаты`);
+            mfRecalcNow();
         }
 
         function renderFhSummary(r) {
@@ -2328,6 +2386,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         }
     return {
         loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
+        mfSpreadChanged, mfRecalc, mfSuggestPercent,
         togglePayoutSettled, syncPayoutSettledDefault,
         toggleNoConversion, loadFounderWallets, calcNoConvRate,
         renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,

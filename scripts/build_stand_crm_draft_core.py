@@ -57,7 +57,10 @@ SLICES = [
     ("        function removePayinTx(", "        function resetPayinTxPool("),
     ("        function resetPayinTxPool(", "        // Загрузка исходящих транзакций для Binance"),
     ("        function autoCalcUsdt(", "        function calculateProfit("),
+    ("        function mfInputs()", "        function mfSpreadChanged()"),
+    ("        function mfSpreadChanged()", "        async function mfRecalcNow()"),
     ("        function renderMfSummary(", "        async function mfSuggestPercent("),
+    ("        async function mfSuggestPercent()", "        function mfFormData()"),
     ("        function renderFhSummary(", "        function fhFormData("),
     ("        function stdAgentsPreset(", "        function stdAgentsAdd("),
     ("        function stdAgentsAdd(", "        function stdAgentsRemove("),
@@ -234,7 +237,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
-    const mfRecalc = adapters.realtyPayoutRecalc;
+    const mfRecalcNow = adapters.realtyPayoutRecalc;
     const fhRecalc = adapters.realtyPayoutRecalc;
     // The bounded CRM custom calculator is included below; no CRM boot.
     let payinExtra = [];
@@ -269,6 +272,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 """ + "\n\n".join(pieces) + """
     return {
         loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
+        mfSpreadChanged, mfRecalc, mfSuggestPercent,
         togglePayoutSettled, syncPayoutSettledDefault,
         toggleNoConversion, loadFounderWallets, calcNoConvRate,
         renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,

@@ -531,6 +531,20 @@ with sync_playwright() as playwright:
         host.locator('#createDealForm').wait_for(timeout=20000)
         assert host.locator('#mfSpread').input_value()==spread
     for scope in (crm_mf,host):
+        scope.locator('#mfSentThb').fill('360000')
+        scope.locator('#mfPercent').fill('0.8')
+    cleared=[(crm_mf.locator('#mfSentThb').input_value(),crm_mf.locator('#mfPercent').input_value()),
+             (host.locator('#mfSentThb').input_value(),host.locator('#mfPercent').input_value())]
+    print('MF percent clears sent CRM/tasks:',cleared)
+    assert cleared==[('', '0.8'),('', '0.8')]
+    crm_mf.locator('button[onclick="mfSuggestPercent()"]') .click()
+    host.locator('button[data-crm-call="mfSuggestPercent()"]') .click()
+    crm_mf.wait_for_function('document.querySelector("#mfPercent")?.value && document.querySelector("#mfPercent")?.value!=="0.8"')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPercent")?.value && document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPercent")?.value!=="0.8"')
+    suggested=[crm_mf.locator('#mfPercent').input_value(),host.locator('#mfPercent').input_value()]
+    print('MF suggested percent CRM/tasks:',suggested)
+    assert suggested[0]==suggested[1]
+    for scope in (crm_mf,host):
         scope.locator('#mfPayoutManual summary').click()
         scope.locator('#mfPayoutManualHash').fill(manual_out_hash)
         scope.locator('#mfPayoutManualAmount').fill('100')
