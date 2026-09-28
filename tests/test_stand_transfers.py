@@ -123,10 +123,10 @@ def board():
             'convs': [{'id': 15, 'walletId': 'grusha', 'sources': [
                 {'dealId': 1, 'rub': 100000}, {'dealId': 2, 'rub': 50000}], 'txs': []}],
             'deals': [
-                {'id': 1, 'code': 'BIG', 'cnvId': 15, 'step': 's23',
+                {'id': 1, 'code': 'BIG', 'cnvId': 15, 'conv': [2], 'step': 's23',
                  'postConv': 'coins', 'transfer': {'addr': TO, 'amount': 100,
                                                   'sends': []}, 'pay': {}, 'log': []},
-                {'id': 2, 'code': 'SMALL', 'cnvId': 15, 'step': 'pack', 'closed': False,
+                {'id': 2, 'code': 'SMALL', 'cnvId': 15, 'conv': [], 'step': 'pack', 'closed': False,
                  'postConv': 'refund', 'pay': {'usdt': 620},
                  'transfer': {'addr': TO, 'amount': 600, 'sends': [
                      {'ref': HASH, 'hash': HASH, 'net': 'TRC-20', 'amount': 600,

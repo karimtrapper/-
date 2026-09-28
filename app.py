@@ -5254,6 +5254,35 @@ def _stand_members(state, deal_id):
     return [deals[i] for i in ids if i in deals]
 
 
+def _stand_batch_main(state, deal_id):
+    """Resolve the owner of a conversion from its deal.conv links, not payout route.
+
+    A side deal may itself use Coins. Missing or conflicting ownership must not
+    let a caller-selected side deal determine the approval role or advance funds.
+    """
+    deals = state.get('deals', [])
+    selected = [d for d in deals if d.get('id') == deal_id]
+    if len(selected) != 1:
+        return None
+    deal = selected[0]
+    conv_id = deal.get('cnvId')
+    if conv_id is None:
+        return deal if not (deal.get('conv') or []) else None
+    convs = [c for c in state.get('convs', []) if c.get('id') == conv_id]
+    if len(convs) != 1:
+        return None
+    ids = [s.get('dealId') for s in convs[0].get('sources') or []]
+    if (not ids or any(type(i) is not int for i in ids)
+            or len(ids) != len(set(ids)) or deal_id not in ids):
+        return None
+    members = [d for d in deals if d.get('id') in ids]
+    if len(members) != len(ids) or any(d.get('cnvId') != conv_id for d in members):
+        return None
+    owners = [d for d in members if set(d.get('conv') or []) == set(ids) - {d['id']}
+              and len(d.get('conv') or []) == len(ids) - 1]
+    return owners[0] if len(owners) == 1 else None
+
+
 def _stand_note(state, event_id, role, deal, text):
     notes = state.setdefault('notes', [])
     if any(str(n.get('id')) == event_id for n in notes):
@@ -5551,7 +5580,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
             elif before.get('step') in committed_steps and deal.get('step') != before.get('step'):
                 return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
-            for key in ('cnvId', 'postConv', 'walletId'):
+            for key in ('cnvId', 'conv', 'postConv', 'walletId'):
                 if before.get(key) != deal.get(key):
                     return 'Маршрут подтверждённой сделки нельзя изменить'
             old_transfer, new_transfer = before.get('transfer') or {}, deal.get('transfer') or {}
@@ -5665,8 +5694,9 @@ def _stand_settle_verified(state, members):
         sends = (deal.get('transfer') or {}).get('sends') or []
         auto = False
         if not sends:
-            accepted_main = next((d for d in members if d.get('postConv') == 'coins'), None)
-            if not accepted_main or accepted_main.get('step') not in ('s23', 's24', 's25', 's26', 's27', 'done'):
+            accepted_main = _stand_batch_main(state, deal.get('id'))
+            if (not accepted_main or accepted_main.get('postConv') != 'coins'
+                    or accepted_main.get('step') not in ('s23', 's24', 's25', 's26', 's27', 'done')):
                 continue
             conv = next((c for c in state.get('convs', [])
                          if c.get('id') == deal.get('cnvId')), None)
@@ -5718,8 +5748,10 @@ def _stand_settle_verified(state, members):
     # ipps_swift — фрихолд без батов (спека 28.09-freehold-no-baht): единственный
     # маршрут USDT в IPPS SWIFT, s24→s25 после подтверждения — как Coins у лизхолда
     # (QA БЛОКЕР №9, 28.09: сделка застревала на s24 навсегда без этой ветки).
-    main = next((d for d in members if d.get('step') in ('s23', 's24') and
-                 d.get('postConv') in ('coins', 'ipps_swift')), None)
+    main = _stand_batch_main(state, members[0].get('id')) if members else None
+    if main and (main.get('step') not in ('s23', 's24')
+                 or main.get('postConv') not in ('coins', 'ipps_swift')):
+        main = None
     if main and not main.get('serverTransferComplete'):
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
@@ -5826,6 +5858,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         db.close()
     ids = ([deal_id] if deal_id is not None else
            [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
+    if deal_id is not None and _stand_batch_main(snapshot, deal_id) is None:
+        return {'success': False, 'error': 'Главная сделка пачки не определена', 'httpStatus': 409}
+    ids = [wanted for wanted in ids if _stand_batch_main(snapshot, wanted) is not None]
     jobs = []
     seen = set()
     for wanted in ids:
@@ -5848,18 +5883,16 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             if key[0]:
                 all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
     results = []
-    main = next((d for d in snapshot.get('deals', [])
-                 if d.get('id') in seen and d.get('postConv') in ('coins', 'ipps_swift')
-                 and d.get('step') in ('s23', 's24')), None)
-    conv = next((c for c in snapshot.get('convs', [])
-                 if c.get('id') == (main or {}).get('cnvId')), None)
-    wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
-    wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
-    demo_multisig_wait = bool(main and main.get('step') == 's23'
-                              and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
     for member_id, key, deal, send, demo_outcome in jobs:
         sender, receiver = expected_addresses(snapshot, deal)
         cohort = _stand_members(snapshot, member_id)
+        main = _stand_batch_main(snapshot, member_id)
+        conv = next((c for c in snapshot.get('convs', [])
+                     if c.get('id') == (main or {}).get('cnvId')), None)
+        wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
+        wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
+        demo_multisig_wait = bool(main and main.get('step') == 's23'
+                                  and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
         if key[0] is None:
             result = {'status': 'mismatch', 'checkError': 'Хеш и ссылка не совпадают или некорректны'}
         elif key[0] and all_claims.get((key[0], key[1]), 0) > 1:
@@ -5884,6 +5917,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         state = json.loads(row.data or '{}')
         changed = False
         for member_id, key, demo_outcome, result in results:
+            if _stand_batch_main(state, member_id) is None:
+                continue
             deal = next((d for d in state.get('deals', []) if d.get('id') == member_id), None)
             if not deal:
                 continue
@@ -5925,6 +5960,8 @@ def stand_transfers_check():
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
     result = _stand_check_transfers(deal_id)
+    if result and result.get('httpStatus'):
+        return jsonify(result), result['httpStatus']
     return jsonify(result) if result else (jsonify({'success': False, 'error': 'Сделка не найдена'}), 404)
 
 
@@ -5948,8 +5985,9 @@ def stand_transfers_demo():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal or not deal.get('demoTransfers'):
             return jsonify({'success': False, 'error': 'Demo для сделки не включено'}), 400
-        members = _stand_members(state, deal_id)
-        main = next((d for d in members if d.get('postConv') == 'coins'), deal)
+        main = _stand_batch_main(state, deal_id)
+        if main is None:
+            return jsonify({'success': False, 'error': 'Главная сделка пачки не определена'}), 409
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
         wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
