@@ -1873,6 +1873,24 @@ function refs(){ if(!S.refs)S.refs=refsInit(); return S.refs; }
 function refBy(name){return refs().find(r=>r.name===name);}
 function refById(id){return refs().find(r=>r.id===id);}
 function refByCode(code){return refs().find(r=>r.code===code);}
+/* Приведение id реферера из значения <select>/<input> (всегда строка в DOM):
+   запись из настоящей таблицы referrers — число, ручной агент задачника —
+   строка 'm:<n>' (см. refAdd). Раньше везде звали голый Number(v)/parseInt(v),
+   и 'm:1' превращался в NaN — выбор ручного агента ломал сделку и черновик
+   (QA перепроверка, FAIL №6–7, 28.09). Одна функция на все места. */
+function refIdNorm(v){
+  if(v==null||v==='')return null;
+  const s=String(v);
+  return s.indexOf('m:')===0?s:(Number(s)||null);
+}
+/* Обратная сторона refIdNorm: подставить id реферера в onclick="fn(...)" так,
+   чтобы браузер получил ту же строку/число, что и refById() ждёт при поиске.
+   Голый ${r.id} в шаблоне работал, пока id был числом (JS-литерал сам собирался
+   верно); с 'm:<n>' то же самое стало синтаксической ошибкой в атрибуте —
+   onclick="refEdit(m:1)" не парсится (QA перепроверка, FAIL №6, 28.09). */
+function refIdLit(id){
+  return typeof id==='string'?("'"+id.split("'").join("\\'")+"'"):String(id);
+}
 /* Лид из Битрикса несёт реферальную метку: человек пришёл по ссылке партнёра,
    код записан в карточке. Из Telegram и WhatsApp человек пишет напрямую — метки нет,
    и «реферала нет» тут утверждать нельзя. Это два разных незнания. */
@@ -1988,7 +2006,7 @@ function dAgentTier(i,dir){const a=S.draft.agents[i];a.tier=Math.max(1,Math.min(
   S.draft.agentsMode=null;syncRef(S.draft);save();render();}
 function dAgentSet(i,k,v){
   const a=S.draft.agents[i];
-  if(k==='refId'){a.refId=v?Number(v):null;const r=refById(a.refId);
+  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
     if(r){a.name=r.name;if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0;a.touched=true;}
   syncRef(S.draft);save();render();
@@ -2004,7 +2022,7 @@ function agentTier(ctx,id,i,dir){const d=deal(id);const a=d.agents[i];
   a.tier=Math.max(1,Math.min(5,(a.tier||1)+dir));d.agentsMode=null;syncRef(d);save();render();}
 function agentSet(ctx,id,i,k,v){
   const d=deal(id),a=d.agents[i];
-  if(k==='refId'){a.refId=v?Number(v):null;const r=refById(a.refId);
+  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
     if(r){a.name=r.name; if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0; a.touched=true;}
   syncRef(d);save();render();
@@ -2149,7 +2167,7 @@ function refEditSave(){
   const nm=val('rf_name'); if(!nm){toast('Нужно имя');return;}
   const data={name:nm,code:val('rf_code')||null,tg:val('rf_tg'),comp:val('rf_comp'),
     percent:Number(String(val('rf_pct')).replace(',','.'))||0,cur:val('rf_cur'),
-    parentId:val('rf_parent')?Number(val('rf_parent')):null,
+    parentId:refIdNorm(val('rf_parent')),
     l2:Number(String(val('rf_l2')).replace(',','.'))||0,lang:val('rf_lang'),active:val('rf_active')==='1'};
   if(isNew){const r=refAdd(data);toast('Создан: '+r.name);}
   else{const r=refById(S.refEdit);Object.assign(r,data);if(!r.code)r.code='GR-'+String(r.id).padStart(3,'0');toast('Сохранено');}
@@ -3569,7 +3587,7 @@ function draftRefSel(v){
   const D=S.draft;D.rq='';
   if(v==='unknown'){D.agents=[];D.selfCame=false;}
   else if(v==='self'){D.agents=[];D.selfCame=true;}
-  else {D.agents=agentsDefault(Number(v));D.selfCame=false;D.refSrc='выбрал менеджер';}
+  else {D.agents=agentsDefault(refIdNorm(v));D.selfCame=false;D.refSrc='выбрал менеджер';}
   syncRef(D);save();render();
 }
 function draftSet(k,v,silent){
@@ -7462,10 +7480,10 @@ function viewRefs(){
       <span style="font-size:12px;color:var(--text-muted)">${r.lang==='en'?'EN':'RU'}</span>
       ${r.active?'':'<span class="badge b-wait">неактивен</span>'}</span>
       <span>
-        <button class="btn btn-outline btn-sm" onclick="refEdit(${r.id})">Изм.</button>
-        <button class="btn btn-outline btn-sm" onclick="refDeals(${r.id})">${S.refOpen===r.id?'Скрыть сделки':'Сделки ('+st.deals+')'}</button>
-        <button class="btn btn-outline btn-sm" onclick="refToggle(${r.id})">${r.active?'Откл.':'Вкл.'}</button>
-        ${st.pending>0?`<button class="btn btn-success btn-sm" onclick="refPay(${r.id})">Выплатить ${usd(st.pending)}</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="refEdit(${refIdLit(r.id)})">Изм.</button>
+        <button class="btn btn-outline btn-sm" onclick="refDeals(${refIdLit(r.id)})">${S.refOpen===r.id?'Скрыть сделки':'Сделки ('+st.deals+')'}</button>
+        <button class="btn btn-outline btn-sm" onclick="refToggle(${refIdLit(r.id)})">${r.active?'Откл.':'Вкл.'}</button>
+        ${st.pending>0?`<button class="btn btn-success btn-sm" onclick="refPay(${refIdLit(r.id)})">Выплатить ${usd(st.pending)}</button>`:''}
       </span></div>
     <p style="font-size:13.5px;color:var(--navy-600)">${model(r)} · выплата ${r.cur} · клиентов ${st.clients} · сделок ${st.deals}${r.tg?' · TG '+r.tg:''}</p>
     ${r.parentId?`<p style="font-size:13px;color:var(--navy-600);margin-top:4px">Его привёл <b>${(refById(r.parentId)||{}).name}</b> — ему уходит ${r.l2==null?10:r.l2}% с вознаграждения этого партнёра</p>`:''}
