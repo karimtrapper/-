@@ -436,6 +436,26 @@ function crmDraftSourceResolveClient(active) {
 function crmDraftWire(active) {
   const {root,form}=active;
   form.addEventListener('submit',e=>{e.preventDefault();editSave(active.id);});
+  root.addEventListener('keydown',e=>{
+    const btn=e.target.closest?.('.custom-select-btn');
+    if(!btn)return;
+    const wrap=btn.closest('.custom-select-wrap');
+    if(e.key==='Escape'){
+      wrap?.classList.remove('open');return;
+    }
+    if(e.key!=='ArrowDown'&&e.key!=='ArrowUp')return;
+    const select=wrap?.querySelector('select');
+    if(!select)return;
+    e.preventDefault();
+    const direction=e.key==='ArrowDown'?1:-1;
+    const options=[...select.options];
+    let next=select.selectedIndex+direction;
+    while(next>=0&&next<options.length&&options[next].disabled)next+=direction;
+    if(next<0||next>=options.length)return;
+    select.selectedIndex=next;
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+    wrap.classList.add('open');
+  });
   document.getElementById('crmDraftSource')?.addEventListener('change',()=>{
     // Legacy editSrcSet cleared a chat/Bitrix ref when its channel changed.
     // Keep the change in the draft until the user explicitly saves it.

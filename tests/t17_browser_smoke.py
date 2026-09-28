@@ -196,6 +196,16 @@ with sync_playwright() as playwright:
     print('form:', host.locator('#createDealForm').count())
     print('kind:', host.locator('#dealKindSelect').input_value())
     print('payin:', host.locator('#payinMethod option').count())
+    payin_button=host.locator('#payinMethod').locator('xpath=..').locator('.custom-select-btn')
+    payin_button.focus()
+    original_payin=host.locator('#payinMethod').input_value()
+    payin_button.press('ArrowDown')
+    assert host.locator('#payinMethod').input_value()!=original_payin
+    payin_button.press('ArrowUp')
+    assert host.locator('#payinMethod').input_value()==original_payin
+    payin_button.press('Escape')
+    assert host.locator('#payinMethod').locator('xpath=..').get_attribute('class')=='custom-select-wrap'
+    print('custom select keyboard ArrowDown/ArrowUp/Escape: PASS')
     print('source:', page.locator('#crmDraftSource').input_value())
     page.evaluate("BX_DEALS.push('T17 synthetic Bitrix #42')")
     page.locator('#crmDraftSource').select_option('bitrix')
