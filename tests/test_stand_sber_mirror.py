@@ -19,7 +19,8 @@ import stand_sber_mirror as mirror
 def stand(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
     appmod.Base.metadata.create_all(bind=appmod.engine,
-                                    tables=[appmod.StandSberMirrorState.__table__])
+                                    tables=[appmod.StandState.__table__,
+                                            appmod.StandSberMirrorState.__table__])
     monkeypatch.setenv('STAND_PROD_RO_KEY', 'secret-should-not-be-logged')
     monkeypatch.setenv('STAND_SBER_MIRROR_ENABLED', '1')
     monkeypatch.setenv('STAND_SBER_BOARD_DAYS', '14')
@@ -69,7 +70,7 @@ def test_poll_upsert_board_and_human_link_survive(stand, monkeypatch):
 
     def fake(kind, params):
         calls.append((kind, params))
-        return 200, {'success': True, 'incomes': [item]}
+        return 200, {'success': True, 'incomes': [item]}, None
 
     monkeypatch.setattr(mirror.stand_egress, 'read_get', fake)
     assert mirror.poll(appmod)
@@ -115,7 +116,7 @@ def test_poll_upsert_board_and_human_link_survive(stand, monkeypatch):
 def test_history_cutoff_and_board_protection(stand, monkeypatch):
     old, fresh = income(20), income(1)
     monkeypatch.setattr(mirror.stand_egress, 'read_get',
-                        lambda *a, **kw: (200, {'success': True, 'incomes': [old, fresh]}))
+                        lambda *a, **kw: (200, {'success': True, 'incomes': [old, fresh]}, None))
     assert mirror.poll(appmod)
     data, version = board()
     assert [x['uuid'] for x in data['incomes']] == [fresh['uuid']]
@@ -138,7 +139,7 @@ def test_history_cutoff_and_board_protection(stand, monkeypatch):
 def test_omitted_income_keeps_human_fields_but_explicit_unlink_works(stand, monkeypatch):
     item = income()
     monkeypatch.setattr(mirror.stand_egress, 'read_get',
-                        lambda *a: (200, {'success': True, 'incomes': [item]}))
+                        lambda *a: (200, {'success': True, 'incomes': [item]}, None))
     assert mirror.poll(appmod)
     db = appmod.get_session()
     sql_income = db.query(appmod.SberIncome).filter_by(uuid=item['uuid']).one()
@@ -175,11 +176,11 @@ def test_omitted_income_keeps_human_fields_but_explicit_unlink_works(stand, monk
 
 
 def test_error_and_429_keep_loop_alive_without_secret(stand, monkeypatch, caplog):
-    responses = iter([(429, None), (200, {'success': True, 'incomes': []})])
+    responses = iter([(429, None, 'http_429'), (200, {'success': True, 'incomes': []}, None)])
     monkeypatch.setattr(mirror.stand_egress, 'read_get', lambda *a, **kw: next(responses))
     with caplog.at_level(logging.WARNING):
         assert not mirror.poll(appmod)
-    assert mirror.status(appmod)['last_error'] == 'HTTP 429'
+    assert mirror.status(appmod)['last_error'] == 'http_429'
     assert 'secret-should-not-be-logged' not in caplog.text
     assert mirror.poll(appmod)
     assert mirror.status(appmod)['last_error'] is None
@@ -204,7 +205,7 @@ def test_bad_amounts_conflicting_uuid_and_limited_window(stand, monkeypatch):
     changed = dict(conflict, amount_rub=99)
     batch = [valid, conflict, changed] + bad
     monkeypatch.setattr(mirror.stand_egress, 'read_get',
-                        lambda *a: (200, {'success': True, 'incomes': batch}))
+                        lambda *a: (200, {'success': True, 'incomes': batch}, None))
     assert mirror.poll(appmod)
     assert [i['uuid'] for i in board()[0]['incomes']] == [valid['uuid']]
     assert mirror.status(appmod)['last_seen_count'] == len(batch)
@@ -226,12 +227,12 @@ def test_copied_sql_history_appears_during_429_and_acquiring_gross(stand, monkey
                              purpose=item['purpose'], doc_number='42'))
     db.commit()
     db.close()
-    monkeypatch.setattr(mirror.stand_egress, 'read_get', lambda *a: (429, None))
+    monkeypatch.setattr(mirror.stand_egress, 'read_get', lambda *a: (429, None, 'http_429'))
     assert not mirror.poll(appmod)
     record = board()[0]['incomes'][0]
     assert (record['rub'], record['feeRub'], record['grossRub']) == (99300, 700, 100000)
     assert record['kind'] == 'эквайринг'
-    assert mirror.status(appmod)['last_error'] == 'HTTP 429'
+    assert mirror.status(appmod)['last_error'] == 'http_429'
 
 
 def test_client_cannot_reserve_bank_id_before_sql_bridge(stand, monkeypatch):
@@ -241,7 +242,7 @@ def test_client_cannot_reserve_bank_id_before_sql_bridge(stand, monkeypatch):
     response = stand.put('/api/stand/state', json={'version': 0, 'data': {'incomes': [fake]}})
     assert response.status_code == 200
     monkeypatch.setattr(mirror.stand_egress, 'read_get',
-                        lambda *a: (200, {'success': True, 'incomes': [item]}))
+                        lambda *a: (200, {'success': True, 'incomes': [item]}, None))
     assert mirror.poll(appmod)
     saved = board()[0]['incomes']
     assert len(saved) == 1
@@ -253,7 +254,7 @@ def test_mirrored_income_passes_account_check_in_tasks(stand, monkeypatch):
     item['amount_rub'] = 100000
     item['purpose'] = 'Договор СД-1'
     monkeypatch.setattr(mirror.stand_egress, 'read_get',
-                        lambda *a: (200, {'success': True, 'incomes': [item]}))
+                        lambda *a: (200, {'success': True, 'incomes': [item]}, None))
     assert mirror.poll(appmod)
     record = board()[0]['incomes'][0]
     env = dict(os.environ, MIRRORED_INCOME_JSON=json.dumps(record, ensure_ascii=False))

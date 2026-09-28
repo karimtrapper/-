@@ -216,6 +216,66 @@ def _result(status, **kwargs):
             if status == 'confirmed' else None, **kwargs}
 
 
+class _ChannelError(Exception):
+    """Ошибка контролируемого канала чтения стенда (stand_egress.read_get)."""
+
+
+class _StandChannelResponse:
+    """Приводит (status_code, json, error) от read_get к форме, которую ждёт
+    остальной код verify_transfer (response.status_code / response.json())."""
+    __slots__ = ('status_code', '_data')
+
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+_STAND_CHANNEL_ERRORS = {
+    'no_key': 'Сеть недоступна: нет ключа',
+    'timeout': 'Сеть не ответила: таймаут',
+    'read_timeout': 'Сеть не ответила: таймаут при чтении ответа',
+    'read_error': 'Сеть не ответила: обрыв при чтении ответа',
+    'tls_error': 'Сеть не ответила: TLS',
+    'network_error': 'Сеть не ответила',
+    'redirect_blocked': 'Сеть отдала редирект — отклонено',
+    'response_too_large': 'Ответ сети слишком большой',
+    'invalid_json': 'Сеть отдала не JSON',
+    'http_429': 'TronScan/Etherscan HTTP 429 — лимит запросов',
+    'http_5xx': 'TronScan/Etherscan HTTP 5xx',
+    'http_4xx': 'TronScan/Etherscan HTTP 4xx',
+    'erc20_disabled_on_stand': 'На стенде проверка ERC-20 выключена',
+}
+
+
+def _stand_get(url, params=None, headers=None, timeout=None):
+    """На стенде подменяет requests.get в verify_transfer: маршрутизирует
+    вызов через stand_egress.read_get по известному URL. Заголовки и ключ
+    (TRON-PRO-API-KEY / apikey) строит сам канал — 'apikey' из params сюда
+    не передаём, иначе read_get отказал бы как неизвестный параметр."""
+    import stand_egress
+
+    params = params or {}
+    if url == 'https://apilist.tronscanapi.com/api/transaction-info':
+        op, op_params = 'tron_tx_info', {'hash': params.get('hash')}
+    elif url == 'https://api.etherscan.io/v2/api' and params.get('action') == 'eth_getTransactionReceipt':
+        op, op_params = 'eth_tx_receipt', {k: v for k, v in params.items() if k != 'apikey'}
+    elif url == 'https://api.etherscan.io/v2/api' and params.get('action') == 'eth_getBlockByNumber':
+        op, op_params = 'eth_block_by_number', {k: v for k, v in params.items() if k != 'apikey'}
+    else:
+        raise _ChannelError('Канал не настроен')
+    status_code, data, err = stand_egress.read_get(op, op_params)
+    if err == 'http_4xx' and op == 'tron_tx_info' and status_code == 404:
+        # TronScan отдаёт 404 на ещё не проиндексированный хеш — как раньше
+        # при прямом requests.get, это «пока нет данных», не ошибка канала.
+        return _StandChannelResponse(status_code, {})
+    if err:
+        raise _ChannelError(_STAND_CHANNEL_ERRORS.get(err, 'Сеть недоступна'))
+    return _StandChannelResponse(status_code, data)
+
+
 def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     demo_outcome=None, get=requests.get, etherscan_key=None,
                     tronscan_key=None):
@@ -240,6 +300,16 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
         return _result(demo_outcome if demo_outcome in ('failed', 'pending') else 'pending', demo=True)
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
+    if os.environ.get('STAND_MODE') == '1':
+        if network == 'erc20':
+            # Решение Карима: на стенде из сетей только TRC-20. ERC-20/Etherscan
+            # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан —
+            # это явный выключатель, а не отсутствие ключа как раньше.
+            return _result('error', checkError='На стенде проверка ERC-20 выключена')
+        # На стенде ходим в сеть только через контролируемый канал чтения T9
+        # (stand_egress.read_get) — сокет-guard блокирует прямой requests.get.
+        get = _stand_get
+        tronscan_key = tronscan_key or os.environ.get('TRONSCAN_API_KEY')
     try:
         if network == 'trc20':
             headers = {'User-Agent': TRONSCAN_USER_AGENT}
@@ -308,7 +378,7 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     matches.append(log)
             actual = sum(Decimal(int(str(t.get('data') or '0x0'), 16)) / Decimal(1_000_000)
                          for t in matches)
-    except (requests.RequestException, ValueError, TypeError, InvalidOperation) as exc:
+    except (requests.RequestException, ValueError, TypeError, InvalidOperation, _ChannelError) as exc:
         return _result('error', checkError=str(exc)[:160])
     actual_from = sender or (matches[0].get('from_address') if network == 'trc20' and matches else None)
     if network == 'erc20' and sender is None and matches:

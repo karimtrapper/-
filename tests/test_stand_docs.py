@@ -11,6 +11,7 @@ from docx import Document
 
 import app as appmod
 import docgen
+import stand_notify
 
 RUB_PAY_TO = ('ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · ПАО Сбербанк · '
               'р/с 40807810938720000286 · к/с 30101810400000000225 · БИК 044525225')
@@ -43,6 +44,9 @@ def _deal(deal_id, **over):
 @pytest.fixture
 def stand(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    # В общем pytest app импортирован в прод-режиме; поднимаем таблицы и уведомления после смены режима.
+    appmod._stand_migrate()
+    stand_notify.init(appmod)
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
 
     def role_lookup():

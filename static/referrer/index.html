@@ -433,6 +433,10 @@
             net_error_short: 'Ошибка сети',
             error: 'Ошибка',
             login_creating: 'Создаю код входа…',
+            login_stand_disabled: 'На стенде вход через бота выключен',
+            login_env_unknown: 'Не удалось проверить окружение, повторите ещё раз',
+            stand_link_disabled: 'на стенде выключено',
+            link_unverified: 'не удалось проверить окружение',
             login_opened: '⏳ Открылся Telegram — выберите нужный аккаунт и нажмите <b>Start</b>.',
             login_open_again: 'Открыть бота ещё раз',
             login_timeout: 'Время истекло. Нажмите кнопку ещё раз.',
@@ -560,6 +564,10 @@
             net_error_short: 'Network error',
             error: 'Error',
             login_creating: 'Creating a login code…',
+            login_stand_disabled: 'Bot login is disabled on the test stand',
+            login_env_unknown: 'Could not verify the environment, please try again',
+            stand_link_disabled: 'disabled on the test stand',
+            link_unverified: 'could not verify environment',
             login_opened: '⏳ Telegram is open — pick the right account and press <b>Start</b>.',
             login_open_again: 'Open the bot again',
             login_timeout: 'Timed out. Press the button again.',
@@ -714,6 +722,28 @@
     let statsData = null;
     const token = window.location.pathname.split('/ref/')[1]?.split('/')[0];
 
+    /* На стенде реальный домен grusha.space, боевой бот и WhatsApp реального номера
+       не должны попадать в буфер обмена партнёра, даже из его собственного кабинета
+       (QA, 28.09, п.5 — тот же класс риска, что бот-логин и ссылки в crm.html).
+       Признак стенда — /api/health (публичный, тот же 'stand', что и в /api/auth/me),
+       а не конкретный ответ /api/ref/.../stats: сервер стенд почистит отдельно
+       (T1), но кабинет не должен на это полагаться. */
+    // null — ещё не проверено или /api/health не ответил: тогда тоже не рисуем
+    // боевые ссылки (fail-closed), а не считаем это прод-окружением по умолчанию.
+    let IS_STAND = null;
+    async function checkStand() {
+        // Поле 'stand' может отсутствовать в ответе — это тоже «неизвестно», а не
+        // «прод»: !!undefined===false молча выдавал бы такой ответ за подтверждённый
+        // прод (QA перепроверка, FAIL №5, 28.09).
+        try { const j = await (await fetch('/api/health')).json();
+            IS_STAND = (j && typeof j.stand === 'boolean') ? j.stand : null; }
+        catch (e) { IS_STAND = null; }
+    }
+    function refLinkText(real) {
+        if (IS_STAND === false) return esc(real);
+        return IS_STAND === true ? t('stand_link_disabled') : t('link_unverified');
+    }
+
     // Маскируем внутренний инкрементный ID, чтобы партнёр не видел #1/#2
     // и не понимал, что он один из первых. Детерминированно: тот же id → тот же номер.
     function maskId(id) {
@@ -734,7 +764,7 @@
     if (!token) {
         document.getElementById('app').innerHTML = '<div class="error">' + t('invalid_link') + '</div>';
     } else {
-        loadStats();
+        checkStand().then(loadStats);
     }
 
     // Экран входа: только через приложение Telegram (бот-флоу, без widget-кэша).
@@ -744,6 +774,27 @@
         const st = document.getElementById('tg-login-error');
         if (botPollTimer) { clearInterval(botPollTimer); botPollTimer = null; }
         st.textContent = t('login_creating');
+        /* Проверяем стенд отдельным публичным вызовом (/api/health), а не доверяем
+           одному ответу tg-start: если сервер когда-нибудь по ошибке всё же отдаст
+           боевую ссылку на grusha_lk_bot, страница её всё равно не откроет
+           (QA FAIL №8, Карим 28.09). Перепроверка (FAIL №6): открываем бота ТОЛЬКО
+           при явном stand===false — если health не ответил вообще, это не «считаем
+           прод», а «не проверено» (fail-closed): минимальная деградация прода
+           только в момент, когда health и правда недоступен, согласовано лидером. */
+        let health = null, healthOk = false;
+        try { health = await (await fetch('/api/health')).json(); healthOk = true; }
+        catch (e) { healthOk = false; }
+        // Поле 'stand' может отсутствовать в успешном ответе — тоже «неизвестно»,
+        // а не «прод»: боевой бот открывается только при явном stand===false
+        // (QA перепроверка, FAIL №5, 28.09).
+        if (!healthOk || !health || typeof health.stand !== 'boolean') {
+            st.textContent = t('login_env_unknown');
+            return;
+        }
+        if (health.stand) {
+            st.textContent = t('login_stand_disabled');
+            return;
+        }
         let start;
         try { start = await (await fetch(`/api/ref/${token}/tg-start`, { method: 'POST' })).json(); }
         catch (e) { st.textContent = t('net_error_short'); return; }
@@ -980,7 +1031,7 @@
                         <div class="ref-icon" style="background:var(--navy-800)">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                         </div>
-                        <div class="ref-url" id="url-site">${esc(d.referral_link)}</div>
+                        <div class="ref-url" id="url-site">${refLinkText(d.referral_link)}</div>
                         <button class="ref-copy" onclick="copyUrl('url-site',this)">${t('copy')}</button>
                     </div>
                 </div>
@@ -989,7 +1040,7 @@
                         <div class="ref-icon" style="background:#2AABEE">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.37-1.01.55-1.44.54-.47-.01-1.38-.27-2.06-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.87 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .38z"/></svg>
                         </div>
-                        <div class="ref-url" id="url-bot">${esc(d.bot_link)}</div>
+                        <div class="ref-url" id="url-bot">${refLinkText(d.bot_link)}</div>
                         <button class="ref-copy" onclick="copyUrl('url-bot',this)">${t('copy')}</button>
                     </div>
                 </div>
@@ -998,7 +1049,7 @@
                         <div class="ref-icon" style="background:#25D366">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413z"/></svg>
                         </div>
-                        <div class="ref-url" id="url-wa">${esc(d.wa_link)}</div>
+                        <div class="ref-url" id="url-wa">${refLinkText(d.wa_link)}</div>
                         <button class="ref-copy" onclick="copyUrl('url-wa',this)">${t('copy')}</button>
                     </div>
                 </div>

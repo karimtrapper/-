@@ -21,6 +21,10 @@ _thread = None
 ACCOUNT_ASSUMPTION = 'Счёт проставлен по допущению: SberNotifier следит за одним счётом'
 
 
+class ReadChannelError(Exception):
+    """Код отказа закрытого канала без URL, ключа и параметров запроса."""
+
+
 @lru_cache(maxsize=1)
 def _sber_account_label():
     """Взять счёт MF из того же определения, что использует задачник.
@@ -134,7 +138,12 @@ def _poll_locked(appmod):
             bootstrap.commit()
         finally:
             bootstrap.close()
-        status_code, payload = stand_egress.read_get('prod_incomes', {'all': '1'})
+        status_code, payload, error_code = stand_egress.read_get(
+            'prod_incomes', {'all': '1'})
+        if error_code:
+            safe_code = error_code if isinstance(error_code, str) and re.fullmatch(
+                r'[a-z][a-z0-9_]{0,49}', error_code) else 'channel_error'
+            raise ReadChannelError(safe_code)
         if status_code != 200:
             raise ValueError('HTTP ' + str(status_code))
         if not isinstance(payload, dict) or payload.get('success') is not True:
@@ -203,8 +212,8 @@ def _poll_locked(appmod):
             db.close()
     except Exception as exc:
         # Ошибка клиента может содержать URL и заголовки. Пишем только тип/код.
-        reason = str(exc) if isinstance(exc, ValueError) else type(exc).__name__
-        if not reason.startswith('HTTP '):
+        reason = str(exc) if isinstance(exc, (ValueError, ReadChannelError)) else type(exc).__name__
+        if not isinstance(exc, ReadChannelError) and not reason.startswith('HTTP '):
             reason = 'ошибка опроса: ' + type(exc).__name__
         appmod.app.logger.warning('Зеркало Сбера: %s', reason)
         db = appmod.get_session()

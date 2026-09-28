@@ -5,6 +5,7 @@ Exchange Calculator Bot - Калькулятор обмена RUB-THB
 
 import aiohttp
 import asyncio
+import math
 import os
 import threading
 import time as _time
@@ -155,6 +156,41 @@ class ExchangeRateProvider:
     FALLBACK_RUB_USDT = 88.0  # обновлён 19.08.2026
     
     @staticmethod
+    def _parse_binance_price(data, symbol, source='th'):
+        """Разбор ответа Binance — общий для прод-пути (aiohttp, ниже) и
+        стенда (get_all_rates, канал T9), с поведением ПО ИСТОЧНИКУ ровно как
+        в main (git 2c40e91): TH понимает вложенную форму
+        {code:0, data:[{symbol, price}]} и плоскую {price} как фоллбэк
+        внутри самого TH-ответа; Global — строго плоская {price}, без
+        вложенной формы. Раньше общая функция применяла TH-разбор и к
+        Global-ответу тоже: TH-образный мусор на Global-эндпоинте (такого
+        прод не отдаёт, но раз это отдельный источник — не должен и молча
+        распознаваться) давал курс там, где main честно вернул бы None."""
+        if not isinstance(data, dict):
+            return None
+        try:
+            if source == 'th':
+                if data.get("code") == 0 and "data" in data:
+                    price_data = data["data"]
+                    if isinstance(price_data, list):
+                        for item in price_data:
+                            if item.get("symbol") == symbol:
+                                return float(item.get("price"))
+                        return None
+                    if isinstance(price_data, dict):
+                        return float(price_data.get("price"))
+                    return None
+                if "price" in data:
+                    return float(data["price"])
+                return None
+            # source == 'global': main делал ровно float(data['price']) без
+            # какой-либо вложенной формы — KeyError/TypeError означает «не
+            # тот формат», а не «попробовать разобрать как TH».
+            return float(data["price"])
+        except (TypeError, ValueError, KeyError):
+            return None
+
+    @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
         """
         Получить курс от Binance (сначала TH, потом Global как фоллбэк)
@@ -174,17 +210,9 @@ class ExchangeRateProvider:
                         if response.status == 200:
                             data = await response.json()
                             print(f"DEBUG: Binance TH raw data: {data}", flush=True)
-                            if isinstance(data, dict):
-                                if data.get("code") == 0 and "data" in data:
-                                    price_data = data["data"]
-                                    if isinstance(price_data, list):
-                                        for item in price_data:
-                                            if item.get("symbol") == symbol:
-                                                return float(item.get("price"))
-                                    elif isinstance(price_data, dict):
-                                        return float(price_data.get("price"))
-                                elif "price" in data:
-                                    return float(data["price"])
+                            price = ExchangeRateProvider._parse_binance_price(data, symbol)
+                            if price is not None:
+                                return price
             except Exception as e:
                 print(f"⚠️ Binance TH attempt {attempt+1} error: {e}")
 
@@ -197,7 +225,9 @@ class ExchangeRateProvider:
                     if response.status == 200:
                         data = await response.json()
                         print(f"DEBUG: Binance Global rate: {data.get('price')}")
-                        return float(data['price'])
+                        price = ExchangeRateProvider._parse_binance_price(data, symbol, source='global')
+                        if price is not None:
+                            return price
         except Exception as e:
             print(f"❌ Binance Global error: {e}")
 
@@ -258,6 +288,46 @@ class ExchangeRateProvider:
         Returns:
             dict: {"usdt_thb": float, "rub_usdt": float}
         """
+        if os.environ.get('STAND_MODE') == '1':
+            # На стенде курс дня — настоящий рынок, но только через контролируемый
+            # канал чтения T9 (stand_egress.read_get): Binance-тикер + Рапира-тикер,
+            # без стакана/VWAP и без Playwright. На ошибке/429 честно None — курс
+            # не выдумывается и старое значение за свежее не выдаётся (кэша нет,
+            # так что «отдать вчерашнее как сегодняшнее» здесь невозможно в принципе).
+            import stand_egress
+
+            def _finite_positive(raw):
+                """NaN/Infinity/≤0 — не курс. math.isfinite отсекает и то, и
+                другое; float('inf') > 0 иначе прошёл бы как валидный курс."""
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    return None
+                return value if math.isfinite(value) and value > 0 else None
+
+            usdt_thb = None
+            # Прод (вне стенда, см. get_binance_rate ниже) сначала пробует
+            # Binance TH и только потом — Global-фоллбэк; канал повторяет тот
+            # же порядок источников, иначе курс стенда систематически разойдётся
+            # с продом даже при обоих источниках "живых".
+            for op, source in (('market_binance_th_ticker', 'th'), ('market_binance_ticker', 'global')):
+                status_code, data, err = stand_egress.read_get(op, {'symbol': 'USDTTHB'})
+                if not err and status_code == 200:
+                    usdt_thb = _finite_positive(
+                        ExchangeRateProvider._parse_binance_price(data, 'USDTTHB', source=source))
+                    if usdt_thb is not None:
+                        break
+            rub_usdt = None
+            status_code, data, err = stand_egress.read_get('market_rapira', {})
+            if not err and status_code == 200 and isinstance(data, dict):
+                rows = data.get('data') if isinstance(data.get('data'), list) else []
+                for row in rows:
+                    if row.get('symbol') in ('USDT/RUB', 'USDTRUB'):
+                        ask = _finite_positive(row.get('askPrice'))
+                        if ask is not None:
+                            rub_usdt = ask * ExchangeRateProvider.RAPIRA_MARKUP
+                        break
+            return {"usdt_thb": usdt_thb, "rub_usdt": rub_usdt}
         usdt_thb = await ExchangeRateProvider.get_binance_rate("USDTTHB")
         rub_usdt = await ExchangeRateProvider.get_rapira_rate()
 
@@ -280,6 +350,13 @@ class ExchangeRateProvider:
         """
         import time
         start_time = time.time()
+
+        if os.environ.get('STAND_MODE') == '1':
+            # Playwright запускает отдельный процесс Chromium со своим сетевым
+            # стеком — Python socket-guard его не видит, поэтому курс через
+            # браузер на стенде выключаем кодом, а не полагаемся на сеть.
+            return {'error': 'stand_blocked', 'direction': direction,
+                    'usdt': None, 'thb': None, 'rate': None, 'time': 0}
 
         try:
             async with async_playwright() as p:

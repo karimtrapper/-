@@ -196,13 +196,12 @@
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({username: '', password: ''})
                 });
-                const data = await resp.json();
-                if (resp.status === 403) {
-                    // Админ уже создан или setup отключён — показываем логин
+                if (!resp.ok) {
+                    // Любой отказ setup оставляет доступной форму входа.
                     document.getElementById('loginMode').style.display = 'block';
                     document.getElementById('setupMode').style.display = 'none';
                 } else {
-                    // Первая настройка
+                    // Успешный ответ setup разрешает первую настройку.
                     document.getElementById('loginMode').style.display = 'none';
                     document.getElementById('setupMode').style.display = 'block';
                 }
