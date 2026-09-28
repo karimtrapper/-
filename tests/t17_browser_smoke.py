@@ -13,6 +13,8 @@ try:
         db.add(appmod.Manager(name='Марина',active=True))
     db.add(appmod.Referrer(name='T17 Agent',code='T17AGENT',token='t17-synthetic-agent',
                            default_percent=10,comp_model='revshare',active=True,is_test=True))
+    db.add(appmod.Referrer(name='T17 Agent Two',code='T17AGENT2',token='t17-synthetic-agent-two',
+                           default_percent=5,comp_model='revshare',active=True,is_test=True))
     db.add(appmod.Client(name='T17 Existing',telegram='@t17fixture',phone='70000000000'))
     db.add(appmod.SberIncome(uuid='t17-transfer-1',operation_date='2026-09-27T12:00:00',
         amount_rub=266000,payer='T17 Transfer',purpose='Оплата недвижимости. НДС не облагается'))
@@ -705,12 +707,28 @@ with sync_playwright() as playwright:
     crm_ex.locator('#payoutAmountThb').fill('100000')
     crm_ex.locator('#binanceUsdt').fill('3205.13')
     crm_ex.evaluate('stdAgentsAdd();calculateProfit()')
+    for scope in (crm_ex,host):
+        scope.locator('#agentsBlockStd > div').first.locator('select').first.select_option('1')
     money_fields='''el=>Object.fromEntries(['profitUsdt','referrerPayout','netProfit',
       'profitPercent','cashBatchCostUsdt'].map(id=>[id,el.querySelector('#'+id)?.value]))'''
     crm_exchange_money=crm_ex.locator('#createDealForm').evaluate(money_fields)
     task_exchange_money=host.locator('#createDealForm').evaluate(money_fields)
     print('exchange money CRM/tasks:',crm_exchange_money,task_exchange_money)
     assert crm_exchange_money==task_exchange_money
+    crm_ex.evaluate('stdAgentsAdd()')
+    host.locator('#agentsBlockStd').locator('xpath=following-sibling::button[1]').click()
+    for scope in (crm_ex,host):
+        scope.locator('#agentsBlockStd > div').nth(1).locator('select').first.select_option('2')
+    cascade=[crm_ex.locator('#netProfit').input_value(),host.locator('#netProfit').input_value()]
+    assert cascade[0]==cascade[1]
+    crm_ex.locator('#saPreFlat').click()
+    host.locator('#saPreFlat').click()
+    flat=[crm_ex.locator('#netProfit').input_value(),host.locator('#netProfit').input_value()]
+    print('exchange agents cascade/flat CRM/tasks:',cascade,flat)
+    assert flat[0]==flat[1] and flat!=cascade
+    agents_state=[crm_ex.evaluate('stdAgentsSerialize()'),
+                  page.evaluate('crmDraftActive.core.stdAgentsSerialize()')]
+    assert agents_state[0]==agents_state[1] and len(agents_state[0])==2
     for source,expected in [('cash_batch','$3125.00'),('bank_card','$3200.00')]:
         pick(crm_ex,'payoutSource',source)
         pick(host,'payoutSource',source)
@@ -743,9 +761,11 @@ with sync_playwright() as playwright:
     page.locator('.card.edit-page > .row > button').first.click()
     exchange=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic exchange');
       return [d.id,d.paySrc,d.payout.thb,d.payout.usdt,crmPayload(d).deal_kind,
-        crmPayload(d).payout_source,crmPayload(d).payout_amount_usdt];}''')
+        crmPayload(d).payout_source,crmPayload(d).payout_amount_usdt,
+        d.agents.length,crmPayload(d).agents.map(a=>[a.name,a.tier,a.percent])];}''')
     print('exchange:',exchange)
     assert exchange[1:6]==['coins',100000,3205.13,'exchange','binance']
+    assert exchange[7]==2 and exchange[8]==[['T17 Agent',1,10],['T17 Agent Two',1,5]]
     for source,expected,cost in [('bank_card','bank_card',3200),
                                  ('cash_batch','cash_batch',3125)]:
         open_edit(page,exchange[0])
