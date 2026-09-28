@@ -378,6 +378,19 @@ def compute_snapshot(target_url):
                 cur.execute(f'SELECT "{col}" FROM "{t}" WHERE "{col}" IS NOT NULL')
                 token_values[t] = [r[0] for r in cur.fetchall()]
 
+        # sha256 от password_hash, а не сам хеш — эталон в counts.json не должен
+        # содержать значение, по которому (пусть и с усилием) можно было бы
+        # опознать пароль; для проверки «изменился ли хеш после санации»
+        # отпечатка достаточно.
+        admin_password_hash_fingerprints = {}
+        if 'admin_users' in table_set:
+            cur.execute('SELECT id, password_hash FROM admin_users')
+            for admin_id, pwd_hash in cur.fetchall():
+                if pwd_hash is not None:
+                    admin_password_hash_fingerprints[str(admin_id)] = hashlib.sha256(
+                        pwd_hash.encode('utf-8')
+                    ).hexdigest()
+
         return {
             'tables': table_counts,
             'table_hashes': table_hashes,
@@ -386,6 +399,7 @@ def compute_snapshot(target_url):
             'sequences': sequences,
             'foreign_keys': foreign_keys,
             'token_values': token_values,
+            'admin_password_hash_fingerprints': admin_password_hash_fingerprints,
         }
     finally:
         conn.close()
@@ -413,14 +427,123 @@ def check_orphans(target_url, foreign_keys):
     return problems
 
 
-def check_sanitize_invariants(candidate_url, expected_token_values):
+RESERVED_STAND_USERNAMES = {'karim', 'marina', 'artem', 'vitaliy', 'teodor'}
+
+
+def _count(cur, sql, params=None):
+    cur.execute(sql, params or ())
+    return cur.fetchone()[0]
+
+
+def _invariant_null(table, col):
+    """Колонка обнулена у всех строк."""
+    def check(cur, expected):
+        n = _count(cur, f'SELECT COUNT(*) FROM "{table}" WHERE "{col}" IS NOT NULL')
+        return {'table': table, 'column': col, 'invariant': 'null', 'violations': n} if n else None
+    return check
+
+
+def _invariant_equals(table, col, value, label):
+    """Колонка равна фиксированному значению (плейсхолдер/флаг) у всех строк."""
+    def check(cur, expected):
+        n = _count(cur, f'SELECT COUNT(*) FROM "{table}" WHERE "{col}" IS DISTINCT FROM %s', (value,))
+        return {'table': table, 'column': col, 'invariant': f'equals:{label}', 'violations': n} if n else None
+    return check
+
+
+def _invariant_token_reissued(table, col):
+    """Токен не встречается в дампе, не NULL/пуст и уникален (не массовый одинаковый)."""
+    def check(cur, expected):
+        old_values = set((expected.get('token_values') or {}).get(table) or [])
+        cur.execute(f'SELECT "{col}" FROM "{table}"')
+        new_values = [r[0] for r in cur.fetchall()]
+        problems = []
+        leaked = old_values & set(v for v in new_values if v is not None)
+        if leaked:
+            problems.append({'table': table, 'column': col, 'invariant': 'not_in_dump', 'violations': len(leaked)})
+        empty = sum(1 for v in new_values if not v)
+        if empty:
+            problems.append({'table': table, 'column': col, 'invariant': 'not_empty', 'violations': empty})
+        non_empty = [v for v in new_values if v]
+        if len(non_empty) != len(set(non_empty)):
+            dup = len(non_empty) - len(set(non_empty))
+            problems.append({'table': table, 'column': col, 'invariant': 'unique', 'violations': dup})
+        return problems
+    return check
+
+
+def _invariant_payment_link_empty(cur, expected):
+    """Пусто = NULL или '' — обе формы означают «ссылки нет», обе безопасны."""
+    n = _count(cur, "SELECT COUNT(*) FROM payment_link_orders WHERE link IS NOT NULL AND link <> ''")
+    return {'table': 'payment_link_orders', 'column': 'link', 'invariant': 'empty', 'violations': n} if n else None
+
+
+def _invariant_referrer_auth_mode(cur, expected):
+    n = _count(cur, "SELECT COUNT(*) FROM referrers WHERE auth_mode = 'telegram'")
+    return {'table': 'referrers', 'column': 'auth_mode', 'invariant': "not_equals:telegram", 'violations': n} if n else None
+
+
+def _invariant_admin_username_not_reserved(cur, expected):
+    n = _count(cur, 'SELECT COUNT(*) FROM admin_users WHERE lower(username) = ANY(%s)',
+               (list(RESERVED_STAND_USERNAMES),))
+    return {'table': 'admin_users', 'column': 'username', 'invariant': 'renamed_prod_prefix', 'violations': n} if n else None
+
+
+def _invariant_admin_password_hash_changed(cur, expected):
+    fingerprints = expected.get('admin_password_hash_fingerprints') or {}
+    if not fingerprints:
+        return None
+    cur.execute('SELECT id, password_hash FROM admin_users')
+    unchanged = 0
+    for admin_id, pwd_hash in cur.fetchall():
+        expected_fp = fingerprints.get(str(admin_id))
+        if expected_fp is None or pwd_hash is None:
+            continue
+        if hashlib.sha256(pwd_hash.encode('utf-8')).hexdigest() == expected_fp:
+            unchanged += 1
+    return {'table': 'admin_users', 'column': 'password_hash', 'invariant': 'changed', 'violations': unchanged} if unchanged else None
+
+
+# Каждая колонка из HASH_EXCLUDE_COLUMNS обязана иметь здесь пост-инвариант —
+# «исключена из построчного хеша» не значит «не проверяется вовсе». Ключ
+# отсутствует в реестре → check_sanitize_invariants сама считает это находкой
+# (а не молча пропускает), чтобы новая исключённая колонка без инварианта не
+# проходила проверку по умолчанию.
+SANITIZE_COLUMN_INVARIANTS = {
+    **{(t, c): _invariant_token_reissued(t, c) for t, c in TOKEN_COLUMNS.items()},
+    ('referrers', 'telegram'): _invariant_null('referrers', 'telegram'),
+    ('referrers', 'telegram_user_id'): _invariant_null('referrers', 'telegram_user_id'),
+    ('referrers', 'auth_mode'): _invariant_referrer_auth_mode,
+    ('clients', 'telegram'): _invariant_null('clients', 'telegram'),
+    ('payment_link_orders', 'link'): _invariant_payment_link_empty,
+    ('payout_requests', 'contact_value'): _invariant_equals('payout_requests', 'contact_value', 'sanitized', 'placeholder'),
+    ('admin_users', 'username'): _invariant_admin_username_not_reserved,
+    ('admin_users', 'password_hash'): _invariant_admin_password_hash_changed,
+    ('admin_users', 'telegram'): _invariant_null('admin_users', 'telegram'),
+    ('admin_users', 'telegram_user_id'): _invariant_null('admin_users', 'telegram_user_id'),
+    ('admin_users', 'login_disabled'): _invariant_equals('admin_users', 'login_disabled', True, 'true'),
+    ('admin_users', 'notify_enabled'): _invariant_equals('admin_users', 'notify_enabled', False, 'false'),
+}
+
+
+def _format_invariant_problem(p):
+    """Только имена таблицы/колонки/инварианта и число нарушений — без строк.
+
+    Нарушение регулярно всплывает на реальных данных клона (stand_state,
+    контакты рефереров и т.п.); печатать сами значения в problems/логи
+    означало бы выводить ПДн наружу через сообщение об ошибке.
+    """
+    return f"{p['table']}.{p['column']}: инвариант «{p['invariant']}» нарушен ({p['violations']} строк)"
+
+
+def check_sanitize_invariants(candidate_url, expected):
     """Пост-инварианты санации — проверяются ВСЕГДА, а не молча пропускаются.
 
-    login_nonces/stand_state/payment_link_orders.link и токены — колонки и
-    таблицы, которые санация меняет намеренно (см. stand_sanitize.sql), и
-    именно поэтому исключены из побайтового хеша содержимого. Но «исключено
-    из хеша» не значит «не проверяется вовсе»: здесь мы утверждаем ТОЧНОЕ
-    ожидаемое состояние после санации и падаем, если оно нарушено.
+    login_nonces/stand_state и каждая колонка из HASH_EXCLUDE_COLUMNS — то,
+    что санация меняет намеренно (см. stand_sanitize.sql) и что поэтому
+    исключено из побайтового хеша содержимого. «Исключено из хеша» не значит
+    «не проверяется вовсе»: здесь утверждается ТОЧНОЕ ожидаемое состояние
+    после санации, а сообщения содержат только счётчики — не сами данные.
     """
     problems = []
     conn = psycopg2.connect(candidate_url)
@@ -429,58 +552,34 @@ def check_sanitize_invariants(candidate_url, expected_token_values):
         cur = conn.cursor()
 
         if _table_exists(cur, 'login_nonces'):
-            cur.execute('SELECT COUNT(*) FROM login_nonces')
-            n = cur.fetchone()[0]
+            n = _count(cur, 'SELECT COUNT(*) FROM login_nonces')
             if n:
                 problems.append(f'login_nonces не пуст после санации: {n} строк')
 
         if _table_exists(cur, 'stand_state'):
             cur.execute('SELECT id, data, version, notified FROM stand_state')
             rows = cur.fetchall()
-            if rows != [(1, '{}', 0, '[]')]:
-                problems.append(f'stand_state не в ожидаемом пустом состоянии: {rows}')
+            expected_state = [(1, '{}', 0, '[]')]
+            if rows != expected_state:
+                problems.append(
+                    f'stand_state не в ожидаемом пустом состоянии: {len(rows)} строк вместо 1 '
+                    f'(ожидался ровно один пустой документ)'
+                )
 
-        if _table_exists(cur, 'payment_link_orders'):
-            cur.execute("SELECT COUNT(*) FROM payment_link_orders WHERE link IS NOT NULL AND link <> ''")
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f'payment_link_orders.link не обнулена у {n} строк')
-
-        for table, col in TOKEN_COLUMNS.items():
-            old_values = set(expected_token_values.get(table) or [])
-            if not old_values or not _table_exists(cur, table):
+        for table, cols in HASH_EXCLUDE_COLUMNS.items():
+            if not _table_exists(cur, table):
                 continue
-            cur.execute(f'SELECT "{col}" FROM "{table}"')
-            new_values = {r[0] for r in cur.fetchall()}
-            leaked = old_values & new_values
-            if leaked:
-                problems.append(f'{table}.{col}: {len(leaked)} значений совпадает с дампом — токен не перевыпущен')
-
-        if _table_exists(cur, 'referrers'):
-            cur.execute('SELECT COUNT(*) FROM referrers WHERE telegram IS NOT NULL OR telegram_user_id IS NOT NULL')
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f'referrers.telegram/telegram_user_id не обнулены у {n} строк')
-            cur.execute("SELECT COUNT(*) FROM referrers WHERE auth_mode = 'telegram'")
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f"referrers.auth_mode остался 'telegram' у {n} строк (ожидался 'link')")
-
-        if _table_exists(cur, 'clients'):
-            cur.execute('SELECT COUNT(*) FROM clients WHERE telegram IS NOT NULL')
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f'clients.telegram не обнулен у {n} строк')
-
-        if _table_exists(cur, 'admin_users'):
-            cur.execute('SELECT COUNT(*) FROM admin_users WHERE login_disabled IS NOT TRUE')
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f'admin_users.login_disabled не выставлен у {n} строк (прод-админы должны быть отключены)')
-            cur.execute('SELECT COUNT(*) FROM admin_users WHERE telegram IS NOT NULL')
-            n = cur.fetchone()[0]
-            if n:
-                problems.append(f'admin_users.telegram не обнулен у {n} прод-админов')
+            for col in cols:
+                checker = SANITIZE_COLUMN_INVARIANTS.get((table, col))
+                if checker is None:
+                    problems.append(
+                        f'внутренняя ошибка: для {table}.{col} (исключена из хеша) не зарегистрирован '
+                        f'пост-инвариант в SANITIZE_COLUMN_INVARIANTS'
+                    )
+                    continue
+                result = checker(cur, expected)
+                for p in ([result] if isinstance(result, dict) else (result or [])):
+                    problems.append(_format_invariant_problem(p))
     finally:
         conn.close()
     return problems
@@ -782,7 +881,8 @@ def cmd_verify_candidate(args):
         if act_hash != exp_hash:
             hashed_cols = expected.get('table_hash_columns', {}).get(t, [])
             problems.append(
-                f'таблица {t}: содержимое разошлось с эталоном (хеш по колонкам {hashed_cols} не совпал)'
+                f'таблица {t}: содержимое разошлось с эталоном (хеш по колонкам {hashed_cols}: '
+                f'дамп={exp_hash}, кандидат={act_hash})'
             )
 
     for key, exp_val in expected['money'].items():
@@ -803,7 +903,7 @@ def cmd_verify_candidate(args):
 
     # Таблицы/колонки санации — не «пропущены молча», а проверены на точный
     # ожидаемый пост-инвариант (см. check_sanitize_invariants).
-    problems.extend(check_sanitize_invariants(args.candidate_url, expected.get('token_values', {})))
+    problems.extend(check_sanitize_invariants(args.candidate_url, expected))
 
     report = {'ok': not problems, 'problems': problems, 'documented_differences': documented}
     print(json.dumps(report, ensure_ascii=False, indent=2))

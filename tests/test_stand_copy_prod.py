@@ -442,6 +442,19 @@ def test_restore_candidate_safeguards_reject_without_connecting(pg_cluster, tmp_
     assert elapsed < 5, 'предохранитель сработал слишком долго — похоже, была попытка подключения к цели'
 
 
+def test_every_hash_excluded_column_has_a_sanitize_invariant():
+    """Автоматический перебор: каждая (таблица, колонка) из HASH_EXCLUDE_COLUMNS
+    обязана иметь зарегистрированный пост-инвариант — иначе она молча выпадает
+    и из хеша, и из сверки (ровно так нашла round-3 QA-проверка)."""
+    missing = [
+        (table, col)
+        for table, cols in scp.HASH_EXCLUDE_COLUMNS.items()
+        for col in cols
+        if (table, col) not in scp.SANITIZE_COLUMN_INVARIANTS
+    ]
+    assert missing == [], f'нет пост-инварианта для: {missing}'
+
+
 def test_filter_dump_text_strips_pg17_only_guc():
     """PG17 добавил GUC `transaction_timeout` — pg_dump с прода (17) выставит его
     в начале файла, а PG16-стенд его не знает и упадёт с ERROR на SET. Дамп
@@ -595,3 +608,101 @@ def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp
     # значение другое, но раз оно исключено из хеша — сойдёт".
     old_token = json.loads(counts_path.read_text())['token_values']['referrers'][0]
     _corrupt_and_check(f"UPDATE referrers SET token = '{old_token}'")
+
+    # Колонки, исключённые из построчного хеша, но без выделенного probe'а
+    # выше — round 3 QA нашла, что для них не было отдельного пост-инварианта.
+    _corrupt_and_check("UPDATE payout_requests SET contact_value = '@leaked_contact'")
+    _corrupt_and_check("UPDATE admin_users SET telegram_user_id = 987654321")
+    _corrupt_and_check("UPDATE admin_users SET notify_enabled = true")
+
+    # password_hash: откатываем на исходный ДО санации хеш — берём его из
+    # scratch-базы inspect-dump (restore того же дампа без санации), не из
+    # прод-базы напрямую.
+    dump_admin_hash_conn = psycopg2.connect(scratch_url)
+    try:
+        cur = dump_admin_hash_conn.cursor()
+        cur.execute('SELECT password_hash FROM admin_users LIMIT 1')
+        (old_admin_hash,) = cur.fetchone()
+    finally:
+        dump_admin_hash_conn.close()
+    _corrupt_and_check(f"UPDATE admin_users SET password_hash = '{old_admin_hash}'")
+
+    # Токен обнулён массово — санация "потеряла" токен, а не просто оставила
+    # старый. Отсутствие пересечения со старыми значениями само по себе это
+    # не ловит: пустая строка тоже "не пересекается со старым дампом", но
+    # токен, дающий доступ по ссылке, тем не менее сломан. (token NOT NULL в
+    # схеме — пустая строка, не NULL.)
+    _corrupt_and_check("UPDATE referrers SET token = ''")
+    assert 'not_empty' in _run('verify-candidate', '--candidate-url', candidate_url,
+                                '--counts-json', str(counts_path), expect_ok=False).stdout
+
+    # Дубликат токенов физически невозможен на этой схеме — referrers.token
+    # объявлен UNIQUE в модели (app.py), СУБД сама отклонит INSERT/UPDATE с
+    # повтором раньше, чем до него дойдёт verify-candidate. Проверка
+    # уникальности в _invariant_token_reissued — defense-in-depth на случай,
+    # если ограничение когда-нибудь уберут из схемы; отдельным SQL-тестом
+    # здесь не воспроизводима.
+
+
+def test_verify_candidate_never_leaks_row_content_in_problems(pg_cluster, app_models, tmp_path):
+    """QA-репро: нарушение пост-инварианта stand_state печатало саму строку
+    (потенциальные ПДн старой доски) в problems/stdout. Сообщение обязано
+    содержать только имя таблицы/колонки/инварианта и число нарушений."""
+    base = pg_cluster['base']
+    port = pg_cluster['port']
+    admin_url = _dsn_dbname(base, 'postgres')
+    pii_marker = 'PASSPORT-1234567-IVANOV-SECRET'
+
+    for name in ('fakeprod_leak', 'scratch_leak'):
+        conn = psycopg2.connect(admin_url)
+        conn.autocommit = True
+        conn.cursor().execute(f'CREATE DATABASE {name}')
+        conn.close()
+
+    prod_url = _dsn_dbname(base, 'fakeprod_leak')
+    scratch_url = _dsn_dbname(base, 'scratch_leak')
+    prod_engine = create_engine(prod_url)
+    _seed(prod_engine, app_models, admin_username='karim_leak', marker='leak')
+    prod_engine.dispose()
+
+    dump_dir = tmp_path / 'dump'
+    backup_dir = tmp_path / 'backup'
+    counts_path = tmp_path / 'counts.json'
+
+    dump_info = json.loads(_run('dump-prod', '--prod-url', prod_url, '--out-dir', str(dump_dir),
+                                 '--pg-dump-bin', PG_DUMP16).stdout)
+    dump_path = dump_info['dump_path']
+    _run('inspect-dump', '--dump', dump_path, '--scratch-url', scratch_url,
+         '--counts-out', str(counts_path), '--psql-bin', PSQL16)
+
+    stand_url = _dsn_dbname(base, 'fakestand_leak')
+    scratch_backup_url = _dsn_dbname(base, 'scratch_leak_backup')
+    for name in ('fakestand_leak', 'scratch_leak_backup'):
+        conn = psycopg2.connect(admin_url)
+        conn.autocommit = True
+        conn.cursor().execute(f'CREATE DATABASE {name}')
+        conn.close()
+    stand_engine = create_engine(stand_url)
+    _seed(stand_engine, app_models, admin_username='stand_karim_leak', marker='leakstand')
+    stand_engine.dispose()
+    _run('backup-stand', '--stand-url', stand_url, '--out-dir', str(backup_dir),
+         '--scratch-url', scratch_backup_url, '--pg-dump-bin', PG_DUMP16, '--psql-bin', PSQL16)
+
+    candidate_db = 'stand_prodcopy_leak'
+    _run('restore-candidate', '--stand-admin-url', admin_url, '--candidate-db', candidate_db,
+         '--dump', dump_path, '--expect-host', '127.0.0.1', '--expect-port', str(port),
+         '--prod-host-guard', '203.0.113.1:5432', '--backup-dir', str(backup_dir),
+         '--i-understand', '--psql-bin', PSQL16)
+    candidate_url = _dsn_dbname(base, candidate_db)
+
+    conn = psycopg2.connect(candidate_url)
+    conn.autocommit = True
+    conn.cursor().execute("UPDATE stand_state SET data = %s WHERE id = 1", (pii_marker,))
+    conn.cursor().execute("UPDATE deals SET client_name = %s", (pii_marker,))
+    conn.close()
+
+    proc = _run('verify-candidate', '--candidate-url', candidate_url,
+                '--counts-json', str(counts_path), expect_ok=False)
+    assert proc.returncode != 0
+    assert pii_marker not in proc.stdout
+    assert pii_marker not in proc.stderr
