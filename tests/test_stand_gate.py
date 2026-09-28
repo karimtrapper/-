@@ -5,15 +5,18 @@ import subprocess
 import sys
 
 
-def _run(code, tmp_path, stand=True):
+def _run(code, tmp_path, stand=True, setup_enabled='false'):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     env = {k: v for k, v in os.environ.items() if k not in (
-        'DATABASE_URL', 'STAND_MODE', 'LOCAL_NO_AUTH', 'SERVICE_API_KEY')}
+        'DATABASE_URL', 'STAND_MODE', 'LOCAL_NO_AUTH', 'SERVICE_API_KEY',
+        'SETUP_ENABLED')}
     env.update(DATABASE_URL=f'sqlite:///{tmp_path / "gate.db"}',
                SECRET_KEY='gate-test-secret', STAND_MODE='1' if stand else '0',
                STAND_PASSWORD='gate-password', SERVICE_API_KEY='service-secret',
                LOCAL_NO_AUTH='0', REESTR_SYNC_ENABLED='0', PAYMENT_POLL_ENABLED='0',
                PAYIN_ADDR_BACKFILL='0', TRONSCAN_WARM_ENABLED='0',
-               KYC_RETENTION_ENABLED='0', STAND_TRANSFER_POLL_ENABLED='0')
+               KYC_RETENTION_ENABLED='0', STAND_TRANSFER_POLL_ENABLED='0',
+               SETUP_ENABLED=setup_enabled)
     # Дочерний процесс обходит conftest, поэтому сеть закрываем до импорта app.
     no_network = '''
 import socket
@@ -40,6 +43,60 @@ socket.getaddrinfo = _safe_getaddrinfo
     result = subprocess.run([sys.executable, '-c', no_network + code], cwd=os.path.dirname(os.path.dirname(__file__)),
                             env=env, capture_output=True, text=True, timeout=90)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_setup_always_disabled_on_stand(tmp_path):
+    for enabled in ('false', 'true'):
+        _run('''
+import app as m
+
+db = m.get_session()
+before = db.query(m.AdminUser).count()
+karim = db.query(m.AdminUser).filter_by(username='karim').one()
+db.close()
+with m.app.test_client() as c:
+    for logged_in in (False, True):
+        if logged_in:
+            with c.session_transaction() as sess:
+                sess['user_id'] = karim.id
+        for method in ('GET', 'POST', 'PUT', 'OPTIONS'):
+            response = c.open('/api/auth/setup', method=method, json={
+                'username': 'new_admin', 'password': 'twelvechars1'})
+            assert response.status_code == 403, (method, logged_in, response.status_code)
+            assert response.get_json() == {'success': False, 'error': 'setup_disabled'}
+db = m.get_session()
+assert db.query(m.AdminUser).count() == before
+assert db.query(m.AdminUser).filter_by(username='new_admin').first() is None
+db.close()
+''', tmp_path / enabled, setup_enabled=enabled)
+
+
+def test_setup_keeps_production_behavior(tmp_path):
+    _run('''
+import app as m
+
+with m.app.test_client() as c:
+    assert c.get('/api/auth/setup').status_code == 404
+    response = c.post('/api/auth/setup', json={})
+    assert response.status_code == 403
+    assert response.get_json()['error'] == 'Setup отключён'
+''', tmp_path / 'disabled', stand=False)
+    _run('''
+import app as m
+
+with m.app.test_client() as c:
+    assert c.get('/api/auth/setup').status_code == 404
+    assert c.post('/api/auth/setup', json={}).status_code == 400
+    response = c.post('/api/auth/setup', json={
+        'username': 'new_admin', 'password': 'twelvechars1'})
+    assert response.status_code == 200
+    assert response.get_json()['success'] is True
+    assert c.post('/api/auth/setup', json={
+        'username': 'another', 'password': 'twelvechars2'}).status_code == 403
+db = m.get_session()
+assert db.query(m.AdminUser).filter_by(username='new_admin').count() == 1
+db.close()
+''', tmp_path / 'enabled', stand=False, setup_enabled='true')
 
 
 def test_stand_gate_roles_and_preview(tmp_path):
@@ -81,7 +138,7 @@ with m.app.test_client() as c:
               '/api/stand/reset', '/api/stand/ref-preview/%s' % rid, '/api/rates']
     for path in closed:
         response = c.get(path, headers={'X-Api-Key': 'service-secret'})
-        expected = 401 if path.startswith('/api/') else 302
+        expected = 403 if path == '/api/auth/setup' else (401 if path.startswith('/api/') else 302)
         assert response.status_code == expected, (path, response.status_code)
     os.environ['LOCAL_NO_AUTH'] = '1'
     assert c.get('/login').status_code == 200

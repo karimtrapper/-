@@ -178,6 +178,10 @@ def check_auth():
     path = request.path
 
     if STAND_MODE:
+        # Страница входа показывает форму логина только при 403 от setup.
+        # Отвечаем до проверки сессии и метода, чтобы setup всегда был закрыт.
+        if path == '/api/auth/setup':
+            return jsonify({'success': False, 'error': 'setup_disabled'}), 403
         # На копии прод-данных проверяем cookie до публичных путей и API-ключей.
         login_paths = {'/login', '/api/auth/login', '/api/auth/logout',
                        '/api/auth/me', '/api/health', '/kyc/grusha-logo.png',
@@ -201,7 +205,7 @@ def check_auth():
             return redirect('/login')
         blocked = (path in {'/api/auth/tg-start', '/api/auth/tg-poll',
                             '/api/auth/tg-login', '/api/auth/tg-config',
-                            '/api/auth/setup', '/api/sber-incomes/ingest'}
+                            '/api/sber-incomes/ingest'}
                    or (path.startswith('/api/ref/') and path.rsplit('/', 1)[-1]
                        in {'tg-start', 'tg-poll', 'tg-login', 'tg-config'})
                    or path.startswith(('/api/tg/', '/api/webhook/')))
