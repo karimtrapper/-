@@ -5,6 +5,7 @@ STAND_MODE response and leaves the source files and production response intact.
 """
 
 import re
+from pathlib import Path
 
 
 VENDOR_PREFIX = '/static/stand/vendor/'
@@ -22,6 +23,22 @@ PAGE_SOURCES = {
     'tasks': 'static/stand/tasks.html',
     'walkthrough': 'static/stand/walkthrough/leasehold-rub.html',
 }
+
+
+def _public_vendor_paths():
+    """Only version-pinned browser bytes are public before stage login."""
+    manifest = Path(__file__).resolve().parent / 'static/stand/vendor/SHA256SUMS'
+    names = (line.split(maxsplit=1)[1] for line in manifest.read_text().splitlines())
+    return frozenset(VENDOR_PREFIX + name for name in names
+                     if Path(name).suffix in {'.css', '.js', '.woff2'}
+                     and '..' not in Path(name).parts and not Path(name).is_absolute())
+
+
+PUBLIC_VENDOR_PATHS = _public_vendor_paths()
+
+
+def public_vendor_asset(path):
+    return path in PUBLIC_VENDOR_PATHS
 
 # Keep inline scripts, styles, blob PDF previews, data images and same-origin
 # document requests working. The browser may still navigate to external links
@@ -55,7 +72,7 @@ def page_kind(path):
     if path in ('/tasks/walkthrough/leasehold-rub.html',
                 '/static/stand/walkthrough/leasehold-rub.html'):
         return 'walkthrough'
-    if re.fullmatch(r'/partner/[^/]+(?:/index\.html)?', path):
+    if path == '/static/partner/index.html' or re.fullmatch(r'/partner/[^/]+(?:/index\.html)?', path):
         return 'partner'
     if re.fullmatch(r'/ref/[^/]+', path) or path == '/static/referrer/index.html':
         return 'referrer'

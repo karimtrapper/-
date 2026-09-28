@@ -1,5 +1,6 @@
 /* Served only in the STAND_MODE CRM response. API guards remain authoritative. */
 const standDisabled = 'На стенде отключено';
+const originalLoadBitrixDeals = loadBitrixDeals;
 
 loadBitrixDeals = async function () {
     const box = document.getElementById('bitrixDealsList');
@@ -7,14 +8,16 @@ loadBitrixDeals = async function () {
     try {
         const response = await fetch(`${API_URL}/api/bitrix/active-deals`);
         const data = await response.json();
-        if (response.status === 403 && data.error === 'stand_blocked') {
+        if (response.status === 403 && data?.error === 'stand_blocked') {
             box.innerHTML = '<div class="alert alert-info">' + standDisabled +
                 ': закрытие сделок в Bitrix недоступно. Сделки CalcCRM доступны в разделе «Сделки».</div>';
             return;
         }
-        box.textContent = data.error || 'Не удалось загрузить сделки Bitrix';
+        // If this API is ever enabled for stage, keep the CRM's normal list.
+        if (response.ok && data?.success === true) return originalLoadBitrixDeals();
+        box.textContent = 'Не удалось загрузить сделки Bitrix';
     } catch (error) {
-        box.textContent = 'Bitrix не отвечает';
+        box.textContent = 'Не удалось получить ответ Bitrix';
     }
 };
 
@@ -23,8 +26,12 @@ loadWebhookConfig = async function () {
     try {
         const response = await fetch(`${API_URL}/api/webhook/config`);
         const data = await response.json();
-        if (response.status === 403 && data.error === 'stand_blocked') {
+        if (response.status === 403 && data?.error === 'stand_blocked') {
             status.textContent = standDisabled + ': отправка уведомлений через webhook недоступна.';
+            return;
+        }
+        if (!response.ok || data?.success !== true || typeof data.is_configured !== 'boolean') {
+            status.textContent = 'Не удалось проверить webhook';
             return;
         }
         updateWebhookStatus(data.is_configured);

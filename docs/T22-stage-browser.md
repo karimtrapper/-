@@ -31,3 +31,18 @@ Version and license provenance and all asset hashes are in [`static/stand/vendor
 - Detailed synthetic browser observations: [`qa-t22-author-smoke-2026-09-28.json`](qa-t22-author-smoke-2026-09-28.json).
 
 Independent Claude QA after the commit SHA is still required; the author smoke is not an acceptance verdict. No push or deployment was performed.
+
+## Follow-up after coordinator review (new commit after c43c87c)
+
+Two findings were reproduced on the original c43c87c build with clean-env synthetic SQLite under `/tmp/calccrm-t22-followup-fence.sb` (own loopback ports 18924/18925):
+
+1. Authorized `GET /static/partner/index.html` returned 200 with `fonts.googleapis.com` and no CSP; `HEAD` lacked CSP, and conditional GET returned 304. The exact static alias is now registered. The focused test covers all reachable HTML aliases for the eight pages, query strings, HEAD, If-Modified-Since and If-None-Match. Existing trailing-slash variants that are not actual page routes remain 404 or redirect; no overlay is applied to those responses.
+2. Anonymous raw paths `/static/stand/vendor/../../crm/crm.html`, `%2e%2e/%2e%2e`, and encoded slash variants returned 200 CRM HTML without CSP. Raw `curl --path-as-is` and Flask test client reproduced this. The pre-login bypass now matches only CSS, JS and WOFF2 paths explicitly listed in the SHA-256 manifest. Raw dot-segment attempts now redirect to `/login` (302); `/api/bitrix/active-deals` remains 401 without a session. CSS, JS and WOFF2 assets still return 200 before login. This follows the existing stage HTML authentication behavior; it does not introduce a new 401 contract for protected pages.
+
+An authenticated browser load of `/static/partner/index.html?v=1` returned 200 with CSP, loaded local Inter, and emitted zero external request events.
+
+A browser probe also reproduced a false “Webhook активен” for `{"success":false,"is_configured":true}`. The stage status layer now requires a successful response and a boolean `is_configured` before showing configuration status. Non-JSON replies show a readable error. It keeps the original Bitrix list renderer if that API ever returns a valid success. Browser checks saw one request per desktop or mobile navigation action, no listener buildup, and working `data:` and `blob:` images plus a local blob iframe.
+
+Compatibility probes under the same OS fence: transformed login from T16 commit `a5db5a3` loaded Inter locally, showed the stage password form, hid Telegram controls and emitted no external request. The current **uncommitted** T17 worktree tasks HTML and its two local draft scripts were supplied to the browser via route fixtures under this T22 CSP; `startManual()` mounted the CRM form in a ShadowRoot, with no external request or page error. This proves mount compatibility for that snapshot only. It does not test the full T17 form workflow or the eventual merge; T17 owns its earlier `screens-data.js` 404 issue. The eight-page T22 load smoke is not a functional PASS for tasks.
+
+Exact local probe files: `/tmp/calccrm-t22-alias-probe.py`, `/tmp/calccrm-t22-alias-probe-clean.json`, `/tmp/calccrm-t22-partner-alias-browser.py`, `/tmp/calccrm-t22-status-followup.py`, `/tmp/calccrm-t22-t16-probe.py`, `/tmp/calccrm-t22-t17-probe.py`. Focused Python 3.11 tests: `15 passed`. The profile and probes are author evidence; independent Claude QA must use its own ports and fence. The prod response tests still compare bytes with this branch's unchanged source/base and check that prod conditional responses receive no CSP. The earlier `origin/main` divergence remains outside T22.

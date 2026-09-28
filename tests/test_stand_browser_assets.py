@@ -10,7 +10,7 @@ import sys
 
 import pytest
 
-from stand_browser import page_kind, transform_html, STAND_CSP
+from stand_browser import page_kind, transform_html, STAND_CSP, PUBLIC_VENDOR_PATHS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,6 +94,16 @@ def test_vendor_manifest_pins_every_served_asset():
     assert set(checks) == actual
     for name, digest in checks.items():
         assert hashlib.sha256((directory / name).read_bytes()).hexdigest() == digest
+    assert PUBLIC_VENDOR_PATHS == {'/static/stand/vendor/' + name for name in checks
+                                   if Path(name).suffix in ('.css', '.js', '.woff2')}
+
+
+def test_changed_font_source_fails_with_explicit_registry_error():
+    source = (ROOT / PAGES['partner']).read_text()
+    changed = re.sub(r'<link href="https://fonts\.googleapis\.com/[^\n]+\n?', '', source, count=1)
+    assert changed != source
+    with pytest.raises(ValueError, match='partner: expected one registered font link, got 0'):
+        transform_html('partner', changed)
 
 
 @pytest.mark.parametrize('mode', ['0', '1'])
@@ -120,10 +130,36 @@ if not app.STAND_MODE:
 paths = {'/login': 'static/auth/login.html', '/': 'static/calculator/index.html',
          '/crm': 'static/crm/crm.html',
          '/kyc/': 'static/kyc/index.html', '/partner/synthetic': 'static/partner/index.html',
-         '/ref/synthetic': 'static/referrer/index.html'}
+         '/ref/synthetic': 'static/referrer/index.html',
+         '/auth/login.html': 'static/auth/login.html',
+         '/static/auth/login.html': 'static/auth/login.html',
+         '/calculator/index.html': 'static/calculator/index.html',
+         '/static/calculator/index.html': 'static/calculator/index.html',
+         '/crm/crm.html': 'static/crm/crm.html',
+         '/static/crm/crm.html': 'static/crm/crm.html',
+         '/kyc/index.html': 'static/kyc/index.html',
+         '/static/kyc/index.html': 'static/kyc/index.html',
+         '/partner/synthetic/index.html': 'static/partner/index.html',
+         '/static/partner/index.html': 'static/partner/index.html',
+         '/static/referrer/index.html': 'static/referrer/index.html'}
 if app.STAND_MODE:
     paths['/tasks'] = 'static/stand/tasks.html'
+    paths['/tasks/tasks.html'] = 'static/stand/tasks.html'
+    paths['/static/stand/tasks.html'] = 'static/stand/tasks.html'
     paths['/tasks/walkthrough/leasehold-rub.html'] = 'static/stand/walkthrough/leasehold-rub.html'
+    paths['/static/stand/walkthrough/leasehold-rub.html'] = 'static/stand/walkthrough/leasehold-rub.html'
+    for path in ('/static/stand/vendor/../../crm/crm.html',
+                 '/static/stand/vendor/%2e%2e/%2e%2e/crm/crm.html',
+                 '/static/stand/vendor/..%2f..%2fcrm%2fcrm.html',
+                 '/static/stand/vendor/../browser-status.js',
+                 '/static/crm/crm.html', '/static/partner/index.html',
+                 '/static/stand/vendor/inter-v20/OFL.txt'):
+        assert client.get(path).status_code != 200, path
+    assert client.get('/api/bitrix/active-deals').status_code == 401
+    for path in ('/static/stand/vendor/inter-v20/font.css',
+                 '/static/stand/vendor/chartjs-4.4.7/chart.umd.min.js',
+                 '/static/stand/vendor/inter-v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa0ZL7W0Q5n-wU.woff2'):
+        assert client.get(path).status_code == 200, path
 for path, source in paths.items():
     if path == '/':
         with client.session_transaction() as sess: sess['user_id'] = 1
@@ -143,9 +179,27 @@ if app.STAND_MODE:
     conditional = client.get('/crm', headers={'If-Modified-Since': 'Wed, 21 Oct 2037 07:28:00 GMT'})
     assert conditional.status_code == 200
     assert conditional.data == transform_html('crm', Path('static/crm/crm.html').read_text()).encode()
+    for path in ('/static/partner/index.html', '/static/partner/index.html?v=1'):
+        for headers in ({'If-Modified-Since': 'Wed, 21 Oct 2037 07:28:00 GMT'},
+                        {'If-None-Match': '*'}):
+            response = client.get(path, headers=headers)
+            assert response.status_code == 200 and 'Content-Security-Policy' in response.headers
+            assert response.data == transform_html('partner', Path('static/partner/index.html').read_text()).encode()
+        response = client.head(path)
+        assert response.status_code == 200 and 'Content-Security-Policy' in response.headers
+        assert response.data == b''
+    for path in ('/crm/', '/tasks/', '/partner/synthetic/', '/login/'):
+        assert client.get(path).status_code in (302, 404)
     for path in ('/api/bitrix/active-deals', '/api/webhook/config'):
         response = client.get(path)
         assert response.status_code == 403 and response.json['error'] == 'stand_blocked'
+else:
+    response = client.get('/static/partner/index.html',
+                          headers={'If-Modified-Since': 'Wed, 21 Oct 2037 07:28:00 GMT'})
+    assert response.status_code == 304 and 'Content-Security-Policy' not in response.headers
+    response = client.head('/static/partner/index.html')
+    assert response.status_code == 200 and response.data == b''
+    assert 'Content-Security-Policy' not in response.headers
 app.engine.dispose()
 '''
     done = subprocess.run([sys.executable, '-c', code], cwd=ROOT, env=env,

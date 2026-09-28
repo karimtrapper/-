@@ -198,9 +198,10 @@ def check_auth():
     path = request.path
 
     if STAND_MODE:
-        # Local, version-pinned font/chart assets must also load on /login,
-        # before the user has a session. This prefix contains public code only.
-        if path.startswith('/static/stand/vendor/'):
+        # Login must load local fonts before authentication. Exact pinned
+        # asset paths only: a broad prefix also admitted ../crm/crm.html.
+        from stand_browser import public_vendor_asset
+        if public_vendor_asset(path):
             return None
         # Страница входа показывает форму логина только при 403 от setup.
         # Отвечаем до проверки сессии и метода, чтобы setup всегда был закрыт.
