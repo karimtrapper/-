@@ -280,10 +280,19 @@ def test_check_endpoint_closes_small_and_rejects_rewriting_confirmed(monkeypatch
     monkeypatch.setattr(appmod, 'verify_transfer', lambda *a, **kw: {
         'status': 'confirmed', 'verifiedAmount': 600, 'verifiedAt': '2026-09-24T12:00:00Z',
         'from': FROM, 'to': TO, 'timestampMs': 1700000000000})
+    value = board()
+    value['incomes'] = [{'id': 1, 'dealId': 1, 'rub': 100000, 'demo': True},
+                        {'id': 2, 'dealId': 2, 'rub': 50000, 'demo': True}]
+    value['deals'][0]['incomeAmount'] = 100000
+    value['deals'][0]['payinParts'] = [{'incId': 1, 'amountRub': 100000}]
+    value['deals'][1]['incomeAmount'] = 50000
+    value['deals'][1]['payinParts'] = [{'incId': 2, 'amountRub': 50000}]
+    value['convs'][0]['txs'] = [{'hash': 'b' * 64, 'net': 'TRC-20',
+                                'amount': 700, 'status': 'confirmed'}]
     db = appmod.get_session()
     try:
         row = appmod._stand_row(db)
-        row.data = json.dumps(board())
+        row.data = json.dumps(value)
         row.version = 1
         db.commit()
     finally:
