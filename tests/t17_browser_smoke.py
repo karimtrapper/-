@@ -325,6 +325,12 @@ with sync_playwright() as playwright:
              host.locator('[name="payin_amount_rub"]').input_value()]
     print('Sber two chosen:',amounts,crm_parts==task_parts,task_parts[:300])
     assert amounts==['366000.00','366000.00'] and crm_parts==task_parts
+    crm.locator('[name="payin_rate_rub_usdt"]').fill('90')
+    host.locator('[name="payin_rate_rub_usdt"]').fill('90')
+    converted=[crm.locator('[name="payin_amount_usdt"]').input_value(),
+               host.locator('[name="payin_amount_usdt"]').input_value()]
+    print('Sber two chosen RUB/USDT @90 CRM/tasks:',converted)
+    assert converted==['4066.67','4066.67']
     filled='''el=>[...el.querySelectorAll('label,button,select,input,textarea')]
       .filter(x=>x.getClientRects().length>0).map(x=>[
         x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\s+/g,' ').trim(),
