@@ -5661,7 +5661,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         <div>
                             <div style="font-weight:600;">${a.display_name}
                                 ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
-                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram ID задан' : (STAND_ROLES ? '· ⚪ Telegram ID не задан' : '· ⚪ ждёт входа')}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${STAND_ROLES ? (a.bound ? '· 🟢 Telegram ID задан' : '· ⚪ Telegram ID не задан') : (a.bound ? '· 🟢 привязан' : '· ⚪ ждёт входа')}</div>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                             ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
