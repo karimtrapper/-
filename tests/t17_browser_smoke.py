@@ -1108,5 +1108,43 @@ with sync_playwright() as playwright:
     assert host.locator('#clientSearchInput').input_value()=='T17 explicitly chosen client'
     page.evaluate('editClose()')
     print('source recognizes local client; explicit client remains pinned; cancel leaves no change')
+    manual_founder_hash='d'*64
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic manual founder')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(host,'payoutSource','founder_personal')
+    host.locator('#payoutAmountThb').fill('100000')
+    crm_manual=context.new_page()
+    crm_manual.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded')
+    crm_manual.evaluate('showSection("create")')
+    crm_manual.wait_for_function('document.querySelector("#payoutSource")?.dataset.upgraded === "true"')
+    pick(crm_manual,'payinMethod','crypto_direct')
+    crm_manual.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(crm_manual,'payoutSource','founder_personal')
+    crm_manual.locator('#payoutAmountThb').fill('100000')
+    crm_manual.locator('#payoutFounderHash').fill(manual_founder_hash)
+    host.locator('#payoutFounderHash').fill(manual_founder_hash)
+    crm_manual.wait_for_function('payoutTxPool.length===1',timeout=10000)
+    page.wait_for_function('crmDraftActive?.core.payoutTxPool.length===1',timeout=10000)
+    manual_pools=[crm_manual.locator('#payoutTxPoolBox').inner_text(),
+                  host.locator('#payoutTxPoolBox').inner_text()]
+    manual_profit=[crm_manual.locator('#profitUsdt').input_value(),
+                   host.locator('#profitUsdt').input_value()]
+    assert manual_pools[0]==manual_pools[1] and manual_profit==['94.87','94.87']
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    manual_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic manual founder');
+      const p=crmPayload(d);return {hash:d.payout.hashes[0],source:p.payout_source,
+        cost:p.payout_amount_usdt,links:p.payout_tx_hashes};}''')
+    assert manual_saved['hash']['hash']==manual_founder_hash
+    assert manual_saved['source']=='founder_personal' and manual_saved['cost']==3205.13
+    assert manual_saved['links'][0]['to_address']=='T17-recipient'
+    assert not crm_posts,crm_posts
+    crm_manual.close()
+    print('founder manual hash source CRM/tasks pool, profit, save/reload: PASS')
     print('blocked external attempts:',blocked)
     browser.close()
