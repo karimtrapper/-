@@ -1134,3 +1134,123 @@ def test_grep_no_unguarded_direct_tronscan_etherscan_calls_in_app_py():
                     and 'STAND_MODE' not in window):
                 offenders.append((i + 1, line.strip()))
     assert offenders == [], f'найдены необёрнутые прямые вызовы: {offenders}'
+
+
+# ─────────── QA-раунд 3 (лидер): TH-парсер, дедлайн тела, все 3xx ──────────
+
+def test_calculator_th_nested_shape_parsed_same_as_prod_no_fallback_needed():
+    """TH отдаёт вложенную форму {code:0,data:[{symbol,price}]} — тот же
+    разбор, что и прод-путь (ExchangeRateProvider._parse_binance_price),
+    не флэт data.get('price'). Успешный TH не должен звать Global-фоллбэк."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import asyncio
+        from calculator import ExchangeRateProvider
+
+        calls = []
+        def fake_read_get(op, params=None, _base_url=None):
+            calls.append(op)
+            if op == 'market_binance_th_ticker':
+                return 200, {'code': 0, 'data': [{'symbol': 'USDTTHB', 'price': '35.5'}]}, None
+            if op == 'market_binance_ticker':
+                raise AssertionError('TH уже дал валидный курс — Global не нужен')
+            if op == 'market_rapira':
+                return 200, {'data': []}, None
+            raise AssertionError(op)
+        stand_egress.read_get = fake_read_get
+
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        OUT({'usdt_thb': rates['usdt_thb'], 'ops': calls})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['usdt_thb'] == 35.5
+    assert result['ops'] == ['market_binance_th_ticker', 'market_rapira']
+
+
+def test_calculator_parse_binance_price_shared_by_prod_and_stand():
+    """_parse_binance_price — одна функция на форму TH (nested) и Global (flat)."""
+    result, proc = run_script('''
+        from calculator import ExchangeRateProvider as P
+        OUT({
+            'th_nested': P._parse_binance_price({'code': 0, 'data': [{'symbol': 'USDTTHB', 'price': '32.1'}]}, 'USDTTHB'),
+            'th_nested_dict': P._parse_binance_price({'code': 0, 'data': {'symbol': 'USDTTHB', 'price': '32.2'}}, 'USDTTHB'),
+            'global_flat': P._parse_binance_price({'price': '32.3'}, 'USDTTHB'),
+            'wrong_symbol': P._parse_binance_price({'code': 0, 'data': [{'symbol': 'BTCUSDT', 'price': '1'}]}, 'USDTTHB'),
+            'garbage': P._parse_binance_price('not a dict', 'USDTTHB'),
+            'empty': P._parse_binance_price({}, 'USDTTHB'),
+        })
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'th_nested': 32.1, 'th_nested_dict': 32.2, 'global_flat': 32.3,
+                      'wrong_symbol': None, 'garbage': None, 'empty': None}
+
+
+def _slow_drip_server_script(deadline=None):
+    return f'''
+        import http.server, threading, time as _time
+        class SlowHandler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b'{{"x":1}}'
+                self.send_response(200)
+                self.send_header('Content-Length', str(len(body)))
+                self.end_headers()
+                for b in body:
+                    try:
+                        self.wfile.write(bytes([b])); self.wfile.flush()
+                    except Exception:
+                        return
+                    _time.sleep(.08)
+            def log_message(self, *a):
+                pass
+        _srv = http.server.HTTPServer(('127.0.0.1', 0), SlowHandler)
+        _port = _srv.server_port
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _port)
+        {"stand_egress._READ_TOTAL_DEADLINE = " + str(deadline) if deadline else ""}
+    '''
+
+
+def test_slow_drip_body_aborts_at_deadline_not_at_full_transfer_time():
+    """7 байт по одному каждые 0.08с (≈0.56с всего) с дедлайном 0.25с — общий
+    дедлайн должен сработать заметно раньше полной передачи, а не только на
+    таймауте одной операции requests (который каждый отдельный recv не ловит,
+    раз новые байты приходят быстрее per-op таймаута)."""
+    result, proc = run_script(_slow_drip_server_script(deadline=0.25) + '''
+        import time
+        start = time.monotonic()
+        status_code, data, err = stand_egress.read_get(
+            'market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        OUT({'elapsed': round(time.monotonic() - start, 2), 'err': err, 'data': data})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result['err'] == 'read_timeout'
+    assert result['data'] is None
+    assert result['elapsed'] < 0.4, f"должен был прерваться у дедлайна 0.25с, а не ждать все 0.56с: {result['elapsed']}"
+
+
+def test_slow_drip_body_completes_when_deadline_is_generous():
+    """Контрольная проверка: тот же медленный сервер, но с щедрым дедлайном —
+    сужение окна на watchdog-поток не сломало обычное успешное чтение."""
+    result, proc = run_script(_slow_drip_server_script(deadline=5.0) + '''
+        status_code, data, err = stand_egress.read_get(
+            'market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        OUT({'status_code': status_code, 'data': data, 'err': err})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status_code': 200, 'data': {'x': 1}, 'err': None}
+
+
+def test_all_3xx_including_uncommon_codes_are_redirect_blocked():
+    result, proc = run_script(_fake_get_server_script() + '''
+        out = {}
+        for status in range(300, 309):
+            FakeChain.next_status = status
+            _, _, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+            out[status] = err
+        OUT(out)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {str(s): 'redirect_blocked' for s in range(300, 309)}

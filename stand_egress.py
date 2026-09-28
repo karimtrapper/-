@@ -46,6 +46,7 @@ UDP (sendto/sendmsg) на заблокированный адрес не бро�
   дереве кода такие вызовы не найдены и не заводятся; если появятся, они вне
   периметра guard'а.
 """
+import concurrent.futures
 import ipaddress
 import json
 import os
@@ -634,7 +635,8 @@ _READ_CHANNELS = {
 }
 
 _MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
-_READ_REDIRECT_CODES = (301, 302, 303, 307, 308)
+# Любой 3xx (300–399) — контролируемый отказ, не только «типичные» редиректы:
+# 300/304/305/306 тоже не должны молча идти дальше как обычный ответ.
 _READ_TOTAL_DEADLINE = 8.0  # секунд на всю операцию: connect + заголовки + тело
 
 
@@ -715,6 +717,22 @@ def _validate_base_url_override(_base_url):
     return parts.scheme, key, port
 
 
+def _hard_close_read_socket(resp):
+    """Рвёт TCP-соединение ответа на уровне протокола (shutdown), а не только
+    закрывает дескриптор — это нужно, когда read() того же сокета уже
+    блокируется в другом потоке (watchdog-таймаут дедлайна): close() из
+    соседнего потока не гарантированно будит блокирующий read (POSIX это не
+    требует, на BSD/macOS не будит), а shutdown(SHUT_RDWR) — будит везде.
+    Достаём сырой сокет через приватные атрибуты urllib3/http.client, поэтому
+    любая ошибка здесь — не повод падать, это просто попытка ускорить очистку."""
+    import socket as _socket
+    try:
+        sock = resp.raw._fp.fp.raw._sock
+        sock.shutdown(_socket.SHUT_RDWR)
+    except Exception:
+        pass
+
+
 def read_get(op, params=None, _base_url=None):
     """Единственный путь в закрытый список внешних чтений (блокчейн, курсы,
     зеркало прод-поступлений).
@@ -792,16 +810,39 @@ def read_get(op, params=None, _base_url=None):
             resp = session.get(url, params=query, headers=headers, timeout=remaining,
                                allow_redirects=False, stream=True, proxies={})
             try:
-                if resp.status_code in _READ_REDIRECT_CODES:
+                if 300 <= resp.status_code < 400:
                     return resp.status_code, None, 'redirect_blocked'
+                # Дедлайн проверяем через watchdog-поток, а не таймаутом одной
+                # операции requests: сервер, отдающий тело по байту с паузами
+                # короче per-op таймаута, иначе растягивал бы общую операцию
+                # сколь угодно долго — ни один отдельный recv не стухнет, а
+                # сумма пауз всё равно превысит дедлайн. future.result(timeout=)
+                # даёт настоящий wall-clock предел независимо от того, сколько
+                # ещё продлится сам блокирующий read() в фоновом потоке.
+                remaining_for_read = deadline - time.monotonic()
+                if remaining_for_read <= 0:
+                    return None, None, 'read_timeout'
+                executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(resp.raw.read, _MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
                 try:
-                    raw = resp.raw.read(_MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
+                    raw = future.result(timeout=remaining_for_read)
+                except concurrent.futures.TimeoutError:
+                    # На blocking read() в фоновом потоке close() того же сокета
+                    # с другого потока не будит его надёжно на всех платформах
+                    # (BSD/macOS — не будит): shutdown(SHUT_RDWR) — будит везде,
+                    # он рвёт соединение на уровне протокола, а не только дескриптор.
+                    # Иначе следующий же resp.close()/session.close() в finally
+                    # сами зависли бы на остаток тела (проверено эмпирически).
+                    _hard_close_read_socket(resp)
+                    return None, None, 'read_timeout'
                 except urllib3.exceptions.ReadTimeoutError:
                     return None, None, 'read_timeout'
                 except (urllib3.exceptions.ProtocolError,
                         requests.exceptions.ChunkedEncodingError,
-                        ConnectionError) as exc:
+                        ConnectionError):
                     return None, None, 'read_error'
+                finally:
+                    executor.shutdown(wait=False)
                 if len(raw) > _MAX_READ_RESPONSE_BYTES:
                     return resp.status_code, None, 'response_too_large'
                 if resp.status_code == 429:

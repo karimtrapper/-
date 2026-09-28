@@ -156,6 +156,32 @@ class ExchangeRateProvider:
     FALLBACK_RUB_USDT = 88.0  # обновлён 19.08.2026
     
     @staticmethod
+    def _parse_binance_price(data, symbol):
+        """Разбор ответа Binance — общий для прод-пути (aiohttp, ниже) и
+        стенда (get_all_rates, канал T9): TH отдаёт вложенную форму
+        {code:0, data:[{symbol, price}]}, Global — плоскую {price}. Одна
+        функция на оба транспорта, чтобы курс стенда не разошёлся с продом
+        на банальном несовпадении парсера, а не источника."""
+        if not isinstance(data, dict):
+            return None
+        try:
+            if data.get("code") == 0 and "data" in data:
+                price_data = data["data"]
+                if isinstance(price_data, list):
+                    for item in price_data:
+                        if item.get("symbol") == symbol:
+                            return float(item.get("price"))
+                    return None
+                if isinstance(price_data, dict):
+                    return float(price_data.get("price"))
+                return None
+            if "price" in data:
+                return float(data["price"])
+        except (TypeError, ValueError):
+            return None
+        return None
+
+    @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
         """
         Получить курс от Binance (сначала TH, потом Global как фоллбэк)
@@ -175,17 +201,9 @@ class ExchangeRateProvider:
                         if response.status == 200:
                             data = await response.json()
                             print(f"DEBUG: Binance TH raw data: {data}", flush=True)
-                            if isinstance(data, dict):
-                                if data.get("code") == 0 and "data" in data:
-                                    price_data = data["data"]
-                                    if isinstance(price_data, list):
-                                        for item in price_data:
-                                            if item.get("symbol") == symbol:
-                                                return float(item.get("price"))
-                                    elif isinstance(price_data, dict):
-                                        return float(price_data.get("price"))
-                                elif "price" in data:
-                                    return float(data["price"])
+                            price = ExchangeRateProvider._parse_binance_price(data, symbol)
+                            if price is not None:
+                                return price
             except Exception as e:
                 print(f"⚠️ Binance TH attempt {attempt+1} error: {e}")
 
@@ -198,7 +216,9 @@ class ExchangeRateProvider:
                     if response.status == 200:
                         data = await response.json()
                         print(f"DEBUG: Binance Global rate: {data.get('price')}")
-                        return float(data['price'])
+                        price = ExchangeRateProvider._parse_binance_price(data, symbol)
+                        if price is not None:
+                            return price
         except Exception as e:
             print(f"❌ Binance Global error: {e}")
 
@@ -283,8 +303,9 @@ class ExchangeRateProvider:
             # с продом даже при обоих источниках "живых".
             for op in ('market_binance_th_ticker', 'market_binance_ticker'):
                 status_code, data, err = stand_egress.read_get(op, {'symbol': 'USDTTHB'})
-                if not err and status_code == 200 and isinstance(data, dict):
-                    usdt_thb = _finite_positive(data.get('price'))
+                if not err and status_code == 200:
+                    usdt_thb = _finite_positive(
+                        ExchangeRateProvider._parse_binance_price(data, 'USDTTHB'))
                     if usdt_thb is not None:
                         break
             rub_usdt = None
