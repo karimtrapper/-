@@ -176,7 +176,11 @@ def test_external_hostname_blocked_before_dns_redirect_to_loopback():
     assert result['mentions_evil_host'] is True, 'блокировка должна называть исходное имя хоста'
 
 
-def test_loopback_direct_connection_allowed():
+def test_loopback_denied_by_default_allowed_only_via_test_hook():
+    """Loopback запрещён целиком по умолчанию (иначе env-прокси на loopback —
+    дыра мимо guard'а: адрес прокси разрешён, а реальная цель CONNECT-туннеля
+    на сокетном уровне не видна). Разрешить конкретный адрес для теста можно
+    только явным allow_test_target() — прод его не вызывает."""
     result, proc = run_script('''
         import socket, threading, http.server, requests
         class FakeH(http.server.BaseHTTPRequestHandler):
@@ -189,11 +193,21 @@ def test_loopback_direct_connection_allowed():
 
         import stand_egress
         stand_egress.install()
+
+        denied = False
+        try:
+            requests.get(f'http://127.0.0.1:{port}/', timeout=2)
+        except requests.exceptions.ConnectionError:
+            denied = True
+
+        stand_egress.allow_test_target('127.0.0.1', port)
         r = requests.get(f'http://127.0.0.1:{port}/', timeout=2)
-        OUT({'status': r.status_code})
+
+        OUT({'denied_by_default': denied, 'status_after_hook': r.status_code})
     ''')
     assert proc.returncode == 0, proc.stderr
-    assert result['status'] == 200
+    assert result['denied_by_default'] is True
+    assert result['status_after_hook'] == 200
 
 
 def test_ip_literal_and_ipv6_blocked():
@@ -568,20 +582,29 @@ def test_udp_sendto_and_sendmsg_blocked_to_external_address():
         after = stand_egress.status()['blocked_count']
         calls_for_external = len(calls)
 
+        # loopback тоже не разрешён без явного allow_test_target() — порт
+        # 9999 никто не разрешал, поэтому и здесь тихий блок, не реальная отправка.
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             loop_n = s.sendto(b'ok', ('127.0.0.1', 9999))
+        calls_after_loopback = len(calls)
+
+        stand_egress.allow_test_target('127.0.0.1', 9999)
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            loop_allowed_n = s.sendto(b'ok', ('127.0.0.1', 9999))
 
         OUT({'sendto_return': n, 'sendmsg_return': m,
              'lower_transport_calls': calls_for_external,
              'blocked_count_grew_by_2': after - before == 2,
-             'loopback_sendto_ok': loop_n == 2})
+             'loopback_denied_by_default': calls_after_loopback == calls_for_external,
+             'loopback_allowed_after_hook': len(calls) > calls_after_loopback and loop_allowed_n == 2})
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result['lower_transport_calls'] == 0, 'внешний UDP не должен доходить до транспорта'
     assert result['sendto_return'] == 4  # len(b'FAKE') — тихий "успех", данные никуда не ушли
     assert result['sendmsg_return'] == 4
     assert result['blocked_count_grew_by_2'] is True
-    assert result['loopback_sendto_ok'] is True
+    assert result['loopback_denied_by_default'] is True
+    assert result['loopback_allowed_after_hook'] is True
 
 
 def test_tg_call_network_error_does_not_leak_token():
@@ -870,3 +893,120 @@ def test_referrer_thb_receipt_closes_despite_blocked_telegram():
     assert result['status'] == 200
     assert result['body']['success'] is True
     assert result['body']['request']['status'] == 'paid'
+
+
+# ───────────── фиксы по повторному аудиту (loopback, прокси, tg_ctx) ───────
+
+def test_proxy_env_set_after_install_still_blocked():
+    """QA app-late-proxy.py/postinstall-proxy.py: env-прокси, выставленный
+    ПОСЛЕ install() (или после import app), не должен уводить запрос в
+    CONNECT-туннель — прокси на loopback больше не разрешён по умолчанию,
+    да и Session.request/send теперь сами гасят trust_env и proxies."""
+    result, proc = run_script('''
+        import http.server, threading, requests, os
+
+        class Proxy(http.server.BaseHTTPRequestHandler):
+            hits = []
+            def do_CONNECT(self):
+                Proxy.hits.append(self.path)
+                self.send_error(403)
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Proxy)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+
+        # Прокси выставлен ПОСЛЕ install() — одноразовая чистка env в install()
+        # его не поймала бы, если бы не второй слой (Session.request/send).
+        proxy = f'http://127.0.0.1:{srv.server_port}'
+        os.environ['HTTPS_PROXY'] = proxy
+        os.environ['ALL_PROXY'] = proxy
+
+        try:
+            requests.get('https://api.telegram.org/botWRONG:TOKEN/getMe', timeout=2)
+        except Exception:
+            pass
+
+        OUT({'proxy_connects': Proxy.hits, 'guard_blocks': stand_egress.status()['blocked_count']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['proxy_connects'] == []
+    assert result['guard_blocks'] >= 1
+
+
+def test_explicit_proxies_kwarg_ignored():
+    """Явный kwarg proxies= в самом вызове requests тоже не должен работать —
+    env стереть недостаточно, если код передаёт прокси программно."""
+    result, proc = run_script('''
+        import http.server, threading, requests
+
+        class Proxy(http.server.BaseHTTPRequestHandler):
+            hits = []
+            def do_CONNECT(self):
+                Proxy.hits.append(self.path)
+                self.send_error(403)
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Proxy)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+
+        proxy = f'http://127.0.0.1:{srv.server_port}'
+        try:
+            requests.get('https://api.telegram.org/botWRONG:TOKEN/getMe', timeout=2,
+                        proxies={'https': proxy})
+        except Exception:
+            pass
+
+        OUT({'proxy_connects': Proxy.hits, 'guard_blocks': stand_egress.status()['blocked_count']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['proxy_connects'] == []
+    assert result['guard_blocks'] >= 1
+
+
+def test_urllib_getproxies_neutralized():
+    result, proc = run_script('''
+        import urllib.request
+        import stand_egress
+        stand_egress.install()
+        OUT({'getproxies': urllib.request.getproxies()})
+    ''', extra_env={'HTTPS_PROXY': 'http://127.0.0.1:1', 'HTTP_PROXY': 'http://127.0.0.1:1'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['getproxies'] == {}
+
+
+def test_tg_ctx_allowed_pairs_do_not_leak_between_calls_same_thread():
+    """Раньше tg_call инициализировал/чистил allowed_ips, а сетевой код читал
+    allowed_pairs — разные поля, второе никогда не чистилось и копилось между
+    запросами потока. Один флаг: выставляется на время операции, чистится в
+    finally. После tg_call соединение к api.telegram.org в этом же потоке
+    вне tg_call обязано блокироваться."""
+    result, proc = run_script(_fake_telegram_server_script() + '''
+        import socket
+        import stand_egress
+        stand_egress.install()
+        stand_egress.set_policy(lambda *a: True)
+
+        res = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'hi'},
+                                   _base_url=f'http://127.0.0.1:{_tg_port}')
+
+        blocked_after = False
+        try:
+            socket.getaddrinfo('api.telegram.org', 443)
+        except socket.gaierror:
+            blocked_after = True
+
+        OUT({'tg_call_ok': res.get('ok'), 'blocked_after_call': blocked_after,
+             'ctx_active_leaked': getattr(stand_egress._tg_ctx, 'active', False),
+             'ctx_pairs_leaked': bool(getattr(stand_egress._tg_ctx, 'allowed_pairs', None))})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['tg_call_ok'] is True
+    assert result['blocked_after_call'] is True
+    assert result['ctx_active_leaked'] is False
+    assert result['ctx_pairs_leaked'] is False

@@ -13,10 +13,20 @@ Fail-closed сеть: после install() любое исходящее TCP/UDP
 открытия сокета (connect/connect_ex/sendto/sendmsg). Тест, который резолвит
 внешний хост в локальный фейковый сервер на loopback, не должен обмануть
 guard — блокировка срабатывает по запрошенному имени хоста, а не по тому,
-во что оно в итоге резолвится (иначе «внешний хост резолвится в loopback»
-само стало бы обходом: loopback разрешён всегда, и адрес фейкового сервера
-прошёл бы как «свой»). По той же причине сравнение хоста — точное, не по
-суффиксу/подстроке.
+во что оно в итоге резолвится. По той же причине сравнение хоста — точное,
+не по суффиксу/подстроке.
+
+Loopback НЕ разрешён целиком (это была дыра: env-прокси указывает на локальный
+CONNECT-туннель, адрес прокси — loopback, а реальная цель едет внутри
+HTTP CONNECT и на сокетном уровне не видна). Разрешены только точные пары
+(host, port): цель БД из DATABASE_URL и, на время самого HTTP-запроса,
+петля внутри tg_call(). Тестам, которым нужен фейковый сервер на loopback,
+даётся явный хук allow_test_target(host, port) — прод его никогда не вызывает.
+
+Дополнительный слой для requests/urllib: install() заставляет requests
+игнорировать и env-прокси, и явный kwarg `proxies=`, а urllib.request —
+не читать getproxies() из окружения. Это не отменяет проверку пары (host,
+port) выше, а страхует от прокси на разрешённом адресе (порт БД/tg_call).
 
 UDP (sendto/sendmsg) на заблокированный адрес не бросает исключение — молча
 «теряет» пакет (возвращает длину данных, как будто отправка удалась): вызывающий
@@ -55,12 +65,17 @@ _orig_getaddrinfo = None
 _orig_create_connection = None
 _orig_sendto = None
 _orig_sendmsg = None
+_orig_session_request = None
+_orig_session_send = None
+_orig_urllib_getproxies = None
 
 _DEFAULT_DB_PORT = 5432
 
 _db_host = None
 _db_port = None
 _db_pairs = frozenset()  # {(ip, port)} — точная пара, не просто «IP базы»
+
+_test_allowed_pairs = set()  # {(канонический host, port)} — только allow_test_target()
 
 _tg_ctx = threading.local()
 
@@ -110,6 +125,34 @@ def _is_loopback_host(host):
         return False
 
 
+def _loopback_key(host):
+    """Канонический ключ для сравнения loopback-адресов: 'localhost' и
+    '127.0.0.1' — один и тот же адрес, пару нужно узнавать по обеим формам.
+    Возвращает None для не-loopback (тогда сравнение идёт по обычному имени)."""
+    if host is None:
+        return None
+    h = host.strip('[]').lower()
+    if h in ('localhost', 'localhost.localdomain', '127.0.0.1'):
+        return '127.0.0.1'
+    if h in ('::1', '0:0:0:0:0:0:0:1'):
+        return '::1'
+    try:
+        ip = ipaddress.ip_address(h)
+    except ValueError:
+        return None
+    if not ip.is_loopback:
+        return None
+    return '127.0.0.1' if ip.version == 4 else '::1'
+
+
+def allow_test_target(host, port):
+    """Тестовый хук: явно разрешить (host, port) на loopback для сценариев с
+    фейковым сервером. Прод-код эту функцию никогда не вызывает — loopback
+    по умолчанию запрещён (см. docstring модуля)."""
+    key = _loopback_key(host) or (host or '').strip('[]').lower()
+    _test_allowed_pairs.add((key, int(port)))
+
+
 def _parse_db_target():
     """host/port DATABASE_URL один раз, до патча — sqlite не даёт ни того, ни другого.
 
@@ -135,13 +178,29 @@ def _resolve_db_pairs(host, port):
         return frozenset()
 
 
+def _loopback_pair_allowed(host, port):
+    """Loopback запрещён целиком — разрешены только явно перечисленные пары
+    (DB-цель уже проверяется отдельно через _db_pairs; здесь — тестовый хук
+    и активная петля tg_call на время HTTP-запроса)."""
+    if not _is_loopback_host(host):
+        return False
+    if port is None:
+        return False
+    key = _loopback_key(host) or host.strip('[]').lower()
+    if (key, port) in _test_allowed_pairs:
+        return True
+    if getattr(_tg_ctx, 'active', False) and (key, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
+        return True
+    return False
+
+
 def _hostname_allowed(host, port=None):
     """Решение по запрошенному имени — до резолва. Хост сравнивается точно
     (не суффиксом/подстрокой), порт базы — тоже точно (иначе тот же хост на
     другом порту прошёл бы как «свой»)."""
-    if _is_loopback_host(host):
-        return True
     if host is None:
+        return True
+    if _loopback_pair_allowed(host, port):
         return True
     h = host.strip('[]').lower()
     if _db_host and h == _db_host.lower():
@@ -152,7 +211,7 @@ def _hostname_allowed(host, port=None):
 
 
 def _ip_allowed(ip, port=None):
-    if _is_loopback_host(ip):
+    if _loopback_pair_allowed(ip, port):
         return True
     if port is not None and (ip, port) in _db_pairs:
         return True
@@ -232,10 +291,30 @@ def _patched_sendmsg(self, buffers, *rest):
     return _orig_sendmsg(self, buffers, *rest)
 
 
+def _patched_session_request(self, method, url, **kwargs):
+    # Второй слой поверх проверки (host, port): даже если прокси однажды
+    # окажется на разрешённом адресе (порт БД/tg_call), requests не должен
+    # сам решать идти через прокси — ни по env, ни по явному kwarg'у.
+    self.trust_env = False
+    kwargs['proxies'] = {}
+    return _orig_session_request(self, method, url, **kwargs)
+
+
+def _patched_session_send(self, request, **kwargs):
+    self.trust_env = False
+    kwargs['proxies'] = {}
+    return _orig_session_send(self, request, **kwargs)
+
+
+def _patched_getproxies(*args, **kwargs):
+    return {}
+
+
 def install():
     """Ставит сетевой guard. No-op вне STAND_MODE и при повторном вызове."""
     global _installed, _orig_connect, _orig_connect_ex, _orig_getaddrinfo
     global _orig_create_connection, _orig_sendto, _orig_sendmsg
+    global _orig_session_request, _orig_session_send, _orig_urllib_getproxies
     global _db_host, _db_port, _db_pairs
     if os.environ.get('STAND_MODE') != '1':
         return False
@@ -268,6 +347,23 @@ def install():
         socket.create_connection = _patched_create_connection
         socket.socket.sendto = _patched_sendto
         socket.socket.sendmsg = _patched_sendmsg
+
+        try:
+            import requests
+            _orig_session_request = requests.Session.request
+            _orig_session_send = requests.Session.send
+            requests.Session.request = _patched_session_request
+            requests.Session.send = _patched_session_send
+        except ImportError:
+            pass
+
+        try:
+            import urllib.request
+            _orig_urllib_getproxies = urllib.request.getproxies
+            urllib.request.getproxies = _patched_getproxies
+        except ImportError:
+            pass
+
         _installed = True
     return True
 
@@ -311,12 +407,20 @@ def tg_call(method, payload, _base_url=None):
     url = f'{base}/bot{token}/{method}'
 
     _tg_ctx.active = True
-    _tg_ctx.allowed_ips = set()
+    _tg_ctx.allowed_pairs = set()
+    if _base_url:
+        # Тестовый override (прод никогда не передаёт _base_url): пускаем
+        # именно этот host:port на время запроса — тем же полем, которым
+        # ниже помечается резолв настоящего api.telegram.org.
+        parts = urlsplit(_base_url)
+        if parts.hostname and parts.port:
+            key = _loopback_key(parts.hostname) or parts.hostname.strip('[]').lower()
+            _tg_ctx.allowed_pairs.add((key, parts.port))
     try:
         session = requests.Session()
         session.trust_env = False
         try:
-            resp = session.post(url, json=payload, timeout=10, allow_redirects=False)
+            resp = session.post(url, json=payload, timeout=10, allow_redirects=False, proxies={})
             try:
                 data = resp.json()
             except ValueError:
@@ -330,4 +434,4 @@ def tg_call(method, payload, _base_url=None):
         return {'ok': False, 'error': 'tg_network_error'}
     finally:
         _tg_ctx.active = False
-        _tg_ctx.allowed_ips = set()
+        _tg_ctx.allowed_pairs = set()
