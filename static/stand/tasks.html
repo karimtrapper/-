@@ -596,7 +596,8 @@ const KEY='grusha_proto_v2';
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU'];
-let standVer=null, standPush=null, standBusy=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
+let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false,
+    standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let sberMirrorStatus=null;
 async function fetchSberMirrorStatus(){
   try{
@@ -681,11 +682,12 @@ function standTyping(){
   return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
 }
 async function standPull(force){
-  if(standBusy||standPush)return;
+  if(standBusy||standPush||standSaveScheduled||standClosing)return;
   try{
     const r=await fetch('/api/stand/state',{credentials:'same-origin'});
     if(r.status===401){location.href='/login';return;}
     const j=await r.json(); if(!j.success)return;
+    if(standBusy||standPush||standSaveScheduled||standClosing)return;
     if(j.role&&j.role!==S.role&&j.role!=='admin'){S.role=j.role;}
     if(standVer===j.version&&!force)return;
     /* клик уже начался — перерисовка заменила бы кнопку под пальцем, и нажатие
@@ -698,6 +700,7 @@ async function standPull(force){
   }catch(e){}
 }
 async function standSave(){
+  standSaveScheduled=false;
   if(standBusy){standPush=true;return;}
   standBusy=true; standPush=false;
   try{
@@ -717,13 +720,33 @@ async function standSave(){
       }
     }else{
       const j=await r.json();
-      if(j.success){standVer=j.version;if(j.data)standBase=standClone(j.data);if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}}
+      if(j.success){
+        standVer=j.version;
+        if(j.data)standBase=standClone(j.data);
+        if(j.data&&!standPush){standApply(j.data);if(!standTyping())render();}
+        else if(j.data&&standPush){
+          /* Первый PUT нового manual draft возвращает серверный originMode.
+             Второй queued PUT уже содержит заполненную форму; переносим только
+             эту серверную метку, не подменяя локальные поля старым снимком. */
+          (j.data.deals||[]).forEach(saved=>{
+            const local=(S.deals||[]).find(x=>x.id===saved.id);
+            if(local&&local.manual&&saved.originMode==='manual')local.originMode='manual';
+          });
+        }
+      }
       else toast(j.detail||j.error||'Сервер не сохранил изменения');
     }
   }catch(e){ toast('Не сохранилось — проверьте связь'); }
   finally{
     standBusy=false;
-    if(standPush){standPush=false;setTimeout(standSave,120);}
+    if(standPush){standPush=false;standSaveScheduled=true;setTimeout(standSave,120);}
+  }
+}
+async function standWaitSaved(){
+  const deadline=Date.now()+15000;
+  while(standBusy||standPush||standSaveScheduled){
+    if(Date.now()>deadline)throw new Error('stand save timed out');
+    await new Promise(resolve=>setTimeout(resolve,25));
   }
 }
 /* Режим экранов: ?screen=<id> собирает сделку сразу на нужном шаге.
@@ -859,7 +882,9 @@ function resetAll(){
     return; }
   localStorage.removeItem(KEY);S=load();render();
 }
-function toast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');setTimeout(()=>t.classList.remove('on'),1900);}
+let toastTimer=null;
+function toast(m,duration=1900){const t=document.getElementById('toast');t.textContent=m;t.classList.add('on');
+  if(toastTimer)clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('on'),duration);}
 /* «6 сделки» в тексте читается как опечатка и подрывает доверие к цифрам */
 function plural(n,one,few,many){
   const a=Math.abs(n)%100, b=a%10;
@@ -4449,9 +4474,17 @@ function crmPayload(d){
   const p={client_name:d.client, manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
-    payin_amount_usdt:r2(E.payin),
+    /* CRM adds payin_extra to this flat main amount. Board E.payin is
+       already the total, so sending it here would count extras twice. */
+    payin_amount_usdt:r2(payinParts(d)[0]?.usdt),
     payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
     payin_tx_hashes:hx(d.payinHashes),
+    payin_extra:(d.payinExtra||[]).map((x,i)=>({
+      method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
+      rate_rub_usdt:x.rate_rub_usdt??num(x.rate),
+      amount_usdt:r2(payinParts(d)[i+1]?.usdt),
+      partner_name:x.partner_name??x.partner??null,
+      tx_hashes:hx(x.tx_hashes||x.hashes),sber_uuids:x.sber_uuids||[],note:x.note||''})),
     notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
@@ -4478,7 +4511,7 @@ function crmPayload(d){
     const coinsRate=d.postConv==='coins'?num((d.transfer||{}).rate):null;
     Object.assign(p,{deal_kind:'mf_realty',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:coinsRate||buy||null,
-      sell_rate_thb_usdt:(E.payin&&d.amountThb)?Math.round(d.amountThb/E.payin*10000)/10000:null,
+      sell_rate_thb_usdt:num(d.rates.client)??null,
       payout_tx_hashes:mf});
     if(coinsRate&&E.sentThb) p.company_sent_thb=E.sentThb;
     else p.company_percent=d.companyPct==null?1:d.companyPct;
@@ -4512,11 +4545,36 @@ const CRM_NUM=['payin_amount_rub','payin_amount_usdt','payin_rate_rub_usdt','inv
   'company_percent','company_sent_thb','invoice_amount_usd','transfer_sent_usd','transfer_fee_percent','transfer_fee_fixed_usd',
   'payout_amount_thb','payout_amount_usdt'];
 function crmPayloadFinal(d){
-  const p=crmPayload(d), e=d.crmEdit||{};
+  const p=crmPayload(d), e=d.crmEdit||{}, locked=crmLockedKeys(d);
   Object.keys(e).forEach(k=>{ if(k==='agents'){
       (p.agents||[]).forEach((a,i)=>{const o=(e.agents||{})[i];if(o)Object.assign(a,o);});
-    } else if(k in p) p[k]=e[k]; });
+    } else if(k in p&&!locked.has(k)) p[k]=e[k]; });
   return p;
+}
+function crmLockedKeys(d){
+  const locked=new Set(['payin_tx_hashes','payout_tx_hashes']);
+  if(d.payType)locked.add('payin_method');
+  if(d.payinHashes?.length||d.amountUsdt||(d.pay||{}).usdt||
+     (!isCrypto(d)&&num(d.incomeAmount||d.amountRub)>0&&num((d.rates||{}).broker)>0))
+    locked.add('payin_amount_usdt');
+  if(d.incomeAmount||d.amountRub)locked.add('payin_amount_rub');
+  if(!isCrypto(d)&&num((d.rates||{}).broker))locked.add('payin_rate_rub_usdt');
+  if((d.payTo||{}).purpose)locked.add('realty_purpose');
+  if(d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'){
+    ['invoice_amount_usd','transfer_fee_percent','transfer_fee_fixed_usd','transfer_sent_usd'].forEach(k=>locked.add(k));
+  }else if(d.type==='Оплата недвижимости'){
+    if(d.amountThb)locked.add('invoice_amount_thb');
+    if(d.companyPct!=null)locked.add('company_percent');
+    if(num((d.rates||{}).usdtThb)||num((d.transfer||{}).rate))locked.add('buy_rate_thb_usdt');
+    if(d.postConv==='coins'&&(d.transfer||{}).rate)locked.add('company_sent_thb');
+  }else{
+    if(d.paySrc)locked.add('payout_source');
+    if(d.amountThb||(d.payout||{}).thb)locked.add('payout_amount_thb');
+    if((d.payout||{}).usdt||(d.payout||{}).hashes?.length||
+       (num((d.payout||{}).thb||d.amountThb)>0&&num((d.rates||{}).usdtThb)>0))
+      locked.add('payout_amount_usdt');
+  }
+  return locked;
 }
 function crmSet(id,k,v){
   const d=deal(id); if(!d)return;
@@ -4552,26 +4610,30 @@ function crmEditDiff(d){
   return out;
 }
 function crmForm(d){
-  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{};
+  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d);
   const esc=v=>htmlText(v==null?'':v);
+  const networkOut=['coins','ipps_swift'].includes(d.postConv)||['coins','client'].includes(d.paySrc);
+  const networkPayin=d.payType==='Крипта'&&(!(d.payinHashes||[]).length||
+    !(d.payinHashes||[]).every(h=>h.verified));
+  const routeRecipient=(d.transfer||{}).addr||(d.payTo||{}).acc||
+    (d.payout||{}).bankCardId||(d.payout||{}).founder||d.client||'не указан';
+  const canRole=role=>S.role===role||S.role==='admin';
   const mark=k=>ed[k]!==undefined?' <span class="src">поправлено</span>':'';
   const inp=(k,label,o)=>{o=o||{};const v=p[k];
     return `<div class="fg${o.w2?' w2':''}"><label class="fl">${label}${mark(k)}</label>
       <input class="fc${CRM_NUM.includes(k)?' num':''}" id="crm_${k}" value="${esc(v==null?'':(CRM_NUM.includes(k)?Number(v).toLocaleString('ru-RU',{maximumFractionDigits:4}):v))}"
-        ${o.ph?`placeholder="${o.ph}"`:''} onchange="crmSet(${id},'${k}',this.value)">
+        ${o.ph?`placeholder="${o.ph}"`:''} ${locked.has(k)?'readonly title="Факт сохранён на доске"':`onchange="crmSet(${id},'${k}',this.value)"`}>
       ${o.hint?`<p class="fh">${o.hint}</p>`:''}</div>`;};
   const sel=(k,label,map)=>`<div class="fg"><label class="fl">${label}${mark(k)}</label>
-      <select class="fc" id="crm_${k}" onchange="crmSet(${id},'${k}',this.value)">${Object.keys(map).map(x=>
+      <select class="fc" id="crm_${k}" ${locked.has(k)?'disabled title="Факт сохранён на доске"':`onchange="crmSet(${id},'${k}',this.value)"`}>${Object.keys(map).map(x=>
         `<option value="${x}"${p[k]===x?' selected':''}>${map[x]}</option>`).join('')}</select></div>`;
   const ro=(label,v,hint)=>`<div class="fg"><label class="fl">${label}</label><input class="fc" readonly value="${esc(v)}">${hint?`<p class="fh">${hint}</p>`:''}</div>`;
   const hashes=(k,label)=>{const l=p[k]||[];
     return `<div class="fg"><label class="fl">${label}${mark(k)}</label>
       ${l.length?`<div class="hashbox">${l.map((h,i)=>`<div class="hrow" style="flex-wrap:wrap">
-        <input class="fc num" style="max-width:130px" value="${esc(h.amount_usdt==null?'':Number(h.amount_usdt).toLocaleString('ru-RU',{maximumFractionDigits:2}))}" placeholder="сумма USDT"
-          onchange="crmHashSet(${id},'${k}',${i},'amount_usdt',this.value)">
+        <input class="fc num" style="max-width:130px" value="${esc(h.amount_usdt==null?'':Number(h.amount_usdt).toLocaleString('ru-RU',{maximumFractionDigits:2}))}" placeholder="сумма USDT" readonly>
         <span class="net">${esc(String(h.network||'').toUpperCase())}</span>
-        <input class="fc addr" style="flex:1;min-width:180px" value="${esc(h.hash)}" placeholder="хеш перевода"
-          onchange="crmHashSet(${id},'${k}',${i},'hash',this.value)"></div>`).join('')}</div>`
+        <input class="fc addr" style="flex:1;min-width:180px" value="${esc(h.hash)}" placeholder="хеш перевода" readonly></div>`).join('')}</div>`
         :'<p class="fh">переводов нет</p>'}</div>`;};
   const kindT={mf_realty:'Недвижимость через MF Corp · лизхолд',mf_freehold:'Фрихолд',exchange:'Обмен'}[p.deal_kind]||p.deal_kind;
   const MGR={};MANAGERS.concat(p.manager_name&&!MANAGERS.includes(p.manager_name)?[p.manager_name]:[]).forEach(m=>MGR[m]=m);
@@ -4581,6 +4643,18 @@ function crmForm(d){
       ${sel('manager_name','Менеджер',MGR)}
       ${ro('Тип сделки',kindT)}
     </div>
+    ${!d.manual?`<div class="box box-blue" style="margin:10px 0">
+      <b>Подтверждения перед закрытием</b>
+      <p class="fh">Сотрудник подтверждает сохранённые суммы и получателя. Сетевой перевод должен быть проверен системой.</p>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">
+        <button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Pay-In · ${esc(d.payType||'канал')} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>
+        <button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Pay-Out · ${esc(d.postConv||d.paySrc||'маршрут')} · ${esc(econ(d).cost||0)} USDT · ${esc(routeRecipient)} · ${networkOut?'менеджер':'оператор'}</button>
+        ${d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Оплата инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:''}
+        <button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Чек отправлен клиенту · менеджер</button>
+      </div>
+      ${networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':''}
+      ${networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':''}
+    </div>`:''}
     <details class="crmfin"${(Object.keys(ed).length||S.crmFinOpen)?' open':''} ontoggle="S.crmFinOpen=this.open">
       <summary>Деньги и переводы <span class="fh" style="margin:0">— собраны по дороге и сверены автоматически; править, только если знаете, что не так</span></summary>
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>
@@ -4634,15 +4708,55 @@ function crmForm(d){
     </details>
   </div>`;
 }
-async function crmPushClose(id){
-  const d=deal(id);
-  if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
-  const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
-  if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
-  const body=crmPayloadFinal(d), edits=crmEditDiff(d);
-  const url=d.crmDealId?'/api/deals/'+d.crmDealId:'/api/deals', method=d.crmDealId?'PUT':'POST';
+async function crmEvidence(id,kind){
+  if(standClosing)return;
+  standClosing=true;
   try{
-    let r=await fetch(url,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    await standWaitSaved();
+    const r=await fetch('/api/stand/deals/'+id+'/close-evidence',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({version:standVer,kind})});
+    const j=await r.json();
+    if(!j.success){
+      const errors={verified_payin_missing:'Приход ещё не подтверждён системой',
+        network_payout_proof_missing:'Сетевой перевод ещё не подтверждён системой',
+        payout_fact_missing:'Заполните сумму, стоимость и получателя выдачи',
+        invoice_payment_or_receipt_missing:'Нужны отметка оплаты и чек',
+        sent_receipt_missing:'Отметьте отправку чека клиенту',
+        forbidden:'Подтверждение доступно сотруднику нужной роли'};
+      toast(errors[j.error]||('Подтверждение не сохранено: '+(j.error||r.status)));return;
+    }
+    standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();
+    toast('Подтверждение сохранено · '+kind);
+  }catch(e){toast('Сервер не подтвердил факт — проверьте доску');}
+  finally{standClosing=false;}
+}
+async function crmPushClose(id){
+  if(standClosing)return;
+  standClosing=true;
+  try{
+    if(STAND)await standWaitSaved();
+    const d=deal(id);
+    if(!d){toast('Сделка изменилась — обновите доску');return;}
+    const manual=d.manual===true;
+    if(manual){
+      if(d.manualNew||d.originMode!=='manual'||d.step!=='manual'){
+        toast('Сначала сохраните ручной черновик на сервере');return;
+      }
+    }else{
+      if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
+      const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
+      if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
+    }
+    const crm=crmPayloadFinal(d);
+    const body={version:standVer,crm};
+    const url='/api/stand/deals/'+id+'/crm-close';
+    const send=async()=>{
+      const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),20000);
+      try{return await fetch(url,{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},body:JSON.stringify(body),signal:controller.signal});}
+      finally{clearTimeout(timer);}
+    };
+    let r=await send();
     let j=await r.json();
     /* Прод-код (d2a8ec6): если расход выплаты выше того, что реально ушло в сети,
        CRM не закрывает сделку молча — просит подтверждение человека. Повторяем тот же
@@ -4651,21 +4765,36 @@ async function crmPushClose(id){
       const ok=confirm((j.warning||'Расход по выплате выше доступного остатка перевода.')+
         '\n\nЭта сумма будет учтена как есть, хотя превышает подтверждённый on-chain перевод. Закрыть сделку?');
       if(!ok){toast('Закрытие отменено — сделка не изменена');return;}
-      body.confirm_payout_tx_overage=true;
-      r=await fetch(url,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      crm.confirm_payout_tx_overage=true;
+      r=await send();
       j=await r.json();
     }
-    if(!j.success){toast('CRM не приняла сделку: '+(j.error||r.status));log(d,'CRM отказала: '+(j.error||r.status));save();render();return;}
+    if(!j.success){
+      if(j.error==='close_evidence_missing'){
+        toast('Нужны подтверждения: '+(j.details||[]).map(x=>x.label+' ('+
+          (x.required_role==='operator'?'оператор':'менеджер')+')').join(', ')+
+          '. Кнопки находятся в карточке CRM.');
+        return;
+      }
+      const facts=['locked_invoice_mismatch','transfer_sent_mismatch','payin_facts_mismatch',
+        'payout_facts_mismatch','payin_amount_mismatch','payout_amount_mismatch',
+        'payout_source_mismatch','recipient_mismatch','custom_facts_mismatch',
+        'custom_origin_mismatch','company_percent_mismatch','buy_rate_mismatch'];
+      toast(facts.includes(j.error)?'Цифры или переводы отличаются от сохранённой сделки. Верните значения из доски и проверьте факты.'
+        :'CRM не закрыла сделку: '+(j.error||r.status));return;
+    }
     const cd=j.deal||{};
-    d.crmDealId=cd.id||d.crmDealId; d.crmAt=now();
-    if(edits.length) log(d,'Перед внесением в CRM поправлено: '+edits.join('; '));
-    log(d,'Внесена в CRM: сделка #'+d.crmDealId+' · статус «завершена»'+(cd.net_profit_usdt!=null?' · прибыль по CRM '+usd(cd.net_profit_usdt):''));
+    if(!cd.id||!j.data||!j.data.deals.some(x=>x.id===id&&x.closed&&x.crmDealId===cd.id)){
+      toast('Сервер не подтвердил закрытие — проверьте доску');return;
+    }
+    standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();
     /* Успех после подтверждённого превышения тоже приходит с предупреждением
        (тот же j.warning, что при 409) — CRM (crm.html) его показывает, задачник
        раньше молчал. Цифру нужно перепроверить, поэтому тост держим дольше (QA FAIL №4). */
-    if(j.warning){toast(j.warning);log(d,'Предупреждение CRM: '+j.warning);}
-    closeDeal(d,'Успешно завершена');
-  }catch(e){toast('CRM недоступна — сделка не закрыта');}
+    toast('Сделка закрыта — Успешно завершена · CRM #'+cd.id);
+    if(j.warning)toast(j.warning,6000);
+  }catch(e){toast('CRM недоступна — закрытие не подтверждено');}
+  finally{standClosing=false;}
 }
 function crmGapsBlock(d,title){
   const g=crmGaps(d);
