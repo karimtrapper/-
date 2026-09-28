@@ -14,6 +14,8 @@ import stand_notify as notify
 @pytest.fixture
 def dm(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    # При общем прогоне app импортирован без стенда, его таблицы создаём явно.
+    appmod._stand_migrate()
     notify.init(appmod)
     notify._bot_username = None
     monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
