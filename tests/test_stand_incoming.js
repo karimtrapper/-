@@ -96,4 +96,14 @@ function fixture(overrides = {}) {
   ctx.expectSet(1, 'tol', '-1');
   assert.equal(deal.expect.tol, 1000);
 }
+if(process.env.MIRRORED_INCOME_JSON){
+  const {ctx, deal, S} = fixture();
+  const record = JSON.parse(process.env.MIRRORED_INCOME_JSON);
+  S.incomes.push(record);
+  ctx.sberTake(1, record.id);
+  const issues = ctx.payinIssues(deal);
+  assert.ok(!issues.some(x => x.includes('Счёт прихода')),
+    'зеркальный приход должен пройти проверку счёта');
+  assert.equal(issues.length, 0, `расхождения: ${issues.join('; ')}`);
+}
 console.log('stand incoming: 6 сценариев PASS');

@@ -96,6 +96,31 @@ def send_fingerprint(state, deal, send):
 
 def preserve_server_fields(old_state, new_state):
     """Не принимать подтверждение перевода из браузерного PUT."""
+    # Сберовская выписка принадлежит серверу. Люди могут привязать приход,
+    # включить его в пачку или исключить, но не поменять исходные деньги.
+    old_incomes = {i.get('id'): i for i in old_state.get('incomes', [])
+                   if isinstance(i, dict) and i.get('source') == 'sber'}
+    received = {i.get('id'): i for i in new_state.get('incomes', [])
+                if isinstance(i, dict)}
+    protected = ('id', 'source', 'uuid', 'date', 'arrivedAt', 'payer', 'rub',
+                 'grossRub', 'feeRub',
+                 'kind', 'acc', 'accSource', 'purpose', 'docNumber', 'demo')
+    for income_id, previous in old_incomes.items():
+        incoming = received.get(income_id)
+        if incoming is None:
+            # Отсутствие записи в PUT — устаревший снимок клиента, а не команда
+            # снять человеческую привязку. Возвращаем всю запись из доски.
+            incoming = previous.copy()
+            new_state.setdefault('incomes', []).append(incoming)
+        for field in protected:
+            if field in previous:
+                incoming[field] = previous[field]
+            else:
+                incoming.pop(field, None)
+    # Прислать новый «серверный» приход из браузера тоже нельзя.
+    new_state['incomes'] = [i for i in new_state.get('incomes', [])
+                            if not (isinstance(i, dict) and i.get('source') == 'sber'
+                                    and i.get('id') not in old_incomes)]
     old_deals = {d.get('id'): d for d in old_state.get('deals', [])}
     old_convs = {c.get('id'): c for c in old_state.get('convs', [])}
     for conv in new_state.get('convs', []):

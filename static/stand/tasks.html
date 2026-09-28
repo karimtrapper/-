@@ -597,6 +597,24 @@ const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU'];
 let standVer=null, standPush=null, standBusy=false, standMe=null;
+let sberMirrorStatus=null;
+async function fetchSberMirrorStatus(){
+  try{
+    const r=await fetch('/api/stand/sber-mirror/status',{credentials:'same-origin'});
+    if(r.ok)sberMirrorStatus=await r.json();
+  }catch(e){sberMirrorStatus={enabled:true,last_error:'недоступно'};}
+  if(S.view==='income'&&!standTyping())render();
+}
+function sberMirrorLabel(){
+  const x=sberMirrorStatus;
+  if(!x)return 'зеркало Сбера: проверяем';
+  const assumption=' · '+(x.account_assumption||'счёт проставлен по допущению: SberNotifier следит за одним счётом');
+  if(!x.enabled)return 'зеркало Сбера: выключено · ограниченное окно 300'+assumption;
+  if(x.last_error||!x.last_success_at)return 'зеркало Сбера: не отвечает · ограниченное окно 300'+assumption;
+  return 'зеркало Сбера: обновлено '+new Date(x.last_success_at).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})+
+    ' · в окне '+x.last_seen_count+', новых '+x.last_new_count+' · ограниченное окно 300'+assumption;
+}
+function sberText(value){return String(value||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 /* Последний снимок с сервера — база для слияния, когда доску одновременно правят
    двое. Раньше при конфликте версии своя правка молча выбрасывалась: операционист
    отправлял курс, а он пропадал (Карим, 25.09 — «приняло только с третьего раза»). */
@@ -4620,7 +4638,7 @@ function payinIssues(d){
   parts.forEach(p=>{
     const x=incomes().find(i=>i.id===p.incId);
     if(!x||x.dealId!==d.id||x.excluded) issues.push('Часть прихода не связана с доступной записью');
-    if(x&&Number(x.rub)!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода');
+    if(x&&Number(x.grossRub||x.rub)!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода');
     const acc=x&&x.acc, purpose=x&&x.purpose;
     if(!acc) issues.push('Счёт прихода не указан');
     else if(acc!==ex.acc) issues.push('Счёт прихода '+acc+' вместо '+ex.acc);
@@ -4636,16 +4654,16 @@ function payinPool(d){
   const left=Math.round((want-got)*100)/100;
   return `<div class="sberbox" style="margin-top:14px">
     <div class="chtitle" style="color:#0369A1">🏦 Забрать приход руками
-      <span>выберите зарегистрированный приход; все данные здесь тестовые</span></div>
+      <span>выберите зарегистрированный приход; записи Сбера помечены отдельно</span></div>
     ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
       <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
         ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
         <span class="sub2">· ${x.payer||''} · ${x.date||''} · ${x.acc||'счёт неизвестен'} · ${x.purpose||'назначение неизвестно'}</span></span>
       <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
     ${sberFree().length?sberFree().slice(0,6).map(x=>`<div class="sbrow">
-      <span><span class="net">${x.kind}${x.demo?' · тест':''}</span> <b>${money(x.rub,'₽')}</b>
-        <span class="sub2">· ${x.payer} · ${x.date} · ${x.acc||'счёт неизвестен'} · ${x.purpose||'назначение неизвестно'}</span></span>
-      <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${x.id})">Забрать</button></div>`).join('')
+      <span><span class="net">${sberText(x.kind)}${x.demo?' · тест':x.source==='sber'?' · Сбер':''}</span> <b>${money(x.rub,'₽')}</b>
+        <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)} · ${sberText(x.acc||'счёт неизвестен')} · ${sberText(x.purpose||'назначение неизвестно')}</span></span>
+      <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${sberText(JSON.stringify(x.id))})">Забрать</button></div>`).join('')
       :`<p class="fh">Свободных поступлений нет — всё разобрано по другим сделкам.</p>`}
     <div class="hrow" style="margin-top:10px">
       <input class="fc num" id="e_sbamt" placeholder="Сумма ₽ вручную" style="max-width:180px">
@@ -4669,7 +4687,7 @@ function payinDone(id){
   if(!got){toast('Ничего не забрано — нечего закрывать');return;}
   const ids=(d.payinParts||[]).map(p=>p.incId);
   if(new Set(ids).size!==ids.length||(d.payinParts||[]).some(p=>!p.incId||
-      !incomes().some(x=>x.id===p.incId&&x.dealId===d.id&&!x.excluded&&!x.cnvId&&Number(x.rub)===Number(p.amountRub)))){
+      !incomes().some(x=>x.id===p.incId&&x.dealId===d.id&&!x.excluded&&!x.cnvId&&Number(x.grossRub||x.rub)===Number(p.amountRub)))){
     toast('Есть часть без зарегистрированного прихода — перепроверьте список');return;}
   const gap=Math.round((want-got)*100)/100;
   const issues=payinIssues(d);
@@ -4690,12 +4708,12 @@ function sberTake(id,incId){
   if(!Number.isFinite(Number(x.rub))||Number(x.rub)<=0){toast('У прихода нет корректной суммы');return;}
   x.dealId=d.id;
   d.payinParts=d.payinParts||[];
-  /* СБП в списке поступлений тоже эквайринг — иначе забранный руками платёж
-     терял комиссию 0,96 %, которую автосверка учитывала. */
+  /* Для выписки Сбера комиссия берётся из назначения: на счёт уже пришло нетто.
+     Тестовые записи оставляют прежний учебный расчёт. */
   const acq=(x.kind==='эквайринг'||x.kind==='СБП');
-  d.payinParts.push({amountRub:x.rub,payer:x.payer,date:x.date,kind:acq?'acquiring':'bank',
-    net:acq?Math.round(x.rub*0.9904*100)/100:null,
-    fee:acq?Math.round(x.rub*0.0096*100)/100:null,incId:x.id,
+  d.payinParts.push({amountRub:x.source==='sber'?(x.grossRub||x.rub):x.rub,payer:x.payer,date:x.date,kind:acq?'acquiring':'bank',
+    net:acq?(x.source==='sber'?x.rub:Math.round(x.rub*0.9904*100)/100):null,
+    fee:acq?(x.source==='sber'?(x.feeRub||0):Math.round(x.rub*0.0096*100)/100):null,incId:x.id,
     acc:x.acc||null,purpose:x.purpose||null,demo:!!x.demo});
   if(d.step!=='s14'&&d.step!=='s14m') d.incomeAmount=payinSum(d);
   save();render();toast('Приход забран: '+money(x.rub,'₽'));
@@ -5003,9 +5021,9 @@ function viewEdit(){
             <span class="sub2">· ${x.payer||''} · ${x.date||''}</span></span>
           <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
         ${sberFree().length?sberFree().slice(0,5).map(x=>`<div class="sbrow">
-          <span><span class="net">${x.kind}</span> <b>${money(x.rub,'₽')}</b>
-            <span class="sub2">· ${x.payer} · ${x.date}</span></span>
-          <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${x.id})">Забрать</button></div>`).join('')
+          <span><span class="net">${sberText(x.kind)}${x.source==='sber'?' · Сбер':''}</span> <b>${money(x.rub,'₽')}</b>
+            <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)}</span></span>
+          <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${sberText(JSON.stringify(x.id))})">Забрать</button></div>`).join('')
           :`<p class="fh">Свободных поступлений нет — всё разобрано по сделкам.</p>`}
         <div class="hrow" style="margin-top:10px">
           <input class="fc num" id="e_sbamt" placeholder="Сумма ₽ вручную" style="max-width:180px">
@@ -7313,7 +7331,7 @@ function viewIncome(){
   const b=bal(), sel=incSel();
   const selSum=sel.reduce((s,x)=>s+(x.rub||0),0);
   const free=incomes().filter(x=>!x.excluded&&!x.cnvId);
-  return `<div class="page-h">Поступления</div>
+  return `<div class="page-h">Поступления <span class="sub">${sberMirrorLabel()}</span></div>
   ${S.convForm?convForm():''}
   <div class="card" style="margin-bottom:16px"><div class="card-title">Поступления на счёт
     <span class="sub">${free.length} не сконвертировано на ${money(free.reduce((s,x)=>s+x.rub,0),'₽')}</span></div>
@@ -7329,10 +7347,10 @@ function viewIncome(){
       <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th><th>Сделка</th><th>Конвертация</th>
     </tr></thead><tbody>
     ${list.map(x=>`<tr${x.excluded?' style="opacity:.5"':''}>
-      <td>${(x.excluded||x.cnvId)?'':`<input type="checkbox" ${x.sel?'checked':''} onclick="incToggle(${x.id})">`}</td>
-      <td>${x.date}</td><td>${x.payer}</td>
+      <td>${(x.excluded||x.cnvId)?'':`<input type="checkbox" ${x.sel?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
+      <td>${sberText(x.date)}${x.source==='sber'?`<div class="sub2">Сбер · ${sberText(x.arrivedAt)}</div>`:''}</td><td>${sberText(x.payer)}</td>
       <td class="num"><b>${money(x.rub,'₽')}</b></td>
-      <td>${x.kind}</td>
+      <td>${sberText(x.kind)}</td>
       <td>${x.dealId?`<a href="#" onclick="openDeal(${x.dealId});return false">${(deal(x.dealId)||{}).code||''}</a>`:'<span style="color:#B45309">не привязан</span>'}</td>
       <td>${x.cnvId?`<a href="#" onclick="cnvOpen(${x.cnvId});return false">${(conv(x.cnvId)||{}).name||''}</a>`
         :(x.excluded?'<span style="color:var(--text-muted)">исключён</span>':'<span class="badge b-wait">ждёт</span>')}</td>
@@ -7860,6 +7878,7 @@ async function standBoot(){
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
   }catch(e){}
   await standPull(true);
+  await fetchSberMirrorStatus();
   fetchMarket().then(ok=>{if(ok)render();});
   if(!refs().some(r=>r.prod)) refsSync(true);
   setInterval(()=>fetchMarket().then(ok=>{if(ok&&!standTyping())render();}),300000);
@@ -7867,6 +7886,7 @@ async function standBoot(){
   render();
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);
+  setInterval(fetchSberMirrorStatus,60000);
 }
 /* Переход из уведомления: ?deal=<id|код> открывает ту самую задачу.
    Без этого ссылка вела на общий список и человек искал сделку глазами. */
