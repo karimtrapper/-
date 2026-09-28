@@ -378,19 +378,6 @@ def compute_snapshot(target_url):
                 cur.execute(f'SELECT "{col}" FROM "{t}" WHERE "{col}" IS NOT NULL')
                 token_values[t] = [r[0] for r in cur.fetchall()]
 
-        # sha256 от password_hash, а не сам хеш — эталон в counts.json не должен
-        # содержать значение, по которому (пусть и с усилием) можно было бы
-        # опознать пароль; для проверки «изменился ли хеш после санации»
-        # отпечатка достаточно.
-        admin_password_hash_fingerprints = {}
-        if 'admin_users' in table_set:
-            cur.execute('SELECT id, password_hash FROM admin_users')
-            for admin_id, pwd_hash in cur.fetchall():
-                if pwd_hash is not None:
-                    admin_password_hash_fingerprints[str(admin_id)] = hashlib.sha256(
-                        pwd_hash.encode('utf-8')
-                    ).hexdigest()
-
         return {
             'tables': table_counts,
             'table_hashes': table_hashes,
@@ -399,7 +386,6 @@ def compute_snapshot(target_url):
             'sequences': sequences,
             'foreign_keys': foreign_keys,
             'token_values': token_values,
-            'admin_password_hash_fingerprints': admin_password_hash_fingerprints,
         }
     finally:
         conn.close()
@@ -479,8 +465,14 @@ def _invariant_payment_link_empty(cur, expected):
 
 
 def _invariant_referrer_auth_mode(cur, expected):
-    n = _count(cur, "SELECT COUNT(*) FROM referrers WHERE auth_mode = 'telegram'")
-    return {'table': 'referrers', 'column': 'auth_mode', 'invariant': "not_equals:telegram", 'violations': n} if n else None
+    """Точное множество допустимых значений после санации, а не «не равно
+    старому»: домен колонки — 'link' | 'telegram' (см. модель Referrer в
+    app.py), санация переводит 'telegram' в 'link'; NULL санация не трогает.
+    Единственные допустимые значения после неё — NULL и 'link'. Любое другое
+    (включая честно новый, но неожиданный режим) — нарушение инварианта, а
+    не только конкретно реинтродукция 'telegram'."""
+    n = _count(cur, "SELECT COUNT(*) FROM referrers WHERE auth_mode IS NOT NULL AND auth_mode <> 'link'")
+    return {'table': 'referrers', 'column': 'auth_mode', 'invariant': "in {NULL, 'link'}", 'violations': n} if n else None
 
 
 def _invariant_admin_username_not_reserved(cur, expected):
@@ -489,19 +481,23 @@ def _invariant_admin_username_not_reserved(cur, expected):
     return {'table': 'admin_users', 'column': 'username', 'invariant': 'renamed_prod_prefix', 'violations': n} if n else None
 
 
-def _invariant_admin_password_hash_changed(cur, expected):
-    fingerprints = expected.get('admin_password_hash_fingerprints') or {}
-    if not fingerprints:
-        return None
-    cur.execute('SELECT id, password_hash FROM admin_users')
-    unchanged = 0
-    for admin_id, pwd_hash in cur.fetchall():
-        expected_fp = fingerprints.get(str(admin_id))
-        if expected_fp is None or pwd_hash is None:
-            continue
-        if hashlib.sha256(pwd_hash.encode('utf-8')).hexdigest() == expected_fp:
-            unchanged += 1
-    return {'table': 'admin_users', 'column': 'password_hash', 'invariant': 'changed', 'violations': unchanged} if unchanged else None
+def _invariant_admin_password_hash_sanitized(cur, expected):
+    """Точная форма заглушки, которую ставит санация — не «отличается от
+    дампа». Подмена на ЛЮБОЙ другой валидный bcrypt-хэш (не обязательно
+    исходный из дампа) раньше проходила проверку «изменился ли хеш»: она
+    сравнивала с конкретным старым значением, а не утверждала форму нового.
+    stand_sanitize.sql пишет 'sanitized:' + md5(...) — не начинается ни с
+    одного префикса bcrypt ($2a$/$2b$/$2y$), поэтому AdminUser.check_password
+    уходит в legacy-ветку (sha256-сравнение строк) и не может совпасть ни с
+    одним паролем."""
+    n = _count(cur, """
+        SELECT COUNT(*) FROM admin_users
+        WHERE password_hash IS NULL
+           OR password_hash NOT LIKE 'sanitized:%%'
+           OR password_hash LIKE '$2a$%%' OR password_hash LIKE '$2b$%%' OR password_hash LIKE '$2y$%%'
+    """)
+    return {'table': 'admin_users', 'column': 'password_hash', 'invariant': "starts_with 'sanitized:', not bcrypt",
+            'violations': n} if n else None
 
 
 # Каждая колонка из HASH_EXCLUDE_COLUMNS обязана иметь здесь пост-инвариант —
@@ -518,7 +514,7 @@ SANITIZE_COLUMN_INVARIANTS = {
     ('payment_link_orders', 'link'): _invariant_payment_link_empty,
     ('payout_requests', 'contact_value'): _invariant_equals('payout_requests', 'contact_value', 'sanitized', 'placeholder'),
     ('admin_users', 'username'): _invariant_admin_username_not_reserved,
-    ('admin_users', 'password_hash'): _invariant_admin_password_hash_changed,
+    ('admin_users', 'password_hash'): _invariant_admin_password_hash_sanitized,
     ('admin_users', 'telegram'): _invariant_null('admin_users', 'telegram'),
     ('admin_users', 'telegram_user_id'): _invariant_null('admin_users', 'telegram_user_id'),
     ('admin_users', 'login_disabled'): _invariant_equals('admin_users', 'login_disabled', True, 'true'),

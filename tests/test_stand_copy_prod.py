@@ -361,10 +361,14 @@ def test_full_cycle(pg_cluster, seeded, tmp_path):
     finally:
         conn.close()
 
-    # Проверка check_password: старый пароль не подходит к новому хэшу
+    # check_password с ЛЮБЫМ паролем (не только исходным) должен быть False —
+    # заглушка санации не начинается с $2b$, идёт в legacy sha256-ветку и не
+    # может случайно совпасть ни с одним паролём.
     import app as app_module
+    assert pwd_hash.startswith('sanitized:')
     fake_admin = app_module.AdminUser(password_hash=pwd_hash)
-    assert fake_admin.check_password('secret123') is False
+    for candidate_password in ('secret123', '', 'admin', 'grusha-stand', pwd_hash):
+        assert fake_admin.check_password(candidate_password) is False
 
 
 @pytest.mark.parametrize('break_rule', [
@@ -599,6 +603,10 @@ def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp
     _corrupt_and_check("UPDATE payment_link_orders SET link = 'https://pay.example/reused'")
     _corrupt_and_check("UPDATE referrers SET telegram_user_id = 123456789")
     _corrupt_and_check("UPDATE referrers SET auth_mode = 'telegram'")
+    # Инвариант — точное множество {NULL, 'link'}, а не «не telegram»: любое
+    # другое неожиданное значение обязано ловиться так же, а не только
+    # конкретно реинтродукция 'telegram'.
+    _corrupt_and_check("UPDATE referrers SET auth_mode = 'weird_mode'")
     _corrupt_and_check("UPDATE admin_users SET telegram = '@leaked'")
     _corrupt_and_check("UPDATE admin_users SET login_disabled = false")
 
@@ -626,6 +634,15 @@ def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp
     finally:
         dump_admin_hash_conn.close()
     _corrupt_and_check(f"UPDATE admin_users SET password_hash = '{old_admin_hash}'")
+
+    # Инвариант — точная ФОРМА заглушки санации, а не «отличается от дампа»:
+    # подмена на ЛЮБОЙ другой валидный bcrypt-хэш (не тот, что был в дампе)
+    # обязана ловиться так же, иначе прежний вариант «просто изменился хеш»
+    # пропускал бы восстановление настоящего пароля произвольным bcrypt-значением.
+    import app as app_module
+    other_valid_bcrypt = app_module.AdminUser.hash_password('some-other-real-password')
+    assert other_valid_bcrypt.startswith('$2b$')
+    _corrupt_and_check(f"UPDATE admin_users SET password_hash = '{other_valid_bcrypt}'")
 
     # Токен обнулён массово — санация "потеряла" токен, а не просто оставила
     # старый. Отсутствие пересечения со старыми значениями само по себе это
