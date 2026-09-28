@@ -89,9 +89,28 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # Защита от CSRF
 
 @app.after_request
 def stand_referrer_policy(response):
-    """На стенде URL кабинета с токеном не уходит в Referer внешних ресурсов."""
+    """Stage-only browser resources, egress policy, and token referrer privacy."""
     if STAND_MODE:
         response.headers['Referrer-Policy'] = 'no-referrer'
+        from stand_browser import served_page_kind, transform_html, STAND_CSP, PAGE_SOURCES
+        kind = served_page_kind(request.endpoint, request.view_args, app.root_path)
+        if (kind and response.status_code in (200, 206, 304)
+                and request.method in ('GET', 'HEAD')
+                and response.mimetype == 'text/html'):
+            # A file response may be conditional (304) or partial (206). Always
+            # rebuild the complete registered document so neither can expose
+            # the original remote asset tags or stale file validators.
+            response.direct_passthrough = False
+            from pathlib import Path
+            html = (Path(app.root_path) / PAGE_SOURCES[kind]).read_text(encoding='utf-8')
+            response.status_code = 200
+            response.set_data(transform_html(kind, html))
+            response.headers.pop('Content-Range', None)
+            response.headers.pop('Accept-Ranges', None)
+            response.headers.pop('ETag', None)
+            response.headers.pop('Last-Modified', None)
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['Content-Security-Policy'] = STAND_CSP
     return response
 
 # Rate limiting
@@ -178,6 +197,11 @@ def check_auth():
     path = request.path
 
     if STAND_MODE:
+        # Login must load local fonts before authentication. Exact pinned
+        # asset paths only: a broad prefix also admitted ../crm/crm.html.
+        from stand_browser import public_vendor_asset
+        if public_vendor_asset(path):
+            return None
         # Страница входа показывает форму логина только при 403 от setup.
         # Отвечаем до проверки сессии и метода, чтобы setup всегда был закрыт.
         if path == '/api/auth/setup':
