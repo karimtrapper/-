@@ -191,6 +191,56 @@ def _result(status, **kwargs):
             if status == 'confirmed' else None, **kwargs}
 
 
+class _ChannelError(Exception):
+    """Ошибка контролируемого канала чтения стенда (stand_egress.read_get)."""
+
+
+class _StandChannelResponse:
+    """Приводит (status_code, json, error) от read_get к форме, которую ждёт
+    остальной код verify_transfer (response.status_code / response.json())."""
+    __slots__ = ('status_code', '_data')
+
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self._data = data
+
+    def json(self):
+        return self._data
+
+
+_STAND_CHANNEL_ERRORS = {
+    'no_key': 'Сеть недоступна: нет ключа',
+    'timeout': 'Сеть не ответила: таймаут',
+    'tls_error': 'Сеть не ответила: TLS',
+    'network_error': 'Сеть не ответила',
+    'redirect_blocked': 'Сеть отдала редирект — отклонено',
+    'response_too_large': 'Ответ сети слишком большой',
+    'invalid_json': 'Сеть отдала не JSON',
+}
+
+
+def _stand_get(url, params=None, headers=None, timeout=None):
+    """На стенде подменяет requests.get в verify_transfer: маршрутизирует
+    вызов через stand_egress.read_get по известному URL. Заголовки и ключ
+    (TRON-PRO-API-KEY / apikey) строит сам канал — 'apikey' из params сюда
+    не передаём, иначе read_get отказал бы как неизвестный параметр."""
+    import stand_egress
+
+    params = params or {}
+    if url == 'https://apilist.tronscanapi.com/api/transaction-info':
+        op, op_params = 'tron_tx_info', {'hash': params.get('hash')}
+    elif url == 'https://api.etherscan.io/v2/api' and params.get('action') == 'eth_getTransactionReceipt':
+        op, op_params = 'eth_tx_receipt', {k: v for k, v in params.items() if k != 'apikey'}
+    elif url == 'https://api.etherscan.io/v2/api' and params.get('action') == 'eth_getBlockByNumber':
+        op, op_params = 'eth_block_by_number', {k: v for k, v in params.items() if k != 'apikey'}
+    else:
+        raise _ChannelError('Канал не настроен')
+    status_code, data, err = stand_egress.read_get(op, op_params)
+    if err:
+        raise _ChannelError(_STAND_CHANNEL_ERRORS.get(err, 'Сеть недоступна'))
+    return _StandChannelResponse(status_code, data)
+
+
 def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     demo_outcome=None, get=requests.get, etherscan_key=None,
                     tronscan_key=None):
@@ -216,10 +266,12 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
     if os.environ.get('STAND_MODE') == '1':
-        # TronScan/Etherscan — реальные внешние сервисы; на стенде сеть не трогаем
-        # даже через default-bound `get` (сокет-guard блокирует и это, но явный
-        # выход честнее генерик-ошибки таймаута).
-        return _result('pending', checkError='На стенде проверка сети выключена')
+        # На стенде ходим в сеть только через контролируемый канал чтения T9
+        # (stand_egress.read_get) — сокет-guard блокирует прямой requests.get.
+        # Ключ Etherscan свой, стендовый: прод-ключ на стенд не копируем.
+        get = _stand_get
+        etherscan_key = os.environ.get('STAND_ETHERSCAN_API_KEY', '').strip() or None
+        tronscan_key = tronscan_key or os.environ.get('TRONSCAN_API_KEY')
     try:
         if network == 'trc20':
             headers = {'User-Agent': TRONSCAN_USER_AGENT}
@@ -288,7 +340,7 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     matches.append(log)
             actual = sum(Decimal(int(str(t.get('data') or '0x0'), 16)) / Decimal(1_000_000)
                          for t in matches)
-    except (requests.RequestException, ValueError, TypeError, InvalidOperation) as exc:
+    except (requests.RequestException, ValueError, TypeError, InvalidOperation, _ChannelError) as exc:
         return _result('error', checkError=str(exc)[:160])
     actual_from = sender or (matches[0].get('from_address') if network == 'trc20' and matches else None)
     if network == 'erc20' and sender is None and matches:

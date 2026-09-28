@@ -6413,11 +6413,24 @@ def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
     if STAND_MODE:
-        # Курсы тянутся с Binance/Bitazza/Doverka — реальные внешние сервисы.
-        # На стенде не идём наружу вообще; менеджер вводит курс вручную (см. tasks.html).
-        return jsonify({'success': False, 'stand_blocked': True,
-                        'error': 'На стенде курсы выключены — введите курс вручную',
-                        'usdt_thb': None, 'rub_usdt': None})
+        # На стенде курс — настоящий рынок через контролируемый канал чтения T9
+        # (market_binance_ticker/market_rapira), без Playwright и без Bitazza
+        # VWAP-карточки. На отказе источника — честно «нет свежего курса»,
+        # никогда не старое значение вместо свежего (кэша здесь нет вовсе).
+        try:
+            rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        except Exception as e:
+            app.logger.warning(f'Stand rates error: {e}')
+            rates = {'usdt_thb': None, 'rub_usdt': None}
+        usdt_thb, rub_usdt = rates.get('usdt_thb'), rates.get('rub_usdt')
+        errors = []
+        if not usdt_thb:
+            errors.append('USDT/THB недоступен (Binance)')
+        if not rub_usdt:
+            errors.append('RUB/USDT недоступен (Rapira)')
+        return jsonify({'success': bool(usdt_thb and rub_usdt), 'stand_blocked': False,
+                        'usdt_thb': usdt_thb, 'rub_usdt': rub_usdt, 'errors': errors,
+                        'error': None if (usdt_thb and rub_usdt) else 'На стенде нет свежего курса — введите вручную'})
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         usdt_thb = rates.get('usdt_thb')
@@ -14872,9 +14885,20 @@ def _bitazza_bids():
     if _BITAZZA_CACHE['bids'] and now - _BITAZZA_CACHE['ts'] < _BITAZZA_TTL:
         return _BITAZZA_CACHE['bids']
     try:
-        r = requests.get(BITAZZA_L2_URL, timeout=6, params={
-            'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
-        bids = sorted(((float(l[6]), float(l[8])) for l in r.json()
+        if STAND_MODE:
+            # На стенде — только контролируемый канал чтения T9, без прямого
+            # requests.get (сокет-guard его и так заблокирует).
+            import stand_egress
+            status_code, data, err = stand_egress.read_get(
+                'market_bitazza', {'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
+            if err or status_code != 200:
+                raise RuntimeError(err or f'HTTP {status_code}')
+            rows = data or []
+        else:
+            r = requests.get(BITAZZA_L2_URL, timeout=6, params={
+                'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
+            rows = r.json()
+        bids = sorted(((float(l[6]), float(l[8])) for l in rows
                        if l[9] == 0 and float(l[8]) > 0), reverse=True)
         if bids:
             _BITAZZA_CACHE.update(bids=bids, ts=now)
@@ -18430,7 +18454,7 @@ def _stand_transfer_poll_loop():
             app.logger.warning('stand transfer poll: %s', exc)
 
 
-if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '0') == '1'
+if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()

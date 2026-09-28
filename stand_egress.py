@@ -37,7 +37,9 @@ UDP (sendto/sendmsg) на заблокированный адрес не бро�
   периметра guard'а.
 """
 import ipaddress
+import json
 import os
+import re
 import socket
 import threading
 import time
@@ -66,6 +68,8 @@ _tg_ctx = threading.local()
 
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
+
+_read_ctx = threading.local()
 
 _policy = None  # callable(channel, recipient, operation) -> bool, регистрируется set_policy()
 
@@ -148,6 +152,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         return port is None or port == 443
+    if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
+        return port is None or port == 443
     return False
 
 
@@ -158,6 +164,8 @@ def _ip_allowed(ip, port=None):
         return True
     if getattr(_tg_ctx, 'active', False) and port is not None and (ip, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_read_ctx, 'active', False) and port is not None and (ip, port) in getattr(_read_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -166,9 +174,13 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         _record_block(f'getaddrinfo host={host}:{port}')
         raise socket.gaierror(-2, 'Имя или служба неизвестны (заблокировано egress-guard стенда)')
     infos = _orig_getaddrinfo(host, port, family, type, proto, flags)
-    if host and str(host).strip('[]').lower() == _TG_HOST and getattr(_tg_ctx, 'active', False):
+    h = str(host).strip('[]').lower() if host else None
+    if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))
+    if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _read_ctx.allowed_pairs = pairs | set(getattr(_read_ctx, 'allowed_pairs', ()))
     return infos
 
 
@@ -331,3 +343,210 @@ def tg_call(method, payload, _base_url=None):
     finally:
         _tg_ctx.active = False
         _tg_ctx.allowed_ips = set()
+
+
+# ─────────────────────── T9: контролируемые каналы чтения ──────────────────
+# Блокчейн (TronScan/Etherscan), публичные рыночные котировки (Rapira/Bitazza)
+# и зеркало прод-поступлений — read_get(op, params) единственный путь наружу.
+# op — из закрытого словаря ниже: URL, заголовки и ключ строит канал сам,
+# вызывающий код передаёт только значения параметров операции.
+
+def _valid_tron_hash(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'[0-9a-fA-F]{64}', v))
+
+
+def _valid_eth_hash(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'0x[0-9a-fA-F]{64}', v))
+
+
+def _valid_eth_block_tag(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'0x[0-9a-fA-F]{1,16}', v))
+
+
+def _valid_chainid(v):
+    return v == '1'  # только Ethereum mainnet — единственная сеть, которую проверяет код
+
+
+def _valid_eth_module_proxy(v):
+    return v == 'proxy'
+
+
+def _valid_eth_action_receipt(v):
+    return v == 'eth_getTransactionReceipt'
+
+
+def _valid_eth_action_block(v):
+    return v == 'eth_getBlockByNumber'
+
+
+def _valid_eth_bool_false(v):
+    return v == 'false'
+
+
+def _valid_bitazza_oms_id(v):
+    return v == 1
+
+
+def _valid_bitazza_instrument_id(v):
+    return v == 5  # OMSId=1/InstrumentId=5 — фиксированная пара USDT/THB на Bitazza APEX
+
+
+def _valid_bitazza_depth(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 400
+
+
+def _valid_prod_all_flag(v):
+    return v in (1, '1')
+
+
+# host/path — точные, без wildcard/prefix; params — закрытый словарь имя→валидатор
+# значения (не только имени параметра); required — какие обязательны.
+_READ_CHANNELS = {
+    'tron_tx_info': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/transaction-info',
+        'params': {'hash': _valid_tron_hash},
+        'required': {'hash'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'eth_tx_receipt': {
+        'host': 'api.etherscan.io',
+        'path': '/v2/api',
+        'params': {
+            'chainid': _valid_chainid, 'module': _valid_eth_module_proxy,
+            'action': _valid_eth_action_receipt, 'txhash': _valid_eth_hash,
+        },
+        'required': {'chainid', 'module', 'action', 'txhash'},
+        'key_env': 'STAND_ETHERSCAN_API_KEY', 'key_param': 'apikey', 'key_optional': False,
+    },
+    'eth_block_by_number': {
+        'host': 'api.etherscan.io',
+        'path': '/v2/api',
+        'params': {
+            'chainid': _valid_chainid, 'module': _valid_eth_module_proxy,
+            'action': _valid_eth_action_block, 'tag': _valid_eth_block_tag,
+            'boolean': _valid_eth_bool_false,
+        },
+        'required': {'chainid', 'module', 'action', 'tag', 'boolean'},
+        'key_env': 'STAND_ETHERSCAN_API_KEY', 'key_param': 'apikey', 'key_optional': False,
+    },
+    'market_rapira': {
+        'host': 'api.rapira.net',
+        'path': '/open/market/rates',
+        'params': {},
+        'required': set(),
+    },
+    'market_bitazza': {
+        'host': 'apexapi.bitazza.com',
+        'path': '/AP/GetL2Snapshot',
+        'params': {
+            'OMSId': _valid_bitazza_oms_id, 'InstrumentId': _valid_bitazza_instrument_id,
+            'Depth': _valid_bitazza_depth,
+        },
+        'required': {'OMSId', 'InstrumentId', 'Depth'},
+    },
+    'market_binance_ticker': {
+        'host': 'api.binance.com',
+        'path': '/api/v3/ticker/price',
+        'params': {'symbol': lambda v: v == 'USDTTHB'},
+        'required': {'symbol'},
+    },
+    'prod_incomes': {
+        'host': 'grusha.up.railway.app',
+        'path': '/api/sber-incomes',
+        'params': {'all': _valid_prod_all_flag},
+        'required': set(),
+        'key_env': 'STAND_PROD_RO_KEY', 'key_header': 'X-Api-Key', 'key_optional': False,
+    },
+}
+
+_MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
+_READ_REDIRECT_CODES = (301, 302, 303, 307, 308)
+
+
+def read_get(op, params=None, _base_url=None):
+    """Единственный путь в закрытый список внешних чтений (блокчейн, курсы,
+    зеркало прод-поступлений).
+
+    `op` — enum-ключ из `_READ_CHANNELS`, не URL: адрес, заголовки и ключ
+    строит сам канал, вызывающий код передаёт только значения параметров.
+    Возвращает (status_code|None, parsed_json|None, error_code|None).
+    `_base_url` — только для тестов (как `_base_url` у tg_call), прод его не
+    передаёт и не читает из env.
+    """
+    import requests
+
+    spec = _READ_CHANNELS.get(op)
+    if spec is None:
+        return None, None, 'unknown_op'
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return None, None, 'invalid_params'
+
+    validators = spec['params']
+    if set(params) - set(validators):
+        return None, None, 'unknown_param'  # неизвестный параметр — отказ до сети
+    if spec['required'] - set(params):
+        return None, None, 'missing_param'
+
+    query = {}
+    for name, value in params.items():
+        if isinstance(value, (list, tuple, dict, set)):
+            return None, None, 'invalid_param'  # дубли/multi-value так и приходят — список значений
+        if isinstance(value, bool) or not validators[name](value):
+            return None, None, 'invalid_param'
+        query[name] = value
+
+    headers = {}
+    key_env = spec.get('key_env')
+    if key_env:
+        key = os.environ.get(key_env, '').strip()
+        if key:
+            if spec.get('key_header'):
+                headers[spec['key_header']] = key
+            elif spec.get('key_param'):
+                query[spec['key_param']] = key
+        elif not spec.get('key_optional'):
+            return None, None, 'no_key'
+
+    host = spec['host']
+    base = (_base_url or f'https://{host}').rstrip('/')
+    url = f'{base}{spec["path"]}'
+
+    _read_ctx.active = True
+    _read_ctx.host = host
+    _read_ctx.allowed_pairs = set()
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        try:
+            resp = session.get(url, params=query, headers=headers, timeout=8,
+                               allow_redirects=False, stream=True)
+            try:
+                if resp.status_code in _READ_REDIRECT_CODES:
+                    return resp.status_code, None, 'redirect_blocked'
+                raw = resp.raw.read(_MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
+                if len(raw) > _MAX_READ_RESPONSE_BYTES:
+                    return resp.status_code, None, 'response_too_large'
+                try:
+                    data = json.loads(raw.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    return resp.status_code, None, 'invalid_json'
+                return resp.status_code, data, None
+            finally:
+                resp.close()
+        finally:
+            session.close()
+    except requests.exceptions.Timeout:
+        return None, None, 'timeout'
+    except requests.exceptions.SSLError:
+        return None, None, 'tls_error'
+    except requests.exceptions.RequestException:
+        # Текст исключения requests нередко содержит сам URL/параметры — наружу
+        # уходит только стабильный код, как и в tg_call.
+        return None, None, 'network_error'
+    finally:
+        _read_ctx.active = False
+        _read_ctx.host = None
+        _read_ctx.allowed_pairs = set()

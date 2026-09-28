@@ -259,9 +259,33 @@ class ExchangeRateProvider:
             dict: {"usdt_thb": float, "rub_usdt": float}
         """
         if os.environ.get('STAND_MODE') == '1':
-            # Binance/Rapira — реальные внешние сервисы; на стенде сеть выключена
-            # целиком (все вызывающие роуты уже отдают «на стенде выключено»).
-            return {"usdt_thb": None, "rub_usdt": None}
+            # На стенде курс дня — настоящий рынок, но только через контролируемый
+            # канал чтения T9 (stand_egress.read_get): Binance-тикер + Рапира-тикер,
+            # без стакана/VWAP и без Playwright. На ошибке/429 честно None — курс
+            # не выдумывается и старое значение за свежее не выдаётся (кэша нет).
+            import stand_egress
+            usdt_thb = None
+            status_code, data, err = stand_egress.read_get('market_binance_ticker', {'symbol': 'USDTTHB'})
+            if not err and status_code == 200 and isinstance(data, dict):
+                try:
+                    price = float(data.get('price'))
+                    usdt_thb = price if price > 0 else None
+                except (TypeError, ValueError):
+                    usdt_thb = None
+            rub_usdt = None
+            status_code, data, err = stand_egress.read_get('market_rapira', {})
+            if not err and status_code == 200 and isinstance(data, dict):
+                rows = data.get('data') if isinstance(data.get('data'), list) else []
+                for row in rows:
+                    if row.get('symbol') in ('USDT/RUB', 'USDTRUB'):
+                        try:
+                            ask = float(row.get('askPrice') or 0)
+                        except (TypeError, ValueError):
+                            ask = 0
+                        if ask > 0:
+                            rub_usdt = ask * ExchangeRateProvider.RAPIRA_MARKUP
+                        break
+            return {"usdt_thb": usdt_thb, "rub_usdt": rub_usdt}
         usdt_thb = await ExchangeRateProvider.get_binance_rate("USDTTHB")
         rub_usdt = await ExchangeRateProvider.get_rapira_rate()
 
