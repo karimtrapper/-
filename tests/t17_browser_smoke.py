@@ -918,5 +918,44 @@ with sync_playwright() as playwright:
     assert founder_saved['needs'] is False
     assert not crm_posts,crm_posts
     crm_f.close()
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic split payin')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('100')
+    host.locator('#payoutAmountThb').fill('3200')
+    pick(host,'payoutSource','binance')
+    host.locator('#binanceUsdt').fill('98')
+    host.locator('button[data-crm-call="payinExtraAdd()"]') .click()
+    host.locator('#payinExtraList select').first.select_option('partners_cash')
+    host.locator('#pe-0-rub').fill('2000')
+    host.locator('#pe-0-rate').fill('100')
+    crm_split=context.new_page()
+    crm_split.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_split.evaluate('showSection("create")')
+    crm_split.wait_for_function('document.querySelector("#payinMethod")?.dataset.upgraded === "true"')
+    pick(crm_split,'payinMethod','crypto_direct')
+    crm_split.locator('[name="payin_amount_usdt"]').fill('100')
+    crm_split.locator('button[onclick="payinExtraAdd()"]') .click()
+    crm_split.locator('#payinExtraList select').first.select_option('partners_cash')
+    crm_split.locator('#pe-0-rub').fill('2000')
+    crm_split.locator('#pe-0-rate').fill('100')
+    source_extras=[crm_split.evaluate('payinExtraSerialize()'),
+                   page.evaluate('crmDraftActive.core.payinExtraSerialize()')]
+    print('split payin source CRM/tasks:',source_extras)
+    assert source_extras[0]==source_extras[1]
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    split_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic split payin');
+      const p=crmPayload(d);return {main:p.payin_amount_usdt,extra:p.payin_extra,
+        total:econ(d).payin,method:p.payin_method};}''')
+    print('split payin save/reload payload:',split_saved)
+    assert split_saved['main']==100 and split_saved['extra'][0]['amount_usdt']==20
+    assert split_saved['extra'][0]['method']=='partners_cash'
+    assert split_saved['total']==120 and split_saved['method']=='crypto_direct'
+    assert not crm_posts,crm_posts
+    crm_split.close()
     print('blocked external attempts:',blocked)
     browser.close()
