@@ -69,6 +69,8 @@ const num = x => (x == null || x === '') ? null : parseFloat(String(x).replace('
   const toasts = [], marked = [];
   const ctx = run(['act', 'addrValid'], {
     deal: () => d, cnvMembers: () => [d], saveNote: () => {},
+    convOf: () => ({txs: [{amount: 100, status: 'confirmed'}]}),
+    hashSum: txs => txs.reduce((sum, tx) => sum + tx.amount, 0), isCrypto: () => false,
     document: {getElementById: id => ({id, scrollIntoView() {}, focus() {},
       classList: {add: c => marked.push(id + ':' + c)}})},
     pcSends: () => true, pcInside: () => false, pcNet: x => x.transfer.net,

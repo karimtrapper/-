@@ -280,10 +280,19 @@ def test_check_endpoint_closes_small_and_rejects_rewriting_confirmed(monkeypatch
     monkeypatch.setattr(appmod, 'verify_transfer', lambda *a, **kw: {
         'status': 'confirmed', 'verifiedAmount': 600, 'verifiedAt': '2026-09-24T12:00:00Z',
         'from': FROM, 'to': TO, 'timestampMs': 1700000000000})
+    value = board()
+    value['incomes'] = [{'id': 1, 'dealId': 1, 'rub': 100000, 'demo': True},
+                        {'id': 2, 'dealId': 2, 'rub': 50000, 'demo': True}]
+    value['deals'][0]['incomeAmount'] = 100000
+    value['deals'][0]['payinParts'] = [{'incId': 1, 'amountRub': 100000}]
+    value['deals'][1]['incomeAmount'] = 50000
+    value['deals'][1]['payinParts'] = [{'incId': 2, 'amountRub': 50000}]
+    value['convs'][0]['txs'] = [{'hash': 'b' * 64, 'net': 'TRC-20',
+                                'amount': 700, 'status': 'confirmed'}]
     db = appmod.get_session()
     try:
         row = appmod._stand_row(db)
-        row.data = json.dumps(board())
+        row.data = json.dumps(value)
         row.version = 1
         db.commit()
     finally:
@@ -300,6 +309,97 @@ def test_check_endpoint_closes_small_and_rejects_rewriting_confirmed(monkeypatch
         rejected = client.put('/api/stand/state', json={
             'version': result.json['version'], 'data': state})
         assert rejected.status_code == 409
+
+
+@pytest.mark.parametrize('funding_breaks_during_verify', [False, True])
+@pytest.mark.parametrize('bad_first', [False, True])
+@pytest.mark.parametrize('bad_kind', ['underfunded', 'malformed'])
+def test_background_poll_isolates_underfunded_batch(
+        monkeypatch, funding_breaks_during_verify, bad_first, bad_kind):
+    """A bad batch cannot stall the board or consume a stale verified result."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    state = {'wallets': [{'id': 'grusha', 'addr': FROM}], 'incomes': [],
+             'convs': [], 'deals': [], 'notes': []}
+    for deal_id in ((2, 1) if bad_first else (1, 2)):
+        tx_amount = (1 if deal_id == 2 and bad_kind == 'underfunded'
+                     and not funding_breaks_during_verify else 600)
+        source_rub = (0 if deal_id == 2 and bad_kind == 'malformed'
+                      and not funding_breaks_during_verify else 100000)
+        transfer_hash = str(deal_id) * 64
+        state['incomes'].append({'id': deal_id, 'dealId': deal_id, 'rub': 100000,
+                                 'demo': True})
+        state['convs'].append({'id': deal_id, 'walletId': 'grusha',
+                               'sources': [{'dealId': deal_id, 'rub': source_rub}],
+                               'txs': [{'hash': transfer_hash, 'net': 'TRC-20',
+                                        'amount': tx_amount, 'status': 'confirmed'}]})
+        state['deals'].append({'id': deal_id, 'cnvId': deal_id, 'step': 's23',
+                               'postConv': 'coins', 'incomeAmount': 100000,
+                               'payinParts': [{'incId': deal_id, 'amountRub': 100000}],
+                               'transfer': {'addr': TO, 'amount': 600, 'sends': [
+                                   {'ref': transfer_hash, 'hash': transfer_hash,
+                                    'net': 'TRC-20', 'amount': 600, 'status': 'pending'}]},
+                               'pay': {}, 'log': []})
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state)
+        row.version = 1
+        db.commit()
+    finally:
+        db.close()
+
+    calls = []
+    def verified(*args, **kwargs):
+        calls.append(args[0])
+        if funding_breaks_during_verify and len(calls) == 1:
+            db = appmod.get_session()
+            try:
+                row = appmod._stand_row(db)
+                changed = json.loads(row.data)
+                bad_conv = next(c for c in changed['convs'] if c['id'] == 2)
+                if bad_kind == 'underfunded':
+                    bad_conv['txs'][0]['amount'] = 1
+                else:
+                    bad_conv['sources'][0]['rub'] = 0
+                row.data = json.dumps(changed)
+                row.version += 1
+                db.commit()
+            finally:
+                db.close()
+        return {'status': 'confirmed', 'verifiedAmount': 600,
+                'verifiedAt': '2026-09-28T12:00:00Z', 'from': FROM, 'to': TO,
+                'timestampMs': 1700000000000}
+
+    monkeypatch.setattr(appmod, 'verify_transfer', verified)
+    result = appmod._stand_check_transfers(poll=True)
+    assert result['success'] is True
+    after = {d['id']: d for d in result['data']['deals']}
+    assert after[1]['transfer']['sends'][0]['status'] == 'confirmed'
+    assert after[2]['transfer']['sends'][0]['status'] == 'pending'
+    assert after[2]['step'] == 's23'
+    assert not after[2].get('serverTransferComplete')
+    assert not after[2].get('serverSettled')
+    assert not any(str(note.get('id', '')).endswith(':2')
+                   for note in result['data']['notes'])
+    bad_before_replay = json.loads(json.dumps(after[2]))
+    notes_before_replay = json.loads(json.dumps(result['data']['notes']))
+    version_before_replay = result['version']
+    calls_before_replay = len(calls)
+    replay = appmod._stand_check_transfers(poll=True)
+    assert replay['version'] == version_before_replay
+    assert replay['data']['notes'] == notes_before_replay
+    assert next(d for d in replay['data']['deals'] if d['id'] == 2) == bad_before_replay
+    assert len(calls) == calls_before_replay
+    rejected = appmod._stand_check_transfers(deal_id=2)
+    assert rejected['httpStatus'] == 409
+    assert 'data' not in rejected
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        assert row.version == version_before_replay
+        assert json.loads(row.data)['notes'] == notes_before_replay
+    finally:
+        db.close()
 
 
 def test_incoming_endpoint_rejects_old_tx_and_persists_verified(monkeypatch):

@@ -3020,10 +3020,24 @@ function pendingEx(exceptId){
      шла с 0 ₽, а её баты попадали в «должны выдать» (прогон 24.09). */
   return S.deals.filter(x=>!x.closed&&x.step==='ready'&&!isCrypto(x)&&x.id!==exceptId&&!taken[x.id]);
 }
+function rubBatchReady(x){
+  const rub=Number(x.incomeAmount||x.amountRub);
+  if(!Number.isFinite(rub)||rub<=0)return false;
+  const parts=x.payinParts||[];
+  if(!parts.length)return false;
+  const ids=new Set();let total=0;
+  for(const p of parts){
+    const i=incomes().find(v=>String(v.id)===String(p.incId));
+    if(!i||ids.has(String(p.incId))||i.dealId!==x.id||i.excluded||
+      !(i.source==='sber'||i.demo===true)||Number(p.amountRub)!==Number(i.grossRub||i.rub))return false;
+    ids.add(String(p.incId));total+=Number(p.amountRub);
+  }
+  return Math.round(total*100)===Math.round(rub*100);
+}
 function exSum(l){return l.reduce((s,x)=>s+(x.amountRub||0),0);}
 function exSpread(x){return x.spread==null?0.3:x.spread;}
 function exMargin(l){return Math.round(l.reduce((s,x)=>s+(x.amountRub||0)*exSpread(x)/100,0));}
-function convAll(id){const d=deal(id);d.conv=pendingEx(id).map(x=>x.id);
+function convAll(id){const d=deal(id);d.conv=pendingEx(id).filter(rubBatchReady).map(x=>x.id);
   log(d,'В обмен добраны мелкие: '+d.conv.length+' на '+money(exSum(d.conv.map(deal)),'₽'));
   save();render();toast('Взяли '+d.conv.length+' '+plural(d.conv.length,'мелкий обмен','мелких обмена','мелких обменов'));}
 function convNone(id){const d=deal(id);d.conv=[];save();render();toast('Мелкие обмены сняты');}
@@ -5859,7 +5873,8 @@ function toggleDoc(id,k){
   }
   fileAdd(id,k);
 }
-function toggleConv(id,xid){const d=deal(id);d.conv=d.conv||[];
+function toggleConv(id,xid){const d=deal(id),x=deal(xid);d.conv=d.conv||[];
+  if(!d.conv.includes(xid)&&!rubBatchReady(x)){toast('Нужен положительный RUB приход, привязанный к этой сделке и подтверждённый в поступлениях');return;}
   d.conv.includes(xid)?d.conv=d.conv.filter(v=>v!==xid):d.conv.push(xid);save();render();}
 function setSrc(id,k){const d=deal(id);d.paySrc=k;save();render();}
 /* Комментарий на каждом шаге — вместо сравнения вариантов. Пишется в журнал, поэтому
@@ -7116,7 +7131,7 @@ function stepCard(d){
     const total=base+exSum(selD);
     const bp=brokerPicked(d), bq=brokerQuote(d,bp), used=quoteUsed(d,'rub');
     return `<div class="card"><div class="card-title">Отправка брокеру для конвертации<span class="sub">курс берётся на общий объём</span></div>
-    ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — их можно отправить брокеру этим же переводом и по этому же курсу. Наценка по ним ≈ ${money(exMargin(free),'₽')}. Не возьмёте — полежат до следующего обмена.</div>
+    ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — выбрать можно только сделки с положительным подтверждённым приходом RUB. Остальным сначала нужно зарегистрировать и привязать оплату. Наценка по готовым ≈ ${money(exMargin(free.filter(rubBatchReady)),'₽')}.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap" onclick="convAll(${d.id})">Взять все</button></div>`:''}
     <div class="card-title" style="font-size:14px;margin-bottom:4px">Что уходит брокеру одним переводом
       ${sel.length?`<button class="btn btn-outline btn-sm" onclick="convNone(${d.id})">Снять отмеченные</button>`:''}</div>
@@ -7135,7 +7150,7 @@ function stepCard(d){
         <span class="t3 num">${money(base,'₽')}</span></div>
       ${extra.length?extra.map(x=>`<div class="li ${sel.indexOf(x.id)<0?'':'on'}" onclick="toggleConv(${d.id},${x.id})">
         <span class="av">${sel.indexOf(x.id)<0?'+':'✓'}</span><div><div class="t1">${x.code} · ${x.client}</div>
-        <div class="t2">без шагов · ${x.payType} · указанная наценка ${String(exSpread(x)).replace('.',',')}% (прибыль будет по факту прихода и выдачи)${
+        <div class="t2">без шагов · ${x.payType} · ${rubBatchReady(x)?'приход RUB подтверждён':'нужен положительный подтверждённый приход RUB'} · указанная наценка ${String(exSpread(x)).replace('.',',')}% (прибыль будет по факту прихода и выдачи)${
           sel.indexOf(x.id)<0?'':' · к брокеру <b>'+moneyKop(sh(x.amountRub||0),'₽')+'</b>'}</div></div>
         <span class="t3 num">${money(x.amountRub,'₽')}<br><span class="pick">${
           sel.indexOf(x.id)<0?'отметить в этот перевод':'идёт этим переводом'}</span></span></div>`).join(''):
@@ -7625,6 +7640,8 @@ function act(id,step){
     const rate=num(b1);
     if(!Number.isFinite(rate)||rate<=0){toast('Курс брокера должен быть больше нуля');return;}
     const members=[d].concat((d.conv||[]).map(deal).filter(Boolean));
+    const unready=members.find(x=>!rubBatchReady(x));
+    if(unready){toast(unready.code+': нужен положительный подтверждённый RUB приход для пачки');return;}
     S.cseq=(S.cseq||0)+1;
     const rubTotal=members.reduce((s,x)=>s+(x.incomeAmount||x.amountRub||0),0);
     const bs=brokerSend(rubTotal);
@@ -7686,11 +7703,14 @@ function act(id,step){
          чтобы прибыль считалась от того, что реально пришло. В пачке денег несколько
          сделок — делим по доле рублей, иначе расхождение осядет на одной из них. */
       const rubAll=c.sources.reduce((s,x)=>s+(x.rub||0),0);
+      const lastFunded=c.sources.map((src,i)=>Number(src.rub)>0?i:-1).filter(i=>i>=0).pop();
+      if(!Number.isFinite(rubAll)||rubAll<=0||lastFunded==null||c.sources.some(src=>!Number.isFinite(Number(src.rub))||Number(src.rub)<=0)){
+        toast('Пачка содержит источник без положительного RUB прихода');return;}
       const allocations=c.sources.map(()=>[]);
       c.txs.forEach(t=>{
         const cents=Math.round(t.amount*100);let allocated=0;
         c.sources.forEach((src,i)=>{
-          const part=i===c.sources.length-1?cents-allocated:Math.floor(cents*(src.rub||0)/rubAll);
+          const part=i===lastFunded?cents-allocated:(i>lastFunded?0:Math.floor(cents*src.rub/rubAll));
           allocated+=part;allocations[i].push({amount:part/100,network:t.net||'TRC20',hash:t.hash});
         });
       });
@@ -7714,6 +7734,11 @@ function act(id,step){
     /* Решение принимается по каждой сделке пачки: одна уходит в Coins, другая клиенту,
        по третьей перевода нет. Пока хоть по одной не решили — отправлять нечего. */
     const mem=cnvMembers(d);
+    const batch=convOf(d);
+    const funded=batch?hashSum(batch.txs):(isCrypto(d)?hashSum(d.payinHashes):null);
+    const totalOut=pcOut(d);
+    if(funded==null||Math.round(totalOut*100)>Math.round(funded*100)){
+      toast('Подтверждено '+usd(funded||0)+', по задачам '+usd(totalOut)+' — сначала нужен подтверждённый приход на всю отправку');return;}
     const bad=(x,why,fid)=>{const e=document.getElementById(fid);
       if(e){e.scrollIntoView({block:'center'});e.focus();e.classList.add('bad');}
       toast(x.code+': '+why);};

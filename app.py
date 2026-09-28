@@ -21,6 +21,7 @@ import secrets
 import base64
 import binascii
 import stand_notify
+from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 from collections import Counter
 import bcrypt
 import logging
@@ -5208,6 +5209,10 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': previous}), 409
         clean = preserve_server_fields(previous, payload['data'])
+        problem = _stand_check_funding_state(previous, clean)
+        if problem:
+            return jsonify({'success': False, 'error': problem,
+                            'version': row.version or 0, 'data': previous}), 409
         _stand_completion_notes(previous, clean)
         row.data = json.dumps(clean, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -5653,7 +5658,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     and _stand_valid_receipt(deal)
                     and deal.get('sentToClient')):
                 return 'Нужны подтверждённые переводы, оплата инвойса, чек и отправка клиенту'
-    return None
+    return _stand_check_funding_state(previous, new_state)
 
 
 def _stand_completion_notes(previous, state):
@@ -5860,7 +5865,19 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
            [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
     if deal_id is not None and _stand_batch_main(snapshot, deal_id) is None:
         return {'success': False, 'error': 'Главная сделка пачки не определена', 'httpStatus': 409}
-    ids = [wanted for wanted in ids if _stand_batch_main(snapshot, wanted) is not None]
+    blocked_convs = set()
+    for selected in [c for c in snapshot.get('convs', [])
+                     if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
+                            for d in snapshot.get('deals', []))]:
+        problem = _stand_check_batch_funding(snapshot, selected, dispatch=True)
+        if problem:
+            if not poll:
+                return {'success': False, 'error': problem, 'httpStatus': 409}
+            blocked_convs.add(selected.get('id'))
+    ids = [wanted for wanted in ids
+           if _stand_batch_main(snapshot, wanted) is not None
+           and next((d.get('cnvId') for d in snapshot.get('deals', [])
+                     if d.get('id') == wanted), None) not in blocked_convs]
     jobs = []
     seen = set()
     for wanted in ids:
@@ -5915,12 +5932,21 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
     try:
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
+        blocked_convs = set()
+        for selected in [c for c in state.get('convs', [])
+                         if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
+                                for d in state.get('deals', []))]:
+            problem = _stand_check_batch_funding(state, selected, dispatch=True)
+            if problem:
+                if not poll:
+                    return {'success': False, 'error': problem, 'httpStatus': 409}
+                blocked_convs.add(selected.get('id'))
         changed = False
         for member_id, key, demo_outcome, result in results:
             if _stand_batch_main(state, member_id) is None:
                 continue
             deal = next((d for d in state.get('deals', []) if d.get('id') == member_id), None)
-            if not deal:
+            if not deal or deal.get('cnvId') in blocked_convs:
                 continue
             for send in (deal.get('transfer') or {}).get('sends') or []:
                 if (send_fingerprint(state, deal, send) != key
@@ -5935,6 +5961,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 changed = True
                 break
         for wanted in ids:
+            if any(d.get('id') == wanted and d.get('cnvId') in blocked_convs
+                   for d in state.get('deals', [])):
+                continue
             members = _stand_members(state, wanted)
             if members:
                 changed = _stand_settle_verified(state, members) or changed
@@ -6004,6 +6033,10 @@ def stand_transfers_demo():
                      if s.get('ref') == ref or s.get('hash') == ref), None)
         if not send:
             return jsonify({'success': False, 'error': 'Отправка не найдена'}), 404
+        if conv:
+            problem = _stand_check_batch_funding(state, conv, dispatch=True)
+            if problem:
+                return jsonify({'success': False, 'error': problem}), 409
         if send.get('status') == 'confirmed':
             return jsonify({'success': False, 'error': 'Подтверждённый перевод нельзя изменить'}), 409
         send['demoOutcome'] = outcome

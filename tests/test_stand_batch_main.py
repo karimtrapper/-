@@ -9,6 +9,7 @@ import app as appmod
 def state(main_route='ipps_swift', side_route='coins', step='s24', reverse=False):
     main = {'id': 1473, 'code': 'MAIN', 'cnvId': 1, 'conv': [1476],
             'postConv': main_route, 'step': step, 'demoTransfers': True,
+            'incomeAmount': 10000, 'payinParts': [{'incId': 1, 'amountRub': 10000}],
             'transfer': {'addr': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
                          'amount': 100, 'sends': [
                              {'ref': 'demo:1473:one', 'hash': 'demo:1473:one',
@@ -18,14 +19,19 @@ def state(main_route='ipps_swift', side_route='coins', step='s24', reverse=False
             'pay': {}, 'log': []}
     side = {'id': 1476, 'code': 'SIDE', 'cnvId': 1, 'conv': [],
             'postConv': side_route, 'step': 'pack', 'demoTransfers': True,
+            'incomeAmount': 1000, 'payinParts': [{'incId': 2, 'amountRub': 1000}],
             'transfer': {'addr': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
                          'amount': 10, 'sends': [
                              {'ref': 'demo:1476:one', 'hash': 'demo:1476:one',
                               'net': 'TRC-20', 'amount': 10, 'status': 'pending'}]},
             'pay': {}, 'log': []}
     deals = [side, main] if reverse else [main, side]
-    return {'deals': deals, 'convs': [{'id': 1, 'walletId': 'grusha',
-            'sources': [{'dealId': 1476}, {'dealId': 1473}], 'txs': []}],
+    return {'deals': deals, 'incomes': [
+                {'id': 1, 'dealId': 1473, 'rub': 10000, 'demo': True},
+                {'id': 2, 'dealId': 1476, 'rub': 1000, 'demo': True}],
+            'convs': [{'id': 1, 'walletId': 'grusha',
+            'sources': [{'dealId': 1476, 'rub': 1000}, {'dealId': 1473, 'rub': 10000}],
+            'txs': [{'hash': 'a' * 64, 'net': 'TRC-20', 'amount': 200, 'status': 'confirmed'}]}],
             'wallets': [{'id': 'grusha', 'role': 'findir', 'multisig': True,
                          'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'}], 'notes': []}
 
