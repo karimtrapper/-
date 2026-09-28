@@ -276,7 +276,8 @@ async function crmDraftMount(id) {
     const form=page.querySelector('#createDealForm').cloneNode(true);
     crmDraftSanitize(form);
     shadow.append(form);
-    const active={id,host,root:shadow,form,core:null};
+    const active={id,host,root:shadow,form,core:null,
+      clientPicked:!!deal(id)?.clientPinned};
     crmDraftActive=active;
     const d=deal(id);
     const subtype=document.getElementById('crmDraftRealtySubtype');
@@ -419,6 +420,19 @@ function crmDraftSourceChoices() {
     source==='none'?'Телефон, офис, рекомендация':'Имя или номер чата';
   list.replaceChildren(...chatList(source).map(value=>new Option(value,value)));
 }
+function crmDraftSourceResolveClient(active) {
+  const ref=document.getElementById('crmDraftSourceRef')?.value.trim();
+  if(!ref||active.clientPicked)return;
+  const source=document.getElementById('crmDraftSource')?.value;
+  const prior=knownBy(source,ref).find(x=>x.clientId&&x.id!==active.id);
+  const local=clients().find(c=>c.tg===ref);
+  const client=local||prior;
+  // Legacy editRefSet recognised a client from the chat or Bitrix source.
+  // This updates the draft controls; only explicit Save mutates stand_state.
+  crmDraftValue(active.root,'clientSearchInput',client?.name||client?.client||ref);
+  const crmClient=(active.clients||[]).find(c=>c.name===(client?.name||client?.client));
+  crmDraftValue(active.root,'clientIdHidden',crmClient?.id||'');
+}
 function crmDraftWire(active) {
   const {root,form}=active;
   form.addEventListener('submit',e=>{e.preventDefault();editSave(active.id);});
@@ -428,6 +442,8 @@ function crmDraftWire(active) {
     crmDraftValue(document,'crmDraftSourceRef','');
     crmDraftSourceChoices();
   });
+  document.getElementById('crmDraftSourceRef')?.addEventListener('change',()=>
+    crmDraftSourceResolveClient(active));
   crmDraftSourceChoices();
   root.addEventListener('change',e=>{
     const el=e.target;
@@ -487,6 +503,7 @@ function crmDraftWire(active) {
       active.core.fhRecalc();
     }
     if(el.id==='clientSearchInput'){
+      active.clientPicked=true;
       crmDraftValue(root,'clientIdHidden','');
       crmDraftClientSearch(active,el.value);
     }
@@ -570,6 +587,7 @@ function crmDraftClientSearch(active,query) {
     const c=active.clients.find(x=>String(x.id)===el.dataset.client);
     crmDraftValue(active.root,'clientIdHidden',c.id);
     crmDraftValue(active.root,'clientSearchInput',c.name);box.style.display='none';
+    active.clientPicked=true;
     const local=clients().find(x=>x.name===c.name);
     if(local?.refId&&!active.core.stdAgents.length){
       active.core.stdAgentsLoad(agentsDefault(local.refId).map(a=>({
@@ -582,6 +600,7 @@ function crmDraftClientSearch(active,query) {
     // CRM's selectNewClient receives the normalized `q` from its dropdown.
     crmDraftValue(active.root,'clientIdHidden','');
     crmDraftValue(active.root,'clientSearchInput',q);
+    active.clientPicked=true;
     box.style.display='none';
   });
 }
@@ -639,6 +658,7 @@ function crmDraftCommitCustom(a,d,before) {
   d.manager=crmDraftRead(r,'managerSelect')||d.manager;
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));
+    d.clientPinned=!!a.clientPicked;
     let local=clients().find(c=>c.name===name);
     if(!local){local={id:Math.max(0,...clients().map(c=>Number(c.id)||0))+1,
       name,tg:d.sourceRef||'',docs:false,refId:null};clients().push(local);}
@@ -725,6 +745,7 @@ function crmDraftCommit(id) {
   const name=crmDraftRead(r,'clientSearchInput').trim();
   if(name){
     d.client=name;d.crmClientId=crmDraftNum(crmDraftRead(r,'clientIdHidden'));
+    d.clientPinned=!!a.clientPicked;
     let local=clients().find(c=>c.name===name);
     if(!local){
       const cid=Math.max(0,...clients().map(c=>Number(c.id)||0))+1;

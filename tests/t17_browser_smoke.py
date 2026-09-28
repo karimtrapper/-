@@ -1053,5 +1053,18 @@ with sync_playwright() as playwright:
     page.evaluate('editClose()')
     assert not crm_posts,crm_posts
     print('source/Bitrix cancel, save, reload, reopen: PASS; CRM POST 0')
+    start_manual(page)
+    page.evaluate("clients().push({id:987,name:'T17 Source Client',tg:'T17 known chat',docs:true})")
+    host=page.locator('#crmDraftHost')
+    page.locator('#crmDraftSourceRef').fill('T17 known chat')
+    page.locator('#crmDraftSourceRef').press('Tab')
+    assert host.locator('#clientSearchInput').input_value()=='T17 Source Client'
+    assert page.evaluate('deal(S.edit).client')=='Без имени'
+    host.locator('#clientSearchInput').fill('T17 explicitly chosen client')
+    page.locator('#crmDraftSourceRef').fill('T17 another chat')
+    page.locator('#crmDraftSourceRef').press('Tab')
+    assert host.locator('#clientSearchInput').input_value()=='T17 explicitly chosen client'
+    page.evaluate('editClose()')
+    print('source recognizes local client; explicit client remains pinned; cancel leaves no change')
     print('blocked external attempts:',blocked)
     browser.close()
