@@ -96,6 +96,17 @@ with sync_playwright() as playwright:
     mocked=[]
     def route_local(route):
         parsed=urlparse(route.request.url)
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/cash/batches':
+            route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                'success':True,'batches':[{'id':1,'status':'active','remaining_thb':200000,
+                                          'purchase_rate':32}],
+                'summary':{'total_remaining_thb':200000}}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/cards/balance':
+            route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                'success':True,'cards':[{'id':7,'bank_name':'T17 Bank',
+                  'holder_name':'Synthetic','balance_thb':200000,'avg_rate':31.25}]}))
+            return
         if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/transactions/outgoing':
             mocked.append(('outgoing',parse_qs(parsed.query)))
             limit=int(parse_qs(parsed.query).get('limit',['1000'])[0])
@@ -571,6 +582,34 @@ with sync_playwright() as playwright:
     task_exchange_money=host.locator('#createDealForm').evaluate(money_fields)
     print('exchange money CRM/tasks:',crm_exchange_money,task_exchange_money)
     assert crm_exchange_money==task_exchange_money
+    for source,expected in [('cash_batch','$3125.00'),('bank_card','$3200.00')]:
+        pick(crm_ex,'payoutSource',source)
+        pick(host,'payoutSource',source)
+        crm_ex.evaluate('calculateProfit()')
+        page.evaluate('crmDraftActive.core.calculateProfit()')
+        values=(crm_ex.locator('#cashBatchCostUsdt').input_value(),
+                host.locator('#cashBatchCostUsdt').input_value())
+        if source=='bank_card':
+            print('card select CRM/tasks:',
+                  crm_ex.locator('#bankCardSelect').evaluate('e=>[e.value,e.innerHTML,e.selectedIndex]'),
+                  host.locator('#bankCardSelect').evaluate('e=>[e.value,e.innerHTML,e.selectedIndex]'))
+        print('exchange source cost CRM/tasks:',source,values)
+        assert values==(expected,expected)
+    pick(crm_ex,'payoutSource','binance')
+    pick(host,'payoutSource','binance')
+    first_out=format(1,'064x')
+    crm_ex.wait_for_function('(h)=>document.querySelector("#binanceTxSelect")?.innerHTML.includes(h)',arg=first_out)
+    page.wait_for_function('(h)=>document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("binanceTxSelect")?.innerHTML.includes(h)',arg=first_out)
+    pick(crm_ex,'binanceTxSelect',first_out)
+    pick(host,'binanceTxSelect',first_out)
+    binance_pick=[(crm_ex.locator('#binanceTxInput').input_value(),crm_ex.locator('#binanceUsdt').input_value()),
+                  (host.locator('#binanceTxInput').input_value(),host.locator('#binanceUsdt').input_value())]
+    print('exchange Binance picker CRM/tasks:',binance_pick)
+    assert binance_pick==[(first_out,'100.01'),(first_out,'100.01')]
+    crm_ex.locator('#binanceTxInput').fill('')
+    host.locator('#binanceTxInput').fill('')
+    crm_ex.locator('#binanceUsdt').fill('3205.13')
+    host.locator('#binanceUsdt').fill('3205.13')
     crm_ex.close()
     page.locator('.card.edit-page > .row > button').first.click()
     exchange=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic exchange');
@@ -578,6 +617,19 @@ with sync_playwright() as playwright:
         crmPayload(d).payout_source,crmPayload(d).payout_amount_usdt];}''')
     print('exchange:',exchange)
     assert exchange[1:6]==['coins',100000,3205.13,'exchange','binance']
+    for source,expected,cost in [('bank_card','bank_card',3200),
+                                 ('cash_batch','cash_batch',3125)]:
+        open_edit(page,exchange[0])
+        host=page.locator('#crmDraftHost')
+        pick(host,'payoutSource',source)
+        page.locator('.card.edit-page > .row > button').first.click()
+        page.wait_for_function('!standBusy && !standPush',timeout=20000)
+        persisted=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+          source:p.payout_source,cost:p.payout_amount_usdt,
+          card:p.bank_card_id,profit:p.profit_usdt}}''',exchange[0])
+        print('exchange source saved:',source,persisted)
+        assert persisted['source']==expected and persisted['cost']==cost
+        if source=='bank_card':assert persisted['card']==7
     assert not crm_posts,crm_posts
     start_manual(page)
     host=page.locator('#crmDraftHost')

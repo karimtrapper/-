@@ -25,6 +25,13 @@ function crmDraftNum(v) {
   const n = Number(String(v ?? '').replace(/\s/g,'').replace(',','.'));
   return v === '' || v == null || !Number.isFinite(n) ? null : n;
 }
+function crmDraftCalculatedCost(root) {
+  // CRM's own calculateProfit() writes the FIFO/card cost here. Keep that
+  // result in the board; econ(d) and the final CRM payload then use one fact.
+  const display=crmDraftRead(root,'cashBatchCostUsdt');
+  const match=/^\$\s*([\d\s]+(?:[.,]\d{1,2})?)$/.exec(display.trim());
+  return match ? crmDraftNum(match[1]) : null;
+}
 function crmDraftField(root,key) {
   return root.getElementById(key) || root.querySelector(`[name="${key}"]`);
 }
@@ -170,7 +177,7 @@ function crmDraftFill(active,d) {
   crmDraftValue(root,'fhFeeFixed',tariff?.fixed);
   crmDraftValue(root,'payout_method',d.payout?.method==='курьер'?'courier':
     d.payout?.method==='банкомат'?'atm':d.payout?.method==='перевод на тайский счёт'?'transfer':'office');
-  const src={cash:'cash_batch',ipps:'cash_batch',scb:'cash_batch',coins:'binance',
+  const src={cash:'cash_batch',ipps:'cash_batch',scb:d.payout?.bankCardId?'bank_card':'cash_batch',coins:'binance',
     client:'binance',founder:'founder_personal'}[d.paySrc]||'cash_batch';
   crmDraftValue(root,'payoutSource',src);
   crmDraftValue(root,'payout_amount_thb',d.payout?.thb??d.amountThb);
@@ -348,8 +355,9 @@ async function crmDraftMount(id) {
       active.core.loadCashBatchesForSelect(),active.core.loadBankCardsForSelect(),
       crmDraftLoadPayinTx(active),crmDraftLoadLists(active),crmDraftLoadWallets(active),crmDraftLoadRate(active)]);
     if(crmDraftActive!==active)return;
+    if(d.payout?.bankCardId != null)
+      crmDraftValue(shadow,'bankCardSelect',d.payout.bankCardId);
     active.core.upgradeAllSelects();
-    crmDraftValue(shadow,'bankCardSelect',d.payout?.bankCardId);
     if(crmDraftRead(shadow,'payoutSource')==='binance')active.core.loadOutgoingTxForBinance();
     if(crmDraftRead(shadow,'payoutSource')==='founder_personal'){
       active.core.loadOutgoingTxForSelect(false);
@@ -794,7 +802,8 @@ function crmDraftCommit(id) {
     d.payout.usdt=source==='founder_personal'?
       (r.getElementById('payoutNoConversion')?.checked?
         crmDraftNum(crmDraftRead(r,'noConvUsdt')):a.core.payoutTxPoolTotal()):
-      crmDraftNum(crmDraftRead(r,'binanceUsdt'));
+      source==='binance'?crmDraftNum(crmDraftRead(r,'binanceUsdt')):
+      crmDraftCalculatedCost(r);
     const method={office:'наличные в офисе',courier:'курьер',atm:'банкомат',transfer:'перевод на тайский счёт'};
     d.payout.method=method[crmDraftRead(r,'payout_method')]||'';
     const src={cash_batch:'cash',bank_card:'scb',binance:'coins',founder_personal:'founder'};
