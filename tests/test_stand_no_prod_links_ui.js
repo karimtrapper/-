@@ -159,3 +159,63 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   assert.ok(refHtml.includes('checkStand().then(loadStats)'), 'проверка стенда должна выполняться до первого рендера кабинета');
   console.log('referrer cabinet (сайт/бот/WA): п.5 закрыт (fail-closed) — источники проверены статически');
 }
+
+// ---------- лидер: рендер до резолва loadAuthStand() не должен застревать в
+// «не удалось проверить окружение» на проде — после ответа список обязан
+// перерисоваться сам, без перезагрузки страницы ----------
+(async () => {
+  const renderSrc = extractIndented(crmHtml, 'renderReferrers');
+  const authSrc = extractIndented(crmHtml, 'loadAuthStand', 'async function');
+  const refreshSrc = extractIndented(crmHtml, 'refreshStandDependentLinks');
+  const referrer = {
+    id: 1, name: 'QA', code: 'QA', active: true, token: 'x',
+    bot_link: 'https://t.me/Grushath_bot?start=ref__QA',
+    wa_link: 'https://wa.me/66810000000',
+    referral_link: 'https://grusha.space/?ref=QA',
+  };
+
+  async function scenario(authResponse) {
+    const list = {innerHTML: ''};
+    const ctx = {
+      _referrersCache: [referrer],
+      STAND_ROLES: null, AUTH_STAND: null,
+      API_URL: '',
+      document: {getElementById: id => (id === 'referrersList' ? list : null)},
+      window: {location: {origin: 'http://127.0.0.1:1'}},
+      showToast: () => {},
+      fetch: async () => ({json: async () => authResponse}),
+    };
+    vm.createContext(ctx);
+    vm.runInContext(renderSrc + '\n' + refreshSrc + '\n' + authSrc, ctx);
+
+    // Вкладка отрисовалась ДО ответа /api/auth/me — сигналы ещё не разрешены.
+    ctx.renderReferrers();
+    const before = list.innerHTML;
+
+    await ctx.loadAuthStand();
+    const after = list.innerHTML;
+    return {before, after};
+  }
+
+  const hasReal = html => html.includes('https://t.me/Grushath_bot')
+    && html.includes('https://wa.me/66810000000') && html.includes('https://grusha.space');
+  const hasNone = html => !html.includes('https://t.me/Grushath_bot')
+    && !html.includes('https://wa.me/66810000000') && !html.includes('https://grusha.space');
+
+  // Прод: рендер до ответа — честно «не проверено»; после ответа (stand:false) —
+  // список сам перерисовался, ссылки рабочие, без перезагрузки страницы.
+  {
+    const {before, after} = await scenario({success: true, user: {stand: false}});
+    assert.ok(!hasReal(before), 'до ответа auth/me ссылки не должны быть видны (fail-closed)');
+    assert.ok(hasReal(after), 'после подтверждённого прод-ответа список обязан перерисоваться с рабочими ссылками');
+  }
+  // Стенд: рендер до ответа — «не проверено»; после ответа (stand:true) — по-прежнему
+  // нейтрально («на стенде выключено»), просто без лишнего «не удалось проверить».
+  {
+    const {before, after} = await scenario({success: true, user: {stand: true}});
+    assert.ok(hasNone(before) && hasNone(after), 'на стенде боевые ссылки не появляются ни до, ни после ответа');
+    assert.ok(after.includes('на стенде выключено'), 'после подтверждения стенда — обычная стендовая пометка, а не «не удалось проверить»');
+  }
+
+  console.log('crm renderReferrers: авто-перерисовка после loadAuthStand() — 2 сценария PASS');
+})().catch(e => { console.error(e.stack); process.exitCode = 1; });

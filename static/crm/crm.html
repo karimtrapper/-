@@ -5659,6 +5659,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const d = await res.json();
                 AUTH_STAND = (d && d.success && d.user) ? !!d.user.stand : null;
             } catch (e) { AUTH_STAND = null; }
+            refreshStandDependentLinks();
+        }
+        /* Вкладка «Рефереры» могла отрисоваться раньше, чем ответили /api/stand/roles
+           или /api/auth/me — тогда список честно показал «не удалось проверить
+           окружение», хотя это прод. На проде итоговое состояние обязано быть рабочим
+           без перезагрузки страницы (требование Карима: переезд не должен ничего
+           ломать) — как только сигнал разрешился, список рефереров перерисовывается
+           тем же кодом с уже известным окружением. */
+        function refreshStandDependentLinks() {
+            if (typeof _referrersCache !== 'undefined' && _referrersCache && _referrersCache.length
+                && typeof renderReferrers === 'function') renderReferrers();
         }
         // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
         // а не после захода в «Аккаунты».
@@ -5671,6 +5682,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const d = await res.json();
                 if (!d.success) return;
                 STAND_ROLES = d.roles;
+                refreshStandDependentLinks();
                 document.querySelectorAll('.stand-only').forEach(el => el.style.display = '');
                 // На стенде Telegram-входа нет — заголовок не должен обещать обратное
                 const sec = document.querySelector('#admins .card-title');
