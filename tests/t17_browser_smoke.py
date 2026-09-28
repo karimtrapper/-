@@ -141,6 +141,11 @@ with sync_playwright() as playwright:
             return
         if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/tx/lookup':
             h=parse_qs(parsed.query).get('hash',[''])[0]
+            if h=='bad-t17-hash':
+                mocked.append(('invalid-incoming-lookup',h))
+                route.fulfill(status=404,content_type='application/json',body=json.dumps({
+                    'success':False,'error':'synthetic chain lookup rejected'}))
+                return
             if h==incoming_hash:
                 mocked.append(('incoming-lookup',h))
                 route.fulfill(status=200,content_type='application/json',body=json.dumps({
@@ -360,6 +365,14 @@ with sync_playwright() as playwright:
     page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.querySelector("[name=payin_amount_usdt]")?.value==="1234.56"',timeout=10000)
     assert form.locator('#payinManualAmount').count()==0
     print('TRC20 incoming hash amount from mock network: 1234.56, no manual amount')
+    before_invalid=page.evaluate('JSON.stringify(deal(S.edit))')
+    form.locator('#payinManualHash').fill('bad-t17-hash')
+    form.locator('#payinManualHash').press('Tab')
+    page.wait_for_function('crmDraftActive.manualTx===null')
+    page.evaluate('editSave(S.edit)')
+    assert page.evaluate('JSON.stringify(deal(S.edit))')==before_invalid
+    assert ('invalid-incoming-lookup','bad-t17-hash') in mocked
+    print('unverified incoming hash rejected without stand draft mutation')
     form.locator('#payinManualHash').fill('')
     form.locator('#payinManualHash').press('Tab')
     form.locator('#clientSearchInput').fill('T17 synthetic freehold')
