@@ -14,6 +14,31 @@ TO = 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p'
 HASH = 'a' * 64
 
 
+@pytest.fixture(autouse=True)
+def authenticated_stand_client(monkeypatch):
+    """Старые сценарии стенда проходят через настоящую тестовую cookie."""
+    original = appmod.app.test_client
+
+    def client_factory(*args, **kwargs):
+        client = original(*args, **kwargs)
+        if appmod.STAND_MODE:
+            db = appmod.get_session()
+            try:
+                user = db.query(appmod.AdminUser).filter_by(username='stand_transfer_test').first()
+                if not user:
+                    user = appmod.AdminUser(username='stand_transfer_test', role='admin',
+                                            password_hash=appmod.AdminUser.hash_password('test'))
+                    db.add(user); db.commit()
+                uid = user.id
+            finally:
+                db.close()
+            with client.session_transaction() as sess:
+                sess['user_id'] = uid
+        return client
+
+    monkeypatch.setattr(appmod.app, 'test_client', client_factory)
+
+
 class Response:
     def __init__(self, status, data):
         self.status_code = status
@@ -311,8 +336,11 @@ def test_incoming_endpoint_rejects_old_tx_and_persists_verified(monkeypatch):
 
 
 def test_notification_retry_marks_sent_only_after_http_success(monkeypatch):
-    monkeypatch.setenv('STAND_TG_TOKEN', 'test-token')
-    monkeypatch.setenv('STAND_TG_CHAT', 'test-chat')
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    import stand_notify
+    stand_notify.init(appmod)
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_TG_CHAT', '-100123')
     state = board()
     state['notes'] = [{'id': 'n1', 'role': 'manager', 'text': '<пример & риск>',
                        'dealId': 1, 'at': 1}]
@@ -324,22 +352,23 @@ def test_notification_retry_marks_sent_only_after_http_success(monkeypatch):
         db.commit()
     finally:
         db.close()
+    db = appmod.SessionLocal()
+    user = appmod.AdminUser(username='dm_retry_legacy', display_name='Тест', role='manager',
+                            password_hash='test', telegram_user_id=12345, notify_enabled=True)
+    db.add(user); db.commit()
     messages = []
-    monkeypatch.setattr(appmod, '_stand_tg_send', lambda message: messages.append(message) or False)
+    monkeypatch.setattr(stand_notify.stand_egress, 'tg_call',
+                        lambda method, payload: messages.append(payload) or {'ok': False})
     appmod._stand_deliver_notes()
-    db = appmod.get_session()
-    try:
-        assert json.loads(appmod._stand_row(db).notified) == []
-    finally:
-        db.close()
-    assert '&lt;пример &amp; риск&gt;' in messages[0]
-    monkeypatch.setattr(appmod, '_stand_tg_send', lambda message: True)
+    assert db.execute(appmod.text("SELECT status FROM stand_notify_log WHERE note_id='n1' AND admin_id=:id"),
+                      {'id': user.id}).scalar() == 'failed'
+    assert '&lt;пример &amp; риск&gt;' in messages[0]['text']
+    assert all(m['chat_id'] != -100123 for m in messages)
+    monkeypatch.setattr(stand_notify.stand_egress, 'tg_call', lambda method, payload: {'ok': True})
     appmod._stand_deliver_notes()
-    db = appmod.get_session()
-    try:
-        assert json.loads(appmod._stand_row(db).notified) == ['n1']
-    finally:
-        db.close()
+    assert db.execute(appmod.text("SELECT status FROM stand_notify_log WHERE note_id='n1' AND admin_id=:id"),
+                      {'id': user.id}).scalar() == 'sent'
+    db.delete(user); db.commit(); db.close()
 
 
 def test_small_coins_and_client_close_with_payout_hashes_when_pack_confirmed():
@@ -479,57 +508,21 @@ def test_verify_without_amount_and_sender_takes_both_from_chain():
     assert other['status'] == 'mismatch', 'перевод не на наш кошелёк не засчитывается'
 
 
-def test_prod_agents_sync_maps_fields_skips_test_and_upserts_referrers(monkeypatch):
-    """Агенты стенда берутся из прода: без TEST-профилей, без токенов кабинетов,
-    и заводятся в CRM стенда, чтобы закрытие сделки нашло профиль по имени."""
-    monkeypatch.setattr(appmod, 'STAND_MODE', True)
-    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
-    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
-    monkeypatch.setenv('STAND_PROD_RO_KEY', 'ro')
-    prod = {'referrers': [
-        {'id': 22, 'name': 'Artyom Belyaev', 'code': 'GR-ARTYOM', 'comp_model': 'markup',
-         'default_percent': 10.0, 'markup_percent': 1.0, 'payout_currency': 'USDT',
-         'telegram': '@evol04', 'lang': 'ru', 'active': True, 'token': 'SECRET'},
-        {'id': 6, 'name': 'TEST Partner', 'code': 'GR-TEST', 'comp_model': 'revshare',
-         'default_percent': 5, 'markup_percent': 0, 'active': True, 'token': 'X'}]}
-    seen = {}
-
-    def fake_get(url, headers=None, timeout=None):
-        seen['url'], seen['key'] = url, (headers or {}).get('X-Api-Key')
-        return Response(200, prod)
-    monkeypatch.setattr(appmod.requests, 'get', fake_get)
-    with appmod.app.test_client() as client:
-        res = client.post('/api/stand/prod-agents')
-    assert res.status_code == 200, res.json
-    agents = res.json['agents']
-    assert seen['url'].endswith('/api/referrers') and seen['key'] == 'ro'
-    assert [a['name'] for a in agents] == ['Artyom Belyaev']
-    assert agents[0]['comp'] == 'markup' and agents[0]['percent'] == 1.0
-    assert 'token' not in agents[0]
-    db = appmod.get_session()
-    try:
-        ref = db.query(appmod.Referrer).filter(appmod.Referrer.code == 'GR-ARTYOM').first()
-        assert ref and ref.name == 'Artyom Belyaev' and ref.token != 'SECRET' and ref.is_test
-    finally:
-        db.close()
-
-
-def test_prod_agents_sync_without_key_is_clear_error(monkeypatch):
+def test_prod_agents_sync_disabled_in_stand_mode(monkeypatch):
+    """Режим «тишина» (T1, план п.1.9): чтение боевого CRM с тестового стенда
+    выключено насовсем, вне зависимости от роли и наличия STAND_PROD_RO_KEY —
+    после копии прод-данных агенты берутся из локальной таблицы referrers."""
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
     monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
-    monkeypatch.delenv('STAND_PROD_RO_KEY', raising=False)
+    monkeypatch.setenv('STAND_PROD_RO_KEY', 'ro')
+
+    def fail_get(*a, **kw):
+        raise AssertionError('прод-CRM не должен вызываться из STAND_MODE')
+    monkeypatch.setattr(appmod.requests, 'get', fail_get)
     with appmod.app.test_client() as client:
         res = client.post('/api/stand/prod-agents')
-    assert res.status_code == 502 and 'STAND_PROD_RO_KEY' in res.json['error']
-
-
-def test_prod_agents_sync_only_admin_or_manager(monkeypatch):
-    monkeypatch.setattr(appmod, 'STAND_MODE', True)
-    monkeypatch.setattr(appmod, 'current_role', lambda: 'operator')
-    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
-    with appmod.app.test_client() as client:
-        assert client.post('/api/stand/prod-agents').status_code == 403
+    assert res.status_code == 403 and res.json['error'] == 'stand_blocked'
 
 
 def _unlink_board(step='s22', status='received', sends=None):
