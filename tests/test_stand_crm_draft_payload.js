@@ -87,6 +87,17 @@ assert.equal(custom.payout_amount_usdt,952.38);
 assert.equal(custom.profit_usdt,47.620000000000005);
 assert.equal(custom.net_profit_usdt,42.86);
 assert.equal(custom.agents[0].percent,10);
+const customHash='c'.repeat(64);
+const customWithHash=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',custom:true,
+  payinHashes:[{hash:customHash,network:'trc20',amount:1000}],
+  customData:{payinCurrency:'USDT',payinAmount:1000,
+    payinRate:null,payinUsdt:1000,payoutCurrency:'USDT',payoutAmount:952.38,
+    payoutRate:null,payoutUsdt:952.38,payinTxHash:customHash,
+    payinMethod:'crypto_direct',payoutMethod:'transfer'}});
+assert.equal(customWithHash.payin_tx_hash,customHash,
+  'CRM custom serializer uses its singular incoming hash field');
+assert.equal(customWithHash.payin_tx_hashes,undefined,
+  'do not silently invent a parallel CRM custom hash array');
 const founder=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
   paySrc:'founder',amountUsdt:3300,amountThb:100000,
   payout:{thb:100000,settledByPayin:true,hashes:[{hash:'f'.repeat(64),amount:3205.13,
