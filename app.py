@@ -5443,30 +5443,62 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     return None
 
 
+def _stand_canonical_payout(payout):
+    """Пустой список хешей, добавленный браузером, равен отсутствующему полю."""
+    if isinstance(payout, dict) and 'hashes' not in payout:
+        return {**payout, 'hashes': []}
+    return payout
+
+
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
+    if len(new_convs) != len(new_state.get('convs', [])):
+        return 'Нельзя дублировать пачку на доске'
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    new_deals = {d.get('id'): d for d in new_state.get('deals', [])}
+    committed_steps = ('s23', 's24', 's25', 's26', 's27', 'done')
+    accepted_conv_ids = {d.get('cnvId') for d in previous.get('deals', [])
+                         if d.get('cnvId') is not None
+                         and d.get('postConv') in ('coins', 'ipps_swift')
+                         and d.get('step') in committed_steps}
+    if len(new_deals) != len(new_state.get('deals', [])):
+        return 'Нельзя дублировать сделку на доске'
     for old_conv in previous.get('convs', []):
-        if not any(t.get('status') == 'confirmed' for t in old_conv.get('txs') or []):
-            continue
         new_conv = new_convs.get(old_conv.get('id'))
         accepted_main = next((d for d in previous.get('deals', [])
                               if d.get('cnvId') == old_conv.get('id')
-                              and d.get('postConv') == 'coins'), None)
-        assignment_locked = (accepted_main or {}).get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
-        immutable_sources = lambda c: [(s.get('dealId'), s.get('rub'), s.get('incomeId'),
-                                         s.get('usdt') if assignment_locked else None,
-                                         s.get('usdtFact') if assignment_locked else None)
-                                       for s in c.get('sources') or []]
+                              and d.get('postConv') in ('coins', 'ipps_swift')
+                              and d.get('step') in committed_steps), None)
+        assignment_locked = bool(accepted_main)
+        incoming_confirmed = any(t.get('status') == 'confirmed' for t in old_conv.get('txs') or [])
+        if not (assignment_locked or incoming_confirmed):
+            continue
+        def immutable_sources(conv):
+            return Counter(json.dumps((s.get('dealId'), s.get('rub'), s.get('incomeId'),
+                                       s.get('usdt') if assignment_locked else None,
+                                       s.get('usdtFact') if assignment_locked else None),
+                                      sort_keys=True) for s in conv.get('sources') or [])
         if not new_conv or (old_conv.get('walletId') != new_conv.get('walletId')
                             or immutable_sources(old_conv) != immutable_sources(new_conv)):
             return 'Полученную пачку нельзя перепривязать после подтверждения прихода'
+        if any(s.get('dealId') not in new_deals for s in old_conv.get('sources') or []):
+            return 'Сделку подтверждённой пачки нельзя удалить'
         old_txs = Counter((t.get('hash'), normalize_network(t.get('net')))
                           for t in old_conv.get('txs') or [] if t.get('status') == 'confirmed')
         new_txs = Counter((t.get('hash'), normalize_network(t.get('net')))
                           for t in new_conv.get('txs') or [])
         if any(new_txs[key] != count for key, count in old_txs.items()):
             return 'Подтверждённый приход нельзя удалить или продублировать'
-    old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal_id, before in old.items():
+        protected = (before.get('closed') or before.get('crmDealId')
+                     or before.get('serverTransferComplete')
+                     or before.get('cnvId') in accepted_conv_ids
+                     or (before.get('postConv') in ('coins', 'ipps_swift')
+                         and before.get('step') in committed_steps)
+                     or any(s.get('status') == 'confirmed'
+                            for s in (before.get('transfer') or {}).get('sends') or []))
+        if protected and deal_id not in new_deals:
+            return 'Подтверждённую или закрытую сделку нельзя удалить'
     for deal in new_state.get('deals', []):
         before = old.get(deal.get('id'))
         assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id, new_state)
@@ -5474,6 +5506,42 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return assignee_problem
         if not before:
             continue
+        protected = (before.get('closed') or before.get('crmDealId')
+                     or before.get('serverTransferComplete')
+                     or before.get('cnvId') in accepted_conv_ids
+                     or (before.get('postConv') in ('coins', 'ipps_swift')
+                         and before.get('step') in committed_steps)
+                     or any(s.get('status') == 'confirmed'
+                            for s in (before.get('transfer') or {}).get('sends') or []))
+        if protected:
+            if (before.get('closed') and not deal.get('closed')) or (
+                    before.get('crmDealId') and before.get('crmDealId') != deal.get('crmDealId')):
+                return 'Закрытую CRM-сделку нельзя открыть или отвязать'
+            if before.get('closed') and (any(before.get(key) != deal.get(key) for key in (
+                    'closeReason', 'closedAt', 'pay', 'mfPayout', 'sentToClient'))
+                    or _stand_canonical_payout(before.get('payout'))
+                    != _stand_canonical_payout(deal.get('payout'))):
+                return 'Денежные итоги закрытой сделки нельзя изменить'
+            if before.get('step') in committed_steps and deal.get('step') in committed_steps:
+                if committed_steps.index(deal['step']) < committed_steps.index(before['step']):
+                    return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
+            elif before.get('step') in committed_steps and deal.get('step') != before.get('step'):
+                return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
+            for key in ('cnvId', 'postConv', 'walletId'):
+                if before.get(key) != deal.get(key):
+                    return 'Маршрут подтверждённой сделки нельзя изменить'
+            old_transfer, new_transfer = before.get('transfer') or {}, deal.get('transfer') or {}
+            for key in ('addr', 'net', 'walletId'):
+                if old_transfer.get(key) != new_transfer.get(key):
+                    return 'Получателя подтверждённого перевода нельзя изменить'
+            old_payout = _stand_canonical_payout(before.get('payout') or {})
+            new_payout = _stand_canonical_payout(deal.get('payout') or {})
+            if any(new_payout.get(key) != value for key, value in old_payout.items()):
+                return 'Подтверждённые выплаты нельзя изменить'
+            if before.get('mfPayout') and before.get('mfPayout') != deal.get('mfPayout'):
+                return 'Подтверждённые выплаты нельзя изменить'
+            if (before.get('pay') or {}).get('outHash') != (deal.get('pay') or {}).get('outHash'):
+                return 'Хеш подтверждённого перевода нельзя изменить'
         old_confirmed = Counter(send_fingerprint(previous, before, send)
                                 for send in (before.get('transfer') or {}).get('sends') or []
                                 if send.get('status') == 'confirmed')
@@ -5484,14 +5552,15 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         old_conv = next((c for c in previous.get('convs', [])
                          if c.get('id') == before.get('cnvId')), None)
         old_main = next((d for d in previous.get('deals', [])
-                         if d.get('cnvId') == before.get('cnvId') and d.get('postConv') == 'coins'), None)
-        assignment_locked = (old_main or {}).get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
+                         if d.get('cnvId') == before.get('cnvId')
+                         and d.get('postConv') in ('coins', 'ipps_swift')), None)
+        assignment_locked = (old_main or {}).get('step') in committed_steps
         previous_target = _amount((before.get('transfer') or {}).get('amount'))
         new_target = _amount((deal.get('transfer') or {}).get('amount'))
         if ((old_confirmed or (assignment_locked and previous_target and previous_target > 0))
                 and previous_target != new_target):
             return 'Сумму отправки нельзя менять после подтверждённого перевода'
-        if before.get('postConv') == 'coins' and assignment_locked and deal.get('step') == 's22':
+        if before.get('postConv') in ('coins', 'ipps_swift') and assignment_locked and deal.get('step') == 's22':
             return 'Принятую пачку нельзя вернуть на назначение отправок'
         if actor not in (None, 'admin') and before != deal:
             required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
@@ -5622,8 +5691,11 @@ def _stand_settle_verified(state, members):
                 f"сделка закрыта" + (f", чистая прибыль {profit:.2f} USDT" if profit is not None else ''))
         _stand_note(state, f"stand:refund:{deal['id']}", 'manager', deal, text)
         changed = True
+    # ipps_swift — фрихолд без батов (спека 28.09-freehold-no-baht): единственный
+    # маршрут USDT в IPPS SWIFT, s24→s25 после подтверждения — как Coins у лизхолда
+    # (QA БЛОКЕР №9, 28.09: сделка застревала на s24 навсегда без этой ветки).
     main = next((d for d in members if d.get('step') in ('s23', 's24') and
-                 d.get('postConv') == 'coins'), None)
+                 d.get('postConv') in ('coins', 'ipps_swift')), None)
     if main and not main.get('serverTransferComplete'):
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
@@ -5631,7 +5703,7 @@ def _stand_settle_verified(state, members):
         multisig = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
         def required_send(deal):
             kind = deal.get('postConv')
-            if kind in ('coins', 'client'):
+            if kind in ('coins', 'client', 'ipps_swift'):
                 return True
             if kind == 'refund':
                 return not (deal.get('serverSettled')
@@ -5713,8 +5785,9 @@ def _stand_settle_verified(state, members):
                             f"перевод подтверждён, сделка закрыта")
             prefix = 'DEMO · ' if main.get('demoTransfers') else ''
             proof = 'тестовые переводы подтверждены' if prefix else 'все переводы пачки подтверждены'
+            next_action = 'отправьте заявку в IPPS' if main.get('postConv') == 'ipps_swift' else 'известите Coins'
             _stand_note(state, f"stand:coins:{main['id']}", 'operator', main,
-                        f"{prefix}{main.get('code') or main['id']}: {proof}; известите Coins")
+                        f"{prefix}{main.get('code') or main['id']}: {proof}; {next_action}")
             changed = True
     return changed
 
@@ -5752,7 +5825,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
     results = []
     main = next((d for d in snapshot.get('deals', [])
-                 if d.get('id') in seen and d.get('postConv') == 'coins'
+                 if d.get('id') in seen and d.get('postConv') in ('coins', 'ipps_swift')
                  and d.get('step') in ('s23', 's24')), None)
     conv = next((c for c in snapshot.get('convs', [])
                  if c.get('id') == (main or {}).get('cnvId')), None)
@@ -6259,22 +6332,31 @@ def _stand_doc_request(state, deal, F):
     # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
     if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
         missing.append('invNo')
+    freehold = deal_type == 'freehold'
     thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
-    missing += [k for k, v in (('amountThb', thb), ('rate', rate), ('amountPay', pay)) if v is None]
+    missing += [k for k, v in (('amountThb', thb), ('amountPay', pay)) if v is None]
+    # Крипто-фрихолд: внешнего курса нет вообще (спека 28.09-freehold-no-baht, п.4) —
+    # шаги «Ответить курс»/«Расчёт клиенту» выпадают из пути, rate у сделки не появляется.
+    if not (crypto and freehold) and rate is None:
+        missing.append('rate')
 
     today = datetime.utcnow() + timedelta(hours=7)
-    money = {'pair': 'USDT_THB' if crypto else 'RUB_THB',
+    # Фрихолд — выход USD (RUB_USD / USDT_USD), а не THB: инвойс застройщику в USD,
+    # никакого перевода в баты (спека 28.09-freehold-no-baht). DIRECT_RATE — только
+    # для USDT_THB (курс ฿ за 1 USDT лизхолда), крипто-фрихолду он не подходит.
+    money = {'pair': ('USDT_USD' if freehold else 'USDT_THB') if crypto else ('RUB_USD' if freehold else 'RUB_THB'),
              'payin_method': 'usdt' if crypto else 'bank',
-             'rate_basis': doc_routes.DIRECT_RATE if crypto else doc_routes.INVERSE_RATE,
+             'rate_basis': doc_routes.DIRECT_RATE if (crypto and not freehold) else doc_routes.INVERSE_RATE,
              'rate_valid_until': str(F.get('validTill') or '').strip()
                                  or f'{today:%d.%m.%Y}, 23:59 (GMT+7)'}
     if thb and pay:
         money['total_payin'] = _stand_plain(pay)
         money['transfer_amount'] = _stand_plain(thb)
     if thb and pay and rate:
-        # Курс сделки: ₽ за 1 ฿ у рублей, ฿ за 1 USDT у крипты. Сумма клиенту
-        # округлена до целых рублей / центов, поэтому точный курс из сумм
-        # отличается в шестом знаке — в документ идёт он, иначе генератор
+        # Курс сделки: ₽ за 1 ฿ у лизхолда, ₽ за 1 $ у рублёвого фрихолда, ฿ за 1 USDT
+        # у крипто-лизхолда (крипто-фрихолду курс вообще не нужен — rate тут None).
+        # Сумма клиенту округлена до целых рублей / центов, поэтому точный курс из
+        # сумм отличается в шестом знаке — в документ идёт он, иначе генератор
         # справедливо скажет, что курс и суммы не сходятся.
         exact = (thb / pay) if crypto else (pay / thb)
         if abs(rate - exact) <= Decimal('0.000001'):
@@ -6282,10 +6364,11 @@ def _stand_doc_request(state, deal, F):
         elif abs(rate - exact) / rate <= Decimal('0.001'):
             money['rate'] = _stand_plain(exact.quantize(Decimal('0.000001')))
         else:
-            unit = '฿ за 1 USDT' if crypto else '₽ за 1 ฿'
+            unit = '฿ за 1 USDT' if crypto else ('₽ за 1 $' if freehold else '₽ за 1 ฿')
+            recv = '$' if freehold else '฿'
             return {'error': 'rate_mismatch', 'fields': ['rate', 'amountPay'],
                     'detail': f'Курс {_stand_plain(rate)} не сходится с суммами: '
-                              f'{_stand_plain(pay)} и {_stand_plain(thb)} ฿ дают '
+                              f'{_stand_plain(pay)} и {_stand_plain(thb)} {recv} дают '
                               f'{exact.quantize(Decimal("0.0001"))} {unit}. Поправьте курс или сумму клиенту'}
 
     if crypto:
@@ -6311,6 +6394,35 @@ def _stand_doc_request(state, deal, F):
     fee = str(F.get('feeNote') or '').strip()
     if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
         money['fee_note'] = fee
+    if freehold:
+        # Инвойс застройщика может быть в THB (Карим, 28.09, поправка к спеке
+        # 28.09-freehold-no-baht): сделка всё равно считается от X — суммы,
+        # подтверждённой застройщиком в USD (объём брокеру, S в IPPS, прибыль,
+        # договор, заявка IPPS). Батовая сумма — только хранится и показывается,
+        # в money() и CRM-пейлоад не идёт: поля для неё там нет.
+        invoice_currency = str(deal.get('invoiceCurrency') or 'usd').strip().lower()
+        if invoice_currency == 'thb':
+            # THB-инвойс — «Обязательство по инвойсу застройщика» в Приложении 1
+            # показывает реальную сумму в батах. Остальной THB-блок (источник
+            # курса/срок, USD-эквивалент, статус зачёта, письмо застройщика)
+            # оставляем как в шаблоне ([●]) — ручное заполнение, автозаполнения
+            # не делаем (решение Карима: «больше ничего»).
+            invoice_thb = _stand_num(deal.get('invoiceThb'))
+            if invoice_thb:
+                fields['invoice_currency'] = 'THB'
+                fields['invoice_amount'] = _stand_plain(invoice_thb)
+        else:
+            # Инвойс сразу в USD — шаблон описывает старую THB-модель фрихолда
+            # (конвертация по курсу, письменное подтверждение застройщика о
+            # зачёте THB), которой здесь нет вообще. Отмечаем поля как
+            # неприменимые, а не выдумываем подтверждение, которого не было.
+            fields['invoice_currency'] = 'USD'
+            fields['invoice_amount'] = _stand_plain(thb) if thb else ''
+            money.update(
+                rate_source='Н/П — инвойс застройщика в USD, конвертации нет / N/A — developer invoice already in USD',
+                usd_equivalent=_stand_plain(thb) if thb else '',
+                thb_credit_status='Н/П — оплата в USD, THB не используется / N/A — paid in USD, no THB involved',
+                developer_confirmation='По условиям инвойса застройщика / As per developer invoice terms')
     if missing:
         missing = list(dict.fromkeys(missing))
         return {'error': 'missing_fields', 'fields': missing,
@@ -6379,6 +6491,8 @@ def stand_docs_issue():
 
     import docgen
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
+    stand_thb_pending = (deal_type == 'freehold'
+                         and str(deal.get('invoiceCurrency') or 'usd').lower() == 'thb')
     note = '. '.join(req.get('notes') or [])
     db = get_session()
     try:
@@ -6386,19 +6500,23 @@ def stand_docs_issue():
         if prior.get('agreementId'):
             a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
         if a is not None and prior.get('mode') == 'agreement':
-            payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a)
+            payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a,
+                                                stand_thb_pending=stand_thb_pending)
             mode = 'agreement'
         elif a is not None and prior.get('mode') == 'addendum':
-            payload, code = _docs_payment(db, a, fields, money, payment_no=prior.get('paymentNo'))
+            payload, code = _docs_payment(db, a, fields, money, payment_no=prior.get('paymentNo'),
+                                          stand_thb_pending=stand_thb_pending)
             mode = 'addendum'
         else:
             route_key = money['pair'] + ':' + money['payin_method']
             existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
             if existing is not None:
-                payload, code = _docs_payment(db, existing, fields, money)
+                payload, code = _docs_payment(db, existing, fields, money,
+                                              stand_thb_pending=stand_thb_pending)
                 mode = 'addendum'
             else:
-                payload, code = _docs_new_agreement(db, deal_type, fields, money)
+                payload, code = _docs_new_agreement(db, deal_type, fields, money,
+                                                    stand_thb_pending=stand_thb_pending)
                 mode = 'agreement'
                 if deal.get('isOld'):
                     note = '. '.join(filter(None, [
@@ -18583,10 +18701,14 @@ def _docs_request_payload():
     return body
 
 
-def _docs_validate(deal_type, fields, money):
+def _docs_validate(deal_type, fields, money, stand_thb_pending=False):
     """Пустые обязательные поля ловим ДО генерации — иначе документ уйдёт с дырой."""
     missing = [k for k in DOCS_REQUIRED_FIELDS if not (fields.get(k) or '').strip()]
-    missing += [k for k in DOCS_REQUIRED_MONEY.get(deal_type, [])
+    required_money = DOCS_REQUIRED_MONEY.get(deal_type, [])
+    if stand_thb_pending and STAND_MODE and deal_type == 'freehold':
+        required_money = [k for k in required_money if k not in (
+            'rate_source', 'usd_equivalent', 'thb_credit_status', 'developer_confirmation')]
+    missing += [k for k in required_money
                 if not str(money.get(k) or '').strip()]
     return missing
 
@@ -18750,7 +18872,8 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
     return None
 
 
-def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None):
+def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None,
+                        stand_thb_pending=False):
     """Ядро выпуска рамочного договора: договор + приложение 1 + инвойс.
 
     → (тело ответа, HTTP-код). Общее для CRM (POST /api/docs/agreements) и стенда.
@@ -18761,7 +18884,7 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     import doc_routes
     if deal_type not in DOCS_DEAL_TYPES:
         return {'success': False, 'error': 'bad_deal_type'}, 400
-    missing = _docs_validate(deal_type, fields, money)
+    missing = _docs_validate(deal_type, fields, money, stand_thb_pending)
     try:
         money = doc_routes.normalize(money, deal_type)
         missing += doc_routes.validate(money, deal_type)
@@ -18770,6 +18893,8 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     if missing:
         return {'success': False, 'error': 'missing_fields', 'fields': missing}, 400
 
+    if stand_thb_pending:
+        money['_stand_thb_pending'] = True
     client_name = (fields.get('client_name_ru') or fields.get('client_name_en') or '').strip()
     money['deal_type'] = deal_type
     client_key = _docs_client_key(fields)
@@ -18801,9 +18926,11 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
     addendum = docgen.build_addendum(deal_type, fields, money, number, number, 1)
     invoice = docgen.build_commercial_invoice(fields, money, number, deal_type)
     problems = (docgen.check(data, allow_forms=True)
-                + docgen.check(addendum) + docgen.check(invoice))
+                + docgen.check(addendum, stand_thb_pending=stand_thb_pending)
+                + docgen.check(invoice))
     if problems:
         return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
+    money.pop('_stand_thb_pending', None)
 
     if reissue is None:
         a = Agreement(client_id=int(client_id) if client_id else None,
@@ -18865,7 +18992,8 @@ def docs_create_agreement():
         db.close()
 
 
-def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None):
+def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
+                  stand_thb_pending=False):
     """Ядро очередного платежа: доп. соглашение + инвойс со ссылкой на рамочный договор.
 
     → (тело ответа, HTTP-код). `payment_no` — перевыпуск допника того же платежа
@@ -18902,9 +19030,11 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None):
     except ValueError as exc:
         return {'success': False, 'error': 'invalid_route', 'detail': str(exc)}, 400
 
-    missing = _docs_validate(a.deal_type, fields, money) + route_missing
+    missing = _docs_validate(a.deal_type, fields, money, stand_thb_pending) + route_missing
     if missing:
         return {'success': False, 'error': 'missing_fields', 'fields': missing}, 400
+    if stand_thb_pending:
+        money['_stand_thb_pending'] = True
 
     # Номер платежа для клиента и хвост номера документа — разные счётчики:
     # хвост может уехать вперёд, если у клиента есть договор другого типа
@@ -18923,9 +19053,10 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None):
     add = docgen.build_addendum(a.deal_type, fields, money, number, a.number, payment_no)
     money['parent_number'] = a.number
     inv = docgen.build_commercial_invoice(fields, money, number, a.deal_type)
-    problems = docgen.check(add) + docgen.check(inv)
+    problems = docgen.check(add, stand_thb_pending=stand_thb_pending) + docgen.check(inv)
     if problems:
         return {'success': False, 'error': 'incomplete_document', 'problems': problems}, 422
+    money.pop('_stand_thb_pending', None)
 
     safe = re.sub(r'[^\w\-.]+', '_', a.client_name)[:40] or 'client'
     saved = []

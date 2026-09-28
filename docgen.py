@@ -463,6 +463,7 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     # (лизхолд) комиссия «в курсе», у Антоненко (фрихолд) курса RUB/THB нет
     # вовсе — там «в согласованной сумме pay-in».
     if deal_type == 'freehold':
+        pending = money.get('_stand_thb_pending')
         default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
                        'Included in the agreed pay-in amount; no separate charge')
     else:
@@ -504,10 +505,10 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
         _set_field(t, 'Сумма и валюта pay-in', payin)
         _set_field(t, 'Обязательство по инвойсу застройщика',
                    f"{f.get('invoice_currency') or 'THB'} {f.get('invoice_amount') or ''}".strip())
-        _set_field(t, 'Источник курса и срок действия', money.get('rate_source'))
-        _set_field(t, 'Подтверждённый USD-эквивалент', money.get('usd_equivalent'))
-        _set_field(t, 'Статус зачёта THB-инвойса', money.get('thb_credit_status'))
-        _set_field(t, 'Письменное подтверждение застройщика', money.get('developer_confirmation'))
+        _set_field(t, 'Источник курса и срок действия', '[●]' if pending else money.get('rate_source'))
+        _set_field(t, 'Подтверждённый USD-эквивалент', '[●]' if pending else money.get('usd_equivalent'))
+        _set_field(t, 'Статус зачёта THB-инвойса', '[●]' if pending else money.get('thb_credit_status'))
+        _set_field(t, 'Письменное подтверждение застройщика', '[●]' if pending else money.get('developer_confirmation'))
     else:
         _set_field(t, 'Банковские расходы', DEFAULTS['bank_charges_local'] if outgoing == 'THB' else
                    money.get('bank_charges') or 'Включены в итоговую сумму / Included in the total')
@@ -1000,7 +1001,7 @@ def as_pdf(docx_bytes: bytes, basename: str) -> tuple[bytes, str, str]:
 PLACEHOLDER_RE = re.compile(r'\[●\]|\[[^\]\n]{2,80}?\s/\s[^\]\n]{2,80}?\]')
 
 
-def check(data: bytes, allow_forms: bool = False) -> list[str]:
+def check(data: bytes, allow_forms: bool = False, stand_thb_pending: bool = False) -> list[str]:
     """Аналог check_doc.py: не отдаём документ с незаполненными местами.
 
     `allow_forms` — для рамочного договора: приложения в нём намеренно пустые
@@ -1016,6 +1017,13 @@ def check(data: bytes, allow_forms: bool = False) -> list[str]:
         if body_only and idx > 0:
             continue          # таблицы 1 и 2 — бланки приложений
         for row in t.rows:
+            # Только в THB-приложении стенда эти четыре строки по решению
+            # владельца продукта заполняются вручную после выпуска пакета.
+            pending_labels = ('Источник курса и срок действия', 'Подтверждённый USD-эквивалент',
+                              'Статус зачёта THB-инвойса', 'Письменное подтверждение застройщика')
+            if (stand_thb_pending and row.cells and row.cells[-1].text.strip() == '[●]'
+                    and any(label in row.cells[0].text for label in pending_labels)):
+                continue
             for cell in row.cells:
                 texts.append(cell.text)
     for txt in texts:
