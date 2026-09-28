@@ -150,16 +150,50 @@ def form_snapshot(page, selector, private, name):
     if CAPTURE_HOOK:
         CAPTURE_HOOK(page, name)
     data = page.locator(selector).evaluate("""root => {
-      const visible = e => !!e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
+      const visible = e => {
+        // Walk the composed tree: a shadow child can have rects while its host
+        // or an ancestor is hidden. A hidden native select is tracked below as
+        // contract data, but is not a visible control.
+        for (let n = e; n; ) {
+          if (n.nodeType === Node.ELEMENT_NODE) {
+            const style = getComputedStyle(n);
+            if (n.hidden || style.display === 'none' ||
+                style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+          }
+          const parent = n.parentElement;
+          n = parent || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
+        }
+        return [...e.getClientRects()].some(r => r.width > 0 && r.height > 0);
+      };
       const norm = s => (s || '').replace(/\\s+/g, ' ').trim();
       const descendants = node => [...node.querySelectorAll('*')].flatMap(e =>
         e.shadowRoot ? [e, ...descendants(e.shadowRoot)] : [e]);
+      const visibleText = node => {
+        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+        const parts = [];
+        while (walker.nextNode()) {
+          const textNode = walker.currentNode, parent = textNode.parentElement;
+          if (!parent || ['SCRIPT','STYLE','SELECT','OPTION'].includes(parent.tagName)) continue;
+          if (visible(parent) && norm(textNode.textContent)) parts.push(norm(textNode.textContent));
+        }
+        return parts.join(' ');
+      };
+      const nativeSelect = e => ({id:e.id, name:e.name, visible:visible(e),
+        value:e.value, required:e.required, disabled:e.disabled,
+        options:[...e.options].map(x=>({text:norm(x.textContent), value:x.value,
+          disabled:x.disabled, selected:x.selected}))});
       const shadowRoots = descendants(root).filter(e => e.shadowRoot).map(e => ({
-        host: e.id || e.tagName.toLowerCase(), text: e.shadowRoot.textContent,
+        host: e.id || e.tagName.toLowerCase(), hostVisible:visible(e),
+        text: e.shadowRoot.textContent, visibleText:visibleText(e.shadowRoot),
+        visibleLabels:descendants(e.shadowRoot).filter(x=>x.matches('label') && visible(x))
+          .map(x=>norm(x.innerText)),
         controls: descendants(e.shadowRoot).filter(x => x.matches('input,select,textarea,button'))
-          .map(x => ({tag:x.tagName, id:x.id, value:x.value, required:x.required,
-                     readOnly:x.readOnly, disabled:x.disabled,
-                     options:x.tagName === 'SELECT' ? [...x.options].map(y=>y.textContent) : []}))
+          .map(x => ({tag:x.tagName, id:x.id, value:x.value, visible:visible(x),
+                     required:x.required, readOnly:x.readOnly, disabled:x.disabled,
+                     text:visible(x) ? norm(x.innerText) : '',
+                     options:x.tagName === 'SELECT' ? nativeSelect(x).options : []})),
+        nativeSelects:descendants(e.shadowRoot).filter(x=>x.matches('select'))
+          .map(nativeSelect)
       }));
       return {
         url: location.pathname + location.search,
@@ -168,6 +202,7 @@ def form_snapshot(page, selector, private, name):
         rate_source: document.getElementById('usdtThbLabel')?.innerText || null,
         shadowRoots,
         labels: [...root.querySelectorAll('label')].filter(visible).map(e => norm(e.innerText)),
+        nativeSelects: [...root.querySelectorAll('select')].map(nativeSelect),
         controls: [...root.querySelectorAll('input,select,textarea,button')].filter(visible)
           .map(e => ({tag:e.tagName, id:e.id, name:e.name, type:e.type,
                       label:norm(e.closest('.form-group,.fg')?.querySelector('label')?.innerText),
@@ -185,6 +220,7 @@ def form_snapshot(page, selector, private, name):
     shot.chmod(0o600)
     return {'url': data['url'], 'text_sha256': hashlib.sha256(data['text'].encode()).hexdigest(),
             'labels': data['labels'], 'controls': data['controls'],
+            'nativeSelects': data['nativeSelects'],
             'visible_rate': data['visible_rate'], 'rate_source': data['rate_source'],
             'shadowRoots': data['shadowRoots'], 'screenshot': shot.name,
             'screenshot_sha256': digest(shot), 'dom_file': dest.name}
