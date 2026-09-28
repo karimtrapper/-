@@ -89,9 +89,29 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # Защита от CSRF
 
 @app.after_request
 def stand_referrer_policy(response):
-    """На стенде URL кабинета с токеном не уходит в Referer внешних ресурсов."""
+    """Stage-only browser resources, egress policy, and token referrer privacy."""
     if STAND_MODE:
         response.headers['Referrer-Policy'] = 'no-referrer'
+        from stand_browser import page_kind, transform_html, STAND_CSP, PAGE_SOURCES
+        kind = page_kind(request.path)
+        if kind and response.status_code in (200, 304) and request.method in ('GET', 'HEAD'):
+            # send_from_directory can return 304 based on the unchanged source
+            # file. Rebuild that response too, so old cached HTML cannot retain
+            # remote assets after this stage-only overlay is deployed.
+            response.direct_passthrough = False
+            if response.status_code == 304:
+                from pathlib import Path
+                source = Path(app.root_path) / PAGE_SOURCES[kind]
+                html = source.read_text(encoding='utf-8')
+                response.status_code = 200
+                response.mimetype = 'text/html'
+            else:
+                html = response.get_data(as_text=True)
+            response.set_data(transform_html(kind, html))
+            response.headers.pop('ETag', None)
+            response.headers.pop('Last-Modified', None)
+            response.headers['Cache-Control'] = 'no-store'
+            response.headers['Content-Security-Policy'] = STAND_CSP
     return response
 
 # Rate limiting
@@ -178,6 +198,10 @@ def check_auth():
     path = request.path
 
     if STAND_MODE:
+        # Local, version-pinned font/chart assets must also load on /login,
+        # before the user has a session. This prefix contains public code only.
+        if path.startswith('/static/stand/vendor/'):
+            return None
         # Страница входа показывает форму логина только при 403 от setup.
         # Отвечаем до проверки сессии и метода, чтобы setup всегда был закрыт.
         if path == '/api/auth/setup':
