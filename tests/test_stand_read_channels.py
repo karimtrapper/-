@@ -1563,3 +1563,128 @@ def test_read_get_eth_ops_work_normally_outside_stand_mode():
     assert proc.returncode == 0, proc.stderr
     assert result['err'] is None
     assert result['hits'] == 1
+
+
+# ───── QA инцидент: Transfer-Encoding: chunked (Rapira/TronScan HTTP/1.1) ───
+# read1() читал сырой BufferedReader сокета в обход HTTP-декодера фрейминга —
+# разметка чанков (hex-длина\r\n…данные…\r\n) попадала в тело как мусор, и
+# json.loads падал с invalid_json/read_error. Чтение переведено на
+# resp.raw._fp.read1() — сам http.client.HTTPResponse, который framing
+# декодирует и для chunked, и для Content-Length.
+
+def _chunked_server_script():
+    return '''
+        import http.server, threading
+
+        class ChunkedHandler(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            next_chunks = [b'{"a":1,', b'"b":2,', b'"c":3}']
+            drop_mid_chunk = False
+
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                if ChunkedHandler.drop_mid_chunk:
+                    # Заявляем большой чанк, шлём часть данных и рвём соединение —
+                    # клиент должен увидеть оборванный chunked-поток, не подмену JSON.
+                    self.wfile.write(b'64\\r\\n{"partial":')
+                    self.wfile.flush()
+                    self.connection.close()
+                    return
+                for c in ChunkedHandler.next_chunks:
+                    self.wfile.write(('%x\\r\\n' % len(c)).encode() + c + b'\\r\\n')
+                    self.wfile.flush()
+                self.wfile.write(b'0\\r\\n\\r\\n')
+
+            def log_message(self, *a):
+                pass
+
+        _srv = http.server.HTTPServer(('127.0.0.1', 0), ChunkedHandler)
+        _port = _srv.server_port
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+        _base = f'http://127.0.0.1:{_port}'
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _port)
+    '''
+
+
+def test_chunked_response_decoded_correctly_not_treated_as_raw_bytes():
+    result, proc = run_script(_chunked_server_script() + '''
+        status_code, data, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'status_code': status_code, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status_code': 200, 'data': {'a': 1, 'b': 2, 'c': 3}, 'err': None}
+
+
+def test_chunked_response_with_many_small_chunks():
+    result, proc = run_script(_chunked_server_script() + '''
+        ChunkedHandler.next_chunks = [b'{"', b'x', b'"', b':', b'[', b'1', b',', b'2', b',', b'3', b']', b'}']
+        status_code, data, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'status_code': status_code, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status_code': 200, 'data': {'x': [1, 2, 3]}, 'err': None}
+
+
+def test_chunked_slow_drip_respects_deadline():
+    """Медленный дрип ЧАНКАМИ (не байтами через Content-Length, а полноценным
+    chunked framing) — 10 чанков по 20мс с дедлайном 0.15с обязаны прерваться
+    заметно раньше полной передачи (~0.2с), не позже 0.4с."""
+    result, proc = run_script('''
+        import http.server, threading, time
+
+        class SlowChunked(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                for i in range(10):
+                    c = b'{"i":%d}' % i
+                    try:
+                        self.wfile.write(('%x\\r\\n' % len(c)).encode() + c + b'\\r\\n')
+                        self.wfile.flush()
+                    except Exception:
+                        return
+                    time.sleep(.02)
+                try:
+                    self.wfile.write(b'0\\r\\n\\r\\n')
+                except Exception:
+                    pass
+            def log_message(self, *a):
+                pass
+
+        _srv = http.server.HTTPServer(('127.0.0.1', 0), SlowChunked)
+        _port = _srv.server_port
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _port)
+        stand_egress._READ_TOTAL_DEADLINE = 0.15
+
+        start = time.monotonic()
+        result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        elapsed = time.monotonic() - start
+        OUT({'result': result, 'elapsed': round(elapsed, 2)})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result['result'] == [None, None, 'read_timeout']
+    assert result['elapsed'] <= 0.4
+
+
+def test_chunked_dropped_mid_chunk_is_read_error():
+    result, proc = run_script(_chunked_server_script() + '''
+        ChunkedHandler.drop_mid_chunk = True
+        status_code, data, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'status_code': status_code, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['data'] is None
+    assert result['err'] == 'read_error'
+
+
+# ── ручная проверка живой сети (см. отчёт) выполнена отдельно интерактивно ──

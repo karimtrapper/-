@@ -11645,7 +11645,7 @@ def get_wallets():
 
             wallet_data['usdt_balance'] = 0
             wallet_data['trx_balance'] = 0
-            
+
             # Получаем баланс с TronScan
             try:
                 if STAND_MODE:
@@ -11680,18 +11680,28 @@ def get_wallets():
                             if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                                 wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                                 break
-                        
+
                         # Обновляем кэш (даже если TRX не нашли тут)
                         TRONSCAN_CACHE['balances'][wallet.address] = {
                             'usdt': wallet_data['usdt_balance'],
                             'trx': wallet_data['trx_balance'],
                             'timestamp': current_time
                         }
+                    elif STAND_MODE:
+                        # Оба чтения канала не ответили (а не «баланс нулевой») —
+                        # честно «нет данных», а не 0: 0 в CRM читается как
+                        # «на кошельке пусто», что на стенде неверно.
+                        wallet_data['usdt_balance'] = None
+                        wallet_data['trx_balance'] = None
+                        wallet_data['balance_unavailable'] = True
                 # Небольшая пауза между кошельками
                 time.sleep(0.3)
             except:
-                pass
-            
+                if STAND_MODE:
+                    wallet_data['usdt_balance'] = None
+                    wallet_data['trx_balance'] = None
+                    wallet_data['balance_unavailable'] = True
+
             wallets_with_balance.append(wallet_data)
         
         return jsonify({'success': True, 'wallets': wallets_with_balance})
@@ -11763,8 +11773,17 @@ def add_wallet():
                     if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                         wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                         break
+            elif STAND_MODE:
+                # Канал не ответил — честно «нет данных», а не 0 (0 в CRM
+                # читается как «на кошельке пусто», что на стенде неверно).
+                wallet_data['usdt_balance'] = None
+                wallet_data['trx_balance'] = None
+                wallet_data['balance_unavailable'] = True
         except:
-            pass
+            if STAND_MODE:
+                wallet_data['usdt_balance'] = None
+                wallet_data['trx_balance'] = None
+                wallet_data['balance_unavailable'] = True
         
         return jsonify({'success': True, 'wallet': wallet_data})
     except Exception as e:

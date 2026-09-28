@@ -12601,8 +12601,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                             style="cursor: pointer; flex-shrink: 0;">📋</span>
                                     </div>
                                     <div style="margin-top: 0.5rem;">
-                                        <strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
-                                        <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>
+                                        ${w.balance_unavailable
+                                          ? '<span style="color: #94a3b8;">нет данных</span>'
+                                          : `<strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
+                                        <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>`}
                                     </div>
                                     <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">×</button>
                                 </div>
@@ -12612,7 +12614,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
                     if (walletFilter) {
                         walletFilter.innerHTML = '<option value="">Все кошельки</option>' +
-                            walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${escapeHtml(w.label || w.address.substring(0, 8) + '...')} ($${w.usdt_balance.toFixed(0)})</option>`).join('');
+                            walletsData.wallets.map(w => `<option value="${w.address}" ${currentFilter === w.address ? 'selected' : ''}>${escapeHtml(w.label || w.address.substring(0, 8) + '...')} (${w.balance_unavailable ? 'нет данных' : '$' + w.usdt_balance.toFixed(0)})</option>`).join('');
                     }
                 } else {
                     document.getElementById('walletsInfo').innerHTML = `
@@ -12726,7 +12728,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const data = await response.json();
 
                 if (data.success) {
-                    showToast(`Кошелек добавлен!\nUSDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`);
+                    const balanceText = data.wallet.balance_unavailable
+                        ? 'нет данных'
+                        : `USDT: $${data.wallet.usdt_balance.toFixed(2)}\nTRX: ${data.wallet.trx_balance.toFixed(2)}`;
+                    showToast(`Кошелек добавлен!\n${balanceText}`);
                     this.reset();
                     loadTransactions();
                 } else {

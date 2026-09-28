@@ -791,8 +791,8 @@ def read_get(op, params=None, _base_url=None):
     передаёт и не читает из env; проходит только зарегистрированный
     allow_test_target() loopback-адрес, иначе — 'invalid_base_url' до сети.
     """
+    import http.client
     import requests
-    import urllib3
 
     spec = _READ_CHANNELS.get(op)
     if spec is None:
@@ -864,52 +864,68 @@ def read_get(op, params=None, _base_url=None):
             try:
                 if 300 <= resp.status_code < 400:
                     return resp.status_code, None, 'redirect_blocked'
-                # Дедлайн проверяем без отдельного потока и без resp.raw.read():
-                # urllib3 хоронит соединение целиком при любом ReadTimeoutError
-                # внутри HTTPResponse.read() (это его штатное поведение — после
-                # таймаута сокет для этого ответа больше не пригоден), так что
-                # «поймать таймаут чанка и попробовать снова» через read()
-                # физически невозможно — вторая попытка бьётся о уже закрытый
-                # сокет. Поэтому тело читаем через read1() того же
-                # BufferedReader, что использует http.client, а не через сырой
-                # socket.recv() — заголовки уже могли утянуть в его буфер
-                # первый кусок тела той же TCP-посылкой, и recv() напрямую с
-                # сокета этот буфер обошёл бы стороной (кейс: голый recv() на
-                # маленьком ответе давал невалидный JSON — начало тела терялось
-                # в буфере, а не в сети). read1() сперва отдаёт буфер, потом
-                # делает не больше одного сырого чтения — то же прерывание по
-                # таймауту, что и у recv(), но без потери уже полученных байт.
-                # Если сокет недостижим (нестандартный/фейковый нижний
-                # транспорт) — честный read_error ДО попытки читать.
+                # Дедлайн проверяем без отдельного потока и без resp.raw.read()
+                # (urllib3-обёртки): urllib3 хоронит соединение целиком при
+                # любом ReadTimeoutError внутри своего HTTPResponse.read() (его
+                # штатное поведение — после таймаута сокет для этого ответа
+                # больше не пригоден), так что «поймать таймаут чанка и
+                # попробовать снова» через него физически невозможно — вторая
+                # попытка бьётся о уже закрытый сокет.
+                #
+                # Тело читаем через read1() самого http.client.HTTPResponse
+                # (resp.raw._fp), а не через его нижний BufferedReader
+                # (resp.raw._fp.fp) и тем более не голым socket.recv():
+                # у Rapira/TronScan (HTTP/1.1 без Content-Length) тело идёт
+                # Transfer-Encoding: chunked, и разметку чанков (hex-длина\r\n
+                # …данные…\r\n) понимает только http.client.HTTPResponse —
+                # чтение из BufferedReader/сокета в обход него отдаёт эту
+                # разметку как часть JSON (сломанный прод-инцидент: TronScan/
+                # Rapira отвечали read_error, потому что тело было валидным
+                # chunked-потоком, а не валидным JSON без декодирования
+                # фрейминга). http.client.HTTPResponse.read1() сам понимает и
+                # chunked, и Content-Length, и «до закрытия соединения», и
+                # делает не больше одного сырого чтения за вызов — тот же
+                # прерываемый таймаут по сокету, что и раньше, без потери уже
+                # полученных байт и без разрушения framing-состояния на
+                # повторном вызове после таймаута. Если сокета нет вовсе
+                # (нестандартный/фейковый нижний транспорт) — честный
+                # read_error ДО попытки читать.
                 try:
                     sock = resp.raw._fp.fp.raw._sock
-                    buffered = resp.raw._fp.fp
+                    http_resp = resp.raw._fp  # http.client.HTTPResponse — знает framing
                 except Exception:
                     return None, None, 'read_error'
-                try:
-                    content_length = int(resp.headers.get('Content-Length'))
-                except (TypeError, ValueError):
-                    content_length = None  # неизвестна — читаем до закрытия соединения
                 chunks = []
                 total = 0
                 step = 0.2  # шаг между проверками дедлайна — не таймаут одной операции целиком
-                while content_length is None or total < content_length:
+                while True:
                     remaining_for_read = deadline - time.monotonic()
                     if remaining_for_read <= 0:
                         return None, None, 'read_timeout'
                     try:
                         sock.settimeout(min(remaining_for_read, step))
                     except Exception:
+                        # http_resp.read1() сам закрывает соединение (_close_conn),
+                        # как только отдал последний байт заявленной длины/чанка
+                        # 0\r\n\r\n — это происходит ВНУТРИ того самого вызова,
+                        # который вернул последние данные, поэтому дожидаться
+                        # такого случая нужно на СЛЕДУЮЩей итерации: тут сокет
+                        # уже закрыт легитимно. Если что-то уже прочитано — это
+                        # EOF, а не сбой; если нет — сеть действительно не ответила.
+                        if total > 0:
+                            break
                         return None, None, 'read_error'
-                    want = 65536 if content_length is None else min(65536, content_length - total)
                     try:
-                        chunk = buffered.read1(want)
+                        chunk = http_resp.read1(65536)
                     except (socket.timeout, TimeoutError):
                         continue  # свой шаг вышел, не весь дедлайн — цикл перепроверит остаток
-                    except OSError:
+                    except (http.client.HTTPException, OSError):
+                        # Оборванное тело (в том числе посреди HTTP-чанка —
+                        # http.client.IncompleteRead, подкласс HTTPException)
+                        # или сокет-ошибка — сеть не ответила как надо.
                         return None, None, 'read_error'
                     if not chunk:
-                        break  # соединение закрыто — это EOF при неизвестном Content-Length
+                        break  # http_resp сам знает конец тела — и для chunked, и для Content-Length
                     total += len(chunk)
                     if total > _MAX_READ_RESPONSE_BYTES:
                         return resp.status_code, None, 'response_too_large'
