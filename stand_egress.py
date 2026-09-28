@@ -85,6 +85,18 @@ _lk_ctx = threading.local()
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
 
+_dp_ctx = threading.local()
+
+_OR_HOST = 'openrouter.ai'
+_OR_PATH = '/api/v1/chat/completions'
+# Ключи payload, которые вообще может собрать docparse.py — 'tools'/'tool_choice'/
+# внешний image URL сюда никогда не попадут, потому что их здесь нет в allowlist'е.
+_DP_ALLOWED_KEYS = frozenset({'model', 'messages', 'response_format', 'max_tokens', 'temperature'})
+_DP_IMAGE_URL_RE = re.compile(r'^data:image/png;base64,[A-Za-z0-9+/]+=*$')
+_DP_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+_DP_MAX_REQUEST_BYTES = 12 * 1024 * 1024
+_DP_TOTAL_DEADLINE = 20.0
+
 _read_ctx = threading.local()
 
 _policy = None  # callable(channel, recipient, operation) -> bool, регистрируется set_policy()
@@ -432,6 +444,8 @@ def _loopback_pair_allowed(host, port):
         return True
     if getattr(_read_ctx, 'active', False) and (key, port) in getattr(_read_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_dp_ctx, 'active', False) and (key, port) in getattr(_dp_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -452,6 +466,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == 443
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         return port is None or port == 443
+    if getattr(_dp_ctx, 'active', False) and h == getattr(_dp_ctx, 'host', None):
+        return port is None or port == 443
     return False
 
 
@@ -465,6 +481,8 @@ def _ip_allowed(ip, port=None):
     if getattr(_lk_ctx, 'active', False) and port is not None and (ip, port) in getattr(_lk_ctx, 'allowed_pairs', ()):
         return True
     if getattr(_read_ctx, 'active', False) and port is not None and (ip, port) in getattr(_read_ctx, 'allowed_pairs', ()):
+        return True
+    if getattr(_dp_ctx, 'active', False) and port is not None and (ip, port) in getattr(_dp_ctx, 'allowed_pairs', ()):
         return True
     return False
 
@@ -484,6 +502,9 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _read_ctx.allowed_pairs = pairs | set(getattr(_read_ctx, 'allowed_pairs', ()))
+    if getattr(_dp_ctx, 'active', False) and h == getattr(_dp_ctx, 'host', None):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _dp_ctx.allowed_pairs = pairs | set(getattr(_dp_ctx, 'allowed_pairs', ()))
     return infos
 
 
@@ -928,35 +949,115 @@ _MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
 _READ_TOTAL_DEADLINE = 8.0  # секунд на всю операцию: connect + заголовки + тело
 
 
-class _ReadChannelConnectMixin:
+class _BodyDeadlineSocket:
+    """Apply the operation deadline at every buffered socket read.
+
+    A timeout is terminal: SocketIO marks itself poisoned after one. We never
+    retry it. Buffered bytes are consumed by http.client without select(), and
+    the library retains ownership of Content-Length/chunk/EOF framing.
+    """
+    def __init__(self, sock, deadline):
+        self._sock = sock
+        self._deadline = deadline
+        self._io_refs = 0
+
+    def recv_into(self, *args, **kwargs):
+        remaining = self._deadline - time.monotonic()
+        if remaining <= 0:
+            raise socket.timeout('deadline')
+        self._sock.settimeout(remaining)
+        return self._sock.recv_into(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._sock, name)
+
+    def makefile(self, mode='r', buffering=None, *, encoding=None, errors=None, newline=None):
+        # http.client creates its BufferedReader while parsing response headers.
+        # Put the same deadline below that buffer, including for header reads.
+        stream = socket.socket.makefile(self, mode, buffering, encoding=encoding,
+                                        errors=errors, newline=newline)
+        self._sock._io_refs += 1
+        return stream
+
+    def _decref_socketios(self):
+        self._io_refs -= 1
+        self._sock._decref_socketios()
+
+
+def _bounded_http_body(resp, deadline, limit):
+    """Return (bytes, error) using http.client's HTTP framing and one deadline."""
+    import http.client
+    try:
+        if resp.headers.get('Content-Encoding', 'identity').lower() != 'identity':
+            return None, 'unsupported_encoding'
+        http_resp = resp.raw._fp
+        socket_io = http_resp.fp.raw
+        if not isinstance(socket_io._sock, _BodyDeadlineSocket):
+            socket_io._sock = _BodyDeadlineSocket(socket_io._sock, deadline)
+    except (AttributeError, TypeError):
+        return None, 'read_error'
+    if http_resp.length is not None and http_resp.length > limit:
+        return None, 'too_large'
+    parts, size = [], 0
+    try:
+        while True:
+            if deadline - time.monotonic() <= 0:
+                return None, 'timeout'
+            part = http_resp.read1(min(65536, limit + 1 - size))
+            if not part:
+                if http_resp.length is not None and http_resp.length > 0:
+                    return None, 'read_error'
+                if http_resp.chunked and not http_resp.isclosed():
+                    return None, 'read_error'
+                return b''.join(parts), None
+            size += len(part)
+            if size > limit:
+                return None, 'too_large'
+            parts.append(part)
+    except (socket.timeout, TimeoutError):
+        return None, 'timeout'
+    except (http.client.HTTPException, OSError, ValueError):
+        return None, 'read_error'
+
+
+class _ConnectScopedMixin:
     """Guard-разрешение выставляется СТРОГО на время своего connect() — не на
-    весь HTTP-запрос. Если тест подменяет requests.Session.get целиком (сам
-    метод, не транспорт), эта connect() вообще не вызывается — разрешение
-    не открывается, и прямой сокет из того же потока получит отказ, как и
-    положено (E2)."""
+    весь HTTP-запрос. Если тест подменяет requests.Session.get/post целиком
+    (сам метод, не транспорт), эта connect() вообще не вызывается —
+    разрешение не открывается, и прямой сокет из того же потока получит
+    отказ, как и положено (E2). Параметризован конкретным thread-local
+    контекстом канала (_ctx) — read_get и docparse_post используют одну и
+    ту же реализацию с разными контекстами (_read_ctx / _dp_ctx)."""
+    _ctx = None
+
     def connect(self):
-        _read_ctx.active = True
-        _read_ctx.host = getattr(_read_ctx, 'pending_host', None)
-        _read_ctx.allowed_pairs = set(getattr(_read_ctx, 'pending_pairs', ()) or ())
+        ctx = self._ctx
+        ctx.active = True
+        ctx.host = getattr(ctx, 'pending_host', None)
+        ctx.allowed_pairs = set(getattr(ctx, 'pending_pairs', ()) or ())
         try:
-            return super().connect()
+            result = super().connect()
+            deadline = getattr(ctx, 'pending_deadline', None)
+            if deadline is not None and self.sock is not None:
+                self.sock = _BodyDeadlineSocket(self.sock, deadline)
+            return result
         finally:
-            _read_ctx.active = False
-            _read_ctx.host = None
-            _read_ctx.allowed_pairs = set()
+            ctx.active = False
+            ctx.host = None
+            ctx.allowed_pairs = set()
 
 
-def _read_channel_adapter():
+def _connect_scoped_adapter(ctx):
     """HTTPAdapter с одноразовым пулом, чьи соединения открывают guard-
-    разрешение только на время своего connect() (см. _ReadChannelConnectMixin)."""
+    разрешение только на время своего connect() (см. _ConnectScopedMixin)."""
     import urllib3
     from requests.adapters import HTTPAdapter
 
-    class _HTTPConn(_ReadChannelConnectMixin, urllib3.connection.HTTPConnection):
-        pass
+    class _HTTPConn(_ConnectScopedMixin, urllib3.connection.HTTPConnection):
+        _ctx = ctx
 
-    class _HTTPSConn(_ReadChannelConnectMixin, urllib3.connection.HTTPSConnection):
-        pass
+    class _HTTPSConn(_ConnectScopedMixin, urllib3.connection.HTTPSConnection):
+        _ctx = ctx
 
     class _HTTPPool(urllib3.HTTPConnectionPool):
         ConnectionCls = _HTTPConn
@@ -1016,7 +1117,6 @@ def read_get(op, params=None, _base_url=None):
     передаёт и не читает из env; проходит только зарегистрированный
     allow_test_target() loopback-адрес, иначе — 'invalid_base_url' до сети.
     """
-    import http.client
     import requests
 
     spec = _READ_CHANNELS.get(op)
@@ -1076,86 +1176,27 @@ def read_get(op, params=None, _base_url=None):
     deadline = time.monotonic() + _READ_TOTAL_DEADLINE
     _read_ctx.pending_host = permit_host
     _read_ctx.pending_pairs = permit_pairs
+    _read_ctx.pending_deadline = deadline
     try:
         session = requests.Session()
         session.trust_env = False
-        adapter = _read_channel_adapter()
+        adapter = _connect_scoped_adapter(_read_ctx)
         session.mount('http://', adapter)
         session.mount('https://', adapter)
         try:
-            remaining = max(0.05, deadline - time.monotonic())
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, None, 'timeout'
             resp = session.get(url, params=query, headers=headers, timeout=remaining,
                                allow_redirects=False, stream=True, proxies={})
             try:
                 if 300 <= resp.status_code < 400:
                     return resp.status_code, None, 'redirect_blocked'
-                # Дедлайн проверяем без отдельного потока и без resp.raw.read()
-                # (urllib3-обёртки): urllib3 хоронит соединение целиком при
-                # любом ReadTimeoutError внутри своего HTTPResponse.read() (его
-                # штатное поведение — после таймаута сокет для этого ответа
-                # больше не пригоден), так что «поймать таймаут чанка и
-                # попробовать снова» через него физически невозможно — вторая
-                # попытка бьётся о уже закрытый сокет.
-                #
-                # Тело читаем через read1() самого http.client.HTTPResponse
-                # (resp.raw._fp), а не через его нижний BufferedReader
-                # (resp.raw._fp.fp) и тем более не голым socket.recv():
-                # у Rapira/TronScan (HTTP/1.1 без Content-Length) тело идёт
-                # Transfer-Encoding: chunked, и разметку чанков (hex-длина\r\n
-                # …данные…\r\n) понимает только http.client.HTTPResponse —
-                # чтение из BufferedReader/сокета в обход него отдаёт эту
-                # разметку как часть JSON (сломанный прод-инцидент: TronScan/
-                # Rapira отвечали read_error, потому что тело было валидным
-                # chunked-потоком, а не валидным JSON без декодирования
-                # фрейминга). http.client.HTTPResponse.read1() сам понимает и
-                # chunked, и Content-Length, и «до закрытия соединения», и
-                # делает не больше одного сырого чтения за вызов — тот же
-                # прерываемый таймаут по сокету, что и раньше, без потери уже
-                # полученных байт и без разрушения framing-состояния на
-                # повторном вызове после таймаута. Если сокета нет вовсе
-                # (нестандартный/фейковый нижний транспорт) — честный
-                # read_error ДО попытки читать.
-                try:
-                    sock = resp.raw._fp.fp.raw._sock
-                    http_resp = resp.raw._fp  # http.client.HTTPResponse — знает framing
-                except Exception:
-                    return None, None, 'read_error'
-                chunks = []
-                total = 0
-                step = 0.2  # шаг между проверками дедлайна — не таймаут одной операции целиком
-                while True:
-                    remaining_for_read = deadline - time.monotonic()
-                    if remaining_for_read <= 0:
-                        return None, None, 'read_timeout'
-                    try:
-                        sock.settimeout(min(remaining_for_read, step))
-                    except Exception:
-                        # http_resp.read1() сам закрывает соединение (_close_conn),
-                        # как только отдал последний байт заявленной длины/чанка
-                        # 0\r\n\r\n — это происходит ВНУТРИ того самого вызова,
-                        # который вернул последние данные, поэтому дожидаться
-                        # такого случая нужно на СЛЕДУЮЩей итерации: тут сокет
-                        # уже закрыт легитимно. Если что-то уже прочитано — это
-                        # EOF, а не сбой; если нет — сеть действительно не ответила.
-                        if total > 0:
-                            break
-                        return None, None, 'read_error'
-                    try:
-                        chunk = http_resp.read1(65536)
-                    except (socket.timeout, TimeoutError):
-                        continue  # свой шаг вышел, не весь дедлайн — цикл перепроверит остаток
-                    except (http.client.HTTPException, OSError):
-                        # Оборванное тело (в том числе посреди HTTP-чанка —
-                        # http.client.IncompleteRead, подкласс HTTPException)
-                        # или сокет-ошибка — сеть не ответила как надо.
-                        return None, None, 'read_error'
-                    if not chunk:
-                        break  # http_resp сам знает конец тела — и для chunked, и для Content-Length
-                    total += len(chunk)
-                    if total > _MAX_READ_RESPONSE_BYTES:
-                        return resp.status_code, None, 'response_too_large'
-                    chunks.append(chunk)
-                raw = b''.join(chunks)
+                raw, read_err = _bounded_http_body(resp, deadline, _MAX_READ_RESPONSE_BYTES)
+                if read_err:
+                    return (resp.status_code if read_err == 'too_large' else None), None, (
+                        'read_timeout' if read_err == 'timeout' else
+                        'response_too_large' if read_err == 'too_large' else read_err)
                 if resp.status_code == 429:
                     return resp.status_code, None, 'http_429'
                 if 500 <= resp.status_code < 600:
@@ -1190,3 +1231,208 @@ def read_get(op, params=None, _base_url=None):
     finally:
         _read_ctx.pending_host = None
         _read_ctx.pending_pairs = set()
+        _read_ctx.pending_deadline = None
+
+
+# ─────────── T15: канал распознавания документов (docparse_post) ───────────
+
+_dp_auth_ctx = threading.local()
+
+
+def docparse_request_scope():
+    """Context manager: открывает разрешение на docparse.parse_file(stand=True)
+    только для текущего потока и только на время исполнения. Вызывается
+    ИСКЛЮЧИТЕЛЬНО из обработчика /api/docs/parse — после того как
+    check_auth уже проверил сессию сотрудника. Прямой вызов parse_file() из
+    фонового потока/скрипта, минуя HTTP-запрос через этот route, не находит
+    авторизованный контекст на своём потоке и отказывает до сети (docparse.py
+    проверяет docparse_request_authorized() до любой сетевой попытки)."""
+    return _DocparseRequestScope()
+
+
+class _DocparseRequestScope:
+    def __enter__(self):
+        from flask import g, has_request_context, request, session
+        authorized = (has_request_context() and request.endpoint == 'docs_parse'
+                      and request.method == 'POST'
+                      and bool(session.get('user_id'))
+                      and getattr(g, '_docparse_checked_user', None) == session.get('user_id'))
+        _dp_auth_ctx.authorized = authorized
+        _dp_auth_ctx.deadline = (getattr(g, '_docparse_started', time.monotonic())
+                                 + _DP_TOTAL_DEADLINE) if authorized else None
+        return self
+
+    def __exit__(self, *exc):
+        _dp_auth_ctx.authorized = False
+        _dp_auth_ctx.deadline = None
+        return False
+
+
+def docparse_request_authorized():
+    from flask import g, has_request_context, request, session
+    return bool(getattr(_dp_auth_ctx, 'authorized', False)
+                and has_request_context() and request.endpoint == 'docs_parse'
+                and request.method == 'POST'
+                and getattr(g, '_docparse_checked_user', None) == session.get('user_id')
+                and session.get('user_id')
+                and getattr(_dp_auth_ctx, 'deadline', None) is not None)
+
+
+def docparse_remaining():
+    if not docparse_request_authorized():
+        return 0.0
+    return max(0.0, _dp_auth_ctx.deadline - time.monotonic())
+
+
+def _dp_content_item_ok(item):
+    if not isinstance(item, dict):
+        return False
+    if item.get('type') == 'text':
+        return set(item.keys()) == {'type', 'text'} and isinstance(item['text'], str)
+    if item.get('type') == 'image_url':
+        if set(item.keys()) != {'type', 'image_url'}:
+            return False
+        url = item.get('image_url')
+        return (isinstance(url, dict) and set(url.keys()) == {'url'}
+                and isinstance(url.get('url'), str) and bool(_DP_IMAGE_URL_RE.match(url['url'])))
+    return False
+
+
+def _valid_docparse_payload(payload):
+    """Payload — фиксированная схема docparse.py, не то, что прислал браузер.
+
+    Проверяется здесь, а не доверяется вызывающему коду: это последняя граница
+    перед сетью. Модель — из закрытого списка (docparse.DEFAULT_MODEL/
+    FALLBACK_MODELS), сообщения — только текст и data-URI PNG, без tools,
+    внешних URL и произвольной response_format-схемы: response_format
+    обязателен и должен побайтово совпадать со схемой docparse._schema() —
+    не «какой-то валидный json_schema», а именно прод-схема (иначе чужой
+    response_format мог бы вытащить из модели произвольные поля)."""
+    if not isinstance(payload, dict) or set(payload.keys()) - _DP_ALLOWED_KEYS:
+        return False
+    if not {'model', 'messages', 'response_format'} <= set(payload.keys()):
+        return False
+    import docparse  # noqa: PLC0415 — только здесь, чтобы избежать цикла на уровне модулей
+    if payload['model'] not in ([docparse.DEFAULT_MODEL] + docparse.FALLBACK_MODELS):
+        return False
+    messages = payload['messages']
+    if not isinstance(messages, list) or len(messages) != 1:
+        return False
+    message = messages[0]
+    if not isinstance(message, dict) or set(message.keys()) != {'role', 'content'} or message['role'] != 'user':
+        return False
+    content = message['content']
+    if not isinstance(content, list) or not content:
+        return False
+    if content[0].get('type') != 'text' or not all(_dp_content_item_ok(item) for item in content):
+        return False
+    rf = payload['response_format']
+    expected_rf = {'type': 'json_schema',
+                  'json_schema': {'name': 'doc', 'strict': True, 'schema': docparse._schema()}}
+    if rf != expected_rf:
+        return False
+    if 'max_tokens' in payload:
+        mt = payload['max_tokens']
+        if isinstance(mt, bool) or not isinstance(mt, int) or not (0 < mt <= 20000):
+            return False
+    if 'temperature' in payload and payload['temperature'] != 0:
+        return False
+    return True
+
+
+def docparse_post(payload, timeout=_DP_TOTAL_DEADLINE, _base_url=None):
+    """Единственный путь распознавания документов в OpenRouter на стенде.
+
+    Ровно POST на chat/completions с ключом STAND_DOCPARSE_KEY, через тот же
+    connect-scoped транспорт, что read_get (см. _ConnectScopedMixin) — guard
+    открывает openrouter.ai только на время СВОЕГО connect(), не на весь
+    вызов: перехват requests.Session.post целиком (мимо транспорта) или
+    прямой socket.create_connection в этом же потоке во время вызова так и
+    остаются заблокированными. `_base_url` — только для тестов (фейковый
+    локальный сервер), прод его не передаёт.
+
+    Возвращает (status_code|None, json|None, error_code|None): error_code не
+    None — сеть не дошла до успешного JSON-ответа 200; тело читается с
+    общим дедлайном: один HTTP-aware reader для обоих каналов применяет
+    остаток срока на каждом низкоуровневом чтении и не повторяет чтение
+    после socket timeout (такой SocketIO уже непригоден). Текст
+    исключений SDK/requests наружу не отдаётся никогда.
+    """
+    import requests
+
+    if not docparse_request_authorized():
+        return None, None, 'no_request_context'
+    timeout = min(timeout, docparse_remaining())
+    if timeout <= 0:
+        return None, None, 'timeout'
+    deadline = min(_dp_auth_ctx.deadline, time.monotonic() + timeout)
+
+    key = os.environ.get('STAND_DOCPARSE_KEY', '').strip()
+    if not key:
+        return None, None, 'no_key'
+    if not _valid_docparse_payload(payload):
+        return None, None, 'invalid_payload'
+    body = json.dumps(payload).encode('utf-8')
+    if len(body) > _DP_MAX_REQUEST_BYTES:
+        return None, None, 'too_large'
+
+    base = (_base_url or f'https://{_OR_HOST}').rstrip('/')
+    url = f'{base}{_OR_PATH}'
+
+    permit_host = _OR_HOST
+    permit_pairs = set()
+    if _base_url is not None:
+        allowed = _validate_base_url_override(_base_url)
+        if allowed is None:
+            return None, None, 'invalid_base_url'
+        _, key_host, port = allowed
+        permit_host = key_host
+        permit_pairs = {(key_host, port)}
+
+    _dp_ctx.pending_host = permit_host
+    _dp_ctx.pending_pairs = permit_pairs
+    _dp_ctx.pending_deadline = deadline
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        adapter = _connect_scoped_adapter(_dp_ctx)
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return None, None, 'timeout'
+            resp = session.post(url, data=body, headers={
+                'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
+                timeout=remaining, allow_redirects=False, stream=True, proxies={})
+            try:
+                if 300 <= resp.status_code < 400:
+                    return resp.status_code, None, 'redirect_blocked'
+                raw, read_err = _bounded_http_body(resp, deadline, _DP_MAX_RESPONSE_BYTES)
+                if read_err:
+                    return (resp.status_code if read_err == 'too_large' else None), None, read_err
+                try:
+                    data = json.loads(raw.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    return resp.status_code, None, 'bad_json'
+                if not isinstance(data, dict):
+                    return resp.status_code, None, 'bad_json'
+                return resp.status_code, data, None
+            finally:
+                resp.close()
+        finally:
+            session.close()
+    except requests.exceptions.Timeout:
+        return None, None, 'timeout'
+    except requests.exceptions.ChunkedEncodingError:
+        return None, None, 'read_error'
+    except requests.exceptions.RequestException:
+        # Текст исключения requests нередко содержит сам URL/токен — наружу
+        # уходит только стабильный код, как и в tg_call/read_get.
+        return None, None, 'network_error'
+    except Exception:
+        return None, None, 'network_error'
+    finally:
+        _dp_ctx.pending_host = None
+        _dp_ctx.pending_pairs = set()
+        _dp_ctx.pending_deadline = None

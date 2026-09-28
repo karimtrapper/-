@@ -3,7 +3,7 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session
+from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session, g
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import os
@@ -189,11 +189,13 @@ def check_auth():
         if path in login_paths:
             return None
         uid = flask_session.get('user_id')
+        docparse_role = None
         if uid:
             db = get_session()
             try:
                 user = db.query(AdminUser).get(uid)
                 valid = bool(user and not user.login_disabled)
+                docparse_role = user.role if valid else None
             finally:
                 db.close()
             if not valid:
@@ -203,6 +205,12 @@ def check_auth():
             if path.startswith('/api/'):
                 return jsonify({'success': False, 'error': 'unauthorized'}), 401
             return redirect('/login')
+        if path == '/api/docs/parse' and request.method == 'POST':
+            if docparse_role not in STAND_ROLES:
+                return jsonify({'success': False, 'error': 'forbidden'}), 403
+            # Set only after the server has rechecked the active employee in DB.
+            # A caller-created Flask request context alone cannot authorize OCR.
+            g._docparse_checked_user = uid
         blocked = (path in {'/api/auth/tg-start', '/api/auth/tg-poll',
                             '/api/auth/tg-login', '/api/auth/tg-config',
                             '/api/sber-incomes/ingest'}
@@ -18528,11 +18536,11 @@ def _docs_client_key(fields):
 
 
 def _docs_openrouter_key():
-    # Режим «тишина»: паспорта и инвойсы клиента не должны улетать в OpenRouter
-    # с тестового стенда ни под каким ключом. STAND_DOCPARSE_KEY сознательно не
-    # читаем — распознавание включат отдельным решением Карима (T1, план п.1.1).
+    # На стенде — только STAND_DOCPARSE_KEY через изолированный канал
+    # stand_egress.docparse_post (решение Карима 28.09, см. OCR-TRC20-REVIEW.md).
+    # OPENROUTER_API_KEY и прод-ключ здесь не читаются никогда.
     if STAND_MODE:
-        return ''
+        return os.environ.get('STAND_DOCPARSE_KEY', '').strip()
     return os.environ.get('OPENROUTER_API_KEY', '')
 
 
@@ -18638,10 +18646,19 @@ def _docs_collect_uploads():
         for f in request.files.getlist(slot):
             if f and f.filename:
                 uploads.append((slot, f))
-    for f in request.files.getlist('files'):
-        if f and f.filename:
-            uploads.append((None, f))
+    if not STAND_MODE:
+        for f in request.files.getlist('files'):
+            if f and f.filename:
+                uploads.append((None, f))
     return uploads
+
+
+@app.route('/api/docs/parse/capability', methods=['GET'])
+def docs_parse_capability():
+    """Authenticated availability check; no document, token or provider call."""
+    if not STAND_MODE:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({'available': bool(_docs_openrouter_key())})
 
 
 @app.route('/api/docs/parse', methods=['POST'])
@@ -18652,15 +18669,19 @@ def docs_parse():
     создаётся договор. Файлы приезжают повторно на шаге создания.
     """
     if STAND_MODE:
+        g._docparse_started = time.monotonic()
+    key = _docs_openrouter_key()
+    if STAND_MODE and not key:
         return jsonify({'success': False, 'error': 'stand_blocked',
                         'detail': 'На стенде распознавание документов выключено'}), 403
-    key = _docs_openrouter_key()
     if not key:
         return jsonify({'success': False, 'error': 'no_api_key',
                         'detail': 'OPENROUTER_API_KEY не задан в окружении'}), 503
     uploads = _docs_collect_uploads()
     if not uploads:
         return jsonify({'success': False, 'error': 'no_files'}), 400
+    if STAND_MODE and len(uploads) > 3:
+        return jsonify({'success': False, 'error': 'too_many_files'}), 400
 
     deal_type = request.form.get('deal_type')
     if deal_type in DOCS_REQUIRED_SLOTS:
@@ -18672,17 +18693,33 @@ def docs_parse():
                             'detail': 'Не приложены: ' + ', '.join(
                                 DOCS_SLOT_LABEL[s] for s in missing)}), 400
 
+    import contextlib
     import docparse
+    import stand_egress
     results, failed = [], []
-    for slot, f in uploads:
-        raw = f.read()
-        if not raw:
-            continue
-        try:
-            results.append(docparse.parse_file(f.filename, raw, f.mimetype, key, kind=slot))
-        except Exception as exc:
-            app.logger.warning(f'docs_parse: {f.filename} — {exc}')
-            failed.append({'file': f.filename, 'slot': slot, 'error': str(exc)[:300]})
+    # Разрешение на docparse.parse_file(stand=True) открыто только для этого
+    # потока и только на время цикла ниже — прямой вызов из фонового потока/
+    # скрипта, минуя HTTP-запрос залогиненного сотрудника, отказывает до сети
+    # (см. stand_egress.docparse_request_scope).
+    scope = stand_egress.docparse_request_scope() if STAND_MODE else contextlib.nullcontext()
+    with scope:
+        for slot, f in uploads:
+            raw = f.read()
+            if not raw:
+                continue
+            try:
+                results.append(docparse.parse_file(f.filename, raw, f.mimetype, key, kind=slot,
+                                                   stand=STAND_MODE))
+            except Exception as exc:
+                if STAND_MODE:
+                    # Стабильный код без имени файла и текста исключения SDK/requests —
+                    # ни то ни другое не должно попасть ни в лог, ни в ответ (OCR-review).
+                    code = exc.args[0] if isinstance(exc, docparse.StandDocparseError) else 'parse_failed'
+                    app.logger.warning('docs_parse: stand parse failed slot=%s code=%s', slot, code)
+                    failed.append({'slot': slot, 'error': code})
+                else:
+                    app.logger.warning(f'docs_parse: {f.filename} — {exc}')
+                    failed.append({'file': f.filename, 'slot': slot, 'error': str(exc)[:300]})
     if not results:
         return jsonify({'success': False, 'error': 'parse_failed', 'failed': failed}), 502
     merged = docparse.merge(results)

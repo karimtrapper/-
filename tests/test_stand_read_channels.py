@@ -1574,7 +1574,7 @@ def test_read_get_eth_ops_work_normally_outside_stand_mode():
 
 def _chunked_server_script():
     return '''
-        import http.server, threading
+        import http.server, threading, socket
 
         class ChunkedHandler(http.server.BaseHTTPRequestHandler):
             protocol_version = 'HTTP/1.1'
@@ -1591,6 +1591,8 @@ def _chunked_server_script():
                     # клиент должен увидеть оборванный chunked-поток, не подмену JSON.
                     self.wfile.write(b'64\\r\\n{"partial":')
                     self.wfile.flush()
+                    self.close_connection = True
+                    self.connection.shutdown(socket.SHUT_RDWR)
                     self.connection.close()
                     return
                 for c in ChunkedHandler.next_chunks:

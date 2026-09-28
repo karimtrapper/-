@@ -5378,6 +5378,16 @@ function demoPdfData(){
    (docparse.py, OpenRouter). Раньше стенд подставлял выдуманный паспорт и инвойс;
    теперь поля договора и реквизиты берутся из настоящих файлов (Карим, 25.09). */
 const PARSE_SLOT={pass:'passport',inv:'invoice',spa:'spa'};
+let DOC_PARSE_AVAILABLE=null;
+async function checkDocParseCapability(){
+  try{
+    const r=await fetch('/api/docs/parse/capability',{credentials:'same-origin',cache:'no-store'});
+    if(!r.ok)return;
+    const j=await r.json();
+    DOC_PARSE_AVAILABLE=Boolean(j.available);
+    if(!standTyping())render();
+  }catch(e){}
+}
 async function docParse(id,quiet){
   const d=deal(id); if(!d)return;
   const fd=new FormData(); let n=0;
@@ -5400,12 +5410,14 @@ async function docParse(id,quiet){
          паспорт и инвойс не уходят в OpenRouter. Показываем честную причину, а не
          сырой код ошибки, и просим заполнить поля договора руками (Карим, 27.09). */
       if(j.error==='stand_blocked'){
+        DOC_PARSE_AVAILABLE=false;
         dd.docParseState='на стенде выключено';save();render();
         if(!quiet)toast('На стенде распознавание документов выключено — заполните поля договора руками');
         return;
       }
       dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
-    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file),at:now()};
+    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file||x.slot),at:now()};
+    DOC_PARSE_AVAILABLE=true;
     dd.docParseState='готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
        выпуска договора стояло «не указан», хотя инвойс уже распознан (аудит 27.09, №23) */
@@ -5423,15 +5435,16 @@ async function docParse(id,quiet){
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
 function docParseLine(d){
   const st=d.docParseState, P=(d.docParse||{}).fields||{};
+  const unavailable=STAND&&DOC_PARSE_AVAILABLE===false;
   const have=['pass','inv','spa'].some(k=>filesOf(d,k).length);
   if(!have) return '';
   const got=Object.keys(P).length;
   return `<div class="derived" style="margin-top:14px">
     <span>${st==='идёт'?'Распознаём документы…'
-      :(st==='на стенде выключено'?'На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.'
+      :(unavailable?'На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.'
       :(got?`Из документов распознано: <b>${[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ')||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`
       :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.')))}</span>
-    ${st==='на стенде выключено'?'':`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button>`}</div>`;
+    <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'||unavailable?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
 }
 function filesOf(d,k){
   d.files=d.files||{};
@@ -7914,6 +7927,7 @@ async function standBoot(){
     }catch(e){}
   }catch(e){}
   await standPull(true);
+  await checkDocParseCapability();
   await fetchSberMirrorStatus();
   fetchMarket().then(ok=>{if(ok)render();});
   if(!refs().some(r=>r.prod)) refsSync(true);
@@ -7923,6 +7937,7 @@ async function standBoot(){
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);
   setInterval(fetchSberMirrorStatus,60000);
+  setInterval(checkDocParseCapability,60000);
 }
 /* Переход из уведомления: ?deal=<id|код> открывает ту самую задачу.
    Без этого ссылка вела на общий список и человек искал сделку глазами. */
