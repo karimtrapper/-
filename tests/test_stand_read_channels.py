@@ -394,11 +394,13 @@ def test_response_too_large_rejected():
 
 def test_timeout_is_stable_error_without_url_or_key_leak():
     result, proc = run_script('''
+        import os
         import stand_egress
         stand_egress.install()
-        stand_egress.allow_test_target('127.0.0.1', 1)  # регистрируем адрес, но там никто не слушает
+        port = int(os.environ['CALCCRM_FENCE_PORT_START']) + 63
+        stand_egress.allow_test_target('127.0.0.1', port)  # свой порт, но никто не слушает
         status_code, data, err = stand_egress.read_get(
-            'prod_incomes', {'all': 1}, _base_url='http://127.0.0.1:1')
+            'prod_incomes', {'all': 1}, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status_code': status_code, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr

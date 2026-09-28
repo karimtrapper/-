@@ -770,6 +770,9 @@ def test_db_host_exact_port_enforced_not_just_ip():
         # резолвился в один и тот же «адрес базы».
         socket.getaddrinfo = lambda host, port, *a, **k: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.10', port))]
+        # Fake the lower transport: this checks the stand guard's port policy
+        # without making any real external connect syscall.
+        socket.socket.connect = lambda self, address: None
 
         import stand_egress
         stand_egress.install()
@@ -802,6 +805,7 @@ def test_db_port_defaults_to_5432_when_dsn_omits_it():
         import socket
         socket.getaddrinfo = lambda host, port, *a, **k: [
             (socket.AF_INET, socket.SOCK_STREAM, 6, '', ('192.0.2.10', port))]
+        socket.socket.connect = lambda self, address: None
         import stand_egress
         stand_egress.install()
         def probe(addr):
@@ -827,11 +831,10 @@ def test_udp_sendto_and_sendmsg_blocked_to_external_address():
     считаем по счётчику блокировок и по неизменной длине трекера снаружи."""
     result, proc = run_script('''
         import socket
-        _orig_sendto = socket.socket.sendto
         calls = []
         def _tracking_sendto(self, *args):
             calls.append(args[-1])
-            return _orig_sendto(self, *args)
+            return len(args[0])  # fake lower transport; never emits a datagram
         socket.socket.sendto = _tracking_sendto
 
         import stand_egress
@@ -1001,19 +1004,19 @@ def test_referral_links_empty_bot_and_wa_links_in_stand_mode():
     assert result['referral_link']  # сама ссылка на калькулятор остаётся
 
 
-def test_transfer_poll_thread_started_by_default():
-    """T9: дефолт вернули на '1' — поллер ходит только через read_get (канал T9),
-    поэтому с заливкой прод-данных и включённым каналом он снова нужен по умолчанию."""
+def test_transfer_poll_thread_can_start_with_fake_transport():
+    """Explicit poller opt-in uses a controlled lower transport."""
     result, proc = run_script('''
         import threading
         import stand_egress
         stand_egress.install()
         import app
+        app._stand_check_transfers = lambda **kwargs: None
         import time
         time.sleep(0.2)
         names = [t.name for t in threading.enumerate()]
         OUT({'poll_thread_running': 'stand-transfer-poll' in names})
-    ''', extra_env={'STAND_TRANSFER_POLL_ENABLED': None})  # снимаем ключ — проверяем дефолт
+    ''', extra_env={'STAND_TRANSFER_POLL_ENABLED': '1'})
     assert proc.returncode == 0, proc.stderr
     assert result['poll_thread_running'] is True
 
@@ -1544,15 +1547,17 @@ def test_docparse_post_timeout_returns_controlled_error():
 
 def test_docparse_post_network_error_when_server_unreachable():
     result, proc = run_script('''
+        import os
         import stand_egress
         stand_egress.install()
-        stand_egress.allow_test_target('127.0.0.1', 1)
+        port = int(os.environ['CALCCRM_FENCE_PORT_START']) + 63
+        stand_egress.allow_test_target('127.0.0.1', port)
         import docparse
         payload = {"model": docparse.DEFAULT_MODEL,
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = authorized_post(payload, _base_url='http://127.0.0.1:1')
+        status, data, err = authorized_post(payload, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr

@@ -56,7 +56,7 @@ def pg_cluster(tmp_path_factory):
     # Путь до сокета Postgres ограничен ~103 байтами — pytest-овский tmp_path
     # (глубоко вложенный) в это не помещается, поэтому сокет кладём в /tmp
     # напрямую, в свою короткую поддиректорию.
-    sock_dir = Path('/tmp') / f'calccrm-t4-pg-{os.getpid()}-{port}'
+    sock_dir = Path('/tmp') / f'calccrm-t19-pg-copy-{os.getpid()}-{port}'
     sock_dir.mkdir(parents=True, exist_ok=True)
 
     # macOS: postmaster падает с "postmaster became multithreaded during
