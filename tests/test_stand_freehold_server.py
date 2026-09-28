@@ -348,6 +348,126 @@ def test_confirmed_freehold_forward_steps_and_invoice_payout():
     assert appmod._stand_guard_transition(old, copy.deepcopy(old), 'admin') is None
 
 
+def test_closed_freehold_accepts_only_empty_hashes_normalization():
+    """Загрузка доски добавляет hashes=[], но подтверждённые деньги не меняет."""
+    state = freehold_board(step='s24')
+    deal = state['deals'][0]
+    deal['transfer']['sends'][0].update(hash='demo:send:1', status='confirmed',
+                                         verifiedAmount=45410)
+    appmod._stand_settle_verified(state, state['deals'])
+    assert deal['step'] == 's25'
+    assert deal['serverTransferComplete'] is True
+    assert deal['payout']['hashes'] == [
+        {'hash': 'demo:send:1', 'amount': 45410, 'network': 'TRC20'}]
+
+    # Legacy payout без hashes: текущий автопуть выше создаёт hashes, но
+    # старое состояние могло сохраниться без необязательного поля.
+    del deal['payout']['hashes']
+    # Закрытие здесь — фикстура guard: денежный payout выше создал сервер.
+    deal.update(step='done', closed=True, crmDealId=123)
+    normalized = copy.deepcopy(state)
+    normalized['deals'][0]['payout']['hashes'] = []
+    normalized['notes'].append({'id': 3, 'text': 'Новая заметка'})
+    normalized['deals'].append({'id': 2, 'step': 's4', 'kind': 'Обмен'})
+    assert appmod._stand_guard_transition(state, normalized, 'admin') is None
+    assert appmod._stand_guard_transition(normalized, copy.deepcopy(state), 'admin') is None
+
+    for change in (
+            lambda p: p['hashes'].append({'hash': 'fake', 'amount': 45410}),
+            lambda p: p.update(usdt=1),
+            lambda p: p.update(hash='fake'),
+            lambda p: p.update(route='fake')):
+        attack = copy.deepcopy(normalized)
+        change(attack['deals'][0]['payout'])
+        assert appmod._stand_guard_transition(state, attack, 'admin')
+
+    with_hash = copy.deepcopy(state)
+    with_hash['deals'][0]['payout']['hashes'] = [{'hash': 'confirmed', 'amount': 45410}]
+    for hashes in ([], [{'hash': 'fake', 'amount': 45410}]):
+        attack = copy.deepcopy(with_hash)
+        attack['deals'][0]['payout']['hashes'] = hashes
+        assert appmod._stand_guard_transition(with_hash, attack, 'admin')
+    attack = copy.deepcopy(with_hash)
+    del attack['deals'][0]['payout']['hashes']
+    assert appmod._stand_guard_transition(with_hash, attack, 'admin')
+
+
+def test_legacy_closed_freehold_board_put_and_rejection_are_atomic(monkeypatch):
+    """Штатный PUT всей доски проходит, денежный PUT отклоняется без записи."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    state = freehold_board(step='done')
+    deal = state['deals'][0]
+    deal.update(closed=True, crmDealId=123, serverTransferComplete=True)
+    deal['payout'] = {'hash': 'demo:send:1', 'usdt': 45410}
+    deal['mfPayout'] = [{'hash': 'demo:send:1', 'amount': 45410}]
+    deal['pay']['outHash'] = 'demo:send:1'
+    deal['transfer']['sends'][0].update(hash='demo:send:1', status='confirmed',
+                                         verifiedAmount=45410)
+    state['convs'] = [{'id': 9, 'walletId': 'grusha', 'sources': [
+        {'dealId': 1, 'rub': 3710389.5, 'usdt': 45410, 'usdtFact': 45410}], 'txs': []}]
+    deal['cnvId'] = 9
+    appmod._stand_migrate()
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state)
+        row.version = (row.version or 0) + 1
+        user = db.query(appmod.AdminUser).filter_by(username='t11c_guard_test').first()
+        if not user:
+            user = appmod.AdminUser(username='t11c_guard_test', role='admin',
+                                    password_hash=appmod.AdminUser.hash_password('test'))
+            db.add(user)
+        db.commit()
+        uid = user.id
+        crm_count = db.query(appmod.Deal).count()
+    finally:
+        db.close()
+    with appmod.app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_id'] = uid
+        before = client.get('/api/stand/state').json
+        data = copy.deepcopy(before['data'])
+        data['deals'][0]['payout']['hashes'] = []  # tasks.html:migrate()
+        data['deals'].append({'id': 2, 'kind': 'Обмен', 'step': 's4'})
+        data['notes'].append({'id': 3, 'text': 'Несвязанная заметка'})
+        ok = client.put('/api/stand/state', json={'version': before['version'], 'data': data})
+        assert ok.status_code == 200, ok.json
+        after = client.get('/api/stand/state').json
+        assert after['data']['notes'][-1]['text'] == 'Несвязанная заметка'
+        assert after['data']['deals'][-1]['id'] == 2
+        assert after['data']['deals'][0]['payout']['usdt'] == 45410
+        assert after['data']['deals'][0]['crmDealId'] == 123
+        assert after['data']['deals'][0]['closed'] is True
+        assert client.put('/api/stand/state', json={
+            'version': after['version'], 'data': after['data']}).status_code == 200
+        after = client.get('/api/stand/state').json
+        for change in (
+                lambda s: s['deals'][0]['payout'].update(hashes=[{'hash': 'fake'}]),
+                lambda s: s['deals'][0]['payout'].update(usdt=1),
+                lambda s: s['deals'][0]['payout'].update(hash='fake'),
+                lambda s: s['deals'][0].update(step='s25'),
+                lambda s: s['deals'][0].update(closed=False),
+                lambda s: s['deals'][0].update(crmDealId=999),
+                lambda s: s['deals'][0]['transfer'].update(addr='fake'),
+                lambda s: s['deals'][0]['transfer'].update(net='ERC-20'),
+                lambda s: s['deals'][0].update(walletId='fake'),
+                lambda s: s['deals'][0].update(postConv='coins'),
+                lambda s: s['convs'][0]['sources'][0].update(usdt=1),
+                lambda s: s['convs'][0]['sources'][0].update(usdtFact=1)):
+            attack = copy.deepcopy(after['data'])
+            change(attack)
+            denied = client.put('/api/stand/state', json={
+                'version': after['version'], 'data': attack})
+            assert denied.status_code == 409, denied.json
+            assert client.get('/api/stand/state').json == after
+    db = appmod.get_session()
+    try:
+        assert db.query(appmod.Deal).count() == crm_count
+    finally:
+        db.close()
+
+
 def test_mixed_accepted_batch_protects_exchange_member_route():
     old = freehold_board(step='s23')
     old['deals'][0].update(cnvId=9)

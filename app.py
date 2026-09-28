@@ -5443,6 +5443,13 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     return None
 
 
+def _stand_canonical_payout(payout):
+    """Пустой список хешей, добавленный браузером, равен отсутствующему полю."""
+    if isinstance(payout, dict) and 'hashes' not in payout:
+        return {**payout, 'hashes': []}
+    return payout
+
+
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     if len(new_convs) != len(new_state.get('convs', [])):
@@ -5510,8 +5517,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (before.get('closed') and not deal.get('closed')) or (
                     before.get('crmDealId') and before.get('crmDealId') != deal.get('crmDealId')):
                 return 'Закрытую CRM-сделку нельзя открыть или отвязать'
-            if before.get('closed') and any(before.get(key) != deal.get(key) for key in (
-                    'closeReason', 'closedAt', 'pay', 'payout', 'mfPayout', 'sentToClient')):
+            if before.get('closed') and (any(before.get(key) != deal.get(key) for key in (
+                    'closeReason', 'closedAt', 'pay', 'mfPayout', 'sentToClient'))
+                    or _stand_canonical_payout(before.get('payout'))
+                    != _stand_canonical_payout(deal.get('payout'))):
                 return 'Денежные итоги закрытой сделки нельзя изменить'
             if before.get('step') in committed_steps and deal.get('step') in committed_steps:
                 if committed_steps.index(deal['step']) < committed_steps.index(before['step']):
@@ -5525,7 +5534,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             for key in ('addr', 'net', 'walletId'):
                 if old_transfer.get(key) != new_transfer.get(key):
                     return 'Получателя подтверждённого перевода нельзя изменить'
-            old_payout, new_payout = before.get('payout') or {}, deal.get('payout') or {}
+            old_payout = _stand_canonical_payout(before.get('payout') or {})
+            new_payout = _stand_canonical_payout(deal.get('payout') or {})
             if any(new_payout.get(key) != value for key, value in old_payout.items()):
                 return 'Подтверждённые выплаты нельзя изменить'
             if before.get('mfPayout') and before.get('mfPayout') != deal.get('mfPayout'):
