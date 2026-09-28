@@ -3303,8 +3303,13 @@ def reestr_tx_sum():
     items, total, to_addr, dates = [], 0.0, None, []
     for h in raw:
         try:
-            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
-            info = r.json() if r.status_code == 200 else {}
+            if STAND_MODE:
+                import stand_egress
+                status_code, info, err = stand_egress.read_get('tron_tx_info', {'hash': h})
+                info = info if (not err and status_code == 200) else {}
+            else:
+                r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
+                info = r.json() if r.status_code == 200 else {}
             # Батч: сумма прихода — всё, что прислал отправитель этой
             # транзакцией, а не первый перевод из списка
             tr, _one, sent = _trc20_main_transfer(info.get('trc20TransferInfo'))
@@ -6594,11 +6599,24 @@ def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
     if STAND_MODE:
-        # Курсы тянутся с Binance/Bitazza/Doverka — реальные внешние сервисы.
-        # На стенде не идём наружу вообще; менеджер вводит курс вручную (см. tasks.html).
-        return jsonify({'success': False, 'stand_blocked': True,
-                        'error': 'На стенде курсы выключены — введите курс вручную',
-                        'usdt_thb': None, 'rub_usdt': None})
+        # На стенде курс — настоящий рынок через контролируемый канал чтения T9
+        # (market_binance_ticker/market_rapira), без Playwright и без Bitazza
+        # VWAP-карточки. На отказе источника — честно «нет свежего курса»,
+        # никогда не старое значение вместо свежего (кэша здесь нет вовсе).
+        try:
+            rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        except Exception as e:
+            app.logger.warning(f'Stand rates error: {e}')
+            rates = {'usdt_thb': None, 'rub_usdt': None}
+        usdt_thb, rub_usdt = rates.get('usdt_thb'), rates.get('rub_usdt')
+        errors = []
+        if not usdt_thb:
+            errors.append('USDT/THB недоступен (Binance)')
+        if not rub_usdt:
+            errors.append('RUB/USDT недоступен (Rapira)')
+        return jsonify({'success': bool(usdt_thb and rub_usdt), 'stand_blocked': False,
+                        'usdt_thb': usdt_thb, 'rub_usdt': rub_usdt, 'errors': errors,
+                        'error': None if (usdt_thb and rub_usdt) else 'На стенде нет свежего курса — введите вручную'})
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         usdt_thb = rates.get('usdt_thb')
@@ -11608,16 +11626,19 @@ def get_wallets():
             
             # Получаем баланс с TronScan
             try:
-                balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
-                balance_resp = requests.get(balance_url, headers=headers, timeout=5)
-                if balance_resp.status_code == 200:
+                if STAND_MODE:
+                    balance_resp = _stand_tronscan_get('tron_account_balance', {'address': wallet.address})
+                else:
+                    balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
+                    balance_resp = requests.get(balance_url, headers=headers, timeout=5)
+                if balance_resp is not None and balance_resp.status_code == 200:
                     balance_data = balance_resp.json()
                     wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
                     for token in balance_data.get('trc20token_balances', []):
                         if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                             wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                             break
-                    
+
                     # Обновляем кэш
                     TRONSCAN_CACHE['balances'][wallet.address] = {
                         'usdt': wallet_data['usdt_balance'],
@@ -11626,9 +11647,12 @@ def get_wallets():
                     }
                 else:
                     # Если ошибка, попробуем альтернативный эндпоинт баланса
-                    alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
-                    alt_resp = requests.get(alt_url, headers=headers, timeout=5)
-                    if alt_resp.status_code == 200:
+                    if STAND_MODE:
+                        alt_resp = _stand_tronscan_get('tron_account_tokens', {'address': wallet.address})
+                    else:
+                        alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
+                        alt_resp = requests.get(alt_url, headers=headers, timeout=5)
+                    if alt_resp is not None and alt_resp.status_code == 200:
                         alt_data = alt_resp.json()
                         for token in alt_data.get('data', []):
                             if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
@@ -11703,9 +11727,12 @@ def add_wallet():
         
         # Попробуем получить реальный баланс
         try:
-            balance_url = f'https://apilist.tronscanapi.com/api/account?address={address}'
-            balance_resp = requests.get(balance_url, timeout=5)
-            if balance_resp.status_code == 200:
+            if STAND_MODE:
+                balance_resp = _stand_tronscan_get('tron_account_balance', {'address': address})
+            else:
+                balance_url = f'https://apilist.tronscanapi.com/api/account?address={address}'
+                balance_resp = requests.get(balance_url, timeout=5)
+            if balance_resp is not None and balance_resp.status_code == 200:
                 balance_data = balance_resp.json()
                 # TRX баланс
                 wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
@@ -11728,6 +11755,33 @@ def add_wallet():
 USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
 
 
+class _StandJsonResponse:
+    """Приводит (status_code, json, error) от read_get к форме, которую ждёт
+    остальной код (response.status_code / response.json()) — так вызывающий
+    код (включая ретраи на 429) остаётся без изменений и на стенде, и вне его."""
+    __slots__ = ('status_code', '_data')
+
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self._data = data if data is not None else {}
+
+    def json(self):
+        return self._data
+
+
+def _stand_tronscan_get(op, params):
+    """На стенде — единственный путь к TronScan (T9): read_get вместо
+    requests.get. status_code возвращается и на 429/4xx/5xx (сам read_get
+    получил ответ сети), это позволяет вызывающему коду ретраить 429 так же,
+    как раньше. None — канал вообще не достучался (таймаут/нет ключа/мусор
+    в параметрах) и повторять нечего, как раньше означало сетевую ошибку."""
+    import stand_egress
+    status_code, data, err = stand_egress.read_get(op, params)
+    if status_code is None:
+        return None
+    return _StandJsonResponse(status_code, data)
+
+
 def _tron_balances(address):
     """Балансы адреса TRON: (usdt, trx). None — если адрес не читается.
 
@@ -11739,8 +11793,13 @@ def _tron_balances(address):
         # Ретрай на 429: с одного IP сюда же ходит фоновый прогрев кэша, и без
         # него баланс молча оказывался «непрочитанным» (кейс 10.08, кошелёк #14)
         for attempt in range(3):
-            r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}',
-                             headers=_TRONSCAN_HEADERS, timeout=8)
+            if STAND_MODE:
+                r = _stand_tronscan_get('tron_account_balance', {'address': address})
+                if r is None:
+                    return None
+            else:
+                r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}',
+                                 headers=_TRONSCAN_HEADERS, timeout=8)
             if r.status_code != 429:
                 break
             time.sleep(2 * (attempt + 1))
@@ -11851,9 +11910,14 @@ def _tron_tx_usdt_amount(tx_hash):
     if os.environ.get('PYTEST_CURRENT_TEST'):
         return None
     try:
-        r = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
-                         headers=_TRONSCAN_HEADERS, timeout=6,
-                         params={'hash': tx_hash})
+        if STAND_MODE:
+            r = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+            if r is None:
+                return None
+        else:
+            r = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
+                             headers=_TRONSCAN_HEADERS, timeout=6,
+                             params={'hash': tx_hash})
         if r.status_code != 200:
             return None
         data = r.json() or {}
@@ -11895,11 +11959,18 @@ def _tron_usdt_transfers(address, start_ts=None, pages=TRON_RECONCILE_PAGES,
             # прогрев кэша. Без ретрая сверка падала бы через раз (ловилось
             # на проде 10.08: локально 200, с Railway — пусто).
             for attempt in range(3):
-                r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
-                                 headers=_TRONSCAN_HEADERS, timeout=10,
-                                 params={'relatedAddress': address,
-                                         'contract_address': USDT_TRC20_CONTRACT,
-                                         'limit': per_page, 'start': page * per_page})
+                if STAND_MODE:
+                    r = _stand_tronscan_get('tron_trc20_transfers', {
+                        'relatedAddress': address, 'contract_address': USDT_TRC20_CONTRACT,
+                        'limit': per_page, 'start': page * per_page})
+                    if r is None:
+                        return None if not out else out
+                else:
+                    r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                     headers=_TRONSCAN_HEADERS, timeout=10,
+                                     params={'relatedAddress': address,
+                                             'contract_address': USDT_TRC20_CONTRACT,
+                                             'limit': per_page, 'start': page * per_page})
                 if r.status_code != 429:
                     break
                 time.sleep(2 * (attempt + 1))
@@ -12225,23 +12296,32 @@ def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
 
         try:
             for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                 params = {
                     'relatedAddress': wallet.address,
                     'contract_address': USDT_TRC20_CONTRACT,
                     'limit': 50,
                     'start': page * 50,
-                    't': int(time.time())
                 }
 
                 # Retry при 429 (rate limit)
+                response = None
                 for attempt in range(3):
-                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if STAND_MODE:
+                        response = _stand_tronscan_get('tron_trc20_transfers', params)
+                        if response is None:
+                            break
+                    else:
+                        response = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                                params={**params, 't': int(time.time())},
+                                                headers=_TRONSCAN_HEADERS, timeout=10)
                     if response.status_code == 429:
                         wait_time = 2 * (attempt + 1)
                         print(f"[DEBUG] TronScan 429 for {wallet.address[:10]}..., waiting {wait_time}s (attempt {attempt+1})")
                         time.sleep(wait_time)
                         continue
+                    break
+                if response is None:
+                    wallets_errors.append(wallet.address)
                     break
 
                 if response.status_code == 200:
@@ -12567,23 +12647,32 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
             api_limit = min(result_limit or 50, 50)
             max_pages = 1 if result_limit else 2
             for page in range(max_pages):
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                 params = {
                     'relatedAddress': wallet.address,
                     'contract_address': USDT_TRC20_CONTRACT,
                     'limit': api_limit,
                     'start': page * api_limit,
-                    't': int(time.time())
                 }
 
                 # Retry при 429 (rate limit)
+                response = None
                 for attempt in range(3):
-                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if STAND_MODE:
+                        response = _stand_tronscan_get('tron_trc20_transfers', params)
+                        if response is None:
+                            break
+                    else:
+                        response = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                                params={**params, 't': int(time.time())},
+                                                headers=_TRONSCAN_HEADERS, timeout=10)
                     if response.status_code == 429:
                         wait_time = 2 * (attempt + 1)
                         print(f"[DEBUG] TronScan outgoing 429 for {wallet.address[:10]}..., waiting {wait_time}s")
                         time.sleep(wait_time)
                         continue
+                    break
+                if response is None:
+                    failed.append(wallet.address)
                     break
 
                 if response.status_code == 200:
@@ -12886,10 +12975,13 @@ def verify_transaction_post():
         if not tx_hash:
             return jsonify({'success': False, 'error': 'Не указан хэш транзакции'}), 400
         
-        url = f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}'
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code != 200:
+        if STAND_MODE:
+            response = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+        else:
+            response = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                                    timeout=10)
+
+        if response is None or response.status_code != 200:
             return jsonify({'success': False, 'error': 'Транзакция не найдена'}), 404
         
         tx_data = response.json()
@@ -14142,11 +14234,22 @@ def _tron_tx_info(tx_hash):
                        по нему реестр считает свободный остаток.
     """
     try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
-                         timeout=10)
-        if r.status_code != 200:
-            return {}
-        raw_transfers = (r.json() or {}).get('trc20TransferInfo')
+        if STAND_MODE:
+            # На стенде — только контролируемый канал чтения T9, никогда
+            # прямой requests.get (сокет-guard его и так заблокирует).
+            import stand_egress
+            status_code, payload, err = stand_egress.read_get('tron_tx_info', {'hash': tx_hash})
+            if err == 'http_4xx' and status_code == 404:
+                payload, err = {}, None  # TronScan: хеш ещё не проиндексирован
+            if err or status_code != 200:
+                return {}
+        else:
+            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                             timeout=10)
+            if r.status_code != 200:
+                return {}
+            payload = r.json() or {}
+        raw_transfers = (payload or {}).get('trc20TransferInfo')
         main, amount, total_out = _trc20_main_transfer(raw_transfers)
         if not main:
             return {}
@@ -14185,14 +14288,22 @@ def _etherscan_tx_info(tx_hash):
     ручную сумму с пометкой «не сверено». Однозначно неуспешную транзакцию или
     receipt без USDT отклоняем: такой хэш нельзя использовать как подтверждение.
     """
-    api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
-    if not api_key:
+    # Отсутствие ключа/выключенная сеть проверяем ДО валидации хэша — как и
+    # раньше: функция тихо отдаёт {} независимо от формата tx_hash, а не
+    # падает на чужом формате хэша, который до сети всё равно не дойдёт.
+    if STAND_MODE:
+        # Решение Карима: на стенде из сетей только TRC-20 — ERC-20/Etherscan
+        # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан.
+        app.logger.info('На стенде проверка ERC-20 выключена (только TRC-20)')
+        return {}
+    if not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return {}
     normalized_hash = _normalize_ethereum_tx_hash(tx_hash)
     if not normalized_hash:
         raise TransactionVerificationError(
             'Некорректный хэш Ethereum: нужен 0x и 64 шестнадцатеричных символа')
     try:
+        api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
         response = requests.get(
             ETHERSCAN_API_URL,
             params={
@@ -14334,8 +14445,13 @@ def _tron_tx_to_address(tx_hash):
     возмещениями, её контракт не трогаем.
     """
     try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
-                         timeout=10)
+        if STAND_MODE:
+            r = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+            if r is None:
+                return None
+        else:
+            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                             timeout=10)
         if r.status_code != 200:
             return None
         # Батч: в одном хеше несколько переводов. Получатель — тот, кому ушло
@@ -14357,6 +14473,10 @@ def lookup_tx_by_network():
     if network == 'unknown':
         return jsonify({'success': False,
                         'error': 'Выберите сеть: TRC-20 или ERC-20'}), 400
+    if network == 'erc20' and STAND_MODE:
+        # Решение Карима: на стенде из сетей только TRC-20.
+        return jsonify({'success': False, 'error': 'На стенде проверка ERC-20 выключена',
+                        'manual_fallback': True}), 503
     if network == 'erc20' and not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return jsonify({'success': False, 'error': 'Etherscan API не настроен',
                         'manual_fallback': True}), 503
@@ -15112,9 +15232,20 @@ def _bitazza_bids():
     if _BITAZZA_CACHE['bids'] and now - _BITAZZA_CACHE['ts'] < _BITAZZA_TTL:
         return _BITAZZA_CACHE['bids']
     try:
-        r = requests.get(BITAZZA_L2_URL, timeout=6, params={
-            'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
-        bids = sorted(((float(l[6]), float(l[8])) for l in r.json()
+        if STAND_MODE:
+            # На стенде — только контролируемый канал чтения T9, без прямого
+            # requests.get (сокет-guard его и так заблокирует).
+            import stand_egress
+            status_code, data, err = stand_egress.read_get(
+                'market_bitazza', {'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
+            if err or status_code != 200:
+                raise RuntimeError(err or f'HTTP {status_code}')
+            rows = data or []
+        else:
+            r = requests.get(BITAZZA_L2_URL, timeout=6, params={
+                'OMSId': 1, 'InstrumentId': BITAZZA_INST_USDT_THB, 'Depth': 400})
+            rows = r.json()
+        bids = sorted(((float(l[6]), float(l[8])) for l in rows
                        if l[9] == 0 and float(l[8]) > 0), reverse=True)
         if bids:
             _BITAZZA_CACHE.update(bids=bids, ts=now)
@@ -18694,7 +18825,7 @@ def _stand_transfer_poll_loop():
             app.logger.warning('stand transfer poll: %s', exc)
 
 
-if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '0') == '1'
+if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()

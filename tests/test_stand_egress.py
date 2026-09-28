@@ -655,8 +655,12 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
                         content_type='multipart/form-data')
         out['docs_parse'] = (r.status_code, r.get_json().get('error'))
 
+        # /api/rates теперь ходит через read_get (T9) — подменяем его здесь на
+        # детерминированный отказ, чтобы тест не зависел от реальной сети.
+        import stand_egress as _se
+        _se.read_get = lambda op, params=None, _base_url=None: (None, None, 'network_error')
         r = client.get('/api/rates')
-        out['rates'] = (r.status_code, r.get_json().get('stand_blocked'))
+        out['rates'] = (r.status_code, r.get_json().get('stand_blocked'), r.get_json().get('success'))
 
         r = client.post('/api/reestr/sync')
         out['reestr_sync'] = (r.status_code, r.get_json().get('error'))
@@ -676,7 +680,7 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
     assert result['bitrix_blocked'] is True
     assert result['create_payment'] == [403, 'stand_blocked']
     assert result['docs_parse'] == [403, 'stand_blocked']
-    assert result['rates'] == [200, True]
+    assert result['rates'] == [200, False, False]
     assert result['reestr_sync'] == [403, 'stand_blocked']
     assert result['prod_agents'] == [403, 'stand_blocked']
     assert result['egress_status_anon'] == 401
@@ -892,27 +896,63 @@ def test_stand_tg_send_group_disabled_no_network():
     assert result['blocked_count_unchanged'] is True
 
 
-def test_verify_transfer_network_disabled_in_stand_mode():
+def test_verify_transfer_ignores_direct_get_and_prod_key_in_stand_mode():
+    """На стенде verify_transfer не должен вызывать ни переданный вызывающим
+    `get`, ни прод-ключ Etherscan — только read_get(T9) и STAND_ETHERSCAN_API_KEY."""
     result, proc = run_script('''
         import stand_egress
         stand_egress.install()
         import stand_transfers as st
 
         def boom(*a, **kw):
-            raise AssertionError('сеть не должна вызываться на стенде')
+            raise AssertionError('прямой get() не должен вызываться на стенде')
+
+        calls = []
+        def fake_read_get(op, params=None, _base_url=None):
+            calls.append(op)
+            if op == 'tron_tx_info':
+                return 200, {}, None  # ещё не появилась в TronScan
+            raise AssertionError(f'неожиданный op={op}')
+        stand_egress.read_get = fake_read_get
 
         r_trc20 = st.verify_transfer('a' * 64, 'trc20',
                                      'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                                      'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                                      100, get=boom)
+        # erc20 — решение Карима: на стенде из сетей только TRC-20, ERC-20
+        # отказывает до сети всегда, даже если бы был передан прод-ключ.
         r_erc20 = st.verify_transfer('0x' + 'a' * 64, 'erc20',
                                      '0x' + 'c' * 40, '0x' + 'b' * 40, 100,
                                      get=boom, etherscan_key='fake')
-        OUT({'trc20_status': r_trc20['status'], 'erc20_status': r_erc20['status']})
+        OUT({'trc20_status': r_trc20['status'], 'erc20_status': r_erc20['status'],
+             'erc20_error': r_erc20.get('checkError'), 'read_get_calls': calls})
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result['trc20_status'] == 'pending'
-    assert result['erc20_status'] == 'pending'
+    assert result['erc20_status'] == 'error'
+    assert 'ERC-20' in (result['erc20_error'] or '')
+    assert result['read_get_calls'] == ['tron_tx_info']
+
+
+def test_verify_transfer_erc20_disabled_on_stand_even_with_stand_etherscan_key():
+    """Решение Карима: на стенде из сетей только TRC-20 — ERC-20 отказывает
+    до сети даже при заданном STAND_ETHERSCAN_API_KEY, read_get не вызывается."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import stand_transfers as st
+
+        def fake_read_get(op, params=None, _base_url=None):
+            raise AssertionError(f'read_get не должен вызываться для ERC-20: {op}')
+        stand_egress.read_get = fake_read_get
+
+        r = st.verify_transfer('0x' + 'a' * 64, 'erc20',
+                               '0x' + 'c' * 40, '0x' + 'b' * 40, 100)
+        OUT({'status': r['status'], 'checkError': r.get('checkError')})
+    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 'error'
+    assert 'ERC-20' in (result['checkError'] or '')
 
 
 def test_referral_links_empty_bot_and_wa_links_in_stand_mode():
@@ -929,7 +969,9 @@ def test_referral_links_empty_bot_and_wa_links_in_stand_mode():
     assert result['referral_link']  # сама ссылка на калькулятор остаётся
 
 
-def test_transfer_poll_thread_not_started_by_default():
+def test_transfer_poll_thread_started_by_default():
+    """T9: дефолт вернули на '1' — поллер ходит только через read_get (канал T9),
+    поэтому с заливкой прод-данных и включённым каналом он снова нужен по умолчанию."""
     result, proc = run_script('''
         import threading
         import stand_egress
@@ -940,6 +982,21 @@ def test_transfer_poll_thread_not_started_by_default():
         names = [t.name for t in threading.enumerate()]
         OUT({'poll_thread_running': 'stand-transfer-poll' in names})
     ''', extra_env={'STAND_TRANSFER_POLL_ENABLED': None})  # снимаем ключ — проверяем дефолт
+    assert proc.returncode == 0, proc.stderr
+    assert result['poll_thread_running'] is True
+
+
+def test_transfer_poll_thread_can_still_be_disabled():
+    result, proc = run_script('''
+        import threading
+        import stand_egress
+        stand_egress.install()
+        import app
+        import time
+        time.sleep(0.2)
+        names = [t.name for t in threading.enumerate()]
+        OUT({'poll_thread_running': 'stand-transfer-poll' in names})
+    ''', extra_env={'STAND_TRANSFER_POLL_ENABLED': '0'})
     assert proc.returncode == 0, proc.stderr
     assert result['poll_thread_running'] is False
 

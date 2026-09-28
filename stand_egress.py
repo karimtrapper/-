@@ -47,6 +47,7 @@ UDP (sendto/sendmsg) на заблокированный адрес не бро�
   периметра guard'а.
 """
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -82,6 +83,8 @@ _tg_ctx = threading.local()
 
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
+
+_read_ctx = threading.local()
 
 _policy = None  # callable(channel, recipient, operation) -> bool, регистрируется set_policy()
 _bot_identity = None  # (токен, адрес тестового сервера, имя, id, срок проверки)
@@ -209,6 +212,8 @@ def _loopback_pair_allowed(host, port):
         return True
     if getattr(_tg_ctx, 'active', False) and (key, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_read_ctx, 'active', False) and (key, port) in getattr(_read_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -225,6 +230,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         return port is None or port == 443
+    if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
+        return port is None or port == 443
     return False
 
 
@@ -235,6 +242,8 @@ def _ip_allowed(ip, port=None):
         return True
     if getattr(_tg_ctx, 'active', False) and port is not None and (ip, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_read_ctx, 'active', False) and port is not None and (ip, port) in getattr(_read_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -243,9 +252,13 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         _record_block(f'getaddrinfo host={host}:{port}')
         raise socket.gaierror(-2, 'Имя или служба неизвестны (заблокировано egress-guard стенда)')
     infos = _orig_getaddrinfo(host, port, family, type, proto, flags)
-    if host and str(host).strip('[]').lower() == _TG_HOST and getattr(_tg_ctx, 'active', False):
+    h = str(host).strip('[]').lower() if host else None
+    if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))
+    if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _read_ctx.allowed_pairs = pairs | set(getattr(_read_ctx, 'allowed_pairs', ()))
     return infos
 
 
@@ -492,3 +505,447 @@ def tg_call(method, payload, _base_url=None):
     finally:
         _tg_ctx.active = False
         _tg_ctx.allowed_pairs = set()
+
+
+# ─────────────────────── T9: контролируемые каналы чтения ──────────────────
+# Блокчейн (TronScan/Etherscan), публичные рыночные котировки (Rapira/Bitazza)
+# и зеркало прод-поступлений — read_get(op, params) единственный путь наружу.
+# op — из закрытого словаря ниже: URL, заголовки и ключ строит канал сам,
+# вызывающий код передаёт только значения параметров операции.
+
+def _valid_tron_hash(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'[0-9a-fA-F]{64}', v))
+
+
+def _valid_eth_hash(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'0x[0-9a-fA-F]{64}', v))
+
+
+def _valid_eth_block_tag(v):
+    return isinstance(v, str) and bool(re.fullmatch(r'0x[0-9a-fA-F]{1,16}', v))
+
+
+def _valid_chainid(v):
+    return v == '1'  # только Ethereum mainnet — единственная сеть, которую проверяет код
+
+
+def _valid_eth_module_proxy(v):
+    return v == 'proxy'
+
+
+def _valid_eth_action_receipt(v):
+    return v == 'eth_getTransactionReceipt'
+
+
+def _valid_eth_action_block(v):
+    return v == 'eth_getBlockByNumber'
+
+
+def _valid_eth_bool_false(v):
+    return v == 'false'
+
+
+def _valid_bitazza_oms_id(v):
+    return v == 1
+
+
+def _valid_bitazza_instrument_id(v):
+    return v == 5  # OMSId=1/InstrumentId=5 — фиксированная пара USDT/THB на Bitazza APEX
+
+
+def _valid_bitazza_depth(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 400
+
+
+def _valid_prod_all_flag(v):
+    return v in (1, '1')
+
+
+_TRON_B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+_TRON_USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+
+
+def _valid_tron_address(v):
+    """TRON base58check, с контрольной суммой — не просто «T + 33 символа
+    из алфавита» (та же проверка, что и tron_address_problem в app.py, но
+    без импорта app.py — независимая копия алгоритма, не общий модуль)."""
+    if not isinstance(v, str) or len(v) != 34 or not v.startswith('T'):
+        return False
+    if any(c not in _TRON_B58_ALPHABET for c in v):
+        return False
+    num = 0
+    for c in v:
+        num = num * 58 + _TRON_B58_ALPHABET.index(c)
+    raw = num.to_bytes(25, 'big')
+    import hashlib
+    return hashlib.sha256(hashlib.sha256(raw[:-4]).digest()).digest()[:4] == raw[-4:]
+
+
+def _valid_usdt_trc20_contract(v):
+    return v == _TRON_USDT_CONTRACT  # фиксированный контракт, не произвольный адрес
+
+
+def _valid_transfers_limit(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 50
+
+
+def _valid_transfers_start(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1000
+
+
+# host/path — точные, без wildcard/prefix; params — закрытый словарь имя→валидатор
+# значения (не только имени параметра); required — какие обязательны.
+_READ_CHANNELS = {
+    'tron_tx_info': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/transaction-info',
+        'params': {'hash': _valid_tron_hash},
+        'required': {'hash'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_account_balance': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/account',
+        'params': {'address': _valid_tron_address},
+        'required': {'address'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_account_tokens': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/account/tokens',
+        'params': {'address': _valid_tron_address},
+        'required': {'address'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_trc20_transfers': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/token_trc20/transfers',
+        'params': {
+            'relatedAddress': _valid_tron_address,
+            'contract_address': _valid_usdt_trc20_contract,
+            'limit': _valid_transfers_limit,
+            'start': _valid_transfers_start,
+        },
+        'required': {'relatedAddress', 'contract_address', 'limit', 'start'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'eth_tx_receipt': {
+        'host': 'api.etherscan.io',
+        'path': '/v2/api',
+        'params': {
+            'chainid': _valid_chainid, 'module': _valid_eth_module_proxy,
+            'action': _valid_eth_action_receipt, 'txhash': _valid_eth_hash,
+        },
+        'required': {'chainid', 'module', 'action', 'txhash'},
+        'key_env': 'STAND_ETHERSCAN_API_KEY', 'key_param': 'apikey', 'key_optional': False,
+    },
+    'eth_block_by_number': {
+        'host': 'api.etherscan.io',
+        'path': '/v2/api',
+        'params': {
+            'chainid': _valid_chainid, 'module': _valid_eth_module_proxy,
+            'action': _valid_eth_action_block, 'tag': _valid_eth_block_tag,
+            'boolean': _valid_eth_bool_false,
+        },
+        'required': {'chainid', 'module', 'action', 'tag', 'boolean'},
+        'key_env': 'STAND_ETHERSCAN_API_KEY', 'key_param': 'apikey', 'key_optional': False,
+    },
+    'market_rapira': {
+        'host': 'api.rapira.net',
+        'path': '/open/market/rates',
+        'params': {},
+        'required': set(),
+    },
+    'market_bitazza': {
+        'host': 'apexapi.bitazza.com',
+        'path': '/AP/GetL2Snapshot',
+        'params': {
+            'OMSId': _valid_bitazza_oms_id, 'InstrumentId': _valid_bitazza_instrument_id,
+            'Depth': _valid_bitazza_depth,
+        },
+        'required': {'OMSId', 'InstrumentId', 'Depth'},
+    },
+    'market_binance_ticker': {
+        'host': 'api.binance.com',
+        'path': '/api/v3/ticker/price',
+        'params': {'symbol': lambda v: v == 'USDTTHB'},
+        'required': {'symbol'},
+    },
+    'market_binance_th_ticker': {
+        # Прод (calculator.py вне стенда) берёт курс USDT/THB в первую очередь
+        # с Binance TH, Binance Global — только фоллбэк. Канал повторяет тот же
+        # порядок источников, иначе курс стенда систематически отличался бы от прода.
+        'host': 'api.binance.th',
+        'path': '/api/v1/ticker/price',
+        'params': {'symbol': lambda v: v == 'USDTTHB'},
+        'required': {'symbol'},
+    },
+    'prod_incomes': {
+        'host': 'grusha.up.railway.app',
+        'path': '/api/sber-incomes',
+        'params': {'all': _valid_prod_all_flag},
+        'required': set(),
+        'key_env': 'STAND_PROD_RO_KEY', 'key_header': 'X-Api-Key', 'key_optional': False,
+    },
+}
+
+# Решение Карима: на стенде из сетей только TRC-20. Эти op остаются в
+# _READ_CHANNELS (валидны сами по себе, прод их использует не через read_get,
+# а свой отдельный код вне стенда), но на самом уровне канала отказывают до
+# сети при STAND_MODE=1 — независимо от того, какой вызывающий код и с каким
+# ключом до них добрался (defense-in-depth поверх отказа в stand_transfers.py
+# и app.py, которые до read_get для этих op сейчас вообще не доходят).
+_STAND_DISABLED_OPS = {'eth_tx_receipt', 'eth_block_by_number'}
+
+_MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
+# Любой 3xx (300–399) — контролируемый отказ, не только «типичные» редиректы:
+# 300/304/305/306 тоже не должны молча идти дальше как обычный ответ.
+_READ_TOTAL_DEADLINE = 8.0  # секунд на всю операцию: connect + заголовки + тело
+
+
+class _ReadChannelConnectMixin:
+    """Guard-разрешение выставляется СТРОГО на время своего connect() — не на
+    весь HTTP-запрос. Если тест подменяет requests.Session.get целиком (сам
+    метод, не транспорт), эта connect() вообще не вызывается — разрешение
+    не открывается, и прямой сокет из того же потока получит отказ, как и
+    положено (E2)."""
+    def connect(self):
+        _read_ctx.active = True
+        _read_ctx.host = getattr(_read_ctx, 'pending_host', None)
+        _read_ctx.allowed_pairs = set(getattr(_read_ctx, 'pending_pairs', ()) or ())
+        try:
+            return super().connect()
+        finally:
+            _read_ctx.active = False
+            _read_ctx.host = None
+            _read_ctx.allowed_pairs = set()
+
+
+def _read_channel_adapter():
+    """HTTPAdapter с одноразовым пулом, чьи соединения открывают guard-
+    разрешение только на время своего connect() (см. _ReadChannelConnectMixin)."""
+    import urllib3
+    from requests.adapters import HTTPAdapter
+
+    class _HTTPConn(_ReadChannelConnectMixin, urllib3.connection.HTTPConnection):
+        pass
+
+    class _HTTPSConn(_ReadChannelConnectMixin, urllib3.connection.HTTPSConnection):
+        pass
+
+    class _HTTPPool(urllib3.HTTPConnectionPool):
+        ConnectionCls = _HTTPConn
+
+    class _HTTPSPool(urllib3.HTTPSConnectionPool):
+        ConnectionCls = _HTTPSConn
+
+    class _Adapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {'http': _HTTPPool, 'https': _HTTPSPool}
+
+    return _Adapter()
+
+
+def _validate_base_url_override(_base_url):
+    """_base_url — тестовый хук (как у tg_call): допускается ТОЛЬКО когда его
+    точная пара (host, port) заранее зарегистрирована test-only хуком T1
+    `allow_test_target()` и host — loopback. Схема http/https, без userinfo/
+    query/fragment; путь берётся из спецификации op — собственный путь
+    _base_url в URL не попадает вовсе. Обходы host.evil/@userinfo///../ и
+    т. п. отсекаются урезанным списком допустимых полей urlsplit, а не
+    попыткой распознать каждый конкретный трюк."""
+    if not isinstance(_base_url, str) or '\\' in _base_url:
+        return None
+    try:
+        parts = urlsplit(_base_url)
+    except ValueError:
+        return None
+    if parts.scheme not in ('http', 'https'):
+        return None
+    if '@' in parts.netloc:
+        return None
+    if parts.query or parts.fragment:
+        return None
+    if parts.path not in ('', '/'):
+        return None
+    host, port = parts.hostname, parts.port
+    if not host or not port:
+        return None
+    key = _loopback_key(host)
+    if key is None:
+        return None  # не loopback — не тестовый адрес
+    if (key, port) not in _test_allowed_pairs:
+        return None
+    return parts.scheme, key, port
+
+
+def read_get(op, params=None, _base_url=None):
+    """Единственный путь в закрытый список внешних чтений (блокчейн, курсы,
+    зеркало прод-поступлений).
+
+    `op` — enum-ключ из `_READ_CHANNELS`, не URL: адрес, заголовки и ключ
+    строит сам канал, вызывающий код передаёт только значения параметров.
+    Возвращает (status_code|None, parsed_json|None, error_code|None).
+    `_base_url` — только для тестов (как `_base_url` у tg_call), прод его не
+    передаёт и не читает из env; проходит только зарегистрированный
+    allow_test_target() loopback-адрес, иначе — 'invalid_base_url' до сети.
+    """
+    import requests
+    import urllib3
+
+    spec = _READ_CHANNELS.get(op)
+    if spec is None:
+        return None, None, 'unknown_op'
+    if op in _STAND_DISABLED_OPS and os.environ.get('STAND_MODE') == '1':
+        return None, None, 'erc20_disabled_on_stand'
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return None, None, 'invalid_params'
+
+    validators = spec['params']
+    if set(params) - set(validators):
+        return None, None, 'unknown_param'  # неизвестный параметр — отказ до сети
+    if spec['required'] - set(params):
+        return None, None, 'missing_param'
+
+    query = {}
+    for name, value in params.items():
+        if isinstance(value, (list, tuple, dict, set)):
+            return None, None, 'invalid_param'  # дубли/multi-value так и приходят — список значений
+        if isinstance(value, bool) or not validators[name](value):
+            return None, None, 'invalid_param'
+        query[name] = value
+
+    # identity — тело читается напрямую с сырого сокета (см. ниже), в обход
+    # decode_content requests/urllib3; сжатый ответ без их распаковки был бы
+    # мусором для json.loads.
+    headers = {'Accept-Encoding': 'identity'}
+    key_env = spec.get('key_env')
+    if key_env:
+        key = os.environ.get(key_env, '').strip()
+        if key:
+            if spec.get('key_header'):
+                headers[spec['key_header']] = key
+            elif spec.get('key_param'):
+                query[spec['key_param']] = key
+        elif not spec.get('key_optional'):
+            return None, None, 'no_key'
+
+    host = spec['host']
+    permit_host = host
+    permit_pairs = set()
+    if _base_url is not None:
+        allowed = _validate_base_url_override(_base_url)
+        if allowed is None:
+            return None, None, 'invalid_base_url'
+        scheme, key, port = allowed
+        base = f'{scheme}://{key}:{port}'
+        permit_host = key
+        permit_pairs = {(key, port)}
+    else:
+        base = f'https://{host}'
+    url = f'{base}{spec["path"]}'
+
+    deadline = time.monotonic() + _READ_TOTAL_DEADLINE
+    _read_ctx.pending_host = permit_host
+    _read_ctx.pending_pairs = permit_pairs
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        adapter = _read_channel_adapter()
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        try:
+            remaining = max(0.05, deadline - time.monotonic())
+            resp = session.get(url, params=query, headers=headers, timeout=remaining,
+                               allow_redirects=False, stream=True, proxies={})
+            try:
+                if 300 <= resp.status_code < 400:
+                    return resp.status_code, None, 'redirect_blocked'
+                # Дедлайн проверяем без отдельного потока и без resp.raw.read():
+                # urllib3 хоронит соединение целиком при любом ReadTimeoutError
+                # внутри HTTPResponse.read() (это его штатное поведение — после
+                # таймаута сокет для этого ответа больше не пригоден), так что
+                # «поймать таймаут чанка и попробовать снова» через read()
+                # физически невозможно — вторая попытка бьётся о уже закрытый
+                # сокет. Поэтому тело читаем через read1() того же
+                # BufferedReader, что использует http.client, а не через сырой
+                # socket.recv() — заголовки уже могли утянуть в его буфер
+                # первый кусок тела той же TCP-посылкой, и recv() напрямую с
+                # сокета этот буфер обошёл бы стороной (кейс: голый recv() на
+                # маленьком ответе давал невалидный JSON — начало тела терялось
+                # в буфере, а не в сети). read1() сперва отдаёт буфер, потом
+                # делает не больше одного сырого чтения — то же прерывание по
+                # таймауту, что и у recv(), но без потери уже полученных байт.
+                # Если сокет недостижим (нестандартный/фейковый нижний
+                # транспорт) — честный read_error ДО попытки читать.
+                try:
+                    sock = resp.raw._fp.fp.raw._sock
+                    buffered = resp.raw._fp.fp
+                except Exception:
+                    return None, None, 'read_error'
+                try:
+                    content_length = int(resp.headers.get('Content-Length'))
+                except (TypeError, ValueError):
+                    content_length = None  # неизвестна — читаем до закрытия соединения
+                chunks = []
+                total = 0
+                step = 0.2  # шаг между проверками дедлайна — не таймаут одной операции целиком
+                while content_length is None or total < content_length:
+                    remaining_for_read = deadline - time.monotonic()
+                    if remaining_for_read <= 0:
+                        return None, None, 'read_timeout'
+                    try:
+                        sock.settimeout(min(remaining_for_read, step))
+                    except Exception:
+                        return None, None, 'read_error'
+                    want = 65536 if content_length is None else min(65536, content_length - total)
+                    try:
+                        chunk = buffered.read1(want)
+                    except (socket.timeout, TimeoutError):
+                        continue  # свой шаг вышел, не весь дедлайн — цикл перепроверит остаток
+                    except OSError:
+                        return None, None, 'read_error'
+                    if not chunk:
+                        break  # соединение закрыто — это EOF при неизвестном Content-Length
+                    total += len(chunk)
+                    if total > _MAX_READ_RESPONSE_BYTES:
+                        return resp.status_code, None, 'response_too_large'
+                    chunks.append(chunk)
+                raw = b''.join(chunks)
+                if resp.status_code == 429:
+                    return resp.status_code, None, 'http_429'
+                if 500 <= resp.status_code < 600:
+                    return resp.status_code, None, 'http_5xx'
+                if 400 <= resp.status_code < 500:
+                    return resp.status_code, None, 'http_4xx'
+                try:
+                    data = json.loads(raw.decode('utf-8'))
+                except (ValueError, UnicodeDecodeError):
+                    return resp.status_code, None, 'invalid_json'
+                return resp.status_code, data, None
+            finally:
+                resp.close()
+        finally:
+            session.close()
+    except requests.exceptions.Timeout:
+        return None, None, 'timeout'
+    except requests.exceptions.SSLError:
+        return None, None, 'tls_error'
+    except requests.exceptions.ChunkedEncodingError:
+        return None, None, 'read_error'
+    except requests.exceptions.RequestException:
+        # Текст исключения requests нередко содержит сам URL/параметры — наружу
+        # уходит только стабильный код, как и в tg_call.
+        return None, None, 'network_error'
+    except Exception:
+        # Любая другая ошибка транспорта (в том числе низкоуровневый
+        # ConnectionRefusedError guard'а, если тест/код в обход requests сам
+        # открыл сокет) — read_get никогда не поднимает исключение наружу,
+        # как и tg_call.
+        return None, None, 'network_error'
+    finally:
+        _read_ctx.pending_host = None
+        _read_ctx.pending_pairs = set()
