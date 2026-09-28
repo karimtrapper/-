@@ -5844,6 +5844,37 @@ def _stand_crm_fact_problem(board, crm, kind):
             result[(hash_value, network, amount)] += 1
         return result
 
+    def extra_hashes(items, board_side):
+        """T17 extra receipts store amount_usdt; older drafts stored amount.
+
+        Keep this normalization local to payin_extra. Main payinHashes and
+        payout transfer checks use their existing field contracts.
+        """
+        result = Counter()
+        for item in items or []:
+            if not isinstance(item, dict):
+                return None
+            canonical = money(item.get('amount_usdt'))
+            legacy = money(item.get('amount'))
+            if ((item.get('amount_usdt') is not None and canonical is None)
+                    or (item.get('amount') is not None and legacy is None)):
+                return None
+            if canonical is not None and legacy is not None and canonical != legacy:
+                return None
+            # CRM's _normalize_tx_hashes persists amount_usdt only. Legacy
+            # amount is accepted from the saved board, never as the sole CRM
+            # amount that would disappear during creation.
+            amount = (canonical if canonical is not None else legacy) if board_side else canonical
+            if (item.get('net') and item.get('network') and
+                    normalize_network(item['net']) != normalize_network(item['network'])):
+                return None
+            network = normalize_network(item.get('net') or item.get('network') or 'TRC20')
+            hash_value = str(item.get('hash') or '').strip()
+            if not hash_value or not network or amount is None or amount <= 0:
+                return None
+            result[(hash_value, network, amount)] += 1
+        return result
+
     def recipients_match(board_items, crm_items):
         source = {(str(h.get('hash') or '').strip(),
                    normalize_network(h.get('net') or h.get('network') or 'TRC20'),
@@ -5938,9 +5969,11 @@ def _stand_crm_fact_problem(board, crm, kind):
         if not isinstance(source, dict) or not isinstance(part, dict):
             return 'payin_extra_mismatch'
         source_hashes = source.get('tx_hashes') or source.get('hashes') or []
-        amount = (sum((money(h.get('amount') if h.get('amount') is not None
-                             else h.get('amount_usdt')) or Decimal(0)
-                       for h in source_hashes), Decimal(0))
+        stand_extra_hashes = extra_hashes(source_hashes, True)
+        crm_extra_hashes = extra_hashes(part.get('tx_hashes'), False)
+        if stand_extra_hashes is None or crm_extra_hashes is None:
+            return 'payin_extra_mismatch'
+        amount = (sum((key[2] * count for key, count in stand_extra_hashes.items()), Decimal(0))
                   if source_hashes else money(source.get('amount_usdt') if source.get('amount_usdt') is not None
                                               else source.get('amountUsdt')))
         rub = source.get('amount_rub') if source.get('amount_rub') is not None else source.get('amountRub')
@@ -5956,7 +5989,7 @@ def _stand_crm_fact_problem(board, crm, kind):
                 or money(part.get('amount_rub')) != money(rub)
                 or _amount(part.get('rate_rub_usdt')) != _amount(rate)
                 or (part.get('partner_name') or None) != (partner or None)
-                or hashes(part.get('tx_hashes'), False) != hashes(source_hashes, True)
+                or crm_extra_hashes != stand_extra_hashes
                 or sorted(str(x) for x in part.get('sber_uuids') or [])
                    != sorted(str(x) for x in source.get('sber_uuids') or [])
                 or (part.get('note') or '') != (source.get('note') or '')):
