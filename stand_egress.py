@@ -59,7 +59,6 @@ from urllib.parse import urlsplit
 _installed = False
 _lock = threading.Lock()
 _blocked_count = 0
-_abandoned_read_threads = 0  # read_get: чтение тела не уложилось в дедлайн, поток брошен daemon'ом
 _recent = deque(maxlen=20)
 
 _orig_connect = None
@@ -389,7 +388,6 @@ def status():
             'active': _installed,
             'blocked_count': _blocked_count,
             'recent': list(_recent),
-            'abandoned_read_threads': _abandoned_read_threads,
         }
 
 
@@ -718,43 +716,6 @@ def _validate_base_url_override(_base_url):
     return parts.scheme, key, port
 
 
-def _abandon_response(resp):
-    """Лучшее усилие оборвать соединение ответа, от которого read_get
-    отказался по дедлайну, — всеми доступными путями, потому что нижний
-    транспорт бывает и настоящим сокетом, и фейком в тестах без единого из
-    этих атрибутов:
-    1. shutdown(SHUT_RDWR) сырого сокета — если read() того же соединения
-       уже блокируется в фоновом потоке, close() с соседнего потока не
-       гарантированно будит блокирующий read (POSIX это не требует, на
-       BSD/macOS не будит), а shutdown — будит везде;
-    2. resp.raw.close() — освобождает соединение в пуле urllib3;
-    3. resp.close() — верхнеуровневый close requests;
-    4. resp.raw._connection.close() — если urllib3 держит соединение
-       отдельным объектом (не всегда есть).
-    Любая ошибка на любом шаге — не повод падать, это очистка при отказе от
-    операции, а не гарантия; сам поток чтения — daemon и не держит процесс
-    независимо от того, получится ли его разбудить."""
-    import socket as _socket
-    try:
-        resp.raw._fp.fp.raw._sock.shutdown(_socket.SHUT_RDWR)
-    except Exception:
-        pass
-    try:
-        resp.raw.close()
-    except Exception:
-        pass
-    try:
-        resp.close()
-    except Exception:
-        pass
-    try:
-        conn = getattr(resp.raw, '_connection', None)
-        if conn is not None:
-            conn.close()
-    except Exception:
-        pass
-
-
 def read_get(op, params=None, _base_url=None):
     """Единственный путь в закрытый список внешних чтений (блокчейн, курсы,
     зеркало прод-поступлений).
@@ -791,7 +752,10 @@ def read_get(op, params=None, _base_url=None):
             return None, None, 'invalid_param'
         query[name] = value
 
-    headers = {}
+    # identity — тело читается напрямую с сырого сокета (см. ниже), в обход
+    # decode_content requests/urllib3; сжатый ответ без их распаковки был бы
+    # мусором для json.loads.
+    headers = {'Accept-Encoding': 'identity'}
     key_env = spec.get('key_env')
     if key_env:
         key = os.environ.get(key_env, '').strip()
@@ -834,51 +798,57 @@ def read_get(op, params=None, _base_url=None):
             try:
                 if 300 <= resp.status_code < 400:
                     return resp.status_code, None, 'redirect_blocked'
-                # Дедлайн проверяем через watchdog-поток, а не таймаутом одной
-                # операции requests: сервер, отдающий тело по байту с паузами
-                # короче per-op таймаута, иначе растягивал бы общую операцию
-                # сколь угодно долго — ни один отдельный recv не стухнет, а
-                # сумма пауз всё равно превысит дедлайн. Поток — обычный daemon
-                # Thread (не пул): ровно один на операцию, join(timeout=) даёт
-                # настоящий wall-clock предел независимо от того, сколько ещё
-                # продлится сам блокирующий read(); если не уложился — поток
-                # остаётся жить сам по себе (daemon не держит процесс), read_get
-                # его не ждёт и не пытается прибить, только считает в status().
-                remaining_for_read = deadline - time.monotonic()
-                if remaining_for_read <= 0:
-                    return None, None, 'read_timeout'
-                outcome = {}
-
-                def _read_body():
-                    try:
-                        outcome['data'] = resp.raw.read(_MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
-                    except BaseException as exc:
-                        outcome['exc'] = exc
-
-                reader = threading.Thread(target=_read_body, name='stand-egress-read', daemon=True)
-                reader.start()
-                reader.join(remaining_for_read)
-                if reader.is_alive():
-                    # Дедлайн истёк, поток всё ещё блокируется в read() —
-                    # обрываем соединение всем, до чего можем дотянуться, и
-                    # бросаем поток: он daemon, процесс не держит.
-                    _abandon_response(resp)
-                    with _lock:
-                        global _abandoned_read_threads
-                        _abandoned_read_threads += 1
-                    return None, None, 'read_timeout'
-                exc = outcome.get('exc')
-                if exc is not None:
-                    if isinstance(exc, urllib3.exceptions.ReadTimeoutError):
+                # Дедлайн проверяем без отдельного потока и без resp.raw.read():
+                # urllib3 хоронит соединение целиком при любом ReadTimeoutError
+                # внутри HTTPResponse.read() (это его штатное поведение — после
+                # таймаута сокет для этого ответа больше не пригоден), так что
+                # «поймать таймаут чанка и попробовать снова» через read()
+                # физически невозможно — вторая попытка бьётся о уже закрытый
+                # сокет. Поэтому тело читаем через read1() того же
+                # BufferedReader, что использует http.client, а не через сырой
+                # socket.recv() — заголовки уже могли утянуть в его буфер
+                # первый кусок тела той же TCP-посылкой, и recv() напрямую с
+                # сокета этот буфер обошёл бы стороной (кейс: голый recv() на
+                # маленьком ответе давал невалидный JSON — начало тела терялось
+                # в буфере, а не в сети). read1() сперва отдаёт буфер, потом
+                # делает не больше одного сырого чтения — то же прерывание по
+                # таймауту, что и у recv(), но без потери уже полученных байт.
+                # Если сокет недостижим (нестандартный/фейковый нижний
+                # транспорт) — честный read_error ДО попытки читать.
+                try:
+                    sock = resp.raw._fp.fp.raw._sock
+                    buffered = resp.raw._fp.fp
+                except Exception:
+                    return None, None, 'read_error'
+                try:
+                    content_length = int(resp.headers.get('Content-Length'))
+                except (TypeError, ValueError):
+                    content_length = None  # неизвестна — читаем до закрытия соединения
+                chunks = []
+                total = 0
+                step = 0.2  # шаг между проверками дедлайна — не таймаут одной операции целиком
+                while content_length is None or total < content_length:
+                    remaining_for_read = deadline - time.monotonic()
+                    if remaining_for_read <= 0:
                         return None, None, 'read_timeout'
-                    if isinstance(exc, (urllib3.exceptions.ProtocolError,
-                                        requests.exceptions.ChunkedEncodingError,
-                                        ConnectionError)):
+                    try:
+                        sock.settimeout(min(remaining_for_read, step))
+                    except Exception:
                         return None, None, 'read_error'
-                    raise exc
-                raw = outcome['data']
-                if len(raw) > _MAX_READ_RESPONSE_BYTES:
-                    return resp.status_code, None, 'response_too_large'
+                    want = 65536 if content_length is None else min(65536, content_length - total)
+                    try:
+                        chunk = buffered.read1(want)
+                    except (socket.timeout, TimeoutError):
+                        continue  # свой шаг вышел, не весь дедлайн — цикл перепроверит остаток
+                    except OSError:
+                        return None, None, 'read_error'
+                    if not chunk:
+                        break  # соединение закрыто — это EOF при неизвестном Content-Length
+                    total += len(chunk)
+                    if total > _MAX_READ_RESPONSE_BYTES:
+                        return resp.status_code, None, 'response_too_large'
+                    chunks.append(chunk)
+                raw = b''.join(chunks)
                 if resp.status_code == 429:
                     return resp.status_code, None, 'http_429'
                 if 500 <= resp.status_code < 600:

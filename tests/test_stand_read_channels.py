@@ -774,7 +774,12 @@ def test_http_429_and_5xx_map_to_stable_error_codes():
     assert result == {'err_429': 'http_429', 'err_500': 'http_5xx', 'err_404': 'http_4xx'}
 
 
-def test_read_body_read_timeout_and_protocol_error_are_stable_codes():
+def test_read_body_without_real_socket_is_stable_read_error_not_raise():
+    """QA-раунд 5: тело читается своим циклом с сырого сокета ответа, не через
+    resp.raw.read() — фейковый Session.get без настоящего сокета (какой бы ни
+    была причина: таймаут, обрыв протокола, что угодно) не может быть прочитан
+    вообще и отклоняется сразу как read_error, а не гадает по типу исключения
+    фейкового .raw.read(), которое теперь и не вызывается."""
     result, proc = run_script('''
         import urllib3
         from unittest.mock import patch
@@ -801,7 +806,7 @@ def test_read_body_read_timeout_and_protocol_error_are_stable_codes():
         OUT(out)
     ''')
     assert proc.returncode == 0, proc.stderr
-    assert result == {'read_timeout': 'read_timeout', 'read_error': 'read_error'}
+    assert result == {'read_timeout': 'read_error', 'read_error': 'read_error'}
 
 
 # ── E2: guard-разрешение — только на время своего connect(), не всей операции
@@ -1304,9 +1309,12 @@ def test_calculator_stand_mode_global_fallback_uses_strict_flat_parser():
     assert result['usdt_thb'] is None
 
 
-def test_read_body_deadline_thread_is_daemon_and_process_does_not_wait_for_it():
-    """Поток чтения тела — обычный daemon Thread, не ThreadPoolExecutor:
-    после дедлайна он не входит ни в какой пул и не держит процесс."""
+def test_read_body_without_reachable_socket_rejected_immediately_no_thread():
+    """QA-раунд 5: чтение тела больше не заводит отдельный поток вообще — если
+    у ответа нет достижимого сырого сокета (совсем фейковый нижний транспорт,
+    как в тесте/баге стороннего кода), read_get отказывает СРАЗУ как
+    read_error, не пытаясь читать вслепую и не оставляя после себя ни одного
+    живого потока чтения."""
     result, proc = run_script('''
         import threading, time
         from unittest.mock import patch
@@ -1324,63 +1332,62 @@ def test_read_body_deadline_thread_is_daemon_and_process_does_not_wait_for_it():
             def close(self):
                 pass
 
-        before = [t.name for t in threading.enumerate()]
+        before = {t.name for t in threading.enumerate()}
         start = time.monotonic()
         with patch('requests.Session.get', return_value=Resp()):
             result = stand_egress.read_get('market_rapira', {})
         elapsed = time.monotonic() - start
-        after = [t for t in threading.enumerate() if t.name == 'stand-egress-read']
-        OUT({'result': result, 'elapsed': round(elapsed, 2),
-             'leaked_thread_is_daemon': after[0].daemon if after else None,
-             'status': stand_egress.status()})
+        after = {t.name for t in threading.enumerate()} - before
+        OUT({'result': result, 'elapsed': round(elapsed, 2), 'new_threads': sorted(after)})
     ''')
     assert proc.returncode == 0, proc.stderr
-    assert result['result'] == [None, None, 'read_timeout']
-    assert result['elapsed'] < 1.0, 'должен вернуться у дедлайна, не ждать 3с фонового потока'
-    assert result['leaked_thread_is_daemon'] is True
-    assert result['status']['abandoned_read_threads'] == 1
+    assert result['result'] == [None, None, 'read_error']
+    assert result['elapsed'] < 0.5, 'не должен ждать вообще — сокет недостижим сразу'
+    assert result['new_threads'] == []
 
 
-def test_read_body_deadline_does_not_leak_abandoned_counter_on_success():
-    result, proc = run_script(_fake_get_server_script() + '''
-        stand_egress.read_get('market_rapira', {}, _base_url=_base)
-        OUT({'abandoned': stand_egress.status()['abandoned_read_threads']})
-    ''')
-    assert proc.returncode == 0, proc.stderr
-    assert result == {'abandoned': 0}
-
-
-def test_real_socket_deadline_still_blocks_neighbor_and_completes_fast():
-    """Контрольная проверка E2 после перехода на daemon Thread: разрешение
-    всё ещё выставляется только внутри своего connect(), прямой сосед по
-    сокету блокируется, и операция укладывается в дедлайн, а не ждёт полной
-    передачи медленного тела."""
+def test_slow_real_socket_deadline_leaves_no_live_threads_after_return():
+    """Тот же дедлайн на реальном (не фейковом) медленном сокете — теперь
+    через settimeout в цикле чтения чанками, без watchdog-потока вовсе."""
     result, proc = run_script(_slow_drip_server_script(deadline=0.2) + '''
-        import socket, time
-        from unittest.mock import patch
-
-        seen = {}
-        orig_read = None
-        import urllib3
-        def spy(self, *a, **kw):
-            seen['active'] = getattr(stand_egress._read_ctx, 'active', False)
-            s = socket.socket()
-            try:
-                s.connect(('api.rapira.net', 443))
-                seen['direct'] = 'sent'
-            except Exception:
-                seen['direct'] = 'blocked'
-            finally:
-                s.close()
-            return orig_read(self, *a, **kw)
-        orig_read = urllib3.response.HTTPResponse.read
-
+        import threading, time
+        before = {t.name for t in threading.enumerate()}
         start = time.monotonic()
-        with patch.object(urllib3.response.HTTPResponse, 'read', spy):
-            result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
         elapsed = time.monotonic() - start
-        OUT({'result': result, 'elapsed': round(elapsed, 2), 'seen': seen})
+        time.sleep(0.5)  # если бы поток всё же завёлся и завис — успел бы остаться живым
+        after = {t.name for t in threading.enumerate()} - before
+        OUT({'result': result, 'elapsed': round(elapsed, 2), 'new_threads': sorted(after)})
     ''', timeout=15)
     assert proc.returncode == 0, proc.stderr
-    assert result['seen']['direct'] == 'blocked'
+    assert result['result'] == [None, None, 'read_timeout']
     assert result['elapsed'] < 0.4
+    assert result['new_threads'] == []
+
+
+def test_read_ctx_inactive_during_body_read_phase_of_slow_drip():
+    """E2 после перехода на свой цикл чтения (без resp.raw.read()): разрешение
+    guard'а действует только внутри своего connect(), поэтому во время ВСЕЙ
+    фазы чтения тела (в том числе долгой, медленной) _read_ctx неактивен —
+    соседний прямой коннект в том же потоке в это время в принципе не может
+    быть спутан с разрешённым, читать нечего дополнительно ловить."""
+    result, proc = run_script(_slow_drip_server_script(deadline=0.2) + '''
+        import threading, time
+        seen_during_read = []
+        stop = threading.Event()
+        def poll():
+            while not stop.is_set():
+                seen_during_read.append(getattr(stand_egress._read_ctx, 'active', False))
+                time.sleep(0.01)
+        t = threading.Thread(target=poll, daemon=True)
+        t.start()
+        start = time.monotonic()
+        result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        elapsed = time.monotonic() - start
+        stop.set(); t.join(timeout=1)
+        OUT({'result': result, 'elapsed': round(elapsed, 2),
+             'active_seen_during_read': any(seen_during_read)})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result['elapsed'] < 0.4
+    assert result['active_seen_during_read'] is False
