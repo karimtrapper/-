@@ -47,6 +47,7 @@ UDP (sendto/sendmsg) на заблокированный адрес не бро�
   периметра guard'а.
 """
 import ipaddress
+import json
 import os
 import re
 import socket
@@ -82,6 +83,16 @@ _tg_ctx = threading.local()
 
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
+
+_dp_ctx = threading.local()
+
+_OR_HOST = 'openrouter.ai'
+_OR_PATH = '/api/v1/chat/completions'
+# Ключи payload, которые вообще может собрать docparse.py — 'tools'/'tool_choice'/
+# внешний image URL сюда никогда не попадут, потому что их здесь нет в allowlist'е.
+_DP_ALLOWED_KEYS = frozenset({'model', 'messages', 'response_format', 'max_tokens', 'temperature'})
+_DP_IMAGE_URL_RE = re.compile(r'^data:image/png;base64,[A-Za-z0-9+/]+=*$')
+_DP_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 _policy = None  # callable(channel, recipient, operation) -> bool, регистрируется set_policy()
 _bot_identity = None  # (токен, адрес тестового сервера, имя, id, срок проверки)
@@ -209,6 +220,8 @@ def _loopback_pair_allowed(host, port):
         return True
     if getattr(_tg_ctx, 'active', False) and (key, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_dp_ctx, 'active', False) and (key, port) in getattr(_dp_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -225,6 +238,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         return port is None or port == 443
+    if h == _OR_HOST and getattr(_dp_ctx, 'active', False):
+        return port is None or port == 443
     return False
 
 
@@ -235,6 +250,8 @@ def _ip_allowed(ip, port=None):
         return True
     if getattr(_tg_ctx, 'active', False) and port is not None and (ip, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_dp_ctx, 'active', False) and port is not None and (ip, port) in getattr(_dp_ctx, 'allowed_pairs', ()):
+        return True
     return False
 
 
@@ -243,9 +260,13 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         _record_block(f'getaddrinfo host={host}:{port}')
         raise socket.gaierror(-2, 'Имя или служба неизвестны (заблокировано egress-guard стенда)')
     infos = _orig_getaddrinfo(host, port, family, type, proto, flags)
-    if host and str(host).strip('[]').lower() == _TG_HOST and getattr(_tg_ctx, 'active', False):
+    h = str(host).strip('[]').lower() if host else ''
+    if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))
+    if h == _OR_HOST and getattr(_dp_ctx, 'active', False):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _dp_ctx.allowed_pairs = pairs | set(getattr(_dp_ctx, 'allowed_pairs', ()))
     return infos
 
 
@@ -492,3 +513,119 @@ def tg_call(method, payload, _base_url=None):
     finally:
         _tg_ctx.active = False
         _tg_ctx.allowed_pairs = set()
+
+
+def _dp_content_item_ok(item):
+    if not isinstance(item, dict):
+        return False
+    if item.get('type') == 'text':
+        return set(item.keys()) == {'type', 'text'} and isinstance(item['text'], str)
+    if item.get('type') == 'image_url':
+        if set(item.keys()) != {'type', 'image_url'}:
+            return False
+        url = item.get('image_url')
+        return (isinstance(url, dict) and set(url.keys()) == {'url'}
+                and isinstance(url.get('url'), str) and bool(_DP_IMAGE_URL_RE.match(url['url'])))
+    return False
+
+
+def _valid_docparse_payload(payload):
+    """Payload — фиксированная схема docparse.py, не то, что прислал браузер.
+
+    Проверяется здесь, а не доверяется вызывающему коду: это последняя граница
+    перед сетью. Модель — из закрытого списка (docparse.DEFAULT_MODEL/
+    FALLBACK_MODELS), сообщения — только текст и data-URI PNG, без tools,
+    внешних URL и произвольной response_format-схемы.
+    """
+    if not isinstance(payload, dict) or set(payload.keys()) - _DP_ALLOWED_KEYS:
+        return False
+    if 'model' not in payload or 'messages' not in payload:
+        return False
+    import docparse  # noqa: PLC0415 — только здесь, чтобы избежать цикла на уровне модулей
+    if payload['model'] not in ([docparse.DEFAULT_MODEL] + docparse.FALLBACK_MODELS):
+        return False
+    messages = payload['messages']
+    if not isinstance(messages, list) or len(messages) != 1:
+        return False
+    message = messages[0]
+    if not isinstance(message, dict) or set(message.keys()) != {'role', 'content'} or message['role'] != 'user':
+        return False
+    content = message['content']
+    if not isinstance(content, list) or not content:
+        return False
+    if content[0].get('type') != 'text' or not all(_dp_content_item_ok(item) for item in content):
+        return False
+    if 'response_format' in payload:
+        rf = payload['response_format']
+        if not isinstance(rf, dict) or rf.get('type') != 'json_schema':
+            return False
+        js = rf.get('json_schema')
+        if (not isinstance(js, dict) or js.get('name') != 'doc' or js.get('strict') is not True
+                or not isinstance(js.get('schema'), dict)):
+            return False
+    if 'max_tokens' in payload:
+        mt = payload['max_tokens']
+        if isinstance(mt, bool) or not isinstance(mt, int) or not (0 < mt <= 20000):
+            return False
+    if 'temperature' in payload and payload['temperature'] != 0:
+        return False
+    return True
+
+
+def docparse_post(payload, timeout=60, _base_url=None):
+    """Единственный путь распознавания документов в OpenRouter на стенде.
+
+    Ровно POST на chat/completions с ключом STAND_DOCPARSE_KEY. `_base_url` —
+    только для тестов (фейковый локальный сервер), прод его не передаёт.
+    Возвращает (status_code|None, json|None, error_code|None): error_code не
+    None — сеть не дошла до успешного JSON-ответа; status/json заполнены,
+    если HTTP-ответ получен (даже 4xx/5xx) и тело — валидный JSON в бюджете
+    размера. Текст исключений SDK/requests наружу не отдаётся никогда.
+    """
+    import requests
+
+    key = os.environ.get('STAND_DOCPARSE_KEY', '').strip()
+    if not key:
+        return None, None, 'no_key'
+    if not _valid_docparse_payload(payload):
+        return None, None, 'invalid_payload'
+
+    base = (_base_url or f'https://{_OR_HOST}').rstrip('/')
+    url = f'{base}{_OR_PATH}'
+
+    _dp_ctx.active = True
+    _dp_ctx.allowed_pairs = set()
+    if _base_url:
+        parts = urlsplit(_base_url)
+        if parts.hostname and parts.port:
+            key_host = _loopback_key(parts.hostname) or parts.hostname.strip('[]').lower()
+            _dp_ctx.allowed_pairs.add((key_host, parts.port))
+    session = requests.Session()
+    session.trust_env = False
+    try:
+        try:
+            resp = session.post(url, json=payload,
+                                headers={'Authorization': f'Bearer {key}'},
+                                timeout=(10, timeout), allow_redirects=False, proxies={},
+                                stream=True)
+        except requests.exceptions.Timeout:
+            return None, None, 'timeout'
+        except requests.exceptions.RequestException:
+            return None, None, 'network_error'
+        try:
+            body = resp.raw.read(_DP_MAX_RESPONSE_BYTES + 1, decode_content=True)
+            if len(body) > _DP_MAX_RESPONSE_BYTES:
+                return resp.status_code, None, 'too_large'
+            try:
+                data = json.loads(body.decode('utf-8'))
+            except (ValueError, UnicodeDecodeError):
+                return resp.status_code, None, 'bad_json'
+            if not isinstance(data, dict):
+                return resp.status_code, None, 'bad_json'
+            return resp.status_code, data, None
+        finally:
+            resp.close()
+    finally:
+        session.close()
+        _dp_ctx.active = False
+        _dp_ctx.allowed_pairs = set()

@@ -5356,7 +5356,7 @@ async function docParse(id,quiet){
         return;
       }
       dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
-    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file),at:now()};
+    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file||x.slot),at:now()};
     dd.docParseState='готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
        выпуска договора стояло «не указан», хотя инвойс уже распознан (аудит 27.09, №23) */

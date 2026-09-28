@@ -23,6 +23,15 @@ DEFAULT_MODEL = os.environ.get('DOCPARSE_MODEL', 'google/gemini-2.5-flash')
 FALLBACK_MODELS = ['openai/gpt-4.1-mini', 'google/gemini-2.5-flash-lite']
 OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
+# На стенде рисковый растр (маленький PDF → огромные PNG-страницы) режется до
+# сети — тут же, а не только по MAX_CONTENT_LENGTH исходной загрузки в app.py.
+STAND_MAX_RASTER_BYTES = 15 * 1024 * 1024
+
+
+class StandDocparseError(RuntimeError):
+    """Стабильный код ошибки распознавания на стенде — без текста SDK/requests,
+    имени файла и содержимого документа (см. OCR-TRC20-REVIEW.md)."""
+
 # Поля, которые вынимаем из файлов. Всё остальное в договоре — константы MF Corp,
 # ввод менеджера, дефолты или вычисление системой (карта полей в вики).
 FIELD_DEFS = {
@@ -123,10 +132,7 @@ def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150) -> 
 
 
 def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180,
-          kind: str | None = None) -> dict:
-    from openai import OpenAI  # noqa: PLC0415
-
-    client = OpenAI(base_url='https://openrouter.ai/api/v1', api_key=api_key, timeout=timeout)
+          kind: str | None = None, stand: bool = False) -> dict:
     prompt = PROMPT
     if kind in DOC_KINDS:
         prompt = f'{DOC_KINDS[kind]}\n{PROMPT}'
@@ -135,15 +141,42 @@ def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180,
         b64 = base64.b64encode(img).decode()
         content.append({'type': 'image_url',
                         'image_url': {'url': 'data:image/png;base64,' + b64}})
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{'role': 'user', 'content': content}],
-        response_format={'type': 'json_schema',
-                         'json_schema': {'name': 'doc', 'strict': True, 'schema': _schema()}},
+    payload = {
+        'model': model,
+        'messages': [{'role': 'user', 'content': content}],
+        'response_format': {'type': 'json_schema',
+                            'json_schema': {'name': 'doc', 'strict': True, 'schema': _schema()}},
         # Reasoning-модели тратят на рассуждение 5–8 тыс. токенов и при малом лимите
         # возвращают content=null — это выглядит как поломка. Держим запас.
-        max_tokens=20000,
-        temperature=0,
+        'max_tokens': 20000,
+        'temperature': 0,
+    }
+
+    if stand:
+        import stand_egress  # noqa: PLC0415 — изолированный канал только на стенде
+        status, data, err = stand_egress.docparse_post(payload, timeout=timeout)
+        if err:
+            raise StandDocparseError(err)
+        if status != 200:
+            raise StandDocparseError('http_error')
+        try:
+            raw = data['choices'][0]['message']['content']
+        except (KeyError, IndexError, TypeError):
+            raise StandDocparseError('bad_response') from None
+        if not raw:
+            raise StandDocparseError('empty_response')
+        try:
+            return json.loads(raw)
+        except ValueError:
+            raise StandDocparseError('bad_response') from None
+
+    from openai import OpenAI  # noqa: PLC0415
+
+    client = OpenAI(base_url='https://openrouter.ai/api/v1', api_key=api_key, timeout=timeout)
+    resp = client.chat.completions.create(
+        model=payload['model'], messages=payload['messages'],
+        response_format=payload['response_format'],
+        max_tokens=payload['max_tokens'], temperature=payload['temperature'],
     )
     raw = resp.choices[0].message.content
     if not raw:
@@ -244,19 +277,33 @@ def normalize(key: str, value):
 
 
 def parse_file(filename: str, data: bytes, mime: str, api_key: str,
-               model: str | None = None, kind: str | None = None) -> dict:
-    """Один файл → распознанные поля. При отказе модели пробуем запасные."""
+               model: str | None = None, kind: str | None = None, stand: bool = False) -> dict:
+    """Один файл → распознанные поля. При отказе модели пробуем запасные.
+
+    `stand=True` — вызов со стенда: канал только stand_egress.docparse_post,
+    ошибка — стабильный код StandDocparseError, без текста исключения
+    SDK/requests, имени файла и содержимого документа. `stand=False` (по
+    умолчанию, прод-путь) — поведение не меняется вовсе.
+    """
     images = pages_to_png(data, mime)
+    if stand and sum(len(img) for img in images) > STAND_MAX_RASTER_BYTES:
+        raise StandDocparseError('too_large')
     errors = []
+    last_code = 'parse_failed'
     for m in [model or DEFAULT_MODEL] + FALLBACK_MODELS:
         try:
-            res = _call(m, images, api_key, kind=kind)
+            res = _call(m, images, api_key, kind=kind, stand=stand)
             res['_model'] = m
             res['_file'] = filename
             res['_kind'] = kind
             return res
         except Exception as exc:  # noqa: BLE001 — падать нельзя, пробуем следующую
-            errors.append(f'{m}: {exc}')
+            if stand:
+                last_code = exc.args[0] if isinstance(exc, StandDocparseError) else 'parse_failed'
+            else:
+                errors.append(f'{m}: {exc}')
+    if stand:
+        raise StandDocparseError(last_code)
     raise RuntimeError('все модели отказали — ' + ' | '.join(errors))
 
 
