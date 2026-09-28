@@ -565,22 +565,30 @@ class TestДоговорБезПриложений:
 class TestPDF:
     """Клиенту уходит PDF: его не поправишь случайно и он открывается везде."""
 
+    # LibreOffice silently returns without a PDF under the macOS network
+    # sandbox. Keep this dependency explicit; never run it outside the fence
+    # merely to make the test green.
+    _converter_blocked = os.environ.get('CALCCRM_FENCE_ACTIVE') == '1'
+
     def test_путь_к_конвертеру_ищется(self):
         # None — валидный ответ на машине без LibreOffice
         assert docgen.soffice_path() is None or isinstance(docgen.soffice_path(), str)
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_docx_конвертируется_в_pdf(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         pdf = docgen.to_pdf(data)
         assert pdf and pdf[:5] == b'%PDF-'
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_pdf_заметно_легче_docx(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         assert len(docgen.to_pdf(data)) < len(data)
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_as_pdf_отдаёт_pdf_с_нужным_именем(self):
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)
         body, name, mime = docgen.as_pdf(data, 'MF_Agreement_test')
@@ -588,7 +596,8 @@ class TestPDF:
         assert mime == docgen.PDF_MIME
         assert body[:5] == b'%PDF-'
 
-    @pytest.mark.skipif(docgen.soffice_path() is None, reason='LibreOffice не установлен')
+    @pytest.mark.skipif(docgen.soffice_path() is None or _converter_blocked,
+                        reason='LibreOffice недоступен внутри обязательного OS network sandbox')
     def test_кириллица_доезжает_до_pdf(self):
         from pypdf import PdfReader
         data, _ = docgen.build_agreement('leasehold', CLIENT, MONEY, when=WHEN)

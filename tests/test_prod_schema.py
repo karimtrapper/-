@@ -114,7 +114,7 @@ def test_postgres_prod_schema_matches_main(tmp_path):
                    env=pg_env)
     server = [str(binaries / 'pg_ctl'), '-D', str(data)]
     # Unix-сокет PostgreSQL ограничен 103 байтами, путь pytest бывает длиннее.
-    with tempfile.TemporaryDirectory(prefix='t13pg-', dir='/tmp') as socket_dir:
+    with tempfile.TemporaryDirectory(prefix='calccrm-t19-pg-schema-', dir='/tmp') as socket_dir:
         subprocess.run(server + ['-o', f'-k {socket_dir} -h ""', '-l',
                                  str(tmp_path / 'postgres.log'), 'start'],
                        check=True, capture_output=True, text=True, timeout=90,

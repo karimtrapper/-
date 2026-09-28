@@ -347,7 +347,7 @@ def postgres_audit_engine():
             pytest.fail(f'Для PostgreSQL-проверки нужен {name} в PATH')
         binaries[name] = binary
 
-    with tempfile.TemporaryDirectory(prefix='calccrm-pg-', dir='/tmp') as root:
+    with tempfile.TemporaryDirectory(prefix='calccrm-t19-pg-audit-', dir='/tmp') as root:
         data = str(Path(root) / 'data')
         log = str(Path(root) / 'postgres.log')
         started = False

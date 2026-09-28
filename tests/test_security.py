@@ -112,7 +112,13 @@ class TestPublicAPIAccessible:
         ("GET", "/api/health"),
         ("POST", "/api/auth/login"),
     ])
-    def test_public_api_no_401(self, client, method, path):
+    def test_public_api_no_401(self, client, method, path, monkeypatch):
+        if path == '/api/rates':
+            import app as module
+            async def fake_rates():
+                return {'usdt_thb': 35.0, 'rub_usdt': 80.0}
+            monkeypatch.setattr(module.ExchangeRateProvider, 'get_all_rates', fake_rates)
+            monkeypatch.setattr(module, '_bitazza_calc_quote', lambda *a, **k: None)
         if method == "GET":
             resp = client.get(path)
         else:

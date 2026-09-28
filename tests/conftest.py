@@ -6,18 +6,18 @@
 import os
 from pathlib import Path
 import re
-import socket
 import sys
 import tempfile
-from urllib.parse import urlsplit
 
 import pytest
 import requests
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if os.environ.get('CALCCRM_FENCE_ACTIVE') != '1':
+    raise RuntimeError('Tests require scripts/run_fenced_pytest.py (pre-import OS/Python network fence)')
 sys.path.insert(0, str(ROOT))
-_environment_before = dict(os.environ)
 for source in ROOT.glob('*.py'):
     for key in re.findall(r"os\.(?:environ\.get|getenv)\(['\"]([A-Z][A-Z0-9_]*)", source.read_text()):
         os.environ.pop(key, None)
@@ -31,32 +31,11 @@ os.environ.update({
     'TRONSCAN_WARM_ENABLED': '0',
     'PAYMENT_POLL_ENABLED': '0',
     'KYC_RETENTION_ENABLED': '0',
+    'STAND_SBER_MIRROR_ENABLED': '0',
+    'STAND_TG_UPDATES_ENABLED': '0',
+    'STAND_TRANSFER_POLL_ENABLED': '0',
     'METRIKA_TOKEN': '',
 })
-
-_original_connect = socket.socket.connect
-_original_connect_ex = socket.socket.connect_ex
-
-
-def _check_address(address):
-    """Разрешаем только локальный HTTP-стенд и IPC Playwright."""
-    if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
-        raise RuntimeError('Внешняя сеть запрещена в pytest; замокайте интеграцию')
-
-
-def _local_connect(sock, address):
-    _check_address(address)
-    return _original_connect(sock, address)
-
-
-def _local_connect_ex(sock, address):
-    _check_address(address)
-    return _original_connect_ex(sock, address)
-
-
-socket.socket.connect = _local_connect
-socket.socket.connect_ex = _local_connect_ex
-
 
 @pytest.fixture(autouse=True)
 def isolated_runtime(monkeypatch):
@@ -71,14 +50,32 @@ def isolated_runtime(monkeypatch):
     monkeypatch.delenv('ETHERSCAN_API_KEY', raising=False)
     # Не читаем локальный service-account даже при заблокированном интернете.
     monkeypatch.setattr(module, 'get_gsheet_client', lambda: None)
-    original_request = requests.sessions.Session.request
+    # Business tests create synthetic transfer hashes. A missing transaction is
+    # the controlled TronScan response for those hashes; endpoint-specific
+    # tests replace requests.get with their own fake transport.
+    real_get = requests.get
+    real_post = requests.post
 
-    def local_request(session, method, url, *args, **kwargs):
-        if urlsplit(url).hostname not in ('127.0.0.1', '::1', 'localhost'):
-            raise requests.ConnectionError('Внешний HTTP запрещён в pytest: требуется mock')
-        return original_request(session, method, url, *args, **kwargs)
+    def is_test_telegram(url):
+        return urlsplit(url).hostname == 'api.telegram.org'
 
-    monkeypatch.setattr(requests.sessions.Session, 'request', local_request)
+    def fake_tronscan_get(url, *args, **kwargs):
+        if is_test_telegram(url):
+            raise requests.ConnectionError('synthetic Telegram transport unavailable')
+        if urlsplit(url).hostname == 'apilist.tronscanapi.com':
+            response = requests.Response()
+            response.status_code = 404
+            response._content = b'{}'
+            return response
+        return real_get(url, *args, **kwargs)
+
+    def fake_telegram_post(url, *args, **kwargs):
+        if is_test_telegram(url):
+            raise requests.ConnectionError('synthetic Telegram transport unavailable')
+        return real_post(url, *args, **kwargs)
+
+    monkeypatch.setattr(requests, 'get', fake_tronscan_get)
+    monkeypatch.setattr(requests, 'post', fake_telegram_post)
     yield
     module.Session.remove()
     module.app.config.clear()
@@ -102,8 +99,5 @@ def pytest_unconfigure(config):
     if module is not None:
         module.Session.remove()
         module.engine.dispose()
-    socket.socket.connect = _original_connect
-    socket.socket.connect_ex = _original_connect_ex
     _database_dir.cleanup()
-    os.environ.clear()
-    os.environ.update(_environment_before)
+    # Keep the early fence and disabled pollers active until process exit.

@@ -181,6 +181,7 @@ def test_bind_valid_expired_repeated_group_and_offset_restart(dm, monkeypatch):
 def test_webhook_disables_poll_and_notify_test_requires_admin(dm, monkeypatch):
     calls, ids, _ = dm
     monkeypatch.setenv('STAND_TG_TOKEN', 'fake-token')
+    monkeypatch.setenv('STAND_TG_UPDATES_ENABLED', '1')
     monkeypatch.setattr(notify.stand_egress, 'tg_call',
                         lambda method, payload: {'ok': True, 'result':
                             {'username': 'grusha_stand_bot', 'id': 1} if method == 'getMe'
