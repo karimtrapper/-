@@ -16,7 +16,7 @@ const src=fs.readFileSync('static/stand/tasks.html','utf8');
 const broker=src.slice(src.indexOf('const BROKER_FEE='),
                        src.indexOf('/* Откуда физически',src.indexOf('const BROKER_FEE=')));
 const parts=src.slice(src.indexOf('function hashSum('),src.indexOf('function econ('));
-const field=src.match(/payin_amount_usdt:r2\(payinParts\(d\)\[0\]\?\.usdt\)/);
+const field=src.match(/payin_amount_usdt:r2\(payinParts\(d\)\[0\]\?\.usdt(?:\?\?null)?\)/);
 if(!field)throw Error('T17 CRM serializer field expression changed');
 const box={cases:JSON.parse(process.argv[1]), field:field[0], result:null};
 vm.runInNewContext(`function num(x){return Number(x)||0}

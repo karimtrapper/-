@@ -29,7 +29,7 @@ import gspread
 from html import escape as html_escape
 from stand_transfers import (preserve_server_fields, send_fingerprint,
                              expected_addresses, normalize_network, normalize_ref,
-                             verify_transfer, _amount)
+                             verify_transfer, _amount, FREEHOLD_LOCKED_STEPS)
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== ТЕСТОВЫЙ СТЕНД ====================
@@ -6342,11 +6342,23 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return assignee_problem
         if not before:
             continue
+        # X и тариф IPPS становятся денежной основой договора. После входа в
+        # подготовку документов их нельзя менять обходом UI через stand_state PUT.
+        # THB сумма инвойса хранится отдельно, но тоже является частью документа.
+        if (before.get('kind') == 'Фрихолд' and
+                (before.get('step') in FREEHOLD_LOCKED_STEPS or before.get('docPack')
+                 or before.get('closed') or before.get('crmDealId')
+                 or before.get('serverTransferComplete') or
+                 any(s.get('status') == 'confirmed' for s in
+                     (before.get('transfer') or {}).get('sends') or []))):
+            if any(before.get(key) != deal.get(key) for key in
+                   ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb')):
+                return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
         if deal.get('crmDealId') != before.get('crmDealId') and not allow_crm_close:
             return 'CRM привязывается только сервером при закрытии'
         if (not before.get('closed') and deal.get('closed')
-                and deal.get('closeReason') == 'Успешно завершена'
-                and not allow_crm_close):
+                 and deal.get('closeReason') == 'Успешно завершена'
+                 and not allow_crm_close):
             return 'Успешное закрытие в CRM выполняется отдельной кнопкой'
         protected = (before.get('closed') or before.get('crmDealId')
                      or before.get('serverTransferComplete')

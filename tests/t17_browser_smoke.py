@@ -1,0 +1,1388 @@
+"""Local synthetic UI probe. Run only inside T17 OS sandbox with clean env."""
+import runpy
+import socket
+import threading
+import time
+import json
+from urllib.parse import urlparse, parse_qs
+
+appmod = runpy.run_path('tests/t17_fenced_smoke.py')['app']
+db=appmod.get_session()
+try:
+    if not db.query(appmod.Manager).filter_by(name='Марина').first():
+        db.add(appmod.Manager(name='Марина',active=True))
+    db.add(appmod.Referrer(name='T17 Agent',code='T17AGENT',token='t17-synthetic-agent',
+                           default_percent=10,comp_model='revshare',active=True,is_test=True))
+    db.add(appmod.Referrer(name='T17 Agent Two',code='T17AGENT2',token='t17-synthetic-agent-two',
+                           default_percent=5,comp_model='revshare',active=True,is_test=True))
+    db.add(appmod.Client(name='T17 Existing',telegram='@t17fixture',phone='70000000000'))
+    db.add(appmod.SberIncome(uuid='t17-transfer-1',operation_date='2026-09-27T12:00:00',
+        amount_rub=266000,payer='T17 Transfer',purpose='Оплата недвижимости. НДС не облагается'))
+    db.add(appmod.SberIncome(uuid='t17-acquiring-1',operation_date='2026-09-28T11:00:00',
+        amount_rub=99300,payer='T17 Acquiring',purpose=
+        'Зачисление средств по операциям эквайринга. Мерчант №781003872118. Комиссия 700.00. НДС не облагается.'))
+    occupied=appmod.Deal(deal_type=appmod.DealType.PAY_IN,
+                           client_name='T17 occupied synthetic',is_test=True)
+    db.add(occupied)
+    db.flush()
+    db.add(appmod.SberIncome(uuid='t17-occupied-1',operation_date='2026-09-28T11:30:00',
+        amount_rub=50000,payer='T17 Occupied',purpose='Оплата, тест',
+        claimed_deal_id=occupied.id))
+    db.commit()
+finally:
+    db.close()
+thread = threading.Thread(target=lambda: appmod.app.run(host='127.0.0.1', port=18917,
+                                    debug=False, use_reloader=False), daemon=True)
+thread.start()
+for _ in range(50):
+    sock = socket.socket()
+    result = sock.connect_ex(('127.0.0.1', 18917))
+    sock.close()
+    if result == 0:
+        break
+    time.sleep(.1)
+else:
+    raise RuntimeError('own localhost port unavailable')
+print('own localhost: success')
+
+from playwright.sync_api import sync_playwright
+
+def pick(scope, field, value):
+    """Use CRM's actual upgraded dropdown when it is present."""
+    select=scope.locator('#'+field)
+    if select.get_attribute('data-upgraded')=='true':
+        wrap=select.locator('xpath=..')
+        wrap.locator('.custom-select-btn').click()
+        option=wrap.locator(f'.custom-select-opt[data-value="{value}"]')
+        if not option.is_visible():
+            print('hidden custom option:',field,value,wrap.evaluate('e=>e.outerHTML.slice(0,450)'))
+        try:
+            option.click(timeout=5000)
+        except Exception:
+            print('custom option hit test:',field,value,option.evaluate('''e=>{
+              const r=e.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+              const hit=e.getRootNode().elementFromPoint(x,y);
+              return {rect:[r.left,r.top,r.width,r.height],hit:hit?.outerHTML.slice(0,220),
+                wrap:e.closest('.custom-select-wrap')?.className};}'''))
+            raise
+    else:
+        select.select_option(value)
+
+def start_manual(page):
+    page.evaluate('startManual()')
+    # newDeal() and startManual() each queue a board save. Wait through the
+    # queued second PUT and its rerender before touching a ShadowRoot control.
+    page.wait_for_timeout(180)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.locator('#crmDraftHost #managerSelect[data-upgraded="true"]').wait_for(
+        state='attached',timeout=20000)
+
+def open_edit(page, deal_id):
+    page.wait_for_timeout(180)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.evaluate('(id)=>editOpen(id)',deal_id)
+    page.wait_for_timeout(180)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.locator('#crmDraftHost #managerSelect[data-upgraded="true"]').wait_for(
+        state='attached',timeout=20000)
+
+with sync_playwright() as playwright:
+    browser = playwright.chromium.launch(headless=True,
+        executable_path='/Users/karimamirov/Library/Caches/ms-playwright/chromium_headless_shell-1234/chrome-headless-shell-mac-arm64/chrome-headless-shell')
+    context = browser.new_context(ignore_https_errors=True)
+    blocked=[]
+    outgoing=[{'tx_hash':format(i,'064x'),'amount_usdt':round(100+i/100,2),
+               'to_address':f'T17-outgoing-address-{i%4}',
+               'timestamp':'2026-09-28T10:00:00Z'} for i in range(1,251)]
+    outgoing_count=[250]
+    founder_hash='f'*64
+    founder_tx={'tx_hash':founder_hash,'amount_usdt':3205.13,
+                'from_address':'T17-founder-wallet','to_address':'T17-recipient',
+                'timestamp':'2026-09-28T10:00:00Z'}
+    outgoing_mode=['mf']
+    incoming_hash='e'*64
+    manual_out_hash='d'*64
+    mocked=[]
+    def route_local(route):
+        parsed=urlparse(route.request.url)
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/cash/batches':
+            route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                'success':True,'batches':[{'id':1,'status':'active','remaining_thb':200000,
+                                          'purchase_rate':32}],
+                'summary':{'total_remaining_thb':200000}}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/cards/balance':
+            route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                'success':True,'cards':[{'id':7,'bank_name':'T17 Bank',
+                  'holder_name':'Synthetic','balance_thb':200000,'avg_rate':31.25}]}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/transactions/outgoing':
+            mocked.append(('outgoing',parse_qs(parsed.query)))
+            limit=int(parse_qs(parsed.query).get('limit',['1000'])[0])
+            available=[founder_tx] if outgoing_mode[0]=='founder' else outgoing[:outgoing_count[0]]
+            route.fulfill(status=200,content_type='application/json',
+                          body=json.dumps({'success':True,'available':available[:limit],
+                                           'wallets_errors':[]}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/tron/payout-tx':
+            mocked.append(('founder-lookup',parse_qs(parsed.query)))
+            route.fulfill(status=200,content_type='application/json',
+                          body=json.dumps({'success':True,'amount_usdt':3205.13,
+                            'from_address':'T17-founder-wallet','to_address':'T17-recipient'}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/transactions/incoming':
+            mocked.append(('custom-incoming',parse_qs(parsed.query)))
+            route.fulfill(status=200,content_type='application/json',
+                          body=json.dumps({'success':True,'available':[]}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/wl-transactions':
+            mocked.append(('custom-wl',parse_qs(parsed.query)))
+            route.fulfill(status=200,content_type='application/json',body='[]')
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/tx/lookup':
+            h=parse_qs(parsed.query).get('hash',[''])[0]
+            if h=='bad-t17-hash':
+                mocked.append(('invalid-incoming-lookup',h))
+                route.fulfill(status=404,content_type='application/json',body=json.dumps({
+                    'success':False,'error':'synthetic chain lookup rejected'}))
+                return
+            if h==incoming_hash:
+                mocked.append(('incoming-lookup',h))
+                route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                    'success':True,'amount_usdt':1234.56,'source':'mock'}))
+                return
+            if h==manual_out_hash:
+                mocked.append(('manual-out-lookup',h))
+                route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                    'success':True,'amount_usdt':250,'total_out_usdt':250.01,
+                    'to_address':'T17-manual-out','source':'mock'}))
+                return
+            tx=next((x for x in outgoing if x['tx_hash']==h),None)
+            if tx:
+                mocked.append(('lookup',h))
+                route.fulfill(status=200,content_type='application/json',body=json.dumps({
+                    'success':True,'amount_usdt':tx['amount_usdt'],
+                    'total_out_usdt':round(tx['amount_usdt']+0.01,2),
+                    'to_address':tx['to_address'],'source':'mock'}))
+                return
+        if route.request.url.startswith('http://127.0.0.1:18917/'):
+            route.continue_()
+        else:
+            blocked.append(route.request.url.split('?')[0])
+            route.abort()
+    context.route('**/*', route_local)
+    page = context.new_page()
+    crm_posts=[]
+    stand_puts=[]
+    page.on('request', lambda req: crm_posts.append(req.url)
+            if req.method=='POST' and req.url.endswith('/api/deals') else None)
+    page.on('request', lambda req: stand_puts.append(req.post_data_json)
+            if req.method=='PUT' and req.url.endswith('/api/stand/state') else None)
+    result = page.request.post('http://127.0.0.1:18917/api/auth/login',
+                               data={'username':'karim','password':'synthetic-t17'})
+    print('login:', result.status, result.json().get('success'))
+    page.goto('http://127.0.0.1:18917/tasks', wait_until='domcontentloaded', timeout=20000)
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    routes=page.evaluate('''async()=>Object.fromEntries(await Promise.all(
+      ['/tasks','/tasks/','/tasks/screens-data.js','/tasks/crm-draft-core.js?v=1',
+       '/tasks/crm-draft-adapter.js?cache=2'].map(async path=>
+         [path,(await fetch(path,{credentials:'same-origin'})).status])))''')
+    print('same-origin routes:',routes)
+    start_manual(page)
+    first_manual_put=next((b for b in stand_puts if any(
+        d.get('manualNew') for d in b.get('data',{}).get('deals',[]))),None)
+    assert first_manual_put is not None
+    first_d=next(d for d in first_manual_put['data']['deals'] if d.get('manualNew'))
+    assert first_d['manual'] is True and first_d['step']=='manual'
+    print('first actual manual PUT:',first_d['manual'],first_d['manualNew'],first_d['step'])
+    host = page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('#managerSelect[data-upgraded="true"]').wait_for(state='attached',timeout=20000)
+    print('form:', host.locator('#createDealForm').count())
+    print('kind:', host.locator('#dealKindSelect').input_value())
+    print('payin:', host.locator('#payinMethod option').count())
+    payin_button=host.locator('#payinMethod').locator('xpath=..').locator('.custom-select-btn')
+    payin_button.focus()
+    original_payin=host.locator('#payinMethod').input_value()
+    payin_button.press('ArrowDown')
+    assert host.locator('#payinMethod').input_value()!=original_payin
+    payin_button.press('ArrowUp')
+    assert host.locator('#payinMethod').input_value()==original_payin
+    payin_button.press('Escape')
+    assert host.locator('#payinMethod').locator('xpath=..').get_attribute('class')=='custom-select-wrap'
+    print('custom select keyboard ArrowDown/ArrowUp/Escape: PASS')
+    print('source:', page.locator('#crmDraftSource').input_value())
+    page.evaluate("BX_DEALS.push('T17 synthetic Bitrix #42')")
+    page.locator('#crmDraftSource').select_option('bitrix')
+    assert page.locator('#crmDraftSourceRef').input_value()==''
+    assert page.locator('#crmDraftSourceRef').locator('xpath=..').locator('label').inner_text()=='Карточка в Битриксе'
+    assert page.locator('#crmDraftSourceChoices option').all_text_contents()==['T17 synthetic Bitrix #42']
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #42')
+    assert page.evaluate('deal(S.edit).source')=='tg','source change must remain draft until save'
+    page.locator('#crmDraftSource').select_option('tg')
+    assert page.locator('#crmDraftSourceRef').input_value()==''
+    print('source/Bitrix choices and draft-only switch: PASS')
+    invalid=page.evaluate('''()=>{const id=S.edit,before=JSON.stringify(deal(id));
+      crmDraftActive.root.getElementById('payinMethod').value='';
+      editSave(id);return {same:JSON.stringify(deal(id))===before,edit:S.edit===id};}''')
+    print('invalid required field atomic draft:',invalid)
+    assert invalid=={'same':True,'edit':True}
+    pick(host,'payinMethod','sber_reqs')
+    crm=context.new_page()
+    crm.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm.evaluate('showSection("create")')
+    crm.wait_for_function('document.querySelectorAll("#managerSelect option").length > 0',timeout=20000)
+    crm.wait_for_function('document.querySelector("#managerSelect")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm,'payinMethod','sber_reqs')
+    snapshot='''el => [...el.querySelectorAll('label,button,select,input,textarea')]
+      .filter(x => x.getClientRects().length > 0)
+      .map(x => [x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\\s+/g,' ').trim(),
+        x.tagName==='SELECT'?[...x.options].map(o=>[o.value,o.textContent.trim()]):null,
+        x.getAttribute('placeholder')||'',x.required])'''
+    task_fields=host.locator('#createDealForm').evaluate(snapshot)
+    crm_fields=crm.locator('#createDealForm').evaluate(snapshot)
+    print('source form fields:',len(crm_fields),'task shadow fields:',len(task_fields),
+          'exact same:',crm_fields==task_fields)
+    if crm_fields!=task_fields:
+        from itertools import zip_longest
+        diffs=[(i,c,t) for i,(c,t) in enumerate(zip_longest(crm_fields,task_fields)) if c!=t]
+        print('first form differences:',json.dumps(diffs[:5],ensure_ascii=False)[:1000])
+    assert crm_fields==task_fields
+    pick(crm,'payinMethod','sber_wl')
+    pick(host,'payinMethod','sber_wl')
+    assert crm.locator('#sberKindSelect').input_value()==host.locator('#sberKindSelect').input_value()=='acquiring'
+    crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("2118")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvail")?.textContent.includes("2118")')
+    assert crm.locator('#sberIncomesAvail').inner_text()==host.locator('#sberIncomesAvail').inner_text()
+    pick(crm,'payinMethod','sber_reqs')
+    pick(host,'payinMethod','sber_reqs')
+    assert crm.locator('#sberKindSelect').input_value()==host.locator('#sberKindSelect').input_value()=='transfer'
+    crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("T17 Transfer")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvail")?.textContent.includes("T17 Transfer")')
+    assert crm.locator('#sberIncomesAvail').inner_text()==host.locator('#sberIncomesAvail').inner_text()
+    print('SBP/acquiring and requisites/transfer auto filters CRM/tasks: PASS')
+    pick(crm,'sberKindSelect','')
+    pick(host,'sberKindSelect','')
+    crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("T17 Transfer")',timeout=10000)
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvail")?.textContent.includes("T17 Transfer")',timeout=10000)
+    sber_rows='''el=>[...el.querySelectorAll('div[style*="border-bottom"]')]
+      .map(x=>x.innerText.replace(/\\s+/g,' ').trim())'''
+    crm_sber=crm.locator('#sberIncomesAvail').evaluate(sber_rows)
+    task_sber=host.locator('#sberIncomesAvail').evaluate(sber_rows)
+    print('Sber all rows CRM/tasks:',crm_sber,task_sber,'same:',crm_sber==task_sber)
+    assert crm_sber==task_sber and len(task_sber)==2
+    all_incomes=page.evaluate('''async()=>{
+      const r=await fetch('/api/sber-incomes?all=1',{credentials:'same-origin'});
+      return (await r.json()).incomes;}''')
+    assert all_incomes is not None
+    assert any(x['uuid']=='t17-occupied-1' and x['claimed_deal_id'] for x in all_incomes)
+    assert all('T17 Occupied' not in x for x in crm_sber+task_sber)
+    print('Sber occupied row omitted in both pickers; all=1 retains claimed marker')
+    assert host.locator('[onclick],[onchange],[oninput]').count()==0
+    for query in ('70000000000','@t17fixture'):
+        crm.locator('#clientSearchInput').fill(query)
+        host.locator('#clientSearchInput').fill(query)
+        crm.locator('#clientDropdown .client-name').first.wait_for(timeout=10000)
+        host.locator('#clientDropdown .client-name').first.wait_for(timeout=10000)
+        found=[crm.locator('#clientDropdown .client-name').first.inner_text(),
+               host.locator('#clientDropdown .client-name').first.inner_text()]
+        print('client search:',query,found)
+        assert found==['T17 Existing','T17 Existing']
+    crm.locator('#clientDropdown .client-dropdown-item').first.click()
+    host.locator('#clientDropdown .client-dropdown-item').first.click()
+    ids=[crm.locator('#clientIdHidden').input_value(),host.locator('#clientIdHidden').input_value()]
+    print('client selected IDs:',ids)
+    assert ids[0]==ids[1] and ids[0]
+    for scope in (crm,host):scope.locator('#clientSearchInput').fill('T17 new client')
+    create_choices=[crm.locator('#clientDropdown .client-dropdown-create').inner_text(),
+                    host.locator('#clientDropdown .client-dropdown-create').inner_text()]
+    print('client create choice CRM/tasks:',create_choices)
+    assert create_choices[0]==create_choices[1]
+    crm.locator('#clientDropdown .client-dropdown-create').click()
+    host.locator('#clientDropdown .client-dropdown-create').click()
+    new_client=[(crm.locator('#clientSearchInput').input_value(),crm.locator('#clientIdHidden').input_value()),
+                (host.locator('#clientSearchInput').input_value(),host.locator('#clientIdHidden').input_value())]
+    print('client new selected CRM/tasks:',new_client)
+    assert new_client==[('t17 new client',''),('t17 new client','')]
+    assert not crm_posts,crm_posts
+    for filter_value,expected_count in [('acquiring',1),('transfer',1),('',2)]:
+        pick(crm,'sberKindSelect',filter_value)
+        pick(host,'sberKindSelect',filter_value)
+        crm.wait_for_function('(n)=>document.querySelectorAll("#sberIncomesAvail button").length===n',arg=expected_count)
+        page.wait_for_function('(n)=>document.querySelector("#crmDraftHost")?.shadowRoot?.querySelectorAll("#sberIncomesAvail button").length===n',arg=expected_count)
+        filtered_crm=crm.locator('#sberIncomesAvail').evaluate(sber_rows)
+        filtered_task=host.locator('#sberIncomesAvail').evaluate(sber_rows)
+        print('Sber filter:',filter_value or 'all',len(filtered_crm),filtered_crm==filtered_task)
+        assert len(filtered_crm)==expected_count and filtered_crm==filtered_task
+    crm.locator('#sberReqsGroup button[onclick="sberLoadIncomes()"]') .click()
+    host.locator('#sberReqsGroup button[data-crm-call="sberLoadIncomes()"]') .click()
+    crm.wait_for_function('document.querySelectorAll("#sberIncomesAvail button").length===2')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.querySelectorAll("#sberIncomesAvail button").length===2')
+    assert crm.locator('#sberIncomesAvail').evaluate(sber_rows)==host.locator('#sberIncomesAvail').evaluate(sber_rows)
+    print('Sber refresh: same two rows')
+    for _ in range(2):
+        crm.locator('#sberIncomesAvail button').first.click()
+        host.locator('#sberIncomesAvail button').first.click()
+    parts_text=lambda scope: scope.locator('#sberPartsList').inner_text().replace('\n',' ').strip()
+    crm_parts=parts_text(crm)
+    task_parts=parts_text(host)
+    amounts=[crm.locator('[name="payin_amount_rub"]').input_value(),
+             host.locator('[name="payin_amount_rub"]').input_value()]
+    print('Sber two chosen:',amounts,crm_parts==task_parts,task_parts[:300])
+    assert amounts==['366000.00','366000.00'] and crm_parts==task_parts
+    crm.locator('[name="payin_rate_rub_usdt"]').fill('90')
+    host.locator('[name="payin_rate_rub_usdt"]').fill('90')
+    converted=[crm.locator('[name="payin_amount_usdt"]').input_value(),
+               host.locator('[name="payin_amount_usdt"]').input_value()]
+    print('Sber two chosen RUB/USDT @90 CRM/tasks:',converted)
+    assert converted==['4066.67','4066.67']
+    filled='''el=>[...el.querySelectorAll('label,button,select,input,textarea')]
+      .filter(x=>x.getClientRects().length>0).map(x=>[
+        x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\s+/g,' ').trim(),
+        x.tagName==='SELECT'?[...x.options].map(o=>[o.value,o.textContent.trim(),o.selected]):null,
+        x.tagName==='INPUT'||x.tagName==='TEXTAREA'?x.value:null,x.checked??null,x.required])'''
+    filled_crm=crm.locator('#createDealForm').evaluate(filled)
+    filled_task=host.locator('#createDealForm').evaluate(filled)
+    if filled_crm!=filled_task:
+        from itertools import zip_longest
+        differences=[(i,c,t) for i,(c,t) in enumerate(zip_longest(filled_crm,filled_task)) if c!=t]
+        print('filled Sber full-form differences:',json.dumps(differences[:8],ensure_ascii=False)[:1800])
+    print('filled Sber full-form diff empty:',filled_crm==filled_task)
+    assert filled_crm==filled_task
+    crm.locator('#sberPartsList span[onclick]').first.click()
+    host.locator('#sberPartsList span[data-crm-action="sber-remove"]').first.click()
+    removed=[crm.locator('[name="payin_amount_rub"]').input_value(),
+             host.locator('[name="payin_amount_rub"]').input_value()]
+    print('Sber × after first:',removed,parts_text(crm)==parts_text(host))
+    assert removed==['266000.00','266000.00'] and parts_text(crm)==parts_text(host)
+    crm.locator('#sberPartsList span[onclick]').first.click()
+    host.locator('#sberPartsList span[data-crm-action="sber-remove"]').first.click()
+    crm.close()
+    form=host.locator('#createDealForm')
+    pick(form,'payinMethod','crypto_direct')
+    form.locator('#payinManualHash').fill(incoming_hash)
+    form.locator('#payinManualHash').press('Tab')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.querySelector("[name=payin_amount_usdt]")?.value==="1234.56"',timeout=10000)
+    assert form.locator('#payinManualAmount').count()==0
+    print('TRC20 incoming hash amount from mock network: 1234.56, no manual amount')
+    before_invalid=page.evaluate('JSON.stringify(deal(S.edit))')
+    form.locator('#payinManualHash').fill('bad-t17-hash')
+    form.locator('#payinManualHash').press('Tab')
+    page.wait_for_function('crmDraftActive.manualTx===null')
+    page.evaluate('editSave(S.edit)')
+    assert page.evaluate('JSON.stringify(deal(S.edit))')==before_invalid
+    assert ('invalid-incoming-lookup','bad-t17-hash') in mocked
+    print('unverified incoming hash rejected without stand draft mutation')
+    form.locator('#payinManualHash').fill('')
+    form.locator('#payinManualHash').press('Tab')
+    form.locator('#clientSearchInput').fill('T17 synthetic freehold')
+    pick(form,'dealKindSelect','mf_freehold')
+    page.locator('#crmDraftTariff').select_option('bank')
+    pick(form,'payinMethod','crypto_direct')
+    form.locator('[name="payin_amount_usdt"]').fill('46000')
+    form.locator('#fhInvoiceUsd').fill('45000')
+    form.locator('#fhPurpose').fill('synthetic unit')
+    page.locator('.card.edit-page > .row > button').first.click()
+    result=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic freehold');
+      return d&&{id:d.id,kind:d.kind,invoiceUsd:d.invoiceUsd,ippsTariff:d.ippsTariff,
+        edit:S.edit,payload:crmPayload(d)};}''')
+    print('freehold:',json.dumps(result,ensure_ascii=False,default=str)[:550])
+    assert result and result['kind']=='Фрихолд' and result['invoiceUsd']==45000
+    assert result['ippsTariff']=='bank' and result['edit'] is None
+    assert result['payload']['transfer_fee_percent']==0.8
+    assert not crm_posts,crm_posts
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
+    crm_fh=context.new_page()
+    crm_fh.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_fh.evaluate('showSection("create")')
+    crm_fh.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"')
+    pick(crm_fh,'dealKindSelect','mf_freehold')
+    pick(crm_fh,'payinMethod','crypto_direct')
+    crm_fh.locator('[name="payin_amount_usdt"]').fill('46000')
+    crm_fh.locator('#fhInvoiceUsd').fill('45000')
+    crm_fh.locator('#fhFeePercent').fill('0.8')
+    crm_fh.locator('#fhFeeFixed').fill('50')
+    crm_fh.evaluate('fhRecalcNow()')
+    page.evaluate('crmDraftActive.core.fhRecalcNow()')
+    crm_fh.wait_for_function('document.querySelector("#fhSummary")?.textContent.includes("45")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("fhSummary")?.textContent.includes("45")')
+    fh_summaries=[crm_fh.locator('#fhSummary').inner_text(),host.locator('#fhSummary').inner_text()]
+    print('freehold bank preview CRM/tasks:',fh_summaries[0]==fh_summaries[1])
+    assert fh_summaries[0]==fh_summaries[1]
+    crm_fh.close()
+    page.locator('#crmDraftInvoiceCurrency').select_option('thb')
+    page.locator('#crmDraftInvoiceThb').fill('1500000')
+    with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
+                              and resp.request.method=='PUT' and resp.status==200):
+        page.locator('.card.edit-page > .row > button').first.click()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    bank_thb=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return [
+      d.invoiceUsd,d.invoiceThb,d.invoiceCurrency,d.ippsTariff,
+      p.invoice_amount_usd,p.transfer_fee_percent,p.transfer_fee_fixed_usd]}''',result['id'])
+    print('freehold bank THB invoice reload:',bank_thb)
+    assert bank_thb==[45000,1500000,'thb','bank',45000,0.8,50]
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    assert host.locator('#fhInvoiceUsd').input_value()=='45000'
+    assert page.locator('#crmDraftTariff').input_value()=='bank'
+    page.locator('#crmDraftTariff').select_option('soft')
+    crm_soft=context.new_page()
+    crm_soft.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_soft.evaluate('showSection("create")')
+    crm_soft.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"')
+    pick(crm_soft,'dealKindSelect','mf_freehold')
+    pick(crm_soft,'payinMethod','crypto_direct')
+    crm_soft.locator('[name="payin_amount_usdt"]').fill('46000')
+    crm_soft.locator('#fhInvoiceUsd').fill('45000')
+    crm_soft.locator('#fhFeePercent').fill('1.5')
+    crm_soft.locator('#fhFeeFixed').fill('50')
+    crm_soft.evaluate('fhRecalcNow()')
+    page.evaluate('crmDraftActive.core.fhRecalcNow()')
+    crm_soft.wait_for_function('document.querySelector("#fhSummary")?.textContent.includes("45")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("fhSummary")?.textContent.includes("45")')
+    soft_summaries=[crm_soft.locator('#fhSummary').inner_text(),host.locator('#fhSummary').inner_text()]
+    print('freehold soft preview CRM/tasks:',soft_summaries[0]==soft_summaries[1])
+    assert soft_summaries[0]==soft_summaries[1]
+    crm_soft.close()
+    page.locator('.card.edit-page > .row > button').first.click()
+    saved=page.evaluate('(id) => {const d=deal(id);return [d.kind,d.ippsTariff,crmPayload(d).transfer_fee_percent,S.edit]}',result['id'])
+    print('freehold edit:',saved)
+    assert saved==['Фрихолд','soft',1.5,None]
+    assert not crm_posts,crm_posts
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    page.locator('#crmDraftInvoiceCurrency').select_option('thb')
+    page.locator('#crmDraftInvoiceThb').fill('1500000')
+    with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
+                              and resp.request.method=='PUT' and resp.status==200):
+        page.locator('.card.edit-page > .row > button').first.click()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    thb=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+      x:d.invoiceUsd,thb:d.invoiceThb,currency:d.invoiceCurrency,tariff:d.ippsTariff,
+      payloadX:p.invoice_amount_usd,payloadPct:p.transfer_fee_percent,
+      payloadFixed:p.transfer_fee_fixed_usd}}''',result['id'])
+    print('freehold THB invoice reload:',thb)
+    assert thb=={'x':45000,'thb':1500000,'currency':'thb','tariff':'soft',
+                 'payloadX':45000,'payloadPct':1.5,'payloadFixed':50},thb
+    assert not crm_posts,crm_posts
+    with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
+                              and resp.request.method=='PUT' and resp.status==409):
+        page.evaluate('(id) => {deal(id).step="s11";save();}',result['id'])
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    assert page.evaluate('(id)=>deal(id).step',result['id'])=='manual'
+    # T24 correctly refuses workflow-stage spoofing for a server-owned manual
+    # origin. Seed a separate historical workflow shape in synthetic SQLite
+    # to inspect the locked editor without weakening the HTTP admission.
+    db=appmod.get_session()
+    try:
+        row=appmod._stand_row(db,lock=True)
+        state_data=json.loads(row.data)
+        historical=next(d for d in state_data['deals'] if d['id']==result['id'])
+        historical['manual']=False
+        historical['manualNew']=False
+        historical['step']='s11'
+        historical.pop('originMode',None)
+        row.data=json.dumps(state_data,ensure_ascii=False)
+        row.version+=1
+        db.commit()
+    finally:
+        db.close()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    assert page.locator('#crmDraftTariff').is_disabled()
+    assert host.locator('#fhInvoiceUsd').is_disabled()
+    assert page.locator('#crmDraftInvoiceCurrency').is_disabled()
+    print('freehold s11 UI basis disabled')
+    page.evaluate('editClose()')
+    # Historical locked fixture must be inserted directly into the synthetic
+    # database: stand_state correctly rejects removing these keys over HTTP.
+    db=appmod.get_session()
+    try:
+        row=appmod._stand_row(db,lock=True)
+        state_data=json.loads(row.data)
+        historical=next(d for d in state_data['deals'] if d['id']==result['id'])
+        historical.pop('invoiceCurrency',None)
+        historical.pop('invoiceThb',None)
+        row.data=json.dumps(state_data,ensure_ascii=False)
+        row.version+=1
+        db.commit()
+    finally:
+        db.close()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('[name="notes"]').fill('legacy issued document note')
+    with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
+                              and resp.request.method=='PUT' and resp.status==200):
+        page.locator('.card.edit-page > .row > button').first.click()
+    legacy=page.evaluate('''id=>{const d=deal(id);return {notes:d.notes,
+      currency:Object.hasOwn(d,'invoiceCurrency'),thb:Object.hasOwn(d,'invoiceThb'),edit:S.edit}}''',result['id'])
+    assert legacy=={'notes':'legacy issued document note','currency':False,'thb':False,'edit':None},legacy
+    print('legacy issued document note save:',legacy)
+    assert not crm_posts,crm_posts
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('#clientSearchInput').fill('T17 synthetic rental')
+    pick(host,'dealKindSelect','mf_realty')
+    page.locator('#crmDraftRealtySubtype').select_option('Аренда')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('1200')
+    host.locator('#mfInvoiceThb').fill('35000')
+    host.locator('#mfBuyRate').fill('33')
+    host.locator('#mfSellRate').fill('32.5')
+    host.locator('#mfPurpose').fill('rental fixture')
+    host.locator('#mfDocInvoice').fill('local-rental-invoice')
+    host.locator('#mfDocContract').fill('local-rental-contract')
+    host.locator('[name="notes"]').fill('rental note')
+    page.locator('.card.edit-page > .row > button').first.click()
+    rental=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic rental');
+      return [d.id,d.kind,d.notes,crmPayload(d).deal_kind,crmPayload(d).sell_rate_thb_usdt];}''')
+    print('rental:',rental)
+    assert rental[1:]==['Аренда','rental note','mf_realty',32.5]
+    open_edit(page,rental[0])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    assert page.locator('#crmDraftRealtySubtype').input_value()=='Аренда'
+    pick(host,'dealKindSelect','exchange')
+    pick(host,'dealKindSelect','mf_realty')
+    assert page.locator('#crmDraftRealtySubtype').input_value()=='Аренда'
+    page.locator('.card.edit-page > .row > button').first.click()
+    retained=page.evaluate('(id) => [deal(id).kind,deal(id).notes,crmPayload(deal(id)).deal_kind]',rental[0])
+    print('rental no-op edit:',retained)
+    assert retained==['Аренда','rental note','mf_realty']
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    rental_docs=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+      kind:d.kind,docInvoice:d.docLinks?.invoice,docContract:d.docLinks?.contract,
+      payloadKind:p.deal_kind,payloadInvoice:p.doc_invoice_url,
+      payloadContract:p.doc_contract_url}}''',rental[0])
+    print('rental reload workflow/docs:',rental_docs)
+    assert rental_docs=={'kind':'Аренда','docInvoice':'local-rental-invoice',
+      'docContract':'local-rental-contract','payloadKind':'mf_realty',
+      'payloadInvoice':'local-rental-invoice','payloadContract':'local-rental-contract'}
+    assert not crm_posts,crm_posts
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('#clientSearchInput').fill('T17 synthetic leasehold')
+    pick(host,'dealKindSelect','mf_realty')
+    print('lease subtype initial:',page.locator('#crmDraftRealtySubtype').input_value(),
+          page.evaluate('({id:S.edit,kind:deal(S.edit).kind,live:[...crmDraftLive.keys()]})'),
+          page.locator('#crmDraftRealtySubtype').evaluate('e=>e.outerHTML'))
+    assert page.locator('#crmDraftRealtySubtype').input_value()=='Лизхолд'
+    assert host.locator('#mfSpread').input_value()==''
+    assert host.locator('#mfSpread').get_attribute('placeholder')=='1.5'
+    pick(host,'dealKindSelect','exchange')
+    pick(host,'dealKindSelect','mf_realty')
+    assert host.locator('#mfSpread').input_value()==''
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('12000')
+    host.locator('#mfInvoiceThb').fill('350000')
+    host.locator('#mfBuyRate').fill('32')
+    host.locator('#mfSellRate').fill('31.5')
+    host.locator('#mfPurpose').fill('leasehold fixture')
+    page.locator('.card.edit-page > .row > button').first.click()
+    lease=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic leasehold');
+      return {id:d.id,kind:d.kind,spread:d.spread,sell:crmPayload(d).sell_rate_thb_usdt}}''')
+    print('leasehold blank spread:',lease)
+    assert lease['kind']=='Лизхолд' and lease['spread'] is None and lease['sell']==31.5
+    open_edit(page,lease['id'])
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    assert host.locator('#mfSpread').input_value()==''
+    crm_mf=context.new_page()
+    crm_mf.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_mf.evaluate('showSection("create")')
+    crm_mf.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm_mf,'dealKindSelect','mf_realty')
+    pick(crm_mf,'payinMethod','crypto_direct')
+    crm_mf.locator('[name="payin_amount_usdt"]').fill('12000')
+    crm_mf.locator('#mfInvoiceThb').fill('350000')
+    crm_mf.locator('#mfBuyRate').fill('32')
+    crm_mf.locator('#mfSellRate').fill('31.5')
+    crm_mf.locator('#mfPurpose').fill('leasehold fixture')
+    crm_mf.wait_for_function('document.querySelector("#mfPayoutPickerBtn")?.textContent.includes("200 исходящих")',timeout=20000)
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutPickerBtn")?.textContent.includes("200 исходящих")',timeout=20000)
+    # The same endpoint limit applies to both 250 cached rows and a 126-row
+    # counterexample. Compare exact IDs and order, not only button counts.
+    outgoing_count[0]=126
+    crm_mf.evaluate('loadMfPayoutTx()')
+    page.evaluate('crmDraftActive.core.loadMfPayoutTx()')
+    crm_mf.wait_for_function('document.querySelector("#mfPayoutPickerBtn")?.textContent.includes("126 исходящих")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutPickerBtn")?.textContent.includes("126 исходящих")')
+    ids126=[crm_mf.evaluate('mfPayoutTxOptions.map(x=>x.tx_hash)'),
+            page.evaluate('crmDraftActive.core.mfPayoutTxOptions.map(x=>x.tx_hash)')]
+    assert ids126[0]==ids126[1] and len(ids126[0])==126
+    outgoing_count[0]=250
+    crm_mf.evaluate('loadMfPayoutTx()')
+    page.evaluate('crmDraftActive.core.loadMfPayoutTx()')
+    crm_mf.wait_for_function('document.querySelector("#mfPayoutPickerBtn")?.textContent.includes("200 исходящих")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutPickerBtn")?.textContent.includes("200 исходящих")')
+    ids200=[crm_mf.evaluate('mfPayoutTxOptions.map(x=>x.tx_hash)'),
+            page.evaluate('crmDraftActive.core.mfPayoutTxOptions.map(x=>x.tx_hash)')]
+    assert ids200[0]==ids200[1] and len(ids200[0])==200
+    print('MF same snapshot IDs/order: cache 126/126, >limit 200/200 from 250')
+    crm_mf.locator('#mfPayoutPickerBtn').click()
+    host.locator('#mfPayoutPickerBtn').click()
+    crm_count=crm_mf.locator('#mfPayoutPickerList label').count()
+    task_count=host.locator('#mfPayoutPickerList label').count()
+    print('MF outgoing rows CRM/tasks:',crm_count,task_count)
+    assert (crm_count,task_count)==(200,200)
+    assert host.locator('[onclick],[onchange],[oninput]').count()==0
+    crm_mf.locator('#mfPayoutSearch').fill('address-1')
+    host.locator('#mfPayoutSearch').fill('address-1')
+    crm_filtered=crm_mf.locator('#mfPayoutPickerList label').all_inner_texts()
+    task_filtered=host.locator('#mfPayoutPickerList label').all_inner_texts()
+    print('MF address filter CRM/tasks:',len(crm_filtered),len(task_filtered),crm_filtered==task_filtered)
+    if crm_filtered!=task_filtered:
+        print('MF first row difference:',repr(crm_filtered[:2]),repr(task_filtered[:2]))
+    assert len(crm_filtered)==50 and crm_filtered==task_filtered
+    for query in ('100.05',format(5,'064x')):
+        crm_mf.locator('#mfPayoutSearch').fill(query)
+        host.locator('#mfPayoutSearch').fill(query)
+        pairs=[crm_mf.locator('#mfPayoutPickerList label').all_inner_texts(),
+               host.locator('#mfPayoutPickerList label').all_inner_texts()]
+        print('MF filter query:',query,len(pairs[0]),pairs[0]==pairs[1])
+        assert len(pairs[0])==1 and pairs[0]==pairs[1]
+    crm_mf.locator('#mfPayoutSearch').fill('address-1')
+    host.locator('#mfPayoutSearch').fill('address-1')
+    for action in ('true','false'):
+        crm_mf.locator(f'#mfPayoutPicker button[onclick="mfPayoutCheckAll({action})"]').click()
+        host.locator(f'#mfPayoutPicker button[data-crm-call="mfPayoutCheckAll({action})"]').click()
+        selected=[crm_mf.locator('#mfPayoutPickerSum').inner_text(),
+                  host.locator('#mfPayoutPickerSum').inner_text()]
+        print('MF', 'all' if action=='true' else 'clear',selected[0]==selected[1],selected[0])
+        assert selected[0]==selected[1]
+    for scope in (crm_mf,host):
+        scope.locator('#mfPayoutPickerList input[type="checkbox"]').nth(0).check()
+        scope.locator('#mfPayoutPickerList input[type="checkbox"]').nth(1).check()
+    marked=[crm_mf.locator('#mfPayoutPickerSum').inner_text(),
+            host.locator('#mfPayoutPickerSum').inner_text()]
+    print('MF two marked:',marked)
+    assert marked==['Отмечено: 2 · $200,06','Отмечено: 2 · $200,06']
+    crm_mf.locator('#mfPayoutPicker button[onclick="addMfPayoutChecked()"]') .click()
+    host.locator('#mfPayoutPicker button[data-crm-call="addMfPayoutChecked()"]') .click()
+    crm_mf.wait_for_function('document.querySelector("#mfPayoutTxPoolBox")?.textContent.includes("Переводов: 2")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutTxPoolBox")?.textContent.includes("Переводов: 2")')
+    crm_out=crm_mf.locator('#mfPayoutTxPoolBox').inner_text()
+    task_out=host.locator('#mfPayoutTxPoolBox').inner_text()
+    print('MF two added text equal:',crm_out==task_out,task_out[-160:])
+    assert crm_out==task_out and '$200,08' in task_out
+    mf_fields='''el=>[...el.querySelectorAll('label,button,select,input,textarea')]
+      .filter(x=>x.getClientRects().length>0).map(x=>[
+        x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\s+/g,' ').trim(),
+        x.tagName==='SELECT'?[...x.options].map(o=>[o.value,o.textContent.trim(),o.selected]):null,
+        x.tagName==='INPUT'||x.tagName==='TEXTAREA'?x.value:null,x.checked??null,x.required])'''
+    mf_crm=crm_mf.locator('#mfDealSection').evaluate(mf_fields)
+    mf_task=host.locator('#mfDealSection').evaluate(mf_fields)
+    if mf_crm!=mf_task:
+        from itertools import zip_longest
+        differences=[(i,c,t) for i,(c,t) in enumerate(zip_longest(mf_crm,mf_task)) if c!=t]
+        print('filled MF section differences:',json.dumps(differences[:8],ensure_ascii=False)[:2000])
+    print('filled MF section DOM/text diff empty:',mf_crm==mf_task)
+    assert mf_crm==mf_task
+    crm_mf.evaluate('mfRecalcNow()')
+    crm_mf.wait_for_function('document.querySelector("#mfSummary")?.textContent.includes("350")',timeout=10000)
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfSummary")?.textContent.includes("350")',timeout=10000)
+    crm_money=crm_mf.locator('#mfSummary').inner_text().replace('\n',' ').strip()
+    task_money=host.locator('#mfSummary').inner_text().replace('\n',' ').strip()
+    print('MF same-fixture summary:',crm_money==task_money,task_money[:420])
+    assert crm_money==task_money
+    for spread,sale in [('0','32.0000'),('1.5','31.5200')]:
+        crm_mf.locator('#mfSpread').fill(spread)
+        host.locator('#mfSpread').fill(spread)
+        crm_mf.wait_for_function('(sale)=>document.querySelector("#mfSellRate")?.value===sale',arg=sale)
+        page.wait_for_function('(sale)=>document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfSellRate")?.value===sale',arg=sale)
+        crm_mf.evaluate('mfRecalcNow()')
+        page.wait_for_timeout(300)
+        crm_money=crm_mf.locator('#mfSummary').inner_text().replace('\n',' ').strip()
+        task_money=host.locator('#mfSummary').inner_text().replace('\n',' ').strip()
+        print('MF spread summary:',spread,sale,crm_money==task_money)
+        assert crm_money==task_money
+        page.locator('.card.edit-page > .row > button').first.click()
+        page.wait_for_function('!standBusy && !standPush',timeout=20000)
+        saved_spread=page.evaluate('(id)=>[deal(id).spread,crmPayload(deal(id)).sell_rate_thb_usdt]',lease['id'])
+        assert saved_spread==[float(spread),float(sale)],saved_spread
+        open_edit(page,lease['id'])
+        host=page.locator('#crmDraftHost')
+        host.locator('#createDealForm').wait_for(timeout=20000)
+        assert host.locator('#mfSpread').input_value()==spread
+    for scope in (crm_mf,host):
+        scope.locator('#mfSentThb').fill('360000')
+        scope.locator('#mfPercent').fill('0.8')
+    cleared=[(crm_mf.locator('#mfSentThb').input_value(),crm_mf.locator('#mfPercent').input_value()),
+             (host.locator('#mfSentThb').input_value(),host.locator('#mfPercent').input_value())]
+    print('MF percent clears sent CRM/tasks:',cleared)
+    assert cleared==[('', '0.8'),('', '0.8')]
+    crm_mf.locator('button[onclick="mfSuggestPercent()"]') .click()
+    host.locator('button[data-crm-call="mfSuggestPercent()"]') .click()
+    crm_mf.wait_for_function('document.querySelector("#mfPercent")?.value && document.querySelector("#mfPercent")?.value!=="0.8"')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPercent")?.value && document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPercent")?.value!=="0.8"')
+    suggested=[crm_mf.locator('#mfPercent').input_value(),host.locator('#mfPercent').input_value()]
+    print('MF suggested percent CRM/tasks:',suggested)
+    assert suggested[0]==suggested[1]
+    for scope in (crm_mf,host):
+        scope.locator('#mfPayoutManual summary').click()
+        scope.locator('#mfPayoutManualHash').fill(manual_out_hash)
+        scope.locator('#mfPayoutManualAmount').fill('100')
+    crm_mf.locator('#mfPayoutManual button[onclick="addMfPayoutManual()"]') .click()
+    host.locator('#mfPayoutManual button[data-crm-call="addMfPayoutManual()"]') .click()
+    crm_mf.wait_for_function('document.querySelector("#mfPayoutTxPoolBox")?.textContent.includes("Переводов: 3")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfPayoutTxPoolBox")?.textContent.includes("Переводов: 3")')
+    manual_text=[crm_mf.locator('#mfPayoutTxPoolBox').inner_text(),
+                 host.locator('#mfPayoutTxPoolBox').inner_text()]
+    print('MF manual partial amount:',manual_text[0]==manual_text[1],manual_text[1][-110:])
+    assert manual_text[0]==manual_text[1] and '$300,08' in manual_text[1]
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    saved_out=page.evaluate('(id)=>deal(id).mfPayout.map(x=>[x.hash,x.amount])',lease['id'])
+    print('MF saved outgoing:',saved_out)
+    assert [x[1] for x in saved_out]==[100.02,100.06,100]
+    assert not crm_posts,crm_posts
+    crm_mf.close()
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('#clientSearchInput').fill('T17 synthetic exchange')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(host,'payoutSource','binance')
+    host.locator('#payoutAmountThb').fill('100000')
+    host.locator('#binanceUsdt').fill('3205.13')
+    profit=host.locator('#profitUsdt').input_value()
+    print('exchange gross:',profit)
+    assert profit=='94.87'
+    host.locator('#agentsBlockStd').locator('xpath=following-sibling::button[1]').click()
+    agents=host.locator('#agentsBlockStd > div').count()
+    print('exchange agents:',agents)
+    assert agents==1
+    assert host.locator('[onclick],[onchange],[oninput]').count()==0
+    crm_ex=context.new_page()
+    crm_ex.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_ex.evaluate('showSection("create")')
+    crm_ex.wait_for_function('document.querySelector("#payoutSource")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm_ex,'payinMethod','crypto_direct')
+    crm_ex.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(crm_ex,'payoutSource','binance')
+    crm_ex.locator('#payoutAmountThb').fill('100000')
+    crm_ex.locator('#binanceUsdt').fill('3205.13')
+    crm_ex.evaluate('stdAgentsAdd();calculateProfit()')
+    for scope in (crm_ex,host):
+        scope.locator('#agentsBlockStd > div').first.locator('select').first.select_option('1')
+    money_fields='''el=>Object.fromEntries(['profitUsdt','referrerPayout','netProfit',
+      'profitPercent','cashBatchCostUsdt'].map(id=>[id,el.querySelector('#'+id)?.value]))'''
+    crm_exchange_money=crm_ex.locator('#createDealForm').evaluate(money_fields)
+    task_exchange_money=host.locator('#createDealForm').evaluate(money_fields)
+    print('exchange money CRM/tasks:',crm_exchange_money,task_exchange_money)
+    assert crm_exchange_money==task_exchange_money
+    crm_ex.evaluate('stdAgentsAdd()')
+    host.locator('#agentsBlockStd').locator('xpath=following-sibling::button[1]').click()
+    for scope in (crm_ex,host):
+        scope.locator('#agentsBlockStd > div').nth(1).locator('select').first.select_option('2')
+    cascade=[crm_ex.locator('#netProfit').input_value(),host.locator('#netProfit').input_value()]
+    assert cascade[0]==cascade[1]
+    crm_ex.locator('#saPreFlat').click()
+    host.locator('#saPreFlat').click()
+    flat=[crm_ex.locator('#netProfit').input_value(),host.locator('#netProfit').input_value()]
+    print('exchange agents cascade/flat CRM/tasks:',cascade,flat)
+    assert flat[0]==flat[1] and flat!=cascade
+    agents_state=[crm_ex.evaluate('stdAgentsSerialize()'),
+                  page.evaluate('crmDraftActive.core.stdAgentsSerialize()')]
+    assert agents_state[0]==agents_state[1] and len(agents_state[0])==2
+    for source,expected in [('cash_batch','$3125.00'),('bank_card','$3200.00')]:
+        pick(crm_ex,'payoutSource',source)
+        pick(host,'payoutSource',source)
+        crm_ex.evaluate('calculateProfit()')
+        page.evaluate('crmDraftActive.core.calculateProfit()')
+        values=(crm_ex.locator('#cashBatchCostUsdt').input_value(),
+                host.locator('#cashBatchCostUsdt').input_value())
+        if source=='bank_card':
+            print('card select CRM/tasks:',
+                  crm_ex.locator('#bankCardSelect').evaluate('e=>[e.value,e.innerHTML,e.selectedIndex]'),
+                  host.locator('#bankCardSelect').evaluate('e=>[e.value,e.innerHTML,e.selectedIndex]'))
+        print('exchange source cost CRM/tasks:',source,values)
+        assert values==(expected,expected)
+    pick(crm_ex,'payoutSource','binance')
+    pick(host,'payoutSource','binance')
+    first_out=format(1,'064x')
+    crm_ex.wait_for_function('(h)=>document.querySelector("#binanceTxSelect")?.innerHTML.includes(h)',arg=first_out)
+    page.wait_for_function('(h)=>document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("binanceTxSelect")?.innerHTML.includes(h)',arg=first_out)
+    pick(crm_ex,'binanceTxSelect',first_out)
+    pick(host,'binanceTxSelect',first_out)
+    binance_pick=[(crm_ex.locator('#binanceTxInput').input_value(),crm_ex.locator('#binanceUsdt').input_value()),
+                  (host.locator('#binanceTxInput').input_value(),host.locator('#binanceUsdt').input_value())]
+    print('exchange Binance picker CRM/tasks:',binance_pick)
+    assert binance_pick==[(first_out,'100.01'),(first_out,'100.01')]
+    crm_ex.locator('#binanceTxInput').fill('')
+    host.locator('#binanceTxInput').fill('')
+    crm_ex.locator('#binanceUsdt').fill('3205.13')
+    host.locator('#binanceUsdt').fill('3205.13')
+    crm_ex.close()
+    page.locator('.card.edit-page > .row > button').first.click()
+    exchange=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic exchange');
+      return [d.id,d.paySrc,d.payout.thb,d.payout.usdt,crmPayload(d).deal_kind,
+        crmPayload(d).payout_source,crmPayload(d).payout_amount_usdt,
+        d.agents.length,crmPayload(d).agents.map(a=>[a.name,a.tier,a.percent])];}''')
+    print('exchange:',exchange)
+    assert exchange[1:6]==['coins',100000,3205.13,'exchange','binance']
+    assert exchange[7]==2 and exchange[8]==[['T17 Agent',1,10],['T17 Agent Two',1,5]]
+    for source,expected,cost in [('bank_card','bank_card',3200),
+                                 ('cash_batch','cash_batch',3125)]:
+        open_edit(page,exchange[0])
+        host=page.locator('#crmDraftHost')
+        pick(host,'payoutSource',source)
+        page.locator('.card.edit-page > .row > button').first.click()
+        page.wait_for_function('!standBusy && !standPush',timeout=20000)
+        persisted=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+          source:p.payout_source,cost:p.payout_amount_usdt,
+          card:p.bank_card_id,profit:p.profit_usdt}}''',exchange[0])
+        print('exchange source saved:',source,persisted)
+        assert persisted['source']==expected and persisted['cost']==cost
+        if source=='bank_card':assert persisted['card']==7
+    assert not crm_posts,crm_posts
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    host.locator('#clientSearchInput').fill('T17 synthetic Sber deal')
+    pick(host,'payinMethod','sber_reqs')
+    pick(host,'sberKindSelect','')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.querySelectorAll("#sberIncomesAvail button").length===2')
+    host.locator('#sberIncomesAvail button').first.click()
+    host.locator('#sberIncomesAvail button').first.click()
+    host.locator('[name="payin_rate_rub_usdt"]').fill('90')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    sber_id=page.evaluate('S.deals.find(x=>x.client==="T17 synthetic Sber deal")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    sber_saved=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+      parts:d.payinParts.map(x=>[x.uuid,x.amountRub,x.fee,x.net]),
+      rub:d.amountRub,usdt:d.amountUsdt,payloadParts:p.payin_parts,
+      payloadRub:p.payin_amount_rub}}''',sber_id)
+    print('Sber save/reload CRM payload:',sber_saved)
+    assert len(sber_saved['parts'])==2 and sber_saved['rub']==366000
+    assert sber_saved['payloadRub']==366000 and len(sber_saved['payloadParts'])==2
+    assert not crm_posts,crm_posts
+    open_edit(page,sber_id)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    assert host.locator('#sberPartsList').inner_text().count('₽')>=2
+    page.evaluate('editClose()')
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#createDealForm').wait_for(timeout=20000)
+    draft_id=page.evaluate('S.edit')
+    before_custom=page.evaluate('(id)=>JSON.stringify(deal(id))',draft_id)
+    pick(host,'dealKindSelect','custom')
+    assert page.evaluate('(id)=>JSON.stringify(deal(id))',draft_id)==before_custom
+    host.locator('#clientSearchInput').fill('T17 synthetic custom')
+    pick(host,'customPayinCurrency','RUB')
+    host.locator('#customPayinAmount').fill('92000')
+    host.locator('#customPayinRate').fill('92')
+    pick(host,'customPayoutCurrency','THB')
+    host.locator('#customPayoutAmount').fill('30000')
+    host.locator('#customPayoutRate').fill('31.5')
+    pick(host,'customPayinMethod','sber_reqs')
+    pick(host,'customPayoutMethod','transfer')
+    host.locator('#customNotes').fill('custom fixture')
+    host.locator('#agentsBlockCustom').locator('xpath=following-sibling::button[1]').click()
+    host.locator('#agentsBlockCustom select').first.select_option(label='T17 Agent')
+    task_custom_money=[host.locator('#customProfitUsdt').input_value(),
+                       host.locator('#customNetProfit').input_value()]
+    crm_c=context.new_page()
+    captured=[]
+    def capture_custom(route):
+        captured.append(route.request.post_data_json)
+        route.fulfill(status=400,content_type='application/json',body='{"success":false,"error":"synthetic capture"}')
+    crm_c.route('http://127.0.0.1:18917/api/deals',capture_custom)
+    crm_c.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_c.evaluate('showSection("create")')
+    crm_c.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm_c,'dealKindSelect','custom')
+    pick(crm_c,'customPayinCurrency','RUB')
+    crm_c.locator('#customPayinAmount').fill('92000')
+    crm_c.locator('#customPayinRate').fill('92')
+    pick(crm_c,'customPayoutCurrency','THB')
+    crm_c.locator('#customPayoutAmount').fill('30000')
+    crm_c.locator('#customPayoutRate').fill('31.5')
+    pick(crm_c,'customPayinMethod','sber_reqs')
+    crm_c.wait_for_function('document.querySelector("#sberIncomesAvailC")?.textContent.includes("T17 Transfer")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("sberIncomesAvailC")?.textContent.includes("T17 Transfer")')
+    custom_sber_crm=crm_c.locator('#sberIncomesAvailC').inner_text().strip()
+    custom_sber_task=host.locator('#sberIncomesAvailC').inner_text().strip()
+    print('custom Sber CRM/tasks:',custom_sber_crm==custom_sber_task,custom_sber_task[:160])
+    assert custom_sber_crm==custom_sber_task
+    pick(crm_c,'customPayoutMethod','transfer')
+    crm_c.locator('#customNotes').fill('custom fixture')
+    crm_c.evaluate('customAgentsAdd()')
+    crm_c.locator('#agentsBlockCustom select').first.select_option(label='T17 Agent')
+    crm_custom_money=[crm_c.locator('#customProfitUsdt').input_value(),
+                      crm_c.locator('#customNetProfit').input_value()]
+    print('custom CRM/tasks money:',crm_custom_money,task_custom_money)
+    assert task_custom_money==crm_custom_money and task_custom_money[0]!='$0.00'
+    crm_c.evaluate('createCustomDeal()')
+    for _ in range(30):
+        if captured:break
+        crm_c.wait_for_timeout(100)
+    assert captured
+    host.locator('#customDealSubmit').click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    custom_id=page.evaluate('S.deals.find(x=>x.client==="T17 synthetic custom")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    custom_saved=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);
+      return {marker:d.custom,fields:d.customData,payload:p}}''',custom_id)
+    fields=['is_custom','custom_payin_currency','custom_payin_amount','custom_payin_rate',
+      'payin_amount_usdt','custom_payout_currency','custom_payout_amount',
+      'custom_payout_rate','payout_amount_usdt','profit_usdt','net_profit_usdt',
+      'payin_method','payout_method','payout_source','notes']
+    fields.append('agents')
+    compared={k:[captured[0].get(k),custom_saved['payload'].get(k)] for k in fields}
+    print('custom save/reload source payload:',custom_saved['marker'],compared)
+    assert custom_saved['marker'] is True and all(a==b for a,b in compared.values())
+    assert not crm_posts,crm_posts
+    page.evaluate('(id)=>openDeal(id)',custom_id)
+    final_button=page.locator('button:has-text("Сохранить в CRM")')
+    assert final_button.count()==1
+    has_origin=page.evaluate('(id)=>deal(id).originMode==="manual"',custom_id)
+    assert final_button.is_disabled() != has_origin
+    open_edit(page,custom_id)
+    host=page.locator('#crmDraftHost')
+    assert host.locator('#customPayinAmount').input_value()=='92000'
+    assert host.locator('#customPayoutAmount').input_value()=='30000'
+    host.locator('#customPayoutAmount').fill('32000')
+    page.evaluate('editClose()')
+    assert page.evaluate('(id)=>deal(id).customData.payoutAmount',custom_id)==30000
+    open_edit(page,sber_id)
+    assert page.locator('#crmDraftHost #sberPartsList').inner_text().count('₽')>=2
+    page.evaluate('editClose()')
+    open_edit(page,custom_id)
+    host=page.locator('#crmDraftHost')
+    assert host.locator('#sberPartsList').inner_text().count('₽')==0
+    assert host.locator('#agentsBlockCustom > div').count()==1
+    authoritative=page.evaluate('''async()=>{const r=await fetch('/api/stand/state',
+      {credentials:'same-origin'});return {status:r.status,...await r.json()}}''')
+    assert authoritative.get('version') is not None,authoritative
+    old_note=page.evaluate('(id)=>deal(id).notes',custom_id)
+    blocked_put=[]
+    def reject_once(route):
+        if route.request.method=='PUT' and not blocked_put:
+            blocked_put.append(True)
+            route.fulfill(status=409,content_type='application/json',body=json.dumps({
+                'success':False,'error':'synthetic_locked','version':authoritative['version'],
+                'data':authoritative['data']}))
+        else:
+            route.continue_()
+    page.route('http://127.0.0.1:18917/api/stand/state',reject_once)
+    host.locator('#customNotes').fill('must not persist')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.unroute('http://127.0.0.1:18917/api/stand/state',reject_once)
+    after_reject=page.evaluate('''async()=>{const r=await fetch('/api/stand/state',
+      {credentials:'same-origin'});return {status:r.status,...await r.json()}}''')
+    assert blocked_put and after_reject['version']==authoritative['version']
+    assert page.evaluate('(id)=>deal(id).notes',custom_id)==old_note
+    print('custom cancel/next-mount/409: no field leak, server version and board unchanged')
+    crm_c.close()
+    outgoing_mode[0]='founder'
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic founder')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(host,'payoutSource','founder_personal')
+    host.locator('#payoutAmountThb').fill('100000')
+    page.wait_for_function('(h)=>document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("payoutTxSelect")?.innerHTML.includes(h)',arg=founder_hash)
+    crm_f=context.new_page()
+    crm_f.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_f.evaluate('showSection("create")')
+    crm_f.wait_for_function('document.querySelector("#payoutSource")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm_f,'payinMethod','crypto_direct')
+    crm_f.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(crm_f,'payoutSource','founder_personal')
+    crm_f.locator('#payoutAmountThb').fill('100000')
+    crm_f.wait_for_function('(h)=>document.querySelector("#payoutTxSelect")?.innerHTML.includes(h)',arg=founder_hash)
+    pick(crm_f,'payoutTxSelect',founder_hash)
+    pick(host,'payoutTxSelect',founder_hash)
+    founder_text=[crm_f.locator('#payoutTxPoolBox').inner_text().strip(),
+                  host.locator('#payoutTxPoolBox').inner_text().strip()]
+    founder_money=[crm_f.locator('#profitUsdt').input_value(),
+                   host.locator('#profitUsdt').input_value()]
+    print('founder payout CRM/tasks:',founder_text[0]==founder_text[1],founder_money)
+    assert founder_text[0]==founder_text[1] and founder_money==['94.87','94.87']
+    crm_f.locator('#payoutNoConversion').check()
+    host.locator('#payoutNoConversion').check()
+    assert crm_f.locator('#payoutTxPoolBox').inner_text()==host.locator('#payoutTxPoolBox').inner_text()==''
+    crm_f.locator('#noConvUsdt').fill('3205.13')
+    host.locator('#noConvUsdt').fill('3205.13')
+    assert crm_f.locator('#noConvRateInfo').inner_text()==host.locator('#noConvRateInfo').inner_text()
+    assert crm_f.locator('#profitUsdt').input_value()==host.locator('#profitUsdt').input_value()=='94.87'
+    print('founder own-THB no-conversion CRM/tasks: same cost/rate/gross; tx pool cleared')
+    crm_f.locator('#payoutNoConversion').uncheck()
+    host.locator('#payoutNoConversion').uncheck()
+    pick(crm_f,'payoutTxSelect',founder_hash)
+    pick(host,'payoutTxSelect',founder_hash)
+    crm_f.locator('#payoutSettledByPayin').check()
+    host.locator('#payoutSettledByPayin').check()
+    settled_hints=[crm_f.locator('#payoutSettledHint').inner_text(),
+                   host.locator('#payoutSettledHint').inner_text()]
+    print('founder settled hints:',settled_hints,host.locator('#payoutSettledHint').evaluate(
+      'e=>({text:e.textContent,display:getComputedStyle(e).display,parent:getComputedStyle(e.parentElement).display,checked:e.getRootNode().getElementById("payoutSettledByPayin").checked,touched:e.getRootNode().getElementById("payoutSettledByPayin").dataset.touched})'))
+    assert settled_hints[0]==settled_hints[1]
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    founder_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic founder');
+      const p=crmPayload(d);return {hash:d.payout.hashes[0],source:p.payout_source,
+        cost:p.payout_amount_usdt,links:p.payout_tx_hashes,needs:p.needs_reimbursement};}''')
+    print('founder saved:',founder_saved)
+    assert founder_saved['hash']['hash']==founder_hash and founder_saved['cost']==3205.13
+    assert founder_saved['source']=='founder_personal' and founder_saved['links'][0]['from_address']=='T17-founder-wallet'
+    assert founder_saved['needs'] is False
+    assert not crm_posts,crm_posts
+    crm_f.close()
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic split payin')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('100')
+    host.locator('#payoutAmountThb').fill('3200')
+    pick(host,'payoutSource','binance')
+    host.locator('#binanceUsdt').fill('98')
+    host.locator('button[data-crm-call="payinExtraAdd()"]') .click()
+    host.locator('#payinExtraList select').first.select_option('partners_cash')
+    host.locator('#pe-0-rub').fill('2000')
+    host.locator('#pe-0-rate').fill('100')
+    crm_split=context.new_page()
+    crm_split.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_split.evaluate('showSection("create")')
+    crm_split.wait_for_function('document.querySelector("#payinMethod")?.dataset.upgraded === "true"')
+    pick(crm_split,'payinMethod','crypto_direct')
+    crm_split.locator('[name="payin_amount_usdt"]').fill('100')
+    crm_split.locator('button[onclick="payinExtraAdd()"]') .click()
+    crm_split.locator('#payinExtraList select').first.select_option('partners_cash')
+    crm_split.locator('#pe-0-rub').fill('2000')
+    crm_split.locator('#pe-0-rate').fill('100')
+    source_extras=[crm_split.evaluate('payinExtraSerialize()'),
+                   page.evaluate('crmDraftActive.core.payinExtraSerialize()')]
+    print('split payin source CRM/tasks:',source_extras)
+    assert source_extras[0]==source_extras[1]
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    split_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic split payin');
+      const p=crmPayload(d);return {main:p.payin_amount_usdt,extra:p.payin_extra,
+        total:econ(d).payin,method:p.payin_method};}''')
+    print('split payin save/reload payload:',split_saved)
+    assert split_saved['main']==100 and split_saved['extra'][0]['amount_usdt']==20
+    assert split_saved['extra'][0]['method']=='partners_cash'
+    assert split_saved['total']==120 and split_saved['method']=='crypto_direct'
+    assert not crm_posts,crm_posts
+    crm_split.close()
+    split_id=page.evaluate("S.deals.find(x=>x.client==='T17 synthetic split payin').id")
+    open_edit(page,split_id)
+    page.evaluate("BX_DEALS.push('T17 synthetic Bitrix #57')")
+    page.locator('#crmDraftSource').select_option('bitrix')
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #57')
+    page.evaluate('editClose()')
+    assert page.evaluate('(id)=>[deal(id).source,deal(id).sourceRef]',split_id)==['tg','']
+    open_edit(page,split_id)
+    page.locator('#crmDraftSource').select_option('bitrix')
+    assert page.locator('#crmDraftSourceChoices option').all_text_contents()==[
+        'T17 synthetic Bitrix #57']
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #57')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('(id)=>[deal(id).source,deal(id).sourceRef]',split_id)==[
+        'bitrix','T17 synthetic Bitrix #57']
+    open_edit(page,split_id)
+    assert page.locator('#crmDraftSource').input_value()=='bitrix'
+    assert page.locator('#crmDraftSourceRef').input_value()=='T17 synthetic Bitrix #57'
+    page.evaluate('editClose()')
+    assert not crm_posts,crm_posts
+    print('source/Bitrix cancel, save, reload, reopen: PASS; CRM POST 0')
+    start_manual(page)
+    page.evaluate("clients().push({id:987,name:'T17 Source Client',tg:'T17 known chat',docs:true})")
+    host=page.locator('#crmDraftHost')
+    page.locator('#crmDraftSourceRef').fill('T17 known chat')
+    page.locator('#crmDraftSourceRef').press('Tab')
+    assert host.locator('#clientSearchInput').input_value()=='T17 Source Client'
+    assert page.evaluate('deal(S.edit).client')=='Без имени'
+    host.locator('#clientSearchInput').fill('T17 explicitly chosen client')
+    page.locator('#crmDraftSourceRef').fill('T17 another chat')
+    page.locator('#crmDraftSourceRef').press('Tab')
+    assert host.locator('#clientSearchInput').input_value()=='T17 explicitly chosen client'
+    page.evaluate('editClose()')
+    print('source recognizes local client; explicit client remains pinned; cancel leaves no change')
+    manual_founder_hash='d'*64
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic manual founder')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(host,'payoutSource','founder_personal')
+    host.locator('#payoutAmountThb').fill('100000')
+    crm_manual=context.new_page()
+    crm_manual.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded')
+    crm_manual.evaluate('showSection("create")')
+    crm_manual.wait_for_function('document.querySelector("#payoutSource")?.dataset.upgraded === "true"')
+    pick(crm_manual,'payinMethod','crypto_direct')
+    crm_manual.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(crm_manual,'payoutSource','founder_personal')
+    crm_manual.locator('#payoutAmountThb').fill('100000')
+    crm_manual.locator('#payoutFounderHash').fill(manual_founder_hash)
+    host.locator('#payoutFounderHash').fill(manual_founder_hash)
+    crm_manual.wait_for_function('payoutTxPool.length===1',timeout=10000)
+    page.wait_for_function('crmDraftActive?.core.payoutTxPool.length===1',timeout=10000)
+    manual_pools=[crm_manual.locator('#payoutTxPoolBox').inner_text(),
+                  host.locator('#payoutTxPoolBox').inner_text()]
+    manual_profit=[crm_manual.locator('#profitUsdt').input_value(),
+                   host.locator('#profitUsdt').input_value()]
+    assert manual_pools[0]==manual_pools[1] and manual_profit==['94.87','94.87']
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    manual_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic manual founder');
+      const p=crmPayload(d);return {hash:d.payout.hashes[0],source:p.payout_source,
+        cost:p.payout_amount_usdt,links:p.payout_tx_hashes};}''')
+    assert manual_saved['hash']['hash']==manual_founder_hash
+    assert manual_saved['source']=='founder_personal' and manual_saved['cost']==3205.13
+    assert manual_saved['links'][0]['to_address']=='T17-recipient'
+    assert not crm_posts,crm_posts
+    crm_manual.close()
+    print('founder manual hash source CRM/tasks pool, profit, save/reload: PASS')
+    # Integrated T24 final submit: draft saves above must have created no CRM row.
+    close_before=appmod.get_session()
+    try:
+        crm_count_before=close_before.query(appmod.Deal).count()
+    finally:
+        close_before.close()
+    page.evaluate('(id)=>openDeal(id)',custom_id)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    old_version=page.evaluate('standVer')
+    close_requests=[]
+    page.on('request',lambda req: close_requests.append(req.url)
+            if req.method=='POST' and req.url.endswith(
+                f'/api/stand/deals/{custom_id}/crm-close') else None)
+    assert page.get_by_role('button',name='Сохранить в CRM').is_enabled()
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{custom_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as close_response:
+        page.evaluate('(id)=>{crmPushClose(id);crmPushClose(id)}',custom_id)
+    close_result=close_response.value
+    close_body=close_result.json()
+    print('integrated manual custom close:',close_result.status,
+          close_body.get('error'),close_body.get('deal',{}).get('id'))
+    assert close_result.status==201,close_result.json()
+    assert len(close_requests)==1,close_requests
+    page.wait_for_function('(id)=>deal(id)?.closed && deal(id)?.crmDealId',arg=custom_id,
+                           timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    closed_custom=page.evaluate('''id=>{const d=deal(id);return {
+      closed:d.closed,step:d.step,crmDealId:d.crmDealId,origin:d.originMode};}''',custom_id)
+    assert closed_custom['closed'] and closed_custom['step']=='done'
+    assert closed_custom['origin']=='manual' and closed_custom['crmDealId']
+    retry=page.evaluate('''async({id,version,payload})=>{
+      const r=await fetch(`/api/stand/deals/${id}/crm-close`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',body:JSON.stringify({version,crm:payload})});
+      return {status:r.status,body:await r.json()};
+    }''',{'id':custom_id,'version':old_version,'payload':custom_saved['payload']})
+    assert retry['status']==200 and retry['body']['deal']['id']==closed_custom['crmDealId']
+    close_after=appmod.get_session()
+    try:
+        crm_count_after=close_after.query(appmod.Deal).count()
+    finally:
+        close_after.close()
+    assert crm_count_after==crm_count_before+1
+    print('integrated manual custom final/reload/retry: one CRM',closed_custom)
+    page.evaluate('(id)=>openDeal(id)',split_id)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{split_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as split_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    split_close=split_close_response.value
+    split_body=split_close.json()
+    print('integrated main+extra close:',split_close.status,split_body.get('error'),
+          split_body.get('missing'))
+    assert split_close.status==201,split_body
+    split_crm_id=split_body['deal']['id']
+    split_db=appmod.get_session()
+    try:
+        split_row=split_db.query(appmod.Deal).filter_by(id=split_crm_id).one()
+        extra=json.loads(split_row.payin_extra) if isinstance(split_row.payin_extra,str) else split_row.payin_extra
+        split_money={'usdt':split_row.payin_amount_usdt,'extra':extra}
+    finally:
+        split_db.close()
+    print('integrated main+extra CRM row:',split_money)
+    assert split_money['usdt']==120 and len(split_money['extra'])==1
+    assert split_money['extra'][0]['method']=='partners_cash'
+    assert split_money['extra'][0]['amount_usdt']==20
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('(id)=>deal(id).crmDealId',split_id)==split_crm_id
+    custom_hash='a'*64
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    pick(host,'dealKindSelect','custom')
+    host.locator('#clientSearchInput').fill('T17 custom singular hash')
+    pick(host,'customPayinCurrency','USDT')
+    host.locator('#customPayinAmount').fill('100')
+    pick(host,'customPayinMethod','crypto_direct')
+    host.locator('#customPayinTxHash').fill(custom_hash)
+    pick(host,'customPayoutCurrency','THB')
+    host.locator('#customPayoutAmount').fill('3000')
+    host.locator('#customPayoutRate').fill('31.5')
+    pick(host,'customPayoutMethod','transfer')
+    host.locator('#customDealSubmit').click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    hash_id=page.evaluate('S.deals.find(x=>x.client==="T17 custom singular hash")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    hash_payload=page.evaluate('id=>crmPayload(deal(id))',hash_id)
+    assert hash_payload['payin_tx_hash']==custom_hash
+    assert 'payin_tx_hashes' not in hash_payload
+    page.evaluate('(id)=>openDeal(id)',hash_id)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{hash_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as hash_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    hash_close=hash_close_response.value
+    hash_body=hash_close.json()
+    print('integrated custom singular hash close:',hash_close.status,
+          hash_body.get('error'),hash_body.get('deal',{}).get('id'))
+    assert hash_close.status==201,hash_body
+    hash_db=appmod.get_session()
+    try:
+        hash_row=hash_db.query(appmod.Deal).filter_by(id=hash_body['deal']['id']).one()
+        assert hash_row.payin_tx_hash==custom_hash
+    finally:
+        hash_db.close()
+    for label,realty_id,subtype in [('leasehold',lease['id'],'Лизхолд'),
+                                    ('rental',rental[0],'Аренда')]:
+        page.evaluate('(id)=>openDeal(id)',realty_id)
+        page.wait_for_function('!standBusy && !standPush',timeout=20000)
+        with page.expect_response(lambda resp: resp.url.endswith(
+            f'/api/stand/deals/{realty_id}/crm-close') and
+            resp.request.method=='POST',timeout=20000) as realty_close_response:
+            page.get_by_role('button',name='Сохранить в CRM').click()
+        realty_response=realty_close_response.value
+        realty_body=realty_response.json()
+        print('integrated manual',label,'close:',realty_response.status,
+              realty_body.get('error'),realty_body.get('details'))
+        assert realty_response.status==201,realty_body
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+        assert page.evaluate('id=>deal(id).kind',realty_id)==subtype
+        assert page.evaluate('id=>deal(id).crmDealId',realty_id)==realty_body['deal']['id']
+        assert realty_body['deal']['deal_kind']=='mf_realty'
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    pick(host,'dealKindSelect','mf_freehold')
+    host.locator('#clientSearchInput').fill('T17 final freehold')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('46000')
+    host.locator('#fhInvoiceUsd').fill('45000')
+    host.locator('#fhPurpose').fill('T17 synthetic developer invoice')
+    page.locator('#crmDraftTariff').select_option('bank')
+    page.locator('#crmDraftInvoiceCurrency').select_option('thb')
+    page.locator('#crmDraftInvoiceThb').fill('1500000')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    final_fh_id=page.evaluate('S.deals.find(x=>x.client==="T17 final freehold")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    page.evaluate('(id)=>openDeal(id)',final_fh_id)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{final_fh_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as fh_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    fh_response=fh_close_response.value
+    fh_body=fh_response.json()
+    print('integrated manual freehold close:',fh_response.status,
+          fh_body.get('error'),fh_body.get('details'))
+    assert fh_response.status==201,fh_body
+    assert fh_body['deal']['deal_kind']=='mf_freehold'
+    assert fh_body['deal']['invoice_amount_usd']==45000
+    assert fh_body['deal']['transfer_fee_percent']==0.8
+    assert fh_body['deal']['transfer_fee_fixed_usd']==50
+    # Hold the first PUT response after the server saved a fresh manual origin.
+    # Editing through the mounted CRM form must queue a second PUT without
+    # replacing those pending fields with the older authoritative snapshot.
+    slow_puts=[]
+    hold_next=[True]
+    def hold_first_manual_put(route):
+        if route.request.method=='PUT' and hold_next[0]:
+            hold_next[0]=False
+            slow_puts.append(route.request.post_data_json)
+            response=route.fetch()
+            time.sleep(1.2)
+            route.fulfill(response=response)
+        else:
+            route.continue_()
+    page.route('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.evaluate('''()=>{startManual();window.t17SlowId=S.edit;
+      const timer=setInterval(()=>{
+        const root=document.querySelector('#crmDraftHost')?.shadowRoot;
+        const client=root?.getElementById('clientSearchInput');
+        const payin=root?.querySelector('[name="payin_amount_usdt"]');
+        const payout=root?.getElementById('payoutAmountThb');
+        if(!client||!payin||!payout)return;
+        clearInterval(timer);client.value='T17 slow ACK';payin.value='75';
+        payout.value='2000';
+        document.querySelector('.card.edit-page > .row > button').click();
+      },20);
+    }''')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    slow_id=page.evaluate('window.t17SlowId')
+    page.unroute('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    slow_saved=page.evaluate('''id=>{const d=deal(id);return d&&{
+      client:d.client,amountUsdt:d.amountUsdt,amountThb:d.amountThb,
+      origin:d.originMode,manualNew:d.manualNew};}''',slow_id)
+    assert slow_puts and next(d for d in slow_puts[0]['data']['deals']
+                              if d['id']==slow_id)['manual'] is True
+    assert slow_saved=={'client':'T17 slow ACK','amountUsdt':75,
+                        'amountThb':2000,'origin':'manual','manualNew':False},slow_saved
+    print('integrated slow first ACK+queued edit:',slow_saved)
+    hold_next[0]=True
+    slow_puts.clear()
+    page.route('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.evaluate('''()=>{startManual();window.t17CancelBeforeId=S.edit;
+      setTimeout(()=>editClose(),100);}''')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    before_cancel_id=page.evaluate('window.t17CancelBeforeId')
+    page.unroute('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert slow_puts and page.evaluate('id=>deal(id)==null',before_cancel_id)
+    start_manual(page)
+    after_cancel_id=page.evaluate('S.edit')
+    assert page.evaluate('id=>deal(id).originMode',after_cancel_id)=='manual'
+    page.evaluate('editClose()')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('id=>deal(id)==null',after_cancel_id)
+    print('integrated cancel before/after origin ACK: no orphan draft')
+    print('blocked external attempts:',blocked)
+    browser.close()

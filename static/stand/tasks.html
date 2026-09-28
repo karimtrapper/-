@@ -322,6 +322,10 @@ a.hash:hover{background:#BAE6FD}
 .payrow .k{font-size:12px;color:var(--text-muted)}
 .payrow .v{font-size:13.5px;line-height:1.5;word-break:break-word}
 .sberbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--r);padding:12px 14px;margin-top:14px}
+.crm-draft{margin-top:14px}
+.crm-draft .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:var(--text);font:inherit}
+.crm-draft .form-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+.crm-draft .btn-sm{padding:4px 8px;font-size:12px}
 .sbrow{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:7px 0;border-bottom:1px solid #DBEAFE;font-size:13.5px}
 .sbrow:last-of-type{border-bottom:none}
 .sbrow.taken{background:#ECFDF5;border-radius:6px;padding:7px 8px;margin-bottom:4px;border-bottom:none}
@@ -585,7 +589,9 @@ a.hash:hover{background:#BAE6FD}
 <div class="container" id="app"></div>
 <div class="toast" id="toast"></div>
 
-<script src="screens-data.js?v=2609241212"></script>
+<script src="/tasks/screens-data.js?v=2609241212"></script>
+<script src="/tasks/crm-draft-core.js?v=1"></script>
+<script src="/tasks/crm-draft-adapter.js?v=1"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -678,7 +684,7 @@ function standApply(data){
   S=migrate(S);
 }
 function standTyping(){
-  const a=document.activeElement;
+  const a=document.activeElement?.shadowRoot?.activeElement||document.activeElement;
   return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
 }
 async function standPull(force){
@@ -1145,11 +1151,15 @@ function payinParts(d){
     held:bs?bs.held:null, kept:bs?bs.ours:null, ctrl:bs?bs.ctrl:null,
     partner:null,hashes:(d.payinHashes||[])};
   return [main].concat((d.payinExtra||[]).map(x=>{
-    const calc=x.amountUsdt!=null?x.amountUsdt:(x.amountRub&&num(x.rate)?x.amountRub/num(x.rate):null);
-    const fact=hashSum(x.hashes);
-    return {label:x.label||x.method||'канал',amountRub:x.amountRub||null,rate:num(x.rate),
+    const extraUsdt=x.amount_usdt??x.amountUsdt??null;
+    const extraRub=x.amount_rub??x.amountRub??null;
+    const extraRate=x.rate_rub_usdt??x.rate??null;
+    const hashes=x.tx_hashes??x.hashes??[];
+    const calc=extraUsdt!=null?extraUsdt:(extraRub&&num(extraRate)?extraRub/num(extraRate):null);
+    const fact=hashSum(hashes.map(h=>({amount:h.amount??h.amount_usdt})));
+    return {label:x.label||x.method||'канал',amountRub:extraRub,rate:num(extraRate),
       usdt:(fact!=null?fact:calc), calc:calc, fact:fact,
-      partner:x.partner||null,hashes:x.hashes||[]};
+      partner:x.partner_name??x.partner??null,hashes};
   }));
 }
 function econ(d){
@@ -2686,7 +2696,8 @@ function closeDeal(d,reason){
 function newDeal(o){
   S.seq++;
   if(!o.client) o.client=o.sourceRef||'Без имени';
-  const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,log:[],
+  const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
+    manual:!!o.manual,manualNew:!!o.manualNew,log:[],
     source:o.source,sourceRef:o.sourceRef,client:o.client,type:o.type,
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
@@ -3122,9 +3133,12 @@ function render(){
   else if(S.open)main=viewDeal(S.deals.find(d=>d.id===S.open));
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
+  if(S.edit) crmDraftCapture();
+  else crmDraftActive=null;
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
   draftsRestore();
   restoreFocus();
+  if(S.edit) crmDraftMount(S.edit);
 }
 function setRole(r){S.role=r;S.open=null;S.draft=null;S.modal=null;S.tab='tasks';save();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;save();render();}
@@ -4026,8 +4040,8 @@ function createQuick(){
 function createFull(){
   if(!draftValid())return;const D=S.draft;ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
-  const d=newDeal({...D,step:'manual',...draftAmounts(D)});
-  d.manual=true;d.log=[];
+  const d=newDeal({...D,step:'manual',manual:true,...draftAmounts(D)});
+  d.log=[];
   log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
   S.draft=null;S.edit=d.id;save();render();toast('Заполните остальные поля и сохраните');
 }
@@ -4125,7 +4139,12 @@ function viewDeal(d){
   ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
-  ${!d.closed?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
+  ${d.manual&&!d.closed&&(S.role==='manager'||S.role==='admin')
+    ?`<button class="btn btn-primary btn-sm" ${d.manualNew||d.originMode!=='manual'?'disabled':''}
+        title="${d.originMode==='manual'?'Финальное сохранение в CRM':'Для старой ручной сделки нет подтверждённого сервером происхождения'}"
+        onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
+      ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}`:''}
+  ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
   </div></div>`;
 }
 
@@ -4439,6 +4458,7 @@ function crmGaps(d){
       /* Фрихолд без батов: инвойс в USD, курса покупки ฿/USDT нет вообще; курс
          клиенту (₽ за 1$) нужен только рублёвому фрихолду — у крипты его не спрашивают */
       need(d.invoiceUsd,'Инвойс застройщику, $ (invoice_amount_usd)','Заявка');
+      need(!!IPPS_TARIFFS[d.ippsTariff],'Тариф IPPS из сделки (transfer_fee_percent/fixed)','Заявка');
       if(!isCrypto(d)) need(num(d.rates.client),'Курс клиенту, ₽ за 1$','Отдать расчёт клиенту');
       else need(d.freeholdMarkupPct!=null,'Наценка крипто-фрихолда, % (без дефолта)','Заявка');
     }else{
@@ -4465,26 +4485,79 @@ function crmGaps(d){
    стенда со статусом «завершена». Поля — формат POST /api/deals, как их шлёт форма
    CRM; прибыль сервер считает сам по тем же правилам (_apply_mf_realty и т.д.). */
 const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','Крипта':'crypto_direct','Наличные':'partners_cash'};
-const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'cash_batch',coins:'binance',client:'binance',founder:'founder_personal'};
+const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'bank_card',coins:'binance',client:'binance',founder:'founder_personal'};
 function crmNet(n){return String(n||'TRC20').toLowerCase().replace('-','');}
 function crmPayload(d){
+  if(d.custom){
+    const c=d.customData||{},agentPayload=(d.agents||[]).map(a=>{
+      const src=a.refId!=null?refById(a.refId):null;
+      const same=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
+      return {referrer_id:src&&src.prod&&same?src.id:null,name:a.name||null,
+        tier:a.tier||1,comp_model:a.comp||'revshare',
+        percent:a.comp==='fixed'?0:(+a.percent||0),
+        fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
+    });
+    const profit=(+c.payinUsdt||0)-(+c.payoutUsdt||0);
+    const payouts=agentPayload.map(a=>({...a}));
+    let base=profit;
+    [...new Set(payouts.map(a=>a.tier))].sort((a,b)=>a-b).forEach(t=>{
+      let sum=0;
+      payouts.filter(a=>a.tier===t).forEach(a=>{
+        const amount=a.comp_model==='markup'?Math.max(+c.payinUsdt||0,+c.payoutUsdt||0)*a.percent/100:
+          a.comp_model==='fixed'?a.fixed_usdt:base*a.percent/100;
+        sum+=Math.round(amount*100)/100;
+      });base-=sum;
+    });
+    return {deal_type:'pay_in',status:'completed',skip_sync:true,
+      manager_name:d.manager||'Марина',client_id:d.crmClientId??null,
+      client_name:d.client||null,is_custom:true,
+      created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
+      payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
+      payin_amount_usdt:c.payinUsdt??null,
+      payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
+        amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
+        kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
+      payin_extra:(d.payinExtra||[]).map(x=>({
+        method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
+        rate_rub_usdt:x.rate_rub_usdt??num(x.rate),amount_usdt:x.amount_usdt??x.amountUsdt??null,
+        partner_name:x.partner_name??x.partner??null,tx_hashes:x.tx_hashes||x.hashes||[],
+        sber_uuids:x.sber_uuids||[],note:x.note||''})),
+      custom_payin_currency:c.payinCurrency||'USDT',custom_payin_amount:c.payinAmount??null,
+      custom_payin_rate:c.payinCurrency==='USDT'?null:c.payinRate??null,
+      payout_method:c.payoutMethod||'office',payout_source:'binance',
+      payout_amount_thb:c.payoutCurrency==='THB'?c.payoutAmount:null,
+      payout_amount_usdt:c.payoutUsdt??null,
+      custom_payout_currency:c.payoutCurrency||'THB',custom_payout_amount:c.payoutAmount??null,
+      custom_payout_rate:c.payoutCurrency==='USDT'?null:c.payoutRate??null,
+      agents:agentPayload,profit_usdt:profit,
+      profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:0,
+      net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
+  }
   const E=econ(d), po=d.payout||{}, rub=!isCrypto(d), prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
-  const p={client_name:d.client, manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
+  const p={client_name:d.client, client_id:d.crmClientId??null,
+    manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
-    /* CRM adds payin_extra to this flat main amount. Board E.payin is
-       already the total, so sending it here would count extras twice. */
-    payin_amount_usdt:r2(payinParts(d)[0]?.usdt),
+    /* API _apply_payin_extra прибавит дополнительные части само. Основной
+       приход берём из первого payinParts: extra может быть задан только RUB
+       и курсом, без amount_usdt, поэтому вычитание сырых extra его теряло. */
+    payin_amount_usdt:r2(payinParts(d)[0]?.usdt??null),
     payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
     payin_tx_hashes:hx(d.payinHashes),
+    payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
+      amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
+      kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
     payin_extra:(d.payinExtra||[]).map((x,i)=>({
       method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
       rate_rub_usdt:x.rate_rub_usdt??num(x.rate),
-      amount_usdt:r2(payinParts(d)[i+1]?.usdt),
+      amount_usdt:x.amount_usdt??x.amountUsdt??payinParts(d)[i+1]?.usdt??null,
       partner_name:x.partner_name??x.partner??null,
-      tx_hashes:hx(x.tx_hashes||x.hashes),sber_uuids:x.sber_uuids||[],note:x.note||''})),
+      tx_hashes:x.tx_hashes||x.hashes||[],sber_uuids:x.sber_uuids||[],note:x.note||''})),
+    doc_invoice_url:d.docLinks?.invoice||null,
+    doc_contract_url:d.docLinks?.contract||null,
+    doc_payment_url:d.docLinks?.payment||null,
     notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
@@ -4520,18 +4593,27 @@ function crmPayload(d){
        банк 0,8%+50$ или софт-счёт 1,5%+50$ при заявке) — не зашитые 0,8%/50$, и не
        деление батов на курс (спека 28.09-freehold-no-baht). Формула — та же, что
        у сервера (compute_mf_freehold): S = X·(1+p)+F. */
-    const t=ippsTariff(d), X=d.invoiceUsd||null;
+    const t=IPPS_TARIFFS[d.ippsTariff]||{percent:null,fixed:null}, X=d.invoiceUsd??null;
     Object.assign(p,{deal_kind:'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_usd:r2(X),transfer_fee_percent:t.percent,transfer_fee_fixed_usd:t.fixed,
-      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
+      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null&&t.percent!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
   }else{
-    Object.assign(p,{deal_kind:'exchange',payout_method:'transfer',
+    const method={
+      'наличные в офисе':'office','курьер':'courier','банкомат':'atm',
+      'перевод на тайский счёт':'transfer',office:'office',courier:'courier',
+      atm:'atm',transfer:'transfer'};
+    Object.assign(p,{deal_kind:'exchange',payout_method:method[po.method]||'transfer',
       payout_source:PAYOUT_CRM[d.paySrc]||'cash_batch',
-      payout_amount_thb:d.paySrc==='client'?null:(po.thb||d.amountThb||null),
-      payout_amount_usdt:r2(E.cost),payout_tx_hashes:hx(po.hashes),
+      payout_amount_thb:d.paySrc==='client'?null:(po.thb??d.amountThb??null),
+      payout_amount_usdt:r2(E.cost),payout_tx_hashes:(po.hashes||[]).filter(h=>h&&h.hash).map(h=>({
+        hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null,
+        from_address:h.from_address||'',to_address:h.to_address||''})),
+      payout_tx_hash:d.paySrc==='coins'?(po.hashes||[])[0]?.hash||null:null,
+      bank_card_id:po.bankCardId??null,
+      payout_wallet_id:po.walletId??null,
       payout_founder_name:d.paySrc==='founder'?(po.founder||null):null,
       payout_no_conversion:d.paySrc==='founder'?!!po.ownBaht:false,
-      needs_reimbursement:d.paySrc==='founder'&&!po.reimbursement});
+      needs_reimbursement:d.paySrc==='founder'&&!po.settledByPayin&&!po.reimbursement});
   }
   return p;
 }
@@ -4901,6 +4983,7 @@ function editClose(){
   const d=deal(S.edit);
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
   if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
+  crmDraftLive.delete(S.edit);
   S.edit=null;save();render();
 }
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
@@ -4911,8 +4994,7 @@ function startManual(){
      подчищаем прошлые пустышки, прежде чем завести новую. */
   S.deals=(S.deals||[]).filter(x=>!(x.manualNew&&!x.client&&!x.amountRub&&!x.amountThb&&!x.amountUsdt));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
-    payType:'По реквизитам',curBase:'rub',step:'manual'});
-  d.manual=true;d.manualNew=true;
+    payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true});
   S.edit=d.id;save();render();
 }
 
@@ -4976,8 +5058,14 @@ function setDealKind(id,v){
   const d=deal(id); editApply(id);
   d.custom=(v==='custom');
   if(v==='exchange'||v==='custom'){d.type='Обмен валюты';d.kind='';}
-  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'?'Фрихолд':'Лизхолд');}
+  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'?'Фрихолд':(d.kind==='Аренда'?'Аренда':'Лизхолд'));}
   save();render();
+}
+function setRealtySubtype(id,kind){
+  if(kind!=='Лизхолд'&&kind!=='Аренда')return;
+  editApply(id);const d=deal(id);
+  if(dealKind(d)!=='mf_realty')return;
+  d.kind=kind;save();render();
 }
 /* Чат и клиент — не одно и то же, но связаны: чат это где мы переписываемся,
    клиент — карточка в справочнике с договорами и паспортом. Поэтому чат выбирается
@@ -5385,7 +5473,7 @@ function mfPayoutBlock(d){
     ${l.length?`<p class="fh" style="margin-top:6px">Отправлено по переводам: <b>${usd(mfSum(d))}</b></p>`:''}
   </div>`;
 }
-function viewEdit(){
+function viewEditLegacy(){
   const d=deal(S.edit); if(!d)return '';
   const crypto=isCrypto(d), E=econ(d), po=d.payout||{};
   const isNew=!!d.manualNew;
@@ -5438,6 +5526,11 @@ function viewEdit(){
         <select class="fc" onchange="setDealKind(${d.id},this.value)">
           ${DEAL_KINDS.map(([k,t])=>`<option value="${k}"${dealKind(d)===k?' selected':''}>${t}</option>`).join('')}</select></div>
     </div>
+    ${dealKind(d)==='mf_realty'?`<div class="fr"><div class="fg"><label class="fl">Вид недвижимости</label>
+      <select class="fc" onchange="setRealtySubtype(${d.id},this.value)">
+        <option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
+        <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option>
+      </select></div></div>`:''}
     ${(dealKind(d)==='exchange'||dealKind(d)==='custom')?`<div class="fr">
       <div class="fg"><label class="fl">Валютная пара</label>
         <select class="fc" id="e_pair">${opt(PAIRS,d.pair||'RUB → THB')}</select></div>
@@ -5454,9 +5547,9 @@ function viewEdit(){
           <select class="fc" id="e_pay" onchange="editRecalc(${d.id})">${opt(['По реквизитам','СБП','Крипта','Наличные'],d.payType)}</select>
           ${d.type==='Оплата недвижимости'?'<p class="fh">чем платит клиент — получателю в любом случае уходят баты</p>':''}</div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Сумма RUB</label>
-          <input class="fc num" id="e_pay_amt" value="${d.amountRub||''}" placeholder="сумма в рублях"></div>`}
+          <input class="fc num" id="e_pay_amt" name="payin_amount_rub" value="${d.amountRub||''}" placeholder="сумма в рублях"></div>`}
         <div class="fg"><label class="fl">Сумма USDT</label>
-          <input class="fc num" id="${crypto?'e_pay_amt':'e_usdt'}" value="${(crypto?d.amountUsdt:d.amountUsdt)||''}" placeholder="сумма в USDT">
+          <input class="fc num" id="${crypto?'e_pay_amt':'e_usdt'}" name="payin_amount_usdt" value="${(crypto?d.amountUsdt:d.amountUsdt)||''}" placeholder="сумма в USDT">
           <p class="fh">${crypto?'сколько USDT прислал клиент':'введи сколько USDT реально пришло — курс посчитается из рублей'}</p>
           ${(!crypto&&d.amountUsdt&&d.amountRub)?`<p class="fh">курс из этих сумм: <b>${(d.amountRub/d.amountUsdt).toFixed(2).replace('.',',')}</b></p>`:''}</div>
       </div>
@@ -5477,7 +5570,7 @@ function viewEdit(){
           :`<p class="fh">Транзакций нет — приход посчитается по курсу, как ожидание</p>`}
         </div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Курс RUB/USDT</label>
-          <input class="fc num" id="e_broker" value="${d.rates.broker||''}" placeholder="₽ за 1 USDT"></div>`}
+          <input class="fc num" id="e_broker" name="payin_rate_rub_usdt" value="${d.rates.broker||''}" placeholder="₽ за 1 USDT"></div>`}
         <div class="fg"></div>
       </div>
       <div class="fr">
@@ -5491,27 +5584,7 @@ function viewEdit(){
       </div>
       <p class="fh">При ручном вводе сеть выбирается явно: TRC-20 проверяется через TronScan, ERC-20 — через Etherscan.</p>
 
-      ${crypto?'':`<div class="sberbox">
-        <div class="chtitle" style="color:#0369A1">🏦 Приходы ${d.payType==='СБП'?'Сбера':'по реквизитам'}
-          <span>${d.payType==='СБП'?'СБП (эквайринг)':'банковские'}</span></div>
-        ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
-          <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
-            ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
-            <span class="sub2">· ${x.payer||''} · ${x.date||''}</span></span>
-          <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
-        ${sberFree().length?sberFree().slice(0,5).map(x=>`<div class="sbrow">
-          <span><span class="net">${sberText(x.kind)}${x.source==='sber'?' · Сбер':''}</span> <b>${money(x.rub,'₽')}</b>
-            <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)}</span></span>
-          <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${sberText(JSON.stringify(x.id))})">Забрать</button></div>`).join('')
-          :`<p class="fh">Свободных поступлений нет — всё разобрано по сделкам.</p>`}
-        <div class="hrow" style="margin-top:10px">
-          <input class="fc num" id="e_sbamt" placeholder="Сумма ₽ вручную" style="max-width:180px">
-          <input class="fc" id="e_sbnote" placeholder="Комментарий">
-          <button class="btn btn-outline btn-sm" onclick="sberManual(${d.id})">+ Добавить</button>
-        </div>
-        ${(d.payinParts||[]).length?`<p class="fh" style="color:#0369A1;font-weight:600">Итого от клиента: ${money((d.payinParts||[]).reduce((s,p)=>s+(p.amountRub||0),0),'₽')} (частей: ${d.payinParts.length})${
-          (d.payinParts||[]).some(p=>p.fee)?` · комиссия эквайринга ${money((d.payinParts||[]).reduce((s,p)=>s+(p.fee||0),0),'₽')} → на счёт ${money((d.payinParts||[]).reduce((s,p)=>s+(p.net||p.amountRub||0),0),'₽')}`:''}</p>`:''}
-      </div>`}
+      ${crypto?'':'<div id="crmSberSlot" class="crm-draft"></div>'}
     </div>
     ${(d.payinExtra||[]).map((x,i)=>`<div class="chbox">
       <div class="chtitle">Приход ${i+2}
@@ -5571,7 +5644,7 @@ function viewEdit(){
         <p class="fh">максимум, чтобы хватило на выплаты</p></div>
     </div>
     <div class="fg"><label class="fl">Переводы в MF Corp (факт)</label>
-      ${mfPayoutBlock(d)}
+      <div id="crmMfPayoutSlot" class="crm-draft"></div>
       <p class="fh">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</p></div>
     <div class="fr">
       <div class="fg"><label class="fl">Ссылка на инвойс</label>
@@ -5645,6 +5718,40 @@ function viewEdit(){
       <button class="btn btn-outline" onclick="editClose()">${isNew?'Отменить создание':'Отмена'}</button>
     </div>
   </div>`;
+}
+function viewEdit(){
+  const d=deal(S.edit);if(!d)return '';
+  const kind=dealKind(d);
+  return `<div class="strip"><span class="id">${d.manualNew?'Новая сделка':d.code}</span>
+    <span class="nm">${htmlText(d.client||'без имени')}</span><span class="sp"></span>
+    <button class="btn btn-outline btn-sm" onclick="editClose()">Отмена</button></div>
+  <div class="card edit-page">
+    <div class="card-title">${d.manualNew?'Новая сделка':'Редактировать '+d.code}</div>
+    <div class="fr" id="crmDraftStandHead">
+      <div class="fg"><label class="fl">Откуда обращение</label>
+        <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
+          `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
+        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" value="${htmlText(d.sourceRef||'')}">
+        <datalist id="crmDraftSourceChoices"></datalist></div>
+      <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
+        <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
+          <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option></select></div>
+      <div class="fg" id="crmDraftTariffBox" style="display:${kind==='mf_freehold'?'block':'none'}"><label class="fl">Тариф IPPS из сделки</label>
+        <select class="fc" id="crmDraftTariff"><option value="">— выберите тариф —</option>
+          <option value="bank"${d.ippsTariff==='bank'?' selected':''}>Банк · 0,8% + 50$</option>
+          <option value="soft"${d.ippsTariff==='soft'?' selected':''}>Софт-счёт · 1,5% + 50$</option></select></div>
+      <div class="fg" id="crmDraftInvoiceCurrencyBox" style="display:${kind==='mf_freehold'?'block':'none'}"><label class="fl">Валюта инвойса застройщика</label>
+        <select class="fc" id="crmDraftInvoiceCurrency"><option value="usd"${d.invoiceCurrency==='thb'?'':' selected'}>USD</option>
+          <option value="thb"${d.invoiceCurrency==='thb'?' selected':''}>THB (сумма USD подтверждена отдельно)</option></select></div>
+      <div class="fg" id="crmDraftInvoiceThbBox" style="display:${kind==='mf_freehold'&&d.invoiceCurrency==='thb'?'block':'none'}"><label class="fl">Сумма инвойса, ฿</label>
+        <input class="fc num" id="crmDraftInvoiceThb" value="${d.invoiceThb??''}"></div>
+    </div>
+    <div id="crmDraftHost">Загружаю форму CRM…</div>
+    <div class="row" style="margin-top:18px"><button class="btn btn-primary" onclick="editSave(${d.id})">${d.manualNew?'Создать сделку':'Сохранить изменения'}</button>
+      <button class="btn btn-outline" onclick="editRecalc(${d.id})">Рассчитать прибыль</button>
+      <button class="btn btn-outline" onclick="editClose()">Отмена</button></div>
+  </div><div id="crmDraftLegacy" hidden>${viewEditLegacy()}</div>`;
 }
 /* Снять всё, что введено в поля, в сделку. Возвращает список изменений: по нему
    пишется журнал, и по нему же видно, что «Сохранить» ничего не поменял. */
@@ -5725,12 +5832,17 @@ function editApply(id){
   return ch;
 }
 function editRecalc(id){
-  const ch=editApply(id);save();render();
+  const ch=document.getElementById('crmDraftHost')
+    ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
+  if(ch===false)return;
+  save();render();
   toast(ch.length?('Пересчитано · '+ch.length+' изм.'):'Пересчитано');
 }
 function editSave(id){
   const d=deal(id); const isNew=!!d.manualNew;
-  const ch=editApply(id);
+  const ch=document.getElementById('crmDraftHost')
+    ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
+  if(ch===false)return;
   if(isNew){
     d.manualNew=false;d.log=[];
     log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));

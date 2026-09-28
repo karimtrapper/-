@@ -150,9 +150,8 @@ def test_leasehold_untouched_by_freehold_field_lock():
     assert new['deals'][0]['amountThb'] == 400000
 
 
-def test_put_endpoint_silently_preserves_invoice_after_s11(monkeypatch):
-    """Тест ДЕНЬГИ №13 буквально: PUT доски с изменённым invoiceUsd на s12/s27
-    → сервер сохраняет прежнее значение, PUT не отклоняется целиком."""
+def test_put_endpoint_rejects_invoice_mutation_after_s11_atomically(monkeypatch):
+    """Locked invoice/tariff mutations get 409; board and version stay intact."""
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
     monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
@@ -186,8 +185,10 @@ def test_put_endpoint_silently_preserves_invoice_after_s11(monkeypatch):
             payload['deals'][0]['ippsTariff'] = 'soft'
             put = client.put('/api/stand/state',
                              json={'version': before.json['version'], 'data': payload})
-            assert put.status_code == 200, f'шаг {step}: PUT не должен отклоняться целиком'
+            assert put.status_code == 409, f'шаг {step}: locked invoice PUT must fail'
             after = client.get('/api/stand/state')
+        assert after.json['version'] == before.json['version']
+        assert after.json['data'] == before.json['data']
         assert after.json['data']['deals'][0]['invoiceUsd'] == 45000, (
             f'шаг {step}: сервер должен сохранить прежний инвойс')
         assert after.json['data']['deals'][0]['ippsTariff'] == 'bank', (
@@ -347,6 +348,52 @@ def test_confirmed_freehold_forward_steps_and_invoice_payout():
                  allow_crm_close=(step == 'done')) is None
         old = new
     assert appmod._stand_guard_transition(old, copy.deepcopy(old), 'admin') is None
+
+
+@pytest.mark.parametrize('stage', ['s11', 'closed', 'confirmed'])
+@pytest.mark.parametrize('field,value', [
+    ('invoiceUsd', 0), ('invoiceUsd', '46000'),
+    ('ippsTariff', 'soft'), ('ippsTariff', ''),
+    ('invoiceCurrency', 'thb'), ('invoiceCurrency', ''),
+    ('invoiceThb', 1500000), ('invoiceThb', '1500000'),
+])
+def test_t17_freehold_invoice_basis_rejected_before_preserve(stage, field, value):
+    """T11 preserve_server_fields restores s11 edits, while the stand_state
+    guard must reject each attempted money edit atomically before that restore.
+    The stage set comes from stand_transfers.FREEHOLD_LOCKED_STEPS, shared by
+    the server guard and T11 preservation; UI disabling is only a convenience.
+    """
+    old = freehold_board(step='s11' if stage == 's11' else 's8')
+    deal = old['deals'][0]
+    deal.update(invoiceCurrency='usd', invoiceThb=None)
+    if stage == 'closed':
+        deal['closed'] = True
+    elif stage == 'confirmed':
+        deal['transfer']['sends'][0]['status'] = 'confirmed'
+    new = copy.deepcopy(old)
+    new['deals'][0][field] = value
+    assert appmod._stand_guard_transition(old, new, 'admin')
+    assert appmod._stand_guard_transition(old, copy.deepcopy(old), 'admin') is None
+    notes_only = copy.deepcopy(old)
+    notes_only['deals'][0]['notes'] = 'allowed'
+    assert appmod._stand_guard_transition(old, notes_only, 'admin') is None
+
+
+def test_t17_legacy_freehold_missing_invoice_fields_identity_and_note():
+    """Old issued documents may not contain the later THB/currency fields."""
+    old = freehold_board(step='s11')
+    old['deals'][0].pop('ippsTariff')
+    old['deals'][0].pop('invoiceCurrency', None)
+    old['deals'][0].pop('invoiceThb', None)
+    unchanged = copy.deepcopy(old)
+    unchanged['deals'][0]['notes'] = 'only a note'
+    assert appmod._stand_guard_transition(old, unchanged, 'admin') is None
+    preserve_server_fields(old, unchanged)
+    for key in ('ippsTariff', 'invoiceCurrency', 'invoiceThb'):
+        assert key not in unchanged['deals'][0]
+    introduced = copy.deepcopy(old)
+    introduced['deals'][0]['invoiceCurrency'] = 'usd'
+    assert appmod._stand_guard_transition(old, introduced, 'admin')
 
 
 def test_closed_freehold_accepts_only_empty_hashes_normalization():
