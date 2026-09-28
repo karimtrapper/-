@@ -100,6 +100,28 @@ def _text(client, doc_id):
     return '\n'.join(parts)
 
 
+@pytest.mark.parametrize('currency,expected', [('thb', 'THB 1500000'), ('usd', 'USD 45000')])
+def test_freehold_invoice_currency_issues_real_pack(stand, currency, expected):
+    deal = _deal(901 if currency == 'thb' else 902, kind='Фрихолд', curBase='fhusd',
+                 invoiceUsd=45000, invoiceCurrency=currency,
+                 invoiceThb=1500000 if currency == 'thb' else None, ippsTariff='bank')
+    stand.put_board([deal])
+    fields = _fields(amountThb='45000', amountPay='3710389.50', rate='82.4531')
+    response = stand.post('/api/stand/docs/issue', json={'dealId': deal['id'], 'docFields': fields})
+    assert response.status_code == 200, response.json
+    assert [entry['kind'] for entry in response.json['issued']] == ['dog', 'app', 'bill']
+    texts = [_text(stand, entry['docId']) for entry in response.json['issued']]
+    assert expected in texts[1]
+    assert '1500000' not in texts[2]
+    if currency == 'thb':
+        for label in ('Источник курса и срок действия', 'Подтверждённый USD-эквивалент',
+                      'Статус зачёта THB-инвойса', 'Письменное подтверждение застройщика'):
+            assert label in texts[1]
+        assert texts[1].count('[●]') >= 4
+    else:
+        assert 'Н/П' in texts[1]
+
+
 def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     stand.put_board([_deal(1)])
     r = stand.post('/api/stand/docs/issue', json={'dealId': 1, 'docFields': _fields()})
