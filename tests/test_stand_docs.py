@@ -43,6 +43,8 @@ def _deal(deal_id, **over):
 @pytest.fixture
 def stand(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    # В общем pytest app импортирован в прод-режиме; создаём таблицу после смены режима.
+    appmod._stand_migrate()
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
 
     def role_lookup():

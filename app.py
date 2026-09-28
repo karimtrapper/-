@@ -2308,8 +2308,19 @@ class StandState(Base):
     notified = Column(Text, default='[]')
 
 
-# Создание таблиц
-Base.metadata.create_all(bind=engine)
+# Таблицы стенда остаются в общей metadata для ORM, но в прод-режиме
+# их нельзя создавать. Здесь же держим имена таблиц модулей уведомлений T5
+# и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
+STAND_ONLY_TABLES = frozenset({
+    'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
+    'stand_sber_mirror_state',
+})
+
+Base.metadata.create_all(
+    bind=engine,
+    tables=[table for table in Base.metadata.sorted_tables
+            if table.name not in STAND_ONLY_TABLES],
+)
 
 
 def _stand_seed_users():
@@ -2345,8 +2356,13 @@ def _stand_seed_users():
 
 
 def _stand_migrate():
-    """create_all не добавляет колонку в уже существующую таблицу."""
+    """Создаёт таблицы стенда; create_all не добавляет колонку в старую таблицу."""
     from sqlalchemy import text as _t
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[table for table in Base.metadata.sorted_tables
+                if table.name in STAND_ONLY_TABLES],
+    )
     try:
         with engine.begin() as conn:
             conn.execute(_t("ALTER TABLE stand_state ADD COLUMN notified TEXT DEFAULT '[]'"))
