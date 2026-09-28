@@ -45,6 +45,20 @@ if STAND_MODE:
     for _off in ('REESTR_SYNC_ENABLED', 'PAYMENT_POLL_ENABLED', 'PAYIN_ADDR_BACKFILL',
                  'TRONSCAN_WARM_ENABLED', 'KYC_RETENTION_ENABLED'):
         os.environ[_off] = '0'
+    # env-прокси — отдельная дыра в guard'е: connect() видит адрес прокси
+    # (часто loopback — он всегда разрешён), а реальная цель (api.telegram.org
+    # и т.п.) едет внутри HTTP CONNECT и на сокетном уровне не видна вообще.
+    # requests/urllib/httpx читают эти переменные сами при каждом запросе —
+    # стираем их до того, как что-либо успеет сходить в сеть.
+    for _proxy_var in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+                       'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                       'FTP_PROXY', 'ftp_proxy'):
+        os.environ.pop(_proxy_var, None)
+    # Сетевой предохранитель: fail-closed сокеты, единственный канал наружу —
+    # Telegram изнутри stand_egress.tg_call(). См. docstring модуля — что
+    # гарантирует и чего не гарантирует эта защита.
+    import stand_egress
+    stand_egress.install()
     print('[STAND] Тестовый стенд: внешние интеграции выключены')
 
 # ==================== FLASK APP ====================
@@ -515,6 +529,10 @@ class Partner(Base):
 def referral_links(code, lang='ru'):
     """Реферальные ссылки партнёра. Предзаполненный текст WhatsApp — на языке партнёра:
     англоязычный застройщик пересылает ссылку своему клиенту, русский текст там мусор."""
+    if STAND_MODE:
+        # Реальный бот и реальный номер WhatsApp менеджера — тестовому рефереру
+        # на стенде их показывать нельзя (план п.1, «точки выхода»).
+        return {'referral_link': f'https://grusha.space/?ref={code}', 'bot_link': '', 'wa_link': ''}
     from urllib.parse import quote as _q
     flat = (code or '').replace('-', '')
     wa_text = ('Здравствуйте! Хочу уточнить детали обмена.\n\n(Источник: ref_%s)' % flat
@@ -3356,6 +3374,10 @@ def sync_reestr_from_wl():
 @app.route('/api/reestr/sync', methods=['POST'])
 def post_reestr_sync():
     """Ручной форс-синк (кнопка «🔄 Обновить»). Сериализован локом."""
+    if STAND_MODE:
+        # REESTR_SYNC_ENABLED=0 гасит только фоновый цикл — эта кнопка идёт в WL
+        # напрямую и обходила бы его, если её не выключить явно.
+        return jsonify({'ok': False, 'error': 'stand_blocked'}), 403
     with _reestr_sync_lock:
         try:
             counts = sync_reestr_from_wl()
@@ -3436,6 +3458,11 @@ GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
 def get_gsheet_client():
     """Возвращает авторизованный gspread клиент.
     Приоритет: OAuth user-credentials > Service Account > локальный SA файл."""
+    if STAND_MODE:
+        # STAND_MODE гасит GOOGLE_SA_JSON/OAuth env, но локальный google_sa.json
+        # на диске (у разработчика или в контейнере) их обходит — стенд не должен
+        # писать в боевую таблицу ни при каких обстоятельствах.
+        return None
     # 1. OAuth user-credentials — работает с закрытыми папками Workspace
     if GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_OAUTH_CLIENT_ID:
         from google.oauth2.credentials import Credentials
@@ -4513,7 +4540,7 @@ def send_webhook_async(url, data):
             response = requests.post(url, json=data, timeout=10)
             print(f"✅ Webhook sent: {response.status_code}")
         except Exception as e:
-            print(f"❌ Webhook error: {e}")
+            print(f"❌ Webhook error: {_redacted_net_error(e)}")
     if url:
         threading.Thread(target=_send).start()
 
@@ -4923,18 +4950,10 @@ def _stand_tg_send(text):
     дать его стенду — значит однажды прислать команде выдуманную сделку как
     настоящую. Здесь свой бот и свой чат, больше он никуда не достучится.
     """
-    token = os.environ.get('STAND_TG_TOKEN', '').strip()
-    chat = os.environ.get('STAND_TG_CHAT', '').strip()
-    if not token or not chat:
-        return False
-    try:
-        response = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
-                                 json={'chat_id': chat, 'text': text, 'parse_mode': 'HTML',
-                                       'disable_web_page_preview': True}, timeout=10)
-        return response.status_code == 200 and bool((response.json() or {}).get('ok'))
-    except Exception:
-        print('[STAND] Телеграм не принял уведомление')
-        return False
+    # Групповая рассылка выключена решением из плана «тишина» (п.1.2): группа
+    # STAND_TG_CHAT не читается никаким кодом. T5 заменит это на личку через
+    # stand_egress.tg_call() с политикой can_send().
+    return False
 
 
 def _stand_notify(sent_ids, new_data):
@@ -5721,35 +5740,24 @@ def stand_prod_agents_sync():
     """Подтянуть агентов из прода в справочник стенда и в его CRM (по коду)."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
-    if (current_role() or '') not in ('admin', 'manager'):
-        return jsonify({'success': False, 'error': 'Агентов из прода подтягивает админ или менеджер'}), 403
-    try:
-        agents = _stand_prod_agents()
-    except (RuntimeError, requests.RequestException, ValueError) as exc:
-        return jsonify({'success': False, 'error': str(exc)[:200]}), 502
-    import secrets as _secrets
-    db = get_session()
-    try:
-        for a in agents:
-            if not a['code']:
-                continue
-            ref = db.query(Referrer).filter(Referrer.code == a['code']).first()
-            if not ref:
-                ref = Referrer(code=a['code'], token=_secrets.token_hex(12), name=a['name'])
-                db.add(ref)
-            ref.name = a['name']
-            ref.comp_model = a['comp']
-            ref.default_percent = a['revsharePercent']
-            ref.markup_percent = a['markupPercent']
-            ref.payout_currency = a['cur']
-            ref.telegram = a['tg']
-            ref.lang = a['lang']
-            ref.active = a['active']
-            ref.is_test = True   # стенд: никаких уведомлений реальным партнёрам
-        db.commit()
-    finally:
-        db.close()
-    return jsonify({'success': True, 'agents': agents})
+    # Режим «тишина»: чтение боевого CRM с тестового стенда выключено (план п.1.9,
+    # T1 «точки выхода»). После заливки прод-данных агенты берутся из локальной
+    # таблицы referrers — этот путь больше не нужен.
+    return jsonify({'success': False, 'error': 'stand_blocked'}), 403
+
+
+@app.route('/api/stand/egress-status', methods=['GET'])
+def stand_egress_status():
+    """Телеметрия сетевого guard'а — не доказательство тишины, оно в тестах."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    # Роль проверяем ДО открытия любой сессии записи — этот роут её и не открывает.
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    import stand_egress
+    return jsonify({'success': True, **stand_egress.status()})
 
 
 @app.route('/api/stand/incoming/unlink', methods=['POST'])
@@ -6520,6 +6528,12 @@ def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
 
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
+    if STAND_MODE:
+        # Курсы тянутся с Binance/Bitazza/Doverka — реальные внешние сервисы.
+        # На стенде не идём наружу вообще; менеджер вводит курс вручную (см. tasks.html).
+        return jsonify({'success': False, 'stand_blocked': True,
+                        'error': 'На стенде курсы выключены — введите курс вручную',
+                        'usdt_thb': None, 'rub_usdt': None})
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         usdt_thb = rates.get('usdt_thb')
@@ -14772,6 +14786,11 @@ def delete_reimbursement(reimbursement_id):
 @app.route('/api/deals/sync-gsheet', methods=['POST'])
 def manual_sync_gsheet():
     """Ручной синк сделок в Google Sheet по списку ID"""
+    if STAND_MODE:
+        # get_gsheet_client() всё равно вернёт None (см. функцию), но без этой
+        # проверки менеджер получал голый 500 no_credentials, будто сломалось.
+        return jsonify({'success': False, 'stand_blocked': True,
+                        'error': 'На стенде синхронизация с таблицей выключена'})
     session = get_session()
     try:
         data = request.get_json()
@@ -14827,6 +14846,15 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
+def _redacted_net_error(e):
+    """Имя типа исключения без текста — requests вшивает в str(e) полный URL
+    запроса (…/bot<TOKEN>/method, ?secret=...), и это встречалось в логах
+    буквально: guard теперь детерминированно валит эти вызовы на стенде, так
+    что секрет попадал бы в stdout при каждой сделке. Тип исключения для
+    диагностики достаточно — сам URL и токен туда не нужны."""
+    return type(e).__name__
+
+
 def send_telegram_notification(text, thread_id=None, fallback_without_thread=False):
     """Отправляет сообщение ботом в чат.
 
@@ -14871,7 +14899,7 @@ def send_telegram_notification(text, thread_id=None, fallback_without_thread=Fal
             return fallback.status_code == 200
         return False
     except Exception as e:
-        print(f'[Telegram] Error: {e}')
+        print(f'[Telegram] Error: {_redacted_net_error(e)}')
         return False
 
 # ── Вход реферера через Telegram Login Widget ──────────────────────────────
@@ -15072,7 +15100,7 @@ def send_referrer_dm(referrer, text, buttons=None):
                           json=payload, timeout=10)
         return r.status_code == 200
     except Exception as e:
-        print(f'[ReferrerDM] error: {e}')
+        print(f'[ReferrerDM] error: {_redacted_net_error(e)}')
         return False
 
 
@@ -15093,7 +15121,7 @@ def _tg_send_document(token, chat_id, blob, filename, caption, thread_id=None):
             return ((r.json().get('result') or {}).get('document') or {}).get('file_id')
         print(f'[TG sendDocument] {r.status_code}: {r.text[:200]}')
     except Exception as e:
-        print(f'[TG sendDocument] error: {e}')
+        print(f'[TG sendDocument] error: {_redacted_net_error(e)}')
     return None
 
 
@@ -15129,7 +15157,7 @@ def notify_agents_new_deal(db, deal):
             btn = ref_t(referrer, '💸 Вывести', '💸 Withdraw')
             send_referrer_dm(referrer, msg, buttons=[[{'text': btn, 'url': url}]])
     except Exception as e:
-        print(f'[ReferrerDM] new deal notify error: {e}')
+        print(f'[ReferrerDM] new deal notify error: {_redacted_net_error(e)}')
 
 
 def _tg_answer_callback(token, cq_id, text):
@@ -15138,7 +15166,7 @@ def _tg_answer_callback(token, cq_id, text):
         requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
                       json={'callback_query_id': cq_id, 'text': text}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] answerCallback error: {e}')
+        print(f'[LKBot] answerCallback error: {_redacted_net_error(e)}')
 
 
 def _tg_edit_message(token, cq, new_text):
@@ -15153,7 +15181,7 @@ def _tg_edit_message(token, cq, new_text):
                       json={'chat_id': chat, 'message_id': mid, 'text': new_text,
                             'parse_mode': 'HTML'}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] editMessage error: {e}')
+        print(f'[LKBot] editMessage error: {_redacted_net_error(e)}')
 
 
 @app.route('/api/tg/lk-webhook', methods=['POST'])
@@ -15213,7 +15241,7 @@ def lk_bot_webhook():
                                 f"account ({who}) — the attempt was rejected.\n\n"
                                 f"If that was you, sign in with your linked account."))
                     except Exception as e:
-                        print(f'[LKBot] attempt notify error: {e}')
+                        print(f'[LKBot] attempt notify error: {_redacted_net_error(e)}')
             else:
                 admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
                 if admin:
@@ -15232,7 +15260,7 @@ def lk_bot_webhook():
                 requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                               json={'chat_id': chat_id, 'text': reply}, timeout=10)
             except Exception as e:
-                print(f'[LKBot] login reply error: {e}')
+                print(f'[LKBot] login reply error: {_redacted_net_error(e)}')
         return jsonify({'ok': True})
 
     cq = update.get('callback_query')
@@ -15276,6 +15304,8 @@ def doverka_payments_history():
     Курсы с Доверки больше не тянем (RUB-USDT = Рапира+2%), но история
     платежей нужна для сверки старых сделок — ключ читаем напрямую из env.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
@@ -15438,6 +15468,9 @@ def proxy_create_payment():
     Doverka API-ключом → авторизованный пользователь мог пробрасывать любые
     Doverka-поля (callback_url, order_transaction_id чужих транзакций, и т.п.).
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked',
+                        'message': 'На стенде создание платёжной ссылки выключено'}), 403
     raw = request.get_json() or {}
     provider = str(raw.get('provider') or 'grusha')
 
@@ -15488,7 +15521,10 @@ def proxy_create_payment():
 
     # Куда коннектор постучится об оплате. Без этого CalcCRM про оплату не узнаёт
     # (раньше так и было — ссылку выставили и ждали, пока клиент сам напишет).
-    base = os.environ.get('PUBLIC_BASE_URL', 'https://grusha.up.railway.app').rstrip('/')
+    # На стенде свой публичный адрес — коннектор не должен слать колбэк на прод
+    # (маршрут выше уже блокирует STAND_MODE целиком, это доп. подстраховка).
+    default_base = os.environ.get('STAND_BASE_URL') if STAND_MODE else None
+    base = os.environ.get('PUBLIC_BASE_URL', default_base or 'https://grusha.up.railway.app').rstrip('/')
     webhook_url = f'{base}/api/webhook/payment-link?key={payment_webhook_key()}'
 
     # Безопасный payload, отдаваемый в grushab-2-b.ru.
@@ -15586,6 +15622,8 @@ def proxy_create_payment():
 @app.route('/api/doverka/currencies', methods=['GET'])
 def doverka_currencies():
     """Прокси для получения валют Доверки (нужен currency_id для создания платежа)"""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
@@ -16302,6 +16340,8 @@ if os.environ.get('KYC_RETENTION_ENABLED', '1') == '1':
 @app.route('/api/bitrix/active-deals', methods=['GET'])
 def bitrix_active_deals():
     """Незакрытые сделки основной воронки — список для оператора."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         return jsonify({'success': True, 'deals': bitrix_deals.get_active_deals()})
@@ -16318,6 +16358,8 @@ def bitrix_analyze_deal(deal_id):
     сделку этого контакта, её CLOSEDATE становится отсечкой, чтобы суммы
     прошлого обмена не приехали в новую сделку.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         from deal_chat_analyzer import analyze_chat
@@ -16373,6 +16415,8 @@ def bitrix_close_won(deal_id):
     Порядок именно такой: если запись в CRM не прошла, в Bitrix ничего не
     двигаем — иначе сделка «выиграна», а денег в учёте нет.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16395,6 +16439,8 @@ def bitrix_close_won(deal_id):
 def bitrix_close_lose(deal_id):
     """Переводит сделку в LOSE. Lose-сделку в CalcCRM фронт создаёт ДО вызова —
     без неё отказ не попадёт в конверсию."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16416,6 +16462,8 @@ def search_bitrix_contacts():
     query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify({'success': True, 'contacts': []})
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
 
     import bitrix_deals
     try:
@@ -17288,7 +17336,11 @@ def payout_request_receipt(req_id):
                 blob, f.filename,
                 f"📄 Чек по заявке #{req.id} — {ref_label} · {thb_fmt} ฿",
                 thread_id=os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112'))
-            if not dm_file_id and not team_file_id:
+            # На стенде Telegram отключён целиком (см. stand_egress) — DM и
+            # командное уведомление там в принципе не могут дойти. Реальные
+            # деньги на стенде не двигаются, поэтому отправку тихо пропускаем,
+            # а не валим закрытие денежной заявки 502-й.
+            if not dm_file_id and not team_file_id and not STAND_MODE:
                 return jsonify({'success': False,
                                 'error': 'Не удалось отправить чек в Telegram — заявка не закрыта'}), 502
 
@@ -18069,11 +18121,11 @@ def _docs_client_key(fields):
 
 
 def _docs_openrouter_key():
-    # На стенде OPENROUTER_API_KEY погашен предохранителем (им пользуются и другие
-    # платные вызовы). Распознаванию документов даём отдельный ключ STAND_DOCPARSE_KEY:
-    # стенд должен работать как прод — поля договора из настоящих файлов (Карим, 25.09).
+    # Режим «тишина»: паспорта и инвойсы клиента не должны улетать в OpenRouter
+    # с тестового стенда ни под каким ключом. STAND_DOCPARSE_KEY сознательно не
+    # читаем — распознавание включат отдельным решением Карима (T1, план п.1.1).
     if STAND_MODE:
-        return os.environ.get('STAND_DOCPARSE_KEY', '')
+        return ''
     return os.environ.get('OPENROUTER_API_KEY', '')
 
 
@@ -18192,6 +18244,9 @@ def docs_parse():
     Ничего не сохраняет: менеджер сначала подтверждает данные, и только потом
     создаётся договор. Файлы приезжают повторно на шаге создания.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked',
+                        'detail': 'На стенде распознавание документов выключено'}), 403
     key = _docs_openrouter_key()
     if not key:
         return jsonify({'success': False, 'error': 'no_api_key',
@@ -18550,7 +18605,7 @@ def _stand_transfer_poll_loop():
             app.logger.warning('stand transfer poll: %s', exc)
 
 
-if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
+if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '0') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()
