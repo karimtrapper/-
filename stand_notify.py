@@ -48,6 +48,14 @@ def mode():
     return value if value in ('karim_only', 'enabled') else 'karim_only'
 
 
+def notify_profile():
+    """Явный выбор профиля отправки (T14). По умолчанию — старый бот стенда;
+    lk_send_only не включается автоматически появлением токена, только этой
+    переменной — переключение профиля не должно быть побочным эффектом."""
+    value = os.environ.get('STAND_NOTIFY_PROFILE', 'stand_bot').strip()
+    return value if value in ('lk_send_only', 'stand_bot') else 'stand_bot'
+
+
 def _positive_id(value):
     return isinstance(value, int) and not isinstance(value, bool) and value > 0
 
@@ -59,17 +67,28 @@ def _user_allowed(user):
 
 
 def can_send(channel, recipient, operation):
-    """Чат допустим только после привязки к активному аккаунту с включённой галкой."""
-    if channel != 'telegram' or not _app or not _app.STAND_MODE:
+    """Чат допустим только после привязки к активному аккаунту с включённой галкой.
+
+    Один и тот же canonical-путь для обоих профилей (T14): у lk_send_only нет
+    ни getMe, ни getUpdates — единственная разрешённая операция — sendMessage,
+    и та же самая проверка получателя, что и у бота стенда (та же таблица
+    admin_users, тот же режим karim_only). Если положительному id соответствует
+    больше одного АКТИВНОГО сотрудника (дубликат Telegram ID) — неоднозначность,
+    отказ, а не отправка «кому получится».
+    """
+    if channel not in ('telegram', 'telegram_lk') or not _app or not _app.STAND_MODE:
         return False
-    if operation in ('getMe', 'getWebhookInfo', 'getUpdates'):
+    if channel == 'telegram' and operation in ('getMe', 'getWebhookInfo', 'getUpdates'):
         return True
     if operation != 'sendMessage' or not _positive_id(recipient):
         return False
     db = _app.SessionLocal()
     try:
         users = db.query(_app.AdminUser).filter(_app.AdminUser.telegram_user_id == recipient).all()
-        return any(_user_allowed(u) for u in users)
+        active = [u for u in users if not u.login_disabled]
+        if len(active) != 1:
+            return False
+        return _user_allowed(active[0])
     finally:
         db.close()
 
@@ -163,7 +182,10 @@ def process_update(update):
     return True
 
 
-def _format_note(note, deals):
+def _format_note(note, deals, stand_label=False):
+    """`stand_label` — метка «СТЕНД» перед текстом (T14, профиль lk_send_only):
+    тот же бот доставляет и боевые задания, поэтому сообщение со стенда
+    обязано быть невозможно спутать с продовым."""
     who = _app.STAND_ROLE_PEOPLE.get(note.get('role'), note.get('role') or '')
     deal = deals.get(str(note.get('dealId'))) or {}
     tail = ''
@@ -172,7 +194,8 @@ def _format_note(note, deals):
         label = escape(f"{deal.get('code') or ''} · {deal.get('client') or ''}")
         link = f'<a href="{escape(base, quote=True)}/tasks?deal={quote(str(deal.get("id")))}">{label}</a>' if base else f'<i>{label}</i>'
         tail = f'\n{link}'
-    return f"🔔 <b>{escape(str(who))}</b>\n{escape(str(note.get('text') or ''))}{tail}"
+    prefix = '🧪 <b>СТЕНД</b> (не прод)\n' if stand_label else ''
+    return f"{prefix}🔔 <b>{escape(str(who))}</b>\n{escape(str(note.get('text') or ''))}{tail}"
 
 
 def deliver():
@@ -192,10 +215,23 @@ def deliver():
             state = json.loads(row.data or '{}')
             deals = {str(d.get('id')): d for d in state.get('deals') or []}
             users = db.query(_app.AdminUser).all()
+            profile = notify_profile()
+            channel = 'telegram_lk' if profile == 'lk_send_only' else 'telegram'
+            # lk_send_only не переключается на бота стенда сам ни при каком сбое
+            # (нет токена/ID, рассинхрон префикса, identity mismatch) — решение
+            # Карима: явный выбор профиля важнее доступности канала.
+            profile_ready = profile != 'lk_send_only' or stand_egress.lk_preflight_ok()
             for note in reversed(state.get('notes') or []):
                 note_id = str(note.get('id') or '')
                 if not note_id:
                     continue
+                # Исполнитель шага смотрится заново на каждый цикл доставки —
+                # переназначение или отзыв применяется сразу же, без нового
+                # события: старый исполнитель просто перестаёт быть recipient,
+                # а его прежние failed-попытки не ретраятся (см. фильтр выше).
+                deal = deals.get(str(note.get('dealId'))) or {}
+                assignee_id = deal.get('assigneeAdminId')
+                assignee_id = assignee_id if _positive_id(assignee_id) else None
                 for user in users:
                     existing = db.execute(text('SELECT status, attempts FROM stand_notify_log '
                                                'WHERE note_id=:note_id AND admin_id=:admin_id'),
@@ -203,18 +239,29 @@ def deliver():
                     if existing and (existing[0] != 'failed' or existing[1] >= _MAX_ATTEMPTS):
                         continue
                     chat_id = user.telegram_user_id
-                    # Фиксируем также прежнюю несовпадающую роль: после её смены
-                    # старые задачи не должны внезапно прийти сотруднику.
-                    recipient = (user.role or 'admin') in ('admin', note.get('role'))
-                    allowed = recipient and _user_allowed(user) and can_send('telegram', chat_id, 'sendMessage')
+                    if assignee_id is not None:
+                        # Назначен конкретный исполнитель — рассылка на всю роль
+                        # выключена; некорректный/отключённый/удалённый
+                        # исполнитель не откатывается на роль, это подавление.
+                        recipient = user.id == assignee_id or (user.role or 'admin') == 'admin'
+                    else:
+                        # Фиксируем также прежнюю несовпадающую роль: после её
+                        # смены старые задачи не должны внезапно прийти сотруднику.
+                        recipient = (user.role or 'admin') in ('admin', note.get('role'))
+                    allowed = (profile_ready and recipient and _user_allowed(user)
+                               and can_send(channel, chat_id, 'sendMessage'))
                     status = 'suppressed'
                     attempts = (existing[1] if existing else 0)
                     if allowed:
                         attempts += 1
                         try:
-                            result = stand_egress.tg_call('sendMessage', {
-                                'chat_id': chat_id, 'text': _format_note(note, deals),
-                                'parse_mode': 'HTML', 'disable_web_page_preview': True})
+                            text_body = _format_note(note, deals, stand_label=(profile == 'lk_send_only'))
+                            payload = {'chat_id': chat_id, 'text': text_body,
+                                       'parse_mode': 'HTML', 'disable_web_page_preview': True}
+                            if profile == 'lk_send_only':
+                                result = stand_egress.lk_call(payload)
+                            else:
+                                result = stand_egress.tg_call('sendMessage', payload)
                             status = 'sent' if isinstance(result, dict) and result.get('ok') else 'failed'
                         except Exception:
                             status = 'failed'

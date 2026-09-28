@@ -388,6 +388,7 @@ class AdminUser(Base):
             'id': self.id, 'username': self.username,
             'display_name': self.display_name or self.username,
             'telegram': self.telegram, 'bound': bool(self.telegram_user_id),
+            'telegram_user_id': self.telegram_user_id,
             'role': self.role or 'admin',
             'login_disabled': bool(self.login_disabled),
             'notify_enabled': bool(self.notify_enabled),
@@ -4796,6 +4797,23 @@ def update_admin(admin_id):
                     setattr(admin, field, data[field])
         if STAND_MODE and (data.get('password') or '').strip():
             admin.password_hash = AdminUser.hash_password(data['password'].strip())
+        if STAND_MODE and 'telegram_user_id' in data:
+            # TG-вход на стенде выключен (T5) — Telegram ID для доставки задач
+            # (T14) заводит только admin вручную, тем же числом, которым
+            # человек входит в прод. Роут уже admin-only (см. before_request).
+            raw = data['telegram_user_id']
+            if raw in (None, ''):
+                admin.telegram_user_id = None
+            elif isinstance(raw, bool) or not isinstance(raw, int) or raw <= 0:
+                return jsonify({'success': False, 'error': 'Telegram ID должен быть положительным числом'}), 400
+            else:
+                dup = db.query(AdminUser).filter(
+                    AdminUser.telegram_user_id == raw, AdminUser.login_disabled.is_(False),
+                    AdminUser.id != admin.id).first()
+                if dup:
+                    return jsonify({'success': False,
+                                    'error': 'Этот Telegram ID уже привязан к активному сотруднику'}), 400
+                admin.telegram_user_id = raw
         db.commit()
         return jsonify({'success': True, 'admin': admin.to_dict()})
     finally:
@@ -5015,12 +5033,23 @@ def stand_tg_status():
     db = get_session()
     try:
         users = db.query(AdminUser).order_by(AdminUser.id).all()
+        profile = stand_notify.notify_profile()
+        if profile == 'lk_send_only':
+            lk_state = stand_notify.stand_egress.lk_status()
+            error = None if lk_state == 'ready' else lk_state
+            return jsonify({'success': error is None, 'profile': profile,
+                            'lk_status': lk_state, 'error': error,
+                            'updates': 'send_only', 'mode': stand_notify.mode(),
+                            'employees': [{'id': u.id, 'username': u.username,
+                                           'role': u.role, 'bound': bool(u.telegram_user_id),
+                                           'notify_enabled': bool(u.notify_enabled),
+                                           'login_disabled': bool(u.login_disabled)} for u in users]}), (503 if error else 200)
         bot = stand_notify.bot_username()
         expected_bot = stand_notify.stand_egress.expected_bot_username()
         error = ('bot_identity_mismatch' if (bot is not None and bot != expected_bot)
                  or stand_notify.status() == 'bot_identity_mismatch'
                  or stand_notify.stand_egress.bot_identity_status() else None)
-        return jsonify({'success': error is None, 'bot': bot,
+        return jsonify({'success': error is None, 'profile': profile, 'bot': bot,
                         'bot_username': expected_bot,
                         'error': error,
                         'updates': stand_notify.status(), 'mode': stand_notify.mode(),
@@ -5048,11 +5077,15 @@ def stand_notify_test(admin_id):
         user_allowed = stand_notify._user_allowed(user)
     finally:
         db.close()
-    if not user_allowed or not stand_notify.can_send('telegram', chat_id, 'sendMessage'):
+    profile = stand_notify.notify_profile()
+    channel = 'telegram_lk' if profile == 'lk_send_only' else 'telegram'
+    profile_ready = profile != 'lk_send_only' or stand_notify.stand_egress.lk_preflight_ok()
+    if not profile_ready or not user_allowed or not stand_notify.can_send(channel, chat_id, 'sendMessage'):
         return jsonify({'success': True, 'status': 'suppressed'})
     try:
-        result = stand_notify.stand_egress.tg_call('sendMessage', {
-            'chat_id': chat_id, 'text': 'Проверка уведомлений стенда'})
+        payload = {'chat_id': chat_id, 'text': 'Проверка уведомлений стенда'}
+        result = (stand_notify.stand_egress.lk_call(payload) if profile == 'lk_send_only'
+                  else stand_notify.stand_egress.tg_call('sendMessage', payload))
         return jsonify({'success': True, 'status': 'sent' if result.get('ok') else 'failed'})
     except Exception:
         app.logger.exception('stand notification test failed')
@@ -5083,7 +5116,8 @@ def stand_state_put():
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
-        problem = _stand_guard_transition(previous, payload['data'], actor)
+        problem = _stand_guard_transition(previous, payload['data'], actor,
+                                          flask_session.get('user_id'), db)
         if problem:
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': previous}), 409
@@ -5261,7 +5295,49 @@ def _stand_manager_docs_only(before, deal, changed):
     return True
 
 
-def _stand_guard_transition(previous, new_state, actor=None):
+# Зеркало STEPS[step].who из static/stand/tasks.html — только статическая
+# часть (без override шага s23 по кошельку, см. stepWho() в JS): минимальная
+# серверная проверка того, что назначенный исполнитель — сотрудник нужной
+# роли, без переноса всего клиентского флоу на сервер.
+_STAND_STEP_ROLE = {
+    's4': 'manager', 's5': 'operator', 's6': 'manager', 's8': 'manager',
+    's11': 'operator', 's11b': 'operator', 's12': 'manager', 's14': 'manager',
+    's14m': 'manager', 's15': 'manager', 's18': 'operator', 's18w': 'operator',
+    's22': 'operator', 's23': 'findir', 's24': 'teodor', 's25': 'operator',
+    's26': 'operator', 's27': 'manager',
+}
+
+
+def _stand_check_assignee(db, before, deal, actor, actor_id):
+    """Исполнитель шага — явное поле, не автор перехода (actor/updated_by).
+
+    Назначить может admin (кого угодно из подходящей роли) или сам сотрудник
+    этой роли — только себя («взять задачу»). Снять назначение может admin
+    или сам исполнитель. Некорректный/чужой/отключённый id — отказ, а не
+    тихая перезапись.
+    """
+    old_assignee = (before or {}).get('assigneeAdminId')
+    new_assignee = deal.get('assigneeAdminId')
+    if new_assignee == old_assignee:
+        return None
+    if new_assignee is None:
+        if actor == 'admin' or (actor_id is not None and actor_id == old_assignee):
+            return None
+        return 'Снять назначение может админ или сам исполнитель'
+    if isinstance(new_assignee, bool) or not isinstance(new_assignee, int) or new_assignee <= 0:
+        return 'Некорректный исполнитель'
+    user = db.query(AdminUser).filter_by(id=new_assignee).first()
+    if not user or user.login_disabled:
+        return 'Исполнитель должен быть активным сотрудником'
+    required = _STAND_STEP_ROLE.get(deal.get('step'))
+    if required and user.role not in (required, 'admin'):
+        return f'Исполнитель шага {deal.get("step")} должен быть роли {required}'
+    if actor != 'admin' and not (actor_id == new_assignee and actor == required):
+        return 'Назначить может админ или сотрудник нужной роли себе'
+    return None
+
+
+def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     for old_conv in previous.get('convs', []):
         if not any(t.get('status') == 'confirmed' for t in old_conv.get('txs') or []):
@@ -5287,6 +5363,9 @@ def _stand_guard_transition(previous, new_state, actor=None):
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals', []):
         before = old.get(deal.get('id'))
+        assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id)
+        if assignee_problem:
+            return assignee_problem
         if not before:
             continue
         old_confirmed = Counter(send_fingerprint(previous, before, send)

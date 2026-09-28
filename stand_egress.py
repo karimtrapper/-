@@ -89,6 +89,143 @@ _pinned_bot_id = None  # id первого подтверждённого бот
 _BOT_IDENTITY_TTL = 60
 _PROD_BOTS = {'grusha_lk_bot', 'grushath_bot'}
 
+# ---- T14: профиль «только отправка» через прод-бот @grusha_lk_bot ----
+#
+# Отдельный от tg_call() путь: у lk_send_only СВОЙ токен (STAND_LK_BOT_TOKEN,
+# никогда TELEGRAM_BOT_TOKEN/REF_LOGIN_BOT_TOKEN — они гасятся блоком
+# STAND_MODE и остаются погашены) и СВОЙ разрешённый метод — ровно один,
+# sendMessage. lk_call() физически не умеет собрать URL другого метода,
+# поэтому getMe/getUpdates/getWebhookInfo/setWebhook и т. п. этим токеном
+# невозможны даже при ошибке в вызывающем коде — не «запрещено политикой»,
+# а «такого пути в коде нет».
+#
+# Идентичность бота проверяется ДО сети: bot_id — это цифры до первого ':'
+# в самом токене (формат Bot API), сравниваются с STAND_LK_BOT_ID — независимо
+# закреплённым числом, которое Карим положит из уже проверенного источника
+# (не производное от токена — иначе подмена токена подменила бы и ожидание).
+# Совпадения нет → профиль не делает вообще ни одного сетевого вызова.
+# После ответа — почтконтроль (from.id/from.is_bot/from.username, chat.id/
+# chat.type=private): расхождение защёлкивает профиль (_lk_blocked) навсегда
+# для этого процесса — без ретраев и без перехода на tg_call().
+_LK_EXPECTED_USERNAME = 'grusha_lk_bot'
+_lk_blocked = False
+
+
+def _lk_token():
+    return os.environ.get('STAND_LK_BOT_TOKEN', '').strip()
+
+
+def _lk_pinned_id():
+    raw = os.environ.get('STAND_LK_BOT_ID', '').strip()
+    if not re.fullmatch(r'[0-9]{1,20}', raw):
+        return None
+    value = int(raw)
+    return value if value > 0 else None
+
+
+def _lk_token_bot_id(token):
+    match = re.match(r'^([0-9]{1,20}):', token or '')
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if value > 0 else None
+
+
+def lk_configured():
+    return bool(_lk_token())
+
+
+def lk_preflight_ok():
+    """Сверка до сети: токен есть, id закреплён и совпадает с префиксом токена."""
+    if _lk_blocked:
+        return False
+    token = _lk_token()
+    pinned = _lk_pinned_id()
+    if not token or pinned is None:
+        return False
+    return _lk_token_bot_id(token) == pinned
+
+
+def lk_status():
+    if _lk_blocked:
+        return 'bot_identity_mismatch'
+    if not lk_configured():
+        return 'disabled'
+    if not lk_preflight_ok():
+        return 'bot_identity_mismatch'
+    return 'ready'
+
+
+def lk_call(payload, _base_url=None):
+    """Единственный путь для профиля lk_send_only — жёстко sendMessage.
+
+    `_base_url` — только для тестов (фейковый сервер на loopback), прод его
+    не передаёт и не читает из env.
+    """
+    import requests
+    global _lk_blocked
+
+    if not lk_preflight_ok():
+        return {'ok': False, 'error': 'no_token' if not lk_configured() else 'bot_identity_mismatch'}
+
+    token = _lk_token()
+    pinned = _lk_pinned_id()
+
+    payload = dict(payload or {})
+    chat_id = payload.get('chat_id')
+    if isinstance(chat_id, bool) or not isinstance(chat_id, int) or chat_id <= 0:
+        return {'ok': False, 'error': 'invalid_chat_id'}
+    if not can_send('telegram_lk', chat_id, 'sendMessage'):
+        return {'ok': False, 'error': 'denied'}
+
+    base = (_base_url or f'https://{_TG_HOST}').rstrip('/')
+    url = f'{base}/bot{token}/sendMessage'
+
+    _tg_ctx.active = True
+    _tg_ctx.allowed_pairs = set()
+    if _base_url:
+        parts = urlsplit(_base_url)
+        if parts.hostname and parts.port:
+            key = _loopback_key(parts.hostname) or parts.hostname.strip('[]').lower()
+            _tg_ctx.allowed_pairs.add((key, parts.port))
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        try:
+            resp = session.post(url, json=payload, timeout=10, allow_redirects=False, proxies={})
+            try:
+                data = resp.json()
+            except ValueError:
+                data = {}
+            if not isinstance(data, dict):
+                data = {}
+            result = data.get('result') if isinstance(data.get('result'), dict) else {}
+            sender = result.get('from') if isinstance(result.get('from'), dict) else {}
+            chat = result.get('chat') if isinstance(result.get('chat'), dict) else {}
+            valid = bool(
+                data.get('ok') and resp.status_code == 200
+                and sender.get('is_bot') is True
+                and sender.get('id') == pinned
+                and isinstance(sender.get('username'), str)
+                and sender.get('username').lower() == _LK_EXPECTED_USERNAME
+                and chat.get('id') == chat_id
+                and chat.get('type') == 'private'
+            )
+            if not valid:
+                _lk_blocked = True
+                print('[STAND-LK] bot_identity_mismatch')
+                return {'ok': False, 'error': 'bot_identity_mismatch'}
+            return {'ok': True, 'status_code': resp.status_code, 'result': result}
+        finally:
+            session.close()
+    except Exception:
+        # Текст исключения requests часто содержит сам URL (…/bot<TOKEN>/…) —
+        # ни его, ни оригинальное исключение никуда не отдаём и не логируем.
+        return {'ok': False, 'error': 'tg_network_error'}
+    finally:
+        _tg_ctx.active = False
+        _tg_ctx.allowed_pairs = set()
+
 
 def expected_bot_username():
     """Имя бота стенда; боевые имена нельзя разрешить через env."""
