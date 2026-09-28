@@ -569,6 +569,7 @@ a.hash:hover{background:#BAE6FD}
   <span class="build" title="Если тут старое время — страница из кэша, обновите Cmd+Shift+R">сборка 28.09 00:45 · вход и роли</span>
   <span id="roles"></span>
   <span id="bell"></span>
+  <span id="market"></span>
   <span class="spacer"></span>
   <span id="admintools"></span>
 </div>
@@ -806,6 +807,23 @@ function migrate(st){
   st.convs=st.convs||[]; st.cseq=st.cseq||0; st.cnv=st.cnv||null;
   if(!st.bal||typeof st.bal.ipps!=='number') st.bal=balInit();
   if(!Array.isArray(st.refs)||!st.refs.length) st.refs=refsInit();
+  /* Миграция: до этой правки ручные агенты («Создать реферера» прямо в задачнике)
+     имели такие же простые числовые id, как строки настоящей таблицы referrers —
+     после refsSync() совпадение id молча переадресовывало выплату чужому человеку
+     (QA перепроверка, FAIL №7). Разводим пространства один раз: ручным — 'm:<n>',
+     старые числовые id пробрасываем по всем местам, где они использовались. */
+  if(st.refs.some(r=>!r.prod&&typeof r.id==='number')){
+    const remap={};
+    let n=Math.max(0,...st.refs.filter(r=>typeof r.id==='string'&&r.id.indexOf('m:')===0)
+      .map(r=>Number(r.id.slice(2))||0));
+    st.refs.forEach(r=>{ if(!r.prod&&typeof r.id==='number'){ n++; remap[r.id]='m:'+n; r.id='m:'+n; } });
+    st.refs.forEach(r=>{ if(r.parentId!=null&&remap[r.parentId]!==undefined) r.parentId=remap[r.parentId]; });
+    st.deals.forEach(d=>{
+      if(d.refId!=null&&remap[d.refId]!==undefined) d.refId=remap[d.refId];
+      (d.agents||[]).forEach(a=>{ if(a.refId!=null&&remap[a.refId]!==undefined) a.refId=remap[a.refId]; });
+    });
+    (st.clients||[]).forEach(c=>{ if(c.refId!=null&&remap[c.refId]!==undefined) c.refId=remap[c.refId]; });
+  }
   if(!Array.isArray(st.clients)||!st.clients.length) st.clients=clientsInit();
   if(!Array.isArray(st.wallets)||!st.wallets.length) st.wallets=WALLETS.map(w=>Object.assign({},w));
   st.walletNew=!!st.walletNew;
@@ -851,15 +869,35 @@ function money(v,c){return (v==null||v==='')?'—':Number(v).toLocaleString('ru-
    как в калькуляторе. Раньше он был выдуман и «обновлялся» случайным числом, отсюда
    ложное «курс уехал на 4,31 %» (Карим, 25.09). Живёт у каждого в браузере, в общую
    доску не пишется. */
-const MARKET={rubThb:null,usdt:null,at:null};
+const MARKET={rubThb:null,usdt:null,at:null,blocked:false};
 async function fetchMarket(){
   try{const r=await fetch('/api/rates',{credentials:'same-origin'});const j=await r.json();
     if(j&&j.rub_usdt&&j.usdt_thb){MARKET.rubThb=Math.round(j.rub_usdt/j.usdt_thb*10000)/10000;
-      MARKET.usdt=Math.round(j.usdt_thb*10000)/10000;MARKET.at=Date.now();return true;}}catch(e){}
+      MARKET.usdt=Math.round(j.usdt_thb*10000)/10000;MARKET.at=Date.now();MARKET.blocked=false;return true;}
+    if(j&&j.error==='stand_blocked')MARKET.blocked=true;}catch(e){}
   return false;
 }
 function avgRate(){return MARKET.rubThb||(S.avg&&S.avg.v)||2.85;}      // ₽ за 1 ฿
 function avgUsdt(){return MARKET.usdt||(S.avgU&&S.avgU.v)||31.2;}    // ฿ за 1 USDT
+/* Курс дня для шага, где рынок недоступен: /api/rates на стенде выключен, а тихий
+   откат на числа 2,85 / 31,2 раньше подавался как настоящий курс, хотя это просто
+   заглушка. Здесь честно показываем источник и даём вписать курс руками — он живёт
+   в общей доске (S.avg/S.avgU), а не только в браузере (Карим, 27.09). */
+function rateSource(){return MARKET.rubThb?'рынок':((S.avg&&S.avg.v)?'вручную':'оценка по умолчанию — не курс дня');}
+function setManualRate(kind,raw){
+  const n=num(String(raw||'').replace(',','.'));
+  if(!n){toast('Введите число');return;}
+  if(kind==='rub')S.avg={v:n,at:now()};else S.avgU={v:n,at:now()};
+  save();render();toast('Курс сохранён вручную');
+}
+function marketWidget(){
+  if(MARKET.rubThb)return `<span class="chip" title="Обновлено ${new Date(MARKET.at).toLocaleTimeString('ru-RU')}">курс дня: рынок ${avgRate()} / ${avgUsdt()}</span>`;
+  return `<span class="chip" style="gap:6px" title="На стенде /api/rates выключено — впишите курс дня руками, иначе используется оценка по умолчанию, а не настоящий курс">
+    курс дня: ${rateSource()}
+    <input class="fc num" style="width:70px;display:inline-block" placeholder="₽/฿" value="${(S.avg&&S.avg.v)||''}" onchange="setManualRate('rub',this.value)">
+    <input class="fc num" style="width:70px;display:inline-block" placeholder="฿/USDT" value="${(S.avgU&&S.avgU.v)||''}" onchange="setManualRate('usdt',this.value)">
+  </span>`;
+}
 /* Валюта, в которой платит клиент. Крипта — это USDT, рублей в такой сделке нет
    вообще: ни курса RUB→USDT, ни поступления на Сбер, ни конвертации. */
 const SIGN={rub:'₽',usdt:'USDT',thb:'฿'};  // клиенту — USDT, а не «$»: для людей это разные деньги
@@ -1301,6 +1339,10 @@ async function standAction(path,payload){
     const r=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
     if(j.success){if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}return j;}
+    /* Проверка в сети (блокчейн-хеш) на стенде выключена сервером — вместо сырого
+       кода ошибки объясняем, что делать: подтверждать переводы через «Вебхук · демо»
+       или руками (Карим, 27.09). */
+    if(j.error==='stand_blocked'){toast('На стенде проверка в сети выключена — подтвердите через «Вебхук · демо» или вручную');return null;}
     toast(j.detail||j.error||'Не удалось проверить');return null;
   }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым');return null;}
   finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
@@ -1425,23 +1467,26 @@ function postConvSet(id,k){
 /* dirs — по каким направлениям у контрагента спрашивают курс: рубли → USDT или
    USDT → баты. PRO100TRADE из списка убран (Карим, 23.09). */
 const COUNTERPARTIES=[
-  /* Ссылки взяты из Telegram Карима (23.09). Публичные аккаунты открываются сразу
-     с вопросом; групповые чаты Telegram текстом не заполняет — там вопрос в буфере. */
+  /* На стенде переход в реальные чаты брокеров и Coins выключен (cpLink ниже всегда
+     возвращает null) — здесь для тех же контрагентов нет и самих боевых ссылок,
+     чтобы их не было даже в исходнике страницы (Карим, 27.09). */
   {id:'kripta', dirs:['rub'], lang:'ru', name:'Крипта-Платежи · Екатерина',
-    chat:'https://web.telegram.org/a/#-5095212604', note:'наценка к курсу ЦБ, считаем спред · чат «Крипта - Платежи»'},
+    chat:null, note:'наценка к курсу ЦБ, считаем спред · чат «Крипта - Платежи» — на стенде ссылка выключена'},
   {id:'asia',   dirs:['rub'], lang:'ru', name:'Asia Capital',
-    chat:'https://t.me/FinAsiaCapital', note:'личный чат — вопрос подставится сразу'},
+    chat:null, note:'личный чат — на стенде ссылка выключена'},
   {id:'tradex', dirs:['rub'], lang:'ru', name:'Tradex',
-    chat:'https://t.me/c/3984596268', note:'чат «Grusha (MF) | Tradex» · через него шли последние пачки'},
+    chat:null, note:'чат «Grusha (MF) | Tradex» · через него шли последние пачки — на стенде ссылка выключена'},
   {id:'coins',  dirs:['thb'], name:'Coins.co.th',
-    chat:'https://t.me/c/3720354321', note:'OTC-чат «OTC MF & coin (USD)» · выплаты только на счёт MF Corp'},
+    chat:null, note:'OTC-чат «OTC MF & coin (USD)» · выплаты только на счёт MF Corp — на стенде ссылка выключена'},
   {id:'bitazza',dirs:['thb'], name:'Bitazza',
-    chat:'https://t.me/bitazza_TH', note:'запасной, когда у Coins лимит'}
+    chat:null, note:'запасной, когда у Coins лимит — на стенде ссылка выключена'}
 ];
 /* Переход в калькулятор с уже проставленными курсами, суммой и типом сделки.
    Менеджеру остаётся поставить свой процент — переносить цифры руками не нужно
-   (Карим, 22.09). Открываем в новой вкладке, чтобы задача не терялась. */
-const CALC_URL='https://grusha.up.railway.app/';
+   (Карим, 22.09). Открываем в новой вкладке, чтобы задача не терялась.
+   Путь относительный — на стенде это тот же хост, что и задачник, прод сюда
+   не подставляем (Карим, 27.09). */
+const CALC_URL='/';
 function calcLink(d){
   const cat=dealKind(d)==='mf_freehold'?'property_freehold'
     :(dealKind(d)==='mf_realty'?'property_leasehold':'exchange');
@@ -1544,17 +1589,17 @@ function cpPrefill(c){
   const u=cpChat(c); if(!u) return false;
   return /^https?:\/\/t\.me\/(?!c\/|\+|joinchat)[A-Za-z0-9_]{4,}\/?$/i.test(u);
 }
-function cpLink(c,q){
-  const u=cpChat(c); if(!u) return null;
-  return cpPrefill(c)?(u.replace(/\/$/,'')+'?text='+encodeURIComponent(q)):u;
-}
+/* На стенде переход в чат контрагента выключен целиком, даже если чат привязан
+   вручную через cpChatSave: страница не должна открывать боевой Telegram
+   ни при каких обстоятельствах (Карим, 27.09). Вопрос всегда уходит в буфер. */
+function cpLink(c,q){ return null; }
 function cpChat(c){ return (S.cpChats&&S.cpChats[c.id])||c.chat||null; }
 function cpFind(id){ return cpById(id); }
 function cpAsk(dealId,id,q){
   const d=deal(dealId), c=cpById(id); if(!c)return;
-  log(d,'Курс запрошен у '+c.name+(cpPrefill(c)?' · вопрос подставлен в чат':' · вопрос в буфере'));
-  if(!cpPrefill(c)) copyAsk(q);
-  const u=cpLink(c,q); if(u) window.open(u,'_blank');
+  copyAsk(q);
+  log(d,'Курс запрошен у '+c.name+' · вопрос скопирован — на стенде ссылка на чат выключена');
+  toast('На стенде ссылка на чат выключена — вопрос скопирован в буфер');
   save();render();
 }
 /* Строка контрагента: готовый вопрос, копирование и переход в чат */
@@ -1736,7 +1781,7 @@ function cpRow(d,c,q){
     <div class="t2">«${q}»</div></div>
     <span class="t3" style="white-space:nowrap">
       <a href="#" style="color:var(--coral)" onclick="copyAsk(${JSON.stringify(q).replace(/"/g,'&quot;')});return false">копировать</a>
-      ${u?` · <a href="#" style="color:var(--green-darker)" onclick="cpAsk(${d.id},'${c.id}',${JSON.stringify(q).replace(/"/g,'&quot;')});return false">${cpPrefill(c)?'перейти с вопросом':'перейти'}</a>
+      ${u?` · <a href="#" style="color:var(--green-darker)" onclick="cpAsk(${d.id},'${c.id}',${JSON.stringify(q).replace(/"/g,'&quot;')});return false" title="На стенде чат не открывается — вопрос уходит в буфер">запросить (на стенде без перехода)</a>
           · <a href="#" style="color:var(--text-muted);font-size:12px" onclick="cpChatSet('${c.id}');return false">чат</a>`
          :` · <a href="#" style="color:var(--text-muted)" onclick="cpChatSet('${c.id}');return false">привязать чат</a>`}
       · <a href="#" style="color:var(--text-muted);font-size:12px" onclick="cpDel('${c.id}');return false">убрать</a>
@@ -1789,24 +1834,34 @@ const THAI_BANKS=['Kasikorn (KBank)','SCB','Bangkok Bank','Krungthai','TTB','Kru
    выглядело кашей: в списке партнёра появлялись чужие сделки с пометкой «вручную». */
 /* Рефереры — только те, кого завели руками («Создать реферера»), выдуманных нет */
 function refsInit(){return [];}
-/* Агенты — из прод-CRM (Карим, 25.09: «в тестовом стенде нет агентов, они должны быть
-   из прода»). Сервер стенда читает прод по ключу только на чтение и заводит их же в
-   CRM стенда, чтобы закрытие сделки нашло профиль. Свои агенты стенда не теряются. */
+/* Агенты — из базы стенда (Карим, 25.09: «в тестовом стенде нет агентов, они должны
+   быть из прода»). Раньше сервер стенда читал прод напрямую по read-only ключу
+   (/api/stand/prod-agents); T1 этот путь выключил (403 stand_blocked) — после заливки
+   прод-копии рефереры уже лежат в локальной таблице referrers, читать их наружу не
+   нужно (Карим/аудитор, 28.09). id теперь настоящий id из этой таблицы, а не
+   отдельный prodId — его и посылаем в crmPayload как referrer_id (см. crmPayload).
+   Свои агенты, заведённые прямо в задачнике («own», без записи в базе), остаются
+   и матчатся сервером по имени, как раньше. */
 async function refsSync(quiet){
   try{
-    const r=await fetch('/api/stand/prod-agents',{method:'POST',credentials:'same-origin'});
+    const r=await fetch('/api/referrers',{credentials:'same-origin'});
     const j=await r.json();
-    if(!j.success){if(!quiet)toast(j.error||'Не удалось взять агентов из прода');return false;}
-    const prod=j.agents.map(a=>({id:a.prodId,name:a.name,code:a.code,lang:a.lang,comp:a.comp,
-      percent:a.percent,cur:a.cur,tg:a.tg,active:a.active,token:'',parentId:null,l2:10,prod:true}));
+    if(!j.success){if(!quiet)toast(j.error||'Не удалось загрузить справочник рефереров');return false;}
+    const prod=(j.referrers||[]).filter(a=>{const n=(a.name||'').trim();return n&&!/^TEST/i.test(n);})
+      .map(a=>{const comp=a.comp_model||'revshare';
+        return {id:a.id,name:a.name.trim(),code:a.code||'',lang:a.lang||'ru',comp:comp,
+          percent:+((comp==='markup'?a.markup_percent:a.default_percent)||0),
+          cur:a.payout_currency||'USDT',tg:a.telegram||'',active:a.active!==false,
+          token:'',parentId:null,l2:10,prod:true};});
     const codes=new Set(prod.map(a=>a.code));
+    /* Ручные агенты — id вида 'm:<n>' (см. refAdd), с числовыми id из /api/referrers
+       им никогда не совпасть, переименовывать при коллизии больше не нужно. */
     const own=refs().filter(x=>!x.prod&&!codes.has(x.code));
-    const ids=new Set(prod.map(a=>a.id));
-    S.refs=prod.concat(own.map(x=>ids.has(x.id)?Object.assign({},x,{id:(Number(x.id)||0)+100000}):x));
+    S.refs=prod.concat(own);
     save();render();
-    if(!quiet)toast('Агенты из прода: '+prod.length);
+    if(!quiet)toast('Рефереры из базы стенда: '+prod.length);
     return true;
-  }catch(e){if(!quiet)toast('Прод не ответил — агенты не обновлены');return false;}
+  }catch(e){if(!quiet)toast('Справочник рефереров недоступен — агенты не обновлены');return false;}
 }
 function refFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return refs().slice(0,8);
@@ -1818,6 +1873,24 @@ function refs(){ if(!S.refs)S.refs=refsInit(); return S.refs; }
 function refBy(name){return refs().find(r=>r.name===name);}
 function refById(id){return refs().find(r=>r.id===id);}
 function refByCode(code){return refs().find(r=>r.code===code);}
+/* Приведение id реферера из значения <select>/<input> (всегда строка в DOM):
+   запись из настоящей таблицы referrers — число, ручной агент задачника —
+   строка 'm:<n>' (см. refAdd). Раньше везде звали голый Number(v)/parseInt(v),
+   и 'm:1' превращался в NaN — выбор ручного агента ломал сделку и черновик
+   (QA перепроверка, FAIL №6–7, 28.09). Одна функция на все места. */
+function refIdNorm(v){
+  if(v==null||v==='')return null;
+  const s=String(v);
+  return s.indexOf('m:')===0?s:(Number(s)||null);
+}
+/* Обратная сторона refIdNorm: подставить id реферера в onclick="fn(...)" так,
+   чтобы браузер получил ту же строку/число, что и refById() ждёт при поиске.
+   Голый ${r.id} в шаблоне работал, пока id был числом (JS-литерал сам собирался
+   верно); с 'm:<n>' то же самое стало синтаксической ошибкой в атрибуте —
+   onclick="refEdit(m:1)" не парсится (QA перепроверка, FAIL №6, 28.09). */
+function refIdLit(id){
+  return typeof id==='string'?("'"+id.split("'").join("\\'")+"'"):String(id);
+}
 /* Лид из Битрикса несёт реферальную метку: человек пришёл по ссылке партнёра,
    код записан в карточке. Из Telegram и WhatsApp человек пишет напрямую — метки нет,
    и «реферала нет» тут утверждать нельзя. Это два разных незнания. */
@@ -1933,7 +2006,7 @@ function dAgentTier(i,dir){const a=S.draft.agents[i];a.tier=Math.max(1,Math.min(
   S.draft.agentsMode=null;syncRef(S.draft);save();render();}
 function dAgentSet(i,k,v){
   const a=S.draft.agents[i];
-  if(k==='refId'){a.refId=v?Number(v):null;const r=refById(a.refId);
+  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
     if(r){a.name=r.name;if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0;a.touched=true;}
   syncRef(S.draft);save();render();
@@ -1949,7 +2022,7 @@ function agentTier(ctx,id,i,dir){const d=deal(id);const a=d.agents[i];
   a.tier=Math.max(1,Math.min(5,(a.tier||1)+dir));d.agentsMode=null;syncRef(d);save();render();}
 function agentSet(ctx,id,i,k,v){
   const d=deal(id),a=d.agents[i];
-  if(k==='refId'){a.refId=v?Number(v):null;const r=refById(a.refId);
+  if(k==='refId'){a.refId=refIdNorm(v);const r=refById(a.refId);
     if(r){a.name=r.name; if(!a.touched){a.comp=r.comp;a.percent=r.percent;a.fixed=r.comp==='fixed'?r.percent:0;}}}
   else {a[k]=(k==='comp')?v:Number(String(v).replace(',','.'))||0; a.touched=true;}
   syncRef(d);save();render();
@@ -2094,7 +2167,7 @@ function refEditSave(){
   const nm=val('rf_name'); if(!nm){toast('Нужно имя');return;}
   const data={name:nm,code:val('rf_code')||null,tg:val('rf_tg'),comp:val('rf_comp'),
     percent:Number(String(val('rf_pct')).replace(',','.'))||0,cur:val('rf_cur'),
-    parentId:val('rf_parent')?Number(val('rf_parent')):null,
+    parentId:refIdNorm(val('rf_parent')),
     l2:Number(String(val('rf_l2')).replace(',','.'))||0,lang:val('rf_lang'),active:val('rf_active')==='1'};
   if(isNew){const r=refAdd(data);toast('Создан: '+r.name);}
   else{const r=refById(S.refEdit);Object.assign(r,data);if(!r.code)r.code='GR-'+String(r.id).padStart(3,'0');toast('Сохранено');}
@@ -2748,7 +2821,7 @@ function render(){
      иначе один человек посреди прогона снесёт работу остальным. */
   const at=document.getElementById('admintools');
   if(at) at.innerHTML=canSwitchRole()
-    ? `<button class="ghost" onclick="refsSync()">Агенты из прода</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
+    ? `<button class="ghost" onclick="refsSync()">Рефереры из базы</button> <button class="ghost" onclick="resetAll()">Сбросить всё</button>` : '';
   document.getElementById('roles').innerHTML=canSwitch?Object.keys(ROLES).map(r=>{
     const c=myTasks(r).length;
     return `<button class="rolebtn ${S.role===r?'on':''}" onclick="setRole('${r}')">${ROLES[r].t}${c?`<span class="c">${c}</span>`:''}</button>`;
@@ -2775,6 +2848,7 @@ function render(){
     ['admins','🔐 Админы',0],
     ['analytics','Аналитика',0]];
   document.getElementById('bell').innerHTML=bellHtml();
+  document.getElementById('market').innerHTML=marketWidget();
   document.getElementById('tabs').innerHTML=tabs.map(([k,t,c])=>
     `<button class="nav-tab ${S.tab===k?'active':''}" onclick="setTab('${k}')">${t}${c?`<span class="cnt">${c}</span>`:''}</button>`).join('');
   const app=document.getElementById('app');
@@ -3449,9 +3523,16 @@ function draftRefNew(){
   D.refId=r.id;D.refKnown=true;D.refSrc='создан при заведении сделки';D.rq='';D.agents=agentsDefault(r.id);
   save();render();toast('Реферер создан: '+name+' — настройте модель в разделе «Рефералы»');
 }
+/* Ручные агенты стенда живут в отдельном пространстве id ('m:<n>') — числа
+   остаются только за настоящей таблицей referrers (id из /api/referrers).
+   Раньше оба вида имели простые числовые id, и после refsSync() чужой прод-агент
+   мог получить тот же id, что и ручной, — сделка тогда слала бы referrer_id
+   чужого человека под именем своего агента (QA перепроверка, FAIL №7). */
 function refAdd(o){
-  const id=Math.max(0,...refs().map(r=>r.id))+1;
-  const r={id:id,name:o.name||'Без имени',code:o.code||('GR-'+String(id).padStart(3,'0')),
+  const n=Math.max(0,...refs().filter(r=>typeof r.id==='string'&&r.id.indexOf('m:')===0)
+    .map(r=>Number(r.id.slice(2))||0))+1;
+  const id='m:'+n;
+  const r={id:id,name:o.name||'Без имени',code:o.code||('GR-M'+String(n).padStart(3,'0')),
     lang:o.lang||'ru',comp:o.comp||'revshare',percent:o.percent==null?10:o.percent,
     cur:o.cur||'USDT',tg:o.tg||'',active:o.active!==false,
     token:Math.random().toString(16).slice(2,8),parentId:o.parentId||null,l2:o.l2==null?10:o.l2};
@@ -3506,7 +3587,7 @@ function draftRefSel(v){
   const D=S.draft;D.rq='';
   if(v==='unknown'){D.agents=[];D.selfCame=false;}
   else if(v==='self'){D.agents=[];D.selfCame=true;}
-  else {D.agents=agentsDefault(Number(v));D.selfCame=false;D.refSrc='выбрал менеджер';}
+  else {D.agents=agentsDefault(refIdNorm(v));D.selfCame=false;D.refSrc='выбрал менеджер';}
   syncRef(D);save();render();
 }
 function draftSet(k,v,silent){
@@ -4023,10 +4104,19 @@ function crmPayload(d){
     notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
-       Справочник агентов стенда живёт в задачнике, поэтому id не шлём — CRM
-       привяжет профиль по точному имени, если он у неё есть. */
-    agents:(d.agents||[]).map(a=>({name:a.name,tier:a.tier||1,comp_model:a.comp||'revshare',
-      percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0}))};
+       referrer_id шлём только для агентов из настоящей таблицы referrers (refsSync,
+       a.prod===true) И только если имя агента в сделке всё ещё совпадает с именем
+       этой записи — refId в сделке мог остаться от давнего refsSync, а под тем же
+       id в базе давно другой человек (QA перепроверка, FAIL №7). Не совпало —
+       id не шлём вовсе, сервер сам поищет по точному имени (аудитор, 28.09: имена
+       бывают неуникальны, id надёжнее, но выдумывать чужой id нельзя). */
+    agents:(d.agents||[]).map(a=>{
+      const src=(a.refId!=null)?refById(a.refId):null;
+      const nameOk=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
+      return {referrer_id:(src&&src.prod&&nameOk)?src.id:undefined,name:a.name,tier:a.tier||1,
+        comp_model:a.comp||'revshare',
+        percent:a.comp==='fixed'?0:(+a.percent||0),fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
+    })};
   const mf=hx(mfList(d).map(t=>({hash:t.hash,network:t.net,amount:t.amount})));
   const buy=num(d.rates.usdtThb);
   if(prop&&d.kind!=='Фрихолд'){
@@ -4190,15 +4280,30 @@ async function crmPushClose(id){
   const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
   if(!d.pay.invoicePaid&&d.type==='Оплата недвижимости'){toast('Нужна оплата инвойса и чек');return;}
   const body=crmPayloadFinal(d), edits=crmEditDiff(d);
+  const url=d.crmDealId?'/api/deals/'+d.crmDealId:'/api/deals', method=d.crmDealId?'PUT':'POST';
   try{
-    const r=await fetch(d.crmDealId?'/api/deals/'+d.crmDealId:'/api/deals',{method:d.crmDealId?'PUT':'POST',
-      credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const j=await r.json();
+    let r=await fetch(url,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    let j=await r.json();
+    /* Прод-код (d2a8ec6): если расход выплаты выше того, что реально ушло в сети,
+       CRM не закрывает сделку молча — просит подтверждение человека. Повторяем тот же
+       запрос с confirm_payout_tx_overage:true, отказ — ничего не закрываем (Карим, 27.09). */
+    if(r.status===409&&j.requires_confirmation){
+      const ok=confirm((j.warning||'Расход по выплате выше доступного остатка перевода.')+
+        '\n\nЭта сумма будет учтена как есть, хотя превышает подтверждённый on-chain перевод. Закрыть сделку?');
+      if(!ok){toast('Закрытие отменено — сделка не изменена');return;}
+      body.confirm_payout_tx_overage=true;
+      r=await fetch(url,{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      j=await r.json();
+    }
     if(!j.success){toast('CRM не приняла сделку: '+(j.error||r.status));log(d,'CRM отказала: '+(j.error||r.status));save();render();return;}
     const cd=j.deal||{};
     d.crmDealId=cd.id||d.crmDealId; d.crmAt=now();
     if(edits.length) log(d,'Перед внесением в CRM поправлено: '+edits.join('; '));
     log(d,'Внесена в CRM: сделка #'+d.crmDealId+' · статус «завершена»'+(cd.net_profit_usdt!=null?' · прибыль по CRM '+usd(cd.net_profit_usdt):''));
+    /* Успех после подтверждённого превышения тоже приходит с предупреждением
+       (тот же j.warning, что при 409) — CRM (crm.html) его показывает, задачник
+       раньше молчал. Цифру нужно перепроверить, поэтому тост держим дольше (QA FAIL №4). */
+    if(j.warning){toast(j.warning);log(d,'Предупреждение CRM: '+j.warning);}
     closeDeal(d,'Успешно завершена');
   }catch(e){toast('CRM недоступна — сделка не закрыта');}
 }
@@ -5241,7 +5346,16 @@ async function docParse(id,quiet){
     const r=await fetch('/api/docs/parse',{method:'POST',credentials:'same-origin',body:fd});
     const j=await r.json();
     const dd=deal(id);
-    if(!j.success){dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
+    if(!j.success){
+      /* На стенде распознавание документов выключено сервером (403 stand_blocked) —
+         паспорт и инвойс не уходят в OpenRouter. Показываем честную причину, а не
+         сырой код ошибки, и просим заполнить поля договора руками (Карим, 27.09). */
+      if(j.error==='stand_blocked'){
+        dd.docParseState='на стенде выключено';save();render();
+        if(!quiet)toast('На стенде распознавание документов выключено — заполните поля договора руками');
+        return;
+      }
+      dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
     dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file),at:now()};
     dd.docParseState='готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
@@ -5265,9 +5379,10 @@ function docParseLine(d){
   const got=Object.keys(P).length;
   return `<div class="derived" style="margin-top:14px">
     <span>${st==='идёт'?'Распознаём документы…'
+      :(st==='на стенде выключено'?'На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.'
       :(got?`Из документов распознано: <b>${[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ')||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`
-      :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.'))}</span>
-    <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
+      :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.')))}</span>
+    ${st==='на стенде выключено'?'':`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button>`}</div>`;
 }
 function filesOf(d,k){
   d.files=d.files||{};
@@ -7365,10 +7480,10 @@ function viewRefs(){
       <span style="font-size:12px;color:var(--text-muted)">${r.lang==='en'?'EN':'RU'}</span>
       ${r.active?'':'<span class="badge b-wait">неактивен</span>'}</span>
       <span>
-        <button class="btn btn-outline btn-sm" onclick="refEdit(${r.id})">Изм.</button>
-        <button class="btn btn-outline btn-sm" onclick="refDeals(${r.id})">${S.refOpen===r.id?'Скрыть сделки':'Сделки ('+st.deals+')'}</button>
-        <button class="btn btn-outline btn-sm" onclick="refToggle(${r.id})">${r.active?'Откл.':'Вкл.'}</button>
-        ${st.pending>0?`<button class="btn btn-success btn-sm" onclick="refPay(${r.id})">Выплатить ${usd(st.pending)}</button>`:''}
+        <button class="btn btn-outline btn-sm" onclick="refEdit(${refIdLit(r.id)})">Изм.</button>
+        <button class="btn btn-outline btn-sm" onclick="refDeals(${refIdLit(r.id)})">${S.refOpen===r.id?'Скрыть сделки':'Сделки ('+st.deals+')'}</button>
+        <button class="btn btn-outline btn-sm" onclick="refToggle(${refIdLit(r.id)})">${r.active?'Откл.':'Вкл.'}</button>
+        ${st.pending>0?`<button class="btn btn-success btn-sm" onclick="refPay(${refIdLit(r.id)})">Выплатить ${usd(st.pending)}</button>`:''}
       </span></div>
     <p style="font-size:13.5px;color:var(--navy-600)">${model(r)} · выплата ${r.cur} · клиентов ${st.clients} · сделок ${st.deals}${r.tg?' · TG '+r.tg:''}</p>
     ${r.parentId?`<p style="font-size:13px;color:var(--navy-600);margin-top:4px">Его привёл <b>${(refById(r.parentId)||{}).name}</b> — ему уходит ${r.l2==null?10:r.l2}% с вознаграждения этого партнёра</p>`:''}
@@ -7380,9 +7495,9 @@ function viewRefs(){
       <span style="font-size:13.5px">Выплачено: <b class="pos">${usd(st.paid)}</b></span>
     </div>
     <div class="row" style="margin-top:10px">
-      ${link('grusha.space/?ref='+r.code,'Ссылка на сайт')}
-      ${link('t.me/Grushath_bot?start='+r.code,'Ссылка на бота')}
-      ${link('grusha.space/ref/'+r.token,'Кабинет со статистикой')}
+      ${link(location.host+'/?ref='+r.code,'Ссылка на сайт (стенд)')}
+      ${link('на стенде выключено — боевой бот','Ссылка на бота')}
+      ${link(location.host+'/ref/'+r.token,'Кабинет со статистикой (стенд)')}
     </div>
     ${S.refOpen===r.id?`<div class="list" style="margin-top:12px">
       ${st.rows.length?st.rows.map(x=>`<div class="li" onclick="openDeal(${x.deal.id})">

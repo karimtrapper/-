@@ -7215,6 +7215,24 @@ def _apply_deal_agents(session, deal, agents_data):
     computed, net = compute_agent_cascade(profit_base, volume,
                                           [dict(a) for a in agents_data],
                                           crypto_base_usdt=crypto_base)
+    # Стенд: клиент задачника присылает referrer_id из своего справочника, а рядом —
+    # id, придуманные им же для агентов без записи в базе (задачник не показывает эти
+    # id прод-CRM). Совпадение чужого id с чужим агентом молча привязало бы выплату не
+    # тому человеку (QA FAIL №8, 28.09). Прод шлёт referrer_id только из настоящей
+    # CRM — там имя и id всегда согласованы, поэтому эту проверку включаем только
+    # на стенде, чтобы не менять поведение прода.
+    if STAND_MODE:
+        with_id = [a for a in computed if a.get('referrer_id') and (a.get('name') or '').strip()]
+        if with_id:
+            real_names = dict(session.query(Referrer.id, Referrer.name)
+                               .filter(Referrer.id.in_({a['referrer_id'] for a in with_id})).all())
+            for a in with_id:
+                real = (real_names.get(a['referrer_id']) or '').strip().lower()
+                given = (a.get('name') or '').strip().lower()
+                if real and given and real != given:
+                    app.logger.info('[stand] agent referrer_id/name mismatch — идём по имени')
+                    a['referrer_id'] = None
+
     # Обратный случай: прислали только имя без referrer_id — связь с профилем
     # терялась молча, и сделка исчезала из кабинета партнёра (он видит свои
     # сделки по deal_agents.referrer_id). Находим по точному имени; если тёзок
@@ -18094,7 +18112,13 @@ def health_check():
         'success': True, 'status': 'ok',
         'service': 'CalcCRM Unified Service',
         'database': 'postgresql' if 'postgresql' in DATABASE_URL else 'sqlite',
-        'timestamp': datetime.now().isoformat()
+        'timestamp': datetime.now().isoformat(),
+        # Публичный и уже нужный анонимным страницам (кабинет реферала) признак
+        # стенда — тот же флаг, что и в /api/auth/me. Без него у referrer/index.html
+        # не было способа узнать, что она на стенде, и отключить вход через боевого
+        # бота, даже если конкретный ответ /api/ref/.../tg-start вдруг вернёт его
+        # (QA FAIL №8, Карим 28.09).
+        'stand': STAND_MODE,
     })
 
 # ==================== STATIC FILES ====================
