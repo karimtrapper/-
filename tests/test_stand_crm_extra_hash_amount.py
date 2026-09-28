@@ -196,3 +196,74 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
         server.shutdown()
         thread.join(timeout=5)
         server.server_close()
+
+
+@pytest.mark.parametrize('variant', ['main_extra', 'extra_extra', 'distinct'])
+def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
+    """Real PUT/close: one raw receipt must not fund multiple allocated parts."""
+    uid = _setup(monkeypatch)
+    port, server = _server()
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
+    headers = {'Cookie': 'session=' + cookie}
+    base = f'http://127.0.0.1:{port}/api/stand'
+    first_hash = MAIN_HASH if variant == 'main_extra' else EXTRA_HASH
+    extra_specs = [(first_hash, 10)]
+    if variant != 'main_extra':
+        extra_specs.append((EXTRA_HASH if variant == 'extra_extra' else 'c' * 64, 20))
+    board_extras = [
+        {'method': 'crypto_direct', 'amount_usdt': amount,
+         'tx_hashes': [{'hash': hash_value, 'network': 'TRC20', 'amount_usdt': amount}]}
+        for hash_value, amount in extra_specs]
+    crm_extras = [
+        {'method': 'crypto_direct', 'amount_usdt': amount,
+         'tx_hashes': [{'hash': hash_value, 'network': 'trc20', 'amount_usdt': amount}]}
+        for hash_value, amount in extra_specs]
+    board = {'deals': [{
+        'id': 1482, 'code': 'СД-1482', 'client': 'T24 duplicate probe',
+        'type': 'Обмен валюты', 'manual': True, 'manualNew': False,
+        'step': 'manual', 'closed': False, 'crmDealId': None,
+        'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],
+        'payType': 'Крипта', 'paySrc': 'cash', 'amountUsdt': 100,
+        'payinHashes': [{'hash': MAIN_HASH, 'amount': 100, 'network': 'TRC20'}],
+        'payinExtra': board_extras, 'payout': {'usdt': 90, 'thb': 3000}, 'pay': {},
+    }], 'notes': []}
+    crm = {'deal_kind': 'exchange', 'client_name': 'T24 duplicate probe',
+           'manager_name': 'T24 manager', 'payin_method': 'crypto_direct',
+           'payin_amount_usdt': 100,
+           'payin_tx_hashes': [{'hash': MAIN_HASH, 'network': 'trc20',
+                                'amount_usdt': 100}],
+           'payin_extra': crm_extras, 'payout_method': 'transfer',
+           'payout_source': 'cash_batch', 'payout_amount_usdt': 90,
+           'payout_amount_thb': 3000}
+    try:
+        with requests.Session() as transport:
+            created = transport.put(base + '/state', headers=headers,
+                                    json={'version': 1, 'data': board}, timeout=10)
+            assert created.status_code == 200, created.text
+            version = created.json()['version']
+            saved_board = created.json()['data']['deals'][0]
+            assert saved_board['payinExtra'] == board_extras
+            before = _counts()
+            response = transport.post(base + '/deals/1482/crm-close', headers=headers,
+                                      json={'version': version, 'crm': crm}, timeout=10)
+            state = transport.get(base + '/state', headers=headers, timeout=10).json()
+            after = _counts()
+            print('EXTRA_RAW_HASH_PROBE', variant, response.status_code,
+                  response.json().get('error'), before, after, version,
+                  state['version'], state['data']['deals'][0]['crmDealId'])
+            if variant == 'distinct':
+                assert response.status_code == 201, response.text
+                assert after == (before[0] + 1, before[1] + 1)
+                assert state['data']['deals'][0]['crmDealId'] == response.json()['deal']['id']
+            else:
+                assert response.status_code == 409, response.text
+                assert response.json()['error'] == 'payin_extra_duplicate_hash'
+                assert after == before
+                assert state['version'] == version
+                assert state['data']['deals'][0] == saved_board
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
