@@ -221,6 +221,7 @@ _STAND_CHANNEL_ERRORS = {
     'http_429': 'TronScan/Etherscan HTTP 429 — лимит запросов',
     'http_5xx': 'TronScan/Etherscan HTTP 5xx',
     'http_4xx': 'TronScan/Etherscan HTTP 4xx',
+    'erc20_disabled_on_stand': 'На стенде проверка ERC-20 выключена',
 }
 
 

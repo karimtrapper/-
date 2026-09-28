@@ -185,6 +185,10 @@ def test_multi_value_param_rejected():
 
 
 def test_eth_chainid_only_mainnet_allowed():
+    # eth_* на стенде теперь блокируются на уровне канала до всякой валидации
+    # параметров (решение Карима — см. секцию ниже) — сам валидатор всё ещё
+    # часть спецификации op (на случай возврата ERC-20), проверяем его вне
+    # STAND_MODE, где канал ещё доходит до этой стадии.
     result, proc = run_script(_fake_get_server_script() + '''
         import stand_egress
         stand_egress.install()
@@ -192,7 +196,7 @@ def test_eth_chainid_only_mainnet_allowed():
             'chainid': '56', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
             'txhash': '0x' + 'a' * 64}, _base_url=_base)
         OUT({'err': err, 'hits': len(FakeChain.hits)})
-    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'fake-key'})
+    ''', stand_mode='0', extra_env={'STAND_ETHERSCAN_API_KEY': 'fake-key'})
     assert proc.returncode == 0, proc.stderr
     assert result == {'err': 'invalid_param', 'hits': 0}
 
@@ -205,7 +209,7 @@ def test_eth_block_tag_must_be_hex():
             'chainid': '1', 'module': 'proxy', 'action': 'eth_getBlockByNumber',
             'tag': 'latest; DROP TABLE', 'boolean': 'false'}, _base_url=_base)
         OUT({'err': err, 'hits': len(FakeChain.hits)})
-    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'fake-key'})
+    ''', stand_mode='0', extra_env={'STAND_ETHERSCAN_API_KEY': 'fake-key'})
     assert proc.returncode == 0, proc.stderr
     assert result == {'err': 'invalid_param', 'hits': 0}
 
@@ -271,6 +275,8 @@ def test_tron_tx_info_adds_key_header_when_configured():
 
 
 def test_eth_receipt_without_stand_key_never_touches_network():
+    # Вне STAND_MODE (см. секцию ниже про блок на уровне канала) — no_key
+    # по-прежнему валидная причина отказа до сети сама по себе.
     result, proc = run_script(_fake_get_server_script() + '''
         import stand_egress
         stand_egress.install()
@@ -278,7 +284,7 @@ def test_eth_receipt_without_stand_key_never_touches_network():
             'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
             'txhash': '0x' + 'a' * 64}, _base_url=_base)
         OUT({'err': err, 'hits': len(FakeChain.hits)})
-    ''', extra_env={'STAND_ETHERSCAN_API_KEY': None})
+    ''', stand_mode='0', extra_env={'STAND_ETHERSCAN_API_KEY': None})
     assert proc.returncode == 0, proc.stderr
     assert result == {'err': 'no_key', 'hits': 0}
 
@@ -292,7 +298,7 @@ def test_eth_receipt_key_goes_only_as_apikey_query_param():
             'txhash': '0x' + 'a' * 64}, _base_url=_base)
         hit = FakeChain.hits[0]
         OUT({'apikey': hit['query'].get('apikey'), 'has_auth_header': 'Authorization' in hit['headers']})
-    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-eth-key'})
+    ''', stand_mode='0', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-eth-key'})
     assert proc.returncode == 0, proc.stderr
     assert result['apikey'] == ['stand-eth-key']
     assert result['has_auth_header'] is False
@@ -1526,3 +1532,34 @@ def test_continuous_drip_still_respects_deadline_not_full_body():
     assert proc.returncode == 0, proc.stderr
     assert result['result'] == [None, None, 'read_timeout']
     assert result['elapsed'] <= 0.5, f"должен завершиться у дедлайна, не ждать полную передачу (~4с): {result['elapsed']}"
+
+
+# ── Решение Карима: канал сам блокирует eth_* при STAND_MODE, до транспорта ─
+
+def test_read_get_blocks_eth_ops_at_channel_level_on_stand_no_network():
+    result, proc = run_script(_fake_get_server_script() + '''
+        _, _, err_receipt = stand_egress.read_get('eth_tx_receipt', {
+            'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
+            'txhash': '0x' + 'a' * 64}, _base_url=_base)
+        _, _, err_block = stand_egress.read_get('eth_block_by_number', {
+            'chainid': '1', 'module': 'proxy', 'action': 'eth_getBlockByNumber',
+            'tag': '0x1', 'boolean': 'false'}, _base_url=_base)
+        OUT({'err_receipt': err_receipt, 'err_block': err_block, 'hits': len(FakeChain.hits)})
+    ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err_receipt': 'erc20_disabled_on_stand',
+                      'err_block': 'erc20_disabled_on_stand', 'hits': 0}
+
+
+def test_read_get_eth_ops_work_normally_outside_stand_mode():
+    """Прод read_get не использует, но канал сам по себе не должен менять
+    поведение вне STAND_MODE — negative control."""
+    result, proc = run_script(_fake_get_server_script() + '''
+        _, _, err = stand_egress.read_get('eth_tx_receipt', {
+            'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
+            'txhash': '0x' + 'a' * 64}, _base_url=_base)
+        OUT({'err': err, 'hits': len(FakeChain.hits)})
+    ''', stand_mode='0', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['err'] is None
+    assert result['hits'] == 1
