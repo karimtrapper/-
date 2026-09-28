@@ -3,7 +3,7 @@ Unified Service: Calculator + CRM
 Объединённый сервис калькулятора и CRM для Railway
 """
 
-from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session
+from flask import Flask, jsonify, request, send_from_directory, send_file, redirect, session as flask_session, g
 from flask_cors import CORS
 from datetime import datetime, timedelta, date
 import os
@@ -189,11 +189,13 @@ def check_auth():
         if path in login_paths:
             return None
         uid = flask_session.get('user_id')
+        docparse_role = None
         if uid:
             db = get_session()
             try:
                 user = db.query(AdminUser).get(uid)
                 valid = bool(user and not user.login_disabled)
+                docparse_role = user.role if valid else None
             finally:
                 db.close()
             if not valid:
@@ -203,6 +205,12 @@ def check_auth():
             if path.startswith('/api/'):
                 return jsonify({'success': False, 'error': 'unauthorized'}), 401
             return redirect('/login')
+        if path == '/api/docs/parse' and request.method == 'POST':
+            if docparse_role not in STAND_ROLES:
+                return jsonify({'success': False, 'error': 'forbidden'}), 403
+            # Set only after the server has rechecked the active employee in DB.
+            # A caller-created Flask request context alone cannot authorize OCR.
+            g._docparse_checked_user = uid
         blocked = (path in {'/api/auth/tg-start', '/api/auth/tg-poll',
                             '/api/auth/tg-login', '/api/auth/tg-config',
                             '/api/sber-incomes/ingest'}
@@ -18645,6 +18653,14 @@ def _docs_collect_uploads():
     return uploads
 
 
+@app.route('/api/docs/parse/capability', methods=['GET'])
+def docs_parse_capability():
+    """Authenticated availability check; no document, token or provider call."""
+    if not STAND_MODE:
+        return jsonify({'error': 'not_found'}), 404
+    return jsonify({'available': bool(_docs_openrouter_key())})
+
+
 @app.route('/api/docs/parse', methods=['POST'])
 def docs_parse():
     """Загруженные файлы → распознанные поля + провенанс + конфликты.
@@ -18652,6 +18668,8 @@ def docs_parse():
     Ничего не сохраняет: менеджер сначала подтверждает данные, и только потом
     создаётся договор. Файлы приезжают повторно на шаге создания.
     """
+    if STAND_MODE:
+        g._docparse_started = time.monotonic()
     key = _docs_openrouter_key()
     if STAND_MODE and not key:
         return jsonify({'success': False, 'error': 'stand_blocked',

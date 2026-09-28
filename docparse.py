@@ -223,13 +223,20 @@ def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150,
     import pymupdf  # noqa: PLC0415 — тяжёлый импорт, только для PDF
     out = []
     with pymupdf.open(stream=data, filetype='pdf') as doc:
-        for page in list(doc)[:max_pages]:
+        for page_no in range(min(len(doc), max_pages)):
+            if stand:
+                import stand_egress
+                if stand_egress.docparse_remaining() <= 0:
+                    raise StandDocparseError('timeout')
+            page = doc[page_no]
             if stand:
                 rect = page.rect
                 px_w, px_h = rect.width * dpi / 72.0, rect.height * dpi / 72.0
                 if px_w * px_h > STAND_MAX_PIXELS:
                     raise StandDocparseError('too_large')
             out.append(page.get_pixmap(dpi=dpi).tobytes('png'))
+            if stand and stand_egress.docparse_remaining() <= 0:
+                raise StandDocparseError('timeout')
     return out
 
 
@@ -393,6 +400,11 @@ def parse_file(filename: str, data: bytes, mime: str, api_key: str,
     умолчанию, прод-путь) — поведение не меняется вовсе.
     """
     if stand:
+        import stand_egress
+        if not stand_egress.docparse_request_authorized():
+            raise StandDocparseError('no_request_context')
+        if stand_egress.docparse_remaining() <= 0:
+            raise StandDocparseError('timeout')
         kind_sniffed = _sniff_kind(data)
         if kind_sniffed not in STAND_ALLOWED_KINDS:
             raise StandDocparseError('bad_file_type')
@@ -405,8 +417,12 @@ def parse_file(filename: str, data: bytes, mime: str, api_key: str,
     last_code = 'parse_failed'
     models_to_try = [model or DEFAULT_MODEL] + (STAND_FALLBACK_MODELS if stand else FALLBACK_MODELS)
     for m in models_to_try:
+        if stand and stand_egress.docparse_remaining() <= 0:
+            last_code = 'timeout'
+            break
         try:
-            res = _call(m, images, api_key, kind=kind, stand=stand)
+            attempt_timeout = stand_egress.docparse_remaining() if stand else 180
+            res = _call(m, images, api_key, timeout=attempt_timeout, kind=kind, stand=stand)
             res['_model'] = m
             # На стенде провенанс не должен нести имя файла (может содержать
             # ПДн/имя клиента) — только тип слота (QA-обзор, п.14).

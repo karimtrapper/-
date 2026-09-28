@@ -69,6 +69,52 @@ def test_parse_requires_session(monkeypatch):
     assert r.status_code == 401
 
 
+def test_capability_reports_current_key_without_provider_call(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, 'docparse_post',
+                        lambda *a, **k: pytest.fail('capability must not send a document'))
+    monkeypatch.delenv('STAND_DOCPARSE_KEY', raising=False)
+    assert stand.get('/api/docs/parse/capability').get_json() == {'available': False}
+    monkeypatch.setenv('STAND_DOCPARSE_KEY', 'fake-stand-docparse-key')
+    assert stand.get('/api/docs/parse/capability').get_json() == {'available': True}
+    with appmod.app.test_client() as anonymous:
+        assert anonymous.get('/api/docs/parse/capability').status_code == 401
+
+
+def test_disabled_or_unknown_role_employee_cannot_parse(stand, monkeypatch):
+    monkeypatch.setattr(stand_egress, 'docparse_post',
+                        lambda *a, **k: pytest.fail('invalid employee must not reach transport'))
+    with stand.session_transaction() as sess:
+        uid = sess['user_id']
+    def change_user(*, disabled, role=None):
+        db = appmod.get_session()
+        try:
+            user = db.query(appmod.AdminUser).get(uid)
+            user.login_disabled = disabled
+            if role is not None:
+                user.role = role
+            db.commit()
+        finally:
+            db.close()
+    db = appmod.get_session()
+    try:
+        original_role = db.query(appmod.AdminUser).get(uid).role
+    finally:
+        db.close()
+    try:
+        change_user(disabled=True)
+        response = stand.post('/api/docs/parse', data={
+            'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')}, content_type='multipart/form-data')
+        assert response.status_code == 401
+        change_user(disabled=False, role='unknown')
+        with stand.session_transaction() as sess:
+            sess['user_id'] = uid
+        response = stand.post('/api/docs/parse', data={
+            'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')}, content_type='multipart/form-data')
+        assert response.status_code == 403
+    finally:
+        change_user(disabled=False, role=original_role)
+
+
 def test_successful_parse_goes_through_docparse_post_only(stand, monkeypatch):
     calls = []
 

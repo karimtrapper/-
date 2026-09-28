@@ -74,6 +74,34 @@ def run_script(body, stand_mode='1', extra_env=None, timeout=30):
         os.environ.setdefault('DATABASE_URL', 'sqlite:///' + _workdir + '/test.db')
         def OUT(d):
             print(json.dumps(d, default=str))
+        def authorized_post(payload, **kwargs):
+            # Exercise the closed transport inside an actual authenticated Flask
+            # request. Calling docparse_post directly must remain denied.
+            import app as appmod, stand_egress
+            db = appmod.get_session()
+            try:
+                user = appmod.AdminUser(username='transport_test', role='operator',
+                                        password_hash='unused', login_disabled=False)
+                db.add(user); db.commit(); uid = user.id
+            finally:
+                db.close()
+            original = appmod.app.view_functions['docs_parse']
+            def transport_view():
+                with stand_egress.docparse_request_scope():
+                    started = __import__('time').monotonic()
+                    result = stand_egress.docparse_post(payload, **kwargs)
+                    authorized_post.last_elapsed = __import__('time').monotonic() - started
+                return appmod.jsonify({{'result': result}})
+            appmod.app.view_functions['docs_parse'] = transport_view
+            try:
+                with appmod.app.test_client() as client:
+                    with client.session_transaction() as sess:
+                        sess['user_id'] = uid
+                    response = client.post('/api/docs/parse')
+                    assert response.status_code == 200, response.get_data(as_text=True)
+                    return tuple(response.get_json()['result'])
+            finally:
+                appmod.app.view_functions['docs_parse'] = original
     ''')
     script = preamble + '\n' + textwrap.dedent(body)
     proc = subprocess.run([sys.executable, '-c', script], env=env,
@@ -1302,6 +1330,25 @@ def test_tg_ctx_allowed_pairs_do_not_leak_between_calls_same_thread():
 
 # ─────────────────────── docparse_post / OpenRouter (T15) ──────────────────
 
+def test_docparse_public_scope_cannot_authorize_background_transport():
+    result, proc = run_script('''
+        import threading, stand_egress, docparse
+        stand_egress.install()
+        payload = {'model': docparse.DEFAULT_MODEL,
+                   'messages': [{'role': 'user', 'content': [{'type': 'text', 'text': 'hi'}]}],
+                   'response_format': {'type': 'json_schema',
+                       'json_schema': {'name': 'doc', 'strict': True, 'schema': docparse._schema()}}}
+        out = []
+        def background():
+            with stand_egress.docparse_request_scope():
+                out.append(stand_egress.docparse_post(payload))
+        thread = threading.Thread(target=background)
+        thread.start(); thread.join()
+        OUT({'error': out[0][2], 'direct_error': stand_egress.docparse_post(payload)[2]})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'error': 'no_request_context', 'direct_error': 'no_request_context'}
+
 def _valid_docparse_payload_script():
     """Собирает ровно тот payload, что строит docparse.py::_call, — не
     придуманный тестом формат."""
@@ -1360,7 +1407,7 @@ def test_docparse_post_reaches_fake_openrouter_with_exact_path_and_bearer_key():
         stand_egress.install()
         stand_egress.allow_test_target('127.0.0.1', _or_port)
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
         OUT({'status': status, 'err': err, 'ok': data == {'choices': [{'message': {'content': '{}'}}]},
              'hits': len(FakeOR.requests), 'path': FakeOR.requests[-1]['path'],
@@ -1383,7 +1430,7 @@ def test_docparse_post_uses_stand_key_never_openrouter_api_key():
         stand_egress.install()
         stand_egress.allow_test_target('127.0.0.1', _or_port)
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
         OUT({'auth': FakeOR.requests[-1]['auth']})
     ''')
@@ -1397,7 +1444,7 @@ def test_docparse_post_no_key_no_network():
         import stand_egress
         stand_egress.install()
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
         OUT({'status': status, 'err': err, 'hits': len(FakeOR.requests)})
     ''', extra_env={'STAND_DOCPARSE_KEY': None})
@@ -1422,7 +1469,7 @@ def test_docparse_post_rejects_payload_outside_fixed_schema_no_network(mutation)
         stand_egress.install()
         {mutation}
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{{_or_port}}')
         OUT({{'status': status, 'err': err, 'hits': len(FakeOR.requests)}})
     ''')
@@ -1456,7 +1503,7 @@ def test_docparse_post_redirect_not_followed():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        status, data, err = authorized_post(payload, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err, 'hits': Redir.hits})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1488,7 +1535,7 @@ def test_docparse_post_timeout_returns_controlled_error():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
+        status, data, err = authorized_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1505,7 +1552,7 @@ def test_docparse_post_network_error_when_server_unreachable():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, _base_url='http://127.0.0.1:1')
+        status, data, err = authorized_post(payload, _base_url='http://127.0.0.1:1')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1542,9 +1589,9 @@ def test_docparse_post_drip_response_bounded_by_total_deadline_not_by_full_drip(
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        t0 = time.monotonic()
-        status, data, err = stand_egress.docparse_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
-        OUT({'status': status, 'data': data, 'err': err, 'elapsed': round(time.monotonic() - t0, 1)})
+        import app  # route/bootstrap happens before the measured HTTP operation
+        status, data, err = authorized_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err, 'elapsed': round(authorized_post.last_elapsed, 1)})
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result == {'status': None, 'data': None, 'err': 'timeout', 'elapsed': 0.2}
@@ -1578,7 +1625,7 @@ def test_docparse_post_connection_dropped_mid_body_is_read_error():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, timeout=2, _base_url=f'http://127.0.0.1:{port}')
+        status, data, err = authorized_post(payload, timeout=2, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1611,7 +1658,7 @@ def test_docparse_post_oversized_response_is_controlled_error():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        status, data, err = authorized_post(payload, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1641,7 +1688,7 @@ def test_docparse_post_bad_json_response_is_controlled_error():
                   "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
                   "response_format": {"type": "json_schema",
                                       "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
-        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        status, data, err = authorized_post(payload, _base_url=f'http://127.0.0.1:{port}')
         OUT({'status': status, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -1657,7 +1704,7 @@ def test_docparse_post_http_error_statuses_pass_through_without_crash(status_cod
         FakeOR.response_status = {status_code}
         FakeOR.response_body = b'{{"error": "boom"}}'
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{{_or_port}}')
         OUT({{'status': status, 'err': err, 'data': data}})
     ''')
@@ -1708,7 +1755,7 @@ def test_docparse_post_leaves_host_blocked_again_after_call_same_thread():
         stand_egress.install()
         stand_egress.allow_test_target('127.0.0.1', _or_port)
 
-        stand_egress.docparse_post(VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+        authorized_post(VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
 
         blocked_after = False
         try:
@@ -1736,7 +1783,7 @@ def test_docparse_post_no_secrets_leak_in_stdout_stderr_on_failure():
         FakeOR.response_status = 500
         FakeOR.response_body = b'not json, contains fake-docparse-key and other secrets'
 
-        status, data, err = stand_egress.docparse_post(
+        status, data, err = authorized_post(
             VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
         OUT({'status': status, 'err': err})
     ''')
