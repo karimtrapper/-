@@ -6,6 +6,7 @@ STAND_MODE response and leaves the source files and production response intact.
 
 import re
 from pathlib import Path
+from werkzeug.security import safe_join
 
 
 VENDOR_PREFIX = '/static/stand/vendor/'
@@ -76,6 +77,45 @@ def page_kind(path):
         return 'partner'
     if re.fullmatch(r'/ref/[^/]+', path) or path == '/static/referrer/index.html':
         return 'referrer'
+    return None
+
+
+_FIXED_PAGE_ENDPOINTS = {
+    'calculator_index': 'calculator', 'crm_index': 'crm',
+    'login_page': 'login', 'kyc_index': 'kyc',
+    'tasks_index': 'tasks', 'partner_page': 'partner',
+    'referrer_page': 'referrer',
+}
+_FILE_ENDPOINT_ROOTS = {
+    'static': 'static', 'calculator_static': 'static/calculator',
+    'crm_static': 'static/crm', 'auth_static': 'static/auth',
+    'kyc_static': 'static/kyc', 'partner_static': 'static/partner',
+    'tasks_static': 'static/stand', 'docs_static': 'static/docs',
+}
+
+
+def served_page_kind(endpoint, view_args, root):
+    """Identify the source file Flask served, including normalized URL aliases.
+
+    Werkzeug resolves send_from_directory filenames with safe_join. Comparing
+    file identity also covers case-only aliases on case-insensitive filesystems.
+    The caller must still require a successful HTML file response.
+    """
+    if endpoint in _FIXED_PAGE_ENDPOINTS:
+        return _FIXED_PAGE_ENDPOINTS[endpoint]
+    base = _FILE_ENDPOINT_ROOTS.get(endpoint)
+    filename = (view_args or {}).get('filename')
+    if base is None or not isinstance(filename, str):
+        return None
+    candidate = safe_join(str(Path(root) / base), filename)
+    if candidate is None:
+        return None
+    for kind, source in PAGE_SOURCES.items():
+        try:
+            if Path(candidate).samefile(Path(root) / source):
+                return kind
+        except OSError:
+            continue
     return None
 
 

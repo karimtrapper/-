@@ -92,22 +92,21 @@ def stand_referrer_policy(response):
     """Stage-only browser resources, egress policy, and token referrer privacy."""
     if STAND_MODE:
         response.headers['Referrer-Policy'] = 'no-referrer'
-        from stand_browser import page_kind, transform_html, STAND_CSP, PAGE_SOURCES
-        kind = page_kind(request.path)
-        if kind and response.status_code in (200, 304) and request.method in ('GET', 'HEAD'):
-            # send_from_directory can return 304 based on the unchanged source
-            # file. Rebuild that response too, so old cached HTML cannot retain
-            # remote assets after this stage-only overlay is deployed.
+        from stand_browser import served_page_kind, transform_html, STAND_CSP, PAGE_SOURCES
+        kind = served_page_kind(request.endpoint, request.view_args, app.root_path)
+        if (kind and response.status_code in (200, 206, 304)
+                and request.method in ('GET', 'HEAD')
+                and response.mimetype == 'text/html'):
+            # A file response may be conditional (304) or partial (206). Always
+            # rebuild the complete registered document so neither can expose
+            # the original remote asset tags or stale file validators.
             response.direct_passthrough = False
-            if response.status_code == 304:
-                from pathlib import Path
-                source = Path(app.root_path) / PAGE_SOURCES[kind]
-                html = source.read_text(encoding='utf-8')
-                response.status_code = 200
-                response.mimetype = 'text/html'
-            else:
-                html = response.get_data(as_text=True)
+            from pathlib import Path
+            html = (Path(app.root_path) / PAGE_SOURCES[kind]).read_text(encoding='utf-8')
+            response.status_code = 200
             response.set_data(transform_html(kind, html))
+            response.headers.pop('Content-Range', None)
+            response.headers.pop('Accept-Ranges', None)
             response.headers.pop('ETag', None)
             response.headers.pop('Last-Modified', None)
             response.headers['Cache-Control'] = 'no-store'
