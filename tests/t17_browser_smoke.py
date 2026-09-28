@@ -471,8 +471,29 @@ with sync_playwright() as playwright:
                  'payloadX':45000,'payloadPct':1.5,'payloadFixed':50},thb
     assert not crm_posts,crm_posts
     with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
-                              and resp.request.method=='PUT'):
+                              and resp.request.method=='PUT' and resp.status==409):
         page.evaluate('(id) => {deal(id).step="s11";save();}',result['id'])
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    assert page.evaluate('(id)=>deal(id).step',result['id'])=='manual'
+    # T24 correctly refuses workflow-stage spoofing for a server-owned manual
+    # origin. Seed a separate historical workflow shape in synthetic SQLite
+    # to inspect the locked editor without weakening the HTTP admission.
+    db=appmod.get_session()
+    try:
+        row=appmod._stand_row(db,lock=True)
+        state_data=json.loads(row.data)
+        historical=next(d for d in state_data['deals'] if d['id']==result['id'])
+        historical['manual']=False
+        historical['manualNew']=False
+        historical['step']='s11'
+        historical.pop('originMode',None)
+        row.data=json.dumps(state_data,ensure_ascii=False)
+        row.version+=1
+        db.commit()
+    finally:
+        db.close()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
     open_edit(page,result['id'])
     host=page.locator('#crmDraftHost')
     host.locator('#createDealForm').wait_for(timeout=20000)
