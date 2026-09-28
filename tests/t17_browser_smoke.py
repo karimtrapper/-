@@ -253,6 +253,18 @@ with sync_playwright() as playwright:
     ids=[crm.locator('#clientIdHidden').input_value(),host.locator('#clientIdHidden').input_value()]
     print('client selected IDs:',ids)
     assert ids[0]==ids[1] and ids[0]
+    for scope in (crm,host):scope.locator('#clientSearchInput').fill('T17 new client')
+    create_choices=[crm.locator('#clientDropdown .client-dropdown-create').inner_text(),
+                    host.locator('#clientDropdown .client-dropdown-create').inner_text()]
+    print('client create choice CRM/tasks:',create_choices)
+    assert create_choices[0]==create_choices[1]
+    crm.locator('#clientDropdown .client-dropdown-create').click()
+    host.locator('#clientDropdown .client-dropdown-create').click()
+    new_client=[(crm.locator('#clientSearchInput').input_value(),crm.locator('#clientIdHidden').input_value()),
+                (host.locator('#clientSearchInput').input_value(),host.locator('#clientIdHidden').input_value())]
+    print('client new selected CRM/tasks:',new_client)
+    assert new_client==[('t17 new client',''),('t17 new client','')]
+    assert not crm_posts,crm_posts
     for filter_value,expected_count in [('acquiring',1),('transfer',1),('',2)]:
         pick(crm,'sberKindSelect',filter_value)
         pick(host,'sberKindSelect',filter_value)

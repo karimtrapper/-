@@ -560,7 +560,10 @@ function crmDraftClientSearch(active,query) {
     }
   }));
   box.querySelector('[data-client-new]')?.addEventListener('click',()=>{
-    crmDraftValue(active.root,'clientIdHidden','');box.style.display='none';
+    // CRM's selectNewClient receives the normalized `q` from its dropdown.
+    crmDraftValue(active.root,'clientIdHidden','');
+    crmDraftValue(active.root,'clientSearchInput',q);
+    box.style.display='none';
   });
 }
 function crmDraftAction(active,action,target) {
