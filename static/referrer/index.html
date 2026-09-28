@@ -732,7 +732,11 @@
     // боевые ссылки (fail-closed), а не считаем это прод-окружением по умолчанию.
     let IS_STAND = null;
     async function checkStand() {
-        try { const j = await (await fetch('/api/health')).json(); IS_STAND = !!j.stand; }
+        // Поле 'stand' может отсутствовать в ответе — это тоже «неизвестно», а не
+        // «прод»: !!undefined===false молча выдавал бы такой ответ за подтверждённый
+        // прод (QA перепроверка, FAIL №5, 28.09).
+        try { const j = await (await fetch('/api/health')).json();
+            IS_STAND = (j && typeof j.stand === 'boolean') ? j.stand : null; }
         catch (e) { IS_STAND = null; }
     }
     function refLinkText(real) {
@@ -780,11 +784,14 @@
         let health = null, healthOk = false;
         try { health = await (await fetch('/api/health')).json(); healthOk = true; }
         catch (e) { healthOk = false; }
-        if (!healthOk) {
+        // Поле 'stand' может отсутствовать в успешном ответе — тоже «неизвестно»,
+        // а не «прод»: боевой бот открывается только при явном stand===false
+        // (QA перепроверка, FAIL №5, 28.09).
+        if (!healthOk || !health || typeof health.stand !== 'boolean') {
             st.textContent = t('login_env_unknown');
             return;
         }
-        if (health && health.stand) {
+        if (health.stand) {
             st.textContent = t('login_stand_disabled');
             return;
         }

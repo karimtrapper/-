@@ -30,7 +30,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
 
 // ---------- FAIL №4/№7: static/crm/crm.html — renderReferrers() ----------
 {
-  const source = extractIndented(crmHtml, 'renderReferrers');
+  const source = extractIndented(crmHtml, 'standLinkState') + '\n' + extractIndented(crmHtml, 'renderReferrers');
   const referrer = {
     id: 1, name: 'QA', code: 'QA', active: true, token: 'x',
     bot_link: 'https://t.me/Grushath_bot?start=ref__QA',
@@ -74,21 +74,20 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
   assert.ok(hasNone(unverified), 'окружение не проверено — боевые ссылки не рисуем (fail-closed)');
   assert.ok(unverified.includes('не удалось проверить окружение'), 'должна быть честная причина, а не молчание');
 
-  // Функция не должна падать, если STAND_ROLES/AUTH_STAND вообще не объявлены
-  // (например, при выдёргивании функции в изолированный тест) — typeof-проверка
-  // обязана это покрывать без ReferenceError; поведение — тоже fail-closed.
+  // standLinkState() не должна падать, если STAND_ROLES/AUTH_STAND вообще не
+  // объявлены (например, при выдёргивании функции в изолированный тест) —
+  // typeof-проверка обязана это покрывать без ReferenceError; поведение — тоже
+  // fail-closed (реальная страница всегда объявляет оба как let ... = null,
+  // так что renderReferrers() целиком проверяем с этим более реалистичным ctx).
   {
-    const list = {innerHTML: ''};
-    const ctx = {
-      _referrersCache: [referrer],
-      document: {getElementById: id => (id === 'referrersList' ? list : null)},
-      window: {location: {origin: 'http://127.0.0.1:1'}},
-      showToast: () => {},
-    };
-    vm.createContext(ctx);
-    vm.runInContext(source, ctx);
-    assert.doesNotThrow(() => ctx.renderReferrers());
-    assert.ok(hasNone(list.innerHTML), 'без обоих сигналов — тоже fail-closed, а не боевые ссылки по умолчанию');
+    const stateSrc = extractIndented(crmHtml, 'standLinkState');
+    const stateCtx = {};
+    vm.createContext(stateCtx);
+    vm.runInContext(stateSrc, stateCtx);
+    let state;
+    assert.doesNotThrow(() => { state = stateCtx.standLinkState(); });
+    assert.equal(state.isStand, false);
+    assert.equal(state.unverified, true);
   }
 
   console.log('crm renderReferrers: FAIL №4/№7 закрыты — 5 сценариев PASS');
@@ -164,7 +163,7 @@ const refHtml = fs.readFileSync(path.join(__dirname, '../static/referrer/index.h
 // «не удалось проверить окружение» на проде — после ответа список обязан
 // перерисоваться сам, без перезагрузки страницы ----------
 (async () => {
-  const renderSrc = extractIndented(crmHtml, 'renderReferrers');
+  const renderSrc = extractIndented(crmHtml, 'standLinkState') + '\n' + extractIndented(crmHtml, 'renderReferrers');
   const authSrc = extractIndented(crmHtml, 'loadAuthStand', 'async function');
   const refreshSrc = extractIndented(crmHtml, 'refreshStandDependentLinks');
   const referrer = {

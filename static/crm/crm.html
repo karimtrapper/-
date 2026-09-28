@@ -4950,7 +4950,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                                     <p style="margin:4px 0 0;color:#0e7490;font-size:0.85rem;"><strong>Итого ушло:</strong> $${total.toFixed(2)}</p>
                                 </div>`;
                             })() : '<p style="color:#b45309;font-size:0.9rem;">⚠️ Фактические переводы не отмечены — отправка взята из поля, а не из блокчейна.</p>'}
-                            ${deal.doc_payment_url ? `<p><strong>Подтверждение платежа:</strong> <a href="${escapeHtml(deal.doc_payment_url)}" target="_blank">открыть</a></p>` : ''}
+                            ${deal.doc_payment_url ? `<p><strong>Подтверждение платежа:</strong> ${standLinkState().isStand || standLinkState().unverified ? '<span style="color:#94a3b8">на стенде ссылка выключена</span>' : `<a href="${escapeHtml(deal.doc_payment_url)}" target="_blank">открыть</a>`}</p>` : ''}
                             <hr style="margin: 1rem 0;">
                         ` : ''}
 
@@ -5678,7 +5678,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             try {
                 const res = await fetch(`${API_URL}/api/auth/me`);
                 const d = await res.json();
-                AUTH_STAND = (d && d.success && d.user) ? !!d.user.stand : null;
+                /* Поле 'stand' может отсутствовать в ответе (старая версия API,
+                   недомёрж после какого-нибудь чужого прокси) — это тоже «неизвестно»,
+                   а не «прод»: !!undefined===false молча выдавал бы такой ответ за
+                   подтверждённый прод (QA перепроверка, FAIL №5, 28.09). */
+                AUTH_STAND = (d && d.success && d.user && typeof d.user.stand === 'boolean') ? d.user.stand : null;
             } catch (e) { AUTH_STAND = null; }
             refreshStandDependentLinks();
         }
@@ -5691,6 +5695,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         function refreshStandDependentLinks() {
             if (typeof _referrersCache !== 'undefined' && _referrersCache && _referrersCache.length
                 && typeof renderReferrers === 'function') renderReferrers();
+        }
+        /* Единая точка для всех мест, где видимость боевой ссылки/провайдера зависит
+           от признака стенда (рефереры, приглашение админа, внешние платёжные ссылки
+           сделки — doc_payment_url и т.п.). typeof-проверки — чтобы функция не падала,
+           если её вызвали до объявления STAND_ROLES/AUTH_STAND в изолированном тесте. */
+        function standLinkState() {
+            const rolesStand = typeof STAND_ROLES !== 'undefined' && !!STAND_ROLES;
+            const authStand = typeof AUTH_STAND !== 'undefined' ? AUTH_STAND : null;
+            const isStand = rolesStand || authStand === true;
+            const unverified = !isStand && authStand !== false;
+            return {isStand, unverified};
         }
         // Ссылку на задачник показываем при загрузке: она нужна с первого экрана,
         // а не после захода в «Аккаунты».
@@ -5781,8 +5796,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
         // Готовый текст-приглашение для нового админа (копируется в буфер)
         function copyAdminInvite(name, telegram) {
+            /* Раньше здесь был зашит боевой домен — на стенде приглашение отправляло
+               человека логиниться на прод (QA перепроверка, FAIL №4, 28.09).
+               location.origin — это и есть текущий домен (прод или стенд), поведение
+               прода не меняется: там location.origin — тот же grusha.up.railway.app. */
             const text = `${name ? name + ', привет' : 'Привет'}! Тебе выдан доступ в CRM Grusha.\n\n` +
-                `1. Открой https://grusha.up.railway.app/login\n` +
+                `1. Открой ${location.origin}/login\n` +
                 `2. Нажми «Войти через Telegram»\n` +
                 `3. Подтверди вход со своего аккаунта ${telegram || ''}\n\n` +
                 `Пароль не нужен — вход только через Telegram. Доступ привяжется к твоему аккаунту при первом входе.`;
@@ -14121,10 +14140,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                отвечает залогиненному на проде тоже, так что поведение прода не меняется.
                Если /api/auth/me вообще не ответил — окружение не проверено, и ссылки на
                реальных людей всё равно не рисуем (fail-closed). */
-            const rolesStand = typeof STAND_ROLES !== 'undefined' && !!STAND_ROLES;
-            const authStand = typeof AUTH_STAND !== 'undefined' ? AUTH_STAND : null;
-            const isStand = rolesStand || authStand === true;
-            const unverified = !isStand && authStand !== false;
+            const {isStand, unverified} = standLinkState();
             const linkCell = (real, label) => {
                 if (isStand) return {value: 'на стенде выключено',
                     onclick: `showToast('На стенде ссылка ${label} выключена')`};
