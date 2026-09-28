@@ -1029,5 +1029,29 @@ with sync_playwright() as playwright:
     assert split_saved['total']==120 and split_saved['method']=='crypto_direct'
     assert not crm_posts,crm_posts
     crm_split.close()
+    split_id=page.evaluate("S.deals.find(x=>x.client==='T17 synthetic split payin').id")
+    open_edit(page,split_id)
+    page.evaluate("BX_DEALS.push('T17 synthetic Bitrix #57')")
+    page.locator('#crmDraftSource').select_option('bitrix')
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #57')
+    page.evaluate('editClose()')
+    assert page.evaluate('(id)=>[deal(id).source,deal(id).sourceRef]',split_id)==['tg','']
+    open_edit(page,split_id)
+    page.locator('#crmDraftSource').select_option('bitrix')
+    assert page.locator('#crmDraftSourceChoices option').all_text_contents()==[
+        'T17 synthetic Bitrix #57']
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #57')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('(id)=>[deal(id).source,deal(id).sourceRef]',split_id)==[
+        'bitrix','T17 synthetic Bitrix #57']
+    open_edit(page,split_id)
+    assert page.locator('#crmDraftSource').input_value()=='bitrix'
+    assert page.locator('#crmDraftSourceRef').input_value()=='T17 synthetic Bitrix #57'
+    page.evaluate('editClose()')
+    assert not crm_posts,crm_posts
+    print('source/Bitrix cancel, save, reload, reopen: PASS; CRM POST 0')
     print('blocked external attempts:',blocked)
     browser.close()
