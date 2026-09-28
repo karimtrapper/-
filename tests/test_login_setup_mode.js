@@ -4,6 +4,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../static/auth/login.html'), 'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+assert.match(html, /id="pwForm" style="display:block/, 'пароль доступен до первого сетевого ответа');
 
 function element() {
     const listeners = {};
@@ -14,12 +15,15 @@ function element() {
 }
 async function scenario({stand, setup = 403, me = 401, login = 401, healthError = false,
                          healthMalformed = false, healthStatus = 200, healthBody,
+                         healthHang = false, healthJsonHang = false,
                          loginError = 'unauthorized', telegramAvailable = true} = {}) {
     const ids = ['loginMode', 'setupMode', 'pwForm', 'tgControls', 'tgLoginBtn',
         'tgBotLoginBtn', 'pwToggle', 'botLoginStatus', 'loginError', 'loginBtn',
         'loginUsername', 'loginPassword'];
     const els = Object.fromEntries(ids.map(id => [id, element()]));
+    els.pwForm.style.display = 'block'; // Исходное состояние разметки до любого ответа сети.
     const calls = [], opened = [], scripts = [], intervals = [];
+    let releaseHealth;
     const response = (status, body) => ({ok: status >= 200 && status < 300, status,
         json: async () => body});
     const ctx = {
@@ -31,6 +35,12 @@ async function scenario({stand, setup = 403, me = 401, login = 401, healthError 
             calls.push({url, options});
             if (url === '/api/health') {
                 if (healthError) throw Error('network');
+                if (healthHang) return new Promise(resolve => {
+                    releaseHealth = () => resolve(response(200, {stand}));
+                });
+                if (healthJsonHang) return {ok: true, json: () => new Promise(resolve => {
+                    releaseHealth = () => resolve({stand});
+                })};
                 if (healthMalformed) return {ok: true, json: async () => { throw Error('JSON'); }};
                 return response(healthStatus, healthBody === undefined ? {stand} : healthBody);
             }
@@ -48,15 +58,40 @@ async function scenario({stand, setup = 403, me = 401, login = 401, healthError 
             throw Error(`unexpected ${url}`);
         },
         setInterval: fn => { intervals.push(fn); return intervals.length; },
-        clearInterval() {}, Date, encodeURIComponent
+        clearInterval() {}, setTimeout, clearTimeout, AbortController,
+        Date, encodeURIComponent
     };
     vm.runInNewContext(script, ctx);
     for (let i = 0; i < 6; i++) await new Promise(resolve => setImmediate(resolve));
-    return {els, calls, opened, scripts, intervals, ctx};
+    return {els, calls, opened, scripts, intervals, ctx,
+        releaseHealth: () => releaseHealth()};
 }
 const tgCalls = result => result.calls.filter(c => /\/api\/auth\/tg-/.test(c.url));
 
 (async () => {
+    for (const hanging of ['healthHang', 'healthJsonHang']) {
+        const r = await scenario({stand: false, [hanging]: true, login: 200});
+        assert.equal(r.els.pwForm.style.display, 'block', `${hanging}: пароль виден сразу`);
+        assert.equal(r.els.tgControls.style.display, 'none');
+        assert.ok(r.calls.some(c => c.url === '/api/auth/me'));
+        assert.ok(r.calls.some(c => c.url === '/api/auth/setup'));
+        r.els.loginUsername.value = 't16';
+        r.els.loginPassword.value = 't16-pass';
+        await r.ctx.doLogin({preventDefault() {}});
+        assert.equal(r.ctx.window.location.href, '/crm', `${hanging}: вход не ждёт health`);
+        await new Promise(resolve => setTimeout(resolve, 1550));
+        r.releaseHealth();
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(r.els.tgControls.style.display, 'none', `${hanging}: поздний ответ отброшен`);
+        assert.equal(tgCalls(r).length, 0);
+        assert.equal(r.scripts.length, 0);
+    }
+    const typing = await scenario({stand: false, healthHang: true});
+    typing.els.loginUsername.value = 'already typing';
+    typing.releaseHealth();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(typing.els.tgControls.style.display, 'block');
+    assert.equal(typing.els.pwForm.style.display, 'block', 'прод не скрывает заполненную форму');
     for (const setup of [400, 401, 403, 500]) {
         const r = await scenario({stand: true, setup});
         assert.equal(r.els.loginMode.style.display, 'block');

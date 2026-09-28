@@ -165,7 +165,7 @@
                 <a href="#" id="pwToggle" style="font-size:12px;color:#94A3B8;text-decoration:none;">Вход по паролю</a>
             </div>
             </div>
-            <form onsubmit="doLogin(event)" id="pwForm" style="display:none;margin-top:16px;">
+            <form onsubmit="doLogin(event)" id="pwForm" style="display:block;margin-top:16px;">
                 <div class="form-group">
                     <label>Логин</label>
                     <input type="text" id="loginUsername" placeholder="Введите логин" autocomplete="username">
@@ -182,17 +182,27 @@
     <script>
         // Telegram разрешён только после явного подтверждения прод-режима.
         let loginStandMode = null;
-        (async function init() {
+        async function detectLoginStandMode() {
+            const controller = new AbortController();
+            let timeoutId;
             try {
-                const health = await fetch('/api/health');
-                const data = health.ok ? await health.json() : null;
-                if (data && typeof data.stand === 'boolean') loginStandMode = data.stand;
-            } catch(e) {}
-
-            if (loginStandMode !== false) {
-                document.getElementById('pwForm').style.display = 'block';
+                const timeout = new Promise(resolve => {
+                    timeoutId = setTimeout(() => {
+                        controller.abort();
+                        resolve(null);
+                    }, 1500);
+                });
+                const health = (async () => {
+                    const resp = await fetch('/api/health', {signal: controller.signal});
+                    const data = resp.ok ? await resp.json() : null;
+                    return data && typeof data.stand === 'boolean' ? data.stand : null;
+                })().catch(() => null);
+                return await Promise.race([health, timeout]);
+            } finally {
+                clearTimeout(timeoutId);
             }
-
+        }
+        (async function init() {
             // Проверяем, есть ли уже активная сессия.
             try {
                 const resp = await fetch('/api/auth/me');
@@ -224,7 +234,14 @@
             } catch(e) {
                 // Фоллбэк — показываем логин
             }
-            if (loginStandMode === false && !setupRequired) {
+            if (setupRequired) return;
+            loginStandMode = await detectLoginStandMode();
+            if (loginStandMode === false) {
+                const form = document.getElementById('pwForm');
+                if (!document.getElementById('loginUsername').value &&
+                    !document.getElementById('loginPassword').value) {
+                    form.style.display = 'none';
+                }
                 document.getElementById('tgControls').style.display = 'block';
                 initTg();
             }
