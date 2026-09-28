@@ -952,6 +952,58 @@ function ippsApplicationText(d,pt){
    Формула из docs/specs/2026-08-06-mf-freehold.md: S = X·(1+p) + F. */
 function freeholdFee(X,t){return X?Math.round((X*t.percent/100+t.fixed)*100)/100:0;}
 function freeholdSend(X,t){return X?Math.round((X+freeholdFee(X,t))*100)/100:0;}
+/* Правка инвойса, тарифа IPPS и наценки крипто-фрихолда — доступна до договора
+   (шаги 6 и 8; на заявке уже есть свой ввод). С шага «Подготовить договор» (s11)
+   поля только читаются (Карим, 28.09). Если курс клиенту уже назван, смена
+   задним числом сдвигает маржу — не блокируем, только показываем разницу и
+   оставляем решение менеджеру. */
+function freeholdInvoiceTariffBlock(d){
+  const t=ippsTariff(d), X=d.invoiceUsd||0, S=freeholdSend(X,t);
+  const hadRate=isCrypto(d)?(d.freeholdMarkupPct!=null):!!num(d.rates.client);
+  return `<div class="fr" style="margin-top:10px">
+    <div class="fg"><label class="fl">Инвойс застройщику, $<span class="rq">*</span></label>
+      <input class="fc num" id="fh_inv_${d.id}" value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
+        onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"></div>
+    <div class="fg w2"><label class="fl">Тариф IPPS</label>
+      <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
+        `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
+    <div class="fg"><label class="fl">В IPPS уйдёт</label><input class="fc num" readonly value="${usd(S)}"></div>
+  </div>
+  ${isCrypto(d)?`<div class="fr">
+    <div class="fg"><label class="fl">Наценка крипто-фрихолда, %<span class="rq">*</span><span class="sub2"> у крипты нет курса — сумма клиенту = S + наценка</span></label>
+      <input class="fc num" id="fh_mk_${d.id}" value="${d.freeholdMarkupPct==null?'':d.freeholdMarkupPct}" placeholder="без дефолта"
+        onchange="freeholdInvoiceSet(${d.id},'freeholdMarkupPct',this.value)"></div>
+  </div>`:''}
+  <p class="fh">Правится до договора (шаги 6 и 8) — с шага «Подготовить договор» только чтение.</p>
+  ${hadRate?`<div class="alert a-warn" style="margin-top:8px"><div>${isCrypto(d)?'Наценка':'Курс клиенту'} уже ${isCrypto(d)?'задана':'названа'}${isCrypto(d)?'':' ('+d.rates.client+' ₽ за 1$)'} — смена инвойса, тарифа или наценки сдвигает маржу задним числом, сумма клиенту не пересчитывается автоматически. Проверьте расчёт.</div></div>`:''}`;
+}
+function freeholdInvoiceSet(id,field,raw){
+  const d=deal(id); if(!d)return;
+  const before=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  /* «Уже назвали клиенту» — курс (рублёвый фрихолд) или наценка (крипта, там
+     курса нет вовсе). Смотрим состояние ДО правки: если это первый ввод — не
+     предупреждаем, если меняют задним числом — да (Карим, 28.09). */
+  const already=isCrypto(d)?(d.freeholdMarkupPct!=null):!!num(d.rates.client);
+  if(field==='invoiceUsd'){
+    const v=num(cleanNum(raw));
+    if(!v||v<=0){toast('Сумма инвойса должна быть больше нуля');render();return;}
+    d.invoiceUsd=v;
+  }else if(field==='ippsTariff'){
+    if(!IPPS_TARIFFS[raw])return;
+    d.ippsTariff=raw;
+  }else if(field==='freeholdMarkupPct'){
+    const v=String(raw).trim()===''?null:num(cleanNum(raw));
+    d.freeholdMarkupPct=v;
+  }
+  const after=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  const delta=Math.round((after-before)*100)/100;
+  if(already&&Math.abs(delta)>=0.01){
+    log(d,'Инвойс/тариф изменены после того, как '+(isCrypto(d)?'наценка уже была задана':'курс назван клиенту')+
+      ': в IPPS уйдёт '+usd(after)+' вместо '+usd(before)+' ('+(delta>0?'+':'')+usd(delta)+') — маржа сдвинулась, решение за менеджером');
+    toast((isCrypto(d)?'Наценка уже задана':'Курс клиенту уже назван')+' — S изменился на '+(delta>0?'+':'')+usd(delta)+', проверьте маржу');
+  }
+  save();render();
+}
 /* Клиенту — ₽ за 1 $, 4 знака, курс первичен: рубли = X × курс (округление до копеек).
    Крипто-фрихолд: курса нет вовсе, клиент платит S + наценка — считается сразу при
    заявке, без шага «Ответить курс» (внешнего курса, который можно было бы спросить,
@@ -959,9 +1011,12 @@ function freeholdSend(X,t){return X?Math.round((X+freeholdFee(X,t))*100)/100:0;}
 function freeholdApprox(d){
   const X=d.invoiceUsd||null, t=ippsTariff(d), S=X?freeholdSend(X,t):null;
   if(isCrypto(d)){
-    const markupPct=d.freeholdMarkupPct==null?1:d.freeholdMarkupPct;
-    const pay=S!=null?Math.round(S*(1+markupPct/100)*100)/100:null;
-    return {thb:X,thbSign:'$',pay:pay,cur:'usdt',sign:'USDT',approx:null,sentUsd:S};
+    /* Наценка не имеет дефолта — Карим, 28.09: поле пустое и обязательное, пока
+       не назван дефолт. Без неё сумма клиенту не считается, как курс у рублёвого
+       фрихолда до ответа брокера. */
+    const markupPct=d.freeholdMarkupPct;
+    const pay=(S!=null&&markupPct!=null)?Math.round(S*(1+markupPct/100)*100)/100:null;
+    return {thb:X,thbSign:'$',pay:pay,cur:'usdt',sign:'USDT',approx:pay==null?'pay':null,sentUsd:S};
   }
   const rate=num(d.rates.client);
   const rub=(X&&rate)?Math.round(X*rate*100)/100:null;
@@ -2868,6 +2923,7 @@ function docSendBlock(d){
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
+    ${d.kind==='Фрихолд'?`<div class="alert a-warn" style="margin-bottom:10px"><div><b>Приложение 1 по старому шаблону — не для выдачи клиенту до решения Карима.</b> Шаблон описывает прежнюю THB-модель фрихолда; поля курса и подтверждения застройщика закрыты «Н/П». Прежде чем отправлять, свяжитесь с Каримом.</div></div>`:''}
     <div class="chtitle" style="margin-bottom:8px">Отправить клиенту
       <span>версия ${P.version} · ${rows.length} документа</span></div>
     ${rows.map(([k,f])=>`<div class="payrow">
@@ -3594,6 +3650,10 @@ function viewCreateBody(D,srcCard){
         return `<p class="fh">${D.cur==='thb'?'Сколько отдаст клиент':'Сколько получится в батах'} — посчитаем после курса операциониста.</p>`;})()}
     </div>
 
+    ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'?`<div class="fg"><label class="fl">Наценка крипто-фрихолда, %<span class="rq">*</span><span class="sub2"> у крипты нет курса — сумма клиенту = S + наценка</span></label>
+      <input class="fc num" style="max-width:200px" id="d_markup" value="${D.freeholdMarkupPct==null?'':D.freeholdMarkupPct}" placeholder="без дефолта — впишите вручную" oninput="draftSet('freeholdMarkupPct',this.value,true)">
+      <p class="fh">Дефолта нет намеренно (Карим, 28.09) — курс USDT→THB спросить не у кого, наценку каждый раз называет менеджер.</p></div>`:''}
+
     ${(D.refSrc||'').indexOf('ссылка')===0?`<div class="fg"><div class="derived">
       <span>Пришёл по реферальной ссылке <b>${(refById(D.refId)||{}).name}</b> · метка ${D.refSrc.replace('ссылка ','')} — агент проставлен сам</span></div></div>`:''}
 
@@ -3793,11 +3853,17 @@ function draftValid(){
   if(!D.payType){toast('Уточните, как клиент платит');return false;}
   if(!D.sum){toast('Укажите сумму — с неё начинается задача');return false;}
   if(D.partial&&!D.invoiceTotal){toast('Укажите сумму инвойса целиком');return false;}
+  /* Наценка крипто-фрихолда без дефолта (Карим, 28.09) — у крипты нет шага
+     курса вообще, значит поле обязано быть заполнено уже на заявке. */
+  if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'&&(D.freeholdMarkupPct==null||D.freeholdMarkupPct==='')){
+    toast('Укажите наценку крипто-фрихолда — у неё нет значения по умолчанию');return false;}
   return true;
 }
 function draftAmounts(D){
   const v=Number(String(D.sum).replace(/\s/g,'').replace(',','.'));
-  if(D.cur==='fhusd') return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:null,curBase:'fhusd',ippsTariff:D.ippsTariff||'bank'};
+  const markup=D.freeholdMarkupPct==null||D.freeholdMarkupPct===''?null:num(cleanNum(String(D.freeholdMarkupPct)));
+  if(D.cur==='fhusd') return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:null,curBase:'fhusd',
+    ippsTariff:D.ippsTariff||'bank',freeholdMarkupPct:markup};
   if(D.cur==='thb') return {amountThb:v,amountRub:null,amountUsdt:null,curBase:'thb'};
   if(D.cur==='usd'||D.cur==='usdt')return {amountUsdt:v,amountThb:null,amountRub:null,curBase:'usdt'};
   return {amountRub:v,amountThb:null,amountUsdt:null,curBase:'rub'};
@@ -4242,6 +4308,7 @@ function crmGaps(d){
          клиенту (₽ за 1$) нужен только рублёвому фрихолду — у крипты его не спрашивают */
       need(d.invoiceUsd,'Инвойс застройщику, $ (invoice_amount_usd)','Заявка');
       if(!isCrypto(d)) need(num(d.rates.client),'Курс клиенту, ₽ за 1$','Отдать расчёт клиенту');
+      else need(d.freeholdMarkupPct!=null,'Наценка крипто-фрихолда, % (без дефолта)','Заявка');
     }else{
       need(d.amountThb,'Инвойс, ฿ (invoice_amount_thb)','Заявка');
       need(num(d.rates.usdtThb),'Курс покупки ฿/USDT (buy_rate_thb_usdt)','Ответить курс');
@@ -6528,25 +6595,20 @@ function stepCard(d){
          заявке), курс ₽ за 1$ (4 знака, первичен) и рубли клиенту = X × курс (спека
          28.09-freehold-no-baht, п.5). Батов, курса покупки ฿/USDT и «получателю ฿» тут
          нет вообще — это не то же самое, что лизхолд. */
-      const t=ippsTariff(d), X=d.invoiceUsd||0, S2=freeholdSend(X,t);
+      const X=d.invoiceUsd||0;
       const k=num(d.rates.client);
       const rub=k?Math.round(X*k*100)/100:null;
       return `<div class="card"><div class="card-title">Расчёт клиенту<span class="sub">RUB→USDT получен ${ago(d.rates.at)||'—'}</span></div>
       <div class="fr">
         <div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
           <input class="fc num" readonly value="${d.rates.rubUsdt||''}"></div>
-        <div class="fg"><label class="fl">Инвойс застройщику, $<span class="sub2"> из заявки, только чтение</span></label>
-          <input class="fc num" readonly value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${d.rates.client||''}" placeholder="курс клиенту, ₽ за 1 $"
             oninput="rememberFocus();syncFreeholdRate(${d.id})"></div>
-      </div>
-      <div class="fr">
         <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — считается: X × курс, округление до копеек</span></label>
           <input class="fc num" readonly value="${rub!=null?Number(rub).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
-        <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> тариф ${t.label}</span></label>
-          <input class="fc num" readonly value="${usd(S2)}"></div>
       </div>
+      ${freeholdInvoiceTariffBlock(d)}
       <!--note-->
       <div class="row mainrow"><button class="btn btn-primary" onclick="act(${d.id},'s6')">Клиент согласен</button>
       <button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button>
@@ -6595,6 +6657,7 @@ function stepCard(d){
 
   s8:()=>`<div class="card"><div class="card-title">Документы клиента<span class="sub">${d.isOld?'старый клиент — хватит инвойса':'новый клиент — паспорт и инвойс'}</span></div>
     ${d.isOld?`<p class="fh" style="margin:-4px 0 10px">Клиент знакомый: паспорт уже лежит в прошлой сделке и в договоре — прикладывать заново не нужно. Если он поменялся, загрузите новый.</p>`:''}
+    ${d.kind==='Фрихолд'?`<div class="card-title" style="font-size:14px;margin:0 0 4px">Инвойс и тариф IPPS<span class="sub">последний раз можно поправить перед договором</span></div>${freeholdInvoiceTariffBlock(d)}`:''}
     <div class="list">
       ${/* Паспорт показываем всегда: у знакомого клиента он не обязателен, но если
             он приложен — строка обязана быть в списке, иначе документ «исчезает»
@@ -6621,13 +6684,14 @@ function stepCard(d){
       return `<div class="fg"><label class="fl">${label}${opts.req?'<span class="rq">*</span>':''}
         <span class="src">${DOC_SRC[k]||''}</span></label>
         ${opts.area?`<textarea class="fc${flag?' bad':''}" id="df_${k}">${F[k]||''}</textarea>`
-          :`<input class="fc ${opts.num?'num':''}${opts.big?' big':''}${flag?' bad':''}" id="df_${k}" value="${(function(){
+          :`<input class="fc ${opts.num?'num':''}${opts.big?' big':''}${flag?' bad':''}" id="df_${k}" ${opts.ro?'readonly':''} value="${(function(){
               const raw=String(F[k]==null?'':F[k]);
               /* суммы печатаем с разделителями: их сверяют глазами с инвойсом.
                  При сохранении пробелы снимаются. */
               if(!opts.money||!raw.trim()) return raw.replace(/"/g,'&quot;');
               const n=num(cleanNum(raw));
               return n==null?raw.replace(/"/g,'&quot;'):Number(n).toLocaleString('ru-RU');})()}" ${opts.ph?`placeholder="${opts.ph}"`:''}>`}
+        ${opts.ro?`<p class="fh">зафиксировано до договора (шаги 6, 8) — здесь только чтение</p>`:''}
         ${flag?`<p class="fh" style="color:var(--red)">Без этого договор не создать</p>`:''}</div>`;
     };
     return `<div class="card"><div class="card-title">Документы клиента
@@ -6650,7 +6714,7 @@ function stepCard(d){
     <div class="keybox">
       <div class="sec po" style="margin:0 0 10px">ГЛАВНОЕ · СУММА И КУРС</div>
       <div class="fr">
-        ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1})}
+        ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
         ${(isCrypto(d)&&d.kind==='Фрихолд')
           ?`<div class="fg"><label class="fl">Курс сделки</label><input class="fc" readonly value="нет — сумма клиенту в USDT фиксирована при заявке"></div>`
           :fld('rate','Курс сделки, '+(d.kind==='Фрихолд'?'₽ за 1$':(isCrypto(d)?'฿/USDT':'₽/฿')),{req:1,num:1,big:1})}
@@ -6725,6 +6789,7 @@ function stepCard(d){
     ${!P?`<div class="alert a-warn"><div>Пакет ещё не выпущен генератором — нажмите «Поправить и пересоздать».</div></div>`
       :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
+    ${d.kind==='Фрихолд'?`<div class="alert a-warn"><div><b>Приложение 1 по старому шаблону — не для выдачи клиенту до решения Карима.</b> Шаблон описывает прежнюю THB-модель фрихолда (курс, зачёт THB-инвойса, подтверждение застройщика); в новой модели этих полей нет, они закрыты «Н/П». Не отправляйте клиенту, пока шаблон не пересмотрен.</div></div>`:''}
     <div class="list">
       ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
         return `<div class="li" style="cursor:default"

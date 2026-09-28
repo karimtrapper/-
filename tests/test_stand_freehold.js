@@ -129,13 +129,18 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.equal(noRate.pay, null);
   assert.equal(noRate.approx, 'pay');
 
-  // Крипто-фрихолд: сумма клиенту = S + наценка, курса не спрашиваем вообще
+  // Крипто-фрихолд: сумма клиенту = S + наценка, курса не спрашиваем вообще.
+  // Наценка без дефолта (Карим, 28.09) — без неё сумма клиенту не считается.
   const dc = { type: 'Оплата недвижимости', kind: 'Фрихолд', invoiceUsd: 45000,
-    ippsTariff: 'soft', payType: 'Крипта', curBase: 'usdt', rates: {} };
-  const apc = ctx.approx(dc);
-  assert.equal(apc.cur, 'usdt'); assert.equal(apc.sign, 'USDT');
-  approxEq(apc.thb, 45000);
-  approxEq(apc.pay, 45725.00 * 1.01); // дефолтная наценка 1% — открытый вопрос, см. отчёт
+    ippsTariff: 'soft', payType: 'Крипта', curBase: 'usdt', rates: {}, freeholdMarkupPct: null };
+  const apcNoMarkup = ctx.approx(dc);
+  assert.equal(apcNoMarkup.cur, 'usdt'); assert.equal(apcNoMarkup.sign, 'USDT');
+  approxEq(apcNoMarkup.thb, 45000);
+  assert.equal(apcNoMarkup.pay, null, 'без наценки сумма клиенту не считается — нет дефолта');
+  assert.equal(apcNoMarkup.approx, 'pay');
+
+  const apc = ctx.approx(Object.assign({}, dc, { freeholdMarkupPct: 2 }));
+  approxEq(apc.pay, 45725.00 * 1.02);
 }
 
 // ── apMoney(): формат суммы застройщику — $, не ฿ ────────────────────────
@@ -221,6 +226,65 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   const pLease = ctx.crmPayload(lease);
   assert.equal(pLease.deal_kind, 'mf_realty');
   assert.equal(pLease.invoice_amount_usd, undefined);
+}
+
+// ── freeholdInvoiceSet(): правка инвойса/тарифа до договора (s6/s8) ─────
+// Карим, 28.09: тариф ставится при заявке, правится до s11, дальше только
+// чтение (сама блокировка на s11 — в UI, readonly-инпут, здесь не тестируется).
+// Если курс клиенту уже назван, смена задним числом пишет в журнал разницу
+// по S, но не блокирует и не откатывает правку.
+{
+  const logged = [];
+  const d = { id: 1, kind: 'Фрихолд', invoiceUsd: 45000, ippsTariff: 'bank', rates: {} };
+  const ctx = run(['freeholdInvoiceSet', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
+    num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
+    cleanNum: x => String(x).replace(/[^\d.,]/g, ''), usd: x => `$${x}`,
+    toast: () => {}, save: () => {}, render: () => {},
+    log: (dd, t) => logged.push(t),
+    deal: () => d, isCrypto: () => false,
+  });
+
+  // Правка до курса клиенту — тихая, без предупреждения
+  ctx.freeholdInvoiceSet(1, 'invoiceUsd', '40000');
+  assert.equal(d.invoiceUsd, 40000);
+  assert.equal(logged.length, 0, 'курса клиенту ещё нет — предупреждать не о чем');
+
+  // Курс назвали, потом сменили тариф — предупреждение и запись в журнал обязательны
+  d.rates.client = '82,4531';
+  logged.length = 0;
+  ctx.freeholdInvoiceSet(1, 'ippsTariff', 'soft');
+  assert.equal(d.ippsTariff, 'soft');
+  assert.equal(logged.length, 1, 'смена тарифа после курса клиенту пишется в журнал');
+  assert.ok(/маржа сдвинулась/.test(logged[0]));
+
+  // Инвойс <= 0 отклоняется, прежнее значение остаётся
+  ctx.freeholdInvoiceSet(1, 'invoiceUsd', '0');
+  assert.equal(d.invoiceUsd, 40000, 'нулевой инвойс не принимается');
+}
+
+// ── draftValid()/draftAmounts(): наценка крипто-фрихолда обязательна на заявке ──
+{
+  const toasts = [];
+  const ctx = run(['draftValid', 'draftAmounts'], [], {
+    toast: t => toasts.push(t),
+    num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
+    cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
+  });
+  const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
+    sum: '45000', cur: 'fhusd', ippsTariff: 'bank', freeholdMarkupPct: null };
+  ctx.S = { draft: D };
+  assert.equal(ctx.draftValid(), false, 'без наценки заявку на крипто-фрихолд не создать');
+  assert.ok(toasts.some(t => t.includes('наценку')));
+
+  D.freeholdMarkupPct = 2;
+  assert.equal(ctx.draftValid(), true);
+  const amounts = ctx.draftAmounts(D);
+  assert.equal(amounts.freeholdMarkupPct, 2);
+  assert.equal(amounts.invoiceUsd, 45000);
+
+  // Рублёвый фрихолд наценку не спрашивает вообще
+  ctx.S.draft = Object.assign({}, D, { payType: 'По реквизитам', freeholdMarkupPct: null });
+  assert.equal(ctx.draftValid(), true, 'у рублёвого фрихолда наценки нет — не блокирует');
 }
 
 console.log('test_stand_freehold.js: OK');
