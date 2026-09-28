@@ -1176,15 +1176,21 @@ with sync_playwright() as playwright:
     page.evaluate('(id)=>openDeal(id)',custom_id)
     page.wait_for_function('!standBusy && !standPush',timeout=20000)
     old_version=page.evaluate('standVer')
+    close_requests=[]
+    page.on('request',lambda req: close_requests.append(req.url)
+            if req.method=='POST' and req.url.endswith(
+                f'/api/stand/deals/{custom_id}/crm-close') else None)
+    assert page.get_by_role('button',name='Сохранить в CRM').is_enabled()
     with page.expect_response(lambda resp: resp.url.endswith(
         f'/api/stand/deals/{custom_id}/crm-close') and
         resp.request.method=='POST',timeout=20000) as close_response:
-        page.get_by_role('button',name='Сохранить в CRM').click()
+        page.evaluate('(id)=>{crmPushClose(id);crmPushClose(id)}',custom_id)
     close_result=close_response.value
     close_body=close_result.json()
     print('integrated manual custom close:',close_result.status,
           close_body.get('error'),close_body.get('deal',{}).get('id'))
     assert close_result.status==201,close_result.json()
+    assert len(close_requests)==1,close_requests
     page.wait_for_function('(id)=>deal(id)?.closed && deal(id)?.crmDealId',arg=custom_id,
                            timeout=20000)
     page.reload(wait_until='domcontentloaded')
@@ -1233,5 +1239,102 @@ with sync_playwright() as playwright:
     page.reload(wait_until='domcontentloaded')
     page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
     assert page.evaluate('(id)=>deal(id).crmDealId',split_id)==split_crm_id
+    custom_hash='a'*64
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    pick(host,'dealKindSelect','custom')
+    host.locator('#clientSearchInput').fill('T17 custom singular hash')
+    pick(host,'customPayinCurrency','USDT')
+    host.locator('#customPayinAmount').fill('100')
+    pick(host,'customPayinMethod','crypto_direct')
+    host.locator('#customPayinTxHash').fill(custom_hash)
+    pick(host,'customPayoutCurrency','THB')
+    host.locator('#customPayoutAmount').fill('3000')
+    host.locator('#customPayoutRate').fill('31.5')
+    pick(host,'customPayoutMethod','transfer')
+    host.locator('#customDealSubmit').click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    hash_id=page.evaluate('S.deals.find(x=>x.client==="T17 custom singular hash")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    hash_payload=page.evaluate('id=>crmPayload(deal(id))',hash_id)
+    assert hash_payload['payin_tx_hash']==custom_hash
+    assert 'payin_tx_hashes' not in hash_payload
+    page.evaluate('(id)=>openDeal(id)',hash_id)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{hash_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as hash_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    hash_close=hash_close_response.value
+    hash_body=hash_close.json()
+    print('integrated custom singular hash close:',hash_close.status,
+          hash_body.get('error'),hash_body.get('deal',{}).get('id'))
+    assert hash_close.status==201,hash_body
+    hash_db=appmod.get_session()
+    try:
+        hash_row=hash_db.query(appmod.Deal).filter_by(id=hash_body['deal']['id']).one()
+        assert hash_row.payin_tx_hash==custom_hash
+    finally:
+        hash_db.close()
+    # Hold the first PUT response after the server saved a fresh manual origin.
+    # Editing through the mounted CRM form must queue a second PUT without
+    # replacing those pending fields with the older authoritative snapshot.
+    slow_puts=[]
+    hold_next=[True]
+    def hold_first_manual_put(route):
+        if route.request.method=='PUT' and hold_next[0]:
+            hold_next[0]=False
+            slow_puts.append(route.request.post_data_json)
+            response=route.fetch()
+            time.sleep(1.2)
+            route.fulfill(response=response)
+        else:
+            route.continue_()
+    page.route('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.evaluate('''()=>{startManual();window.t17SlowId=S.edit;
+      const timer=setInterval(()=>{
+        const root=document.querySelector('#crmDraftHost')?.shadowRoot;
+        const client=root?.getElementById('clientSearchInput');
+        const payin=root?.querySelector('[name="payin_amount_usdt"]');
+        const payout=root?.getElementById('payoutAmountThb');
+        if(!client||!payin||!payout)return;
+        clearInterval(timer);client.value='T17 slow ACK';payin.value='75';
+        payout.value='2000';
+        document.querySelector('.card.edit-page > .row > button').click();
+      },20);
+    }''')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    slow_id=page.evaluate('window.t17SlowId')
+    page.unroute('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    slow_saved=page.evaluate('''id=>{const d=deal(id);return d&&{
+      client:d.client,amountUsdt:d.amountUsdt,amountThb:d.amountThb,
+      origin:d.originMode,manualNew:d.manualNew};}''',slow_id)
+    assert slow_puts and next(d for d in slow_puts[0]['data']['deals']
+                              if d['id']==slow_id)['manual'] is True
+    assert slow_saved=={'client':'T17 slow ACK','amountUsdt':75,
+                        'amountThb':2000,'origin':'manual','manualNew':False},slow_saved
+    print('integrated slow first ACK+queued edit:',slow_saved)
+    hold_next[0]=True
+    slow_puts.clear()
+    page.route('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.evaluate('''()=>{startManual();window.t17CancelBeforeId=S.edit;
+      setTimeout(()=>editClose(),100);}''')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    before_cancel_id=page.evaluate('window.t17CancelBeforeId')
+    page.unroute('http://127.0.0.1:18917/api/stand/state',hold_first_manual_put)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert slow_puts and page.evaluate('id=>deal(id)==null',before_cancel_id)
+    start_manual(page)
+    after_cancel_id=page.evaluate('S.edit')
+    assert page.evaluate('id=>deal(id).originMode',after_cancel_id)=='manual'
+    page.evaluate('editClose()')
+    page.wait_for_function('!standBusy && !standPush && !standSaveScheduled',timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('id=>deal(id)==null',after_cancel_id)
+    print('integrated cancel before/after origin ACK: no orphan draft')
     print('blocked external attempts:',blocked)
     browser.close()
