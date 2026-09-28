@@ -5405,7 +5405,7 @@ async function docParse(id,quiet){
         return;
       }
       dd.docParseState='ошибка: '+(j.detail||j.error||r.status);save();render();if(!quiet)toast('Не распознано: '+(j.detail||j.error));return;}
-    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file),at:now()};
+    dd.docParse={fields:j.fields||{},warnings:j.warnings||[],failed:(j.failed||[]).map(x=>x.file||x.slot),at:now()};
     dd.docParseState='готово';
     /* Объект из инвойса — сразу в сделку, если его ещё нет: иначе в шапке и сводке до
        выпуска договора стояло «не указан», хотя инвойс уже распознан (аудит 27.09, №23) */
@@ -5431,7 +5431,7 @@ function docParseLine(d){
       :(st==='на стенде выключено'?'На стенде распознавание документов выключено (паспорт и инвойс не уходят наружу) — заполните поля договора по файлам руками.'
       :(got?`Из документов распознано: <b>${[P.client_name_en||P.client_name_ru,P.client_passport_no,P.recipient_name,P.invoice_no].filter(Boolean).join(' · ')||got+' полей'}</b>. Эти поля уедут в договор — сверьте с файлами.`
       :(st&&st.startsWith('ошибка')?'Распознать не удалось ('+st+') — заполните поля договора по файлам руками.':'Документы ещё не распознаны.')))}</span>
-    ${st==='на стенде выключено'?'':`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button>`}</div>`;
+    <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
 }
 function filesOf(d,k){
   d.files=d.files||{};

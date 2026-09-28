@@ -15,6 +15,8 @@ import textwrap
 from contextlib import contextmanager
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 BASE_ENV = {
@@ -651,6 +653,8 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
         r = client.post('/api/proxy/create-payment', json={'amount': 100, 'order_id': 'X'})
         out['create_payment'] = (r.status_code, r.get_json().get('error'))
 
+        # STAND_DOCPARSE_KEY есть (BASE_ENV) — канал открыт, блокирует уже не
+        # stand_blocked, а обычная валидация: файлов не приложено.
         r = client.post('/api/docs/parse', data={'deal_type': 'rental'},
                         content_type='multipart/form-data')
         out['docs_parse'] = (r.status_code, r.get_json().get('error'))
@@ -679,7 +683,7 @@ def test_app_scenarios_no_egress_and_correct_status_codes():
     assert proc.returncode == 0, proc.stderr
     assert result['bitrix_blocked'] is True
     assert result['create_payment'] == [403, 'stand_blocked']
-    assert result['docs_parse'] == [403, 'stand_blocked']
+    assert result['docs_parse'] == [400, 'no_files']
     assert result['rates'] == [200, False, False]
     assert result['reestr_sync'] == [403, 'stand_blocked']
     assert result['prod_agents'] == [403, 'stand_blocked']
@@ -1294,3 +1298,449 @@ def test_tg_ctx_allowed_pairs_do_not_leak_between_calls_same_thread():
     assert result['blocked_after_call'] is True
     assert result['ctx_active_leaked'] is False
     assert result['ctx_pairs_leaked'] is False
+
+
+# ─────────────────────── docparse_post / OpenRouter (T15) ──────────────────
+
+def _valid_docparse_payload_script():
+    """Собирает ровно тот payload, что строит docparse.py::_call, — не
+    придуманный тестом формат."""
+    return '''
+        import docparse
+        content = [{'type': 'text', 'text': 'ping'},
+                   {'type': 'image_url', 'image_url': {'url': 'data:image/png;base64,aGVsbG8='}}]
+        VALID_PAYLOAD = {
+            'model': docparse.DEFAULT_MODEL,
+            'messages': [{'role': 'user', 'content': content}],
+            'response_format': {'type': 'json_schema',
+                                'json_schema': {'name': 'doc', 'strict': True, 'schema': docparse._schema()}},
+            'max_tokens': 20000,
+            'temperature': 0,
+        }
+    '''
+
+
+def _fake_openrouter_server_script():
+    return '''
+        import threading, http.server, json as _json
+
+        class FakeOR(http.server.BaseHTTPRequestHandler):
+            requests = []
+            response_body = _json.dumps({'choices': [{'message': {'content': '{}'}}]}).encode()
+            response_status = 200
+
+            def do_POST(self):
+                length = int(self.headers.get('Content-Length', 0))
+                body = self.rfile.read(length)
+                FakeOR.requests.append({
+                    'path': self.path, 'method': 'POST',
+                    'auth': self.headers.get('Authorization'),
+                    'body': _json.loads(body or b'{}'),
+                })
+                self.send_response(FakeOR.response_status)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(FakeOR.response_body)
+
+            def do_GET(self):
+                FakeOR.requests.append({'path': self.path, 'method': 'GET'})
+                self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+
+            def log_message(self, *a): pass
+
+        _srv = http.server.HTTPServer(('127.0.0.1', 0), FakeOR)
+        _or_port = _srv.server_port
+        threading.Thread(target=_srv.serve_forever, daemon=True).start()
+    '''
+
+
+def test_docparse_post_reaches_fake_openrouter_with_exact_path_and_bearer_key():
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + '''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _or_port)
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+        OUT({'status': status, 'err': err, 'ok': data == {'choices': [{'message': {'content': '{}'}}]},
+             'hits': len(FakeOR.requests), 'path': FakeOR.requests[-1]['path'],
+             'method': FakeOR.requests[-1]['method'],
+             'auth': FakeOR.requests[-1]['auth']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 200 and result['err'] is None and result['ok'] is True
+    assert result['hits'] == 1
+    assert result['method'] == 'POST'
+    assert result['path'] == '/api/v1/chat/completions'
+    assert result['auth'] == 'Bearer fake-docparse-key'
+
+
+def test_docparse_post_uses_stand_key_never_openrouter_api_key():
+    """BASE_ENV несёт оба ключа с разными значениями — в заголовке обязан быть
+    STAND_DOCPARSE_KEY, OPENROUTER_API_KEY (прод-ключ) читаться не должен вовсе."""
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + '''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _or_port)
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+        OUT({'auth': FakeOR.requests[-1]['auth']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['auth'] == 'Bearer fake-docparse-key'
+    assert 'fake-openrouter-key' not in result['auth']
+
+
+def test_docparse_post_no_key_no_network():
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + '''
+        import stand_egress
+        stand_egress.install()
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+        OUT({'status': status, 'err': err, 'hits': len(FakeOR.requests)})
+    ''', extra_env={'STAND_DOCPARSE_KEY': None})
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': None, 'err': 'no_key', 'hits': 0}
+
+
+@pytest.mark.parametrize('mutation', [
+    "VALID_PAYLOAD['tools'] = [{'type': 'function'}]",
+    "VALID_PAYLOAD['model'] = 'openai/gpt-4o'",
+    "VALID_PAYLOAD['messages'][0]['content'][1]['image_url']['url'] = 'https://evil.invalid/img.png'",
+    "VALID_PAYLOAD['messages'][0]['content'].append({'type': 'text', 'text': 'x', 'extra': 1})",
+    "VALID_PAYLOAD['response_format']['json_schema']['strict'] = False",
+    "VALID_PAYLOAD['response_format']['json_schema']['schema'] = {'type': 'object', 'properties': {'secret': {'type': 'string'}}}",
+    "VALID_PAYLOAD.pop('response_format')",
+    "VALID_PAYLOAD['temperature'] = 0.7",
+    "VALID_PAYLOAD['max_tokens'] = 999999",
+])
+def test_docparse_post_rejects_payload_outside_fixed_schema_no_network(mutation):
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + f'''
+        import stand_egress
+        stand_egress.install()
+        {mutation}
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{{_or_port}}')
+        OUT({{'status': status, 'err': err, 'hits': len(FakeOR.requests)}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': None, 'err': 'invalid_payload', 'hits': 0}
+
+
+def test_docparse_post_redirect_not_followed():
+    result, proc = run_script('''
+        import threading, http.server
+
+        class Redir(http.server.BaseHTTPRequestHandler):
+            hits = 0
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                Redir.hits += 1
+                self.send_response(302)
+                self.send_header('Location', 'https://attacker-exfil.invalid/steal')
+                self.end_headers()
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Redir)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err, 'hits': Redir.hits})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 302
+    assert result['err'] == 'redirect_blocked'
+    assert result['hits'] == 1
+
+
+def test_docparse_post_timeout_returns_controlled_error():
+    result, proc = run_script('''
+        import threading, http.server, time
+
+        class Slow(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                time.sleep(2)
+                self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Slow)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': None, 'data': None, 'err': 'timeout'}
+
+
+def test_docparse_post_network_error_when_server_unreachable():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', 1)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, _base_url='http://127.0.0.1:1')
+        OUT({'status': status, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': None, 'data': None, 'err': 'network_error'}
+
+
+def test_docparse_post_drip_response_bounded_by_total_deadline_not_by_full_drip():
+    """QA-обзор п.12/13: сервер отдаёт тело по байту раз в 0.12 с (полное тело —
+    больше секунды) — вызов не должен растягиваться дольше запрошенного
+    timeout=0.2 с, и второй/третий шаг ожидания не должен падать с
+    OSError('cannot read from timed out object') — известная ловушка
+    CPython SocketIO после первого таймаута на том же файловом объекте."""
+    result, proc = run_script('''
+        import threading, http.server, time
+
+        class Drip(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                self.send_response(200); self.end_headers()
+                data = b'{"choices": [{"message": {"content": "{}"}}]}'
+                for i in range(len(data)):
+                    self.wfile.write(data[i:i+1]); self.wfile.flush(); time.sleep(0.12)
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Drip)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        t0 = time.monotonic()
+        status, data, err = stand_egress.docparse_post(payload, timeout=0.2, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err, 'elapsed': round(time.monotonic() - t0, 1)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': None, 'data': None, 'err': 'timeout', 'elapsed': 0.2}
+
+
+def test_docparse_post_connection_dropped_mid_body_is_read_error():
+    """QA-обзор п.13: обрыв соединения в середине тела — стабильный read_error,
+    не текст urllib3.ProtocolError/IncompleteRead наружу."""
+    result, proc = run_script('''
+        import threading, http.server
+
+        class Truncated(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                self.send_response(200)
+                self.send_header('Content-Length', '1000')
+                self.end_headers()
+                self.wfile.write(b'{"partial": true')  # меньше заявленного Content-Length
+                self.connection.close()
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Truncated)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, timeout=2, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['data'] is None
+    assert result['err'] in ('read_error', 'timeout')
+
+
+def test_docparse_post_oversized_response_is_controlled_error():
+    result, proc = run_script('''
+        import threading, http.server
+
+        class Huge(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(b'[' + b'1' * (3 * 1024 * 1024) + b']')
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Huge)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': 200, 'data': None, 'err': 'too_large'}
+
+
+def test_docparse_post_bad_json_response_is_controlled_error():
+    result, proc = run_script('''
+        import threading, http.server
+
+        class Bad(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                n = int(self.headers.get('Content-Length', 0)); self.rfile.read(n)
+                self.send_response(200); self.end_headers()
+                self.wfile.write(b'not json at all')
+            def log_message(self, *a): pass
+
+        srv = http.server.HTTPServer(('127.0.0.1', 0), Bad)
+        port = srv.server_port
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', port)
+        import docparse
+        payload = {"model": docparse.DEFAULT_MODEL,
+                  "messages": [{"role": "user", "content": [{"type": "text", "text": "hi"}]}],
+                  "response_format": {"type": "json_schema",
+                                      "json_schema": {"name": "doc", "strict": True, "schema": docparse._schema()}}}
+        status, data, err = stand_egress.docparse_post(payload, _base_url=f'http://127.0.0.1:{port}')
+        OUT({'status': status, 'data': data, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': 200, 'data': None, 'err': 'bad_json'}
+
+
+@pytest.mark.parametrize('status_code', [401, 429, 500, 503])
+def test_docparse_post_http_error_statuses_pass_through_without_crash(status_code):
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + f'''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _or_port)
+        FakeOR.response_status = {status_code}
+        FakeOR.response_body = b'{{"error": "boom"}}'
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{{_or_port}}')
+        OUT({{'status': status, 'err': err, 'data': data}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == status_code
+    assert result['err'] is None
+    assert result['data'] == {'error': 'boom'}
+
+
+def test_openrouter_host_blocked_outside_docparse_post_active_context():
+    """Прямой вызов OpenAI SDK/requests к openrouter.ai, минуя docparse_post,
+    обязан отказать — контекст канала не активен."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+
+        def blocked_with(fn):
+            try:
+                fn()
+                return False
+            except Exception:
+                return True
+
+        import requests
+        r_blocked = blocked_with(lambda: requests.post(
+            'https://openrouter.ai/api/v1/chat/completions', json={'x': 1}, timeout=2))
+
+        import httpx
+        h_blocked = blocked_with(lambda: httpx.post(
+            'https://openrouter.ai/api/v1/chat/completions', json={'x': 1}, timeout=2))
+
+        from openai import OpenAI
+        client = OpenAI(base_url='https://openrouter.ai/api/v1', api_key='fake', timeout=2)
+        def call_sdk():
+            client.chat.completions.create(model='x', messages=[{'role': 'user', 'content': 'hi'}])
+        sdk_blocked = blocked_with(call_sdk)
+
+        OUT({'requests': r_blocked, 'httpx': h_blocked, 'sdk': sdk_blocked})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'requests': True, 'httpx': True, 'sdk': True}
+
+
+def test_docparse_post_leaves_host_blocked_again_after_call_same_thread():
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + '''
+        import socket
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _or_port)
+
+        stand_egress.docparse_post(VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+
+        blocked_after = False
+        try:
+            socket.getaddrinfo('openrouter.ai', 443)
+        except socket.gaierror:
+            blocked_after = True
+
+        OUT({'blocked_after_call': blocked_after,
+             'ctx_active_leaked': getattr(stand_egress._dp_ctx, 'active', False),
+             'ctx_pairs_leaked': bool(getattr(stand_egress._dp_ctx, 'allowed_pairs', None)),
+             'pending_host_leaked': getattr(stand_egress._dp_ctx, 'pending_host', None) is not None})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['blocked_after_call'] is True
+    assert result['ctx_active_leaked'] is False
+    assert result['ctx_pairs_leaked'] is False
+    assert result['pending_host_leaked'] is False
+
+
+def test_docparse_post_no_secrets_leak_in_stdout_stderr_on_failure():
+    result, proc = run_script(_fake_openrouter_server_script() + _valid_docparse_payload_script() + '''
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _or_port)
+        FakeOR.response_status = 500
+        FakeOR.response_body = b'not json, contains fake-docparse-key and other secrets'
+
+        status, data, err = stand_egress.docparse_post(
+            VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{_or_port}')
+        OUT({'status': status, 'err': err})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': 500, 'err': 'bad_json'}
+    assert 'fake-docparse-key' not in proc.stdout
+    assert 'fake-docparse-key' not in proc.stderr
