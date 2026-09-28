@@ -6141,19 +6141,34 @@ def _stand_doc_request(state, deal, F):
     if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
         money['fee_note'] = fee
     if freehold:
-        # Шаблон Приложения 1 для фрихолда (doc_templates/MF_Freehold_Payment_Agreement_
-        # Template_RU_EN.docx) описывает старую модель: инвойс застройщика в THB,
-        # конвертация в USD по курсу, письменное подтверждение застройщика о зачёте
-        # THB. В новой модели (спека 28.09-freehold-no-baht) инвойс сразу в USD —
-        # ни конвертации, ни зачёта THB нет. Отмечаем поля как неприменимые, а не
-        # выдумываем подтверждение застройщика, которого не было: это реальный
-        # договор, придумывать в нём факты нельзя (нужно решение Карима — переписать
-        # ли раздел шаблона или оставить эти поля информационными «Н/П»).
-        money.update(
-            rate_source='Н/П — инвойс застройщика в USD, конвертации нет / N/A — developer invoice already in USD',
-            usd_equivalent=_stand_plain(thb) if thb else '',
-            thb_credit_status='Н/П — оплата в USD, THB не используется / N/A — paid in USD, no THB involved',
-            developer_confirmation='По условиям инвойса застройщика / As per developer invoice terms')
+        # Инвойс застройщика может быть в THB (Карим, 28.09, поправка к спеке
+        # 28.09-freehold-no-baht): сделка всё равно считается от X — суммы,
+        # подтверждённой застройщиком в USD (объём брокеру, S в IPPS, прибыль,
+        # договор, заявка IPPS). Батовая сумма — только хранится и показывается,
+        # в money() и CRM-пейлоад не идёт: поля для неё там нет.
+        invoice_currency = str(deal.get('invoiceCurrency') or 'usd').strip().lower()
+        if invoice_currency == 'thb':
+            # THB-инвойс — «Обязательство по инвойсу застройщика» в Приложении 1
+            # показывает реальную сумму в батах. Остальной THB-блок (источник
+            # курса/срок, USD-эквивалент, статус зачёта, письмо застройщика)
+            # оставляем как в шаблоне ([●]) — ручное заполнение, автозаполнения
+            # не делаем (решение Карима: «больше ничего»).
+            invoice_thb = _stand_num(deal.get('invoiceThb'))
+            if invoice_thb:
+                fields['invoice_currency'] = 'THB'
+                fields['invoice_amount'] = _stand_plain(invoice_thb)
+        else:
+            # Инвойс сразу в USD — шаблон описывает старую THB-модель фрихолда
+            # (конвертация по курсу, письменное подтверждение застройщика о
+            # зачёте THB), которой здесь нет вообще. Отмечаем поля как
+            # неприменимые, а не выдумываем подтверждение, которого не было.
+            fields['invoice_currency'] = 'USD'
+            fields['invoice_amount'] = _stand_plain(thb) if thb else ''
+            money.update(
+                rate_source='Н/П — инвойс застройщика в USD, конвертации нет / N/A — developer invoice already in USD',
+                usd_equivalent=_stand_plain(thb) if thb else '',
+                thb_credit_status='Н/П — оплата в USD, THB не используется / N/A — paid in USD, no THB involved',
+                developer_confirmation='По условиям инвойса застройщика / As per developer invoice terms')
     if missing:
         missing = list(dict.fromkeys(missing))
         return {'error': 'missing_fields', 'fields': missing,

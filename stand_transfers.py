@@ -133,7 +133,7 @@ def preserve_server_fields(old_state, new_state):
         # держать то же самое сам: правка через прямой PUT молча не проходит,
         # сохраняется прежнее значение (QA ДЕНЬГИ №13, 28.09).
         if previous.get('kind') == 'Фрихолд' and previous.get('step') in FREEHOLD_LOCKED_STEPS:
-            for field in ('invoiceUsd', 'ippsTariff', 'freeholdMarkupPct'):
+            for field in ('invoiceUsd', 'ippsTariff', 'freeholdMarkupPct', 'invoiceCurrency', 'invoiceThb'):
                 if field in previous:
                     deal[field] = previous[field]
                 else:

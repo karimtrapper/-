@@ -191,3 +191,70 @@ def test_put_endpoint_silently_preserves_invoice_after_s11(monkeypatch):
             f'шаг {step}: сервер должен сохранить прежний инвойс')
         assert after.json['data']['deals'][0]['ippsTariff'] == 'bank', (
             f'шаг {step}: сервер должен сохранить прежний тариф')
+
+
+def freehold_doc_deal(invoice_currency='usd', invoice_thb=None):
+    """Рублёвый фрихолд на s11 — минимальный набор F для _stand_doc_request().
+
+    X=45000 $ (invoiceUsd) ведёт всю сделку независимо от валюты инвойса
+    застройщика; курс rate=82,4531 подобран так, что pay=X*rate точно сходится
+    с проверкой курса в _stand_doc_request (иначе rate_mismatch).
+    """
+    deal = {
+        'id': 1, 'code': 'FH-1', 'client': 'Freehold Doc QA',
+        'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'step': 's11',
+        'payType': 'По реквизитам', 'curBase': 'fhusd',
+        'invoiceUsd': 45000, 'ippsTariff': 'bank',
+        'invoiceCurrency': invoice_currency, 'invoiceThb': invoice_thb,
+        'rates': {'client': '82,4531'},
+        'docFields': {}, 'docParse': {}, 'pay': {}, 'payout': {}, 'payTo': {}, 'docs': {}, 'log': [],
+    }
+    state = {'wallets': [], 'convs': [], 'deals': [deal], 'notes': []}
+    F = {
+        'fio': 'Тестов Тест Тестович', 'passNo': '1234 567890',
+        'purpose': 'Оплата по инвойсу застройщика', 'invNo': 'INV-1',
+        'dev': 'ACME Developer Co Ltd', 'object': 'Villa 1',
+        'amountThb': '45000', 'amountPay': '3710389.50', 'rate': '82.4531',
+        'payTo': 'Bank · 1234567890',
+    }
+    return state, deal, F
+
+
+def test_doc_request_usd_invoice_marks_thb_block_not_applicable():
+    """Инвойс в USD: rate_source/usd_equivalent/thb_credit_status/developer_confirmation
+    получают «Н/П» (пакет годен для выдачи — поправка автора спеки, 28.09),
+    а «Обязательство по инвойсу застройщика» показывает саму сумму в USD."""
+    state, deal, F = freehold_doc_deal(invoice_currency='usd')
+    req = appmod._stand_doc_request(state, deal, F)
+    assert 'error' not in req, req
+    assert req['fields']['invoice_currency'] == 'USD'
+    assert req['fields']['invoice_amount'] == '45000'
+    assert req['money']['rate_source'].startswith('Н/П')
+    assert req['money']['usd_equivalent'] == '45000'
+    assert req['money']['thb_credit_status'].startswith('Н/П')
+    assert req['money']['developer_confirmation']
+
+
+def test_doc_request_thb_invoice_leaves_conversion_block_untouched():
+    """Инвойс в THB: «Обязательство по инвойсу застройщика» — реальная сумма
+    в ฿, а конверсионный блок (курс/срок, USD-эквивалент, статус зачёта,
+    письмо застройщика) НЕ заполняется — остаётся [●] в шаблоне для ручного
+    заполнения (чтобы документ не врал, решение Карима 28.09: «больше ничего»)."""
+    state, deal, F = freehold_doc_deal(invoice_currency='thb', invoice_thb='1500000')
+    req = appmod._stand_doc_request(state, deal, F)
+    assert 'error' not in req, req
+    assert req['fields']['invoice_currency'] == 'THB'
+    assert req['fields']['invoice_amount'] == '1500000'
+    for key in ('rate_source', 'usd_equivalent', 'thb_credit_status', 'developer_confirmation'):
+        assert key not in req['money'], f'{key} не должен заполняться при THB-инвойсе'
+
+
+def test_doc_request_thb_invoice_still_driven_by_usd_x():
+    """X (invoiceUsd) продолжает вести всю сделку в THB-режиме — курс/сумма
+    клиенту считаются от X, батовая сумма нигде в money() не участвует."""
+    state, deal, F = freehold_doc_deal(invoice_currency='thb', invoice_thb='1500000')
+    req = appmod._stand_doc_request(state, deal, F)
+    assert 'error' not in req, req
+    assert req['money']['transfer_amount'] == '45000'
+    assert req['money']['rate'] == '82.4531'
+    assert '1500000' not in json.dumps(req['money']), 'батовая сумма не должна попадать в money()'

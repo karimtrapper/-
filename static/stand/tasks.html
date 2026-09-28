@@ -969,6 +969,16 @@ function freeholdInvoiceTariffBlock(d){
         `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
     <div class="fg"><label class="fl">В IPPS уйдёт</label><input class="fc num" readonly value="${usd(S)}"></div>
   </div>
+  <div class="fr">
+    <div class="fg w2"><label class="fl">Инвойс застройщика</label>
+      <div class="chips">
+        <span class="chip ${(d.invoiceCurrency||'usd')==='usd'?'on':''}" onclick="freeholdInvoiceSet(${d.id},'invoiceCurrency','usd')">В USD</span>
+        <span class="chip ${d.invoiceCurrency==='thb'?'on':''}" onclick="freeholdInvoiceSet(${d.id},'invoiceCurrency','thb')">В THB</span>
+      </div></div>
+    ${d.invoiceCurrency==='thb'?`<div class="fg"><label class="fl">Сумма инвойса, ฿<span class="rq">*</span></label>
+      <input class="fc num" id="fh_invthb_${d.id}" value="${d.invoiceThb||''}" placeholder="сумма инвойса, ฿"
+        onchange="freeholdInvoiceSet(${d.id},'invoiceThb',this.value)"></div>`:''}
+  </div>
   ${isCrypto(d)?`<div class="fr">
     <div class="fg"><label class="fl">Наценка крипто-фрихолда, %<span class="rq">*</span><span class="sub2"> у крипты нет курса — сумма клиенту = S + наценка</span></label>
       <input class="fc num" id="fh_mk_${d.id}" value="${d.freeholdMarkupPct==null?'':d.freeholdMarkupPct}" placeholder="без дефолта"
@@ -994,6 +1004,14 @@ function freeholdInvoiceSet(id,field,raw){
   }else if(field==='freeholdMarkupPct'){
     const v=String(raw).trim()===''?null:num(cleanNum(raw));
     d.freeholdMarkupPct=v;
+  }else if(field==='invoiceCurrency'){
+    if(raw!=='usd'&&raw!=='thb')return;
+    d.invoiceCurrency=raw;
+    save();render();return;
+  }else if(field==='invoiceThb'){
+    const v=String(raw).trim()===''?null:num(cleanNum(raw));
+    d.invoiceThb=v;
+    save();render();return;
   }
   const after=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
   const delta=Math.round((after-before)*100)/100;
@@ -2632,6 +2650,9 @@ function newDeal(o){
        не смешаны с amountThb (спека 28.09-freehold-no-baht). */
     invoiceUsd:o.invoiceUsd||null,ippsTariff:o.ippsTariff||null,
     freeholdMarkupPct:(o.freeholdMarkupPct==null?null:o.freeholdMarkupPct),
+    /* Инвойс застройщика может быть в THB (Карим, 28.09) — сумма в ฿ только
+       хранится/показывается, сделка считается от invoiceUsd (X) как обычно. */
+    invoiceCurrency:o.invoiceCurrency||'usd',invoiceThb:o.invoiceThb||null,
     isTask:!!o.isTask,
     isOld:!!o.isOld,docs:{},docMeta:{},conv:[],rates:{},pay:{},selfRate:false,self:false,
     agents:(o.agents||[]).map(a=>Object.assign({},a)),companyPct:(o.companyPct==null?null:o.companyPct),verified:false,
@@ -3626,6 +3647,13 @@ function viewCreateBody(D,srcCard){
         `<span class="chip ${(D.ippsTariff||'bank')===k?'on':''}" onclick="draftSet('ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div>
       <p class="fh">${IPPS_TARIFFS[D.ippsTariff||'bank'].note} — до договора можно сменить, с договора только чтение.</p></div>`:''}
 
+    ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'?`<div class="fg"><label class="fl">Инвойс застройщика<span class="rq">*</span></label>
+      <div class="chips">
+        <span class="chip ${(D.invoiceCurrency||'usd')==='usd'?'on':''}" onclick="draftSet('invoiceCurrency','usd')">В USD</span>
+        <span class="chip ${D.invoiceCurrency==='thb'?'on':''}" onclick="draftSet('invoiceCurrency','thb')">В THB</span>
+      </div>
+      <p class="fh">${D.invoiceCurrency==='thb'?'Сделка всё равно считается от суммы в USD, подтверждённой застройщиком — сумма в ฿ только хранится.':'Инвойс уже в USD — обычный случай.'}</p></div>`:''}
+
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
       <div class="chips">${payWays(D).map(x=>
         `<span class="chip ${D.payType===x?'on':''}" onclick="draftSet('payType',${JSON.stringify(x).replace(/"/g,'&quot;')})">${x}</span>`).join('')}</div></div>
@@ -3636,7 +3664,14 @@ function viewCreateBody(D,srcCard){
         `<span class="chip ${(D.mode||(D.cur==='thb'?'need':'have'))===m.k?'on':''}" onclick="draftMode('${m.k}')">${m.t}</span>`).join('')}</div>
       <p class="fh">${(askModes(D).find(m=>m.k===(D.mode||(D.cur==='thb'?'need':'have')))||{}).n||''}</p></div>
 
-    <div class="fg"><label class="fl">${D.cur==='fhusd'?'Инвойс застройщику':(D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента')}<span class="rq">*</span></label>
+    ${D.cur==='fhusd'&&D.invoiceCurrency==='thb'?`<div class="fg"><label class="fl">Сумма инвойса, ฿<span class="rq">*</span></label>
+      <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
+        <input class="fc num" id="d_invthb" style="flex:1;min-width:200px" value="${D.invoiceThbAmount||''}" placeholder="сумма инвойса, ฿" oninput="draftSet('invoiceThbAmount',this.value,true)">
+        <span class="chip on" style="min-height:46px;cursor:default">฿</span>
+      </div>
+      <p class="fh">Только хранится и показывается — в CRM не идёт. Сделка считается от подтверждённой суммы в USD ниже.</p></div>`:''}
+
+    <div class="fg"><label class="fl">${D.cur==='fhusd'?(D.invoiceCurrency==='thb'?'Сумма в USD, подтверждённая застройщиком':'Инвойс застройщику'):(D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента')}<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
         <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="${D.cur==='fhusd'?'сумма инвойса, $':(D.cur==='thb'?'сумма в батах':'сумма, которая есть у клиента')}" oninput="draftSet('sum',this.value,true)">
         <span class="chip on" style="min-height:46px;cursor:default">${D.cur==='thb'?'฿':((D.cur==='usd'||D.cur==='fhusd')?'$':'₽')}</span>
@@ -3856,13 +3891,19 @@ function draftValid(){
      курса вообще, значит поле обязано быть заполнено уже на заявке. */
   if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'&&(D.freeholdMarkupPct==null||D.freeholdMarkupPct==='')){
     toast('Укажите наценку крипто-фрихолда — у неё нет значения по умолчанию');return false;}
+  /* Инвойс застройщика в THB (Карим, 28.09): сумма в ฿ обязательна, но сделка
+     всё равно считается от суммы в USD (D.sum) — она уже требуется выше. */
+  if(D.cur==='fhusd'&&D.invoiceCurrency==='thb'&&!D.invoiceThbAmount){
+    toast('Укажите сумму инвойса в ฿');return false;}
   return true;
 }
 function draftAmounts(D){
   const v=Number(String(D.sum).replace(/\s/g,'').replace(',','.'));
   const markup=D.freeholdMarkupPct==null||D.freeholdMarkupPct===''?null:num(cleanNum(String(D.freeholdMarkupPct)));
   if(D.cur==='fhusd') return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:null,curBase:'fhusd',
-    ippsTariff:D.ippsTariff||'bank',freeholdMarkupPct:markup};
+    ippsTariff:D.ippsTariff||'bank',freeholdMarkupPct:markup,
+    invoiceCurrency:D.invoiceCurrency||'usd',
+    invoiceThb:D.invoiceCurrency==='thb'?num(cleanNum(String(D.invoiceThbAmount||''))):null};
   if(D.cur==='thb') return {amountThb:v,amountRub:null,amountUsdt:null,curBase:'thb'};
   if(D.cur==='usd'||D.cur==='usdt')return {amountUsdt:v,amountThb:null,amountRub:null,curBase:'usdt'};
   return {amountRub:v,amountThb:null,amountUsdt:null,curBase:'rub'};
@@ -4095,7 +4136,7 @@ function overview(d,st,mine,p,wh){
         row('Объект',d.object||'—')}
       ${row('Назначение для банка застройщика',(d.payTo||{}).purpose||'')}
       ${d.kind==='Фрихолд'
-        ?row('Инвойс застройщику',usd(E.invoiceUsd))
+        ?row('Инвойс застройщику',usd(E.invoiceUsd)+(d.invoiceCurrency==='thb'&&d.invoiceThb?' (по инвойсу '+money(d.invoiceThb,'฿')+')':''))
           +row('Тариф IPPS',ippsTariff(d).label)
           +row('Отправлено в IPPS',usd(E.sentUsd),'комиссия '+E.feePercent+'% + '+E.feeFixed+' $ = '+usd(E.bankFee))
           +row('Дойдёт застройщику',usd(E.invoiceUsd))

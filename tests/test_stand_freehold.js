@@ -318,4 +318,61 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.equal(d.rates.client, '82,4532', 'округление вверх на пятом знаке (0,5 в большую сторону)');
 }
 
+// ── Инвойс застройщика в THB (Карим, 28.09): переключатель на заявке ────
+// Сделка всё равно считается от X — суммы в USD, подтверждённой застройщиком;
+// сумма в ฿ только хранится (не идёт в CRM — для неё там нет поля).
+{
+  const toasts = [];
+  const ctx = run(['draftValid', 'draftAmounts'], [], {
+    toast: t => toasts.push(t),
+    num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
+    cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
+  });
+  const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
+    sum: '45000', cur: 'fhusd', ippsTariff: 'bank', invoiceCurrency: 'thb', invoiceThbAmount: '' };
+  ctx.S = { draft: D };
+
+  toasts.length = 0;
+  assert.equal(ctx.draftValid(), false, 'в режиме THB без суммы в ฿ заявку не создать');
+  assert.ok(toasts.some(t => t.includes('฿')));
+
+  D.invoiceThbAmount = '1500000';
+  assert.equal(ctx.draftValid(), true);
+  const amounts = ctx.draftAmounts(D);
+  assert.equal(amounts.invoiceUsd, 45000, 'X = подтверждённая сумма в USD, а не в ฿');
+  assert.equal(amounts.invoiceCurrency, 'thb');
+  assert.equal(amounts.invoiceThb, 1500000, 'сумма в ฿ хранится отдельно');
+
+  // Режим USD (по умолчанию) — поле ฿ не требуется вообще
+  const D2 = Object.assign({}, D, { invoiceCurrency: 'usd', invoiceThbAmount: '' });
+  ctx.S.draft = D2;
+  assert.equal(ctx.draftValid(), true, 'при USD-инвойсе поле ฿ не обязательно');
+  const amounts2 = ctx.draftAmounts(D2);
+  assert.equal(amounts2.invoiceCurrency, 'usd');
+  assert.equal(amounts2.invoiceThb, null, 'при USD-инвойсе сумма в ฿ не хранится');
+}
+
+// ── freeholdInvoiceSet(): переключатель валюты инвойса правится до s11 ──
+{
+  const d = { id: 1, kind: 'Фрихолд', invoiceUsd: 45000, ippsTariff: 'bank', rates: {},
+    invoiceCurrency: 'usd', invoiceThb: null };
+  const ctx = run(['freeholdInvoiceSet', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
+    num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
+    cleanNum: x => String(x).replace(/[^\d.,]/g, ''), usd: x => `$${x}`,
+    toast: () => {}, save: () => {}, render: () => {}, log: () => {},
+    deal: () => d, isCrypto: () => false,
+  });
+
+  ctx.freeholdInvoiceSet(1, 'invoiceCurrency', 'thb');
+  assert.equal(d.invoiceCurrency, 'thb');
+  assert.equal(d.invoiceUsd, 45000, 'переключение валюты инвойса не трогает X');
+
+  ctx.freeholdInvoiceSet(1, 'invoiceThb', '1500000');
+  assert.equal(d.invoiceThb, 1500000);
+  assert.equal(d.invoiceUsd, 45000, 'сумма в ฿ не влияет на X — X ведёт всю сделку');
+
+  ctx.freeholdInvoiceSet(1, 'invoiceCurrency', 'usd');
+  assert.equal(d.invoiceCurrency, 'usd');
+}
+
 console.log('test_stand_freehold.js: OK');
