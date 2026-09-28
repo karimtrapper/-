@@ -481,23 +481,24 @@ def _invariant_admin_username_not_reserved(cur, expected):
     return {'table': 'admin_users', 'column': 'username', 'invariant': 'renamed_prod_prefix', 'violations': n} if n else None
 
 
+# Ровно тот формат, что пишет stand_sanitize.sql:
+# 'sanitized:' || md5(...) — md5() всегда 32 hex-символа в нижнем регистре.
+_SANITIZED_PASSWORD_HASH_RE = r'^sanitized:[0-9a-f]{32}$'
+
+
 def _invariant_admin_password_hash_sanitized(cur, expected):
     """Точная форма заглушки, которую ставит санация — не «отличается от
-    дампа». Подмена на ЛЮБОЙ другой валидный bcrypt-хэш (не обязательно
-    исходный из дампа) раньше проходила проверку «изменился ли хеш»: она
-    сравнивала с конкретным старым значением, а не утверждала форму нового.
-    stand_sanitize.sql пишет 'sanitized:' + md5(...) — не начинается ни с
-    одного префикса bcrypt ($2a$/$2b$/$2y$), поэтому AdminUser.check_password
-    уходит в legacy-ветку (sha256-сравнение строк) и не может совпасть ни с
-    одним паролем."""
-    n = _count(cur, """
-        SELECT COUNT(*) FROM admin_users
-        WHERE password_hash IS NULL
-           OR password_hash NOT LIKE 'sanitized:%%'
-           OR password_hash LIKE '$2a$%%' OR password_hash LIKE '$2b$%%' OR password_hash LIKE '$2y$%%'
-    """)
-    return {'table': 'admin_users', 'column': 'password_hash', 'invariant': "starts_with 'sanitized:', not bcrypt",
-            'violations': n} if n else None
+    дампа» и не «просто начинается с sanitized:». Прошлая версия проверяла
+    только LIKE 'sanitized:%%', под который подходили и 'sanitized:', и
+    'sanitized:nothex' — вообще без md5-хвоста или с посторонним текстом.
+    Подмена на ЛЮБОЙ другой валидный bcrypt-хэш (не обязательно исходный из
+    дампа) тоже обязана ловиться — раньше сверялось «изменился ли хеш»
+    относительно конкретного старого значения, а не форма нового.
+    """
+    n = _count(cur, 'SELECT COUNT(*) FROM admin_users WHERE password_hash IS NULL OR password_hash !~ %s',
+               (_SANITIZED_PASSWORD_HASH_RE,))
+    return {'table': 'admin_users', 'column': 'password_hash',
+            'invariant': f'matches {_SANITIZED_PASSWORD_HASH_RE!r}', 'violations': n} if n else None
 
 
 # Каждая колонка из HASH_EXCLUDE_COLUMNS обязана иметь здесь пост-инвариант —

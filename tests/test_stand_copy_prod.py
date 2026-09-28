@@ -644,6 +644,12 @@ def test_verify_candidate_catches_content_corruption(pg_cluster, app_models, tmp
     assert other_valid_bcrypt.startswith('$2b$')
     _corrupt_and_check(f"UPDATE admin_users SET password_hash = '{other_valid_bcrypt}'")
 
+    # QA-репро: LIKE 'sanitized:%' пропускал форму без md5-хвоста или с
+    # посторонним текстом после префикса — regex обязан требовать РОВНО
+    # 32 hex-символа (то, что реально пишет md5() в stand_sanitize.sql).
+    _corrupt_and_check("UPDATE admin_users SET password_hash = 'sanitized:'")
+    _corrupt_and_check("UPDATE admin_users SET password_hash = 'sanitized:nothex'")
+
     # Токен обнулён массово — санация "потеряла" токен, а не просто оставила
     # старый. Отсутствие пересечения со старыми значениями само по себе это
     # не ловит: пустая строка тоже "не пересекается со старым дампом", но
