@@ -17,6 +17,8 @@ HASH = 'a' * 64
 @pytest.fixture(autouse=True)
 def authenticated_stand_client(monkeypatch):
     """Старые сценарии стенда проходят через настоящую тестовую cookie."""
+    # Тесты меняют STAND_MODE после импорта app, поэтому готовим их таблицу здесь.
+    appmod._stand_migrate()
     original = appmod.app.test_client
 
     def client_factory(*args, **kwargs):
