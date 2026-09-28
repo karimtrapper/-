@@ -1276,6 +1276,54 @@ with sync_playwright() as playwright:
         assert hash_row.payin_tx_hash==custom_hash
     finally:
         hash_db.close()
+    for label,realty_id,subtype in [('leasehold',lease['id'],'Лизхолд'),
+                                    ('rental',rental[0],'Аренда')]:
+        page.evaluate('(id)=>openDeal(id)',realty_id)
+        page.wait_for_function('!standBusy && !standPush',timeout=20000)
+        with page.expect_response(lambda resp: resp.url.endswith(
+            f'/api/stand/deals/{realty_id}/crm-close') and
+            resp.request.method=='POST',timeout=20000) as realty_close_response:
+            page.get_by_role('button',name='Сохранить в CRM').click()
+        realty_response=realty_close_response.value
+        realty_body=realty_response.json()
+        print('integrated manual',label,'close:',realty_response.status,
+              realty_body.get('error'),realty_body.get('details'))
+        assert realty_response.status==201,realty_body
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+        assert page.evaluate('id=>deal(id).kind',realty_id)==subtype
+        assert page.evaluate('id=>deal(id).crmDealId',realty_id)==realty_body['deal']['id']
+        assert realty_body['deal']['deal_kind']=='mf_realty'
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    pick(host,'dealKindSelect','mf_freehold')
+    host.locator('#clientSearchInput').fill('T17 final freehold')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('46000')
+    host.locator('#fhInvoiceUsd').fill('45000')
+    host.locator('#fhPurpose').fill('T17 synthetic developer invoice')
+    page.locator('#crmDraftTariff').select_option('bank')
+    page.locator('#crmDraftInvoiceCurrency').select_option('thb')
+    page.locator('#crmDraftInvoiceThb').fill('1500000')
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    final_fh_id=page.evaluate('S.deals.find(x=>x.client==="T17 final freehold")?.id')
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    page.evaluate('(id)=>openDeal(id)',final_fh_id)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{final_fh_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as fh_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    fh_response=fh_close_response.value
+    fh_body=fh_response.json()
+    print('integrated manual freehold close:',fh_response.status,
+          fh_body.get('error'),fh_body.get('details'))
+    assert fh_response.status==201,fh_body
+    assert fh_body['deal']['deal_kind']=='mf_freehold'
+    assert fh_body['deal']['invoice_amount_usd']==45000
+    assert fh_body['deal']['transfer_fee_percent']==0.8
+    assert fh_body['deal']['transfer_fee_fixed_usd']==50
     # Hold the first PUT response after the server saved a fresh manual origin.
     # Editing through the mounted CRM form must queue a second PUT without
     # replacing those pending fields with the older authoritative snapshot.
