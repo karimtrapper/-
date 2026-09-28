@@ -2233,8 +2233,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         <section id="myTelegram" class="section stand-only" style="display:none;">
             <div class="card">
                 <div class="card-title">Мой Telegram</div>
-                <p style="color:#64748b;font-size:13px;">Подключите личный чат с ботом стенда для уведомлений задачника.</p>
-                <button class="btn btn-primary" onclick="connectStandTelegram()">Подключить Telegram</button>
+                <div id="myTelegramBind">
+                    <p style="color:#64748b;font-size:13px;">Подключите личный чат с ботом стенда для уведомлений задачника.</p>
+                    <button class="btn btn-primary" onclick="connectStandTelegram()">Подключить Telegram</button>
+                </div>
+                <div id="myTelegramLk" style="display:none;">
+                    <p style="color:#64748b;font-size:13px;">Уведомления задачника идут через бота, которым вы уже пользуетесь для входа в прод (send-only). Привязка — по числовому Telegram ID, его вносит admin в списке ниже.</p>
+                </div>
             </div>
         </section>
         <section id="admins" class="section">
@@ -5638,21 +5643,33 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     if (statusResponse.ok) tgStatus = await statusResponse.json();
                 }
                 const employees = new Map((tgStatus?.employees || []).map(a => [a.id, a]));
+                const profile = tgStatus?.profile || 'stand_bot';
+                const bindBox = document.getElementById('myTelegramBind');
+                const lkBox = document.getElementById('myTelegramLk');
+                // N11: в lk_send_only кнопка привязки через бота стенда не работает
+                // как канал доставки — не показываем нерабочую кнопку.
+                if (bindBox) bindBox.style.display = profile === 'lk_send_only' ? 'none' : '';
+                if (lkBox) lkBox.style.display = profile === 'lk_send_only' ? '' : 'none';
                 const modeBadge = document.getElementById('standNotifyMode');
-                if (modeBadge && tgStatus) modeBadge.textContent = tgStatus.mode === 'karim_only'
-                    ? 'Сейчас уведомления получает только Карим'
-                    : 'Уведомления включены для сотрудников с галкой';
+                if (modeBadge && tgStatus) modeBadge.textContent =
+                    (profile === 'lk_send_only' ? 'Профиль: send-only через бот прод-входа · ' : 'Профиль: бот стенда · ')
+                    + (tgStatus.mode === 'karim_only'
+                        ? 'сейчас уведомления получает только Карим'
+                        : 'уведомления включены для сотрудников с галкой');
                 box.innerHTML = data.admins.map(a => `
                     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
                         <div>
                             <div style="font-weight:600;">${a.display_name}
                                 ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
-                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram привязан' : (STAND_ROLES ? '· ⚪ Telegram не привязан' : '· ⚪ ждёт входа')}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram ID задан' : (STAND_ROLES ? '· ⚪ Telegram ID не задан' : '· ⚪ ждёт входа')}</div>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center;">
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                             ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
                                 ${Object.keys(STAND_ROLES).map(r => `<option value="${r}"${(a.role||'admin')===r?' selected':''}>${STAND_ROLES[r]}</option>`).join('')}
                               </select>
+                              <input type="text" inputmode="numeric" pattern="[0-9]*" class="form-control" style="width:150px;padding:6px 10px;"
+                                     placeholder="Telegram ID" value="${a.telegram_user_id || ''}"
+                                     onchange="setAdminTelegramId(${a.id}, this.value)">
                               <label style="font-size:12px;white-space:nowrap;"><input type="checkbox" ${employees.get(a.id)?.notify_enabled ? 'checked' : ''} onchange="setAdminNotify(${a.id}, this.checked)"> Получает уведомления</label>
                               <button class="btn btn-secondary" style="padding:6px 12px;" onclick="testAdminNotify(${a.id})">Тест</button>
                               <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Новый пароль</button>` : ''}
@@ -5775,6 +5792,24 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await res.json();
                 if (!data.success) showToast(data.error || 'Ошибка', 'error');
                 else showToast('Настройка уведомлений сохранена');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+            loadAdmins();
+        }
+
+        async function setAdminTelegramId(id, raw) {
+            const value = (raw || '').trim();
+            if (value && !/^[0-9]{1,20}$/.test(value)) {
+                showToast('Telegram ID — только цифры', 'error');
+                loadAdmins();
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({telegram_user_id: value ? Number(value) : null})});
+                const data = await res.json();
+                if (!data.success) showToast(data.error || 'Ошибка', 'error');
+                else showToast('Telegram ID сохранён');
             } catch (e) { showToast('Ошибка сети', 'error'); }
             loadAdmins();
         }

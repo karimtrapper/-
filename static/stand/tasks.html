@@ -596,7 +596,7 @@ const KEY='grusha_proto_v2';
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
                     'wallets','refs','clients','bal','txpool','avg','avgU'];
-let standVer=null, standPush=null, standBusy=false, standMe=null;
+let standVer=null, standPush=null, standBusy=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let sberMirrorStatus=null;
 async function fetchSberMirrorStatus(){
   try{
@@ -3724,6 +3724,37 @@ function createClosed(){
   S.draft=null;save();render();toast('Закрыта — '+reason);
 }
 
+/* ---------- исполнитель шага (T14) ----------
+   Явное поле assigneeAdminId на сделке — НЕ актёр последнего изменения
+   (updated_by/actor), а тот, кому реально адресована задача в задачнике.
+   Сервер (app.py, _stand_check_assignee) перепроверяет то же самое при
+   сохранении — эта разметка только UX, не источник доверия. */
+function employeeName(id){
+  const e=STAND_EMPLOYEES.find(x=>x.id===id);
+  return e?(e.display_name||e.username):null;
+}
+function setAssignee(dealId,adminId){
+  const d=deal(dealId); if(!d)return;
+  d.assigneeAdminId=adminId;
+  save();render();
+}
+function assigneeBlock(d,who){
+  const id=d.assigneeAdminId||null;
+  const label=id?(employeeName(id)||('#'+id)):'не назначен';
+  let actions='';
+  if(S.role==='admin'){
+    const opts=STAND_EMPLOYEES.filter(e=>!e.login_disabled&&(e.role===who||e.role==='admin'));
+    actions=`<select class="fc" style="width:auto;display:inline-block;margin-left:8px" onchange="setAssignee(${d.id}, this.value?Number(this.value):null)">
+      <option value="">не назначен</option>
+      ${opts.map(e=>`<option value="${e.id}" ${e.id===id?'selected':''}>${e.display_name||e.username}</option>`).join('')}
+    </select>`;
+  } else if(S.role===who){
+    if(!id) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, standMeId)">Взять себе</button>`;
+    else if(id===standMeId) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
+  }
+  return `<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">Исполнитель шага: <b>${label}</b>${actions}</div>`;
+}
+
 /* ---------- карточка сделки ---------- */
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
@@ -3743,7 +3774,7 @@ function viewDeal(d){
       /* Параллельная задача менеджера — со своей целью, как любой шаг (аудит 27.09, №15) */
       const side=Object.assign({},d,{step:'s15',_side:true});
       body=goalCard(side)+stepCard(side)+`<p class="fh" style="margin-top:12px">Параллельно: операционист сейчас на шаге «${st.title}». Реквизиты нужны к оплате инвойса — без них операционист не заплатит.</p>`+ctxCard(d);}
-    else if(!mine) body=`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
+    else if(!mine) body=(who?assigneeBlock(d,who):'')+`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${st.title}.
       ${canSwitchRole()?'Переключите роль наверху, чтобы продолжить.':'Когда шаг сделают, задача придёт к вам, если следующий ход ваш.'}</div></div>
       <div class="row"><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button>
       ${(S.role==='manager'&&d.payTo&&d.payTo.acc&&!(d.pay||{}).invoicePaid&&['s18','s18w','s22','s23','s24','s25','s26'].indexOf(d.step)>=0)
@@ -3751,7 +3782,7 @@ function viewDeal(d){
     /* На s12 документы для клиента — первым делом, выше сводки сделки: менеджер не
        должен их искать (Карим, 25.09 — «в самом видном месте»). Дальше цель, сам шаг с
        полями и кнопкой, а сводка «Что это за сделка» — в самом низу свёрнутой (Карим, 27.09). */
-    else body=(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
+    else body=(who?assigneeBlock(d,who):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
@@ -7874,8 +7905,13 @@ async function standBoot(){
     const me=await (await fetch('/api/auth/me',{credentials:'same-origin'})).json();
     if(!me.success){location.href='/login';return;}
     standMe=me.user.role||'admin';
+    standMeId=me.user.id||null;
     if(standMe!=='admin')S.role=standMe;
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
+    try{
+      const admins=await (await fetch('/api/admins',{credentials:'same-origin'})).json();
+      if(admins.success) STAND_EMPLOYEES=admins.admins||[];
+    }catch(e){}
   }catch(e){}
   await standPull(true);
   await fetchSberMirrorStatus();
