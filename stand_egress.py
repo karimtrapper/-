@@ -80,6 +80,7 @@ _db_pairs = frozenset()  # {(ip, port)} — точная пара, не прос
 _test_allowed_pairs = set()  # {(канонический host, port)} — только allow_test_target()
 
 _tg_ctx = threading.local()
+_lk_ctx = threading.local()
 
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
@@ -91,6 +92,221 @@ _bot_identity = None  # (токен, адрес тестового сервер�
 _pinned_bot_id = None  # id первого подтверждённого бота в этом процессе
 _BOT_IDENTITY_TTL = 60
 _PROD_BOTS = {'grusha_lk_bot', 'grushath_bot'}
+
+# ---- T14: профиль «только отправка» через прод-бот @grusha_lk_bot ----
+#
+# Отдельный от tg_call() путь: у lk_send_only СВОЙ токен (STAND_LK_BOT_TOKEN,
+# никогда TELEGRAM_BOT_TOKEN/REF_LOGIN_BOT_TOKEN — они гасятся блоком
+# STAND_MODE и остаются погашены) и СВОЙ разрешённый метод — ровно один,
+# sendMessage. lk_call() физически не умеет собрать URL другого метода,
+# поэтому getMe/getUpdates/getWebhookInfo/setWebhook и т. п. этим токеном
+# невозможны даже при ошибке в вызывающем коде — не «запрещено политикой»,
+# а «такого пути в коде нет».
+#
+# Идентичность бота проверяется ДО сети: bot_id — это цифры до первого ':'
+# в самом токене (формат Bot API), сравниваются с STAND_LK_BOT_ID — независимо
+# закреплённым числом, которое Карим положит из уже проверенного источника
+# (не производное от токена — иначе подмена токена подменила бы и ожидание).
+# Совпадения нет → профиль не делает вообще ни одного сетевого вызова.
+# После ответа — почтконтроль (from.id/from.is_bot/from.username, chat.id/
+# chat.type=private): расхождение защёлкивает профиль (_lk_blocked) навсегда
+# для этого процесса — без ретраев и без перехода на tg_call().
+_LK_EXPECTED_USERNAME = 'grusha_lk_bot'
+_lk_blocked = False
+
+
+def _lk_token():
+    return os.environ.get('STAND_LK_BOT_TOKEN', '').strip()
+
+
+def _lk_pinned_id():
+    raw = os.environ.get('STAND_LK_BOT_ID', '').strip()
+    if not re.fullmatch(r'[0-9]{1,20}', raw):
+        return None
+    value = int(raw)
+    return value if value > 0 else None
+
+
+def _lk_token_bot_id(token):
+    match = re.match(r'^([0-9]{1,20}):', token or '')
+    if not match:
+        return None
+    value = int(match.group(1))
+    return value if value > 0 else None
+
+
+def lk_configured():
+    return bool(_lk_token())
+
+
+def lk_preflight_ok():
+    """Сверка до сети: токен есть, id закреплён и совпадает с префиксом токена."""
+    if _lk_blocked:
+        return False
+    token = _lk_token()
+    pinned = _lk_pinned_id()
+    if not token or pinned is None:
+        return False
+    return _lk_token_bot_id(token) == pinned
+
+
+def lk_status():
+    if _lk_blocked:
+        return 'bot_identity_mismatch'
+    if not lk_configured():
+        return 'disabled'
+    if not lk_preflight_ok():
+        return 'bot_identity_mismatch'
+    return 'ready'
+
+
+# Белый список полей payload: business_connection_id/allow_paid_broadcast/
+# reply_markup/любые другие поля sendMessage — это лишний функционал, которого
+# у send-only профиля быть не должно (лидер, QA N02). Отказ до сети, а не
+# фильтрация «на всякий случай» — заведомо неожиданные поля не бывают в
+# вызовах stand_notify, значит это либо ошибка вызывающего кода, либо попытка
+# использовать канал не по назначению.
+_LK_ALLOWED_PAYLOAD_KEYS = frozenset({'chat_id', 'text', 'parse_mode', 'disable_web_page_preview'})
+
+
+def _lk_test_origin(value):
+    """Accept only a complete IPv4 loopback origin, including an explicit port."""
+    if not isinstance(value, str):
+        return None
+    match = re.fullmatch(r'(https?)://127\.0\.0\.1:([0-9]{1,5})', value)
+    if not match:
+        return None
+    port = int(match.group(2))
+    if not 1 <= port <= 65535:
+        return None
+    return match.group(1), '127.0.0.1', port
+
+
+class _LKConnectMixin:
+    """Only the private HTTP connection may open the Telegram socket gate."""
+    def connect(self):
+        _lk_ctx.active = True
+        _lk_ctx.host = getattr(_lk_ctx, 'pending_host', None)
+        _lk_ctx.allowed_pairs = set(getattr(_lk_ctx, 'pending_pairs', ()) or ())
+        try:
+            return super().connect()
+        finally:
+            _lk_ctx.active = False
+            _lk_ctx.host = None
+            _lk_ctx.allowed_pairs = set()
+
+
+def _lk_adapter():
+    import urllib3
+    from requests.adapters import HTTPAdapter
+
+    class _HTTPConn(_LKConnectMixin, urllib3.connection.HTTPConnection):
+        pass
+
+    class _HTTPSConn(_LKConnectMixin, urllib3.connection.HTTPSConnection):
+        pass
+
+    class _HTTPPool(urllib3.HTTPConnectionPool):
+        ConnectionCls = _HTTPConn
+
+    class _HTTPSPool(urllib3.HTTPSConnectionPool):
+        ConnectionCls = _HTTPSConn
+
+    class _Adapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {'http': _HTTPPool, 'https': _HTTPSPool}
+
+    return _Adapter()
+
+
+def lk_call(payload, _base_url=None):
+    """Единственный путь для профиля lk_send_only — жёстко sendMessage.
+
+    `_base_url` — только для тестов (фейковый сервер на loopback), прод его
+    не передаёт и не читает из env; хост, отличный от loopback, отклоняется
+    здесь же, до создания сессии (QA N02 — прод и так его никогда не передаёт,
+    но тестовый override не должен превращаться в лазейку на произвольный хост).
+    """
+    import requests
+    global _lk_blocked
+
+    if not lk_preflight_ok():
+        return {'ok': False, 'error': 'no_token' if not lk_configured() else 'bot_identity_mismatch'}
+
+    test_origin = None
+    if _base_url is not None:
+        test_origin = _lk_test_origin(_base_url)
+        if test_origin is None:
+            return {'ok': False, 'error': 'invalid_base_url'}
+
+    token = _lk_token()
+    pinned = _lk_pinned_id()
+
+    payload = dict(payload or {})
+    if not set(payload.keys()) <= _LK_ALLOWED_PAYLOAD_KEYS:
+        return {'ok': False, 'error': 'payload_not_allowed'}
+    chat_id = payload.get('chat_id')
+    if isinstance(chat_id, bool) or not isinstance(chat_id, int) or chat_id <= 0:
+        return {'ok': False, 'error': 'invalid_chat_id'}
+    if not can_send('telegram_lk', chat_id, 'sendMessage'):
+        return {'ok': False, 'error': 'denied'}
+
+    base = (_base_url or f'https://{_TG_HOST}').rstrip('/')
+    url = f'{base}/bot{token}/sendMessage'
+
+    _lk_ctx.pending_host = test_origin[1] if test_origin else _TG_HOST
+    _lk_ctx.pending_pairs = {(test_origin[1], test_origin[2])} if test_origin else set()
+    try:
+        session = requests.Session()
+        session.trust_env = False
+        adapter = _lk_adapter()
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
+        try:
+            resp = session.post(url, json=payload, timeout=10, allow_redirects=False, proxies={})
+            try:
+                data = resp.json()
+            except ValueError:
+                data = None
+            if not isinstance(data, dict):
+                # Не-JSON или битый ответ — ошибка доставки конкретному получателю,
+                # не доказательство того, что это не наш бот: латч только на
+                # ПОДТВЕРЖДЁННОЕ несовпадение идентичности в успешном ответе.
+                return {'ok': False, 'error': 'tg_bad_response'}
+            if resp.status_code != 200 or not data.get('ok'):
+                # 401/403 (бота заблокировали/чужой чат)/429/5xx — временная или
+                # адресная ошибка Telegram, канал остаётся рабочим для остальных
+                # получателей. Код статуса отдаём, тело ответа — нет (QA N09).
+                return {'ok': False, 'error': 'tg_http_error', 'status_code': resp.status_code}
+            result = data.get('result') if isinstance(data.get('result'), dict) else {}
+            sender = result.get('from') if isinstance(result.get('from'), dict) else {}
+            chat = result.get('chat') if isinstance(result.get('chat'), dict) else {}
+            valid = bool(
+                sender.get('is_bot') is True
+                and sender.get('id') == pinned
+                and isinstance(sender.get('username'), str)
+                and sender.get('username').lower() == _LK_EXPECTED_USERNAME
+                and chat.get('id') == chat_id
+                and chat.get('type') == 'private'
+            )
+            if not valid:
+                _lk_blocked = True
+                print('[STAND-LK] bot_identity_mismatch')
+                return {'ok': False, 'error': 'bot_identity_mismatch'}
+            return {'ok': True, 'status_code': resp.status_code, 'result': result}
+        finally:
+            session.close()
+    except Exception:
+        # Текст исключения requests часто содержит сам URL (…/bot<TOKEN>/…) —
+        # ни его, ни оригинальное исключение никуда не отдаём и не логируем.
+        return {'ok': False, 'error': 'tg_network_error'}
+    finally:
+        _lk_ctx.active = False
+        _lk_ctx.host = None
+        _lk_ctx.allowed_pairs = set()
+        _lk_ctx.pending_host = None
+        _lk_ctx.pending_pairs = set()
 
 
 def expected_bot_username():
@@ -212,6 +428,8 @@ def _loopback_pair_allowed(host, port):
         return True
     if getattr(_tg_ctx, 'active', False) and (key, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_lk_ctx, 'active', False) and (key, port) in getattr(_lk_ctx, 'allowed_pairs', ()):
+        return True
     if getattr(_read_ctx, 'active', False) and (key, port) in getattr(_read_ctx, 'allowed_pairs', ()):
         return True
     return False
@@ -230,6 +448,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         return port is None or port == 443
+    if getattr(_lk_ctx, 'active', False) and h == getattr(_lk_ctx, 'host', None):
+        return port is None or port == 443
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         return port is None or port == 443
     return False
@@ -241,6 +461,8 @@ def _ip_allowed(ip, port=None):
     if port is not None and (ip, port) in _db_pairs:
         return True
     if getattr(_tg_ctx, 'active', False) and port is not None and (ip, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
+        return True
+    if getattr(_lk_ctx, 'active', False) and port is not None and (ip, port) in getattr(_lk_ctx, 'allowed_pairs', ()):
         return True
     if getattr(_read_ctx, 'active', False) and port is not None and (ip, port) in getattr(_read_ctx, 'allowed_pairs', ()):
         return True
@@ -256,6 +478,9 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))
+    if getattr(_lk_ctx, 'active', False) and h == getattr(_lk_ctx, 'host', None):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _lk_ctx.allowed_pairs = pairs | set(getattr(_lk_ctx, 'allowed_pairs', ()))
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _read_ctx.allowed_pairs = pairs | set(getattr(_read_ctx, 'allowed_pairs', ()))
