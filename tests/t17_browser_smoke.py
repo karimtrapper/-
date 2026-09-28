@@ -213,6 +213,7 @@ with sync_playwright() as playwright:
         from itertools import zip_longest
         diffs=[(i,c,t) for i,(c,t) in enumerate(zip_longest(crm_fields,task_fields)) if c!=t]
         print('first form differences:',json.dumps(diffs[:5],ensure_ascii=False)[:1000])
+    assert crm_fields==task_fields
     pick(crm,'sberKindSelect','')
     pick(host,'sberKindSelect','')
     crm.wait_for_function('document.querySelector("#sberIncomesAvail")?.textContent.includes("T17 Transfer")',timeout=10000)
@@ -263,6 +264,19 @@ with sync_playwright() as playwright:
              host.locator('[name="payin_amount_rub"]').input_value()]
     print('Sber two chosen:',amounts,crm_parts==task_parts,task_parts[:300])
     assert amounts==['366000.00','366000.00'] and crm_parts==task_parts
+    filled='''el=>[...el.querySelectorAll('label,button,select,input,textarea')]
+      .filter(x=>x.getClientRects().length>0).map(x=>[
+        x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\s+/g,' ').trim(),
+        x.tagName==='SELECT'?[...x.options].map(o=>[o.value,o.textContent.trim(),o.selected]):null,
+        x.tagName==='INPUT'||x.tagName==='TEXTAREA'?x.value:null,x.checked??null,x.required])'''
+    filled_crm=crm.locator('#createDealForm').evaluate(filled)
+    filled_task=host.locator('#createDealForm').evaluate(filled)
+    if filled_crm!=filled_task:
+        from itertools import zip_longest
+        differences=[(i,c,t) for i,(c,t) in enumerate(zip_longest(filled_crm,filled_task)) if c!=t]
+        print('filled Sber full-form differences:',json.dumps(differences[:8],ensure_ascii=False)[:1800])
+    print('filled Sber full-form diff empty:',filled_crm==filled_task)
+    assert filled_crm==filled_task
     crm.locator('#sberPartsList span[onclick]').first.click()
     host.locator('#sberPartsList span[data-crm-action="sber-remove"]').first.click()
     removed=[crm.locator('[name="payin_amount_rub"]').input_value(),
@@ -536,6 +550,19 @@ with sync_playwright() as playwright:
     task_out=host.locator('#mfPayoutTxPoolBox').inner_text()
     print('MF two added text equal:',crm_out==task_out,task_out[-160:])
     assert crm_out==task_out and '$200,08' in task_out
+    mf_fields='''el=>[...el.querySelectorAll('label,button,select,input,textarea')]
+      .filter(x=>x.getClientRects().length>0).map(x=>[
+        x.tagName,x.id||x.name||'',(x.innerText||'').replace(/\s+/g,' ').trim(),
+        x.tagName==='SELECT'?[...x.options].map(o=>[o.value,o.textContent.trim(),o.selected]):null,
+        x.tagName==='INPUT'||x.tagName==='TEXTAREA'?x.value:null,x.checked??null,x.required])'''
+    mf_crm=crm_mf.locator('#mfDealSection').evaluate(mf_fields)
+    mf_task=host.locator('#mfDealSection').evaluate(mf_fields)
+    if mf_crm!=mf_task:
+        from itertools import zip_longest
+        differences=[(i,c,t) for i,(c,t) in enumerate(zip_longest(mf_crm,mf_task)) if c!=t]
+        print('filled MF section differences:',json.dumps(differences[:8],ensure_ascii=False)[:2000])
+    print('filled MF section DOM/text diff empty:',mf_crm==mf_task)
+    assert mf_crm==mf_task
     crm_mf.evaluate('mfRecalcNow()')
     crm_mf.wait_for_function('document.querySelector("#mfSummary")?.textContent.includes("350")',timeout=10000)
     page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("mfSummary")?.textContent.includes("350")',timeout=10000)
