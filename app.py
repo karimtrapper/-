@@ -5733,17 +5733,60 @@ def _stand_number(value):
     return float(_amount(value) or 0)
 
 
+def _stand_broker_payin_basis(rub, rate):
+    """Match T17 brokerSend/payinParts for a persisted RUB+broker-rate route.
+
+    JS Math.round operates on IEEE-754 intermediates, including ties. A Decimal
+    HALF_UP rewrite differs at RUB 100015, so mirror the source operations.
+    """
+    import math
+    from decimal import Decimal
+
+    rub, rate = _amount(rub), _amount(rate)
+    if rub is None or rub <= 0 or rate is None or rate <= 0:
+        return None
+    try:
+        rub_float, rate_float = float(rub), float(rate)
+    except OverflowError:
+        return None
+    if (not math.isfinite(rub_float) or not math.isfinite(rate_float)
+            or rate_float <= 0):
+        return None
+
+    def js_cents(value):
+        return math.floor(value * 100 + .5) / 100
+
+    try:
+        control = js_cents(rub_float * .1 / 100 + 40)
+        retained = js_cents(rub_float * .2 / 100)
+        sent = js_cents(rub_float - control - retained)
+        usdt = js_cents(sent / rate_float)
+    except (OverflowError, ValueError, ZeroDivisionError):
+        return None
+    if sent <= 0 or not math.isfinite(usdt):
+        return None
+    return {key: Decimal(str(value)) for key, value in {
+        'control': control, 'retained': retained, 'sent': sent,
+        'usdt': usdt,
+    }.items()}
+
+
 def _stand_crm_fact_problem(board, crm, kind):
     """Reject CRM money and transfer facts that contradict the persisted board.
 
     The CRM preview permits editing descriptive fields, but a POST may not
     replace the confirmed invoice, tariff, route or on-chain transfers.
     """
-    from decimal import Decimal
+    from decimal import Decimal, ROUND_HALF_UP
+    import math
 
     def money(value):
         value = _amount(value)
         return value.quantize(Decimal('0.01')) if value is not None else None
+
+    def positive(value):
+        value = _amount(value)
+        return value if value is not None and value > 0 else None
 
     def matches(field, expected):
         return money(crm.get(field)) == money(expected)
@@ -5786,6 +5829,12 @@ def _stand_crm_fact_problem(board, crm, kind):
             return 'custom_facts_missing'
         for side in ('payin', 'payout'):
             prefix = 'custom_' + side + '_'
+            currency = str(custom.get(side + 'Currency') or '').upper()
+            if (not currency or positive(custom.get(side + 'Amount')) is None
+                    or positive(custom.get(side + 'Usdt')) is None
+                    or (currency != 'USDT'
+                        and positive(custom.get(side + 'Rate')) is None)):
+                return 'custom_facts_missing'
             if str(crm.get(prefix + 'currency') or '').upper() != str(custom.get(side + 'Currency') or '').upper():
                 return 'custom_facts_mismatch'
             if not matches(prefix + 'amount', custom.get(side + 'Amount')):
@@ -5827,10 +5876,22 @@ def _stand_crm_fact_problem(board, crm, kind):
         if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
             return 'payin_rate_mismatch'
     main_hashes = board.get('payinHashes') or []
-    main_usdt = sum((money(h.get('amount')) or Decimal(0) for h in main_hashes), Decimal(0))
-    if not main_hashes:
-        main_usdt = money(board.get('amountUsdt')) or money((board.get('pay') or {}).get('usdt'))
-    if main_usdt is not None and not matches('payin_amount_usdt', main_usdt):
+    if main_hashes:
+        if not all(isinstance(h, dict) and positive(h.get('amount')) is not None
+                   for h in main_hashes):
+            return 'payin_basis_missing'
+        main_usdt = sum((positive(h['amount']) for h in main_hashes), Decimal(0)).quantize(
+            Decimal('0.01'), rounding=ROUND_HALF_UP)
+    elif board.get('custom') is True:
+        main_usdt = money(custom.get('payinUsdt'))
+    else:
+        broker_basis = _stand_broker_payin_basis(
+            board.get('incomeAmount') or board.get('amountRub'), broker_rate)
+        main_usdt = (money(board.get('amountUsdt')) or
+                     (broker_basis or {}).get('usdt'))
+    if main_usdt is None or main_usdt <= 0:
+        return 'payin_basis_missing'
+    if not matches('payin_amount_usdt', main_usdt):
         return 'payin_amount_mismatch'
     board_extra = board.get('payinExtra') or []
     crm_extra = crm.get('payin_extra') or []
@@ -5913,7 +5974,9 @@ def _stand_crm_fact_problem(board, crm, kind):
             return 'transfer_sent_mismatch'
     elif kind == 'mf_realty':
         invoice = money(board.get('amountThb'))
-        if invoice is not None and not matches('invoice_amount_thb', invoice):
+        if invoice is None or invoice <= 0:
+            return 'invoice_basis_missing'
+        if not matches('invoice_amount_thb', invoice):
             return 'locked_invoice_mismatch'
         rates = board.get('rates') or {}
         if _amount(crm.get('sell_rate_thb_usdt')) != _amount(rates.get('client')):
@@ -5925,10 +5988,10 @@ def _stand_crm_fact_problem(board, crm, kind):
         transfer_rate = (board.get('transfer') or {}).get('rate')
         coins_rate = board.get('postConv') == 'coins' and _stand_number(transfer_rate) > 0
         expected_buy = transfer_rate if coins_rate else rates.get('usdtThb')
+        if positive(expected_buy) is None:
+            return 'buy_rate_board_missing'
         if (expected_buy is not None and not exact('buy_rate_thb_usdt', expected_buy)):
             return 'buy_rate_mismatch'
-        if expected_buy is None and board.get('originMode') != 'manual':
-            return 'buy_rate_board_missing'
         percent = board.get('companyPct') if board.get('companyPct') is not None else 1
         expected_sent = ((board.get('pay') or {}).get('coinsCredit') or {}).get('thb')
         expected_sent = (expected_sent or (board.get('transfer') or {}).get('thb')
@@ -5955,7 +6018,23 @@ def _stand_crm_fact_problem(board, crm, kind):
             return 'recipient_mismatch'
         payout_usdt = (sum((money(h.get('amount')) or Decimal(0) for h in payout.get('hashes') or []), Decimal(0))
                        if payout.get('hashes') else money(payout.get('usdt')))
-        if payout_usdt is not None and not matches('payout_amount_usdt', payout_usdt):
+        if board.get('custom') is True:
+            payout_usdt = money(custom.get('payoutUsdt'))
+        elif payout_usdt is None:
+            # T17 econ() may estimate cost from saved THB and buy rate when
+            # no payout hash or explicit USDT has arrived yet.
+            thb = positive(payout.get('thb') or board.get('amountThb'))
+            buy = positive((board.get('rates') or {}).get('usdtThb'))
+            if thb is not None and buy is not None:
+                try:
+                    estimate = float(thb) / float(buy)
+                except (OverflowError, ZeroDivisionError):
+                    estimate = float('inf')
+                if math.isfinite(estimate) and math.isfinite(estimate * 100):
+                    payout_usdt = money(math.floor(estimate * 100 + .5) / 100)
+        if payout_usdt is None or payout_usdt <= 0:
+            return 'payout_basis_missing'
+        if not matches('payout_amount_usdt', payout_usdt):
             return 'payout_amount_mismatch'
         if (board.get('amountThb') or payout.get('thb')) and board.get('paySrc') != 'client':
             if not matches('payout_amount_thb', payout.get('thb') or board.get('amountThb')):

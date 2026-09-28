@@ -4622,7 +4622,9 @@ function crmPayloadFinal(d){
 function crmLockedKeys(d){
   const locked=new Set(['payin_tx_hashes','payout_tx_hashes']);
   if(d.payType)locked.add('payin_method');
-  if(d.payinHashes?.length||d.amountUsdt||(d.pay||{}).usdt)locked.add('payin_amount_usdt');
+  if(d.payinHashes?.length||d.amountUsdt||(d.pay||{}).usdt||
+     (!isCrypto(d)&&num(d.incomeAmount||d.amountRub)>0&&num((d.rates||{}).broker)>0))
+    locked.add('payin_amount_usdt');
   if(d.incomeAmount||d.amountRub)locked.add('payin_amount_rub');
   if(!isCrypto(d)&&num((d.rates||{}).broker))locked.add('payin_rate_rub_usdt');
   if((d.payTo||{}).purpose)locked.add('realty_purpose');
@@ -4636,7 +4638,9 @@ function crmLockedKeys(d){
   }else{
     if(d.paySrc)locked.add('payout_source');
     if(d.amountThb||(d.payout||{}).thb)locked.add('payout_amount_thb');
-    if((d.payout||{}).usdt||(d.payout||{}).hashes?.length)locked.add('payout_amount_usdt');
+    if((d.payout||{}).usdt||(d.payout||{}).hashes?.length||
+       (num((d.payout||{}).thb||d.amountThb)>0&&num((d.rates||{}).usdtThb)>0))
+      locked.add('payout_amount_usdt');
   }
   return locked;
 }
