@@ -197,6 +197,16 @@ with sync_playwright() as playwright:
     print('kind:', host.locator('#dealKindSelect').input_value())
     print('payin:', host.locator('#payinMethod option').count())
     print('source:', page.locator('#crmDraftSource').input_value())
+    page.evaluate("BX_DEALS.push('T17 synthetic Bitrix #42')")
+    page.locator('#crmDraftSource').select_option('bitrix')
+    assert page.locator('#crmDraftSourceRef').input_value()==''
+    assert page.locator('#crmDraftSourceRef').locator('xpath=..').locator('label').inner_text()=='Карточка в Битриксе'
+    assert page.locator('#crmDraftSourceChoices option').all_text_contents()==['T17 synthetic Bitrix #42']
+    page.locator('#crmDraftSourceRef').fill('T17 synthetic Bitrix #42')
+    assert page.evaluate('deal(S.edit).source')=='tg','source change must remain draft until save'
+    page.locator('#crmDraftSource').select_option('tg')
+    assert page.locator('#crmDraftSourceRef').input_value()==''
+    print('source/Bitrix choices and draft-only switch: PASS')
     invalid=page.evaluate('''()=>{const id=S.edit,before=JSON.stringify(deal(id));
       crmDraftActive.root.getElementById('payinMethod').value='';
       editSave(id);return {same:JSON.stringify(deal(id))===before,edit:S.edit===id};}''')

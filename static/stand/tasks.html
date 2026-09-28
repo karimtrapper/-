@@ -5597,7 +5597,8 @@ function viewEdit(){
         <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
           `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
-        <input class="fc" id="crmDraftSourceRef" value="${htmlText(d.sourceRef||'')}"></div>
+        <input class="fc" id="crmDraftSourceRef" list="crmDraftSourceChoices" value="${htmlText(d.sourceRef||'')}">
+        <datalist id="crmDraftSourceChoices"></datalist></div>
       <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
         <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
           <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option></select></div>
