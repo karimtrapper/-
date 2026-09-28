@@ -428,6 +428,8 @@ def _loopback_pair_allowed(host, port):
         return True
     if getattr(_tg_ctx, 'active', False) and (key, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
         return True
+    if getattr(_lk_ctx, 'active', False) and (key, port) in getattr(_lk_ctx, 'allowed_pairs', ()):
+        return True
     if getattr(_read_ctx, 'active', False) and (key, port) in getattr(_read_ctx, 'allowed_pairs', ()):
         return True
     return False
@@ -446,6 +448,8 @@ def _hostname_allowed(host, port=None):
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         return port is None or port == 443
+    if getattr(_lk_ctx, 'active', False) and h == getattr(_lk_ctx, 'host', None):
+        return port is None or port == 443
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         return port is None or port == 443
     return False
@@ -457,6 +461,8 @@ def _ip_allowed(ip, port=None):
     if port is not None and (ip, port) in _db_pairs:
         return True
     if getattr(_tg_ctx, 'active', False) and port is not None and (ip, port) in getattr(_tg_ctx, 'allowed_pairs', ()):
+        return True
+    if getattr(_lk_ctx, 'active', False) and port is not None and (ip, port) in getattr(_lk_ctx, 'allowed_pairs', ()):
         return True
     if getattr(_read_ctx, 'active', False) and port is not None and (ip, port) in getattr(_read_ctx, 'allowed_pairs', ()):
         return True
@@ -472,6 +478,9 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))
+    if getattr(_lk_ctx, 'active', False) and h == getattr(_lk_ctx, 'host', None):
+        pairs = {(info[4][0], info[4][1]) for info in infos}
+        _lk_ctx.allowed_pairs = pairs | set(getattr(_lk_ctx, 'allowed_pairs', ()))
     if getattr(_read_ctx, 'active', False) and h == getattr(_read_ctx, 'host', None):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _read_ctx.allowed_pairs = pairs | set(getattr(_read_ctx, 'allowed_pairs', ()))
