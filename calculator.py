@@ -156,30 +156,39 @@ class ExchangeRateProvider:
     FALLBACK_RUB_USDT = 88.0  # обновлён 19.08.2026
     
     @staticmethod
-    def _parse_binance_price(data, symbol):
+    def _parse_binance_price(data, symbol, source='th'):
         """Разбор ответа Binance — общий для прод-пути (aiohttp, ниже) и
-        стенда (get_all_rates, канал T9): TH отдаёт вложенную форму
-        {code:0, data:[{symbol, price}]}, Global — плоскую {price}. Одна
-        функция на оба транспорта, чтобы курс стенда не разошёлся с продом
-        на банальном несовпадении парсера, а не источника."""
+        стенда (get_all_rates, канал T9), с поведением ПО ИСТОЧНИКУ ровно как
+        в main (git 2c40e91): TH понимает вложенную форму
+        {code:0, data:[{symbol, price}]} и плоскую {price} как фоллбэк
+        внутри самого TH-ответа; Global — строго плоская {price}, без
+        вложенной формы. Раньше общая функция применяла TH-разбор и к
+        Global-ответу тоже: TH-образный мусор на Global-эндпоинте (такого
+        прод не отдаёт, но раз это отдельный источник — не должен и молча
+        распознаваться) давал курс там, где main честно вернул бы None."""
         if not isinstance(data, dict):
             return None
         try:
-            if data.get("code") == 0 and "data" in data:
-                price_data = data["data"]
-                if isinstance(price_data, list):
-                    for item in price_data:
-                        if item.get("symbol") == symbol:
-                            return float(item.get("price"))
+            if source == 'th':
+                if data.get("code") == 0 and "data" in data:
+                    price_data = data["data"]
+                    if isinstance(price_data, list):
+                        for item in price_data:
+                            if item.get("symbol") == symbol:
+                                return float(item.get("price"))
+                        return None
+                    if isinstance(price_data, dict):
+                        return float(price_data.get("price"))
                     return None
-                if isinstance(price_data, dict):
-                    return float(price_data.get("price"))
+                if "price" in data:
+                    return float(data["price"])
                 return None
-            if "price" in data:
-                return float(data["price"])
-        except (TypeError, ValueError):
+            # source == 'global': main делал ровно float(data['price']) без
+            # какой-либо вложенной формы — KeyError/TypeError означает «не
+            # тот формат», а не «попробовать разобрать как TH».
+            return float(data["price"])
+        except (TypeError, ValueError, KeyError):
             return None
-        return None
 
     @staticmethod
     async def get_binance_rate(symbol: str = "USDTTHB") -> float:
@@ -216,7 +225,7 @@ class ExchangeRateProvider:
                     if response.status == 200:
                         data = await response.json()
                         print(f"DEBUG: Binance Global rate: {data.get('price')}")
-                        price = ExchangeRateProvider._parse_binance_price(data, symbol)
+                        price = ExchangeRateProvider._parse_binance_price(data, symbol, source='global')
                         if price is not None:
                             return price
         except Exception as e:
@@ -301,11 +310,11 @@ class ExchangeRateProvider:
             # Binance TH и только потом — Global-фоллбэк; канал повторяет тот
             # же порядок источников, иначе курс стенда систематически разойдётся
             # с продом даже при обоих источниках "живых".
-            for op in ('market_binance_th_ticker', 'market_binance_ticker'):
+            for op, source in (('market_binance_th_ticker', 'th'), ('market_binance_ticker', 'global')):
                 status_code, data, err = stand_egress.read_get(op, {'symbol': 'USDTTHB'})
                 if not err and status_code == 200:
                     usdt_thb = _finite_positive(
-                        ExchangeRateProvider._parse_binance_price(data, 'USDTTHB'))
+                        ExchangeRateProvider._parse_binance_price(data, 'USDTTHB', source=source))
                     if usdt_thb is not None:
                         break
             rub_usdt = None

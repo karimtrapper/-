@@ -1254,3 +1254,133 @@ def test_all_3xx_including_uncommon_codes_are_redirect_blocked():
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result == {str(s): 'redirect_blocked' for s in range(300, 309)}
+
+
+# ─────── QA-раунд 4 (лидер): TH/Global разбор по источнику, поток-демон ────
+
+def test_parse_binance_price_global_source_rejects_nested_shape_like_main():
+    """Global — строго плоский {price}, как в main: TH-образный вложенный
+    ответ на Global-эндпоинте не должен молча распознаваться (там его в
+    реальности не бывает, а если и придёт — это не тот формат)."""
+    result, proc = run_script('''
+        from calculator import ExchangeRateProvider as P
+        OUT({
+            'global_flat': P._parse_binance_price({'price': '35.4'}, 'USDTTHB', source='global'),
+            'global_nested_rejected': P._parse_binance_price(
+                {'code': 0, 'data': [{'symbol': 'USDTTHB', 'price': '35.4'}]}, 'USDTTHB', source='global'),
+            'global_garbage': P._parse_binance_price({'price': 'bad'}, 'USDTTHB', source='global'),
+            'global_missing_price': P._parse_binance_price({}, 'USDTTHB', source='global'),
+        })
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'global_flat': 35.4, 'global_nested_rejected': None,
+                      'global_garbage': None, 'global_missing_price': None}
+
+
+def test_calculator_stand_mode_global_fallback_uses_strict_flat_parser():
+    """В STAND_MODE market_binance_ticker (фоллбэк) тоже должен идти через
+    source='global' — TH-образный мусор на этом канале не подтверждает курс."""
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import asyncio
+        from calculator import ExchangeRateProvider
+
+        def fake_read_get(op, params=None, _base_url=None):
+            if op == 'market_binance_th_ticker':
+                return None, None, 'network_error'
+            if op == 'market_binance_ticker':
+                # TH-образный ответ там, где его быть не должно — не курс.
+                return 200, {'code': 0, 'data': [{'symbol': 'USDTTHB', 'price': '35.4'}]}, None
+            if op == 'market_rapira':
+                return 200, {'data': []}, None
+            raise AssertionError(op)
+        stand_egress.read_get = fake_read_get
+
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        OUT(rates)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['usdt_thb'] is None
+
+
+def test_read_body_deadline_thread_is_daemon_and_process_does_not_wait_for_it():
+    """Поток чтения тела — обычный daemon Thread, не ThreadPoolExecutor:
+    после дедлайна он не входит ни в какой пул и не держит процесс."""
+    result, proc = run_script('''
+        import threading, time
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        stand_egress._READ_TOTAL_DEADLINE = .15
+
+        class Raw:
+            def read(self, *a, **kw):
+                time.sleep(3)
+                return b'{}'
+        class Resp:
+            status_code = 200
+            raw = Raw()
+            def close(self):
+                pass
+
+        before = [t.name for t in threading.enumerate()]
+        start = time.monotonic()
+        with patch('requests.Session.get', return_value=Resp()):
+            result = stand_egress.read_get('market_rapira', {})
+        elapsed = time.monotonic() - start
+        after = [t for t in threading.enumerate() if t.name == 'stand-egress-read']
+        OUT({'result': result, 'elapsed': round(elapsed, 2),
+             'leaked_thread_is_daemon': after[0].daemon if after else None,
+             'status': stand_egress.status()})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['result'] == [None, None, 'read_timeout']
+    assert result['elapsed'] < 1.0, 'должен вернуться у дедлайна, не ждать 3с фонового потока'
+    assert result['leaked_thread_is_daemon'] is True
+    assert result['status']['abandoned_read_threads'] == 1
+
+
+def test_read_body_deadline_does_not_leak_abandoned_counter_on_success():
+    result, proc = run_script(_fake_get_server_script() + '''
+        stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'abandoned': stand_egress.status()['abandoned_read_threads']})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'abandoned': 0}
+
+
+def test_real_socket_deadline_still_blocks_neighbor_and_completes_fast():
+    """Контрольная проверка E2 после перехода на daemon Thread: разрешение
+    всё ещё выставляется только внутри своего connect(), прямой сосед по
+    сокету блокируется, и операция укладывается в дедлайн, а не ждёт полной
+    передачи медленного тела."""
+    result, proc = run_script(_slow_drip_server_script(deadline=0.2) + '''
+        import socket, time
+        from unittest.mock import patch
+
+        seen = {}
+        orig_read = None
+        import urllib3
+        def spy(self, *a, **kw):
+            seen['active'] = getattr(stand_egress._read_ctx, 'active', False)
+            s = socket.socket()
+            try:
+                s.connect(('api.rapira.net', 443))
+                seen['direct'] = 'sent'
+            except Exception:
+                seen['direct'] = 'blocked'
+            finally:
+                s.close()
+            return orig_read(self, *a, **kw)
+        orig_read = urllib3.response.HTTPResponse.read
+
+        start = time.monotonic()
+        with patch.object(urllib3.response.HTTPResponse, 'read', spy):
+            result = stand_egress.read_get('market_rapira', {}, _base_url=f'http://127.0.0.1:{_port}')
+        elapsed = time.monotonic() - start
+        OUT({'result': result, 'elapsed': round(elapsed, 2), 'seen': seen})
+    ''', timeout=15)
+    assert proc.returncode == 0, proc.stderr
+    assert result['seen']['direct'] == 'blocked'
+    assert result['elapsed'] < 0.4
