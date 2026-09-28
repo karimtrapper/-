@@ -6893,10 +6893,9 @@ def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
     if STAND_MODE:
-        # На стенде курс — настоящий рынок через контролируемый канал чтения T9
-        # (market_binance_ticker/market_rapira), без Playwright и без Bitazza
-        # VWAP-карточки. На отказе источника — честно «нет свежего курса»,
-        # никогда не старое значение вместо свежего (кэша здесь нет вовсе).
+        # Рыночные курсы и Bitazza читаются только через фиксированные каналы
+        # stand_egress. Карточка Bitazza использует тот же VWAP и комиссии,
+        # что main; её недоступность не скрывает доступные Binance/Rapira.
         try:
             rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         except Exception as e:
@@ -6908,8 +6907,17 @@ def get_rates():
             errors.append('USDT/THB недоступен (Binance)')
         if not rub_usdt:
             errors.append('RUB/USDT недоступен (Rapira)')
+        bz = None
+        try:
+            bz = _bitazza_calc_quote()
+        except Exception as e:
+            app.logger.warning(f'Bitazza rate error: {e}')
         return jsonify({'success': bool(usdt_thb and rub_usdt), 'stand_blocked': False,
                         'usdt_thb': usdt_thb, 'rub_usdt': rub_usdt, 'errors': errors,
+                        'bitazza_usdt_thb': bz['effective'] if bz else None,
+                        'bitazza_raw': bz['raw_vwap'] if bz else None,
+                        'bitazza_fee_percent': CALC_BITAZZA_FEE_PCT * 100,
+                        'bitazza_fee_fixed_thb': CALC_BITAZZA_FEE_FIXED_THB,
                         'error': None if (usdt_thb and rub_usdt) else 'На стенде нет свежего курса — введите вручную'})
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
