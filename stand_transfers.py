@@ -173,7 +173,8 @@ def preserve_server_fields(old_state, new_state):
             if not isinstance(h, dict):
                 continue
             trusted = old_payin.get(h.get('hash'))
-            fields = ('verified', 'verifiedAt', 'timestampMs', 'otherSender') + (
+            fields = ('verified', 'verifiedAt', 'timestampMs', 'otherSender',
+                      'network', 'net') + (
                 () if str(h.get('hash') or '').startswith('demo:') else ('from', 'to'))
             for field in fields:
                 h.pop(field, None)

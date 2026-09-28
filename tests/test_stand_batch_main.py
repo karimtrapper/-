@@ -125,6 +125,22 @@ def test_teodor_confirms_each_send_and_forwards_only_after_all(board):
     assert main['step'] == 's25'
     assert main['serverTransferComplete'] is True
     assert len(main['payout']['hashes']) == 2
+    db = appmod.get_session()
+    try:
+        manager = appmod.AdminUser(username='t24_batch_manager', role='manager',
+                                   password_hash=appmod.AdminUser.hash_password('test'))
+        db.add(manager)
+        db.commit()
+        manager_id = manager.id
+    finally:
+        db.close()
+    with appmod.app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_id'] = manager_id
+        proof = client.post('/api/stand/deals/1473/close-evidence',
+            json={'version': response.json['version'], 'kind': 'payout'})
+        assert proof.status_code == 200, proof.json
+        assert proof.json['provenance'] == 'verified_network'
     assert call('teodor', 1473, 'demo:1473:two').status_code in (403, 409)
 
 

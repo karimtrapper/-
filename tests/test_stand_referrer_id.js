@@ -137,6 +137,7 @@ function run(names, context) {
   const ctx = run(['crmPayload', 'refById', 'refs'], {
     S, refsInit: () => [],
     econ: () => ({payin: 100, cost: 50, sentThb: null}),
+    payinParts: () => [{usdt: 100}],
     mfList: () => [], num: v => { const n = parseFloat(String(v).replace(',', '.')); return isNaN(n) ? null : n; },
     isCrypto: () => false, crmNet: n => String(n || 'TRC20').toLowerCase(),
     PAYIN_CRM: {}, PAYOUT_CRM: {},

@@ -210,6 +210,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   const ctx = run(['crmPayload', 'crmNet', 'ippsTariff', 'freeholdFee', 'freeholdSend'],
     ['IPPS_TARIFFS', 'PAYIN_CRM'], {
       econ: () => ({ payin: 45500, invoiceUsd: 45000 }),
+      payinParts: () => [{usdt: 45500}],
       num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
       mfList: () => [], refById: () => null, isCrypto: () => false,
     });
