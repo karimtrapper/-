@@ -474,6 +474,40 @@ def test_bad_bot_blocks_bind_and_poller_without_moving_offset():
     assert result['nonces'] == 0 and result['calls'] == ['getMe', 'getMe']
 
 
+def test_update_poll_timeout_and_network_error_log():
+    result, proc = run_script('''
+        import requests
+        from unittest.mock import patch
+        import app
+        import stand_notify
+
+        calls = []
+        class Response:
+            status_code = 200
+            def json(self):
+                return {'ok': True, 'result': {'id': 1, 'username': 'grusha_stand_bot'}}
+        class Session:
+            trust_env = False
+            def post(self, url, **kwargs):
+                calls.append({'method': url.rsplit('/', 1)[-1],
+                              'payload': kwargs['json'], 'http_timeout': kwargs['timeout']})
+                if url.endswith('/getUpdates'):
+                    raise requests.Timeout()
+                return Response()
+            def close(self): pass
+        with patch.object(requests, 'Session', Session), patch.object(app.app.logger, 'warning') as warning:
+            polled = stand_notify.poll_once()
+        OUT({'polled': polled, 'calls': calls, 'log': warning.call_args.args,
+             'status': stand_notify.status()})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['polled'] is False and result['status'] == 'error'
+    updates = [call for call in result['calls'] if call['method'] == 'getUpdates']
+    assert len(updates) == 1
+    assert updates[0]['payload']['timeout'] < updates[0]['http_timeout']
+    assert result['log'] == ['stand update poll rejected: %s', 'tg_network_error']
+
+
 def test_expected_stand_bot_allows_bind_and_production_names_never_allowed():
     result, proc = run_script('''
         import requests

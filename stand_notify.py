@@ -21,6 +21,7 @@ _delivery_lock = threading.Lock()
 _update_lock = threading.Lock()
 _LOCK_KEY = 726483291
 _MAX_ATTEMPTS = 5
+_UPDATE_POLL_TIMEOUT = 5
 
 
 def init(app_module):
@@ -245,12 +246,13 @@ def poll_once():
     db = _app.SessionLocal()
     try:
         offset = db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar() or 0
-        result = stand_egress.tg_call('getUpdates', {'offset': offset, 'timeout': 20, 'allowed_updates': ['message']})
+        result = stand_egress.tg_call('getUpdates', {'offset': offset, 'timeout': _UPDATE_POLL_TIMEOUT, 'allowed_updates': ['message']})
         if not isinstance(result, dict) or not result.get('ok'):
             _status = ('bot_identity_mismatch' if isinstance(result, dict)
                        and result.get('error') == 'bot_identity_mismatch' else 'error')
             _app.app.logger.warning('stand update poll rejected: %s',
-                                    result.get('error_code', 'unknown') if isinstance(result, dict) else 'invalid_response')
+                                    (result.get('error') or result.get('error_code') or 'unknown')
+                                    if isinstance(result, dict) else 'invalid_response')
             return False
         for update in result.get('result') or []:
             update_id = update.get('update_id')
