@@ -48,6 +48,7 @@ UDP (sendto/sendmsg) на заблокированный адрес не бро�
 """
 import ipaddress
 import os
+import re
 import socket
 import threading
 import time
@@ -83,6 +84,23 @@ _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
 
 _policy = None  # callable(channel, recipient, operation) -> bool, регистрируется set_policy()
+_bot_identity = None  # (токен, адрес тестового сервера, имя, id, срок проверки)
+_pinned_bot_id = None  # id первого подтверждённого бота в этом процессе
+_BOT_IDENTITY_TTL = 60
+_PROD_BOTS = {'grusha_lk_bot', 'grushath_bot'}
+
+
+def expected_bot_username():
+    """Имя бота стенда; боевые имена нельзя разрешить через env."""
+    name = os.environ.get('STAND_BOT_USERNAME', 'grusha_stand_bot').strip().lstrip('@')
+    if not re.fullmatch(r'[A-Za-z0-9_]{5,32}', name) or name.lower() in _PROD_BOTS:
+        return None
+    return name
+
+
+def bot_identity_status():
+    return 'bot_identity_mismatch' if expected_bot_username() is None or (
+        _bot_identity is not None and _bot_identity[3] is None) else None
 
 
 def _default_policy(channel, recipient, operation):
@@ -389,6 +407,13 @@ def tg_call(method, payload, _base_url=None):
     if not token:
         return {'ok': False, 'error': 'no_token'}
 
+    expected = expected_bot_username()
+    if expected is None:
+        return {'ok': False, 'error': 'bot_identity_mismatch'}
+
+    global _bot_identity, _pinned_bot_id
+    identity_key = (token, _base_url, expected)
+
     payload = dict(payload or {})
     chat_id = payload.get('chat_id')
     if method == 'sendMessage':
@@ -400,8 +425,17 @@ def tg_call(method, payload, _base_url=None):
         if not can_send('telegram', chat_id_int, method):
             return {'ok': False, 'error': 'denied'}
     else:
-        if not can_send('telegram', None, method):
+        if method != 'getMe' and not can_send('telegram', None, method):
             return {'ok': False, 'error': 'denied'}
+
+    if method in ('sendMessage', 'getUpdates', 'getWebhookInfo') and (
+            _bot_identity is None or _bot_identity[:3] != identity_key
+            or _bot_identity[3] is None or _bot_identity[4] <= time.monotonic()):
+        identity = tg_call('getMe', {}, _base_url=_base_url)
+        if not identity.get('ok'):
+            return {'ok': False, 'error': 'bot_identity_mismatch'}
+    if method in ('sendMessage', 'getUpdates', 'getWebhookInfo') and _bot_identity[3] is None:
+        return {'ok': False, 'error': 'bot_identity_mismatch'}
 
     base = (_base_url or f'https://{_TG_HOST}').rstrip('/')
     url = f'{base}/bot{token}/{method}'
@@ -425,10 +459,33 @@ def tg_call(method, payload, _base_url=None):
                 data = resp.json()
             except ValueError:
                 data = {}
-            return {'ok': bool(data.get('ok')), 'status_code': resp.status_code, 'result': data.get('result')}
+            if not isinstance(data, dict):
+                data = {}
+            result = {'ok': bool(data.get('ok')), 'status_code': resp.status_code, 'result': data.get('result')}
+            if method == 'getMe':
+                bot = data.get('result') if isinstance(data.get('result'), dict) else {}
+                name, bot_id = bot.get('username'), bot.get('id')
+                pinned_id = os.environ.get('STAND_BOT_ID', '').strip()
+                previous_id = (_bot_identity[3] if _bot_identity and _bot_identity[:3] == identity_key else None)
+                valid = bool(result['ok'] and isinstance(name, str) and name.lower() == expected.lower()
+                             and name.lower() not in _PROD_BOTS and isinstance(bot_id, int)
+                             and not isinstance(bot_id, bool) and bot_id > 0
+                             and (not pinned_id or str(bot_id) == pinned_id)
+                             and (previous_id is None or bot_id == previous_id)
+                             and (_pinned_bot_id is None or bot_id == _pinned_bot_id))
+                if valid:
+                    _pinned_bot_id = bot_id
+                _bot_identity = (*identity_key, bot_id if valid else None,
+                                 time.monotonic() + _BOT_IDENTITY_TTL if valid else 0)
+                if not valid:
+                    print('[STAND-TG] bot_identity_mismatch')
+                    return {'ok': False, 'error': 'bot_identity_mismatch'}
+            return result
         finally:
             session.close()
     except Exception:
+        if method == 'getMe':
+            _bot_identity = (*identity_key, None, 0)
         # Текст исключения requests часто содержит сам URL (…/bot<TOKEN>/method) —
         # ни его, ни оригинальное исключение никуда не отдаём и не логируем.
         return {'ok': False, 'error': 'tg_network_error'}

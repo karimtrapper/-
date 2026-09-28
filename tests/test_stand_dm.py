@@ -159,7 +159,9 @@ def test_bind_valid_expired_repeated_group_and_offset_restart(dm, monkeypatch):
     monkeypatch.setattr(notify.stand_egress, 'tg_call',
                         lambda method, payload: {'ok': True, 'result': [group, {
                             'update_id': 2, 'message': {'chat': {'type': 'private', 'id': 777},
-                            'from': {'id': 777}, 'text': '/start bind_' + nonce}}]} if method == 'getUpdates' else {'ok': True})
+                            'from': {'id': 777}, 'text': '/start bind_' + nonce}}]} if method == 'getUpdates'
+                        else {'ok': True, 'result': {'username': 'grusha_stand_bot', 'id': 1}}
+                        if method == 'getMe' else {'ok': True})
     assert notify.poll_once()
     assert not notify.process_update({'message': {'chat': {'type': 'private', 'id': 777},
                                                   'from': {'id': 777}, 'text': '/start bind_' + nonce}})
@@ -180,7 +182,9 @@ def test_webhook_disables_poll_and_notify_test_requires_admin(dm, monkeypatch):
     calls, ids, _ = dm
     monkeypatch.setenv('STAND_TG_TOKEN', 'fake-token')
     monkeypatch.setattr(notify.stand_egress, 'tg_call',
-                        lambda method, payload: {'ok': True, 'result': {'url': 'https://example.test/hook'}})
+                        lambda method, payload: {'ok': True, 'result':
+                            {'username': 'grusha_stand_bot', 'id': 1} if method == 'getMe'
+                            else {'url': 'https://example.test/hook'}})
     assert not notify.start_updates()
     assert notify.status() == 'webhook_set'
     with appmod.app.test_client() as client:

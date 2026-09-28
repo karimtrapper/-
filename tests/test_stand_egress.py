@@ -292,7 +292,8 @@ def _fake_telegram_server_script():
                 self.send_response(200)
                 self.send_header('Content-Type', 'application/json')
                 self.end_headers()
-                self.wfile.write(_json.dumps({'ok': True, 'result': {'id': 1}}).encode())
+                self.wfile.write(_json.dumps({'ok': True, 'result':
+                    {'id': 1, 'username': 'grusha_stand_bot'} if self.path.endswith('/getMe') else {'id': 1}}).encode())
             def log_message(self, *a): pass
 
         _srv = http.server.HTTPServer(('127.0.0.1', 0), FakeTG)
@@ -311,12 +312,204 @@ def test_tg_call_send_message_to_allowed_chat_reaches_fake_telegram():
         res = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'hi'},
                                    _base_url=f'http://127.0.0.1:{_tg_port}')
         OUT({'ok': res.get('ok'), 'hits': len(FakeTG.requests),
-             'path': FakeTG.requests[0]['path'] if FakeTG.requests else None})
+             'path': FakeTG.requests[-1]['path'] if FakeTG.requests else None})
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result['ok'] is True
-    assert result['hits'] == 1
+    assert result['hits'] == 2
     assert result['path'].endswith('/sendMessage')
+
+
+def test_bot_identity_fail_closed_for_send_and_updates():
+    """Ошибочный getMe не допускает ни отправку, ни получение апдейтов."""
+    result, proc = run_script('''
+        import requests
+        import stand_egress
+        stand_egress.set_policy(lambda *a: True)
+        cases = [
+            {'ok': True, 'result': {'id': 1, 'username': 'grusha_lk_bot'}},
+            {'ok': True, 'result': {'id': 0, 'username': 'grusha_stand_bot'}},
+            {'ok': False},
+            'broken-json',
+        ]
+        outcomes = []
+        for answer in cases:
+            stand_egress._bot_identity = None
+            calls = []
+            class Response:
+                status_code = 200
+                def json(self):
+                    if answer == 'broken-json': raise ValueError('bad json')
+                    return answer
+            class Session:
+                trust_env = False
+                def post(self, url, **kwargs):
+                    calls.append(url.rsplit('/', 1)[-1])
+                    return Response()
+                def close(self): pass
+            old = requests.Session
+            requests.Session = Session
+            try:
+                sent = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+                polled = stand_egress.tg_call('getUpdates', {'offset': 7})
+            finally:
+                requests.Session = old
+            outcomes.append([sent.get('error'), polled.get('error'), calls])
+        OUT(outcomes)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert all(sent == 'bot_identity_mismatch' and polled == 'bot_identity_mismatch'
+               and calls == ['getMe', 'getMe'] for sent, polled, calls in result)
+
+
+def test_bot_identity_rechecks_after_token_change_and_id_change():
+    result, proc = run_script('''
+        import requests
+        import stand_egress
+        stand_egress.set_policy(lambda *a: True)
+        calls = []
+        answers = iter([
+            {'ok': True, 'result': {'id': 1, 'username': 'grusha_stand_bot'}},
+            {'ok': True, 'result': {'id': 2, 'username': 'grusha_stand_bot'}},
+            {'ok': True, 'result': {'id': 1, 'username': 'grusha_lk_bot'}},
+        ])
+        class Response:
+            status_code = 200
+            def __init__(self, answer): self.answer = answer
+            def json(self): return self.answer
+        class Session:
+            trust_env = False
+            def post(self, url, **kwargs):
+                method = url.rsplit('/', 1)[-1]
+                calls.append(method)
+                return Response(next(answers) if method == 'getMe' else {'ok': True})
+            def close(self): pass
+        requests.Session = Session
+        first = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+        stand_egress._bot_identity = (*stand_egress._bot_identity[:4], 0)
+        changed_id = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+        os.environ['STAND_TG_TOKEN'] = '444:changed-token'
+        changed_token = stand_egress.tg_call('getUpdates', {'offset': 7})
+        OUT({'first': first, 'changed_id': changed_id, 'changed_token': changed_token,
+             'calls': calls})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['first']['ok']
+    assert result['changed_id']['error'] == 'bot_identity_mismatch'
+    assert result['changed_token']['error'] == 'bot_identity_mismatch'
+    assert result['calls'] == ['getMe', 'sendMessage', 'getMe', 'getMe']
+
+
+def test_failed_identity_refresh_invalidates_previous_cache():
+    result, proc = run_script('''
+        import requests
+        import stand_egress
+        stand_egress.set_policy(lambda *a: True)
+        calls = []
+        class Response:
+            status_code = 200
+            def json(self): return {'ok': True, 'result': {'id': 1, 'username': 'grusha_stand_bot'}}
+        class Session:
+            trust_env = False
+            def post(self, url, **kwargs):
+                method = url.rsplit('/', 1)[-1]
+                calls.append(method)
+                if method == 'getMe' and len(calls) > 2:
+                    raise requests.ConnectionError('fake failure')
+                return Response()
+            def close(self): pass
+        requests.Session = Session
+        first = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+        refresh = stand_egress.tg_call('getMe', {})
+        second = stand_egress.tg_call('sendMessage', {'chat_id': 555, 'text': 'x'})
+        OUT({'first': first.get('ok'), 'refresh': refresh.get('error'),
+             'second': second.get('error'), 'calls': calls})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'first': True, 'refresh': 'tg_network_error',
+                      'second': 'bot_identity_mismatch',
+                      'calls': ['getMe', 'sendMessage', 'getMe', 'getMe']}
+
+
+def test_bad_bot_blocks_bind_and_poller_without_moving_offset():
+    result, proc = run_script('''
+        import requests
+        from sqlalchemy import text
+        import app
+        import stand_notify
+        import stand_egress
+        calls = []
+        class Response:
+            status_code = 200
+            def json(self): return {'ok': True, 'result': {'id': 1, 'username': 'grusha_lk_bot'}}
+        class Session:
+            trust_env = False
+            def post(self, url, **kwargs):
+                calls.append(url.rsplit('/', 1)[-1])
+                return Response()
+            def close(self): pass
+        requests.Session = Session
+        db = app.get_session()
+        user = app.AdminUser(username='botpin_test', display_name='Тест', password_hash='unused')
+        db.add(user); db.commit()
+        uid = user.id
+        before = db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar()
+        db.close()
+        client = app.app.test_client()
+        with client.session_transaction() as session:
+            session['user_id'] = uid
+            session['username'] = 'botpin_test'
+        bind = client.post('/api/stand/tg-bind')
+        poll = stand_notify.poll_once()
+        db = app.get_session()
+        after = db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar()
+        nonces = db.execute(text('SELECT COUNT(*) FROM stand_tg_bind')).scalar()
+        db.close()
+        OUT({'status': bind.status_code, 'error': bind.json.get('error'),
+             'poll': poll, 'before': before, 'after': after, 'nonces': nonces, 'calls': calls})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 503 and result['error'] == 'bot_identity_mismatch'
+    assert result['poll'] is False and result['before'] == result['after']
+    assert result['nonces'] == 0 and result['calls'] == ['getMe', 'getMe']
+
+
+def test_expected_stand_bot_allows_bind_and_production_names_never_allowed():
+    result, proc = run_script('''
+        import requests
+        import app
+        import stand_egress
+        class Response:
+            status_code = 200
+            def json(self): return {'ok': True, 'result': {'id': 123, 'username': 'grusha_stand_bot'}}
+        class Session:
+            trust_env = False
+            def post(self, url, **kwargs): return Response()
+            def close(self): pass
+        requests.Session = Session
+        db = app.get_session()
+        user = app.AdminUser(username='botpin_good', display_name='Тест', password_hash='unused')
+        db.add(user); db.commit()
+        uid = user.id
+        db.close()
+        client = app.app.test_client()
+        with client.session_transaction() as session:
+            session['user_id'] = uid
+            session['username'] = 'botpin_good'
+        bind = client.post('/api/stand/tg-bind')
+        rejected = []
+        for name in ('grusha_lk_bot', 'Grushath_bot'):
+            os.environ['STAND_BOT_USERNAME'] = name
+            rejected.append([stand_egress.expected_bot_username(),
+                             stand_egress.tg_call('sendMessage', {'chat_id': 123, 'text': 'x'}).get('error'),
+                             client.post('/api/stand/tg-bind').status_code])
+        OUT({'status': bind.status_code, 'url': bind.json.get('url'),
+             'username': bind.json.get('bot_username'), 'rejected': rejected})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] == 200 and result['username'] == 'grusha_stand_bot'
+    assert result['url'].startswith('https://t.me/grusha_stand_bot?start=bind_')
+    assert result['rejected'] == [[None, 'bot_identity_mismatch', 503]] * 2
 
 
 def test_tg_call_denies_wrong_chat_id_without_network():
@@ -640,7 +833,7 @@ def test_tg_call_network_error_does_not_leak_token():
         })
     ''')
     assert proc.returncode == 0, proc.stderr
-    assert result['error'] == 'tg_network_error'
+    assert result['error'] == 'bot_identity_mismatch'
     assert result['token_in_error'] is False
     assert result['token_in_stdout'] is False
 

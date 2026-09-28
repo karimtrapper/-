@@ -5754,6 +5754,14 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const res = await fetch(`${API_URL}/api/stand/tg-bind`, {method:'POST'});
                 const data = await res.json();
                 if (!data.success) { showToast(data.error || 'Бот недоступен', 'error'); return; }
+                const bot = data.bot_username;
+                if (typeof bot !== 'string' || !/^[A-Za-z0-9_]{5,32}$/.test(bot)
+                    || /^(grusha_lk_bot|Grushath_bot)$/i.test(bot)
+                    || typeof data.url !== 'string'
+                    || !new RegExp(`^https://t\\.me/${bot}\\?start=bind_[A-Za-z0-9_-]{20,100}$`).test(data.url)) {
+                    showToast('Ссылка на бота стенда не прошла проверку', 'error');
+                    return;
+                }
                 window.open(data.url, '_blank', 'noopener');
                 showToast('Нажмите Start в чате бота. Ссылка действует 10 минут.');
             } catch (e) { showToast('Ошибка сети', 'error'); }
