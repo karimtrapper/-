@@ -18,8 +18,14 @@ function fakeRoot() {
     ids.set(id,{value:'',style:{display:'none'},innerHTML:'',textContent:''});
   }
   const form = {payin_amount_rub:{value:''},payin_rate_rub_usdt:{value:'80'},
-    payin_amount_usdt:{value:''}};
-  return {ids, form, root:{getElementById:id=>ids.get(id) || null,
+    payin_amount_usdt:{value:''},payout_amount_thb:{value:''},
+    payout_source:{value:'binance'}};
+  return {ids, form, root:{getElementById:id=>{
+    if(!ids.has(id))ids.set(id,{value:'',style:{display:'none'},innerHTML:'',textContent:'',
+      classList:{toggle:()=>{}},
+      options:[{dataset:{rate:'31.5'}}],selectedIndex:0});
+    return ids.get(id);
+  },
     querySelector:selector=>selector==='[name="payin_amount_rub"]'
       ? form.payin_amount_rub : selector==='[name="payin_amount_usdt"]'
         ? form.payin_amount_usdt : null}};
@@ -38,7 +44,8 @@ function fakeRoot() {
     form,editingDealId:null,
     fetch:async url=>{urls.push(url);return {json:async()=>({incomes:rows})};},
     toast:()=>{}, escapeHtml:String, formatDate:()=>'',
-    calculateProfit:()=>{}, realtyPayinRecalc:()=>{},realtyPayoutRecalc:()=>{},
+    currentUsdtThbRate:31.5,
+    realtyPayinRecalc:()=>{},realtyPayoutRecalc:()=>{},
   });
   await core.sberLoadIncomes();
   assert.match(ids.get('sberIncomesAvail').innerHTML,/266/);
@@ -71,5 +78,14 @@ function fakeRoot() {
   assert.match(ids.get('mfPayoutPickerSum').textContent,/1.*50/);
   core.mfPayoutCheckAll(false);
   assert.equal(ids.get('mfPayoutPickerSum').textContent,'Ничего не отмечено');
+  form.payin_amount_usdt.value='3300';
+  form.payout_amount_thb.value='100000';
+  form.payout_source.value='binance';
+  ids.get('binanceUsdt').value='3205.13';
+  core.stdAgentsLoad([{name:'Synthetic',tier:1,comp_model:'revshare',percent:10}]);
+  core.calculateProfit();
+  assert.equal(ids.get('profitUsdt').value,'94.87');
+  assert.equal(ids.get('referrerPayoutRaw').value,'9.49');
+  assert.equal(ids.get('netProfitRaw').value,'85.38');
   console.log('CRM draft generated Sber/MF core: PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});

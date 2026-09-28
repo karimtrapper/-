@@ -589,9 +589,9 @@ a.hash:hover{background:#BAE6FD}
 <div class="container" id="app"></div>
 <div class="toast" id="toast"></div>
 
-<script src="screens-data.js?v=2609241212"></script>
-<script src="crm-draft-core.js?v=1"></script>
-<script src="crm-draft-adapter.js?v=1"></script>
+<script src="/tasks/screens-data.js?v=2609241212"></script>
+<script src="/tasks/crm-draft-core.js?v=1"></script>
+<script src="/tasks/crm-draft-adapter.js?v=1"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -683,7 +683,7 @@ function standApply(data){
   S=migrate(S);
 }
 function standTyping(){
-  const a=document.activeElement;
+  const a=document.activeElement?.shadowRoot?.activeElement||document.activeElement;
   return !!a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT');
 }
 async function standPull(force){
@@ -1126,11 +1126,15 @@ function payinParts(d){
     held:bs?bs.held:null, kept:bs?bs.ours:null, ctrl:bs?bs.ctrl:null,
     partner:null,hashes:(d.payinHashes||[])};
   return [main].concat((d.payinExtra||[]).map(x=>{
-    const calc=x.amountUsdt!=null?x.amountUsdt:(x.amountRub&&num(x.rate)?x.amountRub/num(x.rate):null);
-    const fact=hashSum(x.hashes);
-    return {label:x.label||x.method||'канал',amountRub:x.amountRub||null,rate:num(x.rate),
+    const extraUsdt=x.amount_usdt??x.amountUsdt??null;
+    const extraRub=x.amount_rub??x.amountRub??null;
+    const extraRate=x.rate_rub_usdt??x.rate??null;
+    const hashes=x.tx_hashes??x.hashes??[];
+    const calc=extraUsdt!=null?extraUsdt:(extraRub&&num(extraRate)?extraRub/num(extraRate):null);
+    const fact=hashSum(hashes.map(h=>({amount:h.amount??h.amount_usdt})));
+    return {label:x.label||x.method||'канал',amountRub:extraRub,rate:num(extraRate),
       usdt:(fact!=null?fact:calc), calc:calc, fact:fact,
-      partner:x.partner||null,hashes:x.hashes||[]};
+      partner:x.partner_name??x.partner??null,hashes};
   }));
 }
 function econ(d){
@@ -3090,7 +3094,7 @@ function render(){
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
   if(S.edit) crmDraftCapture();
-  else {crmDraftCore=null;crmDraftDealId=null;}
+  else crmDraftActive=null;
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
   draftsRestore();
   restoreFocus();
@@ -4095,7 +4099,12 @@ function viewDeal(d){
   ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
-  ${!d.closed?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
+  ${d.manual&&!d.closed&&(S.role==='manager'||S.role==='admin')
+    ?`<button class="btn btn-primary btn-sm" ${d.manualNew||d.originMode!=='manual'?'disabled':''}
+        title="${d.originMode==='manual'?'Финальное сохранение в CRM':'Для старой ручной сделки нет подтверждённого сервером происхождения'}"
+        onclick="crmPushClose(${d.id})">Сохранить в CRM</button>
+      ${!d.manualNew&&d.originMode!=='manual'?'<span class="fh">Не подтверждено сервером происхождение ручного черновика; финальное сохранение недоступно.</span>':''}`:''}
+  ${!d.closed&&!d.manual?`<button class="btn btn-outline btn-sm" onclick="askClose(${d.id})">Закрыть сделку</button>`:''}</div>
   </div></div>`;
 }
 
@@ -4409,6 +4418,7 @@ function crmGaps(d){
       /* Фрихолд без батов: инвойс в USD, курса покупки ฿/USDT нет вообще; курс
          клиенту (₽ за 1$) нужен только рублёвому фрихолду — у крипты его не спрашивают */
       need(d.invoiceUsd,'Инвойс застройщику, $ (invoice_amount_usd)','Заявка');
+      need(!!IPPS_TARIFFS[d.ippsTariff],'Тариф IPPS из сделки (transfer_fee_percent/fixed)','Заявка');
       if(!isCrypto(d)) need(num(d.rates.client),'Курс клиенту, ₽ за 1$','Отдать расчёт клиенту');
       else need(d.freeholdMarkupPct!=null,'Наценка крипто-фрихолда, % (без дефолта)','Заявка');
     }else{
@@ -4435,18 +4445,78 @@ function crmGaps(d){
    стенда со статусом «завершена». Поля — формат POST /api/deals, как их шлёт форма
    CRM; прибыль сервер считает сам по тем же правилам (_apply_mf_realty и т.д.). */
 const PAYIN_CRM={'По реквизитам':'sber_reqs','СБП':'sber_wl','Крипта':'crypto_direct','Наличные':'partners_cash'};
-const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'cash_batch',coins:'binance',client:'binance',founder:'founder_personal'};
+const PAYOUT_CRM={cash:'cash_batch',ipps:'cash_batch',scb:'bank_card',coins:'binance',client:'binance',founder:'founder_personal'};
 function crmNet(n){return String(n||'TRC20').toLowerCase().replace('-','');}
 function crmPayload(d){
+  if(d.custom){
+    const c=d.customData||{},agentPayload=(d.agents||[]).map(a=>{
+      const src=a.refId!=null?refById(a.refId):null;
+      const same=src&&String(src.name||'').trim().toLowerCase()===String(a.name||'').trim().toLowerCase();
+      return {referrer_id:src&&src.prod&&same?src.id:null,name:a.name||null,
+        tier:a.tier||1,comp_model:a.comp||'revshare',
+        percent:a.comp==='fixed'?0:(+a.percent||0),
+        fixed_usdt:a.comp==='fixed'?(+a.fixed||0):0};
+    });
+    const profit=(+c.payinUsdt||0)-(+c.payoutUsdt||0);
+    const payouts=agentPayload.map(a=>({...a}));
+    let base=profit;
+    [...new Set(payouts.map(a=>a.tier))].sort((a,b)=>a-b).forEach(t=>{
+      let sum=0;
+      payouts.filter(a=>a.tier===t).forEach(a=>{
+        const amount=a.comp_model==='markup'?Math.max(+c.payinUsdt||0,+c.payoutUsdt||0)*a.percent/100:
+          a.comp_model==='fixed'?a.fixed_usdt:base*a.percent/100;
+        sum+=Math.round(amount*100)/100;
+      });base-=sum;
+    });
+    return {deal_type:'pay_in',status:'completed',skip_sync:true,
+      manager_name:d.manager||'Марина',client_id:d.crmClientId??null,
+      client_name:d.client||null,is_custom:true,
+      created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
+      payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
+      payin_amount_usdt:c.payinUsdt??null,
+      payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
+        amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
+        kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
+      payin_extra:(d.payinExtra||[]).map(x=>({
+        method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
+        rate_rub_usdt:x.rate_rub_usdt??num(x.rate),amount_usdt:x.amount_usdt??x.amountUsdt??null,
+        partner_name:x.partner_name??x.partner??null,tx_hashes:x.tx_hashes||x.hashes||[],
+        sber_uuids:x.sber_uuids||[],note:x.note||''})),
+      custom_payin_currency:c.payinCurrency||'USDT',custom_payin_amount:c.payinAmount??null,
+      custom_payin_rate:c.payinCurrency==='USDT'?null:c.payinRate??null,
+      payout_method:c.payoutMethod||'office',payout_source:'binance',
+      payout_amount_thb:c.payoutCurrency==='THB'?c.payoutAmount:null,
+      payout_amount_usdt:c.payoutUsdt??null,
+      custom_payout_currency:c.payoutCurrency||'THB',custom_payout_amount:c.payoutAmount??null,
+      custom_payout_rate:c.payoutCurrency==='USDT'?null:c.payoutRate??null,
+      agents:agentPayload,profit_usdt:profit,
+      profit_percent:(+c.payoutUsdt)>0?profit/(+c.payoutUsdt)*100:0,
+      net_profit_usdt:c.netProfit??Math.round(base*100)/100,notes:c.notes||null};
+  }
   const E=econ(d), po=d.payout||{}, rub=!isCrypto(d), prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
-  const p={client_name:d.client, manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
+  const p={client_name:d.client, client_id:d.crmClientId??null,
+    manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
-    payin_amount_usdt:r2(E.payin),
+    /* API _apply_payin_extra прибавит дополнительные части само. E.payin уже
+       включает их, поэтому здесь отправляем только основной приход. */
+    payin_amount_usdt:r2(E.payin==null?null:E.payin-(d.payinExtra||[]).reduce((s,x)=>
+      s+(+((x.amount_usdt??x.amountUsdt) || 0)),0)),
     payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
     payin_tx_hashes:hx(d.payinHashes),
+    payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
+      amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
+      kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
+    payin_extra:(d.payinExtra||[]).map(x=>({
+      method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
+      rate_rub_usdt:x.rate_rub_usdt??num(x.rate),amount_usdt:x.amount_usdt??x.amountUsdt??null,
+      partner_name:x.partner_name??x.partner??null,
+      tx_hashes:x.tx_hashes||x.hashes||[],sber_uuids:x.sber_uuids||[],note:x.note||''})),
+    doc_invoice_url:d.docLinks?.invoice||null,
+    doc_contract_url:d.docLinks?.contract||null,
+    doc_payment_url:d.docLinks?.payment||null,
     notes:'Из задачника стенда: '+d.code+' · '+d.type+(d.kind?' · '+d.kind:'')+(d.object?' · '+d.object:'')+(d.payerWallet?' · кошелёк клиента '+d.payerWallet:''),
     /* Агенты сделки — иначе CRM считает чистую прибыль до выплат партнёрам: на сделке
        с закреплённым партнёром в CRM ушло $155,59 вместо $66,59 (приёмка 25.09).
@@ -4473,7 +4543,7 @@ function crmPayload(d){
     const coinsRate=d.postConv==='coins'?num((d.transfer||{}).rate):null;
     Object.assign(p,{deal_kind:'mf_realty',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_thb:d.amountThb||null,buy_rate_thb_usdt:coinsRate||buy||null,
-      sell_rate_thb_usdt:(E.payin&&d.amountThb)?Math.round(d.amountThb/E.payin*10000)/10000:null,
+      sell_rate_thb_usdt:num(d.rates.client)??null,
       payout_tx_hashes:mf});
     if(coinsRate&&E.sentThb) p.company_sent_thb=E.sentThb;
     else p.company_percent=d.companyPct==null?1:d.companyPct;
@@ -4482,15 +4552,21 @@ function crmPayload(d){
        банк 0,8%+50$ или софт-счёт 1,5%+50$ при заявке) — не зашитые 0,8%/50$, и не
        деление батов на курс (спека 28.09-freehold-no-baht). Формула — та же, что
        у сервера (compute_mf_freehold): S = X·(1+p)+F. */
-    const t=ippsTariff(d), X=d.invoiceUsd||null;
+    const t=IPPS_TARIFFS[d.ippsTariff]||{percent:null,fixed:null}, X=d.invoiceUsd??null;
     Object.assign(p,{deal_kind:'mf_freehold',realty_purpose:(d.payTo&&d.payTo.purpose)||d.object||'',
       invoice_amount_usd:r2(X),transfer_fee_percent:t.percent,transfer_fee_fixed_usd:t.fixed,
-      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
+      transfer_sent_usd:r2(mf.reduce((a,t2)=>a+(+t2.amount_usdt||0),0))||r2(X!=null&&t.percent!=null?freeholdSend(X,t):null),payout_tx_hashes:mf});
   }else{
-    Object.assign(p,{deal_kind:'exchange',payout_method:'transfer',
+    const method={
+      'наличные в офисе':'office','курьер':'courier','банкомат':'atm',
+      'перевод на тайский счёт':'transfer',office:'office',courier:'courier',
+      atm:'atm',transfer:'transfer'};
+    Object.assign(p,{deal_kind:'exchange',payout_method:method[po.method]||'transfer',
       payout_source:PAYOUT_CRM[d.paySrc]||'cash_batch',
-      payout_amount_thb:d.paySrc==='client'?null:(po.thb||d.amountThb||null),
+      payout_amount_thb:d.paySrc==='client'?null:(po.thb??d.amountThb??null),
       payout_amount_usdt:r2(E.cost),payout_tx_hashes:hx(po.hashes),
+      bank_card_id:po.bankCardId??null,
+      payout_wallet_id:po.walletId??null,
       payout_founder_name:d.paySrc==='founder'?(po.founder||null):null,
       payout_no_conversion:d.paySrc==='founder'?!!po.ownBaht:false,
       needs_reimbursement:d.paySrc==='founder'&&!po.reimbursement});
@@ -4843,8 +4919,14 @@ function setDealKind(id,v){
   const d=deal(id); editApply(id);
   d.custom=(v==='custom');
   if(v==='exchange'||v==='custom'){d.type='Обмен валюты';d.kind='';}
-  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'?'Фрихолд':'Лизхолд');}
+  else {d.type='Оплата недвижимости';d.kind=(v==='mf_freehold'?'Фрихолд':(d.kind==='Аренда'?'Аренда':'Лизхолд'));}
   save();render();
+}
+function setRealtySubtype(id,kind){
+  if(kind!=='Лизхолд'&&kind!=='Аренда')return;
+  editApply(id);const d=deal(id);
+  if(dealKind(d)!=='mf_realty')return;
+  d.kind=kind;save();render();
 }
 /* Чат и клиент — не одно и то же, но связаны: чат это где мы переписываемся,
    клиент — карточка в справочнике с договорами и паспортом. Поэтому чат выбирается
@@ -5252,7 +5334,7 @@ function mfPayoutBlock(d){
     ${l.length?`<p class="fh" style="margin-top:6px">Отправлено по переводам: <b>${usd(mfSum(d))}</b></p>`:''}
   </div>`;
 }
-function viewEdit(){
+function viewEditLegacy(){
   const d=deal(S.edit); if(!d)return '';
   const crypto=isCrypto(d), E=econ(d), po=d.payout||{};
   const isNew=!!d.manualNew;
@@ -5305,6 +5387,11 @@ function viewEdit(){
         <select class="fc" onchange="setDealKind(${d.id},this.value)">
           ${DEAL_KINDS.map(([k,t])=>`<option value="${k}"${dealKind(d)===k?' selected':''}>${t}</option>`).join('')}</select></div>
     </div>
+    ${dealKind(d)==='mf_realty'?`<div class="fr"><div class="fg"><label class="fl">Вид недвижимости</label>
+      <select class="fc" onchange="setRealtySubtype(${d.id},this.value)">
+        <option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
+        <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option>
+      </select></div></div>`:''}
     ${(dealKind(d)==='exchange'||dealKind(d)==='custom')?`<div class="fr">
       <div class="fg"><label class="fl">Валютная пара</label>
         <select class="fc" id="e_pair">${opt(PAIRS,d.pair||'RUB → THB')}</select></div>
@@ -5493,6 +5580,39 @@ function viewEdit(){
     </div>
   </div>`;
 }
+function viewEdit(){
+  const d=deal(S.edit);if(!d)return '';
+  const kind=dealKind(d);
+  return `<div class="strip"><span class="id">${d.manualNew?'Новая сделка':d.code}</span>
+    <span class="nm">${htmlText(d.client||'без имени')}</span><span class="sp"></span>
+    <button class="btn btn-outline btn-sm" onclick="editClose()">Отмена</button></div>
+  <div class="card edit-page">
+    <div class="card-title">${d.manualNew?'Новая сделка':'Редактировать '+d.code}</div>
+    <div class="fr" id="crmDraftStandHead">
+      <div class="fg"><label class="fl">Откуда обращение</label>
+        <select class="fc" id="crmDraftSource">${Object.keys(SOURCES).map(k=>
+          `<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат / источник'}</label>
+        <input class="fc" id="crmDraftSourceRef" value="${htmlText(d.sourceRef||'')}"></div>
+      <div class="fg" id="crmDraftRealtySubtypeBox" style="display:${kind==='mf_realty'?'block':'none'}"><label class="fl">Вид недвижимости</label>
+        <select class="fc" id="crmDraftRealtySubtype"><option value="Лизхолд"${d.kind==='Аренда'?'':' selected'}>Лизхолд</option>
+          <option value="Аренда"${d.kind==='Аренда'?' selected':''}>Аренда</option></select></div>
+      <div class="fg" id="crmDraftTariffBox" style="display:${kind==='mf_freehold'?'block':'none'}"><label class="fl">Тариф IPPS из сделки</label>
+        <select class="fc" id="crmDraftTariff"><option value="">— выберите тариф —</option>
+          <option value="bank"${d.ippsTariff==='bank'?' selected':''}>Банк · 0,8% + 50$</option>
+          <option value="soft"${d.ippsTariff==='soft'?' selected':''}>Софт-счёт · 1,5% + 50$</option></select></div>
+      <div class="fg" id="crmDraftInvoiceCurrencyBox" style="display:${kind==='mf_freehold'?'block':'none'}"><label class="fl">Валюта инвойса застройщика</label>
+        <select class="fc" id="crmDraftInvoiceCurrency"><option value="usd"${d.invoiceCurrency==='thb'?'':' selected'}>USD</option>
+          <option value="thb"${d.invoiceCurrency==='thb'?' selected':''}>THB (сумма USD подтверждена отдельно)</option></select></div>
+      <div class="fg" id="crmDraftInvoiceThbBox" style="display:${kind==='mf_freehold'&&d.invoiceCurrency==='thb'?'block':'none'}"><label class="fl">Сумма инвойса, ฿</label>
+        <input class="fc num" id="crmDraftInvoiceThb" value="${d.invoiceThb??''}"></div>
+    </div>
+    <div id="crmDraftHost">Загружаю форму CRM…</div>
+    <div class="row" style="margin-top:18px"><button class="btn btn-primary" onclick="editSave(${d.id})">${d.manualNew?'Создать сделку':'Сохранить изменения'}</button>
+      <button class="btn btn-outline" onclick="editRecalc(${d.id})">Рассчитать прибыль</button>
+      <button class="btn btn-outline" onclick="editClose()">Отмена</button></div>
+  </div><div id="crmDraftLegacy" hidden>${viewEditLegacy()}</div>`;
+}
 /* Снять всё, что введено в поля, в сделку. Возвращает список изменений: по нему
    пишется журнал, и по нему же видно, что «Сохранить» ничего не поменял. */
 function editApply(id){
@@ -5572,14 +5692,17 @@ function editApply(id){
   return ch;
 }
 function editRecalc(id){
-  crmDraftCommit(id);
-  const ch=editApply(id);save();render();
+  const ch=document.getElementById('crmDraftHost')
+    ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
+  if(ch===false)return;
+  save();render();
   toast(ch.length?('Пересчитано · '+ch.length+' изм.'):'Пересчитано');
 }
 function editSave(id){
   const d=deal(id); const isNew=!!d.manualNew;
-  crmDraftCommit(id);
-  const ch=editApply(id);
+  const ch=document.getElementById('crmDraftHost')
+    ?(crmDraftActive?.id===id?crmDraftCommit(id):false):editApply(id);
+  if(ch===false)return;
   if(isNew){
     d.manualNew=false;d.log=[];
     log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
