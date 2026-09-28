@@ -123,6 +123,16 @@ def _fake_get_server_script():
     '''
 
 
+def test_read_get_still_sends_identity_on_wire():
+    result, proc = run_script(_fake_get_server_script() + '''
+        status, data, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'status': status, 'err': err,
+             'accept_encoding': FakeChain.hits[-1]['headers'].get('Accept-Encoding')})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'status': 200, 'err': None, 'accept_encoding': 'identity'}
+
+
 # ───────────────────────── (A) op/param — закрытый список ──────────────────
 
 def test_unknown_op_rejected_before_any_network():

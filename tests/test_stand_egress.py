@@ -80,7 +80,7 @@ def run_script(body, stand_mode='1', extra_env=None, timeout=30):
             import app as appmod, stand_egress
             db = appmod.get_session()
             try:
-                user = appmod.AdminUser(username='transport_test', role='operator',
+                user = appmod.AdminUser(username='transport_test_' + str(__import__('time').monotonic_ns()), role='operator',
                                         password_hash='unused', login_disabled=False)
                 db.add(user); db.commit(); uid = user.id
             finally:
@@ -1382,6 +1382,7 @@ def _fake_openrouter_server_script():
                 FakeOR.requests.append({
                     'path': self.path, 'method': 'POST',
                     'auth': self.headers.get('Authorization'),
+                    'accept_encoding': self.headers.get('Accept-Encoding'),
                     'body': _json.loads(body or b'{}'),
                 })
                 self.send_response(FakeOR.response_status)
@@ -1412,7 +1413,8 @@ def test_docparse_post_reaches_fake_openrouter_with_exact_path_and_bearer_key():
         OUT({'status': status, 'err': err, 'ok': data == {'choices': [{'message': {'content': '{}'}}]},
              'hits': len(FakeOR.requests), 'path': FakeOR.requests[-1]['path'],
              'method': FakeOR.requests[-1]['method'],
-             'auth': FakeOR.requests[-1]['auth']})
+             'auth': FakeOR.requests[-1]['auth'],
+             'accept_encoding': FakeOR.requests[-1]['accept_encoding']})
     ''')
     assert proc.returncode == 0, proc.stderr
     assert result['status'] == 200 and result['err'] is None and result['ok'] is True
@@ -1420,6 +1422,147 @@ def test_docparse_post_reaches_fake_openrouter_with_exact_path_and_bearer_key():
     assert result['method'] == 'POST'
     assert result['path'] == '/api/v1/chat/completions'
     assert result['auth'] == 'Bearer fake-docparse-key'
+    assert result['accept_encoding'] == 'identity'
+
+
+def test_docparse_compressed_response_matrix_over_real_http():
+    """Сервер игнорирует identity; проверяем framing, лимиты и целостность."""
+    result, proc = run_script(_valid_docparse_payload_script() + '''
+        import http.server, threading, gzip, zlib, struct
+        import stand_egress
+        limit = stand_egress._DP_MAX_RESPONSE_BYTES
+        good = b'{"choices":[]}'
+        cases = [
+            ('gzip', gzip.compress(good), 'length', None),
+            ('deflate', zlib.compress(good), 'length', None),
+            ('gzip', gzip.compress(good), 'chunked', None),
+            ('deflate', zlib.compress(good), 'chunked', None),
+            ('gzip', gzip.compress(b'{}' + b' ' * (limit - 2)), 'length', None),
+            ('gzip', gzip.compress(b'{}' + b' ' * (limit - 1)), 'length', 'too_large'),
+            ('deflate', zlib.compress(b'{}' + b' ' * (limit - 1)), 'chunked', 'too_large'),
+            ('gzip', gzip.compress(good) + b'x', 'length', 'read_error'),
+            ('gzip', gzip.compress(good) + gzip.compress(b'{}'), 'length', 'read_error'),
+            ('gzip', gzip.compress(good)[:-8], 'length', 'read_error'),
+            ('gzip', gzip.compress(good)[:-1] + b'X', 'length', 'read_error'),
+            ('gzip', b'', 'length', 'read_error'),
+            ('deflate', zlib.compress(good)[:-1], 'length', 'read_error'),
+            ('deflate', zlib.compress(good) + b'x', 'length', 'read_error'),
+            ('br', b'fake-br', 'length', 'unsupported_encoding'),
+            ('gzip, identity', gzip.compress(good), 'length', 'unsupported_encoding'),
+            ('unknown', b'{}', 'length', 'unsupported_encoding'),
+        ]
+        class Encoded(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            seen = []
+            def do_POST(self):
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.__class__.seen.append(self.headers.get('Accept-Encoding'))
+                encoding, body, framing, _ = cases[len(self.seen)-1]
+                self.send_response(200)
+                self.send_header('Content-Encoding', encoding)
+                if framing == 'length':
+                    self.send_header('Content-Length', str(len(body)))
+                else:
+                    self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                if framing == 'chunked':
+                    for chunk in (body[:3], body[3:]):
+                        self.wfile.write(('%x\\r\\n' % len(chunk)).encode() + chunk + b'\\r\\n')
+                    self.wfile.write(b'0\\r\\n\\r\\n')
+                else:
+                    self.wfile.write(body)
+                self.wfile.flush()
+            def log_message(self, *args): pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Encoded)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', server.server_port)
+        results = []
+        for _, _, _, expected_error in cases:
+            status, data, error = authorized_post(
+                VALID_PAYLOAD, _base_url=f'http://127.0.0.1:{server.server_port}')
+            results.append({'status': status, 'error': error,
+                            'data_ok': isinstance(data, dict) if error is None else data is None,
+                            'expected_error': expected_error})
+        OUT({'results': results, 'seen': Encoded.seen})
+        server.shutdown()
+    ''', timeout=45)
+    assert proc.returncode == 0, proc.stderr
+    assert len(result['results']) == 17
+    assert result['seen'] == ['identity'] * 17
+    for item in result['results']:
+        assert item['status'] == (200 if item['expected_error'] in (None, 'too_large') else None)
+        assert item['error'] == item['expected_error']
+        assert item['data_ok']
+
+
+def test_compressed_reader_checks_deadline_after_decode(monkeypatch):
+    """Если время вышло в zlib, JSON не возвращается и новых чтений нет."""
+    import gzip
+    from types import SimpleNamespace
+    import stand_egress
+
+    class FakeSocket:
+        def settimeout(self, value): pass
+
+    class Framed:
+        length = None
+        chunked = False
+        fp = SimpleNamespace(raw=SimpleNamespace(_sock=FakeSocket()))
+        reads = 0
+
+        def read1(self, size):
+            self.reads += 1
+            return gzip.compress(b'{}') if self.reads == 1 else b''
+
+    framed = Framed()
+    response = SimpleNamespace(headers={'Content-Encoding': 'gzip'},
+                               raw=SimpleNamespace(_fp=framed))
+    ticks = iter((0.0, 0.0, 2.0))
+    monkeypatch.setattr(stand_egress, 'time', SimpleNamespace(monotonic=lambda: next(ticks)))
+    assert stand_egress._bounded_http_body(response, 1.0, 100, compressed=True) == (None, 'timeout')
+    assert framed.reads == 1
+
+
+def test_docparse_slow_compressed_chunks_stop_at_shared_deadline():
+    result, proc = run_script(_valid_docparse_payload_script() + '''
+        import http.server, threading, gzip, time
+        import stand_egress
+        body = gzip.compress(b'{"choices":[]}')
+        class Slow(http.server.BaseHTTPRequestHandler):
+            protocol_version = 'HTTP/1.1'
+            hits = 0
+            def do_POST(self):
+                self.__class__.hits += 1
+                self.rfile.read(int(self.headers['Content-Length']))
+                self.send_response(200)
+                self.send_header('Content-Encoding', 'gzip')
+                self.send_header('Transfer-Encoding', 'chunked')
+                self.end_headers()
+                for byte in body:
+                    try:
+                        self.wfile.write(b'1\\r\\n' + bytes([byte]) + b'\\r\\n')
+                        self.wfile.flush()
+                    except OSError:
+                        return
+                    time.sleep(.08)
+            def log_message(self, *args): pass
+        server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), Slow)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', server.server_port)
+        status, data, error = authorized_post(
+            VALID_PAYLOAD, timeout=.2, _base_url=f'http://127.0.0.1:{server.server_port}')
+        time.sleep(.1)
+        OUT({'status': status, 'data': data, 'error': error,
+             'elapsed': authorized_post.last_elapsed, 'hits': Slow.hits})
+        server.shutdown()
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['status'] is None and result['data'] is None
+    assert result['error'] == 'timeout'
+    assert result['elapsed'] < .5
+    assert result['hits'] == 1
 
 
 def test_docparse_post_uses_stand_key_never_openrouter_api_key():
