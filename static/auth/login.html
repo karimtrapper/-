@@ -147,11 +147,12 @@
             </form>
         </div>
 
-        <!-- Обычный логин: только Telegram -->
+        <!-- Обычный вход -->
         <div id="loginMode">
             <h1 class="login-title">Вход в CRM</h1>
             <p class="login-subtitle">Grusha Exchange</p>
             <div class="error-msg" id="loginError"></div>
+            <div id="tgControls" style="display:none;">
             <button class="btn-login" id="tgLoginBtn" style="display:flex;align-items:center;justify-content:center;gap:9px;">
                 <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/></svg>
                 Войти через Telegram
@@ -162,6 +163,7 @@
             <div id="botLoginStatus" style="display:none;margin-top:12px;font-size:13px;color:#475569;text-align:center;line-height:1.5;"></div>
             <div style="text-align:center;margin-top:16px;">
                 <a href="#" id="pwToggle" style="font-size:12px;color:#94A3B8;text-decoration:none;">Вход по паролю</a>
+            </div>
             </div>
             <form onsubmit="doLogin(event)" id="pwForm" style="display:none;margin-top:16px;">
                 <div class="form-group">
@@ -178,8 +180,20 @@
     </div>
 
     <script>
-        // Проверяем: есть ли уже админ?
+        // Telegram разрешён только после явного подтверждения прод-режима.
+        let loginStandMode = null;
         (async function init() {
+            try {
+                const health = await fetch('/api/health');
+                const data = health.ok ? await health.json() : null;
+                if (data && typeof data.stand === 'boolean') loginStandMode = data.stand;
+            } catch(e) {}
+
+            if (loginStandMode !== false) {
+                document.getElementById('pwForm').style.display = 'block';
+            }
+
+            // Проверяем, есть ли уже активная сессия.
             try {
                 const resp = await fetch('/api/auth/me');
                 if (resp.ok) {
@@ -190,6 +204,7 @@
             } catch(e) {}
 
             // Проверяем, нужна ли первоначальная настройка
+            let setupRequired = false;
             try {
                 const resp = await fetch('/api/auth/setup', {
                     method: 'POST',
@@ -202,11 +217,16 @@
                     document.getElementById('setupMode').style.display = 'none';
                 } else {
                     // Успешный ответ setup разрешает первую настройку.
+                    setupRequired = true;
                     document.getElementById('loginMode').style.display = 'none';
                     document.getElementById('setupMode').style.display = 'block';
                 }
             } catch(e) {
                 // Фоллбэк — показываем логин
+            }
+            if (loginStandMode === false && !setupRequired) {
+                document.getElementById('tgControls').style.display = 'block';
+                initTg();
             }
         })();
 
@@ -228,10 +248,14 @@
                     })
                 });
                 const data = await resp.json();
-                if (data.success) {
+                if (resp.ok && data.success) {
                     window.location.href = '/crm';
                 } else {
-                    errEl.textContent = data.error || 'Ошибка входа';
+                    errEl.textContent = resp.status === 401 ? 'Неверный логин или пароль'
+                        : resp.status === 403 ? 'Доступ к входу закрыт'
+                        : resp.status >= 500 ? 'Временная ошибка сервера. Попробуйте позже'
+                        : data.error === 'Введите логин и пароль' ? data.error
+                        : 'Не удалось войти. Проверьте данные и попробуйте ещё раз';
                     errEl.classList.add('visible');
                 }
             } catch(err) {
@@ -276,9 +300,11 @@
         }
 
         // Telegram-вход админа
-        (async function initTg() {
+        async function initTg() {
+            if (loginStandMode !== false) return;
             let cfg = {};
             try { cfg = await (await fetch('/api/auth/tg-config')).json(); } catch(e) {}
+            if (loginStandMode !== false) return;
             if (!(window.Telegram && window.Telegram.Login)) {
                 const s = document.createElement('script');
                 s.async = true; s.src = 'https://telegram.org/js/telegram-widget.js?22';
@@ -371,7 +397,7 @@
                     } catch (e) { /* сеть мигнула — продолжаем поллить */ }
                 }, 2000);
             });
-        })();
+        }
     </script>
 </body>
 </html>
