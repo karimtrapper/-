@@ -156,11 +156,22 @@ def lk_status():
     return 'ready'
 
 
+# Белый список полей payload: business_connection_id/allow_paid_broadcast/
+# reply_markup/любые другие поля sendMessage — это лишний функционал, которого
+# у send-only профиля быть не должно (лидер, QA N02). Отказ до сети, а не
+# фильтрация «на всякий случай» — заведомо неожиданные поля не бывают в
+# вызовах stand_notify, значит это либо ошибка вызывающего кода, либо попытка
+# использовать канал не по назначению.
+_LK_ALLOWED_PAYLOAD_KEYS = frozenset({'chat_id', 'text', 'parse_mode', 'disable_web_page_preview'})
+
+
 def lk_call(payload, _base_url=None):
     """Единственный путь для профиля lk_send_only — жёстко sendMessage.
 
     `_base_url` — только для тестов (фейковый сервер на loopback), прод его
-    не передаёт и не читает из env.
+    не передаёт и не читает из env; хост, отличный от loopback, отклоняется
+    здесь же, до создания сессии (QA N02 — прод и так его никогда не передаёт,
+    но тестовый override не должен превращаться в лазейку на произвольный хост).
     """
     import requests
     global _lk_blocked
@@ -168,10 +179,17 @@ def lk_call(payload, _base_url=None):
     if not lk_preflight_ok():
         return {'ok': False, 'error': 'no_token' if not lk_configured() else 'bot_identity_mismatch'}
 
+    if _base_url is not None:
+        parts = urlsplit(_base_url)
+        if not _is_loopback_host(parts.hostname):
+            return {'ok': False, 'error': 'invalid_base_url'}
+
     token = _lk_token()
     pinned = _lk_pinned_id()
 
     payload = dict(payload or {})
+    if not set(payload.keys()) <= _LK_ALLOWED_PAYLOAD_KEYS:
+        return {'ok': False, 'error': 'payload_not_allowed'}
     chat_id = payload.get('chat_id')
     if isinstance(chat_id, bool) or not isinstance(chat_id, int) or chat_id <= 0:
         return {'ok': False, 'error': 'invalid_chat_id'}
@@ -196,15 +214,22 @@ def lk_call(payload, _base_url=None):
             try:
                 data = resp.json()
             except ValueError:
-                data = {}
+                data = None
             if not isinstance(data, dict):
-                data = {}
+                # Не-JSON или битый ответ — ошибка доставки конкретному получателю,
+                # не доказательство того, что это не наш бот: латч только на
+                # ПОДТВЕРЖДЁННОЕ несовпадение идентичности в успешном ответе.
+                return {'ok': False, 'error': 'tg_bad_response'}
+            if resp.status_code != 200 or not data.get('ok'):
+                # 401/403 (бота заблокировали/чужой чат)/429/5xx — временная или
+                # адресная ошибка Telegram, канал остаётся рабочим для остальных
+                # получателей. Код статуса отдаём, тело ответа — нет (QA N09).
+                return {'ok': False, 'error': 'tg_http_error', 'status_code': resp.status_code}
             result = data.get('result') if isinstance(data.get('result'), dict) else {}
             sender = result.get('from') if isinstance(result.get('from'), dict) else {}
             chat = result.get('chat') if isinstance(result.get('chat'), dict) else {}
             valid = bool(
-                data.get('ok') and resp.status_code == 200
-                and sender.get('is_bot') is True
+                sender.get('is_bot') is True
                 and sender.get('id') == pinned
                 and isinstance(sender.get('username'), str)
                 and sender.get('username').lower() == _LK_EXPECTED_USERNAME

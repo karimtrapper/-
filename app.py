@@ -384,15 +384,19 @@ class AdminUser(Base):
         return False
 
     def to_dict(self):
-        return {
+        d = {
             'id': self.id, 'username': self.username,
             'display_name': self.display_name or self.username,
             'telegram': self.telegram, 'bound': bool(self.telegram_user_id),
-            'telegram_user_id': self.telegram_user_id,
             'role': self.role or 'admin',
             'login_disabled': bool(self.login_disabled),
             'notify_enabled': bool(self.notify_enabled),
         }
+        if STAND_MODE:
+            # Прод-контракт /api/admins не расширяем: числовой Telegram ID —
+            # только стенд (T14), заводится там же, где TG-вход всё равно выключен.
+            d['telegram_user_id'] = self.telegram_user_id
+        return d
 
 
 class DealType(str, Enum):
@@ -5033,17 +5037,27 @@ def stand_tg_status():
     db = get_session()
     try:
         users = db.query(AdminUser).order_by(AdminUser.id).all()
+        employees = [{'id': u.id, 'username': u.username, 'role': u.role,
+                     'bound': bool(u.telegram_user_id),
+                     'notify_enabled': bool(u.notify_enabled),
+                     'login_disabled': bool(u.login_disabled)} for u in users]
         profile = stand_notify.notify_profile()
+        # Статус — читай-и-покажи для UI, а не индикатор HTTP-ошибки: пока
+        # профиль просто не готов (нет токена/ID), это НЕ повод отдавать 503 —
+        # иначе UI (crm.html) не разбирает тело ответа и по умолчанию рисует
+        # кнопку привязки бота стенда, которая в lk_send_only ничего не значит
+        # (лидер/QA N11). 503 остаётся только для реального сбоя идентичности.
         if profile == 'lk_send_only':
             lk_state = stand_notify.stand_egress.lk_status()
             error = None if lk_state == 'ready' else lk_state
             return jsonify({'success': error is None, 'profile': profile,
                             'lk_status': lk_state, 'error': error,
                             'updates': 'send_only', 'mode': stand_notify.mode(),
-                            'employees': [{'id': u.id, 'username': u.username,
-                                           'role': u.role, 'bound': bool(u.telegram_user_id),
-                                           'notify_enabled': bool(u.notify_enabled),
-                                           'login_disabled': bool(u.login_disabled)} for u in users]}), (503 if error else 200)
+                            'employees': employees}), 200
+        if profile != 'stand_bot':
+            return jsonify({'success': False, 'profile': profile, 'error': 'disabled',
+                            'updates': 'disabled', 'mode': stand_notify.mode(),
+                            'employees': employees}), 200
         bot = stand_notify.bot_username()
         expected_bot = stand_notify.stand_egress.expected_bot_username()
         error = ('bot_identity_mismatch' if (bot is not None and bot != expected_bot)
@@ -5053,10 +5067,7 @@ def stand_tg_status():
                         'bot_username': expected_bot,
                         'error': error,
                         'updates': stand_notify.status(), 'mode': stand_notify.mode(),
-                        'employees': [{'id': u.id, 'username': u.username,
-                                       'role': u.role, 'bound': bool(u.telegram_user_id),
-                                       'notify_enabled': bool(u.notify_enabled),
-                                       'login_disabled': bool(u.login_disabled)} for u in users]}), 503 if error else 200
+                        'employees': employees}), 200
     finally:
         db.close()
 
@@ -5116,8 +5127,20 @@ def stand_state_put():
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
-        problem = _stand_guard_transition(previous, payload['data'], actor,
-                                          flask_session.get('user_id'), db)
+        actor_id = flask_session.get('user_id')
+        problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
+        if problem == '__stale_assignee__':
+            # Не запрос актёра — системная гигиена данных: шаг перешёл на роль,
+            # которой прежний исполнитель уже не подходит, а поле никто не
+            # трогал. Обнуляем прямо в payload['data'] (без права-на-снятие —
+            # это не отзыв назначения актёром) и перепроверяем один раз.
+            before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
+            for deal in payload['data'].get('deals', []):
+                before = before_by_id.get(deal.get('id'))
+                if _stand_check_assignee(db, before, deal, actor, actor_id,
+                                         payload['data']) == '__stale_assignee__':
+                    deal['assigneeAdminId'] = None
+            problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem:
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': previous}), 409
@@ -5308,32 +5331,69 @@ _STAND_STEP_ROLE = {
 }
 
 
-def _stand_check_assignee(db, before, deal, actor, actor_id):
+# Возвращает функция целиком (не отдельная строка) при устаревшем, но не
+# тронутом actor'ом назначении: роль сотрудника больше не подходит шагу, а
+# actor поле не трогал — это не его решение снять чужое назначение, поэтому
+# не проходит через право-на-снятие ниже. stand_state_put() видит этот
+# маркер, обнуляет поле и повторяет проверку — шаг спокойно продвигается
+# дальше, а не «отправка по старому id».
+_STALE_ASSIGNEE = '__stale_assignee__'
+
+
+def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     """Исполнитель шага — явное поле, не автор перехода (actor/updated_by).
 
     Назначить может admin (кого угодно из подходящей роли) или сам сотрудник
     этой роли — только себя («взять задачу»). Снять назначение может admin
     или сам исполнитель. Некорректный/чужой/отключённый id — отказ, а не
-    тихая перезапись.
+    тихая перезапись. Проверка актуальности исполнителя выполняется и когда
+    поле НЕ менялось явно: шаг мог перейти на другую роль в этом же PUT.
+
+    Функция самодостаточна (не зовёт другие функции модуля, кроме глобальной
+    карты _STAND_STEP_ROLE) — это позволяет её независимо перепроверить
+    (AST-экстракция + синтетическая модель) без импорта всего приложения.
     """
+    def required_role():
+        # Зеркало stepWho() из tasks.html: обычно роль решает статическая
+        # карта STEPS[step].who, но s23 отправляет подписант привязанного
+        # кошелька (не мультисиг) — Виталий/Теодор/…, а не всегда «findir».
+        step = deal.get('step')
+        if step == 's23' and state is not None:
+            conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
+            wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
+            wallet = next((w for w in state.get('wallets') or [] if w.get('id') == wallet_id), None)
+            if wallet and not wallet.get('multisig'):
+                return wallet.get('role') or 'teodor'
+        return _STAND_STEP_ROLE.get(step)
+
     old_assignee = (before or {}).get('assigneeAdminId')
     new_assignee = deal.get('assigneeAdminId')
-    if new_assignee == old_assignee:
+    if new_assignee != old_assignee:
+        if new_assignee is None:
+            if actor == 'admin' or (actor_id is not None and actor_id == old_assignee):
+                return None
+            return 'Снять назначение может админ или сам исполнитель'
+        if isinstance(new_assignee, bool) or not isinstance(new_assignee, int) or new_assignee <= 0:
+            return 'Некорректный исполнитель'
+        user = db.query(AdminUser).filter_by(id=new_assignee).first()
+        if not user or user.login_disabled:
+            return 'Исполнитель должен быть активным сотрудником'
+        required = required_role()
+        if required and user.role not in (required, 'admin'):
+            return f'Исполнитель шага {deal.get("step")} должен быть роли {required}'
+        if actor != 'admin' and not (actor_id == new_assignee and actor == required):
+            return 'Назначить может админ или сотрудник нужной роли себе'
         return None
     if new_assignee is None:
-        if actor == 'admin' or (actor_id is not None and actor_id == old_assignee):
-            return None
-        return 'Снять назначение может админ или сам исполнитель'
+        return None
     if isinstance(new_assignee, bool) or not isinstance(new_assignee, int) or new_assignee <= 0:
-        return 'Некорректный исполнитель'
+        return '__stale_assignee__'
     user = db.query(AdminUser).filter_by(id=new_assignee).first()
     if not user or user.login_disabled:
-        return 'Исполнитель должен быть активным сотрудником'
-    required = _STAND_STEP_ROLE.get(deal.get('step'))
+        return '__stale_assignee__'
+    required = required_role()
     if required and user.role not in (required, 'admin'):
-        return f'Исполнитель шага {deal.get("step")} должен быть роли {required}'
-    if actor != 'admin' and not (actor_id == new_assignee and actor == required):
-        return 'Назначить может админ или сотрудник нужной роли себе'
+        return '__stale_assignee__'
     return None
 
 
@@ -5363,7 +5423,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     old = {d.get('id'): d for d in previous.get('deals', [])}
     for deal in new_state.get('deals', []):
         before = old.get(deal.get('id'))
-        assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id)
+        assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id, new_state)
         if assignee_problem:
             return assignee_problem
         if not before:

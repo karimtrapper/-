@@ -49,11 +49,14 @@ def mode():
 
 
 def notify_profile():
-    """Явный выбор профиля отправки (T14). По умолчанию — старый бот стенда;
-    lk_send_only не включается автоматически появлением токена, только этой
-    переменной — переключение профиля не должно быть побочным эффектом."""
-    value = os.environ.get('STAND_NOTIFY_PROFILE', 'stand_bot').strip()
-    return value if value in ('lk_send_only', 'stand_bot') else 'stand_bot'
+    """Явный выбор профиля отправки (T14). Пустая переменная — старый бот
+    стенда (переезд ещё не произошёл); НЕПУСТОЕ, но нераспознанное значение —
+    fail-closed отказ обоих профилей, а не молчаливый откат на stand_bot
+    (опечатка в env не должна тайно продолжать слать боевым ботом)."""
+    value = os.environ.get('STAND_NOTIFY_PROFILE', '').strip()
+    if not value:
+        return 'stand_bot'
+    return value if value in ('lk_send_only', 'stand_bot') else 'disabled'
 
 
 def _positive_id(value):
@@ -78,6 +81,15 @@ def can_send(channel, recipient, operation):
     """
     if channel not in ('telegram', 'telegram_lk') or not _app or not _app.STAND_MODE:
         return False
+    profile = notify_profile()
+    # Изоляция профилей (лидер/QA N01): выбран lk_send_only (или профиль вовсе
+    # не распознан) — у бота стенда не остаётся ни одной разрешённой операции,
+    # даже read-only getMe/getUpdates/getWebhookInfo, даже если STAND_TG_TOKEN
+    # остался в env. Симметрично — телеграм_lk доступен только в lk_send_only.
+    if channel == 'telegram' and profile != 'stand_bot':
+        return False
+    if channel == 'telegram_lk' and profile != 'lk_send_only':
+        return False
     if channel == 'telegram' and operation in ('getMe', 'getWebhookInfo', 'getUpdates'):
         return True
     if operation != 'sendMessage' or not _positive_id(recipient):
@@ -95,6 +107,11 @@ def can_send(channel, recipient, operation):
 
 def bot_username():
     global _status
+    if notify_profile() != 'stand_bot':
+        # Профиль lk_send_only (или нераспознанный) — у бота стенда нет
+        # никаких сетевых операций, даже getMe (лидер/QA N01).
+        _status = 'disabled'
+        return None
     expected = stand_egress.expected_bot_username()
     if not expected:
         _status = 'bot_identity_mismatch'
@@ -122,6 +139,9 @@ def bot_username():
 
 def create_bind(admin_id):
     global _status
+    if notify_profile() != 'stand_bot':
+        _status = 'disabled'
+        return None
     username = bot_username()
     if not username or username != stand_egress.expected_bot_username():
         _status = 'bot_identity_mismatch'
@@ -216,39 +236,62 @@ def deliver():
             deals = {str(d.get('id')): d for d in state.get('deals') or []}
             users = db.query(_app.AdminUser).all()
             profile = notify_profile()
-            channel = 'telegram_lk' if profile == 'lk_send_only' else 'telegram'
+            channel = {'lk_send_only': 'telegram_lk', 'stand_bot': 'telegram'}.get(profile)
             # lk_send_only не переключается на бота стенда сам ни при каком сбое
-            # (нет токена/ID, рассинхрон префикса, identity mismatch) — решение
-            # Карима: явный выбор профиля важнее доступности канала.
-            profile_ready = profile != 'lk_send_only' or stand_egress.lk_preflight_ok()
+            # (нет токена/ID, рассинхрон префикса, identity mismatch), а
+            # нераспознанный профиль не откатывается ни на один из ботов —
+            # решение Карима: явный выбор профиля важнее доступности канала.
+            profile_ready = (channel == 'telegram' or
+                             (channel == 'telegram_lk' and stand_egress.lk_preflight_ok()))
             for note in reversed(state.get('notes') or []):
                 note_id = str(note.get('id') or '')
                 if not note_id:
                     continue
                 # Исполнитель шага смотрится заново на каждый цикл доставки —
                 # переназначение или отзыв применяется сразу же, без нового
-                # события: старый исполнитель просто перестаёт быть recipient,
-                # а его прежние failed-попытки не ретраятся (см. фильтр выше).
+                # события: старый исполнитель просто перестаёт быть recipient.
                 deal = deals.get(str(note.get('dealId'))) or {}
-                assignee_id = deal.get('assigneeAdminId')
-                assignee_id = assignee_id if _positive_id(assignee_id) else None
+                raw_assignee = deal.get('assigneeAdminId')
+                has_assignee_field = raw_assignee is not None
+                assignee_id = raw_assignee if _positive_id(raw_assignee) else None
+                # Присутствующее, но испорченное значение (строка, отрицательное,
+                # bool, 0) — это НЕ «поля нет»: фолбэка на роль не будет, только
+                # подавление (кроме копии админу). Отдельно от этого —
+                # действительный активный сотрудник, но не той роли для текущей
+                # note (шаг ушёл дальше, поле не тронули) — это тоже не «нет
+                # назначения», но здесь корректно откатиться на роль: реального
+                # исполнителя для ЭТОЙ задачи просто не осталось.
+                assignee_user = next((u for u in users if assignee_id is not None and u.id == assignee_id), None)
+                assignee_broken = has_assignee_field and assignee_id is None
+                assignee_missing_or_disabled = assignee_id is not None and (
+                    assignee_user is None or assignee_user.login_disabled)
+                assignee_role_mismatch = (assignee_id is not None and assignee_user is not None
+                                          and not assignee_user.login_disabled
+                                          and (assignee_user.role or 'admin') != (note.get('role') or 'admin'))
+                suppress_only = assignee_broken or assignee_missing_or_disabled
+                fallback_to_role = (not has_assignee_field) or assignee_role_mismatch
                 for user in users:
+                    # Слот конкретного исполнителя ведёт свой дедуп-ключ: у нового
+                    # адресата после переназначения нет истории под этим ключом,
+                    # поэтому suppressed/sent прежнего исполнителя (под обычным
+                    # note_id) ему не наследуется, а сам прежний исполнитель по
+                    # старому ключу повторно не получает (см. фильтр ниже).
+                    is_exact_assignee = (not suppress_only and not fallback_to_role
+                                         and assignee_id is not None and user.id == assignee_id)
+                    row_key = f'{note_id}::assignee:{assignee_id}' if is_exact_assignee else note_id
                     existing = db.execute(text('SELECT status, attempts FROM stand_notify_log '
                                                'WHERE note_id=:note_id AND admin_id=:admin_id'),
-                                          {'note_id': note_id, 'admin_id': user.id}).first()
+                                          {'note_id': row_key, 'admin_id': user.id}).first()
                     if existing and (existing[0] != 'failed' or existing[1] >= _MAX_ATTEMPTS):
                         continue
                     chat_id = user.telegram_user_id
-                    if assignee_id is not None:
-                        # Назначен конкретный исполнитель — рассылка на всю роль
-                        # выключена; некорректный/отключённый/удалённый
-                        # исполнитель не откатывается на роль, это подавление.
-                        recipient = user.id == assignee_id or (user.role or 'admin') == 'admin'
-                    else:
-                        # Фиксируем также прежнюю несовпадающую роль: после её
-                        # смены старые задачи не должны внезапно прийти сотруднику.
+                    if suppress_only:
+                        recipient = (user.role or 'admin') == 'admin'
+                    elif fallback_to_role:
                         recipient = (user.role or 'admin') in ('admin', note.get('role'))
-                    allowed = (profile_ready and recipient and _user_allowed(user)
+                    else:
+                        recipient = user.id == assignee_id or (user.role or 'admin') == 'admin'
+                    allowed = (profile_ready and channel and recipient and _user_allowed(user)
                                and can_send(channel, chat_id, 'sendMessage'))
                     status = 'suppressed'
                     attempts = (existing[1] if existing else 0)
@@ -270,7 +313,7 @@ def deliver():
                                     'VALUES (:note_id, :admin_id, :status, :attempts, :at) '
                                     'ON CONFLICT (note_id, admin_id) DO UPDATE SET '
                                     'status=EXCLUDED.status, attempts=EXCLUDED.attempts, at=EXCLUDED.at'),
-                               {'note_id': note_id, 'admin_id': user.id, 'status': status,
+                               {'note_id': row_key, 'admin_id': user.id, 'status': status,
                                 'attempts': attempts, 'at': datetime.utcnow()})
                     db.commit()
         finally:
@@ -289,6 +332,9 @@ def status():
 def poll_once():
     """Один цикл getUpdates; offset фиксируется после каждого обработанного апдейта."""
     global _status
+    if notify_profile() != 'stand_bot':
+        _status = 'disabled'
+        return False
     db = _app.SessionLocal()
     try:
         offset = db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar() or 0
@@ -328,7 +374,8 @@ def _poll_loop():
 def start_updates():
     """Проверить вебхук и запустить единственного потребителя на процесс."""
     global _status
-    if not _app or not _app.STAND_MODE or not os.environ.get('STAND_TG_TOKEN') or os.environ.get('STAND_TG_UPDATES_ENABLED', '1') != '1':
+    if (not _app or not _app.STAND_MODE or notify_profile() != 'stand_bot'
+            or not os.environ.get('STAND_TG_TOKEN') or os.environ.get('STAND_TG_UPDATES_ENABLED', '1') != '1'):
         _status = 'disabled'
         return False
     if not bot_username():

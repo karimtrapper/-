@@ -112,11 +112,15 @@ def note(number, role='manager', deal_id=7):
 
 
 def log_rows(note_id):
+    """Строка исполнителя-адресата живёт под составным ключом
+    '<note_id>::assignee:<id>' (см. deliver()) — здесь собираем оба варианта
+    ключа в один словарь по admin_id, как удобно тестам."""
     db = appmod.SessionLocal()
     try:
         return {r[0]: (r[1], r[2]) for r in db.execute(
-            text('SELECT admin_id, status, attempts FROM stand_notify_log WHERE note_id=:n'),
-            {'n': note_id}).all()}
+            text("SELECT admin_id, status, attempts FROM stand_notify_log "
+                "WHERE note_id=:n OR note_id LIKE :prefix"),
+            {'n': note_id, 'prefix': note_id + '::assignee:%'}).all()}
     finally:
         db.close()
 
@@ -192,6 +196,7 @@ def test_lk_call_rejects_group_and_non_int_chat_id(monkeypatch):
 
 def test_can_send_telegram_lk_duplicate_active_ids_denied(lk, monkeypatch):
     ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
     db = appmod.SessionLocal()
     db.query(appmod.AdminUser).filter_by(id=ids['manager2']).update({'telegram_user_id': 202})
@@ -200,27 +205,47 @@ def test_can_send_telegram_lk_duplicate_active_ids_denied(lk, monkeypatch):
     assert notify.can_send('telegram_lk', 202, 'sendMessage') is False
 
 
-def test_can_send_telegram_lk_foreign_id_not_in_admin_users_denied(lk):
+def test_can_send_telegram_lk_foreign_id_not_in_admin_users_denied(lk, monkeypatch):
     ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     assert notify.can_send('telegram_lk', 999999, 'sendMessage') is False
 
 
 def test_can_send_telegram_lk_karim_only_mode(lk, monkeypatch):
     ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
     assert notify.can_send('telegram_lk', 201, 'sendMessage') is True
     assert notify.can_send('telegram_lk', 202, 'sendMessage') is False
 
 
-def test_can_send_telegram_lk_only_sendmessage(lk):
+def test_can_send_telegram_lk_only_sendmessage(lk, monkeypatch):
     ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     for op in ('getMe', 'getWebhookInfo', 'getUpdates'):
         assert notify.can_send('telegram_lk', 201, op) is False
 
 
-def test_can_send_telegram_lk_disabled_account_denied(lk):
+def test_can_send_telegram_lk_disabled_account_denied(lk, monkeypatch):
     ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     assert notify.can_send('telegram_lk', 205, 'sendMessage') is False
+
+
+def test_can_send_telegram_denies_all_when_profile_is_lk_send_only(lk, monkeypatch):
+    """N01: у бота стенда не остаётся ни одной операции, даже read-only, если
+    выбран lk_send_only — даже когда STAND_TG_TOKEN остался в env."""
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    for op in ('getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'):
+        assert notify.can_send('telegram', 201, op) is False
+
+
+def test_can_send_denies_both_channels_when_profile_unrecognized(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'typo')
+    assert notify.can_send('telegram', 201, 'getMe') is False
+    assert notify.can_send('telegram_lk', 201, 'sendMessage') is False
 
 
 # ---------- профиль и маршрутизация deliver() ----------
@@ -228,10 +253,16 @@ def test_can_send_telegram_lk_disabled_account_denied(lk):
 def test_notify_profile_default_and_explicit(monkeypatch):
     monkeypatch.delenv('STAND_NOTIFY_PROFILE', raising=False)
     assert notify.notify_profile() == 'stand_bot'
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', '')
+    assert notify.notify_profile() == 'stand_bot'
     monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
     assert notify.notify_profile() == 'lk_send_only'
-    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'garbage')
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'stand_bot')
     assert notify.notify_profile() == 'stand_bot'
+    # Непустое, но нераспознанное значение — fail-closed отказ обоих
+    # профилей, а НЕ молчаливый откат на боевой бот стенда (лидер/QA N01).
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'garbage')
+    assert notify.notify_profile() == 'disabled'
 
 
 def test_deliver_lk_profile_selected_but_not_ready_suppresses_no_fallback(lk, monkeypatch):
@@ -444,4 +475,143 @@ def test_tg_status_reports_active_profile(lk, monkeypatch):
         body = res.get_json()
         assert body['profile'] == 'lk_send_only'
         assert body['lk_status'] == 'disabled'
-        assert res.status_code == 503
+        assert res.status_code == 200
+
+
+def test_tg_status_never_leaks_token(lk, monkeypatch):
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:super-secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    ids, board = lk
+    with appmod.app.test_client() as c:
+        _login(c, ids['karim'])
+        res = c.get('/api/stand/tg-status')
+        assert '555:super-secret-fake' not in res.get_data(as_text=True)
+
+
+# ---------- N01: изоляция профиля ----------
+
+def test_stand_bot_functions_noop_when_profile_is_lk_send_only(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    calls = []
+    monkeypatch.setattr(notify.stand_egress, 'tg_call',
+                        lambda *a, **k: calls.append(a) or {'ok': False})
+    assert notify.bot_username() is None
+    assert notify.create_bind(ids['karim']) is None
+    assert notify.poll_once() is False
+    assert notify.start_updates() is False
+    assert calls == []
+
+
+# ---------- N04: рефереры/клиенты никогда не адресаты канала ----------
+
+def test_referrer_and_client_ids_never_valid_recipients(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    db = appmod.SessionLocal()
+    ref = appmod.Referrer(name='QA', code='qa-t14-ref', token='qa-t14-ref-token',
+                          auth_mode='telegram', telegram_user_id=555555, active=True)
+    db.add(ref)
+    db.commit()
+    ref_id = ref.telegram_user_id
+    db.close()
+    try:
+        assert notify.can_send('telegram_lk', ref_id, 'sendMessage') is False
+    finally:
+        db = appmod.SessionLocal()
+        db.query(appmod.Referrer).filter_by(code='qa-t14-ref').delete()
+        db.commit()
+        db.close()
+
+
+# ---------- N10: STAND_MODE=0 — обе схемы канала инертны ----------
+
+def test_channel_inert_when_stand_mode_off(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setattr(appmod, 'STAND_MODE', False)
+    try:
+        assert notify.can_send('telegram_lk', ids['karim'], 'sendMessage') is False
+        assert notify.can_send('telegram', ids['karim'], 'getMe') is False
+    finally:
+        monkeypatch.setattr(appmod, 'STAND_MODE', True)
+
+
+# ---------- N05: устаревшее назначение — авто-сброс, не отправка по старому id ----------
+
+def test_stale_assignee_auto_healed_on_step_change_put(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
+
+    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
+                      'assigneeAdminId': ids['manager']}])
+    with appmod.app.test_client() as c:
+        _login(c, ids['karim'])
+        state = c.get('/api/stand/state').get_json()
+        data = state['data']
+        data['deals'][0]['step'] = 's5'  # s5 требует operator, исполнитель — manager
+        data['notes'] = [{'id': 'stale-note-1', 'role': 'operator', 'dealId': 7, 'text': 'x'}]
+        res = c.put('/api/stand/state', json={'version': state['version'], 'data': data})
+        body = res.get_json()
+        assert res.status_code == 200, body
+        assert body['data']['deals'][0]['assigneeAdminId'] is None
+    assert 204 in sent  # operator получил по роли, не manager
+    assert 202 not in sent
+
+
+def test_invalid_string_assignee_suppressed_not_fanned_out_to_role(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
+    board([note(1, role='manager')],
+         deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4', 'assigneeAdminId': 'bad'}])
+    notify.deliver()
+    assert 202 not in sent and 203 not in sent
+    assert 201 in sent  # копия админу остаётся
+
+
+# ---------- N07: переназначение — новый адресат получает, старый не повторно ----------
+
+def test_reassignment_new_recipient_gets_it_old_does_not_repeat(lk, monkeypatch):
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
+
+    board([note(1, role='manager')],
+         deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4', 'assigneeAdminId': ids['manager']}])
+    notify.deliver()
+    assert sorted(sent) == [201, 202]
+
+    # PUT сам доставляет новые/изменившиеся заметки (_stand_deliver_notes) —
+    # переназначение проявляется уже здесь, отдельный notify.deliver() не нужен.
+    sent.clear()
+    with appmod.app.test_client() as c:
+        _login(c, ids['karim'])
+        state = c.get('/api/stand/state').get_json()
+        state['data']['deals'][0]['assigneeAdminId'] = ids['manager2']
+        res = c.put('/api/stand/state', json={'version': state['version'], 'data': state['data']})
+        assert res.status_code == 200, res.get_json()
+        assert len(res.get_json()['data']['notes']) == 1  # не новое событие, то же самое
+    assert sent == [203]  # только новый исполнитель, без повтора admin/старого
+
+    sent.clear()
+    notify.deliver()
+    assert sent == []  # повторный цикл доставки ничего не шлёт заново
