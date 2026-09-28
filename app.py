@@ -5386,11 +5386,18 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
         return None
     if new_assignee is None:
         return None
+    # Ниже — поле НЕ менялось явно. Малформед/удалённый/отключённый исполнитель
+    # здесь не наша забота: это не «устарело из-за перехода шага», а
+    # изначально испорченное или отозванное значение — PUT его не трогает
+    # (не подменяет тихо на None), доставка сама подавит с причиной, без
+    # фолбэка на роль (см. deliver()). Автосброс — только при настоящем
+    # дрифте роли: исполнитель существует и активен, но роль шага уехала
+    # вперёд и он ей больше не соответствует.
     if isinstance(new_assignee, bool) or not isinstance(new_assignee, int) or new_assignee <= 0:
-        return '__stale_assignee__'
+        return None
     user = db.query(AdminUser).filter_by(id=new_assignee).first()
     if not user or user.login_disabled:
-        return '__stale_assignee__'
+        return None
     required = required_role()
     if required and user.role not in (required, 'admin'):
         return '__stale_assignee__'

@@ -265,9 +265,14 @@ def deliver():
                 assignee_broken = has_assignee_field and assignee_id is None
                 assignee_missing_or_disabled = assignee_id is not None and (
                     assignee_user is None or assignee_user.login_disabled)
+                # admin — законный исполнитель любого шага (делает любую роль
+                # на стенде), поэтому для него роль никогда не «не та»: иначе
+                # его собственное назначение самого себя откатывалось бы на
+                # рассылку по роли note, а не оставалось персональным.
                 assignee_role_mismatch = (assignee_id is not None and assignee_user is not None
                                           and not assignee_user.login_disabled
-                                          and (assignee_user.role or 'admin') != (note.get('role') or 'admin'))
+                                          and (assignee_user.role or 'admin') not in
+                                          ('admin', note.get('role') or 'admin'))
                 suppress_only = assignee_broken or assignee_missing_or_disabled
                 fallback_to_role = (not has_assignee_field) or assignee_role_mismatch
                 for user in users:

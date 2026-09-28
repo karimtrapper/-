@@ -615,3 +615,60 @@ def test_reassignment_new_recipient_gets_it_old_does_not_repeat(lk, monkeypatch)
     sent.clear()
     notify.deliver()
     assert sent == []  # повторный цикл доставки ничего не шлёт заново
+
+
+# ---------- N05 (перепроверка): admin-исполнитель и сохранённое disabled-назначение ----------
+
+def test_admin_as_assignee_gets_single_send_no_role_fanout(lk, monkeypatch):
+    """admin — законный исполнитель любого шага: получает одно уведомление
+    (роль совпадает с копией админу — не два письма), остальные менеджеры роли
+    не получают ничего."""
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
+
+    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4', 'assigneeAdminId': None}])
+    with appmod.app.test_client() as c:
+        _login(c, ids['karim'])
+        state = c.get('/api/stand/state').get_json()
+        data = state['data']
+        data['deals'][0]['assigneeAdminId'] = ids['karim']
+        data['notes'] = [{'id': 'admin-assignee-note', 'dealId': 7, 'role': 'manager', 'text': 'x'}]
+        res = c.put('/api/stand/state', json={'version': state['version'], 'data': data})
+        assert res.status_code == 200, res.get_json()
+        assert res.get_json()['data']['deals'][0]['assigneeAdminId'] == ids['karim']
+    assert sent == [201]  # ровно одна отправка, не рассылка на роль
+
+
+def test_disabled_assignee_preserved_on_put_not_cleared_to_role_fallback(lk, monkeypatch):
+    """Отключённый исполнитель при PUT — НЕ «нет назначения»: поле сохраняется,
+    заметка подавляется адресно (assignee_disabled), а не уходит всей роли.
+    Автосброс допустим только при реальном дрифте роли шага."""
+    ids, board = lk
+    monkeypatch.setenv('STAND_NOTIFY_PROFILE', 'lk_send_only')
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_LK_BOT_TOKEN', '555:secret-fake')
+    monkeypatch.setenv('STAND_LK_BOT_ID', '555')
+    monkeypatch.setattr(notify.stand_egress, 'lk_preflight_ok', lambda: True)
+    sent = []
+    monkeypatch.setattr(notify.stand_egress, 'lk_call', lambda p: sent.append(p['chat_id']) or {'ok': True})
+
+    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
+                      'assigneeAdminId': ids['offduty']}])
+    with appmod.app.test_client() as c:
+        _login(c, ids['karim'])
+        state = c.get('/api/stand/state').get_json()
+        data = state['data']
+        data['notes'] = [{'id': 'disabled-assignee-note', 'dealId': 7, 'role': 'manager', 'text': 'x'}]
+        # step не трогаем — assigneeAdminId остаётся неизменным (та же роль,
+        # просто сотрудник отключён), это НЕ дрифт роли.
+        res = c.put('/api/stand/state', json={'version': state['version'], 'data': data})
+        body = res.get_json()
+        assert res.status_code == 200, body
+        assert body['data']['deals'][0]['assigneeAdminId'] == ids['offduty']  # не обнулилось
+    assert sent == [201]  # только копия админу; ни отключённый, ни роль-фолбэк
