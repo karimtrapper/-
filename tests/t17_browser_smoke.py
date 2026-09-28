@@ -438,6 +438,8 @@ with sync_playwright() as playwright:
     host.locator('#mfBuyRate').fill('33')
     host.locator('#mfSellRate').fill('32.5')
     host.locator('#mfPurpose').fill('rental fixture')
+    host.locator('#mfDocInvoice').fill('local-rental-invoice')
+    host.locator('#mfDocContract').fill('local-rental-contract')
     host.locator('[name="notes"]').fill('rental note')
     page.locator('.card.edit-page > .row > button').first.click()
     rental=page.evaluate('''() => {const d=S.deals.find(x=>x.client==='T17 synthetic rental');
@@ -455,6 +457,16 @@ with sync_playwright() as playwright:
     retained=page.evaluate('(id) => [deal(id).kind,deal(id).notes,crmPayload(deal(id)).deal_kind]',rental[0])
     print('rental no-op edit:',retained)
     assert retained==['Аренда','rental note','mf_realty']
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    rental_docs=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return {
+      kind:d.kind,docInvoice:d.docLinks?.invoice,docContract:d.docLinks?.contract,
+      payloadKind:p.deal_kind,payloadInvoice:p.doc_invoice_url,
+      payloadContract:p.doc_contract_url}}''',rental[0])
+    print('rental reload workflow/docs:',rental_docs)
+    assert rental_docs=={'kind':'Аренда','docInvoice':'local-rental-invoice',
+      'docContract':'local-rental-contract','payloadKind':'mf_realty',
+      'payloadInvoice':'local-rental-invoice','payloadContract':'local-rental-contract'}
     assert not crm_posts,crm_posts
     page.wait_for_function('!standBusy && !standPush',timeout=20000)
     start_manual(page)
