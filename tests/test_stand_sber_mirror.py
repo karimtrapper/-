@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -17,6 +18,8 @@ import stand_sber_mirror as mirror
 @pytest.fixture
 def stand(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    appmod.Base.metadata.create_all(bind=appmod.engine,
+                                    tables=[appmod.StandSberMirrorState.__table__])
     monkeypatch.setenv('STAND_PROD_RO_KEY', 'secret-should-not-be-logged')
     monkeypatch.setenv('STAND_SBER_MIRROR_ENABLED', '1')
     monkeypatch.setenv('STAND_SBER_BOARD_DAYS', '14')
@@ -132,6 +135,45 @@ def test_history_cutoff_and_board_protection(stand, monkeypatch):
     assert len(response.json['data']['incomes']) == 1
 
 
+def test_omitted_income_keeps_human_fields_but_explicit_unlink_works(stand, monkeypatch):
+    item = income()
+    monkeypatch.setattr(mirror.stand_egress, 'read_get',
+                        lambda *a: (200, {'success': True, 'incomes': [item]}))
+    assert mirror.poll(appmod)
+    db = appmod.get_session()
+    sql_income = db.query(appmod.SberIncome).filter_by(uuid=item['uuid']).one()
+    sql_income.claimed_deal_id = 99
+    sql_income.excluded = True
+    sql_income.note = 'локальная пометка CRM'
+    db.commit()
+    db.close()
+    data, version = board()
+    record = data['incomes'][0]
+    record.update(dealId=99, cnvId=7, excluded=True, note='проверено человеком')
+    response = stand.put('/api/stand/state', json={'version': version, 'data': data})
+    assert response.status_code == 200
+    version = response.json['version']
+    data['incomes'] = []
+    response = stand.put('/api/stand/state', json={'version': version, 'data': data})
+    assert response.status_code == 200
+    restored = response.json['data']['incomes'][0]
+    assert (restored['dealId'], restored['cnvId'], restored['excluded'], restored['note']) == (
+        99, 7, True, 'проверено человеком')
+    next_data = response.json['data']
+    next_data['incomes'][0]['dealId'] = None
+    response = stand.put('/api/stand/state', json={
+        'version': response.json['version'], 'data': next_data})
+    assert response.status_code == 200
+    assert response.json['data']['incomes'][0]['dealId'] is None
+    assert response.json['data']['incomes'][0]['cnvId'] == 7
+    assert mirror.poll(appmod)
+    db = appmod.get_session()
+    sql_income = db.query(appmod.SberIncome).filter_by(uuid=item['uuid']).one()
+    assert (sql_income.claimed_deal_id, sql_income.excluded, sql_income.note) == (
+        99, True, 'локальная пометка CRM')
+    db.close()
+
+
 def test_error_and_429_keep_loop_alive_without_secret(stand, monkeypatch, caplog):
     responses = iter([(429, None), (200, {'success': True, 'incomes': []})])
     monkeypatch.setattr(mirror.stand_egress, 'read_get', lambda *a, **kw: next(responses))
@@ -218,3 +260,19 @@ def test_mirrored_income_passes_account_check_in_tasks(stand, monkeypatch):
     result = subprocess.run(['node', str(Path(__file__).with_name('test_stand_incoming.js'))],
                             env=env, capture_output=True, text=True, timeout=20)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_mirror_state_table_is_stand_only(tmp_path):
+    code = ("import app; from sqlalchemy import inspect; "
+            "print('stand_sber_mirror_state' in inspect(app.engine).get_table_names())")
+    for mode, expected in [('0', 'False'), ('1', 'True')]:
+        env = dict(os.environ, DATABASE_URL=f'sqlite:///{tmp_path / (mode + ".db")}',
+                   STAND_MODE=mode, SECRET_KEY='mirror-schema-test',
+                   STAND_PASSWORD='test', STAND_SBER_MIRROR_ENABLED='0',
+                   REESTR_SYNC_ENABLED='0', PAYMENT_POLL_ENABLED='0',
+                   PAYIN_ADDR_BACKFILL='0', TRONSCAN_WARM_ENABLED='0',
+                   STAND_TRANSFER_POLL_ENABLED='0')
+        result = subprocess.run([sys.executable, '-c', code], env=env,
+                                capture_output=True, text=True, timeout=30)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert result.stdout.splitlines()[-1] == expected

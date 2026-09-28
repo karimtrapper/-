@@ -2303,7 +2303,13 @@ class StandSberMirrorState(Base):
 
 
 # Создание таблиц
-Base.metadata.create_all(bind=engine)
+# Состояние зеркала относится только к стенду. На проде даже пустую служебную
+# таблицу для него не создаём; остальные модели сохраняют прежний порядок.
+Base.metadata.create_all(
+    bind=engine,
+    tables=[table for table in Base.metadata.sorted_tables
+            if STAND_MODE or table is not StandSberMirrorState.__table__],
+)
 
 
 def _stand_seed_users():

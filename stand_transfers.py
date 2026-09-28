@@ -108,7 +108,9 @@ def preserve_server_fields(old_state, new_state):
     for income_id, previous in old_incomes.items():
         incoming = received.get(income_id)
         if incoming is None:
-            incoming = {}
+            # Отсутствие записи в PUT — устаревший снимок клиента, а не команда
+            # снять человеческую привязку. Возвращаем всю запись из доски.
+            incoming = previous.copy()
             new_state.setdefault('incomes', []).append(incoming)
         for field in protected:
             if field in previous:
