@@ -1,18 +1,13 @@
 {
   "schema": 1,
-  "fixtures": [
-    "synthetic-exchange",
-    "synthetic-leasehold",
-    "synthetic-freehold-0.8",
-    "synthetic-freehold-1.5",
-    "synthetic-rental"
-  ],
   "selectors": {
     "crm:full-source": "381c189615c39381992ac39301d1b09b425e97b539986303516cdb0c2bb3919f",
     "tasks:full-source": "9e6c9c39d7c671bd6592bec4bc63e29728d13175088441ab375a379b30196390",
     "calculator:full-source": "ebe9b69a677e2d484e2b34db0a39a0bd1c5484cb7b638ba50c199725a8f01bc0",
     "referrer:full-source": "06a30e9f656365c842ca5702214a987fdce2eb0d96a4e709ae11abf14c33021f",
     "login:full-source": "682478832b9742128427687a5235ebca4d2ad3af5f874ec6f4fc02de7b0ebdd9",
+    "source:static/calculator/calculator.js": "80964cca17a5ff77718a6aff4b7a06832c49f5a8adb51e4409e996caef1afd32",
+    "source:static/stand/screens-data.js": "b38a9e3dcdd34e7ff7913f2d3585f3991795188a29d954a35954abf30bc837ba",
     "crm:section#dashboard": "f3fd62e5dffda857c75c76cd372441ef7d1aaa3d1f8c960f625d6ac3cd187241",
     "crm:section#deals": "15ee3355846af349bd895bb2330647451df1e397341ff1abd79a3af82fd2f7aa",
     "crm:section#documents": "f1b64e2a4b12f17e4b990c2bfac03017d7d63c32746615f926fe88a01d7e5833",
@@ -39,5 +34,6 @@
     "tasks:js:viewEdit": "647b3be341614b4c9cf13328db15bfca37ab69dbb9d3ba1aa9e748a1807dffa8",
     "tasks:js:crmPayload": "d69a8437f9db4a46a95ceae3e7d94a80291727eba3161aacddd05e4bc0dfe809",
     "tasks:js:setDealKind": "a8fff5ae18b8107235312ece1f9b4fdf6c61c68961c3306804113d20eefed29d"
-  }
+  },
+  "purpose": "supplementary source review signal; rendered parity is synthetic_runtime.py"
 }

@@ -37,7 +37,8 @@ def tracked_clean(worktree):
 
 
 class Worker:
-    def __init__(self, worktree, db_url, mode, private_dir, label, audit_key):
+    def __init__(self, worktree, db_url, mode, private_dir, label, audit_key,
+                 synthetic=False):
         if not worktree.joinpath('app.py').is_file():
             raise ValueError('worktree has no app.py')
         env = {k: os.environ[k] for k in ('PATH', 'HOME', 'USER', 'TMPDIR') if k in os.environ}
@@ -55,6 +56,8 @@ class Worker:
                    STAND_PROD_RO_KEY='fake-stand-readonly', PUBLIC_BASE_URL='http://127.0.0.1:9')
         if mode is not None:
             env['STAND_MODE'] = mode
+        if synthetic:
+            env['PARITY_SYNTHETIC'] = '1'
         self.log = open(private_dir / f'{label}.log', 'w', opener=lambda path, flags: os.open(path, flags, 0o600))
         self.p = subprocess.Popen([sys.executable, '-u', str(HERE / 'worker.py')], cwd=worktree,
                                   env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,

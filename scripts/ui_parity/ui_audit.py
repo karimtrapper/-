@@ -22,6 +22,7 @@ from PIL import Image, ImageChops
 from run import Worker, FILTERED, digest, run_cmd, sha, tracked_clean
 
 BLOCKED_BROWSER = []
+CAPTURE_HOOK = None  # synthetic runtime mutation hook; never set in raw-dump audit
 
 REVIEWED_SOURCE_HUNKS = {
     '8f8cf53b8c7c07468157822a1b2a6c43c703a4d1': {
@@ -146,18 +147,34 @@ def browser_case(browser, port, ref_token):
 
 def form_snapshot(page, selector, private, name):
     """Keep full DOM text and screenshots in a private local directory only."""
+    if CAPTURE_HOOK:
+        CAPTURE_HOOK(page, name)
     data = page.locator(selector).evaluate("""root => {
       const visible = e => !!e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden';
       const norm = s => (s || '').replace(/\\s+/g, ' ').trim();
+      const descendants = node => [...node.querySelectorAll('*')].flatMap(e =>
+        e.shadowRoot ? [e, ...descendants(e.shadowRoot)] : [e]);
+      const shadowRoots = descendants(root).filter(e => e.shadowRoot).map(e => ({
+        host: e.id || e.tagName.toLowerCase(), text: e.shadowRoot.textContent,
+        controls: descendants(e.shadowRoot).filter(x => x.matches('input,select,textarea,button'))
+          .map(x => ({tag:x.tagName, id:x.id, value:x.value, required:x.required,
+                     readOnly:x.readOnly, disabled:x.disabled,
+                     options:x.tagName === 'SELECT' ? [...x.options].map(y=>y.textContent) : []}))
+      }));
       return {
         url: location.pathname + location.search,
         text: root.innerText,
+        visible_rate: document.getElementById('usdtThbRate')?.innerText || null,
+        rate_source: document.getElementById('usdtThbLabel')?.innerText || null,
+        shadowRoots,
         labels: [...root.querySelectorAll('label')].filter(visible).map(e => norm(e.innerText)),
         controls: [...root.querySelectorAll('input,select,textarea,button')].filter(visible)
           .map(e => ({tag:e.tagName, id:e.id, name:e.name, type:e.type,
                       label:norm(e.closest('.form-group,.fg')?.querySelector('label')?.innerText),
                       text:norm(e.tagName === 'BUTTON' ? e.innerText : ''),
-                      value:e.value, options:e.tagName === 'SELECT' ? [...e.options].map(x=>x.textContent) : []})),
+                      value:e.value, required:e.required, readOnly:e.readOnly,
+                      disabled:e.disabled,
+                      options:e.tagName === 'SELECT' ? [...e.options].map(x=>x.textContent) : []})),
       };
     }""")
     dest = private / f'{name}.json'
@@ -167,7 +184,9 @@ def form_snapshot(page, selector, private, name):
     page.screenshot(path=str(shot), full_page=True)
     shot.chmod(0o600)
     return {'url': data['url'], 'text_sha256': hashlib.sha256(data['text'].encode()).hexdigest(),
-            'labels': data['labels'], 'controls': data['controls'], 'screenshot': shot.name,
+            'labels': data['labels'], 'controls': data['controls'],
+            'visible_rate': data['visible_rate'], 'rate_source': data['rate_source'],
+            'shadowRoots': data['shadowRoots'], 'screenshot': shot.name,
             'screenshot_sha256': digest(shot), 'dom_file': dest.name}
 
 
@@ -177,7 +196,7 @@ def pixel_diff(private, left, right):
     if a.size != b.size:
         return f'SIZE {a.width}x{a.height} vs {b.width}x{b.height}'
     diff = ImageChops.difference(a, b)
-    return sum(1 for pixel in diff.get_flattened_data() if pixel != (0, 0, 0))
+    return sum(1 for pixel in diff.getdata() if pixel != (0, 0, 0))
 
 
 def crm_forms(browser, port, work, private, label):

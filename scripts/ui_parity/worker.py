@@ -14,6 +14,7 @@ import threading
 import traceback
 from urllib.parse import parse_qs, urlsplit
 
+SYNTHETIC = os.environ.get('PARITY_SYNTHETIC') == '1'
 if sys.platform != 'darwin':
     raise SystemExit('T18 worker requires the macOS network sandbox')
 _sandbox_check = ctypes.CDLL('/usr/lib/libSystem.B.dylib').sandbox_check
@@ -25,9 +26,14 @@ if _sandbox_check(os.getpid(), b'network-outbound', 0) != 1:
 # libpq bypasses Python socket hooks: reject every non-private DB target before app import.
 _db_url = urlsplit(os.environ.get('DATABASE_URL', ''))
 _db_host = parse_qs(_db_url.query).get('host', [''])[0]
-if (_db_url.scheme != 'postgresql' or _db_url.hostname is not None
-        or not _db_host.startswith('/tmp/calccrm-t18-')
-        or not _db_host.endswith('/socket') or not os.path.isdir(_db_host)):
+if SYNTHETIC:
+    _sqlite_path = '/' + _db_url.path.lstrip('/')
+    if (_db_url.scheme != 'sqlite' or not _sqlite_path.startswith('/tmp/calccrm-t18-synthetic-')
+            or _db_url.hostname is not None):
+        raise SystemExit('synthetic parity: private SQLite target required')
+elif (_db_url.scheme != 'postgresql' or _db_url.hostname is not None
+      or not _db_host.startswith('/tmp/calccrm-t18-')
+      or not _db_host.endswith('/socket') or not os.path.isdir(_db_host)):
     raise SystemExit('prod parity: DATABASE_URL must use the private local Unix socket')
 sys.path.insert(0, os.getcwd())
 # Background polling is outside parity; fake external calls stay synchronous.
@@ -187,6 +193,43 @@ def handle(cmd):
             s2.close()
         return {'status': r.status_code, 'id': uid, 'success': (r.json or {}).get('success'),
                 'stored_disabled': stored_disabled}
+    if op == 'seed_synthetic':
+        if not SYNTHETIC:
+            raise ValueError('synthetic fixture refused in raw-dump audit')
+        s = mod.SessionLocal()
+        try:
+            admin = s.query(mod.AdminUser).filter_by(username='t12-parity').one()
+            admin.telegram_user_id = 123456789
+            if not s.query(mod.Partner).filter_by(token='t18-synthetic-partner').first():
+                s.add(mod.Partner(name='Synthetic Partner', token='t18-synthetic-partner',
+                                  markup_percent=1.4, active=True))
+            ref = s.query(mod.Referrer).filter_by(token='t18-synthetic-ref').first()
+            if ref is None:
+                ref = mod.Referrer(name='Synthetic Referrer', code='T18SYN',
+                                   token='t18-synthetic-ref', auth_mode='link',
+                                   active=True, is_test=True, default_percent=10.0)
+                s.add(ref)
+                s.flush()
+            for kind, amount in [('exchange', 50000.0), ('mf_realty', 60000.0),
+                                 ('mf_freehold', 70000.0)]:
+                if s.query(mod.Deal).filter_by(client_name='Synthetic '+kind).first():
+                    continue
+                s.add(mod.Deal(client_name='Synthetic '+kind, deal_kind=kind,
+                               deal_type=mod.DealType.PAY_IN, status=mod.DealStatus.PENDING,
+                               manager_name='Synthetic Manager',
+                               payin_method=mod.PayInMethod.CRYPTO_DIRECT,
+                               payin_amount_usdt=amount / 32.5,
+                               payin_amount_rub=amount, payout_amount_thb=amount,
+                               invoice_amount_thb=amount if kind == 'mf_realty' else None,
+                               invoice_amount_usd=amount / 32.5 if kind == 'mf_freehold' else None,
+                               sell_rate_thb_usdt=32.0, buy_rate_thb_usdt=32.5,
+                               transfer_fee_percent=0.8 if kind == 'mf_freehold' else None,
+                               transfer_fee_fixed_usd=50.0 if kind == 'mf_freehold' else None,
+                               referrer_id=ref.id, notes='Synthetic fixture only'))
+            s.commit()
+            return {'deals': s.query(mod.Deal).count(), 'referrers': s.query(mod.Referrer).count()}
+        finally:
+            s.close()
     if op == 'request':
         kwargs = {'json': cmd.get('json')} if 'json' in cmd else {}
         if cmd.get('headers'):

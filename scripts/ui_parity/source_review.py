@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic, dump-free UI drift gate.  It never imports the application."""
+"""Supplementary HTML/JS source review signal; rendered parity is separate."""
 import argparse
 import hashlib
 import json
@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 
 HERE = Path(__file__).resolve().parent
-REGISTRY = HERE / 'synthetic_registry.json'
+REGISTRY = HERE / 'source_review_registry.json'
 CRM_SELECTORS = [f'section#{name}' for name in (
     'dashboard', 'deals', 'documents', 'closing', 'exchangers', 'balance',
     'incomes', 'conversions', 'reimbursements', 'transactions', 'managers',
@@ -32,6 +32,12 @@ def inventory(crm_file, tasks_file):
                        ('referrer', repo / 'static/referrer/index.html'),
                        ('login', repo / 'static/auth/login.html')]:
         out[f'{name}:full-source'] = sha(path.read_text())
+    # Supplementary source review signal only. Runtime browser capture decides
+    # parity; include separate adapters so adding a ShadowRoot JS file is seen.
+    for directory in ('static/calculator', 'static/crm', 'static/stand',
+                      'static/referrer'):
+        for path in sorted((repo / directory).glob('*.js')):
+            out[f'source:{path.relative_to(repo)}'] = sha(path.read_text())
     for group, path, selectors in [('crm', crm_file, CRM_SELECTORS),
                                    ('tasks', tasks_file, TASK_SELECTORS)]:
         raw = path.read_text()
@@ -70,33 +76,28 @@ def known_failures(crm_file, tasks_file):
     }
 
 
-def gate(crm_file, tasks_file, registry):
+def gate(crm_file, tasks_file, registry, review_only=False):
     actual = inventory(crm_file, tasks_file)
     expected = registry['selectors']
     changed = sorted(key for key in expected.keys() | actual.keys()
                      if expected.get(key) != actual.get(key))
     for key in changed:
-        print(f'NEW_DIFF {key}')
+        print(f'SOURCE_REVIEW_REQUIRED {key}')
     failures = known_failures(crm_file, tasks_file)
     for key, failed in failures.items():
         print(f'{"BASELINE_FAIL" if failed else "RESOLVED_REVIEW_REQUIRED"} {key}')
-    print(f'new_diffs={len(changed)} known_baseline_failures={sum(failures.values())}')
-    return 1 if changed else 0
+    print(f'source_changes={len(changed)} known_baseline_failures={sum(failures.values())}; '
+          'source fingerprints are not rendered parity')
+    return 1 if changed and not review_only else 0
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--crm', type=Path, default=HERE.parents[1] / 'static/crm/crm.html')
     parser.add_argument('--tasks', type=Path, default=HERE.parents[1] / 'static/stand/tasks.html')
-    parser.add_argument('--record', action='store_true')
+    parser.add_argument('--review-only', action='store_true')
     parser.add_argument('--mutation-test', action='store_true')
     args = parser.parse_args()
-    if args.record:
-        payload = {'schema': 1, 'fixtures': ['synthetic-exchange', 'synthetic-leasehold',
-                   'synthetic-freehold-0.8', 'synthetic-freehold-1.5', 'synthetic-rental'],
-                   'selectors': inventory(args.crm, args.tasks)}
-        REGISTRY.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + '\n')
-        return 0
     registry = json.loads(REGISTRY.read_text())
     if args.mutation_test:
         with tempfile.TemporaryDirectory(prefix='t18-mutation-') as tmp:
@@ -111,7 +112,7 @@ def main():
                 raise RuntimeError('mutation did not fail closed')
             print('MUTATION_TEST PASS: new deals DOM field -> nonzero')
             return 0
-    return gate(args.crm, args.tasks, registry)
+    return gate(args.crm, args.tasks, registry, args.review_only)
 
 
 if __name__ == '__main__':

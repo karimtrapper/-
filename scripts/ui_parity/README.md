@@ -17,11 +17,17 @@ python3 scripts/ui_parity/safe_run.py \
 
 Use a new report path and evidence directory on each run. The evidence directory is 0700; full DOM JSON and screenshots are 0600. Keep that directory outside the repository and never publish it in CI artifacts. The Markdown report has only hashes, static field labels, counts, paths and classifications. Nonzero exit is expected while recorded baseline failures or unreviewed source changes remain; never relabel it PASS merely because a subset of DOM hashes match. The audited input trees must be tracked-file clean.
 
-## Dump-free CI gate
+## Dump-free browser CI gate
 
 ```sh
-python3 scripts/ui_parity/synthetic_gate.py
-python3 scripts/ui_parity/synthetic_gate.py --mutation-test
+python3 scripts/ui_parity/safe_run.py --synthetic-runtime \
+  --baseline /tmp/calccrm-t12-main --candidate /tmp/calccrm-t18
+python3 scripts/ui_parity/safe_run.py --synthetic-runtime \
+  --baseline /tmp/calccrm-t12-main --candidate /tmp/calccrm-t18 --mutation-test
 ```
 
-The first command checks exact source fingerprints for CRM sections, task form logic, calculator, referrer, login and a fixed selector registry. It prints known baseline failures explicitly. A new change prints `NEW_DIFF` and exits nonzero. The mutation test injects a new control into `section#deals` and verifies that the gate fails. This gate is a drift alarm; it does not replace the OS-fenced, real-browser runtime audit or independent QA. Update `synthetic_registry.json` only after reviewing an intended UI change and rerunning the runtime audit.
+The baseline must be the pinned main SHA `2c40e91`; the CI workflow checks it out separately. The runtime creates three independent private SQLite databases, seeds synthetic admin/partner/referrer and exchange/MF Realty/freehold deals, starts main, stage prod and stage STAND under the same OS network fence, and reuses the raw-dump harness's browser navigation and DOM/control extractor. Its registry records exact rendered text, visible control values/options/required/readOnly/disabled attributes and open ShadowRoot content for 88 current cases, including unauthenticated login. It separately checks that main versus stage prod has only the frozen Admins text difference and no visible control schema difference. It prints the known baseline failures with owners and reports every changed captured signature as `NEW_UI_DIFF` with a nonzero exit. The approved STAND delta registry contains only the exact preview control and three disabled links on this fixture. There is no auto-record or acceptance shortcut; changes to the registry require review of the actual rendered difference. New product code that has not yet been exercised, including T17's eventual adapter, remains OPEN.
+
+The mutation run verifies detection of a dynamic label, visibility, readOnly, required, select option, new control, ShadowRoot content and an altered `/api/rates` Bitazza value that changes the visible financial rate while the fake market inputs are identical. The workflow installs dependencies before starting the fenced app/browser run, emits no DOM/screenshots as public CI artifacts, and uses only synthetic fixtures. Private screenshots/DOM are deleted when the runner exits.
+
+`source_review.py` remains only a supplementary source review signal. It can flag changed HTML/JS, including a new separate JS adapter, but its hashes are never called rendered UI parity. It has no `--record` option. The browser gate above is the required CI parity check. The raw-dump audit remains necessary to cover real data shapes and every workflow state.
