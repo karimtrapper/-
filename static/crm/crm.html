@@ -840,6 +840,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             <button class="nav-tab" data-section="referrers">Рефереры</button>
             <button class="nav-tab" data-section="payoutRequests">Заявки на выплату<span id="payoutRequestsBadge" class="payout-nav-count"></span></button>
             <button class="nav-tab" data-section="admins">🔐 Админы</button>
+            <button class="nav-tab stand-only" data-section="myTelegram" style="display:none;">Мой Telegram</button>
         </div>
         <button class="btn btn-primary nav-create-btn" onclick="showSection('create')">+ Создать сделку</button>
     </nav>
@@ -2229,6 +2230,13 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
         </section>
 
         <!-- Admins Section -->
+        <section id="myTelegram" class="section stand-only" style="display:none;">
+            <div class="card">
+                <div class="card-title">Мой Telegram</div>
+                <p style="color:#64748b;font-size:13px;">Подключите личный чат с ботом стенда для уведомлений задачника.</p>
+                <button class="btn btn-primary" onclick="connectStandTelegram()">Подключить Telegram</button>
+            </div>
+        </section>
         <section id="admins" class="section">
             <div class="card">
                 <div class="card-title">Администраторы (вход через Telegram)</div>
@@ -2265,6 +2273,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     </div>
                 </form>
                 <div id="adminsList"></div>
+                <div id="standNotifyMode" class="stand-only" style="display:none;margin-top:12px;color:#92400e;background:#fffbeb;padding:10px;border-radius:8px;"></div>
             </div>
         </section>
 
@@ -5623,18 +5632,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const res = await fetch(`${API_URL}/api/admins`);
                 const data = await res.json();
                 if (!data.success) { box.innerHTML = '<p style="color:#94a3b8">Ошибка загрузки</p>'; return; }
+                let tgStatus = null;
+                if (STAND_ROLES) {
+                    const statusResponse = await fetch(`${API_URL}/api/stand/tg-status`);
+                    if (statusResponse.ok) tgStatus = await statusResponse.json();
+                }
+                const employees = new Map((tgStatus?.employees || []).map(a => [a.id, a]));
+                const modeBadge = document.getElementById('standNotifyMode');
+                if (modeBadge && tgStatus) modeBadge.textContent = tgStatus.mode === 'karim_only'
+                    ? 'Сейчас уведомления получает только Карим'
+                    : 'Уведомления включены для сотрудников с галкой';
                 box.innerHTML = data.admins.map(a => `
                     <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid #E2E8F0;border-radius:10px;margin-bottom:8px;gap:12px;flex-wrap:wrap;">
                         <div>
                             <div style="font-weight:600;">${a.display_name}
                                 ${STAND_ROLES ? `<span style="font-size:12px;font-weight:600;color:#C2410C;background:#FFF7ED;border-radius:999px;padding:2px 8px;margin-left:6px;">${STAND_ROLES[a.role] || a.role || 'admin'}</span>` : ''}</div>
-                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + a.username + '</b> · ' : ''}${a.telegram || '—'} ${a.bound ? '· 🟢 привязан' : (STAND_ROLES ? '' : '· ⚪ ждёт входа')}</div>
+                            <div style="font-size:12px;color:#64748b;">${STAND_ROLES ? 'логин <b>' + escapeHtml(a.username) + '</b> · ' : ''}${escapeHtml(a.telegram || '—')} ${a.bound ? '· 🟢 Telegram привязан' : (STAND_ROLES ? '· ⚪ Telegram не привязан' : '· ⚪ ждёт входа')}</div>
                         </div>
                         <div style="display:flex;gap:6px;align-items:center;">
                             ${STAND_ROLES ? `<select class="form-control" style="width:auto;padding:6px 10px;" onchange="setAdminRole(${a.id}, this.value)">
                                 ${Object.keys(STAND_ROLES).map(r => `<option value="${r}"${(a.role||'admin')===r?' selected':''}>${STAND_ROLES[r]}</option>`).join('')}
                               </select>
-                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Пароль</button>` : ''}
+                              <label style="font-size:12px;white-space:nowrap;"><input type="checkbox" ${employees.get(a.id)?.notify_enabled ? 'checked' : ''} onchange="setAdminNotify(${a.id}, this.checked)"> Получает уведомления</label>
+                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="testAdminNotify(${a.id})">Тест</button>
+                              <button class="btn btn-secondary" style="padding:6px 12px;" onclick="setAdminPassword(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Новый пароль</button>` : ''}
                             ${STAND_ROLES ? '' : `<button class="btn btn-primary" style="padding:6px 12px;" onclick="copyAdminInvite('${(a.display_name||'').replace(/'/g,"\\'")}', '${(a.telegram||'').replace(/'/g,"\\'")}')">📋 Приглашение</button>`}
                             <button class="btn btn-secondary" style="padding:6px 12px;" onclick="deleteAdmin(${a.id}, '${(a.display_name||'').replace(/'/g,"\\'")}')">Удалить</button>
                         </div>
@@ -5658,7 +5679,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 document.querySelectorAll('.stand-only').forEach(el => el.style.display = '');
                 // На стенде Telegram-входа нет — заголовок не должен обещать обратное
                 const sec = document.querySelector('#admins .card-title');
-                if (sec) sec.textContent = 'Аккаунты стенда · роли';
+                if (sec) sec.textContent = 'Сотрудники';
+                const nav = document.querySelector('.nav-tab[data-section="admins"]');
+                if (nav) nav.textContent = '🔐 Сотрудники';
                 const hint = document.querySelector('#admins p');
                 if (hint) hint.innerHTML = 'Каждому свой логин, пароль и роль. Роль решает, ' +
                     'какие задачи человек видит в задачнике. Менять её можно на ходу — ' +
@@ -5680,6 +5703,37 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const d = await res.json();
                 if (d.success) { showToast('Роль обновлена: ' + (STAND_ROLES[role] || role)); loadAdmins(); }
                 else showToast(d.error || 'Ошибка', 'error');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        async function connectStandTelegram() {
+            try {
+                const res = await fetch(`${API_URL}/api/stand/tg-bind`, {method:'POST'});
+                const data = await res.json();
+                if (!data.success) { showToast(data.error || 'Бот недоступен', 'error'); return; }
+                window.open(data.url, '_blank', 'noopener');
+                showToast('Нажмите Start в чате бота. Ссылка действует 10 минут.');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+        }
+
+        async function setAdminNotify(id, enabled) {
+            try {
+                const res = await fetch(`${API_URL}/api/admins/${id}`, {
+                    method:'PUT', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({notify_enabled:enabled})});
+                const data = await res.json();
+                if (!data.success) showToast(data.error || 'Ошибка', 'error');
+                else showToast('Настройка уведомлений сохранена');
+            } catch (e) { showToast('Ошибка сети', 'error'); }
+            loadAdmins();
+        }
+
+        async function testAdminNotify(id) {
+            try {
+                const res = await fetch(`${API_URL}/api/stand/notify-test/${id}`, {method:'POST'});
+                const data = await res.json();
+                const label = {sent:'Отправлено', suppressed:'Подавлено политикой', failed:'Ошибка Telegram'};
+                showToast(label[data.status] || data.error || 'Ошибка', data.status === 'sent' ? 'success' : 'error');
             } catch (e) { showToast('Ошибка сети', 'error'); }
         }
 

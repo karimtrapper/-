@@ -20,6 +20,7 @@ import hmac
 import secrets
 import base64
 import binascii
+import stand_notify
 from collections import Counter
 import bcrypt
 import logging
@@ -2373,6 +2374,7 @@ _migrate_admin_access()
 
 if STAND_MODE:
     _stand_migrate()
+    stand_notify.init(sys.modules[__name__])
     _stand_seed_users()
 
 
@@ -4956,46 +4958,78 @@ def _stand_tg_send(text):
     return False
 
 
-def _stand_notify(sent_ids, new_data):
-    """Подготовить очередное сообщение; отметка sent ставится после HTTP 200."""
-    fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in sent_ids]
-    if not fresh:
-        return None, []
-    fresh = fresh[-5:]
-    deals = {d.get('id'): d for d in (new_data.get('deals') or [])}
-    lines = []
-    for n in reversed(fresh):          # в состоянии новые лежат сверху
-        who = STAND_ROLE_PEOPLE.get(n.get('role'), n.get('role') or '')
-        d = deals.get(n.get('dealId')) or {}
-        tail = ''
-        if d:
-            # Ссылка ведёт в саму задачу: без неё человек открывал общий список
-            # и искал сделку глазами — на телефоне это гарантированный отказ.
-            base = os.environ.get('STAND_BASE_URL', '').rstrip('/')
-            label = html_escape(f"{d.get('code') or ''} · {d.get('client') or ''}")
-            link = f'<a href="{base}/tasks?deal={d.get("id")}">{label}</a>' if base else f'<i>{label}</i>'
-            tail = f"\n{link}"
-        lines.append(f"🔔 <b>{html_escape(str(who))}</b>\n{html_escape(str(n.get('text') or ''))}{tail}")
-    msg = '\n\n'.join(lines)
-    return msg, [str(n.get('id')) for n in fresh]
-
-
 def _stand_deliver_notes():
-    """После commit отправить notes, не теряя их при ошибке Telegram."""
-    if not os.environ.get('STAND_TG_TOKEN') or not os.environ.get('STAND_TG_CHAT'):
-        return
+    """После commit доставить новые заметки по ролям в личку."""
+    if STAND_MODE:
+        stand_notify.deliver()
+
+
+@app.route('/api/stand/tg-bind', methods=['POST'])
+def stand_tg_bind():
+    """Выдать ссылку привязки только текущему сотруднику."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    uid = flask_session['user_id']
     db = get_session()
     try:
-        row = _stand_row(db, lock=True)
-        sent = set(json.loads(row.notified or '[]'))
-        message, ids = _stand_notify(sent, json.loads(row.data or '{}'))
-        if not ids:
-            return
-        if _stand_tg_send(message):
-            row.notified = json.dumps((list(sent) + ids)[-300:])
-            db.commit()
+        user = db.query(AdminUser).filter_by(id=uid).first()
+        if not user or user.login_disabled:
+            return jsonify({'success': False, 'error': 'unauthorized'}), 401
     finally:
         db.close()
+    link = stand_notify.create_bind(uid)
+    if not link:
+        return jsonify({'success': False, 'error': 'bot_unavailable'}), 503
+    return jsonify({'success': True, 'url': link, 'expires_in': 600})
+
+
+@app.route('/api/stand/tg-status', methods=['GET'])
+def stand_tg_status():
+    """Админ видит режим, состояние потребителя и список привязок."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        users = db.query(AdminUser).order_by(AdminUser.id).all()
+        return jsonify({'success': True, 'bot': stand_notify.bot_username(),
+                        'updates': stand_notify.status(), 'mode': stand_notify.mode(),
+                        'employees': [{'id': u.id, 'username': u.username,
+                                       'role': u.role, 'bound': bool(u.telegram_user_id),
+                                       'notify_enabled': bool(u.notify_enabled),
+                                       'login_disabled': bool(u.login_disabled)} for u in users]})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/notify-test/<int:admin_id>', methods=['POST'])
+def stand_notify_test(admin_id):
+    """Проверка одной лички; групповой chat_id никогда не используется."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        user = db.query(AdminUser).filter_by(id=admin_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        chat_id = user.telegram_user_id
+        user_allowed = stand_notify._user_allowed(user)
+    finally:
+        db.close()
+    if not user_allowed or not stand_notify.can_send('telegram', chat_id, 'sendMessage'):
+        return jsonify({'success': True, 'status': 'suppressed'})
+    try:
+        result = stand_notify.stand_egress.tg_call('sendMessage', {
+            'chat_id': chat_id, 'text': 'Проверка уведомлений стенда'})
+        return jsonify({'success': True, 'status': 'sent' if result.get('ok') else 'failed'})
+    except Exception:
+        app.logger.exception('stand notification test failed')
+        return jsonify({'success': True, 'status': 'failed'})
 
 
 @app.route('/api/stand/state', methods=['PUT'])
@@ -18609,6 +18643,9 @@ if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '0') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()
+
+if STAND_MODE and 'pytest' not in sys.modules:
+    stand_notify.start_updates()
 
 
 if __name__ == '__main__':

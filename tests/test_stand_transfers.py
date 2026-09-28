@@ -336,8 +336,11 @@ def test_incoming_endpoint_rejects_old_tx_and_persists_verified(monkeypatch):
 
 
 def test_notification_retry_marks_sent_only_after_http_success(monkeypatch):
-    monkeypatch.setenv('STAND_TG_TOKEN', 'test-token')
-    monkeypatch.setenv('STAND_TG_CHAT', 'test-chat')
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    import stand_notify
+    stand_notify.init(appmod)
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    monkeypatch.setenv('STAND_TG_CHAT', '-100123')
     state = board()
     state['notes'] = [{'id': 'n1', 'role': 'manager', 'text': '<пример & риск>',
                        'dealId': 1, 'at': 1}]
@@ -349,22 +352,23 @@ def test_notification_retry_marks_sent_only_after_http_success(monkeypatch):
         db.commit()
     finally:
         db.close()
+    db = appmod.SessionLocal()
+    user = appmod.AdminUser(username='dm_retry_legacy', display_name='Тест', role='manager',
+                            password_hash='test', telegram_user_id=12345, notify_enabled=True)
+    db.add(user); db.commit()
     messages = []
-    monkeypatch.setattr(appmod, '_stand_tg_send', lambda message: messages.append(message) or False)
+    monkeypatch.setattr(stand_notify.stand_egress, 'tg_call',
+                        lambda method, payload: messages.append(payload) or {'ok': False})
     appmod._stand_deliver_notes()
-    db = appmod.get_session()
-    try:
-        assert json.loads(appmod._stand_row(db).notified) == []
-    finally:
-        db.close()
-    assert '&lt;пример &amp; риск&gt;' in messages[0]
-    monkeypatch.setattr(appmod, '_stand_tg_send', lambda message: True)
+    assert db.execute(appmod.text("SELECT status FROM stand_notify_log WHERE note_id='n1' AND admin_id=:id"),
+                      {'id': user.id}).scalar() == 'failed'
+    assert '&lt;пример &amp; риск&gt;' in messages[0]['text']
+    assert all(m['chat_id'] != -100123 for m in messages)
+    monkeypatch.setattr(stand_notify.stand_egress, 'tg_call', lambda method, payload: {'ok': True})
     appmod._stand_deliver_notes()
-    db = appmod.get_session()
-    try:
-        assert json.loads(appmod._stand_row(db).notified) == ['n1']
-    finally:
-        db.close()
+    assert db.execute(appmod.text("SELECT status FROM stand_notify_log WHERE note_id='n1' AND admin_id=:id"),
+                      {'id': user.id}).scalar() == 'sent'
+    db.delete(user); db.commit(); db.close()
 
 
 def test_small_coins_and_client_close_with_payout_hashes_when_pack_confirmed():
