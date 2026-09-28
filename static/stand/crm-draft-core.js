@@ -16,8 +16,6 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
-    const mfRecalcNow = adapters.realtyPayoutRecalc;
-    const fhRecalc = adapters.realtyPayoutRecalc;
     // The bounded CRM custom calculator is included below; no CRM boot.
     let payinExtra = [];
     let sberParts = adapters.sberParts || [];
@@ -1562,6 +1560,29 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             _mfTimer = setTimeout(mfRecalcNow, 250);
         }
 
+        async function mfRecalcNow() {
+            if (!document.getElementById('mfDealToggle')?.checked) return;
+            const box = document.getElementById('mfSummary');
+            const payload = mfInputs();
+            if (!payload.invoice_amount_thb || !payload.buy_rate_thb_usdt) {
+                box.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;">Заполни сумму инвойса и курс покупки — покажу расклад по карманам.</div>';
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_URL}/api/deals/mf-realty/preview`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (!data.success) { box.innerHTML = `<div style="color:#dc2626;">${escapeHtml(data.error)}</div>`; return; }
+                renderMfSummary(data.result);
+                // Суммы в карточках агентов — из расчёта MF, иначе там висят нули
+                stdAgentsRecalc();
+            } catch (e) {
+                box.innerHTML = '<div style="color:#dc2626;">Не удалось посчитать (сеть)</div>';
+            }
+        }
+
         function renderMfSummary(r) {
             _mfLast = r;
             const box = document.getElementById('mfSummary');
@@ -1633,6 +1654,64 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
             document.getElementById('mfSentThb').value = '';
             showToast(`Максимум ${pct}% — при большем не хватит крипты на выплаты`);
             mfRecalcNow();
+        }
+
+        function fhInputs() {
+            const num = id => {
+                const v = parseFloat(document.getElementById(id)?.value);
+                return isNaN(v) ? null : v;
+            };
+            // Приход в рублях: USDT считаем по курсу брокера — так же, как бэкенд,
+            // иначе сводка пустая, пока менеджер не заполнит USDT руками
+            let payin = parseFloat(document.querySelector('[name="payin_amount_usdt"]')?.value) || null;
+            if (!payin) {
+                const rub = parseFloat(document.querySelector('[name="payin_amount_rub"]')?.value);
+                const rate = parseFloat(document.querySelector('[name="payin_rate_rub_usdt"]')?.value);
+                if (rub && rate) payin = rub / rate;
+            }
+            // Приход сделки — ИТОГ по всем каналам. Без этого сводка показывала
+            // только основную часть: на сделке 9 285.36 выходило 2 365.36 и
+            // «прибыль» −6 304 при живой отправке 8 669
+            payin = (payin || 0) + payinExtraTotalUsdt() || null;
+            return {
+                invoice_amount_usd: num('fhInvoiceUsd'),
+                transfer_sent_usd: num('fhSentUsd'),
+                transfer_fee_percent: num('fhFeePercent'),
+                transfer_fee_fixed_usd: num('fhFeeFixed'),
+                payin_amount_usdt: payin,
+                payout_tx_hashes: mfPayoutTxPool,
+                agents: stdAgentsSerialize(),
+            };
+        }
+
+        let _fhTimer = null;
+        function fhRecalc(source) {
+            // Инвойс — обязательство перед застройщиком, отправка — факт. Их НЕ
+            // очищаем друг об друга: смысл сводки как раз в сверке «дойдёт vs инвойс»
+            clearTimeout(_fhTimer);
+            _fhTimer = setTimeout(fhRecalcNow, 250);
+        }
+
+        async function fhRecalcNow() {
+            if (!document.getElementById('fhDealToggle')?.checked) return;
+            const box = document.getElementById('fhSummary');
+            const payload = fhInputs();
+            if (!payload.invoice_amount_usd && !payload.transfer_sent_usd) {
+                box.innerHTML = '<div style="color:#6b7280;font-size:0.9rem;">Заполни инвойс застройщику (или фактическую отправку) — покажу расклад с расходами.</div>';
+                return;
+            }
+            try {
+                const resp = await fetch(`${API_URL}/api/deals/mf-freehold/preview`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await resp.json();
+                if (!data.success) { box.innerHTML = `<div style="color:#dc2626;">${escapeHtml(data.error)}</div>`; return; }
+                renderFhSummary(data.result);
+                stdAgentsRecalc();   // суммы в карточках агентов — из расчёта фрихолда
+            } catch (e) {
+                box.innerHTML = '<div style="color:#dc2626;">Не удалось посчитать (сеть)</div>';
+            }
         }
 
         function renderFhSummary(r) {
@@ -2386,7 +2465,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         }
     return {
         loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
-        mfSpreadChanged, mfRecalc, mfSuggestPercent,
+        mfInputs, mfSpreadChanged, mfRecalc, mfRecalcNow, mfSuggestPercent,
+        fhInputs, fhRecalc, fhRecalcNow,
         togglePayoutSettled, syncPayoutSettledDefault,
         toggleNoConversion, loadFounderWallets, calcNoConvRate,
         renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,

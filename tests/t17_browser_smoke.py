@@ -299,6 +299,38 @@ with sync_playwright() as playwright:
     assert not crm_posts,crm_posts
     open_edit(page,result['id'])
     host=page.locator('#crmDraftHost')
+    crm_fh=context.new_page()
+    crm_fh.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_fh.evaluate('showSection("create")')
+    crm_fh.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"')
+    pick(crm_fh,'dealKindSelect','mf_freehold')
+    pick(crm_fh,'payinMethod','crypto_direct')
+    crm_fh.locator('[name="payin_amount_usdt"]').fill('46000')
+    crm_fh.locator('#fhInvoiceUsd').fill('45000')
+    crm_fh.locator('#fhFeePercent').fill('0.8')
+    crm_fh.locator('#fhFeeFixed').fill('50')
+    crm_fh.evaluate('fhRecalcNow()')
+    page.evaluate('crmDraftActive.core.fhRecalcNow()')
+    crm_fh.wait_for_function('document.querySelector("#fhSummary")?.textContent.includes("45")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("fhSummary")?.textContent.includes("45")')
+    fh_summaries=[crm_fh.locator('#fhSummary').inner_text(),host.locator('#fhSummary').inner_text()]
+    print('freehold bank preview CRM/tasks:',fh_summaries[0]==fh_summaries[1])
+    assert fh_summaries[0]==fh_summaries[1]
+    crm_fh.close()
+    page.locator('#crmDraftInvoiceCurrency').select_option('thb')
+    page.locator('#crmDraftInvoiceThb').fill('1500000')
+    with page.expect_response(lambda resp: resp.url.endswith('/api/stand/state')
+                              and resp.request.method=='PUT' and resp.status==200):
+        page.locator('.card.edit-page > .row > button').first.click()
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    bank_thb=page.evaluate('''id=>{const d=deal(id),p=crmPayload(d);return [
+      d.invoiceUsd,d.invoiceThb,d.invoiceCurrency,d.ippsTariff,
+      p.invoice_amount_usd,p.transfer_fee_percent,p.transfer_fee_fixed_usd]}''',result['id'])
+    print('freehold bank THB invoice reload:',bank_thb)
+    assert bank_thb==[45000,1500000,'thb','bank',45000,0.8,50]
+    open_edit(page,result['id'])
+    host=page.locator('#crmDraftHost')
     host.locator('#createDealForm').wait_for(timeout=20000)
     assert host.locator('#fhInvoiceUsd').input_value()=='45000'
     assert page.locator('#crmDraftTariff').input_value()=='bank'

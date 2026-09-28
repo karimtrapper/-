@@ -59,8 +59,12 @@ SLICES = [
     ("        function autoCalcUsdt(", "        function calculateProfit("),
     ("        function mfInputs()", "        function mfSpreadChanged()"),
     ("        function mfSpreadChanged()", "        async function mfRecalcNow()"),
+    ("        async function mfRecalcNow()", "        let _mfLast = null;"),
     ("        function renderMfSummary(", "        async function mfSuggestPercent("),
     ("        async function mfSuggestPercent()", "        function mfFormData()"),
+    ("        function fhInputs()", "        let _fhTimer = null;"),
+    ("        let _fhTimer = null;", "        let _fhLast = null;"),
+    ("        async function fhRecalcNow()", "        function renderFhSummary("),
     ("        function renderFhSummary(", "        function fhFormData("),
     ("        function stdAgentsPreset(", "        function stdAgentsAdd("),
     ("        function stdAgentsAdd(", "        function stdAgentsRemove("),
@@ -160,6 +164,19 @@ def main():
         if hits != expected:
             raise SystemExit(f"CRM draft safety slot changed ({hits}): {old}")
         pieces = [piece.replace(old, new) for piece in pieces]
+    mf_preview_index = next(i for i, (start, _) in enumerate(SLICES)
+                            if start == "        async function mfRecalcNow()")
+    preview = pieces[mf_preview_index]
+    old = '${data.error}'
+    if preview.count(old) != 1:
+        raise SystemExit('CRM MF preview error rendering changed')
+    pieces[mf_preview_index] = preview.replace(old, '${escapeHtml(data.error)}')
+    fh_preview_index = next(i for i, (start, _) in enumerate(SLICES)
+                            if start == "        async function fhRecalcNow()")
+    preview = pieces[fh_preview_index]
+    if preview.count(old) != 1:
+        raise SystemExit('CRM FH preview error rendering changed')
+    pieces[fh_preview_index] = preview.replace(old, '${escapeHtml(data.error)}')
     select_index = next(i for i, (start, _) in enumerate(SLICES)
                         if start == "        function upgradeSelect(select)")
     select_code = pieces[select_index]
@@ -237,8 +254,6 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     const loadCurrentRate = adapters.loadCurrentRate || (() => {});
     const realtyPayinRecalc = adapters.realtyPayinRecalc || (() => {});
     const realtyPayoutRecalc = adapters.realtyPayoutRecalc;
-    const mfRecalcNow = adapters.realtyPayoutRecalc;
-    const fhRecalc = adapters.realtyPayoutRecalc;
     // The bounded CRM custom calculator is included below; no CRM boot.
     let payinExtra = [];
     let sberParts = adapters.sberParts || [];
@@ -272,7 +287,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
 """ + "\n\n".join(pieces) + """
     return {
         loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
-        mfSpreadChanged, mfRecalc, mfSuggestPercent,
+        mfInputs, mfSpreadChanged, mfRecalc, mfRecalcNow, mfSuggestPercent,
+        fhInputs, fhRecalc, fhRecalcNow,
         togglePayoutSettled, syncPayoutSettledDefault,
         toggleNoConversion, loadFounderWallets, calcNoConvRate,
         renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,

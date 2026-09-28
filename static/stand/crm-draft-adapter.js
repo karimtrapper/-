@@ -255,34 +255,12 @@ function crmDraftRestore(active,snapshot) {
 async function crmDraftPreview(active) {
   const {root}=active,kind=crmDraftRead(root,'dealKindSelect');
   if(kind!=='mf_realty'&&kind!=='mf_freehold')return;
+  if(kind==='mf_realty')return active.core.mfRecalcNow();
   if(kind==='mf_freehold'&&!IPPS_TARIFFS[document.getElementById('crmDraftTariff')?.value]){
     const box=root.getElementById('fhSummary');if(box)box.textContent='Выберите тариф IPPS из сделки';
     return;
   }
-  const number=id=>crmDraftNum(crmDraftRead(root,id));
-  const payin=(number('payin_amount_usdt')??
-    ((number('payin_amount_rub')&&number('payin_rate_rub_usdt'))?
-      number('payin_amount_rub')/number('payin_rate_rub_usdt'):null))+
-    active.core.payinExtraTotalUsdt();
-  const agents=active.core.stdAgentsSerialize();
-  const payout_tx_hashes=active.core.mfPayoutTxPool;
-  const payload=kind==='mf_realty'?{
-    invoice_amount_thb:number('mfInvoiceThb'),buy_rate_thb_usdt:number('mfBuyRate'),
-    sell_rate_thb_usdt:number('mfSellRate'),client_spread_percent:number('mfSpread'),
-    company_percent:number('mfPercent'),company_sent_thb:number('mfSentThb'),
-    payin_amount_usdt:payin,payout_tx_hashes,agents,
-  }:{invoice_amount_usd:number('fhInvoiceUsd'),transfer_sent_usd:number('fhSentUsd'),
-    transfer_fee_percent:number('fhFeePercent'),transfer_fee_fixed_usd:number('fhFeeFixed'),
-    payin_amount_usdt:payin,payout_tx_hashes,agents};
-  const url=kind==='mf_realty'?'/api/deals/mf-realty/preview':'/api/deals/mf-freehold/preview';
-  const box=root.getElementById(kind==='mf_realty'?'mfSummary':'fhSummary');
-  try{
-    const response=await crmDraftSafeFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    const data=await response.json();
-    if(!data.success){box.textContent=data.error||'Расчёт недоступен';return;}
-    if(kind==='mf_realty')active.core.renderMfSummary(data.result);
-    else active.core.renderFhSummary(data.result);
-  }catch(e){if(box)box.textContent='Расчёт недоступен';}
+  return active.core.fhRecalcNow();
 }
 async function crmDraftMount(id) {
   const host=document.getElementById('crmDraftHost');
@@ -487,7 +465,7 @@ function crmDraftWire(active) {
       else active.core.mfRecalc({mfInvoiceThb:'invoice',mfPercent:'percent',mfSentThb:'sent'}[el.id]);
     }
     if(['fhInvoiceUsd','fhSentUsd','fhFeePercent','fhFeeFixed'].includes(el.id)){
-      crmDraftPreview(active);
+      active.core.fhRecalc();
     }
     if(el.id==='clientSearchInput'){
       crmDraftValue(root,'clientIdHidden','');
