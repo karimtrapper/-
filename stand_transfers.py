@@ -211,11 +211,16 @@ class _StandChannelResponse:
 _STAND_CHANNEL_ERRORS = {
     'no_key': 'Сеть недоступна: нет ключа',
     'timeout': 'Сеть не ответила: таймаут',
+    'read_timeout': 'Сеть не ответила: таймаут при чтении ответа',
+    'read_error': 'Сеть не ответила: обрыв при чтении ответа',
     'tls_error': 'Сеть не ответила: TLS',
     'network_error': 'Сеть не ответила',
     'redirect_blocked': 'Сеть отдала редирект — отклонено',
     'response_too_large': 'Ответ сети слишком большой',
     'invalid_json': 'Сеть отдала не JSON',
+    'http_429': 'TronScan/Etherscan HTTP 429 — лимит запросов',
+    'http_5xx': 'TronScan/Etherscan HTTP 5xx',
+    'http_4xx': 'TronScan/Etherscan HTTP 4xx',
 }
 
 
@@ -236,6 +241,10 @@ def _stand_get(url, params=None, headers=None, timeout=None):
     else:
         raise _ChannelError('Канал не настроен')
     status_code, data, err = stand_egress.read_get(op, op_params)
+    if err == 'http_4xx' and op == 'tron_tx_info' and status_code == 404:
+        # TronScan отдаёт 404 на ещё не проиндексированный хеш — как раньше
+        # при прямом requests.get, это «пока нет данных», не ошибка канала.
+        return _StandChannelResponse(status_code, {})
     if err:
         raise _ChannelError(_STAND_CHANNEL_ERRORS.get(err, 'Сеть недоступна'))
     return _StandChannelResponse(status_code, data)

@@ -117,6 +117,9 @@ def _fake_get_server_script():
         _port = _srv.server_port
         threading.Thread(target=_srv.serve_forever, daemon=True).start()
         _base = f'http://127.0.0.1:{_port}'
+        import stand_egress
+        stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', _port)
     '''
 
 
@@ -387,8 +390,9 @@ def test_timeout_is_stable_error_without_url_or_key_leak():
     result, proc = run_script('''
         import stand_egress
         stand_egress.install()
+        stand_egress.allow_test_target('127.0.0.1', 1)  # регистрируем адрес, но там никто не слушает
         status_code, data, err = stand_egress.read_get(
-            'prod_incomes', {'all': 1}, _base_url='http://127.0.0.1:1')  # порт без слушателя
+            'prod_incomes', {'all': 1}, _base_url='http://127.0.0.1:1')
         OUT({'status_code': status_code, 'data': data, 'err': err})
     ''')
     assert proc.returncode == 0, proc.stderr
@@ -614,8 +618,10 @@ def test_calculator_rates_uses_channel_values_when_available():
         from calculator import ExchangeRateProvider
 
         def fake_read_get(op, params=None, _base_url=None):
-            if op == 'market_binance_ticker':
+            if op == 'market_binance_th_ticker':
                 return 200, {'symbol': 'USDTTHB', 'price': '32.5'}, None
+            if op == 'market_binance_ticker':
+                raise AssertionError('Global — только фоллбэк, TH уже ответил')
             if op == 'market_rapira':
                 return 200, {'data': [{'symbol': 'USDT/RUB', 'askPrice': '81.0'}]}, None
             raise AssertionError(op)
@@ -627,3 +633,306 @@ def test_calculator_rates_uses_channel_values_when_available():
     assert proc.returncode == 0, proc.stderr
     assert result['usdt_thb'] == 32.5
     assert result['rub_usdt'] == 81.0 * 1.0  # RAPIRA_MARKUP=1.0, наценка прода отдельно
+
+
+# ───────────── QA-раунд (соведущий gpt-6-sol, thr_bhbwaywxwr) по 6b5e190 ────
+
+def test_calculator_rates_falls_back_to_binance_global_when_th_fails():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import asyncio
+        from calculator import ExchangeRateProvider
+
+        def fake_read_get(op, params=None, _base_url=None):
+            if op == 'market_binance_th_ticker':
+                return None, None, 'network_error'  # TH недоступен
+            if op == 'market_binance_ticker':
+                return 200, {'symbol': 'USDTTHB', 'price': '33.1'}, None
+            if op == 'market_rapira':
+                return 200, {'data': [{'symbol': 'USDT/RUB', 'askPrice': '82.0'}]}, None
+            raise AssertionError(op)
+        stand_egress.read_get = fake_read_get
+
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        OUT(rates)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['usdt_thb'] == 33.1
+
+
+def test_calculator_rates_rejects_nan_and_infinity_price():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import asyncio
+        from calculator import ExchangeRateProvider
+
+        out = {}
+        for label, price in [('nan', 'NaN'), ('inf', 'Infinity'), ('neg', '-5'), ('zero', '0')]:
+            def fake_read_get(op, params=None, _base_url=None, _price=price):
+                # TH и Global оба «отвечают» тем же мусором — фоллбэк на
+                # Global не спасает, итог должен остаться None.
+                if op in ('market_binance_th_ticker', 'market_binance_ticker'):
+                    return 200, {'symbol': 'USDTTHB', 'price': _price}, None
+                if op == 'market_rapira':
+                    return 200, {'data': []}, None
+                raise AssertionError(op)
+            stand_egress.read_get = fake_read_get
+            out[label] = asyncio.run(ExchangeRateProvider.get_all_rates())['usdt_thb']
+        OUT(out)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'nan': None, 'inf': None, 'neg': None, 'zero': None}
+
+
+def test_calculator_rates_rejects_nan_and_infinity_rapira_ask():
+    result, proc = run_script('''
+        import stand_egress
+        stand_egress.install()
+        import asyncio
+        from calculator import ExchangeRateProvider
+
+        def fake_read_get(op, params=None, _base_url=None):
+            if op == 'market_binance_th_ticker':
+                return 200, {'symbol': 'USDTTHB', 'price': '32.0'}, None
+            if op == 'market_rapira':
+                return 200, {'data': [{'symbol': 'USDT/RUB', 'askPrice': 'Infinity'}]}, None
+            raise AssertionError(op)
+        stand_egress.read_get = fake_read_get
+
+        rates = asyncio.run(ExchangeRateProvider.get_all_rates())
+        OUT(rates)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['rub_usdt'] is None
+
+
+# ── B: _base_url — только зарегистрированный loopback, иначе invalid_base_url
+
+def test_base_url_bypass_attempts_all_rejected_before_network():
+    result, proc = run_script(_fake_get_server_script() + '''
+        candidates = [
+            'https://api.binance.com.evil',
+            'https://api.binance.com@evil',
+            'https://api.binance.com//evil',
+            'https://api.binance.com/../evil',
+            'https://api.binance.com/%2f',
+            'https://api.binance.com\\\\evil',
+            'https://api.binance.com.',
+            'https://127.0.0.1',              # без порта (allow_test_target требует точный порт)
+            'https://[::1]',
+            'https://169.254.169.254:{0}'.format(_port),  # link-local, не loopback
+            f'http://127.0.0.1:{_port + 1}',   # другой порт — не зарегистрирован
+        ]
+        out = []
+        for v in candidates:
+            _, _, err = stand_egress.read_get('market_rapira', {}, _base_url=v)
+            out.append([v, err])
+        OUT({'cases': out, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['hits'] == 0, 'ни один обход не должен был дойти до фейкового сервера'
+    for value, err in result['cases']:
+        assert err == 'invalid_base_url', f'{value} должен быть отклонён, получили {err}'
+
+
+def test_base_url_registered_loopback_target_is_allowed():
+    result, proc = run_script(_fake_get_server_script() + '''
+        _, _, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'err': err, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err': None, 'hits': 1}
+
+
+def test_base_url_with_own_path_rejected_not_silently_stripped():
+    """_base_url обязан указывать голый host:port — путь в спецификации
+    op'а, а не в _base_url. Лишний путь в тестовом override отклоняется до
+    сети, а не молча отбрасывается (fail-closed, не «угадать намерение»)."""
+    result, proc = run_script(_fake_get_server_script() + '''
+        _, _, err = stand_egress.read_get('market_rapira', {}, _base_url=_base + '/smuggled/path')
+        OUT({'err': err, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err': 'invalid_base_url', 'hits': 0}
+
+
+# ── D2: стабильные коды по статусу, без выдумывания курса на 429/5xx
+
+def test_http_429_and_5xx_map_to_stable_error_codes():
+    result, proc = run_script(_fake_get_server_script() + '''
+        FakeChain.next_status = 429
+        _, _, err_429 = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        FakeChain.next_status = 500
+        _, _, err_500 = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        FakeChain.next_status = 404
+        _, _, err_404 = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'err_429': err_429, 'err_500': err_500, 'err_404': err_404})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err_429': 'http_429', 'err_500': 'http_5xx', 'err_404': 'http_4xx'}
+
+
+def test_read_body_read_timeout_and_protocol_error_are_stable_codes():
+    result, proc = run_script('''
+        import urllib3
+        from unittest.mock import patch
+        import stand_egress
+
+        class RaisingRaw:
+            def __init__(self, exc):
+                self._exc = exc
+            def read(self, *a, **k):
+                raise self._exc
+
+        class FakeResp:
+            def __init__(self, exc):
+                self.status_code = 200
+                self.raw = RaisingRaw(exc)
+            def close(self):
+                pass
+
+        out = {}
+        with patch('requests.Session.get', return_value=FakeResp(urllib3.exceptions.ReadTimeoutError(None, None, 'timeout'))):
+            _, _, out['read_timeout'] = stand_egress.read_get('market_rapira', {})
+        with patch('requests.Session.get', return_value=FakeResp(urllib3.exceptions.ProtocolError('broken'))):
+            _, _, out['read_error'] = stand_egress.read_get('market_rapira', {})
+        OUT(out)
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'read_timeout': 'read_timeout', 'read_error': 'read_error'}
+
+
+# ── E2: guard-разрешение — только на время своего connect(), не всей операции
+
+def test_direct_socket_during_faked_session_get_is_blocked():
+    """Session.get полностью подменена (как это делает тест соведущего) — наш
+    собственный connect() ни разу не вызывается, поэтому окно разрешения не
+    открывается вовсе, и прямой сокет в тот же host:443 в том же потоке
+    блокируется — не «разрешение на весь вызов», а «разрешение на свой connect»."""
+    result, proc = run_script('''
+        import socket
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+
+        sent = []
+        def lower(self, address):
+            sent.append(address)
+        with patch.object(stand_egress, '_orig_connect', lower):
+            def fake_get(self, url, **kw):
+                s = socket.socket()
+                try:
+                    s.connect(('api.rapira.net', 443))
+                except Exception:
+                    pass
+                finally:
+                    s.close()
+                class Raw:
+                    def read(self, *a, **k):
+                        return b'{}'
+                class Resp:
+                    status_code = 200
+                    raw = Raw()
+                    def close(self):
+                        pass
+                return Resp()
+            with patch('requests.Session.get', fake_get):
+                stand_egress.read_get('market_rapira', {})
+        OUT({'reached_lower_connect': sent})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['reached_lower_connect'] == []
+
+
+def test_own_channel_connect_still_reaches_fake_server():
+    """Контрольная проверка к E2: когда read_get реально сам открывает
+    соединение (не подменённый Session.get), фейковый сервер получает запрос —
+    сужение окна разрешения не сломало обычную работу канала."""
+    result, proc = run_script(_fake_get_server_script() + '''
+        _, _, err = stand_egress.read_get('market_rapira', {}, _base_url=_base)
+        OUT({'err': err, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err': None, 'hits': 1}
+
+
+# ── I: прямые вызовы TronScan/Etherscan в CRM (app.py) — только через read_get
+
+def test_app_tron_tx_info_uses_channel_not_direct_get_on_stand():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        calls = []
+        def fake_direct_get(*a, **k):
+            calls.append([a, k])
+            class R:
+                status_code = 200
+                def json(self):
+                    return {'trc20TransferInfo': []}
+            return R()
+
+        def fake_read_get(op, params=None, _base_url=None):
+            assert op == 'tron_tx_info'
+            assert params == {'hash': 'a' * 64}
+            return 200, {'trc20TransferInfo': []}, None
+        with patch('requests.get', side_effect=fake_direct_get), \
+             patch.object(stand_egress, 'read_get', fake_read_get):
+            result = app._tron_tx_info('a' * 64)
+        OUT({'direct_get_calls': len(calls), 'result': result})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['direct_get_calls'] == 0
+    assert result['result'] == {'amount_usdt': None, 'total_out_usdt': None,
+                                 'extra_out_usdt': 0, 'from_address': None,
+                                 'to_address': None, 'transfer_count': 0} or result['result'] == {}
+
+
+def test_app_etherscan_tx_info_uses_channel_not_direct_get_on_stand():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        calls = []
+        def fake_direct_get(*a, **k):
+            calls.append([a, k])
+            raise AssertionError('прямой requests.get не должен вызываться на стенде')
+
+        def fake_read_get(op, params=None, _base_url=None):
+            assert op == 'eth_tx_receipt'
+            assert 'apikey' not in (params or {})
+            return 200, {'result': None}, None
+        with patch('requests.get', side_effect=fake_direct_get), \
+             patch.object(stand_egress, 'read_get', fake_read_get):
+            result = app._etherscan_tx_info('0x' + 'a' * 64)
+        OUT({'direct_get_calls': len(calls), 'result': result})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0', 'STAND_ETHERSCAN_API_KEY': 'stand-eth-key'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['direct_get_calls'] == 0
+    assert result['result'] == {}
+
+
+def test_app_etherscan_tx_info_without_stand_key_returns_empty_no_channel_call():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        def fake_read_get(*a, **k):
+            raise AssertionError('без STAND_ETHERSCAN_API_KEY канал не должен вызываться')
+        with patch.object(stand_egress, 'read_get', fake_read_get):
+            result = app._etherscan_tx_info('0x' + 'a' * 64)
+        OUT({'result': result})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0', 'STAND_ETHERSCAN_API_KEY': None})
+    assert proc.returncode == 0, proc.stderr
+    assert result['result'] == {}

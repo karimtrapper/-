@@ -557,6 +557,15 @@ _READ_CHANNELS = {
         'params': {'symbol': lambda v: v == 'USDTTHB'},
         'required': {'symbol'},
     },
+    'market_binance_th_ticker': {
+        # Прод (calculator.py вне стенда) берёт курс USDT/THB в первую очередь
+        # с Binance TH, Binance Global — только фоллбэк. Канал повторяет тот же
+        # порядок источников, иначе курс стенда систематически отличался бы от прода.
+        'host': 'api.binance.th',
+        'path': '/api/v1/ticker/price',
+        'params': {'symbol': lambda v: v == 'USDTTHB'},
+        'required': {'symbol'},
+    },
     'prod_incomes': {
         'host': 'grusha.up.railway.app',
         'path': '/api/sber-incomes',
@@ -568,6 +577,84 @@ _READ_CHANNELS = {
 
 _MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
 _READ_REDIRECT_CODES = (301, 302, 303, 307, 308)
+_READ_TOTAL_DEADLINE = 8.0  # секунд на всю операцию: connect + заголовки + тело
+
+
+class _ReadChannelConnectMixin:
+    """Guard-разрешение выставляется СТРОГО на время своего connect() — не на
+    весь HTTP-запрос. Если тест подменяет requests.Session.get целиком (сам
+    метод, не транспорт), эта connect() вообще не вызывается — разрешение
+    не открывается, и прямой сокет из того же потока получит отказ, как и
+    положено (E2)."""
+    def connect(self):
+        _read_ctx.active = True
+        _read_ctx.host = getattr(_read_ctx, 'pending_host', None)
+        _read_ctx.allowed_pairs = set(getattr(_read_ctx, 'pending_pairs', ()) or ())
+        try:
+            return super().connect()
+        finally:
+            _read_ctx.active = False
+            _read_ctx.host = None
+            _read_ctx.allowed_pairs = set()
+
+
+def _read_channel_adapter():
+    """HTTPAdapter с одноразовым пулом, чьи соединения открывают guard-
+    разрешение только на время своего connect() (см. _ReadChannelConnectMixin)."""
+    import urllib3
+    from requests.adapters import HTTPAdapter
+
+    class _HTTPConn(_ReadChannelConnectMixin, urllib3.connection.HTTPConnection):
+        pass
+
+    class _HTTPSConn(_ReadChannelConnectMixin, urllib3.connection.HTTPSConnection):
+        pass
+
+    class _HTTPPool(urllib3.HTTPConnectionPool):
+        ConnectionCls = _HTTPConn
+
+    class _HTTPSPool(urllib3.HTTPSConnectionPool):
+        ConnectionCls = _HTTPSConn
+
+    class _Adapter(HTTPAdapter):
+        def init_poolmanager(self, *args, **kwargs):
+            super().init_poolmanager(*args, **kwargs)
+            self.poolmanager.pool_classes_by_scheme = {'http': _HTTPPool, 'https': _HTTPSPool}
+
+    return _Adapter()
+
+
+def _validate_base_url_override(_base_url):
+    """_base_url — тестовый хук (как у tg_call): допускается ТОЛЬКО когда его
+    точная пара (host, port) заранее зарегистрирована test-only хуком T1
+    `allow_test_target()` и host — loopback. Схема http/https, без userinfo/
+    query/fragment; путь берётся из спецификации op — собственный путь
+    _base_url в URL не попадает вовсе. Обходы host.evil/@userinfo///../ и
+    т. п. отсекаются урезанным списком допустимых полей urlsplit, а не
+    попыткой распознать каждый конкретный трюк."""
+    if not isinstance(_base_url, str) or '\\' in _base_url:
+        return None
+    try:
+        parts = urlsplit(_base_url)
+    except ValueError:
+        return None
+    if parts.scheme not in ('http', 'https'):
+        return None
+    if '@' in parts.netloc:
+        return None
+    if parts.query or parts.fragment:
+        return None
+    if parts.path not in ('', '/'):
+        return None
+    host, port = parts.hostname, parts.port
+    if not host or not port:
+        return None
+    key = _loopback_key(host)
+    if key is None:
+        return None  # не loopback — не тестовый адрес
+    if (key, port) not in _test_allowed_pairs:
+        return None
+    return parts.scheme, key, port
 
 
 def read_get(op, params=None, _base_url=None):
@@ -578,9 +665,11 @@ def read_get(op, params=None, _base_url=None):
     строит сам канал, вызывающий код передаёт только значения параметров.
     Возвращает (status_code|None, parsed_json|None, error_code|None).
     `_base_url` — только для тестов (как `_base_url` у tg_call), прод его не
-    передаёт и не читает из env.
+    передаёт и не читает из env; проходит только зарегистрированный
+    allow_test_target() loopback-адрес, иначе — 'invalid_base_url' до сети.
     """
     import requests
+    import urllib3
 
     spec = _READ_CHANNELS.get(op)
     if spec is None:
@@ -617,31 +706,52 @@ def read_get(op, params=None, _base_url=None):
             return None, None, 'no_key'
 
     host = spec['host']
-    base = (_base_url or f'https://{host}').rstrip('/')
+    permit_host = host
+    permit_pairs = set()
+    if _base_url is not None:
+        allowed = _validate_base_url_override(_base_url)
+        if allowed is None:
+            return None, None, 'invalid_base_url'
+        scheme, key, port = allowed
+        base = f'{scheme}://{key}:{port}'
+        permit_host = key
+        permit_pairs = {(key, port)}
+    else:
+        base = f'https://{host}'
     url = f'{base}{spec["path"]}'
 
-    _read_ctx.active = True
-    _read_ctx.host = host
-    _read_ctx.allowed_pairs = set()
-    if _base_url:
-        # Тестовый override (прод никогда не передаёт _base_url): пускаем
-        # именно этот host:port на время запроса — так же, как tg_call.
-        parts = urlsplit(_base_url)
-        if parts.hostname and parts.port:
-            key = _loopback_key(parts.hostname) or parts.hostname.strip('[]').lower()
-            _read_ctx.allowed_pairs.add((key, parts.port))
+    deadline = time.monotonic() + _READ_TOTAL_DEADLINE
+    _read_ctx.pending_host = permit_host
+    _read_ctx.pending_pairs = permit_pairs
     try:
         session = requests.Session()
         session.trust_env = False
+        adapter = _read_channel_adapter()
+        session.mount('http://', adapter)
+        session.mount('https://', adapter)
         try:
-            resp = session.get(url, params=query, headers=headers, timeout=8,
+            remaining = max(0.05, deadline - time.monotonic())
+            resp = session.get(url, params=query, headers=headers, timeout=remaining,
                                allow_redirects=False, stream=True, proxies={})
             try:
                 if resp.status_code in _READ_REDIRECT_CODES:
                     return resp.status_code, None, 'redirect_blocked'
-                raw = resp.raw.read(_MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
+                try:
+                    raw = resp.raw.read(_MAX_READ_RESPONSE_BYTES + 1, decode_content=True)
+                except urllib3.exceptions.ReadTimeoutError:
+                    return None, None, 'read_timeout'
+                except (urllib3.exceptions.ProtocolError,
+                        requests.exceptions.ChunkedEncodingError,
+                        ConnectionError) as exc:
+                    return None, None, 'read_error'
                 if len(raw) > _MAX_READ_RESPONSE_BYTES:
                     return resp.status_code, None, 'response_too_large'
+                if resp.status_code == 429:
+                    return resp.status_code, None, 'http_429'
+                if 500 <= resp.status_code < 600:
+                    return resp.status_code, None, 'http_5xx'
+                if 400 <= resp.status_code < 500:
+                    return resp.status_code, None, 'http_4xx'
                 try:
                     data = json.loads(raw.decode('utf-8'))
                 except (ValueError, UnicodeDecodeError):
@@ -655,11 +765,18 @@ def read_get(op, params=None, _base_url=None):
         return None, None, 'timeout'
     except requests.exceptions.SSLError:
         return None, None, 'tls_error'
+    except requests.exceptions.ChunkedEncodingError:
+        return None, None, 'read_error'
     except requests.exceptions.RequestException:
         # Текст исключения requests нередко содержит сам URL/параметры — наружу
         # уходит только стабильный код, как и в tg_call.
         return None, None, 'network_error'
+    except Exception:
+        # Любая другая ошибка транспорта (в том числе низкоуровневый
+        # ConnectionRefusedError guard'а, если тест/код в обход requests сам
+        # открыл сокет) — read_get никогда не поднимает исключение наружу,
+        # как и tg_call.
+        return None, None, 'network_error'
     finally:
-        _read_ctx.active = False
-        _read_ctx.host = None
-        _read_ctx.allowed_pairs = set()
+        _read_ctx.pending_host = None
+        _read_ctx.pending_pairs = set()

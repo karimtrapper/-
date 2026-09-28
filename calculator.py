@@ -5,6 +5,7 @@ Exchange Calculator Bot - Калькулятор обмена RUB-THB
 
 import aiohttp
 import asyncio
+import math
 import os
 import threading
 import time as _time
@@ -262,27 +263,38 @@ class ExchangeRateProvider:
             # На стенде курс дня — настоящий рынок, но только через контролируемый
             # канал чтения T9 (stand_egress.read_get): Binance-тикер + Рапира-тикер,
             # без стакана/VWAP и без Playwright. На ошибке/429 честно None — курс
-            # не выдумывается и старое значение за свежее не выдаётся (кэша нет).
+            # не выдумывается и старое значение за свежее не выдаётся (кэша нет,
+            # так что «отдать вчерашнее как сегодняшнее» здесь невозможно в принципе).
             import stand_egress
-            usdt_thb = None
-            status_code, data, err = stand_egress.read_get('market_binance_ticker', {'symbol': 'USDTTHB'})
-            if not err and status_code == 200 and isinstance(data, dict):
+
+            def _finite_positive(raw):
+                """NaN/Infinity/≤0 — не курс. math.isfinite отсекает и то, и
+                другое; float('inf') > 0 иначе прошёл бы как валидный курс."""
                 try:
-                    price = float(data.get('price'))
-                    usdt_thb = price if price > 0 else None
+                    value = float(raw)
                 except (TypeError, ValueError):
-                    usdt_thb = None
+                    return None
+                return value if math.isfinite(value) and value > 0 else None
+
+            usdt_thb = None
+            # Прод (вне стенда, см. get_binance_rate ниже) сначала пробует
+            # Binance TH и только потом — Global-фоллбэк; канал повторяет тот
+            # же порядок источников, иначе курс стенда систематически разойдётся
+            # с продом даже при обоих источниках "живых".
+            for op in ('market_binance_th_ticker', 'market_binance_ticker'):
+                status_code, data, err = stand_egress.read_get(op, {'symbol': 'USDTTHB'})
+                if not err and status_code == 200 and isinstance(data, dict):
+                    usdt_thb = _finite_positive(data.get('price'))
+                    if usdt_thb is not None:
+                        break
             rub_usdt = None
             status_code, data, err = stand_egress.read_get('market_rapira', {})
             if not err and status_code == 200 and isinstance(data, dict):
                 rows = data.get('data') if isinstance(data.get('data'), list) else []
                 for row in rows:
                     if row.get('symbol') in ('USDT/RUB', 'USDTRUB'):
-                        try:
-                            ask = float(row.get('askPrice') or 0)
-                        except (TypeError, ValueError):
-                            ask = 0
-                        if ask > 0:
+                        ask = _finite_positive(row.get('askPrice'))
+                        if ask is not None:
                             rub_usdt = ask * ExchangeRateProvider.RAPIRA_MARKUP
                         break
             return {"usdt_thb": usdt_thb, "rub_usdt": rub_usdt}

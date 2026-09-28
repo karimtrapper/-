@@ -3217,8 +3217,13 @@ def reestr_tx_sum():
     items, total, to_addr, dates = [], 0.0, None, []
     for h in raw:
         try:
-            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
-            info = r.json() if r.status_code == 200 else {}
+            if STAND_MODE:
+                import stand_egress
+                status_code, info, err = stand_egress.read_get('tron_tx_info', {'hash': h})
+                info = info if (not err and status_code == 200) else {}
+            else:
+                r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={h}', timeout=10)
+                info = r.json() if r.status_code == 200 else {}
             # Батч: сумма прихода — всё, что прислал отправитель этой
             # транзакцией, а не первый перевод из списка
             tr, _one, sent = _trc20_main_transfer(info.get('trc20TransferInfo'))
@@ -13925,11 +13930,22 @@ def _tron_tx_info(tx_hash):
                        по нему реестр считает свободный остаток.
     """
     try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
-                         timeout=10)
-        if r.status_code != 200:
-            return {}
-        raw_transfers = (r.json() or {}).get('trc20TransferInfo')
+        if STAND_MODE:
+            # На стенде — только контролируемый канал чтения T9, никогда
+            # прямой requests.get (сокет-guard его и так заблокирует).
+            import stand_egress
+            status_code, payload, err = stand_egress.read_get('tron_tx_info', {'hash': tx_hash})
+            if err == 'http_4xx' and status_code == 404:
+                payload, err = {}, None  # TronScan: хеш ещё не проиндексирован
+            if err or status_code != 200:
+                return {}
+        else:
+            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                             timeout=10)
+            if r.status_code != 200:
+                return {}
+            payload = r.json() or {}
+        raw_transfers = (payload or {}).get('trc20TransferInfo')
         main, amount, total_out = _trc20_main_transfer(raw_transfers)
         if not main:
             return {}
@@ -13968,30 +13984,48 @@ def _etherscan_tx_info(tx_hash):
     ручную сумму с пометкой «не сверено». Однозначно неуспешную транзакцию или
     receipt без USDT отклоняем: такой хэш нельзя использовать как подтверждение.
     """
-    api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
-    if not api_key:
+    # Отсутствие ключа проверяем ДО валидации хэша — как и раньше: без ключа
+    # функция тихо отдаёт {} независимо от формата tx_hash, а не падает на
+    # чужом формате хэша, который до сети всё равно не дойдёт.
+    if STAND_MODE:
+        # Свой стендовый ключ (STAND_ETHERSCAN_API_KEY), прод-ключ на стенд не копируем.
+        if not os.environ.get('STAND_ETHERSCAN_API_KEY', '').strip():
+            return {}
+    elif not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return {}
     normalized_hash = _normalize_ethereum_tx_hash(tx_hash)
     if not normalized_hash:
         raise TransactionVerificationError(
             'Некорректный хэш Ethereum: нужен 0x и 64 шестнадцатеричных символа')
     try:
-        response = requests.get(
-            ETHERSCAN_API_URL,
-            params={
-                'chainid': '1',
-                'module': 'proxy',
-                'action': 'eth_getTransactionReceipt',
-                'txhash': normalized_hash,
-                'apikey': api_key,
-            },
-            timeout=8,
-        )
-        if response.status_code != 200:
-            app.logger.warning(
-                f'Etherscan receipt HTTP {response.status_code} for {normalized_hash[:18]}…')
-            return {}
-        payload = response.json() or {}
+        if STAND_MODE:
+            # Сеть — только через канал чтения T9, никогда прямой requests.get.
+            import stand_egress
+            status_code, payload, err = stand_egress.read_get('eth_tx_receipt', {
+                'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
+                'txhash': normalized_hash})
+            if err or status_code != 200:
+                if err:
+                    app.logger.warning(f'Etherscan receipt channel error {normalized_hash[:18]}…: {err}')
+                return {}
+        else:
+            api_key = (os.environ.get('ETHERSCAN_API_KEY') or '').strip()
+            response = requests.get(
+                ETHERSCAN_API_URL,
+                params={
+                    'chainid': '1',
+                    'module': 'proxy',
+                    'action': 'eth_getTransactionReceipt',
+                    'txhash': normalized_hash,
+                    'apikey': api_key,
+                },
+                timeout=8,
+            )
+            if response.status_code != 200:
+                app.logger.warning(
+                    f'Etherscan receipt HTTP {response.status_code} for {normalized_hash[:18]}…')
+                return {}
+            payload = response.json() or {}
     except Exception as exc:
         app.logger.warning(f'Etherscan receipt error {normalized_hash[:18]}…: {exc}')
         return {}
