@@ -106,15 +106,19 @@ def test_postgres_prod_schema_matches_main(tmp_path):
     """Временный кластер проверяет prod-схему и повторный старт на PostgreSQL."""
     binaries = Path('/opt/homebrew/opt/postgresql@17/bin')
     data = tmp_path / 'pgdata'
+    # На macOS локаль Python-процесса может сорвать запуск postmaster.
+    pg_env = {**os.environ, 'LC_ALL': 'C'}
     subprocess.run([str(binaries / 'initdb'), '-D', str(data), '-A', 'trust',
                     '-U', 'schema_test', '--no-instructions'],
-                   check=True, capture_output=True, text=True, timeout=90)
+                   check=True, capture_output=True, text=True, timeout=90,
+                   env=pg_env)
     server = [str(binaries / 'pg_ctl'), '-D', str(data)]
     # Unix-сокет PostgreSQL ограничен 103 байтами, путь pytest бывает длиннее.
     with tempfile.TemporaryDirectory(prefix='t13pg-', dir='/tmp') as socket_dir:
         subprocess.run(server + ['-o', f'-k {socket_dir} -h ""', '-l',
                                  str(tmp_path / 'postgres.log'), 'start'],
-                       check=True, capture_output=True, text=True, timeout=90)
+                       check=True, capture_output=True, text=True, timeout=90,
+                       env=pg_env)
         try:
             url = f'postgresql://schema_test@/postgres?host={socket_dir}'
             first = _start(None, None, url)
@@ -125,4 +129,5 @@ def test_postgres_prod_schema_matches_main(tmp_path):
             assert {'login_disabled', 'notify_enabled'} <= set(first['columns'])
         finally:
             subprocess.run(server + ['-m', 'immediate', 'stop'], check=True,
-                           capture_output=True, text=True, timeout=90)
+                           capture_output=True, text=True, timeout=90,
+                           env=pg_env)
