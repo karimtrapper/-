@@ -22,6 +22,11 @@ DEFAULT_WALLETS = {
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
                  'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs')
+# Шаги фрихолда с «Подготовить договор» и дальше — инвойс, тариф IPPS и наценка
+# зафиксированы (спека 28.09-freehold-no-baht, п.2: правится до s6/s8, с s11
+# только чтение).
+FREEHOLD_LOCKED_STEPS = {'s11', 's11b', 's12', 's14', 's14m', 's15', 's18', 's18w',
+                         's22', 's23', 's24', 's25', 's26', 's27', 'done'}
 
 
 def _amount(value):
@@ -148,6 +153,16 @@ def preserve_server_fields(old_state, new_state):
         old_conv = old_convs.get(previous.get('cnvId')) or {}
         if (previous.get('transfer') or {}).get('sends') or old_conv.get('txs'):
             deal['demoTransfers'] = bool(previous.get('demoTransfers'))
+        # Инвойс, тариф IPPS и наценка фрихолда фиксируются договором (с шага
+        # «Подготовить договор», s11) — UI делает поле readonly, но сервер обязан
+        # держать то же самое сам: правка через прямой PUT молча не проходит,
+        # сохраняется прежнее значение (QA ДЕНЬГИ №13, 28.09).
+        if previous.get('kind') == 'Фрихолд' and previous.get('step') in FREEHOLD_LOCKED_STEPS:
+            for field in ('invoiceUsd', 'ippsTariff', 'freeholdMarkupPct', 'invoiceCurrency', 'invoiceThb'):
+                if field in previous:
+                    deal[field] = previous[field]
+                else:
+                    deal.pop(field, None)
         for protected in ('serverSettled', 'serverTransferComplete'):
             deal.pop(protected, None)
             if previous.get(protected):
@@ -191,8 +206,8 @@ def preserve_server_fields(old_state, new_state):
                 send.update({field: trusted[field] for field in SERVER_FIELDS if field in trusted})
             else:
                 send['status'] = 'pending'
-        if previous and previous.get('postConv') == 'coins':
-            # Перевести задачу Coins дальше подписей может только серверная проверка.
+        if previous and previous.get('postConv') in ('coins', 'ipps_swift'):
+            # Перевести задачу дальше подписей (Coins/IPPS) может только серверная проверка.
             if not previous.get('serverTransferComplete') and deal.get('step') in ('s25', 's26', 's27', 'done') and previous.get('step') in ('s23', 's24'):
                 deal['step'] = previous['step']
                 deal['closed'] = False

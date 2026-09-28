@@ -25,12 +25,13 @@ const round2 = x => Math.round(x * 100) / 100;
     pay: {}, rates: {}, log: []};
   const fields = {p_dev: 'Developer', p_amt: '350000', p_bank: 'Bank',
     p_acc: '123', p_purp: 'Invoice', p_inv: 'INV-1', p_due: '30.09'};
-  const ctx = run(['act'], {
+  const ctx = run(['act', 'payToRequired', 'payToFromForm', 'payToLogLine'], {
     S: {deals: [d]}, deal: () => d,
     document: {getElementById: () => null}, saveNote: () => {},
     need: () => false, val: key => fields[key] || '',
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
     num: x => parseFloat(String(x).replace(',', '.')),
+    econ: () => ({invoiceUsd: null}), usd: String,
     flowOf: () => ['s14', 's15', 's18', 's18w', 's22', 's23', 's24', 's25', 's26'],
     go: (x, step) => { x.step = step; }, log: (x, t) => x.log.push(t),
     toast: () => {}, money: String, Math,
@@ -195,7 +196,7 @@ const round2 = x => Math.round(x * 100) / 100;
   for (const [fn, call] of [['act', ctx => ctx.act(1, 's15')], ['reqSave', ctx => ctx.reqSave(1)]]) {
     const d = {id: 1, step: 's15', closed: false, pay: {}, rates: {}, log: [], reqTask: 'open'};
     const asked = [];
-    const ctx = run([fn], {
+    const ctx = run([fn, 'payToRequired'], {
       S: {deals: [d]}, deal: () => d, document: {getElementById: () => null},
       saveNote: () => {}, need: map => { asked.push(Object.keys(map)); return true; },
       val: () => '', toast: () => {}, Math,
