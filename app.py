@@ -5437,8 +5437,11 @@ def _stand_settle_verified(state, members):
                 f"сделка закрыта" + (f", чистая прибыль {profit:.2f} USDT" if profit is not None else ''))
         _stand_note(state, f"stand:refund:{deal['id']}", 'manager', deal, text)
         changed = True
+    # ipps_swift — фрихолд без батов (спека 28.09-freehold-no-baht): единственный
+    # маршрут USDT в IPPS SWIFT, s24→s25 после подтверждения — как Coins у лизхолда
+    # (QA БЛОКЕР №9, 28.09: сделка застревала на s24 навсегда без этой ветки).
     main = next((d for d in members if d.get('step') in ('s23', 's24') and
-                 d.get('postConv') == 'coins'), None)
+                 d.get('postConv') in ('coins', 'ipps_swift')), None)
     if main and not main.get('serverTransferComplete'):
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
@@ -5446,7 +5449,7 @@ def _stand_settle_verified(state, members):
         multisig = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
         def required_send(deal):
             kind = deal.get('postConv')
-            if kind in ('coins', 'client'):
+            if kind in ('coins', 'client', 'ipps_swift'):
                 return True
             if kind == 'refund':
                 return not (deal.get('serverSettled')
@@ -5528,8 +5531,9 @@ def _stand_settle_verified(state, members):
                             f"перевод подтверждён, сделка закрыта")
             prefix = 'DEMO · ' if main.get('demoTransfers') else ''
             proof = 'тестовые переводы подтверждены' if prefix else 'все переводы пачки подтверждены'
+            next_action = 'отправьте заявку в IPPS' if main.get('postConv') == 'ipps_swift' else 'известите Coins'
             _stand_note(state, f"stand:coins:{main['id']}", 'operator', main,
-                        f"{prefix}{main.get('code') or main['id']}: {proof}; известите Coins")
+                        f"{prefix}{main.get('code') or main['id']}: {proof}; {next_action}")
             changed = True
     return changed
 
@@ -5567,7 +5571,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
     results = []
     main = next((d for d in snapshot.get('deals', [])
-                 if d.get('id') in seen and d.get('postConv') == 'coins'
+                 if d.get('id') in seen and d.get('postConv') in ('coins', 'ipps_swift')
                  and d.get('step') in ('s23', 's24')), None)
     conv = next((c for c in snapshot.get('convs', [])
                  if c.get('id') == (main or {}).get('cnvId')), None)

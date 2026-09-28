@@ -287,4 +287,35 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.equal(ctx.draftValid(), true, 'у рублёвого фрихолда наценки нет — не блокирует');
 }
 
+// ── syncFreeholdRate(): курс клиенту — ровно 4 знака, округление, не отказ ──
+// QA №4/№5, 28.09: 82.45319 округляется до 82,4531 (4 знака), а не отклоняется —
+// курс называют голосом/в переписке, лишний знак — не ошибка менеджера.
+{
+  const inputs = {};
+  const d = { id: 1, invoiceUsd: 45000, rates: {} };
+  const ctx = run(['syncFreeholdRate'], [], {
+    deal: () => d, val: k => inputs[k] || '',
+    cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
+    num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
+    save: () => {}, render: () => {},
+  });
+  inputs.r3 = '82.4531';
+  ctx.syncFreeholdRate(1);
+  assert.equal(d.rates.client, '82,4531');
+  // Контрольный пример спеки §4.3: 82,4531 × 45000 = 3 710 389,50
+  approxEq(d.amountRub, 3710389.50);
+
+  inputs.r3 = '82.45319';
+  ctx.syncFreeholdRate(1);
+  assert.equal(d.rates.client, '82,4532', 'округлено до 4 знаков (9 на пятом → вверх), не отклонено');
+
+  inputs.r3 = '82.453149';
+  ctx.syncFreeholdRate(1);
+  assert.equal(d.rates.client, '82,4531', 'округление вниз на пятом знаке');
+
+  inputs.r3 = '82.453151';
+  ctx.syncFreeholdRate(1);
+  assert.equal(d.rates.client, '82,4532', 'округление вверх на пятом знаке (0,5 в большую сторону)');
+}
+
 console.log('test_stand_freehold.js: OK');

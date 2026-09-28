@@ -2923,7 +2923,6 @@ function docSendBlock(d){
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
-    ${d.kind==='Фрихолд'?`<div class="alert a-warn" style="margin-bottom:10px"><div><b>Приложение 1 по старому шаблону — не для выдачи клиенту до решения Карима.</b> Шаблон описывает прежнюю THB-модель фрихолда; поля курса и подтверждения застройщика закрыты «Н/П». Прежде чем отправлять, свяжитесь с Каримом.</div></div>`:''}
     <div class="chtitle" style="margin-bottom:8px">Отправить клиенту
       <span>версия ${P.version} · ${rows.length} документа</span></div>
     ${rows.map(([k,f])=>`<div class="payrow">
@@ -4596,7 +4595,7 @@ function ctxCard(d){
     ${fact('Объект',d.object||'не указан',d.partial?'часть оплаты '+(d.partNo||'')+' по инвойсу на '+money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿'):'оплата целиком')}
     ${fact('Получатель получает',apMoney(ap,'thb'),'клиент отдаёт '+apMoney(ap,'pay'))}
     ${fact('Курс клиенту',(d.rates.client||'—')+' '+rateUnit(d),d.kind==='Фрихолд'
-      ?(isCrypto(d)?'крипто-фрихолд — курса нет, сумма клиенту посчитана из инвойса и тарифа IPPS':(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.broker||'—')))
+      ?(isCrypto(d)?'крипто-фрихолд — курса нет, сумма клиенту посчитана из инвойса и тарифа IPPS':(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.rubUsdt||'—')))
       :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
     ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts,last.text):''}
@@ -5864,10 +5863,14 @@ function cleanNum(v){return String(v==null?'':v).replace(/[^\d.,]/g,'');}
    логика на батах (d.amountThb, anchorPay), фрихолду её подключать не нужно и опасно. */
 function syncFreeholdRate(id){
   const d=deal(id); if(!d)return;
-  const raw=cleanNum(val('r3'));
-  d.rates.client=raw||null;
-  const k=num(raw), X=d.invoiceUsd||0;
-  d.amountRub=(k&&X)?Math.round(X*k*100)/100:null;
+  const raw=num(cleanNum(val('r3')));
+  /* Курс клиенту — ровно 4 знака после запятой (спека 28.09-freehold-no-baht, п.5).
+     Округляем, а не отклоняем: лишние знаки — неточность ввода (курс называют
+     голосом или в переписке), не повод не принять число. */
+  const rounded=raw?Math.round(raw*10000)/10000:null;
+  d.rates.client=rounded!=null?rounded.toFixed(4).replace('.',','):null;
+  const X=d.invoiceUsd||0;
+  d.amountRub=(rounded&&X)?Math.round(X*rounded*100)/100:null;
   save();render();
 }
 /* На этом шаге правятся все цифры: клиент мог согласиться на другую сумму, а
@@ -6097,8 +6100,10 @@ function stepGoal(d){
             ['Тип',d.type+(d.kind?' · '+d.kind:'')]]};
     case 's5': if(d.kind==='Фрихолд'&&!isCrypto(d)){
       const t5=ippsTariff(d), S5=freeholdSend(d.invoiceUsd||0,t5);
-      return {t:'Вернуть курс RUB → USDT — на объём '+usd(S5),
-        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Объём',usd(S5)],['Застройщику',usd(d.invoiceUsd||0)]]};
+      /* Объём для брокера — в USDT: это его валюта, не наша долларовая (аудит QA
+         №3/№4, 28.09). Застройщику — по-прежнему $, это отдельная сумма (X, не S). */
+      return {t:'Вернуть курс RUB → USDT — на объём '+moneyKop(S5,'USDT'),
+        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Объём',moneyKop(S5,'USDT')],['Застройщику',usd(d.invoiceUsd||0)]]};
     }
     return isCrypto(d)
       ? {t:'Вернуть курс USDT → THB — рублей в сделке нет',
@@ -6109,7 +6114,7 @@ function stepGoal(d){
     case 's6': return {t:'Назвать клиенту один курс и одну сумму',
       nums:[['Курс клиенту',(d.rates.client||'—')+' '+rateUnit(d)],
             ['Клиент отдаёт',ap.pay?apMoney(ap,'pay'):'—'],['Получателю',ap.thb?apMoney(ap,'thb'):'—']],
-      sub:d.kind==='Фрихолд'?'брокер RUB→USDT: '+(d.rates.broker||'—'):(isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'))};
+      sub:d.kind==='Фрихолд'?'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'):(isCrypto(d)?'Coins/Bitazza: '+(d.rates.usdtThb||'—'):'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—'))};
     case 's8': return {t:d.isOld?'Собрать инвойс — остальное есть в старом договоре':'Собрать паспорт и инвойс клиента',
       nums:[['Нужно',d.isOld?'1 документ':'2 документа'],['Приложено',String(['pass','inv','spa','ipds'].filter(k=>d.docs[k]).length)],
             ['Сумма',money2(ap.thb,ap.thbSign||'฿')]]};
@@ -6218,6 +6223,7 @@ function goalCard(d){
     ${fl?`<p class="goalfill">Эта задача заполняет в сделке: <b>${fl.b}</b> — ${
       (d.step==='s5'&&d.kind==='Фрихолд'&&!isCrypto(d))?'курс RUB→USDT у брокера — батов и Coins в фрихолде нет'
       :(d.step==='s5'&&isCrypto(d))?'курс USDT→THB у Coins или Bitazza — рублей в сделке нет'
+      :(d.step==='s22'&&d.kind==='Фрихолд')?'маршрут один — IPPS SWIFT в USD, без выбора'
       :fl.w}</p>`:''}
     ${(d.docComment&&(d.step==='s11'||d.step==='s11b'))?`<div class="alert a-info" style="margin:0 0 12px"><div><b>Комментарий менеджера:</b> ${htmlText(d.docComment)}</div></div>`:''}
     <div class="goalnums">${(g.nums||[]).map((n,i)=>`<div><span class="k">${n[0]}</span><span class="v${i===0?' big':''}">${n[1]}</span></div>`).join('')}</div>
@@ -6529,11 +6535,12 @@ function stepCard(d){
          без approx()/среднего курса; блок USDT→THB не показываем вовсе — батов
          в фрихолде нет (спека 28.09-freehold-no-baht, §2 «s5»). */
       const t=ippsTariff(d), X=d.invoiceUsd||0, S2=freeholdSend(X,t);
-      const q='Какой курс RUB→USDT на '+usd(S2)+'?';
+      /* Брокер торгует USDT — объём ему называем в USDT, не в $ (аудит QA №3/№4, 28.09) */
+      const q='Какой курс RUB→USDT на '+moneyKop(S2,'USDT')+'?';
       const r=quoteBest(d,'rub');
       return `<div class="card"><div class="card-title">Что ответил брокер</div>
       ${d.reRequest?`<div class="alert a-info"><div><b>Повторный запрос №${d.reRequest}.</b> Клиент вернулся после паузы.</div></div>`:''}
-      <div class="alert a-warn"><div><b>Фрихолд · платит ${d.payType||'не указано'}.</b> Застройщику ${usd(X)} · тариф ${t.label} · в IPPS уйдёт <b>${usd(S2)}</b>.</div></div>
+      <div class="alert a-warn"><div><b>Фрихолд · платит ${d.payType||'не указано'}.</b> Застройщику ${usd(X)} · тариф ${t.label} · в IPPS уйдёт <b>${moneyKop(S2,'USDT')}</b>.</div></div>
       <div class="alert a-info"><div>Батов в фрихолде нет — спрашиваем только курс <b>RUB → USDT</b>, на точный объём в USDT, а не на средний курс.</div></div>
       <div class="derived" style="margin-bottom:6px;display:block">
         <div style="font-size:12.5px;margin-bottom:6px"><b>Что уйдёт в сделку</b> — заполнять не нужно.</div>
@@ -6598,15 +6605,26 @@ function stepCard(d){
       const X=d.invoiceUsd||0;
       const k=num(d.rates.client);
       const rub=k?Math.round(X*k*100)/100:null;
+      /* Себестоимость ₽/$ = S × курс брокера / X (спека 28.09-freehold-no-baht, §2 «s6») —
+         во сколько рублей обходится каждый доллар инвойса реально, для сверки с курсом
+         клиенту. Курс брокера здесь — тот же rubUsdt, что и в поле выше (ответ с s5),
+         не d.rates.broker: он появляется только на отправке брокеру (s18). */
+      const brokerRateNow=num(d.rates.rubUsdt);
+      const S6=freeholdSend(X,ippsTariff(d));
+      const costRate=(brokerRateNow&&X)?Math.round(S6*brokerRateNow/X*10000)/10000:null;
       return `<div class="card"><div class="card-title">Расчёт клиенту<span class="sub">RUB→USDT получен ${ago(d.rates.at)||'—'}</span></div>
       <div class="fr">
         <div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
           <input class="fc num" readonly value="${d.rates.rubUsdt||''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
           <input class="fc num" id="r3" value="${d.rates.client||''}" placeholder="курс клиенту, ₽ за 1 $"
-            oninput="rememberFocus();syncFreeholdRate(${d.id})"></div>
+            onchange="syncFreeholdRate(${d.id})"></div>
         <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — считается: X × курс, округление до копеек</span></label>
           <input class="fc num" readonly value="${rub!=null?Number(rub).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
+      </div>
+      <div class="fr">
+        <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
+          <input class="fc num" readonly value="${costRate!=null?String(costRate).replace('.',','):'—'}"></div>
       </div>
       ${freeholdInvoiceTariffBlock(d)}
       <!--note-->
@@ -6789,7 +6807,6 @@ function stepCard(d){
     ${!P?`<div class="alert a-warn"><div>Пакет ещё не выпущен генератором — нажмите «Поправить и пересоздать».</div></div>`
       :`<div class="alert a-ok"><div>${P.mode==='addendum'?'Клиент знакомый — к его договору '+htmlText(P.agreementNumber)+' выпущены допсоглашение и счёт.':'Выпущены договор, приложение и счёт.'} Это настоящие файлы — те же, что уходят из CRM. Скачайте и проверьте ФИО, сумму, курс и ${isCrypto(d)?'кошелёк':'назначение платежа'}.</div></div>`}
     ${P&&P.note?`<div class="alert a-info"><div>${htmlText(P.note)}</div></div>`:''}
-    ${d.kind==='Фрихолд'?`<div class="alert a-warn"><div><b>Приложение 1 по старому шаблону — не для выдачи клиенту до решения Карима.</b> Шаблон описывает прежнюю THB-модель фрихолда (курс, зачёт THB-инвойса, подтверждение застройщика); в новой модели этих полей нет, они закрыты «Н/П». Не отправляйте клиенту, пока шаблон не пересмотрен.</div></div>`:''}
     <div class="list">
       ${kinds.map(k=>{const own=(d.issued||{})[k], f=docFileOf(d,k);
         return `<div class="li" style="cursor:default"
@@ -7129,7 +7146,9 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">Что делаем с USDT
       <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
     ${w?walletLine(w):`<div class="alert a-warn"><div>Кошелёк не выбран — вернитесь на шаг отправки брокеру и укажите, куда пришли USDT.</div></div>`}
-    <div class="alert a-info"><div>USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.</div></div>
+    <div class="alert a-info"><div>${d.kind==='Фрихолд'
+      ?'USDT пришли на кошелёк. В IPPS их ещё нет: они уйдут, только если мы сами отправим перевод.'
+      :'USDT пришли на кошелёк. В Coins их ещё нет: туда они попадут, только если мы сами поставим задачу и отправим.'}</div></div>
     ${(c&&!mem.some(x=>sendList(x).length))?`<details style="margin:-4px 0 12px" ${S.txUnlink?'open':''}><summary class="fh" style="cursor:pointer">Не тот приход или USDT пришли на другой кошелёк — отвязать и вернуться на «Ждём USDT»</summary>
       <div class="hashbox">${(c.txs||[]).map((t,i)=>`<div class="hrow"><b class="pos" style="min-width:110px">+${usd(t.amount)}</b>
         <span style="flex:1;font-size:12.5px;color:var(--text-sec);overflow-wrap:anywhere">${t.hash}</span>
@@ -7333,7 +7352,13 @@ function stepCard(d){
        (прогон 25.09). Блокирует закрытие теперь проверка карточки CRM (crmGaps). */
     /* все хеши прихода, включая тестовые переводы, а не один (аудит 27.09 №18) */
     const inHashes=(d.payinHashes||[]).map(h=>h.hash).filter(Boolean).join(', ')||d.pay.hash;
-    const ok=(isCrypto(d)
+    /* Фрихолд без батов: у крипто-фрихолда курса нет вообще (шаги 5/6 выпадают) —
+       требовать его в чек-листе закрытия нельзя, иначе кнопка не разблокируется
+       никогда (QA БЛОКЕР №12, 28.09). У рублёвого — курс клиенту ₽ за 1$, не ₽/฿. */
+    const ok=d.kind==='Фрихолд'
+      ? (isCrypto(d) ? [['Хеши прихода USDT',inHashes]]
+        : [['Курс клиенту, ₽ за 1 $',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеши обмена',inHashes]])
+      : (isCrypto(d)
       ? [['Курс клиенту, ฿/USDT',d.rates.client],['Хеши прихода USDT',inHashes]]
       : [['Курс клиенту, ₽/฿',d.rates.client],['Курс обмена RUB→USDT',d.rates.broker],['Хеши обмена',inHashes]])
       /* личный кошелёк закрывает отправку сервером (settle), минуя act s23 — тогда хеш
