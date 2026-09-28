@@ -5965,16 +5965,15 @@ def _stand_crm_fact_problem(board, crm, kind):
     crm_extra = crm.get('payin_extra') or []
     if not isinstance(crm_extra, list) or len(board_extra) != len(crm_extra):
         return 'payin_extra_mismatch'
-    # CRM merges receipt hashes while summing each extra part's money. A raw
-    # transfer therefore cannot be allocated to the main part and an extra,
-    # or to two extras, even when their allocated amounts differ.
+    # CRM merges receipt hashes while summing each part's money. A raw
+    # transfer therefore cannot fund two main receipts, the main part and an
+    # extra, or two extras, even when their allocated amounts differ.
     seen_raw_hashes = set()
-    if board_extra:
-        for receipt in main_hashes:
-            raw_hash = str(receipt.get('hash') or '').strip().lower()
-            if raw_hash in seen_raw_hashes:
-                return 'payin_extra_duplicate_hash'
-            seen_raw_hashes.add(raw_hash)
+    for receipt in main_hashes:
+        raw_hash = str(receipt.get('hash') or '').strip().lower()
+        if raw_hash in seen_raw_hashes:
+            return 'payin_extra_duplicate_hash'
+        seen_raw_hashes.add(raw_hash)
     for source, part in zip(board_extra, crm_extra):
         if not isinstance(source, dict) or not isinstance(part, dict):
             return 'payin_extra_mismatch'

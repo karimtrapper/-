@@ -198,7 +198,8 @@ def test_manual_crypto_extra_canonical_and_legacy_hash_amounts(monkeypatch, lega
         server.server_close()
 
 
-@pytest.mark.parametrize('variant', ['main_extra', 'extra_extra', 'distinct'])
+@pytest.mark.parametrize('variant', ['main_main', 'main_distinct',
+                                     'main_extra', 'extra_extra', 'distinct'])
 def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
     """Real PUT/close: one raw receipt must not fund multiple allocated parts."""
     uid = _setup(monkeypatch)
@@ -208,10 +209,20 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
     cookie = m.app.session_interface.get_signing_serializer(m.app).dumps({'user_id': uid})
     headers = {'Cookie': 'session=' + cookie}
     base = f'http://127.0.0.1:{port}/api/stand'
-    first_hash = MAIN_HASH if variant == 'main_extra' else EXTRA_HASH
-    extra_specs = [(first_hash, 10)]
-    if variant != 'main_extra':
-        extra_specs.append((EXTRA_HASH if variant == 'extra_extra' else 'c' * 64, 20))
+    if variant.startswith('main_') and variant != 'main_extra':
+        main_specs = [(MAIN_HASH, 50),
+                      (MAIN_HASH if variant == 'main_main' else EXTRA_HASH, 50)]
+        extra_specs = []
+    else:
+        main_specs = [(MAIN_HASH, 100)]
+        first_hash = MAIN_HASH if variant == 'main_extra' else EXTRA_HASH
+        extra_specs = [(first_hash, 10)]
+        if variant != 'main_extra':
+            extra_specs.append((EXTRA_HASH if variant == 'extra_extra' else 'c' * 64, 20))
+    board_main = [{'hash': hash_value, 'amount': amount, 'network': 'TRC20'}
+                  for hash_value, amount in main_specs]
+    crm_main = [{'hash': hash_value, 'amount_usdt': amount, 'network': 'trc20'}
+                for hash_value, amount in main_specs]
     board_extras = [
         {'method': 'crypto_direct', 'amount_usdt': amount,
          'tx_hashes': [{'hash': hash_value, 'network': 'TRC20', 'amount_usdt': amount}]}
@@ -226,14 +237,13 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
         'step': 'manual', 'closed': False, 'crmDealId': None,
         'sentToClient': False, 'isTask': False, 'files': {}, 'log': [],
         'payType': 'Крипта', 'paySrc': 'cash', 'amountUsdt': 100,
-        'payinHashes': [{'hash': MAIN_HASH, 'amount': 100, 'network': 'TRC20'}],
+        'payinHashes': board_main,
         'payinExtra': board_extras, 'payout': {'usdt': 90, 'thb': 3000}, 'pay': {},
     }], 'notes': []}
     crm = {'deal_kind': 'exchange', 'client_name': 'T24 duplicate probe',
            'manager_name': 'T24 manager', 'payin_method': 'crypto_direct',
            'payin_amount_usdt': 100,
-           'payin_tx_hashes': [{'hash': MAIN_HASH, 'network': 'trc20',
-                                'amount_usdt': 100}],
+           'payin_tx_hashes': crm_main,
            'payin_extra': crm_extras, 'payout_method': 'transfer',
            'payout_source': 'cash_batch', 'payout_amount_usdt': 90,
            'payout_amount_thb': 3000}
@@ -245,6 +255,7 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
             version = created.json()['version']
             saved_board = created.json()['data']['deals'][0]
             assert saved_board['payinExtra'] == board_extras
+            assert [(h['hash'], h['amount']) for h in saved_board['payinHashes']] == main_specs
             before = _counts()
             response = transport.post(base + '/deals/1482/crm-close', headers=headers,
                                       json={'version': version, 'crm': crm}, timeout=10)
@@ -253,7 +264,7 @@ def test_manual_extra_raw_hash_reuse(monkeypatch, variant):
             print('EXTRA_RAW_HASH_PROBE', variant, response.status_code,
                   response.json().get('error'), before, after, version,
                   state['version'], state['data']['deals'][0]['crmDealId'])
-            if variant == 'distinct':
+            if variant in ('distinct', 'main_distinct'):
                 assert response.status_code == 201, response.text
                 assert after == (before[0] + 1, before[1] + 1)
                 assert state['data']['deals'][0]['crmDealId'] == response.json()['deal']['id']
