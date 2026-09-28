@@ -513,6 +513,7 @@ function crmDraftWire(active) {
     }
     if(el.id==='noConvUsdt')active.core.calcNoConvRate();
     if(el.id==='payoutFounderHash')active.core.lookupPayoutFounderTx();
+    if(el.name==='payin_amount_rub')active.core.autoCalcUsdt();
     if(el.name==='payin_rate_rub_usdt'){active.core.setPayinMode('rate');active.core.autoCalcUsdt();}
     if(el.name==='payin_amount_usdt'){active.core.setPayinMode('usdt');active.core.autoCalcUsdt();}
     if(['mfInvoiceThb','mfBuyRate','mfSellRate','mfSpread','mfPercent','mfSentThb'].includes(el.id)){
