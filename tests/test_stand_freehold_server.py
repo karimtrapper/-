@@ -343,7 +343,8 @@ def test_confirmed_freehold_forward_steps_and_invoice_payout():
         if step == 'done':
             next_deal['closed'] = True
             next_deal['crmDealId'] = 123
-        assert appmod._stand_guard_transition(old, new, 'admin') is None
+        assert appmod._stand_guard_transition(old, new, 'admin',
+                 allow_crm_close=(step == 'done')) is None
         old = new
     assert appmod._stand_guard_transition(old, copy.deepcopy(old), 'admin') is None
 

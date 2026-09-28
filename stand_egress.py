@@ -984,11 +984,17 @@ class _BodyDeadlineSocket:
         self._sock._decref_socketios()
 
 
-def _bounded_http_body(resp, deadline, limit):
-    """Return (bytes, error) using http.client's HTTP framing and one deadline."""
+def _bounded_http_body(resp, deadline, limit, *, compressed=False):
+    """Читает HTTP framing до конца с общим сроком и лимитом готового тела.
+
+    Только OCR разрешает gzip/deflate. Сжатые байты тоже ограничены `limit`;
+    zlib за один шаг может выдать не больше оставшегося лимита плюс байт.
+    """
     import http.client
+    import zlib
     try:
-        if resp.headers.get('Content-Encoding', 'identity').lower() != 'identity':
+        encoding = resp.headers.get('Content-Encoding', 'identity').strip().lower()
+        if encoding not in (('identity', 'gzip', 'deflate') if compressed else ('identity',)):
             return None, 'unsupported_encoding'
         http_resp = resp.raw._fp
         socket_io = http_resp.fp.raw
@@ -998,25 +1004,57 @@ def _bounded_http_body(resp, deadline, limit):
         return None, 'read_error'
     if http_resp.length is not None and http_resp.length > limit:
         return None, 'too_large'
-    parts, size = [], 0
+    decoder = (zlib.decompressobj(31 if encoding == 'gzip' else zlib.MAX_WBITS)
+               if encoding != 'identity' else None)
+    parts, size, wire_size = [], 0, 0
     try:
         while True:
             if deadline - time.monotonic() <= 0:
                 return None, 'timeout'
-            part = http_resp.read1(min(65536, limit + 1 - size))
+            part = http_resp.read1(min(65536, limit + 1 - wire_size))
             if not part:
                 if http_resp.length is not None and http_resp.length > 0:
                     return None, 'read_error'
                 if http_resp.chunked and not http_resp.isclosed():
                     return None, 'read_error'
+                if decoder is not None:
+                    if not decoder.eof or decoder.unused_data or decoder.unconsumed_tail:
+                        return None, 'read_error'
+                if deadline - time.monotonic() <= 0:
+                    return None, 'timeout'
                 return b''.join(parts), None
-            size += len(part)
-            if size > limit:
+            wire_size += len(part)
+            if wire_size > limit:
                 return None, 'too_large'
-            parts.append(part)
+            if decoder is None:
+                size += len(part)
+                parts.append(part)
+                continue
+            if decoder.eof:
+                return None, 'read_error'  # хвост или ещё один gzip member
+            pending = part
+            while pending:
+                if deadline - time.monotonic() <= 0:
+                    return None, 'timeout'
+                before = len(pending)
+                decoded = decoder.decompress(pending, min(65536, limit + 1 - size))
+                if deadline - time.monotonic() <= 0:
+                    return None, 'timeout'
+                size += len(decoded)
+                if size > limit:
+                    return None, 'too_large'
+                if decoded:
+                    parts.append(decoded)
+                if decoder.unused_data:
+                    return None, 'read_error'
+                pending = decoder.unconsumed_tail
+                if pending and len(pending) == before and not decoded:
+                    return None, 'read_error'
+                if decoder.eof and pending:
+                    return None, 'read_error'
     except (socket.timeout, TimeoutError):
         return None, 'timeout'
-    except (http.client.HTTPException, OSError, ValueError):
+    except (http.client.HTTPException, OSError, ValueError, zlib.error):
         return None, 'read_error'
 
 
@@ -1403,12 +1441,14 @@ def docparse_post(payload, timeout=_DP_TOTAL_DEADLINE, _base_url=None):
             if remaining <= 0:
                 return None, None, 'timeout'
             resp = session.post(url, data=body, headers={
-                'Authorization': f'Bearer {key}', 'Content-Type': 'application/json'},
+                'Authorization': f'Bearer {key}', 'Content-Type': 'application/json',
+                'Accept-Encoding': 'identity'},
                 timeout=remaining, allow_redirects=False, stream=True, proxies={})
             try:
                 if 300 <= resp.status_code < 400:
                     return resp.status_code, None, 'redirect_blocked'
-                raw, read_err = _bounded_http_body(resp, deadline, _DP_MAX_RESPONSE_BYTES)
+                raw, read_err = _bounded_http_body(resp, deadline, _DP_MAX_RESPONSE_BYTES,
+                                                   compressed=True)
                 if read_err:
                     return (resp.status_code if read_err == 'too_large' else None), None, read_err
                 try:

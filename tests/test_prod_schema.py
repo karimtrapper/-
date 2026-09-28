@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 STAND_TABLES = {
     'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
-    'stand_sber_mirror_state',
+    'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence',
 }
 
 

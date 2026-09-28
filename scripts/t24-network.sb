@@ -1,0 +1,8 @@
+(version 1)
+(allow default)
+(deny network*)
+(allow network-bind (local tcp "localhost:29991"))
+(allow network-inbound (local tcp "localhost:29991"))
+(allow network-outbound (remote ip "localhost:29991"))
+(allow network-bind (regex #"^/private/tmp/calccrm-t24-"))
+(allow network-outbound (regex #"^/private/tmp/calccrm-t24-"))

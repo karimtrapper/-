@@ -2323,6 +2323,27 @@ class StandState(Base):
     # клиент за секунду шлёт несколько сохранений, и два запроса успевают
     # прочитать одно и то же «прошлое» — в чат падал дубль.
     notified = Column(Text, default='[]')
+    generation = Column(String(32))
+
+
+class StandCrmLink(Base):
+    """Permanent origin of a CRM row created by the stand close transaction."""
+    __tablename__ = 'stand_crm_links'
+    origin = Column(String(100), primary_key=True)
+    crm_deal_id = Column(Integer, ForeignKey('deals.id'), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class StandCloseEvidence(Base):
+    """Server-owned signoff for an origin's immutable close facts."""
+    __tablename__ = 'stand_close_evidence'
+    generation = Column(String(32), primary_key=True)
+    stand_deal_id = Column(Integer, primary_key=True)
+    kind = Column(String(20), primary_key=True)
+    fingerprint = Column(String(64), nullable=False)
+    actor_id = Column(Integer, nullable=False)
+    provenance = Column(String(40), nullable=False)
+    confirmed_at = Column(DateTime, default=datetime.utcnow)
 
 
 class StandSberMirrorState(Base):
@@ -2343,7 +2364,7 @@ class StandSberMirrorState(Base):
 # и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
 STAND_ONLY_TABLES = frozenset({
     'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
-    'stand_sber_mirror_state',
+    'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence',
 })
 
 Base.metadata.create_all(
@@ -2397,6 +2418,11 @@ def _stand_migrate():
         with engine.begin() as conn:
             conn.execute(_t("ALTER TABLE stand_state ADD COLUMN notified TEXT DEFAULT '[]'"))
         print('[STAND] stand_state.notified добавлена')
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute(_t("ALTER TABLE stand_state ADD COLUMN generation VARCHAR(32)"))
     except Exception:
         pass
 
@@ -4987,7 +5013,7 @@ def _stand_row(db, lock=False):
         q = q.with_for_update()
     row = q.first()
     if not row:
-        row = StandState(id=1, data='{}', version=0)
+        row = StandState(id=1, data='{}', version=0, generation=secrets.token_hex(16))
         db.add(row)
         db.commit()
     return row
@@ -5158,6 +5184,9 @@ def stand_state_put():
     actor = current_role()
     db = get_session()
     try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         base = payload.get('version')
         if base is not None and int(base) != (row.version or 0):
@@ -5184,6 +5213,16 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': previous}), 409
         clean = preserve_server_fields(previous, payload['data'])
+        if actor in ('manager', 'admin') and actor_id is not None:
+            old_by_id = {d.get('id'): d for d in previous.get('deals') or []}
+            for deal in clean.get('deals') or []:
+                before = old_by_id.get(deal.get('id')) or {}
+                if (not before.get('sentToClient') and deal.get('sentToClient')
+                        and deal.get('step') == 's27' and _stand_valid_receipt(deal)):
+                    if not row.generation:
+                        row.generation = secrets.token_hex(16)
+                    _stand_upsert_close_evidence(db, row, deal, 'sent', actor_id,
+                                                 'manager_attestation')
         _stand_completion_notes(previous, clean)
         row.data = json.dumps(clean, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -5192,6 +5231,394 @@ def stand_state_put():
         db.commit()
         _stand_deliver_notes()
         return jsonify({'success': True, 'version': row.version, 'data': clean})
+    finally:
+        db.close()
+
+
+def _stand_close_fingerprint(deal, kind):
+    """Hash only facts relevant to one signoff; notes and UI state are excluded."""
+    pay = deal.get('pay') or {}
+    # The stand editor omits the default TRC20 label on older, unverified
+    # conversion hashes. Normalize that representation without losing the
+    # actual route: ERC20 or a changed hash still changes the fingerprint.
+    payin_hashes = []
+    for item in deal.get('payinHashes') or []:
+        if not isinstance(item, dict):
+            payin_hashes.append(item)
+            continue
+        canonical = dict(item)
+        canonical['network'] = normalize_network(
+            canonical.pop('net', None) or canonical.get('network') or 'TRC20')
+        payin_hashes.append(canonical)
+    fields = {
+        'payin': {'type': deal.get('type'), 'kind': deal.get('kind'),
+                  'payType': deal.get('payType'), 'incomeAmount': deal.get('incomeAmount'),
+                  'amountRub': deal.get('amountRub'), 'amountUsdt': deal.get('amountUsdt'),
+                  'brokerRate': (deal.get('rates') or {}).get('broker'),
+                  'payinParts': deal.get('payinParts'), 'payinExtra': deal.get('payinExtra'),
+                  'payinHashes': payin_hashes, 'cnvId': deal.get('cnvId'),
+                  'payUsdt': pay.get('usdt')},
+        'payout': {'type': deal.get('type'), 'kind': deal.get('kind'),
+                   'postConv': deal.get('postConv'), 'paySrc': deal.get('paySrc'),
+                   'cnvId': deal.get('cnvId'), 'invoiceUsd': deal.get('invoiceUsd'),
+                   'amountThb': deal.get('amountThb'), 'ippsTariff': deal.get('ippsTariff'),
+                   'rates': {'client': (deal.get('rates') or {}).get('client'),
+                             'usdtThb': (deal.get('rates') or {}).get('usdtThb')},
+                   'companyPct': deal.get('companyPct'),
+                   'coinsCredit': pay.get('coinsCredit'),
+                   'transfer': deal.get('transfer'), 'payout': deal.get('payout'),
+                   'mfPayout': deal.get('mfPayout'), 'payTo': deal.get('payTo')},
+        'receipt': {'invoicePaid': pay.get('invoicePaid'),
+                    'receipt': (deal.get('files') or {}).get('receipt'),
+                    'docsReceipt': (deal.get('docs') or {}).get('receipt')},
+        'sent': {'sentToClient': deal.get('sentToClient'),
+                 'receipt': (deal.get('files') or {}).get('receipt')},
+    }[kind]
+    return hashlib.sha256(json.dumps(fields, ensure_ascii=False, sort_keys=True,
+                                     separators=(',', ':'), default=str).encode()).hexdigest()
+
+
+def _stand_close_required(deal):
+    return ('payin', 'payout', 'receipt', 'sent') if deal.get('type') == 'Оплата недвижимости' else (
+        'payin', 'payout', 'sent')
+
+
+def _stand_close_evidence_status(db, row, deal):
+    required = _stand_close_required(deal)
+    records = {item.kind: item for item in db.query(StandCloseEvidence).filter_by(
+        generation=row.generation, stand_deal_id=deal['id']).all()}
+    return [kind for kind in required if kind not in records or
+            records[kind].fingerprint != _stand_close_fingerprint(deal, kind)]
+
+
+def _stand_close_evidence_details(state, deal, missing):
+    labels = {'payin': 'Приход', 'payout': 'Выдача',
+              'receipt': 'Оплата инвойса и чек', 'sent': 'Отправка чека клиенту'}
+    result = []
+    for kind in missing:
+        source, problem = _stand_close_fact_source(state, deal, kind)
+        role = ('operator' if kind == 'receipt' or source == 'operator_attestation'
+                else 'manager')
+        result.append({'kind': kind, 'label': labels[kind],
+                       'required_role': role, 'reason': problem})
+    return result
+
+
+def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance):
+    evidence = db.query(StandCloseEvidence).filter_by(
+        generation=row.generation, stand_deal_id=deal['id'], kind=kind).first()
+    if evidence is None:
+        evidence = StandCloseEvidence(generation=row.generation,
+            stand_deal_id=deal['id'], kind=kind)
+        db.add(evidence)
+    evidence.fingerprint = _stand_close_fingerprint(deal, kind)
+    evidence.actor_id = actor_id
+    evidence.provenance = provenance
+    evidence.confirmed_at = datetime.utcnow()
+
+
+def _stand_close_fact_source(state, deal, kind):
+    """Return verifiable provenance or a precise missing fact for a signoff."""
+    if kind == 'payin':
+        pay_type = deal.get('payType')
+        hashes = deal.get('payinHashes') or []
+        if pay_type == 'Крипта':
+            if hashes and all(h.get('verified') and _stand_number(h.get('amount')) > 0
+                              for h in hashes):
+                return 'verified_network', None
+            return None, 'verified_payin_missing'
+        parts = deal.get('payinParts') or []
+        incomes = {i.get('id'): i for i in state.get('incomes') or []}
+        if (parts and all((incomes.get(p.get('incId')) or {}).get('source') == 'sber'
+                          and _stand_number(p.get('amountRub')) > 0
+                          and abs(_stand_number(p.get('amountRub')) -
+                                  _stand_number((incomes.get(p.get('incId')) or {}).get('grossRub') or
+                                                (incomes.get(p.get('incId')) or {}).get('rub'))) < .01
+                          for p in parts)):
+            return 'sber_mirror', None
+        conv = next((c for c in state.get('convs') or []
+                     if c.get('id') == deal.get('cnvId')), None)
+        source = next((s for s in (conv or {}).get('sources') or []
+                       if s.get('dealId') == deal.get('id')), None)
+        source_amount = _stand_number((source or {}).get('usdtFact') or (source or {}).get('usdt'))
+        board_amount = sum(_stand_number(h.get('amount')) for h in hashes)
+        def hash_counts(items):
+            return Counter((str(h.get('hash') or '').strip(),
+                            normalize_network(h.get('net') or h.get('network') or 'TRC20'),
+                            round(_stand_number(h.get('amount')), 2))
+                           for h in items or [] if isinstance(h, dict))
+        board_hashes = hash_counts(hashes)
+        confirmed_hashes = hash_counts((conv or {}).get('txs'))
+        if (source and source_amount > 0 and board_amount > 0
+                and abs(source_amount - board_amount) < .01
+                and (conv or {}).get('txs') and all(t.get('status') == 'confirmed'
+                    for t in conv['txs']) and board_hashes
+                and all(confirmed_hashes[key] >= count
+                        for key, count in board_hashes.items())):
+            return 'accepted_conversion', None
+        if (pay_type == 'Наличные' and _stand_number(
+                deal.get('incomeAmount') or deal.get('amountRub') or
+                (deal.get('pay') or {}).get('usdt')) > 0):
+            return 'operator_attestation', None
+        return None, 'verified_payin_missing'
+    if kind == 'payout':
+        if deal.get('kind') == 'Фрихолд' and deal.get('postConv') != 'ipps_swift':
+            return None, 'freehold_route_invalid'
+        network = deal.get('postConv') in ('coins', 'ipps_swift', 'client') or deal.get('paySrc') in ('coins', 'client')
+        if network:
+            if (deal.get('serverTransferComplete') and _stand_send_complete(deal)
+                    and all(s.get('status') == 'confirmed' and s.get('from') and s.get('to')
+                            for s in (deal.get('transfer') or {}).get('sends') or [])):
+                return 'verified_network', None
+            return None, 'network_payout_proof_missing'
+        payout = deal.get('payout') or {}
+        source = deal.get('paySrc')
+        if deal.get('type') == 'Обмен валюты':
+            if source in ('cash', 'ipps') and (deal.get('client') and
+                    _stand_number(payout.get('thb')) > 0 and
+                    _stand_number(payout.get('usdt')) > 0):
+                return 'operator_attestation', None
+            if source == 'scb' and (payout.get('bankCardId') and
+                    _stand_number(payout.get('thb')) > 0 and
+                    _stand_number(payout.get('usdt')) > 0):
+                return 'operator_attestation', None
+            if source == 'founder' and (payout.get('founder') and
+                    _stand_number(payout.get('thb')) > 0 and
+                    _stand_number(payout.get('usdt')) > 0):
+                return 'operator_attestation', None
+        else:
+            recipient = deal.get('payTo') or {}
+            if (recipient.get('acc') and recipient.get('bank') and
+                    (_stand_number((deal.get('transfer') or {}).get('amount')) > 0 or
+                     bool(deal.get('mfPayout')))):
+                return 'operator_attestation', None
+        return None, 'payout_fact_missing'
+    if kind == 'receipt':
+        if ((deal.get('pay') or {}).get('invoicePaid') and _stand_valid_receipt(deal)):
+            return 'operator_attestation', None
+        return None, 'invoice_payment_or_receipt_missing'
+    if kind == 'sent':
+        if deal.get('step') == 's27' and deal.get('sentToClient') and _stand_valid_receipt(deal):
+            return 'manager_attestation', None
+        return None, 'sent_receipt_missing'
+    return None, 'invalid_kind'
+
+
+@app.route('/api/stand/deals/<int:stand_deal_id>/close-evidence', methods=['GET', 'POST'])
+def stand_close_evidence(stand_deal_id):
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    actor = current_role()
+    if actor not in ('manager', 'operator', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {} if request.method == 'POST' else {}
+    if request.method == 'POST' and (type(payload.get('version')) is not int or
+                                     payload.get('kind') not in ('payin', 'payout', 'receipt', 'sent')):
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    db = get_session()
+    try:
+        if request.method == 'POST' and 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=request.method == 'POST')
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == stand_deal_id), None)
+        if not deal:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        if deal.get('originMode') == 'manual':
+            return jsonify({'success': False, 'error': 'manual_does_not_require_evidence'}), 409
+        if request.method == 'POST' and not row.generation:
+            row.generation = secrets.token_hex(16)
+            db.flush()
+        missing = (_stand_close_evidence_status(db, row, deal) if row.generation
+                   else list(_stand_close_required(deal)))
+        if request.method == 'GET':
+            return jsonify({'success': True, 'required': _stand_close_required(deal),
+                            'missing': missing,
+                            'details': _stand_close_evidence_details(state, deal, missing),
+                            'version': row.version or 0})
+        if payload['version'] != (row.version or 0):
+            return jsonify({'success': False, 'error': 'conflict',
+                            'version': row.version or 0, 'data': state}), 409
+        if deal.get('closed') or deal.get('crmDealId'):
+            return jsonify({'success': False, 'error': 'already_closed'}), 409
+        kind = payload['kind']
+        if kind not in _stand_close_required(deal):
+            return jsonify({'success': False, 'error': 'invalid_kind'}), 400
+        provenance, problem = _stand_close_fact_source(state, deal, kind)
+        if problem:
+            return jsonify({'success': False, 'error': problem}), 409
+        required_role = ('operator' if provenance == 'operator_attestation' else
+                         'manager' if kind == 'sent' else None)
+        if required_role and actor not in (required_role, 'admin'):
+            return jsonify({'success': False, 'error': 'forbidden'}), 403
+        _stand_upsert_close_evidence(db, row, deal, kind,
+                                    flask_session.get('user_id'), provenance)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'kind': kind, 'provenance': provenance,
+                        'missing': _stand_close_evidence_status(db, row, deal),
+                        'version': row.version, 'data': state})
+    except Exception:
+        db.rollback()
+        app.logger.exception('stand close evidence failed')
+        return jsonify({'success': False, 'error': 'evidence_failed'}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/deals/<int:stand_deal_id>/crm-close', methods=['POST'])
+def stand_crm_close(stand_deal_id):
+    """Create one CRM row and close its stand origin in one database commit."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    actor = current_role()
+    if actor not in ('manager', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict) or not isinstance(payload.get('crm'), dict):
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    if type(payload.get('version')) is not int:
+        return jsonify({'success': False, 'error': 'version_required'}), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        stand_deal = next((d for d in state.get('deals', [])
+                           if d.get('id') == stand_deal_id), None)
+        if not stand_deal:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        if not row.generation:
+            row.generation = secrets.token_hex(16)
+            db.flush()
+        origin = f'{row.generation}:{stand_deal_id}'
+        link = db.query(StandCrmLink).filter_by(origin=origin).first()
+        if link:
+            if (stand_deal.get('crmDealId') != link.crm_deal_id
+                    or stand_deal.get('step') != 'done'
+                    or not stand_deal.get('closed')
+                    or stand_deal.get('closeReason') != 'Успешно завершена'):
+                return jsonify({'success': False, 'error': 'origin_inconsistent'}), 409
+            crm_deal = db.query(Deal).filter_by(id=link.crm_deal_id).first()
+            if not crm_deal:
+                return jsonify({'success': False, 'error': 'origin_inconsistent'}), 409
+            return jsonify({'success': True, 'duplicate': True,
+                            'deal': crm_deal.to_dict(), 'version': row.version,
+                            'data': state})
+        if stand_deal.get('closed') or stand_deal.get('crmDealId'):
+            return jsonify({'success': False, 'error': 'already_closed_without_origin'}), 409
+        if payload['version'] != (row.version or 0):
+            return jsonify({'success': False, 'error': 'conflict',
+                            'version': row.version or 0, 'data': state,
+                            'updated_by': row.updated_by}), 409
+        manual = stand_deal.get('originMode') == 'manual'
+        if manual:
+            if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
+                return jsonify({'success': False, 'error': 'manual_origin_mismatch'}), 409
+        else:
+            if stand_deal.get('manual'):
+                return jsonify({'success': False, 'error': 'legacy_manual_origin'}), 409
+            if stand_deal.get('step') != 's27' or not stand_deal.get('sentToClient'):
+                return jsonify({'success': False, 'error': 'stage_or_receipt_missing'}), 409
+            if not _stand_valid_receipt(stand_deal):
+                return jsonify({'success': False, 'error': 'receipt_missing'}), 409
+            if (stand_deal.get('type') == 'Оплата недвижимости'
+                    and not (stand_deal.get('pay') or {}).get('invoicePaid')):
+                return jsonify({'success': False, 'error': 'invoice_not_paid'}), 409
+            missing = _stand_close_evidence_status(db, row, stand_deal)
+            if missing:
+                return jsonify({'success': False, 'error': 'close_evidence_missing',
+                                'missing': missing, 'version': row.version or 0,
+                                'details': _stand_close_evidence_details(state, stand_deal, missing),
+                                'data': state}), 409
+        if stand_deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости'):
+            return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
+        if (stand_deal.get('type') == 'Оплата недвижимости'
+                and stand_deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда')):
+            return jsonify({'success': False, 'error': 'deal_type_invalid'}), 409
+        if (not manual and stand_deal.get('kind') == 'Фрихолд'
+                and stand_deal.get('postConv') != 'ipps_swift'):
+            return jsonify({'success': False, 'error': 'freehold_route_invalid'}), 409
+        kind = ('mf_freehold' if stand_deal.get('kind') == 'Фрихолд' else
+                'mf_realty' if stand_deal.get('type') == 'Оплата недвижимости' else
+                'exchange')
+        crm_data = dict(payload['crm'])
+        if crm_data.get('bitrix_deal_id') is not None:
+            return jsonify({'success': False, 'error': 'foreign_origin_forbidden'}), 400
+        # CRM's existing custom form omits deal_kind. The persisted stand type
+        # determines the storage kind; an explicit conflicting kind is rejected.
+        if (crm_data.get('deal_kind') is None and kind == 'exchange'
+                and stand_deal.get('custom') is True):
+            crm_data['deal_kind'] = 'exchange'
+        if crm_data.get('deal_kind') != kind:
+            return jsonify({'success': False, 'error': 'deal_kind_mismatch'}), 400
+        fact_problem = _stand_crm_fact_problem(stand_deal, crm_data, kind)
+        if fact_problem:
+            return jsonify({'success': False, 'error': fact_problem}), 409
+        if (not str(crm_data.get('client_name') or '').strip()
+                or not crm_data.get('payin_method')
+                or _stand_number(crm_data.get('payin_amount_usdt')) <= 0
+                or (kind == 'exchange' and (
+                    not crm_data.get('payout_source')
+                    or _stand_number(crm_data.get('payout_amount_usdt')) <= 0))):
+            return jsonify({'success': False, 'error': 'crm_required_fields'}), 400
+        if crm_data.get('is_custom'):
+            for side in ('payin', 'payout'):
+                currency = str(crm_data.get(f'custom_{side}_currency') or '').upper()
+                if (not currency
+                        or _stand_number(crm_data.get(f'custom_{side}_amount')) <= 0
+                        or (currency not in ('USDT', 'USD')
+                            and _stand_number(crm_data.get(f'custom_{side}_rate')) <= 0)):
+                    return jsonify({'success': False, 'error': 'custom_required_fields'}), 400
+        crm_data['status'] = 'completed'
+        crm_data['skip_sync'] = True
+        result = _create_deal_impl(db, data=crm_data, defer_commit=True)
+        response, status = result if isinstance(result, tuple) else (result, 200)
+        created = response.get_json() or {}
+        if status >= 400 or not created.get('success'):
+            db.rollback()
+            return response, status
+        crm_id = created['deal']['id']
+        crm_row = db.query(Deal).filter_by(id=crm_id).one()
+        for field in ('doc_invoice_url', 'doc_contract_url', 'doc_payment_url'):
+            if field in crm_data:
+                setattr(crm_row, field, crm_data[field])
+        created['deal'] = crm_row.to_dict()
+        db.add(StandCrmLink(origin=origin, crm_deal_id=crm_id))
+        updated = json.loads(json.dumps(state))
+        closed = next(d for d in updated['deals'] if d.get('id') == stand_deal_id)
+        closed.update(crmDealId=crm_id, crmAt=datetime.utcnow().isoformat(),
+                      closed=True, closeReason='Успешно завершена',
+                      closedAt=datetime.utcnow().isoformat(), step='done')
+        closed.setdefault('log', []).append('Внесена в CRM: сделка #' + str(crm_id))
+        closed['log'].append('Закрыта: Успешно завершена')
+        problem = _stand_guard_transition(state, updated, actor,
+                                          flask_session.get('user_id'), db,
+                                          allow_crm_close=True)
+        if problem:
+            db.rollback()
+            return jsonify({'success': False, 'error': problem}), 409
+        _stand_completion_notes(state, updated)
+        row.data = json.dumps(updated, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        created.update(version=row.version, data=updated)
+        try:
+            _stand_deliver_notes()
+        except Exception:
+            app.logger.exception('stand close notification failed after commit')
+        return jsonify(created), 201
+    except Exception:
+        db.rollback()
+        app.logger.exception('stand CRM close failed')
+        return jsonify({'success': False, 'error': 'close_failed'}), 500
     finally:
         db.close()
 
@@ -5206,9 +5633,13 @@ def stand_state_reset():
                         'detail': 'Сбросить доску может только админ'}), 403
     db = get_session()
     try:
-        row = _stand_row(db)
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
         row.data = '{}'
         row.notified = '[]'
+        row.generation = secrets.token_hex(16)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name')
         row.updated_at = datetime.utcnow()
@@ -5228,6 +5659,35 @@ def _stand_members(state, deal_id):
     if not ids:
         ids = [deal_id] + (deal.get('conv') or [])
     return [deals[i] for i in ids if i in deals]
+
+
+def _stand_batch_main(state, deal_id):
+    """Resolve the owner of a conversion from its deal.conv links, not payout route.
+
+    A side deal may itself use Coins. Missing or conflicting ownership must not
+    let a caller-selected side deal determine the approval role or advance funds.
+    """
+    deals = state.get('deals', [])
+    selected = [d for d in deals if d.get('id') == deal_id]
+    if len(selected) != 1:
+        return None
+    deal = selected[0]
+    conv_id = deal.get('cnvId')
+    if conv_id is None:
+        return deal if not (deal.get('conv') or []) else None
+    convs = [c for c in state.get('convs', []) if c.get('id') == conv_id]
+    if len(convs) != 1:
+        return None
+    ids = [s.get('dealId') for s in convs[0].get('sources') or []]
+    if (not ids or any(type(i) is not int for i in ids)
+            or len(ids) != len(set(ids)) or deal_id not in ids):
+        return None
+    members = [d for d in deals if d.get('id') in ids]
+    if len(members) != len(ids) or any(d.get('cnvId') != conv_id for d in members):
+        return None
+    owners = [d for d in members if set(d.get('conv') or []) == set(ids) - {d['id']}
+              and len(d.get('conv') or []) == len(ids) - 1]
+    return owners[0] if len(owners) == 1 else None
 
 
 def _stand_note(state, event_id, role, deal, text):
@@ -5271,6 +5731,236 @@ def _stand_referral_payouts(deal, gross, payin):
 
 def _stand_number(value):
     return float(_amount(value) or 0)
+
+
+def _stand_crm_fact_problem(board, crm, kind):
+    """Reject CRM money and transfer facts that contradict the persisted board.
+
+    The CRM preview permits editing descriptive fields, but a POST may not
+    replace the confirmed invoice, tariff, route or on-chain transfers.
+    """
+    from decimal import Decimal
+
+    def money(value):
+        value = _amount(value)
+        return value.quantize(Decimal('0.01')) if value is not None else None
+
+    def matches(field, expected):
+        return money(crm.get(field)) == money(expected)
+
+    def exact(field, expected):
+        return _amount(crm.get(field)) == _amount(expected)
+
+    def hashes(items, board_side):
+        result = Counter()
+        for item in items or []:
+            if not isinstance(item, dict):
+                return None
+            network = normalize_network(item.get('net') or item.get('network') or 'TRC20')
+            hash_value = str(item.get('hash') or '').strip()
+            amount = money(item.get('amount') if board_side else item.get('amount_usdt'))
+            if not hash_value or not network:
+                return None
+            result[(hash_value, network, amount)] += 1
+        return result
+
+    def recipients_match(board_items, crm_items):
+        source = {(str(h.get('hash') or '').strip(),
+                   normalize_network(h.get('net') or h.get('network') or 'TRC20'),
+                   money(h.get('amount'))): h for h in board_items or []}
+        for item in crm_items or []:
+            key = (str(item.get('hash') or '').strip(),
+                   normalize_network(item.get('network') or item.get('net') or 'TRC20'),
+                   money(item.get('amount_usdt')))
+            previous = source.get(key) or {}
+            for field in ('from_address', 'to_address'):
+                if item.get(field) and item[field] != previous.get(field):
+                    return False
+        return True
+
+    if bool(crm.get('is_custom')) != (board.get('custom') is True):
+        return 'custom_origin_mismatch'
+    custom = board.get('customData') or {}
+    if board.get('custom') is True:
+        if not custom:
+            return 'custom_facts_missing'
+        for side in ('payin', 'payout'):
+            prefix = 'custom_' + side + '_'
+            if str(crm.get(prefix + 'currency') or '').upper() != str(custom.get(side + 'Currency') or '').upper():
+                return 'custom_facts_mismatch'
+            if not matches(prefix + 'amount', custom.get(side + 'Amount')):
+                return 'custom_facts_mismatch'
+            rate = custom.get(side + 'Rate')
+            if rate is not None and not exact(prefix + 'rate', rate):
+                return 'custom_facts_mismatch'
+            usdt = custom.get(side + 'Usdt')
+            if usdt is not None and not matches(('payin_amount_usdt' if side == 'payin'
+                                                 else 'payout_amount_usdt'), usdt):
+                return 'custom_facts_mismatch'
+        # T17's custom CRM form uses the legacy singular hash field. Its stand
+        # draft also stores the same receipt in payinHashes with the USDT amount.
+        # Require those persisted representations to agree before accepting the
+        # singular CRM payload; never infer or copy a missing receipt.
+        custom_hash = custom.get('payinTxHash') or None
+        stand_hashes = board.get('payinHashes') or []
+        if custom_hash:
+            if (len(stand_hashes) != 1
+                    or str(stand_hashes[0].get('hash') or '') != custom_hash
+                    or normalize_network(stand_hashes[0].get('net') or
+                                         stand_hashes[0].get('network') or 'TRC20') != 'trc20'
+                    or money(stand_hashes[0].get('amount')) != money(custom.get('payinUsdt'))):
+                return 'custom_facts_mismatch'
+        elif stand_hashes:
+            return 'custom_facts_mismatch'
+    payout_board = board.get('payout') or {}
+    if ((crm.get('payout_wallet_id') or None) != (payout_board.get('walletId') or None)
+            or (crm.get('bank_card_id') or None) != (payout_board.get('bankCardId') or None)):
+        return 'recipient_mismatch'
+    payin_method = {'По реквизитам': 'sber_reqs', 'СБП': 'sber_wl',
+                    'Крипта': 'crypto_direct', 'Наличные': 'partners_cash'}
+    if board.get('payType') and crm.get('payin_method') != payin_method.get(board['payType']):
+        return 'payin_method_mismatch'
+    broker_rate = (board.get('rates') or {}).get('broker')
+    if board.get('custom') is not True:
+        expected_broker = (broker_rate if board.get('payType') in
+                           ('По реквизитам', 'СБП') else None)
+        if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
+            return 'payin_rate_mismatch'
+    main_hashes = board.get('payinHashes') or []
+    main_usdt = sum((money(h.get('amount')) or Decimal(0) for h in main_hashes), Decimal(0))
+    if not main_hashes:
+        main_usdt = money(board.get('amountUsdt')) or money((board.get('pay') or {}).get('usdt'))
+    if main_usdt is not None and not matches('payin_amount_usdt', main_usdt):
+        return 'payin_amount_mismatch'
+    board_extra = board.get('payinExtra') or []
+    crm_extra = crm.get('payin_extra') or []
+    if not isinstance(crm_extra, list) or len(board_extra) != len(crm_extra):
+        return 'payin_extra_mismatch'
+    for source, part in zip(board_extra, crm_extra):
+        if not isinstance(source, dict) or not isinstance(part, dict):
+            return 'payin_extra_mismatch'
+        source_hashes = source.get('tx_hashes') or source.get('hashes') or []
+        amount = (sum((money(h.get('amount') if h.get('amount') is not None
+                             else h.get('amount_usdt')) or Decimal(0)
+                       for h in source_hashes), Decimal(0))
+                  if source_hashes else money(source.get('amount_usdt') if source.get('amount_usdt') is not None
+                                              else source.get('amountUsdt')))
+        rub = source.get('amount_rub') if source.get('amount_rub') is not None else source.get('amountRub')
+        rate = source.get('rate_rub_usdt') if source.get('rate_rub_usdt') is not None else source.get('rate')
+        if amount is None and rub and rate:
+            if _amount(rate) <= 0:
+                return 'payin_extra_mismatch'
+            amount = (money(rub) / _amount(rate)).quantize(Decimal('0.01'))
+        method = source.get('method') or 'partners_cash'
+        partner = source.get('partner_name') if source.get('partner_name') is not None else source.get('partner')
+        if (part.get('method') != method
+                or money(part.get('amount_usdt')) != amount
+                or money(part.get('amount_rub')) != money(rub)
+                or _amount(part.get('rate_rub_usdt')) != _amount(rate)
+                or (part.get('partner_name') or None) != (partner or None)
+                or hashes(part.get('tx_hashes'), False) != hashes(source_hashes, True)
+                or sorted(str(x) for x in part.get('sber_uuids') or [])
+                   != sorted(str(x) for x in source.get('sber_uuids') or [])
+                or (part.get('note') or '') != (source.get('note') or '')):
+            return 'payin_extra_mismatch'
+    if board.get('custom') is not True and (board.get('incomeAmount') or board.get('amountRub')):
+        if not matches('payin_amount_rub', board.get('incomeAmount') or board.get('amountRub')):
+            return 'payin_amount_mismatch'
+    pay_to = board.get('payTo') or {}
+    if kind != 'exchange' and pay_to.get('purpose'):
+        if crm.get('realty_purpose') != pay_to['purpose']:
+            return 'recipient_mismatch'
+    links = board.get('docLinks') or {}
+    for source, target in (('invoice', 'doc_invoice_url'),
+                           ('contract', 'doc_contract_url'),
+                           ('payment', 'doc_payment_url')):
+        if links.get(source) and crm.get(target) != links[source]:
+            return 'document_link_mismatch'
+    payin = hashes(board.get('payinHashes'), True)
+    crm_payin_hashes = crm.get('payin_tx_hashes')
+    if (board.get('custom') is True and crm_payin_hashes is None
+            and crm.get('payin_tx_hash')):
+        crm_payin_hashes = [{'hash': crm['payin_tx_hash'], 'network': 'trc20',
+                             'amount_usdt': crm.get('payin_amount_usdt')}]
+    if (crm.get('payin_tx_hash') and crm_payin_hashes
+            and crm['payin_tx_hash'] != crm_payin_hashes[0].get('hash')):
+        return 'payin_facts_mismatch'
+    if (payin is None or hashes(crm_payin_hashes, False) != payin
+            or not recipients_match(board.get('payinHashes'), crm_payin_hashes)):
+        return 'payin_facts_mismatch'
+    if kind == 'mf_freehold':
+        tariff = {'bank': (Decimal('0.8'), Decimal('50')),
+                  'soft': (Decimal('1.5'), Decimal('50'))}.get(board.get('ippsTariff') or 'bank')
+        invoice = money(board.get('invoiceUsd'))
+        if (invoice is None or invoice <= 0 or not tariff
+                or not matches('invoice_amount_usd', invoice)
+                or not exact('transfer_fee_percent', tariff[0])
+                or not matches('transfer_fee_fixed_usd', tariff[1])):
+            return 'locked_invoice_mismatch'
+        if any(crm.get(key) is not None for key in (
+                'invoice_amount_thb', 'buy_rate_thb_usdt', 'sell_rate_thb_usdt',
+                'company_percent', 'company_sent_thb')):
+            return 'locked_invoice_mismatch'
+        transfers = board.get('mfPayout') or []
+        payout = hashes(transfers, True)
+        if (payout is None or hashes(crm.get('payout_tx_hashes'), False) != payout
+                or not recipients_match(transfers, crm.get('payout_tx_hashes'))):
+            return 'payout_facts_mismatch'
+        sent = sum((money(t.get('amount')) or Decimal(0) for t in transfers), Decimal(0))
+        if not sent:
+            sent = (invoice * (Decimal(1) + tariff[0] / 100) + tariff[1]).quantize(Decimal('0.01'))
+        if not matches('transfer_sent_usd', sent):
+            return 'transfer_sent_mismatch'
+    elif kind == 'mf_realty':
+        invoice = money(board.get('amountThb'))
+        if invoice is not None and not matches('invoice_amount_thb', invoice):
+            return 'locked_invoice_mismatch'
+        rates = board.get('rates') or {}
+        if _amount(crm.get('sell_rate_thb_usdt')) != _amount(rates.get('client')):
+            return 'sell_rate_mismatch'
+        payout = hashes(board.get('mfPayout'), True)
+        if (payout is None or hashes(crm.get('payout_tx_hashes'), False) != payout
+                or not recipients_match(board.get('mfPayout'), crm.get('payout_tx_hashes'))):
+            return 'payout_facts_mismatch'
+        transfer_rate = (board.get('transfer') or {}).get('rate')
+        coins_rate = board.get('postConv') == 'coins' and _stand_number(transfer_rate) > 0
+        expected_buy = transfer_rate if coins_rate else rates.get('usdtThb')
+        if (expected_buy is not None and not exact('buy_rate_thb_usdt', expected_buy)):
+            return 'buy_rate_mismatch'
+        if expected_buy is None and board.get('originMode') != 'manual':
+            return 'buy_rate_board_missing'
+        percent = board.get('companyPct') if board.get('companyPct') is not None else 1
+        expected_sent = ((board.get('pay') or {}).get('coinsCredit') or {}).get('thb')
+        expected_sent = (expected_sent or (board.get('transfer') or {}).get('thb')
+                         or round(_stand_number(invoice) * (1 + _stand_number(percent) / 100)))
+        if coins_rate:
+            if not matches('company_sent_thb', expected_sent):
+                return 'company_sent_mismatch'
+        elif crm.get('company_sent_thb') is not None:
+            return 'company_sent_mismatch'
+        elif not exact('company_percent', percent):
+            return 'company_percent_mismatch'
+    else:
+        source = {'cash': 'cash_batch', 'ipps': 'cash_batch', 'scb': 'cash_batch',
+                  'coins': 'binance', 'client': 'binance', 'founder': 'founder_personal'}
+        if board.get('paySrc') and crm.get('payout_source') != source.get(board['paySrc']):
+            return 'payout_source_mismatch'
+        payout = payout_board
+        if (hashes(crm.get('payout_tx_hashes'), False) != hashes(payout.get('hashes'), True)
+                or not recipients_match(payout.get('hashes'), crm.get('payout_tx_hashes'))):
+            return 'payout_facts_mismatch'
+        if crm.get('payout_tx_hash') and crm['payout_tx_hash'] != ((payout.get('hashes') or [{}])[0].get('hash')):
+            return 'payout_facts_mismatch'
+        if board.get('paySrc') == 'founder' and crm.get('payout_founder_name') != payout.get('founder'):
+            return 'recipient_mismatch'
+        payout_usdt = (sum((money(h.get('amount')) or Decimal(0) for h in payout.get('hashes') or []), Decimal(0))
+                       if payout.get('hashes') else money(payout.get('usdt')))
+        if payout_usdt is not None and not matches('payout_amount_usdt', payout_usdt):
+            return 'payout_amount_mismatch'
+        if (board.get('amountThb') or payout.get('thb')) and board.get('paySrc') != 'client':
+            if not matches('payout_amount_thb', payout.get('thb') or board.get('amountThb')):
+                return 'payout_amount_mismatch'
+    return None
 
 
 def _stand_main_profit(deal):
@@ -5450,7 +6140,8 @@ def _stand_canonical_payout(payout):
     return payout
 
 
-def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None):
+def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
+                            allow_crm_close=False):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
@@ -5500,7 +6191,36 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if protected and deal_id not in new_deals:
             return 'Подтверждённую или закрытую сделку нельзя удалить'
     for deal in new_state.get('deals', []):
+        if 'closeEvidence' in deal:
+            return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if not before:
+            if deal.get('originMode') is not None:
+                return 'Режим происхождения сделки назначает только сервер'
+            if not deal.get('manual') and deal.get('step') == 'manual':
+                return 'Ручной черновик должен быть помечен при создании'
+            if not deal.get('manual') and deal.get('step') not in ('s4', 's5', 's6', 's8', 'ready'):
+                return 'Новая сделка должна начинаться с первого шага процесса'
+            if deal.get('manual'):
+                if (actor not in ('manager', 'admin') or deal.get('step') != 'manual'
+                        or deal.get('isTask') or deal.get('closed')
+                        or deal.get('cnvId') is not None or deal.get('conv')
+                        or deal.get('serverTransferComplete')
+                        or (deal.get('transfer') or {}).get('sends')
+                        or deal.get('type') not in ('Обмен валюты', 'Оплата недвижимости')
+                        or (deal.get('type') == 'Оплата недвижимости'
+                            and deal.get('kind') not in ('Фрихолд', 'Лизхолд', 'Аренда'))):
+                    return 'Недопустимый новый ручной черновик'
+                deal['originMode'] = 'manual'
+        elif (deal.get('originMode') != before.get('originMode')
+              or deal.get('manual') != before.get('manual')):
+            return 'Происхождение сделки нельзя изменить'
+        elif before.get('originMode') == 'manual' and not allow_crm_close:
+            if before.get('step') == 'manual' and deal.get('step') != 'manual':
+                return 'Ручной черновик закрывается только через CRM'
+        if not before and (deal.get('crmDealId') is not None or
+                           (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена')):
+            return 'Новую сделку нельзя создать с привязкой CRM или успешным закрытием'
         assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id, new_state)
         if assignee_problem:
             return assignee_problem
@@ -5518,6 +6238,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if any(before.get(key) != deal.get(key) for key in
                    ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb')):
                 return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
+        if deal.get('crmDealId') != before.get('crmDealId') and not allow_crm_close:
+            return 'CRM привязывается только сервером при закрытии'
+        if (not before.get('closed') and deal.get('closed')
+                 and deal.get('closeReason') == 'Успешно завершена'
+                 and not allow_crm_close):
+            return 'Успешное закрытие в CRM выполняется отдельной кнопкой'
         protected = (before.get('closed') or before.get('crmDealId')
                      or before.get('serverTransferComplete')
                      or before.get('cnvId') in accepted_conv_ids
@@ -5526,6 +6252,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                      or any(s.get('status') == 'confirmed'
                             for s in (before.get('transfer') or {}).get('sends') or []))
         if protected:
+            if before.get('serverTransferComplete') and (
+                    deal.get('postConv') != before.get('postConv') or
+                    deal.get('paySrc') != before.get('paySrc')):
+                return 'Маршрут подтверждённой выплаты нельзя изменить'
             if (before.get('closed') and not deal.get('closed')) or (
                     before.get('crmDealId') and before.get('crmDealId') != deal.get('crmDealId')):
                 return 'Закрытую CRM-сделку нельзя открыть или отвязать'
@@ -5539,7 +6269,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
             elif before.get('step') in committed_steps and deal.get('step') != before.get('step'):
                 return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
-            for key in ('cnvId', 'postConv', 'walletId'):
+            for key in ('cnvId', 'conv', 'postConv', 'walletId'):
                 if before.get(key) != deal.get(key):
                     return 'Маршрут подтверждённой сделки нельзя изменить'
             old_transfer, new_transfer = before.get('transfer') or {}, deal.get('transfer') or {}
@@ -5653,8 +6383,9 @@ def _stand_settle_verified(state, members):
         sends = (deal.get('transfer') or {}).get('sends') or []
         auto = False
         if not sends:
-            accepted_main = next((d for d in members if d.get('postConv') == 'coins'), None)
-            if not accepted_main or accepted_main.get('step') not in ('s23', 's24', 's25', 's26', 's27', 'done'):
+            accepted_main = _stand_batch_main(state, deal.get('id'))
+            if (not accepted_main or accepted_main.get('postConv') != 'coins'
+                    or accepted_main.get('step') not in ('s23', 's24', 's25', 's26', 's27', 'done')):
                 continue
             conv = next((c for c in state.get('convs', [])
                          if c.get('id') == deal.get('cnvId')), None)
@@ -5706,8 +6437,10 @@ def _stand_settle_verified(state, members):
     # ipps_swift — фрихолд без батов (спека 28.09-freehold-no-baht): единственный
     # маршрут USDT в IPPS SWIFT, s24→s25 после подтверждения — как Coins у лизхолда
     # (QA БЛОКЕР №9, 28.09: сделка застревала на s24 навсегда без этой ветки).
-    main = next((d for d in members if d.get('step') in ('s23', 's24') and
-                 d.get('postConv') in ('coins', 'ipps_swift')), None)
+    main = _stand_batch_main(state, members[0].get('id')) if members else None
+    if main and (main.get('step') not in ('s23', 's24')
+                 or main.get('postConv') not in ('coins', 'ipps_swift')):
+        main = None
     if main and not main.get('serverTransferComplete'):
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
@@ -5814,6 +6547,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         db.close()
     ids = ([deal_id] if deal_id is not None else
            [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
+    if deal_id is not None and _stand_batch_main(snapshot, deal_id) is None:
+        return {'success': False, 'error': 'Главная сделка пачки не определена', 'httpStatus': 409}
+    ids = [wanted for wanted in ids if _stand_batch_main(snapshot, wanted) is not None]
     jobs = []
     seen = set()
     for wanted in ids:
@@ -5836,18 +6572,16 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             if key[0]:
                 all_claims[(key[0], key[1])] = all_claims.get((key[0], key[1]), 0) + 1
     results = []
-    main = next((d for d in snapshot.get('deals', [])
-                 if d.get('id') in seen and d.get('postConv') in ('coins', 'ipps_swift')
-                 and d.get('step') in ('s23', 's24')), None)
-    conv = next((c for c in snapshot.get('convs', [])
-                 if c.get('id') == (main or {}).get('cnvId')), None)
-    wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
-    wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
-    demo_multisig_wait = bool(main and main.get('step') == 's23'
-                              and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
     for member_id, key, deal, send, demo_outcome in jobs:
         sender, receiver = expected_addresses(snapshot, deal)
         cohort = _stand_members(snapshot, member_id)
+        main = _stand_batch_main(snapshot, member_id)
+        conv = next((c for c in snapshot.get('convs', [])
+                     if c.get('id') == (main or {}).get('cnvId')), None)
+        wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
+        wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
+        demo_multisig_wait = bool(main and main.get('step') == 's23'
+                                  and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
         if key[0] is None:
             result = {'status': 'mismatch', 'checkError': 'Хеш и ссылка не совпадают или некорректны'}
         elif key[0] and all_claims.get((key[0], key[1]), 0) > 1:
@@ -5872,6 +6606,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         state = json.loads(row.data or '{}')
         changed = False
         for member_id, key, demo_outcome, result in results:
+            if _stand_batch_main(state, member_id) is None:
+                continue
             deal = next((d for d in state.get('deals', []) if d.get('id') == member_id), None)
             if not deal:
                 continue
@@ -5913,6 +6649,8 @@ def stand_transfers_check():
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
     result = _stand_check_transfers(deal_id)
+    if result and result.get('httpStatus'):
+        return jsonify(result), result['httpStatus']
     return jsonify(result) if result else (jsonify({'success': False, 'error': 'Сделка не найдена'}), 404)
 
 
@@ -5936,8 +6674,9 @@ def stand_transfers_demo():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal or not deal.get('demoTransfers'):
             return jsonify({'success': False, 'error': 'Demo для сделки не включено'}), 400
-        members = _stand_members(state, deal_id)
-        main = next((d for d in members if d.get('postConv') == 'coins'), deal)
+        main = _stand_batch_main(state, deal_id)
+        if main is None:
+            return jsonify({'success': False, 'error': 'Главная сделка пачки не определена'}), 409
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
         wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
@@ -9870,9 +10609,16 @@ def preview_mf_freehold():
 
 @app.route('/api/deals', methods=['POST'])
 def create_deal():
-    session = get_session()
+    return _create_deal_impl()
+
+
+def _create_deal_impl(session=None, *, data=None, defer_commit=False):
+    """Existing CRM create validation; stand close may share its DB transaction."""
+    own_session = session is None
+    if own_session:
+        session = get_session()
     try:
-        data = request.get_json()
+        data = request.get_json() if data is None else data
         
         # Парсим дату если передана
         created_at = None
@@ -10173,14 +10919,17 @@ def create_deal():
             )
             session.add(op)
 
-        session.commit()
+        if defer_commit:
+            session.flush()
+        else:
+            session.commit()
 
         # Если сделка создана сразу со статусом completed (skip_sync — для импорта исторических сделок)
         skip_sync = data.get('skip_sync', False)
 
         # Недвижимость (лизхолд/фрихолд): прибыль известна сразу (возмещения нет),
         # поэтому выгружаем и уведомляем не дожидаясь статуса completed
-        if deal.deal_kind in REALTY_KINDS and not skip_sync:
+        if not defer_commit and deal.deal_kind in REALTY_KINDS and not skip_sync:
             try:
                 sync_realty_deal_to_gsheet(deal)
             except Exception as e:
@@ -10193,7 +10942,7 @@ def create_deal():
                 except Exception as e:
                     print(f'[Telegram] realty error on create: {e}')
 
-        if deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind not in REALTY_KINDS:
+        if not defer_commit and deal.status == DealStatus.COMPLETED and not skip_sync and deal.deal_kind not in REALTY_KINDS:
             send_deal_completed_webhook(deal)
             notify_agents_new_deal(session, deal)  # DM реферерам-агентам сделки
             # GSheet + Telegram для завершённых сделок с рассчитанной прибылью
@@ -10224,7 +10973,8 @@ def create_deal():
         print(f'[create_deal] error: {e}\n{tb}', flush=True)
         return jsonify({'success': False, 'error': f'Ошибка обработки запроса: {type(e).__name__}: {e}'}), 400
     finally:
-        session.close()
+        if own_session:
+            session.close()
 
 @app.route('/api/deals/<int:deal_id>', methods=['PUT'])
 def update_deal(deal_id):
