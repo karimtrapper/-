@@ -163,9 +163,103 @@ def test_oversized_raster_rejected_before_network(stand, monkeypatch):
     huge = b'\x89PNG\r\n\x1a\n' + b'x' * (docparse.STAND_MAX_RASTER_BYTES + 1)
     monkeypatch.setattr(docparse, 'pages_to_png', lambda data, mime, **k: [huge])
     r = stand.post('/api/docs/parse', data={
-        'passport': (io.BytesIO(b'fake'), 'p.png')}, content_type='multipart/form-data')
+        'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')}, content_type='multipart/form-data')
     assert r.status_code == 502, r.get_json()
     assert r.get_json()['failed'][0]['error'] == 'too_large'
+
+
+def test_parse_file_direct_call_from_background_thread_denied_before_network(stand, monkeypatch):
+    """QA-обзор п.9: parse_file(stand=True) без HTTP-запроса через route (тут —
+    прямой вызов из отдельного потока) не должен даже открыть сеть."""
+    import threading
+
+    def unexpected(*a, **k):
+        pytest.fail('Сеть не должна вызываться без авторизованного контекста запроса')
+    monkeypatch.setattr(stand_egress, 'docparse_post', unexpected)
+
+    result = {}
+
+    def worker():
+        try:
+            docparse.parse_file('bg.png', PASSPORT_PNG, 'image/png', 'fake-stand-docparse-key', stand=True)
+        except Exception as exc:
+            result['code'] = exc.args[0] if isinstance(exc, docparse.StandDocparseError) else type(exc).__name__
+
+    t = threading.Thread(target=worker)
+    t.start(); t.join()
+    assert result.get('code') == 'no_request_context'
+
+
+def test_parse_file_direct_call_same_thread_outside_route_denied(monkeypatch):
+    """Тот же прямой вызов на потоке теста (не внутри route) тоже отказывает —
+    авторизованный контекст выставляет только сам обработчик /api/docs/parse."""
+    def unexpected(*a, **k):
+        pytest.fail('Сеть не должна вызываться без авторизованного контекста запроса')
+    monkeypatch.setattr(stand_egress, 'docparse_post', unexpected)
+    with pytest.raises(docparse.StandDocparseError) as exc_info:
+        docparse.parse_file('x.png', PASSPORT_PNG, 'image/png', 'fake-key', stand=True)
+    assert exc_info.value.args[0] == 'no_request_context'
+
+
+@pytest.mark.parametrize('bad_bytes,name', [
+    (b'plain text, not an image at all', 'note.txt'),
+    (b'GIF89a' + b'0' * 20, 'trick.png'),
+])
+def test_unknown_file_type_rejected_before_network_by_magic_bytes(stand, monkeypatch, bad_bytes, name):
+    def unexpected(*a, **k):
+        pytest.fail('Сеть не должна вызываться для файла не из закрытого списка типов')
+    monkeypatch.setattr(stand_egress, 'docparse_post', unexpected)
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(bad_bytes), name)}, content_type='multipart/form-data')
+    assert r.status_code == 502, r.get_json()
+    assert r.get_json()['failed'][0]['error'] == 'bad_file_type'
+
+
+def test_png_decompression_bomb_rejected_before_network(stand, monkeypatch):
+    """IHDR заявляет 100000×100000 пикселей в файле в пару десятков байт —
+    отказ до декодирования/сети (QA-обзор, п.10)."""
+    import struct
+    def unexpected(*a, **k):
+        pytest.fail('Сеть не должна вызываться для декомпрессионной бомбы')
+    monkeypatch.setattr(stand_egress, 'docparse_post', unexpected)
+    png = (b'\x89PNG\r\n\x1a\n' + struct.pack('>I', 13) + b'IHDR'
+          + struct.pack('>IIBBBBB', 100000, 100000, 8, 2, 0, 0, 0) + b'1234')
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(png), 'huge.png')}, content_type='multipart/form-data')
+    assert r.status_code == 502, r.get_json()
+    assert r.get_json()['failed'][0]['error'] == 'too_large'
+
+
+def test_stand_uses_at_most_two_model_attempts(stand, monkeypatch):
+    """QA-обзор п.11: 500 от провайдера не должен давать три POST по трём
+    моделям на стенде — максимум одна запасная модель (2 вызова всего)."""
+    calls = []
+
+    def fake_post(payload, timeout=60):
+        calls.append(payload['model'])
+        return 500, {'error': 'boom'}, None
+
+    monkeypatch.setattr(stand_egress, 'docparse_post', fake_post)
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(PASSPORT_PNG), 'p.png')}, content_type='multipart/form-data')
+    assert r.status_code == 502, r.get_json()
+    assert len(calls) == 2
+    assert calls[0] == docparse.DEFAULT_MODEL
+    assert calls[1] == docparse.STAND_FALLBACK_MODELS[0]
+
+
+def test_provenance_carries_slot_not_filename(stand, monkeypatch):
+    """QA-обзор п.14: провенанс на стенде не должен нести имя файла."""
+    monkeypatch.setattr(stand_egress, 'docparse_post',
+                        lambda payload, timeout=60: (200, _fake_choice(FAKE_FIELDS), None))
+    filename = 'ivanov-client-passport-secret.png'
+    r = stand.post('/api/docs/parse', data={
+        'passport': (io.BytesIO(PASSPORT_PNG), filename)}, content_type='multipart/form-data')
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()
+    assert filename not in json.dumps(body)
+    assert list(body['provenance'].values()) == ['passport'] * len(body['provenance']) or not body['provenance'] \
+        or all(v == 'passport' for v in body['provenance'].values())
 
 
 def test_prod_path_unchanged_when_stand_mode_off(monkeypatch):

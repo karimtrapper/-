@@ -16,21 +16,112 @@ import io
 import json
 import os
 import re
+import struct
 
 DEFAULT_MODEL = os.environ.get('DOCPARSE_MODEL', 'google/gemini-2.5-flash')
 # Запасные — если основная не ответила. gpt-5-nano намеренно исключён: на замере
 # исказил юрнаименование («ЭМ ЭФ КОРПОРАЦИЯ» вместо «ЭМ ЭФ КОРПОРЕЙШН»).
 FALLBACK_MODELS = ['openai/gpt-4.1-mini', 'google/gemini-2.5-flash-lite']
+# На стенде фоллбэк моделей режем до одной запасной (2 вызова всего): 500 от
+# провайдера не должен давать три POST по трём моделям (QA-обзор, п.11) — для
+# сбоя сети/ключа/схемы третья попытка так же не помогла бы, а для случайного
+# отказа одной модели одной запасной достаточно.
+STAND_FALLBACK_MODELS = FALLBACK_MODELS[:1]
 OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
 # На стенде рисковый растр (маленький PDF → огромные PNG-страницы) режется до
 # сети — тут же, а не только по MAX_CONTENT_LENGTH исходной загрузки в app.py.
 STAND_MAX_RASTER_BYTES = 15 * 1024 * 1024
+# Декомпрессионная бомба: маленький файл с заявленными огромными шириной×высотой
+# ещё до декодирования/растеризации — проверяем магические байты и заявленный
+# размер и отказываем, не тратя память на декод (QA-обзор, п.10).
+STAND_MAX_PIXELS = 40_000_000  # ~40 МП — с запасом покрывает скан документа
+STAND_ALLOWED_KINDS = ('pdf', 'png', 'jpeg', 'webp')
 
 
 class StandDocparseError(RuntimeError):
     """Стабильный код ошибки распознавания на стенде — без текста SDK/requests,
     имени файла и содержимого документа (см. OCR-TRC20-REVIEW.md)."""
+
+
+def _sniff_kind(data: bytes) -> str | None:
+    """Тип файла по магическим байтам, а не по Content-Type/расширению —
+    их браузер/клиент может подделать. Что не входит в закрытый список —
+    отказ до любой обработки."""
+    if data[:4] == b'%PDF':
+        return 'pdf'
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'png'
+    if data[:3] == b'\xff\xd8\xff':
+        return 'jpeg'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'webp'
+    return None
+
+
+def _png_dimensions(data: bytes):
+    if len(data) < 24 or data[12:16] != b'IHDR':
+        return None
+    return struct.unpack('>II', data[16:24])
+
+
+def _jpeg_dimensions(data: bytes):
+    """SOF-маркер несёт высоту/ширину — сканируем сегменты, не декодируя
+    само изображение (декомпрессионная бомба ловится до декода)."""
+    i, n = 2, len(data)
+    while i + 4 <= n:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        if marker == 0xD9:
+            break
+        if i + 4 > n:
+            return None
+        seg_len = int.from_bytes(data[i + 2:i + 4], 'big')
+        if marker in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                     0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+            if i + 9 > n:
+                return None
+            height = int.from_bytes(data[i + 5:i + 7], 'big')
+            width = int.from_bytes(data[i + 7:i + 9], 'big')
+            return width, height
+        if seg_len < 2:
+            return None
+        i += 2 + seg_len
+    return None
+
+
+def _webp_dimensions(data: bytes):
+    if len(data) < 30:
+        return None
+    fourcc = data[12:16]
+    if fourcc == b'VP8X':
+        w = int.from_bytes(data[24:27], 'little') + 1
+        h = int.from_bytes(data[27:30], 'little') + 1
+        return w, h
+    if fourcc == b'VP8L':
+        if data[20] != 0x2f:
+            return None
+        bits = int.from_bytes(data[21:25], 'little')
+        return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+    if fourcc == b'VP8 ':
+        idx = data.find(b'\x9d\x01\x2a', 20, 40)
+        if idx == -1 or idx + 7 > len(data):
+            return None
+        w = int.from_bytes(data[idx + 3:idx + 5], 'little') & 0x3FFF
+        h = int.from_bytes(data[idx + 5:idx + 7], 'little') & 0x3FFF
+        return w, h
+    return None
+
+
+def _raster_bomb(kind: str, data: bytes) -> bool:
+    dims = {'png': _png_dimensions, 'jpeg': _jpeg_dimensions,
+            'webp': _webp_dimensions}.get(kind, lambda _d: None)(data)
+    return bool(dims and dims[0] * dims[1] > STAND_MAX_PIXELS)
 
 # Поля, которые вынимаем из файлов. Всё остальное в договоре — константы MF Corp,
 # ввод менеджера, дефолты или вычисление системой (карта полей в вики).
@@ -119,14 +210,25 @@ def _schema() -> dict:
     }
 
 
-def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150) -> list[bytes]:
-    """PDF → PNG постранично. Картинка возвращается как есть."""
+def pages_to_png(data: bytes, mime: str, max_pages: int = 3, dpi: int = 150,
+                 stand: bool = False) -> list[bytes]:
+    """PDF → PNG постранично. Картинка возвращается как есть.
+
+    `stand=True` — перед рендером каждой страницы проверяем заявленный размер
+    (MediaBox) в пикселях при данном dpi: маленький PDF может декларировать
+    огромную страницу и раздуть память уже на этапе get_pixmap (QA-обзор, п.10).
+    """
     if 'pdf' not in (mime or '').lower() and not data[:5].startswith(b'%PDF'):
         return [data]
     import pymupdf  # noqa: PLC0415 — тяжёлый импорт, только для PDF
     out = []
     with pymupdf.open(stream=data, filetype='pdf') as doc:
         for page in list(doc)[:max_pages]:
+            if stand:
+                rect = page.rect
+                px_w, px_h = rect.width * dpi / 72.0, rect.height * dpi / 72.0
+                if px_w * px_h > STAND_MAX_PIXELS:
+                    raise StandDocparseError('too_large')
             out.append(page.get_pixmap(dpi=dpi).tobytes('png'))
     return out
 
@@ -154,6 +256,11 @@ def _call(model: str, images: list[bytes], api_key: str, timeout: int = 180,
 
     if stand:
         import stand_egress  # noqa: PLC0415 — изолированный канал только на стенде
+        if not stand_egress.docparse_request_authorized():
+            # Не HTTP-запрос залогиненного сотрудника (фоновый поток, прямой
+            # вызов из скрипта/импорта прод-копии) — отказ до сети. Флаг
+            # выставляет только сам обработчик /api/docs/parse (app.py).
+            raise StandDocparseError('no_request_context')
         status, data, err = stand_egress.docparse_post(payload, timeout=timeout)
         if err:
             raise StandDocparseError(err)
@@ -285,16 +392,25 @@ def parse_file(filename: str, data: bytes, mime: str, api_key: str,
     SDK/requests, имени файла и содержимого документа. `stand=False` (по
     умолчанию, прод-путь) — поведение не меняется вовсе.
     """
-    images = pages_to_png(data, mime)
+    if stand:
+        kind_sniffed = _sniff_kind(data)
+        if kind_sniffed not in STAND_ALLOWED_KINDS:
+            raise StandDocparseError('bad_file_type')
+        if kind_sniffed != 'pdf' and _raster_bomb(kind_sniffed, data):
+            raise StandDocparseError('too_large')
+    images = pages_to_png(data, mime, stand=stand)
     if stand and sum(len(img) for img in images) > STAND_MAX_RASTER_BYTES:
         raise StandDocparseError('too_large')
     errors = []
     last_code = 'parse_failed'
-    for m in [model or DEFAULT_MODEL] + FALLBACK_MODELS:
+    models_to_try = [model or DEFAULT_MODEL] + (STAND_FALLBACK_MODELS if stand else FALLBACK_MODELS)
+    for m in models_to_try:
         try:
             res = _call(m, images, api_key, kind=kind, stand=stand)
             res['_model'] = m
-            res['_file'] = filename
+            # На стенде провенанс не должен нести имя файла (может содержать
+            # ПДн/имя клиента) — только тип слота (QA-обзор, п.14).
+            res['_file'] = (kind or 'файл') if stand else filename
             res['_kind'] = kind
             return res
         except Exception as exc:  # noqa: BLE001 — падать нельзя, пробуем следующую
