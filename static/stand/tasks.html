@@ -322,6 +322,10 @@ a.hash:hover{background:#BAE6FD}
 .payrow .k{font-size:12px;color:var(--text-muted)}
 .payrow .v{font-size:13.5px;line-height:1.5;word-break:break-word}
 .sberbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--r);padding:12px 14px;margin-top:14px}
+.crm-draft{margin-top:14px}
+.crm-draft .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:var(--text);font:inherit}
+.crm-draft .form-label{display:block;font-size:12px;font-weight:600;margin-bottom:5px}
+.crm-draft .btn-sm{padding:4px 8px;font-size:12px}
 .sbrow{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:7px 0;border-bottom:1px solid #DBEAFE;font-size:13.5px}
 .sbrow:last-of-type{border-bottom:none}
 .sbrow.taken{background:#ECFDF5;border-radius:6px;padding:7px 8px;margin-bottom:4px;border-bottom:none}
@@ -586,6 +590,8 @@ a.hash:hover{background:#BAE6FD}
 <div class="toast" id="toast"></div>
 
 <script src="screens-data.js?v=2609241212"></script>
+<script src="crm-draft-core.js?v=1"></script>
+<script src="crm-draft-adapter.js?v=1"></script>
 <script>
 const KEY='grusha_proto_v2';
 /* ===== Стенд: состояние общее, лежит на сервере =====
@@ -2875,9 +2881,12 @@ function render(){
   else if(S.open)main=viewDeal(S.deals.find(d=>d.id===S.open));
   else if(S.draft)main=viewCreate();
   else main=(VIEWS[S.tab]||VIEWS.tasks)();
+  if(S.edit) crmDraftCapture();
+  else {crmDraftCore=null;crmDraftDealId=null;}
   app.innerHTML=main+(S.modal?viewModal():'')+(S.doc?viewDoc():'')+(S.cnv?viewCnv():'')+(S.refEdit?viewRefEdit():'');
   draftsRestore();
   restoreFocus();
+  if(S.edit) crmDraftMount(S.edit);
 }
 function setRole(r){S.role=r;S.open=null;S.draft=null;S.modal=null;S.tab='tasks';save();render();}
 function setTab(t){S.tab=t;S.open=null;S.draft=null;S.modal=null;save();render();}
@@ -4459,6 +4468,7 @@ function editClose(){
   const d=deal(S.edit);
   /* Отмена на только что заведённой вручную сделке = её вообще не было */
   if(d&&d.manualNew){S.deals=S.deals.filter(x=>x.id!==d.id);toast('Черновик удалён');}
+  crmDraftLive.delete(S.edit);
   S.edit=null;save();render();
 }
 /* Завести сделку целиком, минуя задачник: короткие обмены и то, что прошло давно,
@@ -5006,9 +5016,9 @@ function viewEdit(){
           <select class="fc" id="e_pay" onchange="editRecalc(${d.id})">${opt(['По реквизитам','СБП','Крипта','Наличные'],d.payType)}</select>
           ${d.type==='Оплата недвижимости'?'<p class="fh">чем платит клиент — получателю в любом случае уходят баты</p>':''}</div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Сумма RUB</label>
-          <input class="fc num" id="e_pay_amt" value="${d.amountRub||''}" placeholder="сумма в рублях"></div>`}
+          <input class="fc num" id="e_pay_amt" name="payin_amount_rub" value="${d.amountRub||''}" placeholder="сумма в рублях"></div>`}
         <div class="fg"><label class="fl">Сумма USDT</label>
-          <input class="fc num" id="${crypto?'e_pay_amt':'e_usdt'}" value="${(crypto?d.amountUsdt:d.amountUsdt)||''}" placeholder="сумма в USDT">
+          <input class="fc num" id="${crypto?'e_pay_amt':'e_usdt'}" name="payin_amount_usdt" value="${(crypto?d.amountUsdt:d.amountUsdt)||''}" placeholder="сумма в USDT">
           <p class="fh">${crypto?'сколько USDT прислал клиент':'введи сколько USDT реально пришло — курс посчитается из рублей'}</p>
           ${(!crypto&&d.amountUsdt&&d.amountRub)?`<p class="fh">курс из этих сумм: <b>${(d.amountRub/d.amountUsdt).toFixed(2).replace('.',',')}</b></p>`:''}</div>
       </div>
@@ -5029,7 +5039,7 @@ function viewEdit(){
           :`<p class="fh">Транзакций нет — приход посчитается по курсу, как ожидание</p>`}
         </div>
         ${crypto?'<div class="fg"></div>':`<div class="fg"><label class="fl">Курс RUB/USDT</label>
-          <input class="fc num" id="e_broker" value="${d.rates.broker||''}" placeholder="₽ за 1 USDT"></div>`}
+          <input class="fc num" id="e_broker" name="payin_rate_rub_usdt" value="${d.rates.broker||''}" placeholder="₽ за 1 USDT"></div>`}
         <div class="fg"></div>
       </div>
       <div class="fr">
@@ -5043,27 +5053,7 @@ function viewEdit(){
       </div>
       <p class="fh">При ручном вводе сеть выбирается явно: TRC-20 проверяется через TronScan, ERC-20 — через Etherscan.</p>
 
-      ${crypto?'':`<div class="sberbox">
-        <div class="chtitle" style="color:#0369A1">🏦 Приходы ${d.payType==='СБП'?'Сбера':'по реквизитам'}
-          <span>${d.payType==='СБП'?'СБП (эквайринг)':'банковские'}</span></div>
-        ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
-          <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
-            ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
-            <span class="sub2">· ${x.payer||''} · ${x.date||''}</span></span>
-          <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
-        ${sberFree().length?sberFree().slice(0,5).map(x=>`<div class="sbrow">
-          <span><span class="net">${sberText(x.kind)}${x.source==='sber'?' · Сбер':''}</span> <b>${money(x.rub,'₽')}</b>
-            <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)}</span></span>
-          <button class="btn btn-sm" style="background:var(--green-dark);color:#fff;border:none" onclick="sberTake(${d.id},${sberText(JSON.stringify(x.id))})">Забрать</button></div>`).join('')
-          :`<p class="fh">Свободных поступлений нет — всё разобрано по сделкам.</p>`}
-        <div class="hrow" style="margin-top:10px">
-          <input class="fc num" id="e_sbamt" placeholder="Сумма ₽ вручную" style="max-width:180px">
-          <input class="fc" id="e_sbnote" placeholder="Комментарий">
-          <button class="btn btn-outline btn-sm" onclick="sberManual(${d.id})">+ Добавить</button>
-        </div>
-        ${(d.payinParts||[]).length?`<p class="fh" style="color:#0369A1;font-weight:600">Итого от клиента: ${money((d.payinParts||[]).reduce((s,p)=>s+(p.amountRub||0),0),'₽')} (частей: ${d.payinParts.length})${
-          (d.payinParts||[]).some(p=>p.fee)?` · комиссия эквайринга ${money((d.payinParts||[]).reduce((s,p)=>s+(p.fee||0),0),'₽')} → на счёт ${money((d.payinParts||[]).reduce((s,p)=>s+(p.net||p.amountRub||0),0),'₽')}`:''}</p>`:''}
-      </div>`}
+      ${crypto?'':'<div id="crmSberSlot" class="crm-draft"></div>'}
     </div>
     ${(d.payinExtra||[]).map((x,i)=>`<div class="chbox">
       <div class="chtitle">Приход ${i+2}
@@ -5123,7 +5113,7 @@ function viewEdit(){
         <p class="fh">максимум, чтобы хватило на выплаты</p></div>
     </div>
     <div class="fg"><label class="fl">Переводы в MF Corp (факт)</label>
-      ${mfPayoutBlock(d)}
+      <div id="crmMfPayoutSlot" class="crm-draft"></div>
       <p class="fh">отметь переводы, которыми реально ушли деньги — себестоимость возьмём по факту</p></div>
     <div class="fr">
       <div class="fg"><label class="fl">Ссылка на инвойс</label>
@@ -5277,11 +5267,13 @@ function editApply(id){
   return ch;
 }
 function editRecalc(id){
+  crmDraftCommit(id);
   const ch=editApply(id);save();render();
   toast(ch.length?('Пересчитано · '+ch.length+' изм.'):'Пересчитано');
 }
 function editSave(id){
   const d=deal(id); const isNew=!!d.manualNew;
+  crmDraftCommit(id);
   const ch=editApply(id);
   if(isNew){
     d.manualNew=false;d.log=[];
