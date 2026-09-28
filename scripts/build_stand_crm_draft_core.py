@@ -15,6 +15,8 @@ TARGET = ROOT / "static/stand/crm-draft-core.js"
 # Правая граница каждой выборки включается только в следующую выборку. Маркеры
 # намеренно точные: если CRM перестроит участок, генератор остановится.
 SLICES = [
+    ("        async function loadOutgoingTxForBinance(", "        function selectBinanceTx("),
+    ("        function selectBinanceTx()", "        let cashBatchesData = [];"),
     ("        function _customFormProfitVolume()", "        // Каскад (зеркало backend compute_agent_cascade)"),
     ("        function customAgentsPreset(", "        // ===== Виджет агентов для СТАНДАРТНОЙ формы"),
     ("        // Что считаем производным: 'rate'", "        // Подбор входящей транзакции в кастомной сделке"),
@@ -78,6 +80,26 @@ SLICES = [
     ("        function removeMfPayoutTx(", "        // Пул переводов общий"),
     ("        function resetMfPayoutTxPool(", "        async function loadMfPayoutTx("),
     ("        async function loadMfPayoutTx(", "        function toggleCustomDeal("),
+    ("        function renderPayoutTxPool()", "        // ===== Выдача своими батами"),
+    ("        function payoutSettledOn()", "        function togglePayoutSettled("),
+    ("        function togglePayoutSettled()", "        // Кэш адресов приходов"),
+    ("        async function payinToAddress(", "        async function syncPayoutSettledDefault("),
+    ("        async function syncPayoutSettledDefault(", "        function toggleNoConversion("),
+    ("        function toggleNoConversion()", "        // Кошельки для возврата"),
+    ("        async function loadFounderWallets(", "        function calcNoConvRate("),
+    ("        function calcNoConvRate()", "        function payoutTxOverNote("),
+    ("        function payoutTxOverNote(", "        function payoutTxShareChanged("),
+    ("        function payoutTxShareChanged(", "        function payoutRefreshOverNotes("),
+    ("        function payoutRefreshOverNotes(", "        function removePayoutTx("),
+    ("        function removePayoutTx(", "        // Итог по пулу:"),
+    ("        function payoutRefreshInfo(", "        // Реестр переводов выдачи:"),
+    ("        async function loadPayoutTxLedger(", "        function payoutTxFree("),
+    ("        function payoutTxFree(", "        function payoutTxOptionLabel("),
+    ("        function payoutTxOptionLabel(", "        function payoutTxHint("),
+    ("        function payoutTxHint(", "        function selectPayoutTx("),
+    ("        function selectPayoutTx(", "        // Список исходящих —"),
+    ("        async function loadOutgoingTxForSelect(", "        function lookupPayoutFounderTx("),
+    ("        function lookupPayoutFounderTx()", "        document.getElementById('addCashBatchForm').addEventListener("),
 ]
 
 
@@ -116,6 +138,19 @@ def main():
         ("${(t.network || 'trc20').toUpperCase()}", "${escapeHtml((t.network || 'trc20').toUpperCase())}", 2),
         ("${err.error || resp.status}", "${escapeHtml(err.error || resp.status)}", 1),
         ("${e.message}", "${escapeHtml(e.message)}", 2),
+        ("${t.hash.substring(0, 20)}", "${escapeHtml(t.hash.substring(0, 20))}", 2),
+        ("${t.date || ''}", "${escapeHtml(t.date || '')}", 2),
+        ("${(t.from_address || '').slice(0, 14)}", "${escapeHtml((t.from_address || '').slice(0, 14))}", 1),
+        ('box.innerHTML = r.error ||', 'box.textContent = r.error ||', 1),
+        ('value="${tx.tx_hash}" data-amount="${tx.amount_usdt}"',
+         'value="${escapeHtml(tx.tx_hash)}" data-amount="${escapeHtml(tx.amount_usdt)}"', 1),
+        ('data-from="${tx.from_address || \'\'}"',
+         'data-from="${escapeHtml(tx.from_address || \'\')}"', 1),
+        ('data-to="${tx.to_address || \'\'}"',
+         'data-to="${escapeHtml(tx.to_address || \'\')}"', 1),
+        ('${tx.tx_hash.substring(0, 10)}', '${escapeHtml(tx.tx_hash.substring(0, 10))}', 1),
+        ('${who(tx.from_address)} → ${who(tx.to_address)}',
+         '${escapeHtml(who(tx.from_address))} → ${escapeHtml(who(tx.to_address))}', 1),
     ]
     for old, new, expected in safety_slots:
         hits = sum(piece.count(old) for piece in pieces)
@@ -138,6 +173,9 @@ def main():
     # remain inert data, with only the adapter's scoped delegation executing
     # allowlisted actions. Exact source strings make drift fail generation.
     dynamic_handlers = [
+        ('onclick="loadOutgoingTxForBinance(true)"', 'data-crm-call="loadOutgoingTxForBinance(true)"'),
+        ('oninput="payoutTxShareChanged(${i}, this.value)"', 'data-crm-action="payout-share" data-crm-event="input" data-index="${i}"'),
+        ('onclick="removePayoutTx(${i})"', 'data-crm-action="payout-remove" data-crm-event="click" data-index="${i}"'),
         ('onclick="customAgentsRemove(${i})"', 'data-crm-action="custom-agent-remove" data-crm-event="click" data-index="${i}"'),
         ('onclick="customAgentsTier(${i},-1)"', 'data-crm-action="custom-agent-tier" data-crm-event="click" data-index="${i}" data-delta="-1"'),
         ('onclick="customAgentsTier(${i},1)"', 'data-crm-action="custom-agent-tier" data-crm-event="click" data-index="${i}" data-delta="1"'),
@@ -222,10 +260,22 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let currentUsdtThbRateAt = adapters.currentUsdtThbRateAt || 0;
     let _rateWarnShownAt = 0;
     let payoutTxPool = adapters.payoutTxPool || [];
+    let payoutTxLedger = {};
+    let payoutFounderTx = null;
+    let payoutFounderTimer = null;
+    const payinToAddressCache = {};
     let cashBatchesData = [];
     let _referrersCache = adapters.referrers || [];
 """ + "\n\n".join(pieces) + """
     return {
+        loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
+        togglePayoutSettled, syncPayoutSettledDefault,
+        toggleNoConversion, loadFounderWallets, calcNoConvRate,
+        renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,
+        removePayoutTx, loadPayoutTxLedger, selectPayoutTx,
+        loadOutgoingTxForSelect, lookupPayoutFounderTx,
+        get payoutTxPool() { return payoutTxPool; },
+        set payoutTxPool(v) { payoutTxPool = v || []; renderPayoutTxPool(); },
         calcCustomProfit, onCustomRateInput, onCustomUsdtInput,
         get customUsdtMode() { return { ...customUsdtMode }; },
         onCustomPayinMethodChange, selectCustomPayinTx,
@@ -239,8 +289,6 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         get cashBatchesData() { return cashBatchesData; },
         calculateProfit,
         set currentUsdtThbRate(v) { currentUsdtThbRate = v; currentUsdtThbRateAt = Date.now(); },
-        get payoutTxPool() { return payoutTxPool; },
-        set payoutTxPool(v) { payoutTxPool = v || []; calculateProfit(); },
         sberRemovePart, sberRender, sberIncomeLine, sberPartsSum,
         autoCalcUsdt, setPayinMode(mode) { payinMode = mode; },
         payinTxPoolTotal, renderPayinTxPool, payinTxShareChanged,

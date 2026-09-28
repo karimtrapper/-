@@ -42,8 +42,108 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
     let currentUsdtThbRateAt = adapters.currentUsdtThbRateAt || 0;
     let _rateWarnShownAt = 0;
     let payoutTxPool = adapters.payoutTxPool || [];
+    let payoutTxLedger = {};
+    let payoutFounderTx = null;
+    let payoutFounderTimer = null;
+    const payinToAddressCache = {};
     let cashBatchesData = [];
     let _referrersCache = adapters.referrers || [];
+        async function loadOutgoingTxForBinance(forceRefresh = false) {
+            const select = document.getElementById('binanceTxSelect');
+            if (!select) return;
+            select.innerHTML = '<option value="">Загрузка...</option>';
+
+            try {
+                // Используем общие фильтры дат, если они установлены
+                const startDate = document.getElementById('txStartDate')?.value || '2025-12-01';
+                const endDate = document.getElementById('txEndDate')?.value || '';
+
+                let url = `${API_URL}/api/transactions/outgoing?start_date=${startDate}`;
+                if (endDate) url += `&end_date=${endDate}`;
+                if (forceRefresh) url += `&force_refresh=true`;
+
+                // Фильтр по выбранному кошельку списания
+                const payoutWalletSelect = document.getElementById('payoutWalletSelect');
+                if (payoutWalletSelect && payoutWalletSelect.value) {
+                    const selectedOption = payoutWalletSelect.options[payoutWalletSelect.selectedIndex];
+                    const walletAddress = selectedOption.dataset.address;
+                    if (walletAddress) {
+                        url += `&wallet=${encodeURIComponent(walletAddress)}`;
+                    }
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+
+                select.innerHTML = '<option value="">-- Выбрать из списка --</option>';
+
+                // API возвращает available (исходящие транзакции)
+                const transactions = data.available || data.transactions || [];
+
+                if (transactions.length > 0) {
+                    transactions.slice(0, 100).forEach(tx => {
+                        const date = formatDate(tx.timestamp);
+                        const amount = tx.amount_usdt ? parseFloat(tx.amount_usdt).toFixed(2) : '?';
+                        const shortHash = tx.tx_hash.substring(0, 10) + '...';
+                        const opt = document.createElement('option');
+                        opt.value = tx.tx_hash;
+                        opt.textContent = `-$${amount} | ${shortHash} | ${date}`;
+                        opt.dataset.amount = tx.amount_usdt;
+                        select.appendChild(opt);
+                    });
+                } else {
+                    const opt = document.createElement('option');
+                    opt.value = '';
+                    opt.textContent = 'Нет исходящих транзакций';
+                    opt.disabled = true;
+                    select.appendChild(opt);
+                }
+
+                // Инфо о кэше
+                const infoEl = document.getElementById('binanceTxInfo');
+                if (infoEl) {
+                    if (data.cached) {
+                        const date = new Date(data.cache_time * 1000);
+                        infoEl.innerHTML = `<small style="color:#666">Данные из кэша (${date.toLocaleTimeString()}). <a href="#" data-crm-call="loadOutgoingTxForBinance(true)">Обновить</a></small>`;
+                    } else {
+                        infoEl.innerHTML = `<small style="color:#666">Обновлено в ${new Date().toLocaleTimeString()}</small>`;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading outgoing tx:', error);
+                select.innerHTML = '<option value="">Ошибка загрузки</option>';
+            }
+        }
+
+        function selectBinanceTx() {
+            const select = document.getElementById('binanceTxSelect');
+            const txHash = select.value;
+            const amount = select.selectedOptions[0]?.dataset?.amount;
+
+            if (txHash) {
+                document.getElementById('binanceTxInput').value = txHash;
+            }
+            if (amount) {
+                // Подставляем всю сумму транзакции, пользователь может уменьшить
+                document.getElementById('binanceUsdt').value = parseFloat(amount).toFixed(2);
+                calcBinanceRate();
+            }
+        }
+
+        function calcBinanceRate() {
+            const thb = parseFloat(document.getElementById('payoutAmountThb')?.value) || 0;
+            const usdt = parseFloat(document.getElementById('binanceUsdt')?.value) || 0;
+            const rateEl = document.getElementById('binanceRate');
+
+            if (thb > 0 && usdt > 0) {
+                const rate = thb / usdt;
+                rateEl.value = rate.toFixed(4);
+            } else {
+                rateEl.value = '';
+            }
+            calculateProfit();
+        }
+
         function _customFormProfitVolume() {
             const payinAmount = parseFloat(document.getElementById('customPayinAmount').value) || 0;
             const payinCurrency = document.getElementById('customPayinCurrency').value;
@@ -1282,8 +1382,8 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                             value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту сделку"
                             data-crm-action="payin-share" data-crm-event="input" data-index="${i}">
                         <span style="color:#166534;font-size:0.75rem;font-weight:700;">${escapeHtml((t.network || 'trc20').toUpperCase())}</span>
-                        <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${t.hash.substring(0, 20)}...</code>
-                        <span style="color:#94a3b8;">${t.date || ''}</span>
+                        <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.hash.substring(0, 20))}...</code>
+                        <span style="color:#94a3b8;">${escapeHtml(t.date || '')}</span>
                         <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;" data-crm-action="payin-remove" data-crm-event="click" data-index="${i}">✕</button>
                     </div>
                     ${hint}
@@ -1813,7 +1913,428 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
                 console.error('Error loading outgoing for MF:', e);
             }
         }
+
+        function renderPayoutTxPool() {
+            const box = document.getElementById('payoutTxPoolBox');
+            if (!box) return;
+            if (!payoutTxPool.length) { box.innerHTML = ''; payoutRefreshInfo(); return; }
+            box.innerHTML = payoutTxPool.map((t, i) => `
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:4px 8px;margin-bottom:4px;font-size:0.85rem;">
+                    <div style="display:flex;align-items:center;gap:0.5rem;">
+                        <span style="color:#dc2626;font-weight:700;">−$</span>
+                        <input type="text" inputmode="decimal" class="form-control"
+                            style="max-width:120px;padding:2px 6px;height:auto;font-size:0.85rem;"
+                            value="${t.amount_usdt ?? ''}" title="сколько из перевода идёт в эту сделку"
+                            data-crm-action="payout-share" data-crm-event="input" data-index="${i}">
+                        <code style="flex:1;color:#64748b;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.hash.substring(0, 20))}...</code>
+                        <span style="color:#94a3b8;">${escapeHtml(t.date || '')}</span>
+                        <button type="button" class="btn btn-sm btn-danger" style="padding:1px 6px;"
+                                data-crm-action="payout-remove" data-crm-event="click" data-index="${i}">✕</button>
+                    </div>
+                    ${t.wallet_label || t.from_address ? `<div style="font-size:0.78rem;color:#64748b;padding:0 4px 2px 8px;">
+                        с кошелька ${t.wallet_label ? '<b>' + escapeHtml(t.wallet_label) + '</b> ' : ''}
+                        <code>${escapeHtml((t.from_address || '').slice(0, 14))}…</code> — туда же пойдёт возврат</div>` : ''}
+                    ${payoutTxHint(t.hash) ? `<div style="font-size:0.78rem;color:#b45309;padding:0 4px 2px 8px;">${payoutTxHint(t.hash)}</div>` : ''}
+                    <div class="payout-tx-over" style="font-size:0.78rem;color:#b91c1c;font-weight:600;padding:0 4px 2px 8px;${payoutTxOverNote(t) ? '' : 'display:none;'}">${payoutTxOverNote(t)}</div>
+                </div>`).join('') +
+                `<div style="text-align:right;font-weight:700;color:#b91c1c;">Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}</div>`;
+            payoutRefreshInfo();
+            if (typeof calculateProfit === 'function') calculateProfit();
+        }
+
+        function payoutSettledOn() {
+            return !!document.getElementById('payoutSettledByPayin')?.checked;
+        }
+
+        function togglePayoutSettled() {
+            const hint = document.getElementById('payoutSettledHint');
+            if (!hint) return;
+            hint.textContent = payoutSettledOn()
+                ? 'Сделка закроется сразу, в очередь возмещений не попадёт.'
+                : 'Отправлено наперёд: сделка встанет в очередь возмещений, вернём фаундеру позже.';
+            if (typeof calculateProfit === 'function') calculateProfit();
+        }
+
+        async function payinToAddress(hash) {
+            if (!hash || hash.length < 40) return null;
+            if (payinToAddressCache[hash] !== undefined) return payinToAddressCache[hash];
+            try {
+                const r = await (await fetch(`${API_URL}/api/tron/payout-tx?hash=${encodeURIComponent(hash)}`)).json();
+                payinToAddressCache[hash] = r.success ? (r.to_address || null) : null;
+            } catch (e) {
+                payinToAddressCache[hash] = null;
+            }
+            return payinToAddressCache[hash];
+        }
+
+        async function syncPayoutSettledDefault() {
+            /* Решает адрес прихода, а не способ оплаты. Клиент прислал USDT на
+               тот же кошелёк, с которого фаундер платил за баты, — он закрыл
+               себя сам, возвращать нечего (сделка #549). Приход упал на общий
+               кошелёк — у фаундера минус, долг настоящий. Менеджер трогал
+               галку руками — больше не вмешиваемся. */
+            const box = document.getElementById('payoutSettledByPayin');
+            if (!box || box.dataset.touched === '1') return;
+            const payer = new Set(payoutTxPool.map(t => (t.from_address || '').trim()).filter(Boolean));
+            const hashes = [
+                ...(payinTxPool || []).map(t => t.hash),
+                (document.querySelector('[name="payin_tx_hash"]')?.value || '').trim(),
+            ].filter(Boolean);
+            if (!payer.size || !hashes.length) { box.checked = false; togglePayoutSettled(); return; }
+            for (const h of hashes) {
+                const to = await payinToAddress(h);
+                if (to && payer.has(to.trim())) {
+                    box.checked = true;
+                    togglePayoutSettled();
+                    return;
+                }
+            }
+            box.checked = false;
+            togglePayoutSettled();
+        }
+
+        function toggleNoConversion() {
+            const on = noConversionOn();
+            const box = document.getElementById('noConversionBox');
+            const transfers = document.getElementById('payoutTransfersBox');
+            if (box) box.style.display = on ? 'block' : 'none';
+            if (transfers) transfers.style.display = on ? 'none' : 'block';
+            if (on) {
+                // Переводы и галка — взаимоисключающие: иначе себестоимость
+                // считалась бы дважды и разъехалась с суммой возврата
+                if (payoutTxPool.length) { payoutTxPool = []; renderPayoutTxPool(); }
+                loadFounderWallets();
+            }
+            calcNoConvRate();
+        }
+
+        async function loadFounderWallets(selectedId) {
+            const sel = document.getElementById('noConvWallet');
+            if (!sel) return;
+            // Нужный кошелёк держим на самом селекте: редактор просит его до
+            // того, как список пришёл из сети, а следующий вызов (из toggle)
+            // видел бы пустое значение и затирал выбор
+            if (selectedId) sel.dataset.want = selectedId;
+            const keep = sel.dataset.want || sel.value;
+            try {
+                const d = await (await fetch(`${API_URL}/api/wallets?no_balances=1&all=1`)).json();
+                if (!d.success) return;
+                sel.innerHTML = '<option value="">-- Выбрать кошелёк --</option>' +
+                    (d.wallets || []).map(w => {
+                        const lbl = (w.label || '').trim();
+                        const addr = (w.address || '').trim();
+                        // Адрес показываем всегда: у нескольких кошельков одинаковые
+                        // подписи, а обрезка «первые 12 символов» их не различает
+                        const shortAddr = addr.length > 14 ? `${addr.slice(0, 6)}…${addr.slice(-6)}` : addr;
+                        const name = (lbl && lbl !== addr) ? `${lbl} — ${shortAddr}` : addr;
+                        return `<option value="${w.id}" title="${escapeHtml(addr)}">${escapeHtml(name)}</option>`;
+                    }).join('');
+                if (keep) sel.value = keep;
+            } catch (e) { console.error('Error loading wallets for founder payout:', e); }
+        }
+
+        function calcNoConvRate() {
+            const info = document.getElementById('noConvRateInfo');
+            if (!info) return;
+            const base = 'С кошельков ничего не уходило, поэтому хеша выдачи нет. ' +
+                         'Сумму ставит менеджер — именно её вернём фаундеру, когда придёт конвертация.';
+            const usdt = noConversionCost();
+            const thb = parseFloat(document.getElementById('payoutAmountThb')?.value) || 0;
+            if (!usdt || !thb) {
+                info.style.background = '#eff6ff'; info.style.color = '#1e40af';
+                info.textContent = base;
+            } else {
+                const rate = thb / usdt;
+                // Тот же коридор, что и на бэкенде: опечатку в сумме видно
+                // только по курсу, сверить её больше не с чем
+                const bad = rate < 25 || rate > 45;
+                info.style.background = bad ? '#fef2f2' : '#eff6ff';
+                info.style.color = bad ? '#b91c1c' : '#1e40af';
+                info.textContent = bad
+                    ? `Курс выдачи ${rate.toFixed(2)} ฿/USDT вне рабочего коридора 25–45 — проверь сумму USDT.`
+                    : `Курс выдачи: ${rate.toFixed(2)} ฿/USDT (${thb.toLocaleString('ru-RU')} ÷ ${usdt}) — для проверки.`;
+            }
+            if (typeof calculateProfit === 'function') calculateProfit();
+        }
+
+        function payoutTxOverNote(t) {
+            /* Доля больше, чем ушло по хешу в сети. Сервер это принимает —
+               выдача бывает несколькими переводами, а отмечают один, и терять
+               настоящую себестоимость из-за этого нельзя. Но молчать тоже:
+               иначе расхождение всплывёт только на возмещении, когда оунеру
+               вернём не ту сумму. */
+            const led = payoutTxLedger[t.hash];
+            const onchain = (t.onchain_usdt != null) ? t.onchain_usdt
+                          : (led && led.amount_usdt ? led.amount_usdt : null);
+            const share = t.amount_usdt;
+            if (onchain == null || !share) return '';
+            const over = +(share - onchain).toFixed(2);
+            if (over <= 0.01) return '';
+            return `⚠️ по этому хешу в сети ушло $${onchain.toFixed(2)} — доля больше на $${over.toFixed(2)}. Сохранить можно, но проверь, не было ли второго перевода.`;
+        }
+
+        function payoutTxShareChanged(i, value) {
+            const n = parseFloat(String(value).replace(/\s/g, '').replace(',', '.'));
+            payoutTxPool[i].amount_usdt = isNaN(n) || n <= 0 ? null : n;
+            const box = document.getElementById('payoutTxPoolBox');
+            const total = box?.querySelector('div[style*="text-align:right"]');
+            if (total) total.innerHTML = `Переводов: ${payoutTxPool.length} · итого $${payoutTxPoolTotal().toFixed(2)}`;
+            payoutRefreshInfo();
+            payoutRefreshOverNotes();
+        }
+
+        function payoutRefreshOverNotes() {
+            /* Перерисовываем только заметки: renderPayoutTxPool пересоздаёт
+               input и сбивает каретку прямо во время набора суммы. */
+            const box = document.getElementById('payoutTxPoolBox');
+            if (!box) return;
+            box.querySelectorAll('.payout-tx-over').forEach((el, i) => {
+                const note = payoutTxOverNote(payoutTxPool[i]);
+                el.innerHTML = note;
+                el.style.display = note ? 'block' : 'none';
+            });
+        }
+
+        function removePayoutTx(i) {
+            payoutTxPool.splice(i, 1);
+            renderPayoutTxPool();
+        }
+
+        function payoutRefreshInfo() {
+            const box = document.getElementById('payoutFounderTxInfo');
+            if (!box) return;
+            if (!payoutTxPool.length) {
+                box.style.background = '#fef3c7'; box.style.color = '#92400e';
+                box.innerHTML = 'Выберите перевод, которым выдали клиенту — по нему подтянутся кошелёк и сумма.';
+                return;
+            }
+            const total = payoutTxPoolTotal();
+            const thb = parseFloat(document.querySelector('[name=payout_amount_thb]')?.value) || 0;
+            const rate = (thb && total) ? (thb / total) : null;
+            const wallets = [...new Set(payoutTxPool.map(t => t.wallet_label || t.from_address).filter(Boolean))];
+            // Курс выдачи — главная проверка «тот ли перевод». Мимо коридора —
+            // сервер такую себестоимость не примет (урок инцидента #501),
+            // и человек должен увидеть это здесь, а не гадать потом.
+            const badRate = rate !== null && (rate < 25 || rate > 45);
+            box.style.background = badRate ? '#fef2f2' : '#ecfdf5';
+            box.style.color = badRate ? '#b91c1c' : '#065f46';
+            box.innerHTML = `Выдано <b>${total.toFixed(2)} USDT</b>` +
+                (wallets.length ? ` с кошелька <b>${escapeHtml(wallets.join(', '))}</b>` : '') +
+                (rate ? ` · курс выдачи ${rate.toFixed(2)} ฿/USDT` : '') +
+                (badRate
+                    ? '<br><b>Курс мимо рынка — похоже, выбран не тот перевод.</b> Пока так, себестоимость не запишется.'
+                    : '<br>Это себестоимость сделки и сумма возврата — вернём на тот же кошелёк.') +
+                (wallets.length > 1 ? '<br><b style="color:#b45309">Переводы с разных кошельков — возврат разложится по ним</b>' : '');
+        }
+
+        async function loadPayoutTxLedger() {
+            try {
+                const r = await (await fetch(`${API_URL}/api/payout-tx`)).json();
+                payoutTxLedger = {};
+                (r.txs || []).forEach(t => { payoutTxLedger[t.tx_hash] = t; });
+            } catch (e) {
+                console.warn('payout-tx ledger:', e);
+            }
+        }
+
+        function payoutTxFree(hash, currentDealId) {
+            /* Свободный остаток перевода с точки зрения ЭТОЙ сделки: её
+               собственная доля не считается занятой — иначе при повторном
+               сохранении сделка сама себе перекрывала бы остаток. */
+            const t = payoutTxLedger[hash];
+            if (!t) return null;
+            const mine = (t.deal_ids || []).includes(currentDealId) ? 0 : 0;
+            return t.free_usdt + mine;
+        }
+
+        function payoutTxOptionLabel(hash) {
+            /* Что видно прямо в списке: разобран перевод или из него ещё можно
+               выдать. Раньше строка показывала только сумму и кошельки, и было
+               не понять, что этот перевод уже оплатил чужую выдачу. */
+            const t = payoutTxLedger[hash];
+            if (!t || t.used_usdt <= 0.01) return '';
+            if (t.free_usdt < -0.01) return `⚠️ перебор $${Math.abs(t.free_usdt).toFixed(2)} · `;
+            return t.free_usdt > 0.01
+                ? `♻️ свободно $${t.free_usdt.toFixed(2)} · `
+                : '✅ разобран · ';
+        }
+
+        function payoutTxHint(hash) {
+            const t = payoutTxLedger[hash];
+            if (!t) return '';
+            if (t.used_usdt <= 0.01) return '';
+            const deals = (t.deal_ids || []).map(id => '#' + id).join(', ');
+            if (t.free_usdt < -0.01) {
+                return `по переводу разнесено $${t.used_usdt.toFixed(2)}${deals ? ' (' + deals + ')' : ''} при ушедших в сети $${t.amount_usdt.toFixed(2)} — перебор $${Math.abs(t.free_usdt).toFixed(2)}`;
+            }
+            return `по переводу уже разнесено $${t.used_usdt.toFixed(2)}${deals ? ' (' + deals + ')' : ''}, свободно $${t.free_usdt.toFixed(2)} из $${t.amount_usdt.toFixed(2)}`;
+        }
+
+        function selectPayoutTx(select) {
+            const opt = select.selectedOptions[0];
+            const hash = select.value;
+            select.selectedIndex = 0;
+            if (!hash) return;
+            if (payoutTxPool.some(t => t.hash === hash)) {
+                showToast('Этот перевод уже добавлен', 'error');
+                return;
+            }
+            const amount = parseFloat(opt?.dataset?.amount);
+            const led = payoutTxLedger[hash];
+            // Подставляем свободный остаток: перевод на 1952 мог уже оплатить
+            // выдачу другой сделке, и целиком его брать нельзя
+            const suggested = led ? Math.max(led.free_usdt, 0) : (isNaN(amount) ? null : amount);
+            payoutTxPool.push({
+                hash,
+                amount_usdt: suggested,
+                onchain_usdt: led ? led.amount_usdt : (isNaN(amount) ? null : amount),
+                date: opt?.dataset?.date || '',
+                from_address: opt?.dataset?.from || '',
+                to_address: opt?.dataset?.to || '',
+                wallet_label: opt?.dataset?.label || '',
+            });
+            renderPayoutTxPool();
+            syncPayoutSettledDefault();
+            if (led && led.used_usdt > 0.01) {
+                showToast(payoutTxHint(hash), 'warning');
+            }
+        }
+
+        async function loadOutgoingTxForSelect(force) {
+            const select = document.getElementById('payoutTxSelect');
+            if (!select) return;
+            // Остатки по переводам должны приехать раньше списка: иначе опции
+            // отрисуются без пометки «свободно / разобран»
+            await loadPayoutTxLedger();
+            // Сделку на редактирование открывают раньше, чем приедет реестр, и
+            // перебор по уже сохранённой доле оставался бы без предупреждения
+            payoutRefreshOverNotes();
+            const btn = document.getElementById('payoutTxRefreshBtn');
+            if (btn) { btn.disabled = true; btn.textContent = '…'; }
+            // Пустой селект читается как «переводов нет», хотя на холодном кэше
+            // обход TronScan по всем кошелькам занимает под минуту (кейс 21.08:
+            // «в начале не было, в итоге всё было»)
+            if (!select.dataset.loaded) {
+                select.innerHTML = '<option value="">Читаю переводы из сети…</option>';
+            }
+            try {
+                // ВАЖНО: не ждём /api/wallets вместе с переводами — он тянет
+                // балансы из TronScan и держал список пустым лишние секунды.
+                // Подписи приезжают следом и просто перерисовывают тексты.
+                // all_wallets: фаундер выдаёт и со своего balance-кошелька
+                // (кошелёк Теодора именно такой), а обычная выборка берёт
+                // только monitored — его переводов в списке не было вовсе.
+                // stale_ok: отдать то, что есть в кэше, не дожидаясь обхода
+                // TronScan (на холодном кэше это ~40 секунд). ↻ идёт в сеть.
+                // no_balances: подписи нужны сразу, балансы стоят 24 секунд сети.
+                // all: подписать надо и balance-кошельки — с них тоже выдают.
+                const walletsPromise = fetch(`${API_URL}/api/wallets?no_balances=1&all=1`)
+                    .then(r => r.json()).catch(() => ({success: false}));
+                const txResp = await fetch(
+                    `${API_URL}/api/transactions/outgoing?include_internal=1&all_wallets=1&limit=200${force ? '&force_refresh=true' : '&stale_ok=1'}`
+                ).then(r => r.json());
+                const wResp = await Promise.race([
+                    walletsPromise,
+                    new Promise(res => setTimeout(() => res({success: false, pending: true}), 1200)),
+                ]);
+                // Кошелёк мог не ответить (лимит TronScan) — молчать нельзя:
+                // менеджер ищет свою выдачу, не находит и решает, что её не было
+                const warnEl = document.getElementById('payoutTxWarn');
+                const failed = (txResp.wallets_errors || []).length;
+                if (warnEl) {
+                    const age = txResp.cache_time
+                        ? Math.round((Date.now() / 1000 - txResp.cache_time) / 60) : null;
+                    const stale = txResp.stale && age !== null && age > 10;
+                    warnEl.innerHTML = failed
+                        ? `⚠️ TronScan ответил не по всем кошелькам (${failed}) — список неполный. Нажми ↻ или введи хеш вручную.`
+                        : (stale ? `Список из кэша, обновлялся ${age} мин назад. Свежего перевода может не быть — нажми ↻.` : '');
+                    warnEl.style.display = (failed || stale) ? 'block' : 'none';
+                }
+                if (txResp.warming) {
+                    select.innerHTML = '<option value="">Собираю переводы из сети, обнови через минуту (↻)</option>';
+                    return;
+                }
+                if (!txResp.success || !txResp.available) {
+                    select.innerHTML = '<option value="">Не удалось прочитать переводы — введите хеш вручную</option>';
+                    return;
+                }
+                const labels = {};
+                (wResp.wallets || []).forEach(w => {
+                    // Подпись = адрес считается отсутствующей: у кошелька Теодора
+                    // в label лежит его же адрес, и список читался как каша
+                    const lbl = (w.label || '').trim();
+                    labels[w.address] = (lbl && lbl !== w.address) ? lbl : '';
+                });
+                const who = a => labels[a] || (a || '').substring(0, 10) + '…';
+                select.innerHTML = '<option value="">-- Выбрать из исходящих --</option>' +
+                    txResp.available.slice(0, 200).map(tx =>
+                        `<option value="${escapeHtml(tx.tx_hash)}" data-amount="${escapeHtml(tx.amount_usdt)}"
+                                 data-date="${formatDate(tx.timestamp)}" data-from="${escapeHtml(tx.from_address || '')}"
+                                 data-to="${escapeHtml(tx.to_address || '')}" data-label="${escapeHtml(labels[tx.from_address] || '')}">
+                            ${payoutTxOptionLabel(tx.tx_hash)}−$${Number(tx.amount_usdt).toFixed(2)} | ${escapeHtml(tx.tx_hash.substring(0, 10))}… | ${escapeHtml(who(tx.from_address))} → ${escapeHtml(who(tx.to_address))}${
+                                tx.is_internal ? ' · между своими' : ''} | ${formatDate(tx.timestamp)}</option>`
+                    ).join('');
+                select.dataset.loaded = '1';
+                // Подписи опоздали — дорисуем, когда придут
+                if (wResp.pending) {
+                    walletsPromise.then(() => {
+                        if (document.getElementById('payoutTxSelect') === select) {
+                            loadOutgoingTxForSelect(false);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.error('Error loading outgoing transactions:', e);
+                select.innerHTML = '<option value="">Не удалось прочитать переводы — введите хеш вручную</option>';
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = '↻'; }
+            }
+        }
+
+        function lookupPayoutFounderTx() {
+            const el = document.getElementById('payoutFounderHash');
+            const box = document.getElementById('payoutFounderTxInfo');
+            const hash = (el.value || '').trim();
+            payoutFounderTx = null;
+            clearTimeout(payoutFounderTimer);
+            if (hash.length < 40) {
+                box.style.background = '#fef3c7'; box.style.color = '#92400e';
+                box.innerHTML = 'По хешу подтянем кошелёк и сумму — это и есть себестоимость выдачи и то, что вернём фаундеру.';
+                return;
+            }
+            box.innerHTML = 'Читаю перевод в сети…';
+            payoutFounderTimer = setTimeout(async () => {
+                try {
+                    const r = await (await fetch(`${API_URL}/api/tron/payout-tx?hash=${encodeURIComponent(hash)}`)).json();
+                    if (!r.success) {
+                        box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
+                        box.textContent = r.error || 'Перевод не найден';
+                        return;
+                    }
+                    // Ручной хеш попадает в тот же пул, что и выбранный из списка —
+                    // иначе две сущности с одним смыслом разъезжаются
+                    if (!payoutTxPool.some(t => t.hash === hash)) {
+                        payoutTxPool.push({hash, amount_usdt: r.amount_usdt,
+                                           from_address: r.from_address, to_address: r.to_address,
+                                           wallet_label: r.wallet_label || '', wallet_id: r.wallet_id});
+                    }
+                    el.value = '';
+                    renderPayoutTxPool();
+                } catch (e) {
+                    box.style.background = '#fef2f2'; box.style.color = '#b91c1c';
+                    box.innerHTML = 'Не удалось прочитать перевод';
+                }
+            }, 600);
+        }
     return {
+        loadOutgoingTxForBinance, selectBinanceTx, calcBinanceRate,
+        togglePayoutSettled, syncPayoutSettledDefault,
+        toggleNoConversion, loadFounderWallets, calcNoConvRate,
+        renderPayoutTxPool, payoutTxPoolTotal, payoutTxShareChanged,
+        removePayoutTx, loadPayoutTxLedger, selectPayoutTx,
+        loadOutgoingTxForSelect, lookupPayoutFounderTx,
+        get payoutTxPool() { return payoutTxPool; },
+        set payoutTxPool(v) { payoutTxPool = v || []; renderPayoutTxPool(); },
         calcCustomProfit, onCustomRateInput, onCustomUsdtInput,
         get customUsdtMode() { return { ...customUsdtMode }; },
         onCustomPayinMethodChange, selectCustomPayinTx,
@@ -1827,8 +2348,6 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         get cashBatchesData() { return cashBatchesData; },
         calculateProfit,
         set currentUsdtThbRate(v) { currentUsdtThbRate = v; currentUsdtThbRateAt = Date.now(); },
-        get payoutTxPool() { return payoutTxPool; },
-        set payoutTxPool(v) { payoutTxPool = v || []; calculateProfit(); },
         sberRemovePart, sberRender, sberIncomeLine, sberPartsSum,
         autoCalcUsdt, setPayinMode(mode) { payinMode = mode; },
         payinTxPoolTotal, renderPayinTxPool, payinTxShareChanged,

@@ -86,6 +86,11 @@ with sync_playwright() as playwright:
                'to_address':f'T17-outgoing-address-{i%4}',
                'timestamp':'2026-09-28T10:00:00Z'} for i in range(1,251)]
     outgoing_count=[250]
+    founder_hash='f'*64
+    founder_tx={'tx_hash':founder_hash,'amount_usdt':3205.13,
+                'from_address':'T17-founder-wallet','to_address':'T17-recipient',
+                'timestamp':'2026-09-28T10:00:00Z'}
+    outgoing_mode=['mf']
     incoming_hash='e'*64
     manual_out_hash='d'*64
     mocked=[]
@@ -94,9 +99,16 @@ with sync_playwright() as playwright:
         if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/transactions/outgoing':
             mocked.append(('outgoing',parse_qs(parsed.query)))
             limit=int(parse_qs(parsed.query).get('limit',['1000'])[0])
+            available=[founder_tx] if outgoing_mode[0]=='founder' else outgoing[:outgoing_count[0]]
             route.fulfill(status=200,content_type='application/json',
-                          body=json.dumps({'success':True,'available':outgoing[:outgoing_count[0]][:limit],
+                          body=json.dumps({'success':True,'available':available[:limit],
                                            'wallets_errors':[]}))
+            return
+        if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/tron/payout-tx':
+            mocked.append(('founder-lookup',parse_qs(parsed.query)))
+            route.fulfill(status=200,content_type='application/json',
+                          body=json.dumps({'success':True,'amount_usdt':3205.13,
+                            'from_address':'T17-founder-wallet','to_address':'T17-recipient'}))
             return
         if parsed.hostname=='127.0.0.1' and parsed.port==18917 and parsed.path=='/api/transactions/incoming':
             mocked.append(('custom-incoming',parse_qs(parsed.query)))
@@ -136,8 +148,11 @@ with sync_playwright() as playwright:
     context.route('**/*', route_local)
     page = context.new_page()
     crm_posts=[]
+    stand_puts=[]
     page.on('request', lambda req: crm_posts.append(req.url)
             if req.method=='POST' and req.url.endswith('/api/deals') else None)
+    page.on('request', lambda req: stand_puts.append(req.post_data_json)
+            if req.method=='PUT' and req.url.endswith('/api/stand/state') else None)
     result = page.request.post('http://127.0.0.1:18917/api/auth/login',
                                data={'username':'karim','password':'synthetic-t17'})
     print('login:', result.status, result.json().get('success'))
@@ -149,6 +164,12 @@ with sync_playwright() as playwright:
          [path,(await fetch(path,{credentials:'same-origin'})).status])))''')
     print('same-origin routes:',routes)
     start_manual(page)
+    first_manual_put=next((b for b in stand_puts if any(
+        d.get('manualNew') for d in b.get('data',{}).get('deals',[]))),None)
+    assert first_manual_put is not None
+    first_d=next(d for d in first_manual_put['data']['deals'] if d.get('manualNew'))
+    assert first_d['manual'] is True and first_d['step']=='manual'
+    print('first actual manual PUT:',first_d['manual'],first_d['manualNew'],first_d['step'])
     host = page.locator('#crmDraftHost')
     host.locator('#createDealForm').wait_for(timeout=20000)
     host.locator('#managerSelect[data-upgraded="true"]').wait_for(state='attached',timeout=20000)
@@ -702,5 +723,61 @@ with sync_playwright() as playwright:
     assert page.evaluate('(id)=>deal(id).notes',custom_id)==old_note
     print('custom cancel/next-mount/409: no field leak, server version and board unchanged')
     crm_c.close()
+    outgoing_mode[0]='founder'
+    start_manual(page)
+    host=page.locator('#crmDraftHost')
+    host.locator('#clientSearchInput').fill('T17 synthetic founder')
+    pick(host,'payinMethod','crypto_direct')
+    host.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(host,'payoutSource','founder_personal')
+    host.locator('#payoutAmountThb').fill('100000')
+    page.wait_for_function('(h)=>document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("payoutTxSelect")?.innerHTML.includes(h)',arg=founder_hash)
+    crm_f=context.new_page()
+    crm_f.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_f.evaluate('showSection("create")')
+    crm_f.wait_for_function('document.querySelector("#payoutSource")?.dataset.upgraded === "true"',timeout=20000)
+    pick(crm_f,'payinMethod','crypto_direct')
+    crm_f.locator('[name="payin_amount_usdt"]').fill('3300')
+    pick(crm_f,'payoutSource','founder_personal')
+    crm_f.locator('#payoutAmountThb').fill('100000')
+    crm_f.wait_for_function('(h)=>document.querySelector("#payoutTxSelect")?.innerHTML.includes(h)',arg=founder_hash)
+    pick(crm_f,'payoutTxSelect',founder_hash)
+    pick(host,'payoutTxSelect',founder_hash)
+    founder_text=[crm_f.locator('#payoutTxPoolBox').inner_text().strip(),
+                  host.locator('#payoutTxPoolBox').inner_text().strip()]
+    founder_money=[crm_f.locator('#profitUsdt').input_value(),
+                   host.locator('#profitUsdt').input_value()]
+    print('founder payout CRM/tasks:',founder_text[0]==founder_text[1],founder_money)
+    assert founder_text[0]==founder_text[1] and founder_money==['94.87','94.87']
+    crm_f.locator('#payoutNoConversion').check()
+    host.locator('#payoutNoConversion').check()
+    assert crm_f.locator('#payoutTxPoolBox').inner_text()==host.locator('#payoutTxPoolBox').inner_text()==''
+    crm_f.locator('#noConvUsdt').fill('3205.13')
+    host.locator('#noConvUsdt').fill('3205.13')
+    assert crm_f.locator('#noConvRateInfo').inner_text()==host.locator('#noConvRateInfo').inner_text()
+    assert crm_f.locator('#profitUsdt').input_value()==host.locator('#profitUsdt').input_value()=='94.87'
+    print('founder own-THB no-conversion CRM/tasks: same cost/rate/gross; tx pool cleared')
+    crm_f.locator('#payoutNoConversion').uncheck()
+    host.locator('#payoutNoConversion').uncheck()
+    pick(crm_f,'payoutTxSelect',founder_hash)
+    pick(host,'payoutTxSelect',founder_hash)
+    crm_f.locator('#payoutSettledByPayin').check()
+    host.locator('#payoutSettledByPayin').check()
+    settled_hints=[crm_f.locator('#payoutSettledHint').inner_text(),
+                   host.locator('#payoutSettledHint').inner_text()]
+    print('founder settled hints:',settled_hints,host.locator('#payoutSettledHint').evaluate(
+      'e=>({text:e.textContent,display:getComputedStyle(e).display,parent:getComputedStyle(e.parentElement).display,checked:e.getRootNode().getElementById("payoutSettledByPayin").checked,touched:e.getRootNode().getElementById("payoutSettledByPayin").dataset.touched})'))
+    assert settled_hints[0]==settled_hints[1]
+    page.locator('.card.edit-page > .row > button').first.click()
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    founder_saved=page.evaluate('''()=>{const d=S.deals.find(x=>x.client==='T17 synthetic founder');
+      const p=crmPayload(d);return {hash:d.payout.hashes[0],source:p.payout_source,
+        cost:p.payout_amount_usdt,links:p.payout_tx_hashes,needs:p.needs_reimbursement};}''')
+    print('founder saved:',founder_saved)
+    assert founder_saved['hash']['hash']==founder_hash and founder_saved['cost']==3205.13
+    assert founder_saved['source']=='founder_personal' and founder_saved['links'][0]['from_address']=='T17-founder-wallet'
+    assert founder_saved['needs'] is False
+    assert not crm_posts,crm_posts
+    crm_f.close()
     print('blocked external attempts:',blocked)
     browser.close()

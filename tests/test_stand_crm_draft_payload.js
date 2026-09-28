@@ -70,4 +70,11 @@ assert.equal(custom.payout_amount_usdt,952.38);
 assert.equal(custom.profit_usdt,47.620000000000005);
 assert.equal(custom.net_profit_usdt,42.86);
 assert.equal(custom.agents[0].percent,10);
+const founder=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  paySrc:'founder',amountUsdt:3300,amountThb:100000,
+  payout:{thb:100000,settledByPayin:true,hashes:[{hash:'f'.repeat(64),amount:3205.13,
+    from_address:'synthetic-founder',to_address:'synthetic-client'}]}});
+assert.equal(founder.payout_source,'founder_personal');
+assert.equal(founder.needs_reimbursement,false);
+assert.equal(founder.payout_tx_hashes[0].from_address,'synthetic-founder');
 console.log('T17 rental/freehold/custom/multi-payin payload: PASS');

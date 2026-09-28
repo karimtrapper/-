@@ -2671,7 +2671,8 @@ function closeDeal(d,reason){
 function newDeal(o){
   S.seq++;
   if(!o.client) o.client=o.sourceRef||'Без имени';
-  const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,log:[],
+  const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
+    manual:!!o.manual,manualNew:!!o.manualNew,log:[],
     source:o.source,sourceRef:o.sourceRef,client:o.client,type:o.type,
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
@@ -4000,8 +4001,8 @@ function createQuick(){
 function createFull(){
   if(!draftValid())return;const D=S.draft;ensureClient(D);
   D.isOld=D.clientId?!!(clientById(D.clientId)||{}).docs:false;
-  const d=newDeal({...D,step:'manual',...draftAmounts(D)});
-  d.manual=true;d.log=[];
+  const d=newDeal({...D,step:'manual',manual:true,...draftAmounts(D)});
+  d.log=[];
   log(d,'Сделка внесена вручную, без задачника · '+(d.type||'')+' · клиент '+(d.client||'без имени'));
   S.draft=null;S.edit=d.id;save();render();toast('Заполните остальные поля и сохраните');
 }
@@ -4564,12 +4565,15 @@ function crmPayload(d){
     Object.assign(p,{deal_kind:'exchange',payout_method:method[po.method]||'transfer',
       payout_source:PAYOUT_CRM[d.paySrc]||'cash_batch',
       payout_amount_thb:d.paySrc==='client'?null:(po.thb??d.amountThb??null),
-      payout_amount_usdt:r2(E.cost),payout_tx_hashes:hx(po.hashes),
+      payout_amount_usdt:r2(E.cost),payout_tx_hashes:(po.hashes||[]).filter(h=>h&&h.hash).map(h=>({
+        hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null,
+        from_address:h.from_address||'',to_address:h.to_address||''})),
+      payout_tx_hash:d.paySrc==='coins'?(po.hashes||[])[0]?.hash||null:null,
       bank_card_id:po.bankCardId??null,
       payout_wallet_id:po.walletId??null,
       payout_founder_name:d.paySrc==='founder'?(po.founder||null):null,
       payout_no_conversion:d.paySrc==='founder'?!!po.ownBaht:false,
-      needs_reimbursement:d.paySrc==='founder'&&!po.reimbursement});
+      needs_reimbursement:d.paySrc==='founder'&&!po.settledByPayin&&!po.reimbursement});
   }
   return p;
 }
@@ -4854,8 +4858,7 @@ function startManual(){
      подчищаем прошлые пустышки, прежде чем завести новую. */
   S.deals=(S.deals||[]).filter(x=>!(x.manualNew&&!x.client&&!x.amountRub&&!x.amountThb&&!x.amountUsdt));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
-    payType:'По реквизитам',curBase:'rub',step:'manual'});
-  d.manual=true;d.manualNew=true;
+    payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true});
   S.edit=d.id;save();render();
 }
 

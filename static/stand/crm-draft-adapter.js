@@ -54,6 +54,7 @@ function crmDraftSafeFetch(url,options) {
   const u=new URL(url,location.origin);
   const allowed=['/api/sber-incomes','/api/transactions/outgoing','/api/tx/lookup',
     '/api/transactions/incoming','/api/wl-transactions',
+    '/api/payout-tx','/api/tron/payout-tx',
     '/api/cash/batches','/api/cards/balance','/api/wallets',
     '/api/rates',
     '/api/deals/mf-realty/preview','/api/deals/mf-freehold/preview',
@@ -71,7 +72,8 @@ function crmDraftSanitize(form) {
     'addMfPayoutChecked()','addMfPayoutManual()','stdAgentsPreset(\'cascade\')',
     'stdAgentsPreset(\'flat\')','stdAgentsAdd()',
     "customAgentsPreset('cascade')","customAgentsPreset('flat')","customAgentsAdd()",
-    'createCustomDeal()']);
+    'createCustomDeal()','loadOutgoingTxForSelect(true)',
+    'loadOutgoingTxForBinance(true)']);
   for(const el of [form,...form.querySelectorAll('*')]) {
     for(const attr of [...el.attributes]) {
       if(attr.name==='onclick'&&calls.has(attr.value))el.dataset.crmCall=attr.value;
@@ -116,6 +118,8 @@ function crmDraftLayout(active) {
   }
   const noConv=root.getElementById('noConversionBox');
   if(noConv)noConv.style.display=root.getElementById('payoutNoConversion')?.checked?'block':'none';
+  const transfers=root.getElementById('payoutTransfersBox');
+  if(transfers)transfers.style.display=root.getElementById('payoutNoConversion')?.checked?'none':'block';
   const subtype=document.getElementById('crmDraftRealtySubtypeBox');
   if(subtype)subtype.style.display=mf?'block':'none';
   const tariffBox=document.getElementById('crmDraftTariffBox');
@@ -171,6 +175,7 @@ function crmDraftFill(active,d) {
   crmDraftValue(root,'payoutSource',src);
   crmDraftValue(root,'payout_amount_thb',d.payout?.thb??d.amountThb);
   crmDraftValue(root,'binanceUsdt',d.payout?.usdt);
+  crmDraftValue(root,'binanceTxInput',d.payout?.hashes?.[0]?.hash||'');
   crmDraftValue(root,'bankCardSelect',d.payout?.bankCardId);
   crmDraftValue(root,'payoutWalletSelect',d.payout?.walletId);
   const noConv=root.getElementById('payoutNoConversion');if(noConv)noConv.checked=!!d.payout?.ownBaht;
@@ -206,6 +211,7 @@ function crmDraftSnapshot(active) {
     customAgents:active.core.customAgents.map(x=>({...x})),
     customUsdtMode:active.core.customUsdtMode,
     mfPayoutTxPool:active.core.mfPayoutTxPool.map(x=>({...x})),
+    payoutTxPool:active.core.payoutTxPool.map(x=>({...x})),
     source:document.getElementById('crmDraftSource')?.value,
     sourceRef:document.getElementById('crmDraftSourceRef')?.value,
     subtype:document.getElementById('crmDraftRealtySubtype')?.value,
@@ -226,6 +232,7 @@ function crmDraftRestore(active,snapshot) {
   active.core.resetPayinTxPool(snapshot.payinTxPool||[]);
   active.core.payinExtra=snapshot.payinExtra||[];
   active.core.mfPayoutTxPool=snapshot.mfPayoutTxPool;
+  active.core.payoutTxPool=snapshot.payoutTxPool||[];
   active.core.stdAgentsLoad(snapshot.agents||[]);
   active.core.customAgentsLoad(snapshot.customAgents||[]);
   if(snapshot.customUsdtMode?.payin==='usdt')active.core.onCustomUsdtInput('payin');
@@ -309,6 +316,10 @@ async function crmDraftMount(id) {
       mfPayoutTxPool:(d.mfPayout||[]).map(x=>({
         hash:x.hash,network:String(x.net||'trc20').toLowerCase().replace('-',''),
         amount_usdt:x.amount,to_address:x.to_address||'',date:x.date||''})),
+      payoutTxPool:(d.payout?.hashes||[]).map(x=>({hash:x.hash,
+        amount_usdt:x.amount??x.amount_usdt??null,
+        from_address:x.from_address||'',to_address:x.to_address||'',
+        wallet_label:x.wallet_label||'',wallet_id:x.wallet_id||null})),
     });
     crmDraftFill(active,d);
     active.core.stdAgentsLoad((d.agents||[]).map(x=>({
@@ -332,13 +343,20 @@ async function crmDraftMount(id) {
     active.core.sberRender();
     active.core.renderPayinTxPool();
     active.core.renderMfPayoutTxPool();
+    active.core.renderPayoutTxPool();
     await Promise.all([active.core.sberLoadIncomes(),active.core.loadMfPayoutTx(),
       active.core.loadCashBatchesForSelect(),active.core.loadBankCardsForSelect(),
       crmDraftLoadPayinTx(active),crmDraftLoadLists(active),crmDraftLoadWallets(active),crmDraftLoadRate(active)]);
     if(crmDraftActive!==active)return;
     active.core.upgradeAllSelects();
     crmDraftValue(shadow,'bankCardSelect',d.payout?.bankCardId);
+    if(crmDraftRead(shadow,'payoutSource')==='binance')active.core.loadOutgoingTxForBinance();
+    if(crmDraftRead(shadow,'payoutSource')==='founder_personal'){
+      active.core.loadOutgoingTxForSelect(false);
+      active.core.loadFounderWallets(d.payout?.walletId);
+    }
     active.core.calculateProfit();
+    active.core.calcBinanceRate();
     active.core.calcCustomProfit();
     crmDraftPreview(active);
   }catch(e){host.textContent='Форма CRM недоступна: '+e.message;}
@@ -415,6 +433,8 @@ function crmDraftWire(active) {
     }
     if(el.id==='customPayinMethod')active.core.onCustomPayinMethodChange();
     if(el.id==='customPayinTxSelect')active.core.selectCustomPayinTx(el);
+    if(el.id==='binanceTxSelect')active.core.selectBinanceTx();
+    if(el.id==='payoutTxSelect')active.core.selectPayoutTx(el);
     if(el.id==='sberKindSelectC')active.core.sberKindChanged(el.value);
     if(['customPayinCurrency','customPayoutCurrency'].includes(el.id))active.core.calcCustomProfit();
     if(el.id==='payinMethod')crmDraftLayout(active);
@@ -422,11 +442,19 @@ function crmDraftWire(active) {
     if(el.id==='payinTxSelect')active.core.selectPayinTx(el);
     if(el.id==='payoutSource'||el.id==='bankCardSelect'){
       crmDraftLayout(active);active.core.calculateProfit();
+      if(el.id==='payoutSource'&&el.value==='binance')active.core.loadOutgoingTxForBinance();
+      if(el.id==='payoutSource'&&el.value==='founder_personal'){
+        active.core.loadOutgoingTxForSelect(false);
+        active.core.loadFounderWallets();
+      }
     }
     if(el.id==='payoutNoConversion'){
-      const box=root.getElementById('noConversionBox');if(box)box.style.display=el.checked?'block':'none';
-      active.core.calculateProfit();
+      active.core.toggleNoConversion();
     }
+    if(el.id==='payoutSettledByPayin'){
+      el.dataset.touched='1';active.core.togglePayoutSettled();
+    }
+    if(el.id==='noConvWallet')el.dataset.want=el.value;
   });
   document.getElementById('crmDraftInvoiceCurrency')?.addEventListener('change',()=>crmDraftLayout(active));
   root.addEventListener('input',e=>{
@@ -438,7 +466,12 @@ function crmDraftWire(active) {
     if(el.id==='customPayoutRate')active.core.onCustomRateInput('payout');
     if(el.id==='customPayinUsdt')active.core.onCustomUsdtInput('payin');
     if(el.id==='customPayoutUsdt')active.core.onCustomUsdtInput('payout');
-    if(['payoutAmountThb','binanceUsdt','noConvUsdt'].includes(el.id))active.core.calculateProfit();
+    if(el.id==='binanceUsdt')active.core.calcBinanceRate();
+    if(el.id==='payoutAmountThb'){
+      active.core.calcBinanceRate();active.core.calcNoConvRate();
+    }
+    if(el.id==='noConvUsdt')active.core.calcNoConvRate();
+    if(el.id==='payoutFounderHash')active.core.lookupPayoutFounderTx();
     if(el.name==='payin_rate_rub_usdt'){active.core.setPayinMode('rate');active.core.autoCalcUsdt();}
     if(el.name==='payin_amount_usdt'){active.core.setPayinMode('usdt');active.core.autoCalcUsdt();}
     if(['mfInvoiceThb','mfBuyRate','mfSellRate','mfSpread','mfPercent','mfSentThb',
@@ -457,6 +490,7 @@ function crmDraftWire(active) {
   root.addEventListener('click',e=>{
     const call=e.target.closest('[data-crm-call]')?.dataset.crmCall;
     if(call){
+      e.preventDefault();
       const core=active.core;
       const actions={
     'sberLoadIncomes()':()=>core.sberLoadIncomes(),
@@ -474,6 +508,8 @@ function crmDraftWire(active) {
         "customAgentsPreset('flat')":()=>core.customAgentsPreset('flat'),
         'customAgentsAdd()':()=>core.customAgentsAdd(),
         'createCustomDeal()':()=>editSave(active.id),
+        'loadOutgoingTxForSelect(true)':()=>core.loadOutgoingTxForSelect(true),
+        'loadOutgoingTxForBinance(true)':()=>core.loadOutgoingTxForBinance(true),
       };
       actions[call]?.();
     }
@@ -565,6 +601,8 @@ function crmDraftAction(active,action,target) {
   else if(action==='custom-agent-remove')core.customAgentsRemove(i);
   else if(action==='custom-agent-tier')core.customAgentsTier(i,Number(target.dataset.delta));
   else if(action==='custom-agent-field')core.customAgentsField(i,target.dataset.key,target.value);
+  else if(action==='payout-share')core.payoutTxShareChanged(i,target.value);
+  else if(action==='payout-remove')core.removePayoutTx(i);
   crmDraftCapture();
 }
 function crmDraftCommitCustom(a,d,before) {
@@ -741,14 +779,31 @@ function crmDraftCommit(id) {
     d.amountThb=crmDraftNum(crmDraftRead(r,'payout_amount_thb'));
     d.payout=d.payout||{};
     d.payout.thb=d.amountThb;
-    d.payout.usdt=crmDraftNum(crmDraftRead(r,'binanceUsdt'));
+    const outgoing=a.core.payoutTxPool.map(x=>({hash:x.hash,
+      amount:crmDraftNum(x.amount_usdt),network:x.network||'trc20',
+      from_address:x.from_address||'',to_address:x.to_address||'',
+      wallet_label:x.wallet_label||'',wallet_id:x.wallet_id||null}));
+    const source=crmDraftRead(r,'payoutSource');
+    const singleHash=crmDraftRead(r,'binanceTxInput').trim();
+    const founderHash=crmDraftRead(r,'payoutFounderHash').trim();
+    d.payout.hashes=source==='founder_personal'?outgoing:
+      source==='binance'&&singleHash?[{hash:singleHash,
+        amount:crmDraftNum(crmDraftRead(r,'binanceUsdt')),network:'trc20'}]:[];
+    if(source==='founder_personal'&&founderHash&&!d.payout.hashes.some(x=>x.hash===founderHash))
+      d.payout.hashes.push({hash:founderHash,amount:null,network:'trc20'});
+    d.payout.usdt=source==='founder_personal'?
+      (r.getElementById('payoutNoConversion')?.checked?
+        crmDraftNum(crmDraftRead(r,'noConvUsdt')):a.core.payoutTxPoolTotal()):
+      crmDraftNum(crmDraftRead(r,'binanceUsdt'));
     const method={office:'наличные в офисе',courier:'курьер',atm:'банкомат',transfer:'перевод на тайский счёт'};
     d.payout.method=method[crmDraftRead(r,'payout_method')]||'';
     const src={cash_batch:'cash',bank_card:'scb',binance:'coins',founder_personal:'founder'};
     d.paySrc=src[crmDraftRead(r,'payoutSource')]||null;
     d.payout.founder=crmDraftRead(r,'payout_founder_name');
     d.payout.bankCardId=crmDraftNum(crmDraftRead(r,'bankCardSelect'));
-    d.payout.walletId=crmDraftNum(crmDraftRead(r,'payoutWalletSelect'));
+    d.payout.walletId=source==='founder_personal'?
+      crmDraftNum(outgoing.find(x=>x.wallet_id)?.wallet_id):
+      crmDraftNum(crmDraftRead(r,'payoutWalletSelect'));
     d.payout.ownBaht=!!r.getElementById('payoutNoConversion')?.checked;
     d.payout.settledByPayin=!!r.getElementById('payoutSettledByPayin')?.checked;
     if(d.payout.ownBaht){
