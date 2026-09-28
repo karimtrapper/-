@@ -215,6 +215,11 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
         return _result(demo_outcome if demo_outcome in ('failed', 'pending') else 'pending', demo=True)
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
+    if os.environ.get('STAND_MODE') == '1':
+        # TronScan/Etherscan — реальные внешние сервисы; на стенде сеть не трогаем
+        # даже через default-bound `get` (сокет-guard блокирует и это, но явный
+        # выход честнее генерик-ошибки таймаута).
+        return _result('pending', checkError='На стенде проверка сети выключена')
     try:
         if network == 'trc20':
             headers = {'User-Agent': TRONSCAN_USER_AGENT}

@@ -55,6 +55,10 @@ class BitrixError(RuntimeError):
 
 
 def _post(method: str, data: dict | None = None) -> dict:
+    if os.environ.get('STAND_MODE') == '1':
+        # На стенде портал Bitrix настоящий, а сделки тестовые — ни читать,
+        # ни писать в боевой CRM нельзя, даже если BITRIX_WEBHOOK где-то задан.
+        raise BitrixError('stand_blocked')
     if not BITRIX_WEBHOOK:
         raise BitrixError('BITRIX_WEBHOOK не задан — вебхук портала берётся только из env')
     resp = requests.post(BITRIX_WEBHOOK + method, data=data or {}, timeout=20)

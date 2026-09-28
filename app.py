@@ -20,6 +20,7 @@ import hmac
 import secrets
 import base64
 import binascii
+import stand_notify
 from collections import Counter
 import bcrypt
 import logging
@@ -45,6 +46,20 @@ if STAND_MODE:
     for _off in ('REESTR_SYNC_ENABLED', 'PAYMENT_POLL_ENABLED', 'PAYIN_ADDR_BACKFILL',
                  'TRONSCAN_WARM_ENABLED', 'KYC_RETENTION_ENABLED'):
         os.environ[_off] = '0'
+    # env-прокси — отдельная дыра в guard'е: connect() видит адрес прокси
+    # (часто loopback — он всегда разрешён), а реальная цель (api.telegram.org
+    # и т.п.) едет внутри HTTP CONNECT и на сокетном уровне не видна вообще.
+    # requests/urllib/httpx читают эти переменные сами при каждом запросе —
+    # стираем их до того, как что-либо успеет сходить в сеть.
+    for _proxy_var in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+                       'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
+                       'FTP_PROXY', 'ftp_proxy'):
+        os.environ.pop(_proxy_var, None)
+    # Сетевой предохранитель: fail-closed сокеты, единственный канал наружу —
+    # Telegram изнутри stand_egress.tg_call(). См. docstring модуля — что
+    # гарантирует и чего не гарантирует эта защита.
+    import stand_egress
+    stand_egress.install()
     print('[STAND] Тестовый стенд: внешние интеграции выключены')
 
 # ==================== FLASK APP ====================
@@ -70,6 +85,14 @@ app.permanent_session_lifetime = timedelta(days=30)  # Сессия 30 дней
 app.config['SESSION_COOKIE_SECURE'] = True            # Только HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True           # Нет доступа из JS
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'         # Защита от CSRF
+
+
+@app.after_request
+def stand_referrer_policy(response):
+    """На стенде URL кабинета с токеном не уходит в Referer внешних ресурсов."""
+    if STAND_MODE:
+        response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
 
 # Rate limiting
 from flask_limiter import Limiter
@@ -154,6 +177,42 @@ def check_auth():
     """Проверка авторизации для всех /api/* и /crm кроме публичных"""
     path = request.path
 
+    if STAND_MODE:
+        # На копии прод-данных проверяем cookie до публичных путей и API-ключей.
+        login_paths = {'/login', '/api/auth/login', '/api/auth/logout',
+                       '/api/auth/me', '/api/health', '/kyc/grusha-logo.png',
+                       '/static/kyc/grusha-logo.png'}
+        if path in login_paths:
+            return None
+        uid = flask_session.get('user_id')
+        if uid:
+            db = get_session()
+            try:
+                user = db.query(AdminUser).get(uid)
+                valid = bool(user and not user.login_disabled)
+            finally:
+                db.close()
+            if not valid:
+                flask_session.clear()
+                uid = None
+        if not uid:
+            if path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'unauthorized'}), 401
+            return redirect('/login')
+        blocked = (path in {'/api/auth/tg-start', '/api/auth/tg-poll',
+                            '/api/auth/tg-login', '/api/auth/tg-config',
+                            '/api/auth/setup', '/api/sber-incomes/ingest'}
+                   or (path.startswith('/api/ref/') and path.rsplit('/', 1)[-1]
+                       in {'tg-start', 'tg-poll', 'tg-login', 'tg-config'})
+                   or path.startswith(('/api/tg/', '/api/webhook/')))
+        if blocked:
+            return jsonify({'success': False, 'error': 'stand_blocked'}), 403
+        if (path.startswith('/api/admins')
+                or path in {'/api/stand/reset', '/api/stand/egress-status'}):
+            if current_role() != 'admin':
+                return jsonify({'success': False, 'error': 'only_admin'}), 403
+        return None
+
     # Статика, калькулятор, KYC-страница, логин, партнёрский ЛК — пропускаем
     if not path.startswith('/api/') and not path.startswith('/crm'):
         return None
@@ -166,7 +225,7 @@ def check_auth():
     # Локальный стенд без логина: только при явном флаге И только на sqlite.
     # На проде DATABASE_URL — Postgres, поэтому обход невозможен даже если
     # переменную выставят по ошибке.
-    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+    if not STAND_MODE and os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
         return None
 
     # Сервисный доступ для ботов (DealCloser, SberNotifier) — непротухающий API-ключ.
@@ -199,7 +258,8 @@ def check_auth():
     # Удаление админа из whitelist → мгновенный разлог (cookie сам по себе не даёт доступ).
     db = get_session()
     try:
-        still_admin = db.query(AdminUser.id).filter(AdminUser.id == uid).first() is not None
+        still_admin = db.query(AdminUser.id).filter(
+            AdminUser.id == uid, AdminUser.login_disabled.is_(False)).first() is not None
     finally:
         db.close()
     if not still_admin:
@@ -295,6 +355,8 @@ class AdminUser(Base):
     password_hash = Column(String(128), nullable=False)
     display_name = Column(String(100))
     role = Column(String(20), default='admin')  # admin / manager (на будущее)
+    login_disabled = Column(Boolean, default=False)
+    notify_enabled = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     telegram = Column(String(50))            # @username из whitelist
     telegram_user_id = Column(BigInteger)     # привязанный TG id (trust-on-first-login)
@@ -327,6 +389,8 @@ class AdminUser(Base):
             'display_name': self.display_name or self.username,
             'telegram': self.telegram, 'bound': bool(self.telegram_user_id),
             'role': self.role or 'admin',
+            'login_disabled': bool(self.login_disabled),
+            'notify_enabled': bool(self.notify_enabled),
         }
 
 
@@ -466,6 +530,10 @@ class Partner(Base):
 def referral_links(code, lang='ru'):
     """Реферальные ссылки партнёра. Предзаполненный текст WhatsApp — на языке партнёра:
     англоязычный застройщик пересылает ссылку своему клиенту, русский текст там мусор."""
+    if STAND_MODE:
+        # Реальный бот и реальный номер WhatsApp менеджера — тестовому рефереру
+        # на стенде их показывать нельзя (план п.1, «точки выхода»).
+        return {'referral_link': f'https://grusha.space/?ref={code}', 'bot_link': '', 'wa_link': ''}
     from urllib.parse import quote as _q
     flat = (code or '').replace('-', '')
     wa_text = ('Здравствуйте! Хочу уточнить детали обмена.\n\n(Источник: ref_%s)' % flat
@@ -2240,17 +2308,27 @@ class StandState(Base):
     notified = Column(Text, default='[]')
 
 
-# Создание таблиц
-Base.metadata.create_all(bind=engine)
+# Таблицы стенда остаются в общей metadata для ORM, но в прод-режиме
+# их нельзя создавать. Здесь же держим имена таблиц модулей уведомлений T5
+# и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
+STAND_ONLY_TABLES = frozenset({
+    'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
+    'stand_sber_mirror_state',
+})
+
+Base.metadata.create_all(
+    bind=engine,
+    tables=[table for table in Base.metadata.sorted_tables
+            if table.name not in STAND_ONLY_TABLES],
+)
 
 
 def _stand_seed_users():
     """Пользователи стенда: по человеку на роль.
 
     Заводим только недостающих и только на стенде. Пароль один на всех из
-    STAND_PASSWORD: это площадка с выдуманными сделками, разводить тут
-    парольную гигиену дороже, чем она стоит, а лишний барьер убьёт тест —
-    людям надо зайти с телефона и потыкать, а не вспоминать пароль.
+    STAND_PASSWORD. После копии прод-данных существующие роли, пароли и флаги
+    сохраняем: старт приложения не должен отменять решение администратора.
     """
     seed = [('karim', 'Карим', 'admin'),
             ('marina', 'Марина', 'manager'),
@@ -2263,10 +2341,9 @@ def _stand_seed_users():
         for username, name, role in seed:
             u = db.query(AdminUser).filter_by(username=username).first()
             if u:
-                if (u.role or 'admin') != role:
-                    u.role = role
                 continue
             db.add(AdminUser(username=username, display_name=name, role=role,
+                             notify_enabled=(username == 'karim'),
                              password_hash=AdminUser.hash_password(pwd)))
         db.commit()
         print('[STAND] Пользователи ролей готовы: ' +
@@ -2279,8 +2356,13 @@ def _stand_seed_users():
 
 
 def _stand_migrate():
-    """create_all не добавляет колонку в уже существующую таблицу."""
+    """Создаёт таблицы стенда; create_all не добавляет колонку в старую таблицу."""
     from sqlalchemy import text as _t
+    Base.metadata.create_all(
+        bind=engine,
+        tables=[table for table in Base.metadata.sorted_tables
+                if table.name in STAND_ONLY_TABLES],
+    )
     try:
         with engine.begin() as conn:
             conn.execute(_t("ALTER TABLE stand_state ADD COLUMN notified TEXT DEFAULT '[]'"))
@@ -2289,8 +2371,26 @@ def _stand_migrate():
         pass
 
 
+def _migrate_admin_access():
+    """Добавляет флаги и в старую базу; повторный старт сохраняет значения."""
+    from sqlalchemy import text as _t
+    with engine.begin() as conn:
+        for name in ('login_disabled', 'notify_enabled'):
+            ddl = f'ALTER TABLE admin_users ADD COLUMN {name} BOOLEAN DEFAULT FALSE'
+            if 'postgresql' in DATABASE_URL:
+                conn.execute(_t(ddl.replace('ADD COLUMN', 'ADD COLUMN IF NOT EXISTS')))
+            else:
+                from sqlalchemy import inspect
+                if name not in {c['name'] for c in inspect(conn).get_columns('admin_users')}:
+                    conn.execute(_t(ddl))
+
+
+_migrate_admin_access()
+
+
 if STAND_MODE:
     _stand_migrate()
+    stand_notify.init(sys.modules[__name__])
     _stand_seed_users()
 
 
@@ -3292,6 +3392,10 @@ def sync_reestr_from_wl():
 @app.route('/api/reestr/sync', methods=['POST'])
 def post_reestr_sync():
     """Ручной форс-синк (кнопка «🔄 Обновить»). Сериализован локом."""
+    if STAND_MODE:
+        # REESTR_SYNC_ENABLED=0 гасит только фоновый цикл — эта кнопка идёт в WL
+        # напрямую и обходила бы его, если её не выключить явно.
+        return jsonify({'ok': False, 'error': 'stand_blocked'}), 403
     with _reestr_sync_lock:
         try:
             counts = sync_reestr_from_wl()
@@ -3372,6 +3476,11 @@ GOOGLE_OAUTH_REFRESH_TOKEN = os.environ.get('GOOGLE_OAUTH_REFRESH_TOKEN', '')
 def get_gsheet_client():
     """Возвращает авторизованный gspread клиент.
     Приоритет: OAuth user-credentials > Service Account > локальный SA файл."""
+    if STAND_MODE:
+        # STAND_MODE гасит GOOGLE_SA_JSON/OAuth env, но локальный google_sa.json
+        # на диске (у разработчика или в контейнере) их обходит — стенд не должен
+        # писать в боевую таблицу ни при каких обстоятельствах.
+        return None
     # 1. OAuth user-credentials — работает с закрытыми папками Workspace
     if GOOGLE_OAUTH_REFRESH_TOKEN and GOOGLE_OAUTH_CLIENT_ID:
         from google.oauth2.credentials import Credentials
@@ -4449,7 +4558,7 @@ def send_webhook_async(url, data):
             response = requests.post(url, json=data, timeout=10)
             print(f"✅ Webhook sent: {response.status_code}")
         except Exception as e:
-            print(f"❌ Webhook error: {e}")
+            print(f"❌ Webhook error: {_redacted_net_error(e)}")
     if url:
         threading.Thread(target=_send).start()
 
@@ -4475,7 +4584,7 @@ import partner_rates
 def login_page():
     """Страница входа"""
     # Локальный стенд без логина — форма входа там только мешает
-    if os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
+    if not STAND_MODE and os.environ.get('LOCAL_NO_AUTH') == '1' and 'postgresql' not in DATABASE_URL:
         return redirect('/crm')
     if flask_session.get('user_id'):
         return redirect('/crm')
@@ -4487,11 +4596,17 @@ def _match_admin_by_tg(db, tg_id, tg_username):
     tg_id = int(tg_id)
     admin = db.query(AdminUser).filter(AdminUser.telegram_user_id == tg_id).first()
     if admin:
-        return admin
+        return None if admin.login_disabled else admin
     uname = (tg_username or '').lstrip('@').strip().lower()
     if not uname:
         return None
-    for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None)).all():
+    # Совпавший @username отключённого аккаунта не должен привязать его id
+    # к другому активному аккаунту при поиске по имени.
+    for a in db.query(AdminUser).filter(AdminUser.login_disabled.is_(True)).all():
+        if (a.telegram or '').lstrip('@').strip().lower() == uname:
+            return None
+    for a in db.query(AdminUser).filter(AdminUser.telegram_user_id.is_(None),
+                                        AdminUser.login_disabled.is_(False)).all():
         if (a.telegram or '').lstrip('@').strip().lower() == uname:
             a.telegram_user_id = tg_id
             db.commit()
@@ -4515,7 +4630,7 @@ def auth_tg_login():
     db = get_session()
     try:
         admin = _match_admin_by_tg(db, data.get('id'), data.get('username'))
-        if not admin:
+        if not admin or admin.login_disabled:
             return jsonify({'success': False, 'error': 'Этот Telegram не в списке администраторов'}), 403
         flask_session['user_id'] = admin.id
         flask_session['username'] = admin.username
@@ -4572,7 +4687,7 @@ def auth_tg_poll():
         if not ln.admin_id:
             return jsonify({'success': False, 'status': 'pending'})
         admin = db.query(AdminUser).get(ln.admin_id)
-        if not admin:
+        if not admin or admin.login_disabled:
             return jsonify({'success': False, 'status': 'denied'})
         ln.used = True
         db.commit()
@@ -4609,6 +4724,12 @@ def create_admin():
         return jsonify({'success': False, 'error': 'Укажите Telegram (@username)'}), 400
     if STAND_MODE and not (data.get('username') or telegram):
         return jsonify({'success': False, 'error': 'Укажите логин'}), 400
+    if STAND_MODE and data.get('role', 'admin') not in STAND_ROLES:
+        return jsonify({'success': False, 'error': 'Неизвестная роль'}), 400
+    if STAND_MODE:
+        for field in ('login_disabled', 'notify_enabled'):
+            if field in data and not isinstance(data[field], bool):
+                return jsonify({'success': False, 'error': f'{field} должен быть boolean'}), 400
     db = get_session()
     try:
         base = re.sub(r'[^A-Za-z0-9_]', '', (data.get('username') or telegram).lstrip('@')) \
@@ -4624,6 +4745,8 @@ def create_admin():
             password_hash=AdminUser.hash_password(password or secrets.token_hex(16)),
             telegram=telegram,
             role=(data.get('role') or 'admin') if STAND_MODE else 'admin',
+            login_disabled=bool(data.get('login_disabled', False)) if STAND_MODE else False,
+            notify_enabled=bool(data.get('notify_enabled', False)) if STAND_MODE else False,
         )
         db.add(admin); db.commit()
         out = admin.to_dict()
@@ -4638,11 +4761,26 @@ def create_admin():
 def update_admin(admin_id):
     """Правка имени/telegram админа. Смена telegram сбрасывает привязку id — перепривязка при следующем входе."""
     data = request.get_json() or {}
+    if STAND_MODE and 'role' in data and data['role'] not in STAND_ROLES:
+        return jsonify({'success': False, 'error': 'Неизвестная роль'}), 400
     db = get_session()
     try:
+        if STAND_MODE and 'postgresql' in DATABASE_URL:
+            # Две одновременные правки не должны отключить друг другу последнего админа.
+            db.execute(text('LOCK TABLE admin_users IN SHARE ROW EXCLUSIVE MODE'))
         admin = db.query(AdminUser).get(admin_id)
         if not admin:
             return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        if STAND_MODE:
+            active_admins = db.query(AdminUser).filter(
+                AdminUser.role == 'admin', AdminUser.login_disabled.is_(False)).count()
+            disabling_admin = (admin.role == 'admin' and not admin.login_disabled
+                               and (data.get('role', admin.role) != 'admin'
+                                    or data.get('login_disabled') is True))
+            if admin.id == flask_session.get('user_id') and disabling_admin:
+                return jsonify({'success': False, 'error': 'Нельзя отключить или разжаловать себя'}), 400
+            if disabling_admin and active_admins <= 1:
+                return jsonify({'success': False, 'error': 'Нельзя отключить последнего админа'}), 400
         if 'display_name' in data:
             admin.display_name = (data['display_name'] or '').strip()
         if 'telegram' in data:
@@ -4650,6 +4788,12 @@ def update_admin(admin_id):
             admin.telegram_user_id = None  # смена username → перепривязка при следующем входе
         if STAND_MODE and data.get('role') in STAND_ROLES:
             admin.role = data['role']
+        if STAND_MODE:
+            for field in ('login_disabled', 'notify_enabled'):
+                if field in data:
+                    if not isinstance(data[field], bool):
+                        return jsonify({'success': False, 'error': f'{field} должен быть boolean'}), 400
+                    setattr(admin, field, data[field])
         if STAND_MODE and (data.get('password') or '').strip():
             admin.password_hash = AdminUser.hash_password(data['password'].strip())
         db.commit()
@@ -4663,11 +4807,18 @@ def delete_admin(admin_id):
     """Удаление админа из whitelist. Нельзя удалить последнего — иначе никто не сможет войти."""
     db = get_session()
     try:
-        if db.query(AdminUser).count() <= 1:
+        if STAND_MODE and 'postgresql' in DATABASE_URL:
+            db.execute(text('LOCK TABLE admin_users IN SHARE ROW EXCLUSIVE MODE'))
+        if not STAND_MODE and db.query(AdminUser).count() <= 1:
             return jsonify({'success': False, 'error': 'Нельзя удалить последнего админа'}), 400
         admin = db.query(AdminUser).get(admin_id)
         if not admin:
             return jsonify({'success': False, 'error': 'Админ не найден'}), 404
+        if STAND_MODE and admin.role == 'admin' and not admin.login_disabled:
+            active_admins = db.query(AdminUser).filter(
+                AdminUser.role == 'admin', AdminUser.login_disabled.is_(False)).count()
+            if active_admins <= 1:
+                return jsonify({'success': False, 'error': 'Нельзя удалить последнего админа'}), 400
         db.delete(admin); db.commit()
         return jsonify({'success': True})
     finally:
@@ -4688,7 +4839,7 @@ def auth_login():
     db = get_session()
     try:
         user = db.query(AdminUser).filter_by(username=username).first()
-        if not user or not user.check_password(password):
+        if not user or user.login_disabled or not user.check_password(password):
             return jsonify({'success': False, 'error': 'Неверный логин или пароль'}), 401
 
         # Сохраняем rehash если произошла миграция SHA-256 → bcrypt
@@ -4721,6 +4872,16 @@ def auth_logout():
 def auth_me():
     """Текущий пользователь"""
     if flask_session.get('user_id'):
+        if STAND_MODE:
+            db = get_session()
+            try:
+                user = db.query(AdminUser).get(flask_session['user_id'])
+                active = bool(user and not user.login_disabled)
+            finally:
+                db.close()
+            if not active:
+                flask_session.clear()
+                return jsonify({'success': False}), 401
         return jsonify({
             'success': True,
             'user': {
@@ -4807,60 +4968,95 @@ def _stand_tg_send(text):
     дать его стенду — значит однажды прислать команде выдуманную сделку как
     настоящую. Здесь свой бот и свой чат, больше он никуда не достучится.
     """
-    token = os.environ.get('STAND_TG_TOKEN', '').strip()
-    chat = os.environ.get('STAND_TG_CHAT', '').strip()
-    if not token or not chat:
-        return False
-    try:
-        response = requests.post(f'https://api.telegram.org/bot{token}/sendMessage',
-                                 json={'chat_id': chat, 'text': text, 'parse_mode': 'HTML',
-                                       'disable_web_page_preview': True}, timeout=10)
-        return response.status_code == 200 and bool((response.json() or {}).get('ok'))
-    except Exception:
-        print('[STAND] Телеграм не принял уведомление')
-        return False
-
-
-def _stand_notify(sent_ids, new_data):
-    """Подготовить очередное сообщение; отметка sent ставится после HTTP 200."""
-    fresh = [n for n in (new_data.get('notes') or []) if str(n.get('id')) not in sent_ids]
-    if not fresh:
-        return None, []
-    fresh = fresh[-5:]
-    deals = {d.get('id'): d for d in (new_data.get('deals') or [])}
-    lines = []
-    for n in reversed(fresh):          # в состоянии новые лежат сверху
-        who = STAND_ROLE_PEOPLE.get(n.get('role'), n.get('role') or '')
-        d = deals.get(n.get('dealId')) or {}
-        tail = ''
-        if d:
-            # Ссылка ведёт в саму задачу: без неё человек открывал общий список
-            # и искал сделку глазами — на телефоне это гарантированный отказ.
-            base = os.environ.get('STAND_BASE_URL', '').rstrip('/')
-            label = html_escape(f"{d.get('code') or ''} · {d.get('client') or ''}")
-            link = f'<a href="{base}/tasks?deal={d.get("id")}">{label}</a>' if base else f'<i>{label}</i>'
-            tail = f"\n{link}"
-        lines.append(f"🔔 <b>{html_escape(str(who))}</b>\n{html_escape(str(n.get('text') or ''))}{tail}")
-    msg = '\n\n'.join(lines)
-    return msg, [str(n.get('id')) for n in fresh]
+    # Групповая рассылка выключена решением из плана «тишина» (п.1.2): группа
+    # STAND_TG_CHAT не читается никаким кодом. T5 заменит это на личку через
+    # stand_egress.tg_call() с политикой can_send().
+    return False
 
 
 def _stand_deliver_notes():
-    """После commit отправить notes, не теряя их при ошибке Telegram."""
-    if not os.environ.get('STAND_TG_TOKEN') or not os.environ.get('STAND_TG_CHAT'):
-        return
+    """После commit доставить новые заметки по ролям в личку."""
+    if STAND_MODE:
+        stand_notify.deliver()
+
+
+@app.route('/api/stand/tg-bind', methods=['POST'])
+def stand_tg_bind():
+    """Выдать ссылку привязки только текущему сотруднику."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    uid = flask_session['user_id']
     db = get_session()
     try:
-        row = _stand_row(db, lock=True)
-        sent = set(json.loads(row.notified or '[]'))
-        message, ids = _stand_notify(sent, json.loads(row.data or '{}'))
-        if not ids:
-            return
-        if _stand_tg_send(message):
-            row.notified = json.dumps((list(sent) + ids)[-300:])
-            db.commit()
+        user = db.query(AdminUser).filter_by(id=uid).first()
+        if not user or user.login_disabled:
+            return jsonify({'success': False, 'error': 'unauthorized'}), 401
     finally:
         db.close()
+    link = stand_notify.create_bind(uid)
+    if not link:
+        error = ('bot_identity_mismatch' if stand_notify.status() == 'bot_identity_mismatch'
+                 or stand_notify.stand_egress.bot_identity_status() else 'bot_unavailable')
+        return jsonify({'success': False, 'error': error,
+                        'bot_username': stand_notify.stand_egress.expected_bot_username()}), 503
+    return jsonify({'success': True, 'url': link, 'expires_in': 600,
+                    'bot_username': stand_notify.stand_egress.expected_bot_username()})
+
+
+@app.route('/api/stand/tg-status', methods=['GET'])
+def stand_tg_status():
+    """Админ видит режим, состояние потребителя и список привязок."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        users = db.query(AdminUser).order_by(AdminUser.id).all()
+        bot = stand_notify.bot_username()
+        expected_bot = stand_notify.stand_egress.expected_bot_username()
+        error = ('bot_identity_mismatch' if (bot is not None and bot != expected_bot)
+                 or stand_notify.status() == 'bot_identity_mismatch'
+                 or stand_notify.stand_egress.bot_identity_status() else None)
+        return jsonify({'success': error is None, 'bot': bot,
+                        'bot_username': expected_bot,
+                        'error': error,
+                        'updates': stand_notify.status(), 'mode': stand_notify.mode(),
+                        'employees': [{'id': u.id, 'username': u.username,
+                                       'role': u.role, 'bound': bool(u.telegram_user_id),
+                                       'notify_enabled': bool(u.notify_enabled),
+                                       'login_disabled': bool(u.login_disabled)} for u in users]}), 503 if error else 200
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/notify-test/<int:admin_id>', methods=['POST'])
+def stand_notify_test(admin_id):
+    """Проверка одной лички; групповой chat_id никогда не используется."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        user = db.query(AdminUser).filter_by(id=admin_id).first()
+        if not user:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        chat_id = user.telegram_user_id
+        user_allowed = stand_notify._user_allowed(user)
+    finally:
+        db.close()
+    if not user_allowed or not stand_notify.can_send('telegram', chat_id, 'sendMessage'):
+        return jsonify({'success': True, 'status': 'suppressed'})
+    try:
+        result = stand_notify.stand_egress.tg_call('sendMessage', {
+            'chat_id': chat_id, 'text': 'Проверка уведомлений стенда'})
+        return jsonify({'success': True, 'status': 'sent' if result.get('ok') else 'failed'})
+    except Exception:
+        app.logger.exception('stand notification test failed')
+        return jsonify({'success': True, 'status': 'failed'})
 
 
 @app.route('/api/stand/state', methods=['PUT'])
@@ -5605,35 +5801,24 @@ def stand_prod_agents_sync():
     """Подтянуть агентов из прода в справочник стенда и в его CRM (по коду)."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
-    if (current_role() or '') not in ('admin', 'manager'):
-        return jsonify({'success': False, 'error': 'Агентов из прода подтягивает админ или менеджер'}), 403
-    try:
-        agents = _stand_prod_agents()
-    except (RuntimeError, requests.RequestException, ValueError) as exc:
-        return jsonify({'success': False, 'error': str(exc)[:200]}), 502
-    import secrets as _secrets
-    db = get_session()
-    try:
-        for a in agents:
-            if not a['code']:
-                continue
-            ref = db.query(Referrer).filter(Referrer.code == a['code']).first()
-            if not ref:
-                ref = Referrer(code=a['code'], token=_secrets.token_hex(12), name=a['name'])
-                db.add(ref)
-            ref.name = a['name']
-            ref.comp_model = a['comp']
-            ref.default_percent = a['revsharePercent']
-            ref.markup_percent = a['markupPercent']
-            ref.payout_currency = a['cur']
-            ref.telegram = a['tg']
-            ref.lang = a['lang']
-            ref.active = a['active']
-            ref.is_test = True   # стенд: никаких уведомлений реальным партнёрам
-        db.commit()
-    finally:
-        db.close()
-    return jsonify({'success': True, 'agents': agents})
+    # Режим «тишина»: чтение боевого CRM с тестового стенда выключено (план п.1.9,
+    # T1 «точки выхода»). После заливки прод-данных агенты берутся из локальной
+    # таблицы referrers — этот путь больше не нужен.
+    return jsonify({'success': False, 'error': 'stand_blocked'}), 403
+
+
+@app.route('/api/stand/egress-status', methods=['GET'])
+def stand_egress_status():
+    """Телеметрия сетевого guard'а — не доказательство тишины, оно в тестах."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    # Роль проверяем ДО открытия любой сессии записи — этот роут её и не открывает.
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    import stand_egress
+    return jsonify({'success': True, **stand_egress.status()})
 
 
 @app.route('/api/stand/incoming/unlink', methods=['POST'])
@@ -6428,6 +6613,12 @@ def _bitazza_calc_quote(usdt_amount=CALC_BITAZZA_QUOTE_VOLUME):
 
 @app.route('/api/rates', methods=['GET'])
 def get_rates():
+    if STAND_MODE:
+        # Курсы тянутся с Binance/Bitazza/Doverka — реальные внешние сервисы.
+        # На стенде не идём наружу вообще; менеджер вводит курс вручную (см. tasks.html).
+        return jsonify({'success': False, 'stand_blocked': True,
+                        'error': 'На стенде курсы выключены — введите курс вручную',
+                        'usdt_thb': None, 'rub_usdt': None})
     try:
         rates = asyncio.run(ExchangeRateProvider.get_all_rates())
         usdt_thb = rates.get('usdt_thb')
@@ -7059,6 +7250,24 @@ def _apply_deal_agents(session, deal, agents_data):
     computed, net = compute_agent_cascade(profit_base, volume,
                                           [dict(a) for a in agents_data],
                                           crypto_base_usdt=crypto_base)
+    # Стенд: клиент задачника присылает referrer_id из своего справочника, а рядом —
+    # id, придуманные им же для агентов без записи в базе (задачник не показывает эти
+    # id прод-CRM). Совпадение чужого id с чужим агентом молча привязало бы выплату не
+    # тому человеку (QA FAIL №8, 28.09). Прод шлёт referrer_id только из настоящей
+    # CRM — там имя и id всегда согласованы, поэтому эту проверку включаем только
+    # на стенде, чтобы не менять поведение прода.
+    if STAND_MODE:
+        with_id = [a for a in computed if a.get('referrer_id') and (a.get('name') or '').strip()]
+        if with_id:
+            real_names = dict(session.query(Referrer.id, Referrer.name)
+                               .filter(Referrer.id.in_({a['referrer_id'] for a in with_id})).all())
+            for a in with_id:
+                real = (real_names.get(a['referrer_id']) or '').strip().lower()
+                given = (a.get('name') or '').strip().lower()
+                if real and given and real != given:
+                    app.logger.info('[stand] agent referrer_id/name mismatch — идём по имени')
+                    a['referrer_id'] = None
+
     # Обратный случай: прислали только имя без referrer_id — связь с профилем
     # терялась молча, и сделка исчезала из кабинета партнёра (он видит свои
     # сделки по deal_agents.referrer_id). Находим по точному имени; если тёзок
@@ -14680,6 +14889,11 @@ def delete_reimbursement(reimbursement_id):
 @app.route('/api/deals/sync-gsheet', methods=['POST'])
 def manual_sync_gsheet():
     """Ручной синк сделок в Google Sheet по списку ID"""
+    if STAND_MODE:
+        # get_gsheet_client() всё равно вернёт None (см. функцию), но без этой
+        # проверки менеджер получал голый 500 no_credentials, будто сломалось.
+        return jsonify({'success': False, 'stand_blocked': True,
+                        'error': 'На стенде синхронизация с таблицей выключена'})
     session = get_session()
     try:
         data = request.get_json()
@@ -14735,6 +14949,15 @@ def set_webhook_config():
 
 # ==================== TELEGRAM NOTIFICATION ====================
 
+def _redacted_net_error(e):
+    """Имя типа исключения без текста — requests вшивает в str(e) полный URL
+    запроса (…/bot<TOKEN>/method, ?secret=...), и это встречалось в логах
+    буквально: guard теперь детерминированно валит эти вызовы на стенде, так
+    что секрет попадал бы в stdout при каждой сделке. Тип исключения для
+    диагностики достаточно — сам URL и токен туда не нужны."""
+    return type(e).__name__
+
+
 def send_telegram_notification(text, thread_id=None, fallback_without_thread=False):
     """Отправляет сообщение ботом в чат.
 
@@ -14779,7 +15002,7 @@ def send_telegram_notification(text, thread_id=None, fallback_without_thread=Fal
             return fallback.status_code == 200
         return False
     except Exception as e:
-        print(f'[Telegram] Error: {e}')
+        print(f'[Telegram] Error: {_redacted_net_error(e)}')
         return False
 
 # ── Вход реферера через Telegram Login Widget ──────────────────────────────
@@ -14861,6 +15084,16 @@ def apply_referrer_tg_binding(referrer, tg_id, tg_username):
 
 def ref_session_authorized(referrer, token) -> bool:
     """True если реферер в link-режиме ИЛИ в сессии есть валидная привязка по токену."""
+    if STAND_MODE:
+        if flask_session.get('stand_ref_preview') != referrer.id:
+            return False
+        uid = flask_session.get('user_id')
+        db = SessionLocal()
+        try:
+            admin = db.query(AdminUser).get(uid) if uid else None
+            return bool(admin and admin.role == 'admin' and not admin.login_disabled)
+        finally:
+            db.close()
     if (referrer.auth_mode or 'link') != 'telegram':
         return True
     auth = flask_session.get('ref_auth') or {}
@@ -14970,7 +15203,7 @@ def send_referrer_dm(referrer, text, buttons=None):
                           json=payload, timeout=10)
         return r.status_code == 200
     except Exception as e:
-        print(f'[ReferrerDM] error: {e}')
+        print(f'[ReferrerDM] error: {_redacted_net_error(e)}')
         return False
 
 
@@ -14991,7 +15224,7 @@ def _tg_send_document(token, chat_id, blob, filename, caption, thread_id=None):
             return ((r.json().get('result') or {}).get('document') or {}).get('file_id')
         print(f'[TG sendDocument] {r.status_code}: {r.text[:200]}')
     except Exception as e:
-        print(f'[TG sendDocument] error: {e}')
+        print(f'[TG sendDocument] error: {_redacted_net_error(e)}')
     return None
 
 
@@ -15027,7 +15260,7 @@ def notify_agents_new_deal(db, deal):
             btn = ref_t(referrer, '💸 Вывести', '💸 Withdraw')
             send_referrer_dm(referrer, msg, buttons=[[{'text': btn, 'url': url}]])
     except Exception as e:
-        print(f'[ReferrerDM] new deal notify error: {e}')
+        print(f'[ReferrerDM] new deal notify error: {_redacted_net_error(e)}')
 
 
 def _tg_answer_callback(token, cq_id, text):
@@ -15036,7 +15269,7 @@ def _tg_answer_callback(token, cq_id, text):
         requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
                       json={'callback_query_id': cq_id, 'text': text}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] answerCallback error: {e}')
+        print(f'[LKBot] answerCallback error: {_redacted_net_error(e)}')
 
 
 def _tg_edit_message(token, cq, new_text):
@@ -15051,7 +15284,7 @@ def _tg_edit_message(token, cq, new_text):
                       json={'chat_id': chat, 'message_id': mid, 'text': new_text,
                             'parse_mode': 'HTML'}, timeout=10)
     except Exception as e:
-        print(f'[LKBot] editMessage error: {e}')
+        print(f'[LKBot] editMessage error: {_redacted_net_error(e)}')
 
 
 @app.route('/api/tg/lk-webhook', methods=['POST'])
@@ -15111,7 +15344,7 @@ def lk_bot_webhook():
                                 f"account ({who}) — the attempt was rejected.\n\n"
                                 f"If that was you, sign in with your linked account."))
                     except Exception as e:
-                        print(f'[LKBot] attempt notify error: {e}')
+                        print(f'[LKBot] attempt notify error: {_redacted_net_error(e)}')
             else:
                 admin = _match_admin_by_tg(db, frm.get('id'), frm.get('username'))
                 if admin:
@@ -15130,7 +15363,7 @@ def lk_bot_webhook():
                 requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
                               json={'chat_id': chat_id, 'text': reply}, timeout=10)
             except Exception as e:
-                print(f'[LKBot] login reply error: {e}')
+                print(f'[LKBot] login reply error: {_redacted_net_error(e)}')
         return jsonify({'ok': True})
 
     cq = update.get('callback_query')
@@ -15174,6 +15407,8 @@ def doverka_payments_history():
     Курсы с Доверки больше не тянем (RUB-USDT = Рапира+2%), но история
     платежей нужна для сверки старых сделок — ключ читаем напрямую из env.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
@@ -15336,6 +15571,9 @@ def proxy_create_payment():
     Doverka API-ключом → авторизованный пользователь мог пробрасывать любые
     Doverka-поля (callback_url, order_transaction_id чужих транзакций, и т.п.).
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked',
+                        'message': 'На стенде создание платёжной ссылки выключено'}), 403
     raw = request.get_json() or {}
     provider = str(raw.get('provider') or 'grusha')
 
@@ -15386,7 +15624,10 @@ def proxy_create_payment():
 
     # Куда коннектор постучится об оплате. Без этого CalcCRM про оплату не узнаёт
     # (раньше так и было — ссылку выставили и ждали, пока клиент сам напишет).
-    base = os.environ.get('PUBLIC_BASE_URL', 'https://grusha.up.railway.app').rstrip('/')
+    # На стенде свой публичный адрес — коннектор не должен слать колбэк на прод
+    # (маршрут выше уже блокирует STAND_MODE целиком, это доп. подстраховка).
+    default_base = os.environ.get('STAND_BASE_URL') if STAND_MODE else None
+    base = os.environ.get('PUBLIC_BASE_URL', default_base or 'https://grusha.up.railway.app').rstrip('/')
     webhook_url = f'{base}/api/webhook/payment-link?key={payment_webhook_key()}'
 
     # Безопасный payload, отдаваемый в grushab-2-b.ru.
@@ -15484,6 +15725,8 @@ def proxy_create_payment():
 @app.route('/api/doverka/currencies', methods=['GET'])
 def doverka_currencies():
     """Прокси для получения валют Доверки (нужен currency_id для создания платежа)"""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     key = os.getenv('DOVERKA_API_KEY', '')
     if not key:
         return jsonify({'success': False, 'error': 'No Doverka API key'}), 500
@@ -16200,6 +16443,8 @@ if os.environ.get('KYC_RETENTION_ENABLED', '1') == '1':
 @app.route('/api/bitrix/active-deals', methods=['GET'])
 def bitrix_active_deals():
     """Незакрытые сделки основной воронки — список для оператора."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         return jsonify({'success': True, 'deals': bitrix_deals.get_active_deals()})
@@ -16216,6 +16461,8 @@ def bitrix_analyze_deal(deal_id):
     сделку этого контакта, её CLOSEDATE становится отсечкой, чтобы суммы
     прошлого обмена не приехали в новую сделку.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     try:
         import bitrix_deals
         from deal_chat_analyzer import analyze_chat
@@ -16271,6 +16518,8 @@ def bitrix_close_won(deal_id):
     Порядок именно такой: если запись в CRM не прошла, в Bitrix ничего не
     двигаем — иначе сделка «выиграна», а денег в учёте нет.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16293,6 +16542,8 @@ def bitrix_close_won(deal_id):
 def bitrix_close_lose(deal_id):
     """Переводит сделку в LOSE. Lose-сделку в CalcCRM фронт создаёт ДО вызова —
     без неё отказ не попадёт в конверсию."""
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
     data = request.get_json(silent=True) or {}
     try:
         import bitrix_deals
@@ -16314,6 +16565,8 @@ def search_bitrix_contacts():
     query = request.args.get('q', '').strip()
     if len(query) < 2:
         return jsonify({'success': True, 'contacts': []})
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked'}), 403
 
     import bitrix_deals
     try:
@@ -16339,6 +16592,24 @@ def search_bitrix_contacts():
 
 
 # ==================== REFERRAL SYSTEM ====================
+
+@app.route('/api/stand/ref-preview/<int:referrer_id>', methods=['GET'])
+def stand_ref_preview(referrer_id):
+    """Открывает кабинет в админской сессии без Telegram-привязки реферера."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'only_admin'}), 403
+    db = get_session()
+    try:
+        referrer = db.query(Referrer).get(referrer_id)
+        if not referrer or not referrer.active:
+            return jsonify({'success': False, 'error': 'Реферер не найден'}), 404
+        token = referrer.token
+    finally:
+        db.close()
+    flask_session['stand_ref_preview'] = referrer_id
+    return redirect(f'/ref/{token}')
 
 @app.route('/ref/<token>')
 def referrer_page(token):
@@ -17168,7 +17439,11 @@ def payout_request_receipt(req_id):
                 blob, f.filename,
                 f"📄 Чек по заявке #{req.id} — {ref_label} · {thb_fmt} ฿",
                 thread_id=os.environ.get('TELEGRAM_TASKS_THREAD_ID', '2112'))
-            if not dm_file_id and not team_file_id:
+            # На стенде Telegram отключён целиком (см. stand_egress) — DM и
+            # командное уведомление там в принципе не могут дойти. Реальные
+            # деньги на стенде не двигаются, поэтому отправку тихо пропускаем,
+            # а не валим закрытие денежной заявки 502-й.
+            if not dm_file_id and not team_file_id and not STAND_MODE:
                 return jsonify({'success': False,
                                 'error': 'Не удалось отправить чек в Telegram — заявка не закрыта'}), 502
 
@@ -17955,11 +18230,11 @@ def _docs_client_key(fields):
 
 
 def _docs_openrouter_key():
-    # На стенде OPENROUTER_API_KEY погашен предохранителем (им пользуются и другие
-    # платные вызовы). Распознаванию документов даём отдельный ключ STAND_DOCPARSE_KEY:
-    # стенд должен работать как прод — поля договора из настоящих файлов (Карим, 25.09).
+    # Режим «тишина»: паспорта и инвойсы клиента не должны улетать в OpenRouter
+    # с тестового стенда ни под каким ключом. STAND_DOCPARSE_KEY сознательно не
+    # читаем — распознавание включат отдельным решением Карима (T1, план п.1.1).
     if STAND_MODE:
-        return os.environ.get('STAND_DOCPARSE_KEY', '')
+        return ''
     return os.environ.get('OPENROUTER_API_KEY', '')
 
 
@@ -18078,6 +18353,9 @@ def docs_parse():
     Ничего не сохраняет: менеджер сначала подтверждает данные, и только потом
     создаётся договор. Файлы приезжают повторно на шаге создания.
     """
+    if STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_blocked',
+                        'detail': 'На стенде распознавание документов выключено'}), 403
     key = _docs_openrouter_key()
     if not key:
         return jsonify({'success': False, 'error': 'no_api_key',
@@ -18436,10 +18714,13 @@ def _stand_transfer_poll_loop():
             app.logger.warning('stand transfer poll: %s', exc)
 
 
-if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '1') == '1'
+if (STAND_MODE and os.environ.get('STAND_TRANSFER_POLL_ENABLED', '0') == '1'
         and 'pytest' not in sys.modules):
     threading.Thread(target=_stand_transfer_poll_loop, daemon=True,
                      name='stand-transfer-poll').start()
+
+if STAND_MODE and 'pytest' not in sys.modules:
+    stand_notify.start_updates()
 
 
 if __name__ == '__main__':
