@@ -1167,5 +1167,71 @@ with sync_playwright() as playwright:
     assert not crm_posts,crm_posts
     crm_manual.close()
     print('founder manual hash source CRM/tasks pool, profit, save/reload: PASS')
+    # Integrated T24 final submit: draft saves above must have created no CRM row.
+    close_before=appmod.get_session()
+    try:
+        crm_count_before=close_before.query(appmod.Deal).count()
+    finally:
+        close_before.close()
+    page.evaluate('(id)=>openDeal(id)',custom_id)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    old_version=page.evaluate('standVer')
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{custom_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    close_result=close_response.value
+    close_body=close_result.json()
+    print('integrated manual custom close:',close_result.status,
+          close_body.get('error'),close_body.get('deal',{}).get('id'))
+    assert close_result.status==201,close_result.json()
+    page.wait_for_function('(id)=>deal(id)?.closed && deal(id)?.crmDealId',arg=custom_id,
+                           timeout=20000)
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    closed_custom=page.evaluate('''id=>{const d=deal(id);return {
+      closed:d.closed,step:d.step,crmDealId:d.crmDealId,origin:d.originMode};}''',custom_id)
+    assert closed_custom['closed'] and closed_custom['step']=='done'
+    assert closed_custom['origin']=='manual' and closed_custom['crmDealId']
+    retry=page.evaluate('''async({id,version,payload})=>{
+      const r=await fetch(`/api/stand/deals/${id}/crm-close`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',body:JSON.stringify({version,crm:payload})});
+      return {status:r.status,body:await r.json()};
+    }''',{'id':custom_id,'version':old_version,'payload':custom_saved['payload']})
+    assert retry['status']==200 and retry['body']['deal']['id']==closed_custom['crmDealId']
+    close_after=appmod.get_session()
+    try:
+        crm_count_after=close_after.query(appmod.Deal).count()
+    finally:
+        close_after.close()
+    assert crm_count_after==crm_count_before+1
+    print('integrated manual custom final/reload/retry: one CRM',closed_custom)
+    page.evaluate('(id)=>openDeal(id)',split_id)
+    page.wait_for_function('!standBusy && !standPush',timeout=20000)
+    with page.expect_response(lambda resp: resp.url.endswith(
+        f'/api/stand/deals/{split_id}/crm-close') and
+        resp.request.method=='POST',timeout=20000) as split_close_response:
+        page.get_by_role('button',name='Сохранить в CRM').click()
+    split_close=split_close_response.value
+    split_body=split_close.json()
+    print('integrated main+extra close:',split_close.status,split_body.get('error'),
+          split_body.get('missing'))
+    assert split_close.status==201,split_body
+    split_crm_id=split_body['deal']['id']
+    split_db=appmod.get_session()
+    try:
+        split_row=split_db.query(appmod.Deal).filter_by(id=split_crm_id).one()
+        extra=json.loads(split_row.payin_extra) if isinstance(split_row.payin_extra,str) else split_row.payin_extra
+        split_money={'usdt':split_row.payin_amount_usdt,'extra':extra}
+    finally:
+        split_db.close()
+    print('integrated main+extra CRM row:',split_money)
+    assert split_money['usdt']==120 and len(split_money['extra'])==1
+    assert split_money['extra'][0]['method']=='partners_cash'
+    assert split_money['extra'][0]['amount_usdt']==20
+    page.reload(wait_until='domcontentloaded')
+    page.wait_for_function('standVer !== null && !standBusy',timeout=20000)
+    assert page.evaluate('(id)=>deal(id).crmDealId',split_id)==split_crm_id
     print('blocked external attempts:',blocked)
     browser.close()

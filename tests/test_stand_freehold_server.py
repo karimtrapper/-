@@ -150,9 +150,8 @@ def test_leasehold_untouched_by_freehold_field_lock():
     assert new['deals'][0]['amountThb'] == 400000
 
 
-def test_put_endpoint_silently_preserves_invoice_after_s11(monkeypatch):
-    """Тест ДЕНЬГИ №13 буквально: PUT доски с изменённым invoiceUsd на s12/s27
-    → сервер сохраняет прежнее значение, PUT не отклоняется целиком."""
+def test_put_endpoint_rejects_invoice_mutation_after_s11_atomically(monkeypatch):
+    """Locked invoice/tariff mutations get 409; board and version stay intact."""
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
     monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
@@ -186,8 +185,10 @@ def test_put_endpoint_silently_preserves_invoice_after_s11(monkeypatch):
             payload['deals'][0]['ippsTariff'] = 'soft'
             put = client.put('/api/stand/state',
                              json={'version': before.json['version'], 'data': payload})
-            assert put.status_code == 200, f'шаг {step}: PUT не должен отклоняться целиком'
+            assert put.status_code == 409, f'шаг {step}: locked invoice PUT must fail'
             after = client.get('/api/stand/state')
+        assert after.json['version'] == before.json['version']
+        assert after.json['data'] == before.json['data']
         assert after.json['data']['deals'][0]['invoiceUsd'] == 45000, (
             f'шаг {step}: сервер должен сохранить прежний инвойс')
         assert after.json['data']['deals'][0]['ippsTariff'] == 'bank', (
