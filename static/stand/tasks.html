@@ -4501,18 +4501,19 @@ function crmPayload(d){
     manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
-    /* API _apply_payin_extra прибавит дополнительные части само. E.payin уже
-       включает их, поэтому здесь отправляем только основной приход. */
-    payin_amount_usdt:r2(E.payin==null?null:E.payin-(d.payinExtra||[]).reduce((s,x)=>
-      s+(+((x.amount_usdt??x.amountUsdt) || 0)),0)),
+    /* API _apply_payin_extra прибавит дополнительные части само. Основной
+       приход берём из первого payinParts: extra может быть задан только RUB
+       и курсом, без amount_usdt, поэтому вычитание сырых extra его теряло. */
+    payin_amount_usdt:r2(payinParts(d)[0]?.usdt??null),
     payin_rate_rub_usdt:rub?(num(d.rates.broker)||null):null,
     payin_tx_hashes:hx(d.payinHashes),
     payin_parts:(d.payinParts||[]).map(x=>({uuid:x.uuid||String(x.incId||'').replace(/^sber:/,'')||null,
       amount_rub:x.amountRub??null,payer:x.payer||'',date:x.date||'',note:x.note||'',
       kind:x.kind==='acquiring'?'acquiring':'transfer',fee_rub:x.fee??0,net_rub:x.net??x.amountRub??null})),
-    payin_extra:(d.payinExtra||[]).map(x=>({
+    payin_extra:(d.payinExtra||[]).map((x,i)=>({
       method:x.method||'partners_cash',amount_rub:x.amount_rub??x.amountRub??null,
-      rate_rub_usdt:x.rate_rub_usdt??num(x.rate),amount_usdt:x.amount_usdt??x.amountUsdt??null,
+      rate_rub_usdt:x.rate_rub_usdt??num(x.rate),
+      amount_usdt:x.amount_usdt??x.amountUsdt??payinParts(d)[i+1]?.usdt??null,
       partner_name:x.partner_name??x.partner??null,
       tx_hashes:x.tx_hashes||x.hashes||[],sber_uuids:x.sber_uuids||[],note:x.note||''})),
     doc_invoice_url:d.docLinks?.invoice||null,

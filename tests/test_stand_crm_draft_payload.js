@@ -20,10 +20,11 @@ const ctx = {
   mfList: d => d.mfPayout||[],
   refById: () => null,
   freeholdSend: (x,t) => x*(1+t.percent/100)+t.fixed,
+  brokerSend: rub => ({sent:rub,held:0,ours:0,ctrl:0}),
   Math, JSON,
 };
 vm.createContext(ctx);
-vm.runInContext(constants+'\n'+['crmNet','crmPayload'].map(fn).join('\n'),ctx);
+vm.runInContext(constants+'\n'+['hashSum','payinParts','crmNet','crmPayload'].map(fn).join('\n'),ctx);
 const base = {
   client:'synthetic',manager:'Марина',type:'Оплата недвижимости',kind:'Аренда',
   payType:'По реквизитам',amountRub:100000,amountUsdt:1000,incomeAmount:100000,
@@ -38,6 +39,22 @@ const rental = ctx.crmPayload(base);
 assert.equal(rental.deal_kind,'mf_realty');
 assert.equal(rental.payin_amount_usdt,1000,'extra must be added by server once');
 assert.equal(rental.payin_extra[0].amount_usdt,200);
+const split=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  amountUsdt:100,payinParts:[],payinHashes:[{hash:'m'.repeat(64),amount:100}],
+  payinExtra:[{method:'crypto_direct',amount_usdt:20,
+    tx_hashes:[{hash:'e'.repeat(64),amount_usdt:20}]}]});
+assert.equal(split.payin_method,'crypto_direct');
+assert.equal(split.payin_amount_usdt,100,'CRM server adds extra 20 once');
+assert.equal(split.payin_extra[0].amount_usdt,20);
+assert.equal(split.payin_tx_hashes.length,1);
+assert.equal(split.payin_tx_hashes[0].hash,'m'.repeat(64));
+assert.equal(split.payin_extra[0].tx_hashes[0].hash,'e'.repeat(64));
+const rateOnly=ctx.crmPayload({...base,type:'Обмен валюты',kind:'',payType:'Крипта',
+  amountUsdt:100,payinParts:[],payinExtra:[{method:'sber_reqs',
+    amount_rub:2000,rate_rub_usdt:100,amount_usdt:null}]});
+assert.equal(rateOnly.payin_amount_usdt,100);
+assert.equal(rateOnly.payin_extra[0].amount_usdt,20,
+  'a RUB/rate extra must not be sent as part of the main amount or dropped');
 assert.equal(rental.payin_parts[0].amount_rub,100000);
 assert.equal(rental.payin_parts[0].net_rub,99040);
 assert.equal(rental.sell_rate_thb_usdt,32.5);

@@ -19,6 +19,13 @@ try:
     db.add(appmod.SberIncome(uuid='t17-acquiring-1',operation_date='2026-09-28T11:00:00',
         amount_rub=99300,payer='T17 Acquiring',purpose=
         'Зачисление средств по операциям эквайринга. Мерчант №781003872118. Комиссия 700.00. НДС не облагается.'))
+    occupied=appmod.Deal(deal_type=appmod.DealType.PAY_IN,
+                           client_name='T17 occupied synthetic',is_test=True)
+    db.add(occupied)
+    db.flush()
+    db.add(appmod.SberIncome(uuid='t17-occupied-1',operation_date='2026-09-28T11:30:00',
+        amount_rub=50000,payer='T17 Occupied',purpose='Оплата, тест',
+        claimed_deal_id=occupied.id))
     db.commit()
 finally:
     db.close()
@@ -224,6 +231,13 @@ with sync_playwright() as playwright:
     task_sber=host.locator('#sberIncomesAvail').evaluate(sber_rows)
     print('Sber all rows CRM/tasks:',crm_sber,task_sber,'same:',crm_sber==task_sber)
     assert crm_sber==task_sber and len(task_sber)==2
+    all_incomes=page.evaluate('''async()=>{
+      const r=await fetch('/api/sber-incomes?all=1',{credentials:'same-origin'});
+      return (await r.json()).incomes;}''')
+    assert all_incomes is not None
+    assert any(x['uuid']=='t17-occupied-1' and x['claimed_deal_id'] for x in all_incomes)
+    assert all('T17 Occupied' not in x for x in crm_sber+task_sber)
+    print('Sber occupied row omitted in both pickers; all=1 retains claimed marker')
     assert host.locator('[onclick],[onchange],[oninput]').count()==0
     for query in ('70000000000','@t17fixture'):
         crm.locator('#clientSearchInput').fill(query)
