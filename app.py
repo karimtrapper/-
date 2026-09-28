@@ -5889,22 +5889,31 @@ def _stand_doc_request(state, deal, F):
     # и фрихолда в документе остаётся «№ [●] от [●]», и генератор выпуск не пропустит.
     if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
         missing.append('invNo')
+    freehold = deal_type == 'freehold'
     thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
-    missing += [k for k, v in (('amountThb', thb), ('rate', rate), ('amountPay', pay)) if v is None]
+    missing += [k for k, v in (('amountThb', thb), ('amountPay', pay)) if v is None]
+    # Крипто-фрихолд: внешнего курса нет вообще (спека 28.09-freehold-no-baht, п.4) —
+    # шаги «Ответить курс»/«Расчёт клиенту» выпадают из пути, rate у сделки не появляется.
+    if not (crypto and freehold) and rate is None:
+        missing.append('rate')
 
     today = datetime.utcnow() + timedelta(hours=7)
-    money = {'pair': 'USDT_THB' if crypto else 'RUB_THB',
+    # Фрихолд — выход USD (RUB_USD / USDT_USD), а не THB: инвойс застройщику в USD,
+    # никакого перевода в баты (спека 28.09-freehold-no-baht). DIRECT_RATE — только
+    # для USDT_THB (курс ฿ за 1 USDT лизхолда), крипто-фрихолду он не подходит.
+    money = {'pair': ('USDT_USD' if freehold else 'USDT_THB') if crypto else ('RUB_USD' if freehold else 'RUB_THB'),
              'payin_method': 'usdt' if crypto else 'bank',
-             'rate_basis': doc_routes.DIRECT_RATE if crypto else doc_routes.INVERSE_RATE,
+             'rate_basis': doc_routes.DIRECT_RATE if (crypto and not freehold) else doc_routes.INVERSE_RATE,
              'rate_valid_until': str(F.get('validTill') or '').strip()
                                  or f'{today:%d.%m.%Y}, 23:59 (GMT+7)'}
     if thb and pay:
         money['total_payin'] = _stand_plain(pay)
         money['transfer_amount'] = _stand_plain(thb)
     if thb and pay and rate:
-        # Курс сделки: ₽ за 1 ฿ у рублей, ฿ за 1 USDT у крипты. Сумма клиенту
-        # округлена до целых рублей / центов, поэтому точный курс из сумм
-        # отличается в шестом знаке — в документ идёт он, иначе генератор
+        # Курс сделки: ₽ за 1 ฿ у лизхолда, ₽ за 1 $ у рублёвого фрихолда, ฿ за 1 USDT
+        # у крипто-лизхолда (крипто-фрихолду курс вообще не нужен — rate тут None).
+        # Сумма клиенту округлена до целых рублей / центов, поэтому точный курс из
+        # сумм отличается в шестом знаке — в документ идёт он, иначе генератор
         # справедливо скажет, что курс и суммы не сходятся.
         exact = (thb / pay) if crypto else (pay / thb)
         if abs(rate - exact) <= Decimal('0.000001'):
@@ -5912,10 +5921,11 @@ def _stand_doc_request(state, deal, F):
         elif abs(rate - exact) / rate <= Decimal('0.001'):
             money['rate'] = _stand_plain(exact.quantize(Decimal('0.000001')))
         else:
-            unit = '฿ за 1 USDT' if crypto else '₽ за 1 ฿'
+            unit = '฿ за 1 USDT' if crypto else ('₽ за 1 $' if freehold else '₽ за 1 ฿')
+            recv = '$' if freehold else '฿'
             return {'error': 'rate_mismatch', 'fields': ['rate', 'amountPay'],
                     'detail': f'Курс {_stand_plain(rate)} не сходится с суммами: '
-                              f'{_stand_plain(pay)} и {_stand_plain(thb)} ฿ дают '
+                              f'{_stand_plain(pay)} и {_stand_plain(thb)} {recv} дают '
                               f'{exact.quantize(Decimal("0.0001"))} {unit}. Поправьте курс или сумму клиенту'}
 
     if crypto:
@@ -5941,6 +5951,20 @@ def _stand_doc_request(state, deal, F):
     fee = str(F.get('feeNote') or '').strip()
     if fee and fee != 'Комиссия включена в курс, отдельно не взимается':
         money['fee_note'] = fee
+    if freehold:
+        # Шаблон Приложения 1 для фрихолда (doc_templates/MF_Freehold_Payment_Agreement_
+        # Template_RU_EN.docx) описывает старую модель: инвойс застройщика в THB,
+        # конвертация в USD по курсу, письменное подтверждение застройщика о зачёте
+        # THB. В новой модели (спека 28.09-freehold-no-baht) инвойс сразу в USD —
+        # ни конвертации, ни зачёта THB нет. Отмечаем поля как неприменимые, а не
+        # выдумываем подтверждение застройщика, которого не было: это реальный
+        # договор, придумывать в нём факты нельзя (нужно решение Карима — переписать
+        # ли раздел шаблона или оставить эти поля информационными «Н/П»).
+        money.update(
+            rate_source='Н/П — инвойс застройщика в USD, конвертации нет / N/A — developer invoice already in USD',
+            usd_equivalent=_stand_plain(thb) if thb else '',
+            thb_credit_status='Н/П — оплата в USD, THB не используется / N/A — paid in USD, no THB involved',
+            developer_confirmation='По условиям инвойса застройщика / As per developer invoice terms')
     if missing:
         missing = list(dict.fromkeys(missing))
         return {'error': 'missing_fields', 'fields': missing,
