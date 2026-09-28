@@ -11396,16 +11396,19 @@ def get_wallets():
             
             # Получаем баланс с TronScan
             try:
-                balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
-                balance_resp = requests.get(balance_url, headers=headers, timeout=5)
-                if balance_resp.status_code == 200:
+                if STAND_MODE:
+                    balance_resp = _stand_tronscan_get('tron_account_balance', {'address': wallet.address})
+                else:
+                    balance_url = f'https://apilist.tronscanapi.com/api/account?address={wallet.address}'
+                    balance_resp = requests.get(balance_url, headers=headers, timeout=5)
+                if balance_resp is not None and balance_resp.status_code == 200:
                     balance_data = balance_resp.json()
                     wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
                     for token in balance_data.get('trc20token_balances', []):
                         if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
                             wallet_data['usdt_balance'] = float(token.get('balance', 0)) / 1_000_000
                             break
-                    
+
                     # Обновляем кэш
                     TRONSCAN_CACHE['balances'][wallet.address] = {
                         'usdt': wallet_data['usdt_balance'],
@@ -11414,9 +11417,12 @@ def get_wallets():
                     }
                 else:
                     # Если ошибка, попробуем альтернативный эндпоинт баланса
-                    alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
-                    alt_resp = requests.get(alt_url, headers=headers, timeout=5)
-                    if alt_resp.status_code == 200:
+                    if STAND_MODE:
+                        alt_resp = _stand_tronscan_get('tron_account_tokens', {'address': wallet.address})
+                    else:
+                        alt_url = f'https://apilist.tronscanapi.com/api/account/tokens?address={wallet.address}'
+                        alt_resp = requests.get(alt_url, headers=headers, timeout=5)
+                    if alt_resp is not None and alt_resp.status_code == 200:
                         alt_data = alt_resp.json()
                         for token in alt_data.get('data', []):
                             if token.get('tokenId') == 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t':
@@ -11491,9 +11497,12 @@ def add_wallet():
         
         # Попробуем получить реальный баланс
         try:
-            balance_url = f'https://apilist.tronscanapi.com/api/account?address={address}'
-            balance_resp = requests.get(balance_url, timeout=5)
-            if balance_resp.status_code == 200:
+            if STAND_MODE:
+                balance_resp = _stand_tronscan_get('tron_account_balance', {'address': address})
+            else:
+                balance_url = f'https://apilist.tronscanapi.com/api/account?address={address}'
+                balance_resp = requests.get(balance_url, timeout=5)
+            if balance_resp is not None and balance_resp.status_code == 200:
                 balance_data = balance_resp.json()
                 # TRX баланс
                 wallet_data['trx_balance'] = float(balance_data.get('balance', 0)) / 1_000_000
@@ -11516,6 +11525,33 @@ def add_wallet():
 USDT_TRC20_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
 
 
+class _StandJsonResponse:
+    """Приводит (status_code, json, error) от read_get к форме, которую ждёт
+    остальной код (response.status_code / response.json()) — так вызывающий
+    код (включая ретраи на 429) остаётся без изменений и на стенде, и вне его."""
+    __slots__ = ('status_code', '_data')
+
+    def __init__(self, status_code, data):
+        self.status_code = status_code
+        self._data = data if data is not None else {}
+
+    def json(self):
+        return self._data
+
+
+def _stand_tronscan_get(op, params):
+    """На стенде — единственный путь к TronScan (T9): read_get вместо
+    requests.get. status_code возвращается и на 429/4xx/5xx (сам read_get
+    получил ответ сети), это позволяет вызывающему коду ретраить 429 так же,
+    как раньше. None — канал вообще не достучался (таймаут/нет ключа/мусор
+    в параметрах) и повторять нечего, как раньше означало сетевую ошибку."""
+    import stand_egress
+    status_code, data, err = stand_egress.read_get(op, params)
+    if status_code is None:
+        return None
+    return _StandJsonResponse(status_code, data)
+
+
 def _tron_balances(address):
     """Балансы адреса TRON: (usdt, trx). None — если адрес не читается.
 
@@ -11527,8 +11563,13 @@ def _tron_balances(address):
         # Ретрай на 429: с одного IP сюда же ходит фоновый прогрев кэша, и без
         # него баланс молча оказывался «непрочитанным» (кейс 10.08, кошелёк #14)
         for attempt in range(3):
-            r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}',
-                             headers=_TRONSCAN_HEADERS, timeout=8)
+            if STAND_MODE:
+                r = _stand_tronscan_get('tron_account_balance', {'address': address})
+                if r is None:
+                    return None
+            else:
+                r = requests.get(f'https://apilist.tronscanapi.com/api/account?address={address}',
+                                 headers=_TRONSCAN_HEADERS, timeout=8)
             if r.status_code != 429:
                 break
             time.sleep(2 * (attempt + 1))
@@ -11639,9 +11680,14 @@ def _tron_tx_usdt_amount(tx_hash):
     if os.environ.get('PYTEST_CURRENT_TEST'):
         return None
     try:
-        r = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
-                         headers=_TRONSCAN_HEADERS, timeout=6,
-                         params={'hash': tx_hash})
+        if STAND_MODE:
+            r = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+            if r is None:
+                return None
+        else:
+            r = requests.get('https://apilist.tronscanapi.com/api/transaction-info',
+                             headers=_TRONSCAN_HEADERS, timeout=6,
+                             params={'hash': tx_hash})
         if r.status_code != 200:
             return None
         data = r.json() or {}
@@ -11683,11 +11729,18 @@ def _tron_usdt_transfers(address, start_ts=None, pages=TRON_RECONCILE_PAGES,
             # прогрев кэша. Без ретрая сверка падала бы через раз (ловилось
             # на проде 10.08: локально 200, с Railway — пусто).
             for attempt in range(3):
-                r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
-                                 headers=_TRONSCAN_HEADERS, timeout=10,
-                                 params={'relatedAddress': address,
-                                         'contract_address': USDT_TRC20_CONTRACT,
-                                         'limit': per_page, 'start': page * per_page})
+                if STAND_MODE:
+                    r = _stand_tronscan_get('tron_trc20_transfers', {
+                        'relatedAddress': address, 'contract_address': USDT_TRC20_CONTRACT,
+                        'limit': per_page, 'start': page * per_page})
+                    if r is None:
+                        return None if not out else out
+                else:
+                    r = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                     headers=_TRONSCAN_HEADERS, timeout=10,
+                                     params={'relatedAddress': address,
+                                             'contract_address': USDT_TRC20_CONTRACT,
+                                             'limit': per_page, 'start': page * per_page})
                 if r.status_code != 429:
                     break
                 time.sleep(2 * (attempt + 1))
@@ -12013,23 +12066,32 @@ def _tronscan_fetch_incoming(wallets, start_ts=None, end_ts=None):
 
         try:
             for page in range(2):  # 2 страницы по 50 = 100 транзакций на кошелек
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                 params = {
                     'relatedAddress': wallet.address,
                     'contract_address': USDT_TRC20_CONTRACT,
                     'limit': 50,
                     'start': page * 50,
-                    't': int(time.time())
                 }
 
                 # Retry при 429 (rate limit)
+                response = None
                 for attempt in range(3):
-                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if STAND_MODE:
+                        response = _stand_tronscan_get('tron_trc20_transfers', params)
+                        if response is None:
+                            break
+                    else:
+                        response = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                                params={**params, 't': int(time.time())},
+                                                headers=_TRONSCAN_HEADERS, timeout=10)
                     if response.status_code == 429:
                         wait_time = 2 * (attempt + 1)
                         print(f"[DEBUG] TronScan 429 for {wallet.address[:10]}..., waiting {wait_time}s (attempt {attempt+1})")
                         time.sleep(wait_time)
                         continue
+                    break
+                if response is None:
+                    wallets_errors.append(wallet.address)
                     break
 
                 if response.status_code == 200:
@@ -12355,23 +12417,32 @@ def _tronscan_fetch_outgoing(wallets, internal_wallet_addresses, start_ts=None, 
             api_limit = min(result_limit or 50, 50)
             max_pages = 1 if result_limit else 2
             for page in range(max_pages):
-                url = 'https://apilist.tronscanapi.com/api/token_trc20/transfers'
                 params = {
                     'relatedAddress': wallet.address,
                     'contract_address': USDT_TRC20_CONTRACT,
                     'limit': api_limit,
                     'start': page * api_limit,
-                    't': int(time.time())
                 }
 
                 # Retry при 429 (rate limit)
+                response = None
                 for attempt in range(3):
-                    response = requests.get(url, params=params, headers=_TRONSCAN_HEADERS, timeout=10)
+                    if STAND_MODE:
+                        response = _stand_tronscan_get('tron_trc20_transfers', params)
+                        if response is None:
+                            break
+                    else:
+                        response = requests.get('https://apilist.tronscanapi.com/api/token_trc20/transfers',
+                                                params={**params, 't': int(time.time())},
+                                                headers=_TRONSCAN_HEADERS, timeout=10)
                     if response.status_code == 429:
                         wait_time = 2 * (attempt + 1)
                         print(f"[DEBUG] TronScan outgoing 429 for {wallet.address[:10]}..., waiting {wait_time}s")
                         time.sleep(wait_time)
                         continue
+                    break
+                if response is None:
+                    failed.append(wallet.address)
                     break
 
                 if response.status_code == 200:
@@ -12674,10 +12745,13 @@ def verify_transaction_post():
         if not tx_hash:
             return jsonify({'success': False, 'error': 'Не указан хэш транзакции'}), 400
         
-        url = f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}'
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code != 200:
+        if STAND_MODE:
+            response = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+        else:
+            response = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                                    timeout=10)
+
+        if response is None or response.status_code != 200:
             return jsonify({'success': False, 'error': 'Транзакция не найдена'}), 404
         
         tx_data = response.json()
@@ -14151,8 +14225,13 @@ def _tron_tx_to_address(tx_hash):
     возмещениями, её контракт не трогаем.
     """
     try:
-        r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
-                         timeout=10)
+        if STAND_MODE:
+            r = _stand_tronscan_get('tron_tx_info', {'hash': tx_hash})
+            if r is None:
+                return None
+        else:
+            r = requests.get(f'https://apilist.tronscanapi.com/api/transaction-info?hash={tx_hash}',
+                             timeout=10)
         if r.status_code != 200:
             return None
         # Батч: в одном хеше несколько переводов. Получатель — тот, кому ушло

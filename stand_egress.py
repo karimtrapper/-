@@ -505,6 +505,38 @@ def _valid_prod_all_flag(v):
     return v in (1, '1')
 
 
+_TRON_B58_ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz'
+_TRON_USDT_CONTRACT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
+
+
+def _valid_tron_address(v):
+    """TRON base58check, с контрольной суммой — не просто «T + 33 символа
+    из алфавита» (та же проверка, что и tron_address_problem в app.py, но
+    без импорта app.py — независимая копия алгоритма, не общий модуль)."""
+    if not isinstance(v, str) or len(v) != 34 or not v.startswith('T'):
+        return False
+    if any(c not in _TRON_B58_ALPHABET for c in v):
+        return False
+    num = 0
+    for c in v:
+        num = num * 58 + _TRON_B58_ALPHABET.index(c)
+    raw = num.to_bytes(25, 'big')
+    import hashlib
+    return hashlib.sha256(hashlib.sha256(raw[:-4]).digest()).digest()[:4] == raw[-4:]
+
+
+def _valid_usdt_trc20_contract(v):
+    return v == _TRON_USDT_CONTRACT  # фиксированный контракт, не произвольный адрес
+
+
+def _valid_transfers_limit(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 1 <= v <= 50
+
+
+def _valid_transfers_start(v):
+    return isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 1000
+
+
 # host/path — точные, без wildcard/prefix; params — закрытый словарь имя→валидатор
 # значения (не только имени параметра); required — какие обязательны.
 _READ_CHANNELS = {
@@ -513,6 +545,32 @@ _READ_CHANNELS = {
         'path': '/api/transaction-info',
         'params': {'hash': _valid_tron_hash},
         'required': {'hash'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_account_balance': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/account',
+        'params': {'address': _valid_tron_address},
+        'required': {'address'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_account_tokens': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/account/tokens',
+        'params': {'address': _valid_tron_address},
+        'required': {'address'},
+        'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
+    },
+    'tron_trc20_transfers': {
+        'host': 'apilist.tronscanapi.com',
+        'path': '/api/token_trc20/transfers',
+        'params': {
+            'relatedAddress': _valid_tron_address,
+            'contract_address': _valid_usdt_trc20_contract,
+            'limit': _valid_transfers_limit,
+            'start': _valid_transfers_start,
+        },
+        'required': {'relatedAddress', 'contract_address', 'limit', 'start'},
         'key_env': 'TRONSCAN_API_KEY', 'key_header': 'TRON-PRO-API-KEY', 'key_optional': True,
     },
     'eth_tx_receipt': {

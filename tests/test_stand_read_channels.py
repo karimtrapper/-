@@ -936,3 +936,201 @@ def test_app_etherscan_tx_info_without_stand_key_returns_empty_no_channel_call()
                      'LOCAL_NO_AUTH': '0', 'STAND_ETHERSCAN_API_KEY': None})
     assert proc.returncode == 0, proc.stderr
     assert result['result'] == {}
+
+
+# ───────── QA-раунд 2 (лидер): /api/wallets, сверка кошельков — новые op ────
+
+_VALID_TRON_ADDR = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'  # grusha, из DEFAULT_WALLETS
+
+
+def test_tron_account_balance_valid_address_reaches_fake_server():
+    result, proc = run_script(_fake_get_server_script() + f'''
+        status_code, data, err = stand_egress.read_get(
+            'tron_account_balance', {{'address': {_VALID_TRON_ADDR!r}}}, _base_url=_base)
+        OUT({{'err': err, 'path': FakeChain.hits[0]['path'] if FakeChain.hits else None,
+             'query': FakeChain.hits[0]['query'] if FakeChain.hits else None}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['err'] is None
+    assert result['path'] == '/api/account'
+    assert result['query'] == {'address': [_VALID_TRON_ADDR]}
+
+
+def test_tron_account_balance_rejects_bad_checksum_before_network():
+    result, proc = run_script(_fake_get_server_script() + '''
+        # Последний символ испорчен — длина и алфавит верные, но контрольная сумма нет.
+        bad = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqX'
+        _, _, err = stand_egress.read_get('tron_account_balance', {'address': bad}, _base_url=_base)
+        OUT({'err': err, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err': 'invalid_param', 'hits': 0}
+
+
+def test_tron_account_balance_rejects_non_address_garbage():
+    result, proc = run_script(_fake_get_server_script() + '''
+        out = []
+        for garbage in ['not-an-address', 'Иван Иванов', '0x' + 'a' * 40, 'T' + 'x' * 33, '']:
+            _, _, err = stand_egress.read_get('tron_account_balance', {'address': garbage}, _base_url=_base)
+            out.append(err)
+        OUT({'errs': out, 'hits': len(FakeChain.hits)})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'errs': ['invalid_param'] * 5, 'hits': 0}
+
+
+def test_tron_account_tokens_same_address_validation_and_path():
+    result, proc = run_script(_fake_get_server_script() + f'''
+        _, _, err = stand_egress.read_get('tron_account_tokens', {{'address': {_VALID_TRON_ADDR!r}}}, _base_url=_base)
+        OUT({{'err': err, 'path': FakeChain.hits[0]['path'] if FakeChain.hits else None}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err': None, 'path': '/api/account/tokens'}
+
+
+def test_tron_trc20_transfers_requires_fixed_usdt_contract():
+    result, proc = run_script(_fake_get_server_script() + f'''
+        _, _, err_wrong = stand_egress.read_get('tron_trc20_transfers', {{
+            'relatedAddress': {_VALID_TRON_ADDR!r}, 'contract_address': 'TSomeOtherContract1111111111111111',
+            'limit': 50, 'start': 0}}, _base_url=_base)
+        _, _, err_ok = stand_egress.read_get('tron_trc20_transfers', {{
+            'relatedAddress': {_VALID_TRON_ADDR!r}, 'contract_address': 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t',
+            'limit': 50, 'start': 0}}, _base_url=_base)
+        OUT({{'err_wrong': err_wrong, 'err_ok': err_ok, 'hits': len(FakeChain.hits)}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result == {'err_wrong': 'invalid_param', 'err_ok': None, 'hits': 1}
+
+
+def test_tron_trc20_transfers_limit_and_start_bounded():
+    result, proc = run_script(_fake_get_server_script() + f'''
+        base_params = {{'relatedAddress': {_VALID_TRON_ADDR!r},
+                        'contract_address': 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'}}
+        out = {{}}
+        for label, extra in [
+            ('limit_zero', {{'limit': 0, 'start': 0}}),
+            ('limit_too_big', {{'limit': 51, 'start': 0}}),
+            ('start_negative', {{'limit': 50, 'start': -1}}),
+            ('start_too_big', {{'limit': 50, 'start': 100000}}),
+            ('ok', {{'limit': 50, 'start': 50}}),
+        ]:
+            _, _, err = stand_egress.read_get('tron_trc20_transfers', {{**base_params, **extra}}, _base_url=_base)
+            out[label] = err
+        OUT({{'errs': out, 'hits': len(FakeChain.hits)}})
+    ''')
+    assert proc.returncode == 0, proc.stderr
+    assert result['errs'] == {'limit_zero': 'invalid_param', 'limit_too_big': 'invalid_param',
+                              'start_negative': 'invalid_param', 'start_too_big': 'invalid_param',
+                              'ok': None}
+    assert result['hits'] == 1
+
+
+# ── runtime: при STAND_MODE ни один прямой requests.get к TronScan/Etherscan
+# из CRM-функций app.py не выполняется — read_get вызывается вместо него.
+
+def test_app_wallet_functions_never_call_requests_get_directly_on_stand():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+
+        direct_calls = []
+        def fake_direct_get(*a, **k):
+            direct_calls.append(a[0] if a else k.get('url'))
+            raise AssertionError('прямой requests.get не должен вызываться на стенде')
+
+        def fake_read_get(op, params=None, _base_url=None):
+            if op in ('tron_account_balance', 'tron_account_tokens'):
+                return 200, {'address': 'x', 'balance': 1000000, 'trc20token_balances': []}, None
+            if op == 'tron_trc20_transfers':
+                return 200, {'token_transfers': []}, None
+            if op == 'tron_tx_info':
+                return 200, {'trc20TransferInfo': []}, None
+            raise AssertionError(f'unexpected op {op}')
+
+        addr = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
+        with patch('requests.get', side_effect=fake_direct_get), \\
+             patch.object(stand_egress, 'read_get', fake_read_get):
+            balances = app._tron_balances(addr)
+            transfers = app._tron_usdt_transfers(addr)
+            tx_amount = app._tron_tx_usdt_amount('a' * 64)
+            to_addr = app._tron_tx_to_address('a' * 64)
+
+        OUT({'direct_calls': direct_calls, 'balances': balances, 'transfers': transfers,
+             'tx_amount': tx_amount, 'to_addr': to_addr})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0', 'PYTEST_CURRENT_TEST': None})
+    assert proc.returncode == 0, proc.stderr
+    assert result['direct_calls'] == []
+    assert result['balances'] == [0.0, 1.0]
+    assert result['transfers'] == []
+
+
+def test_app_wallets_routes_never_call_requests_get_directly_on_stand():
+    result, proc = run_script('''
+        from unittest.mock import patch
+        import stand_egress
+        stand_egress.install()
+        import app
+        app.app.config['TESTING'] = True
+        app.limiter.enabled = False
+        client = app.app.test_client()
+
+        db = app.get_session()
+        try:
+            admin = app.AdminUser(username='adm-wallets-test', role='admin', password_hash=b'x')
+            db.add(admin); db.commit(); admin_id = admin.id
+        finally:
+            db.close()
+        with client.session_transaction() as sess:
+            sess['user_id'] = admin_id
+
+        direct_calls = []
+        def fake_direct_get(*a, **k):
+            direct_calls.append(a[0] if a else k.get('url'))
+            raise AssertionError('прямой requests.get не должен вызываться на стенде')
+
+        def fake_read_get(op, params=None, _base_url=None):
+            if op in ('tron_account_balance', 'tron_account_tokens'):
+                return 200, {'address': 'x', 'balance': 2000000, 'trc20token_balances': []}, None
+            raise AssertionError(f'unexpected op {op}')
+
+        with patch('requests.get', side_effect=fake_direct_get), \\
+             patch.object(stand_egress, 'read_get', fake_read_get):
+            r1 = client.get('/api/wallets')
+            r2 = client.post('/api/wallets', json={'address': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'})
+
+        OUT({'direct_calls': direct_calls, 'get_status': r1.status_code, 'post_status': r2.status_code})
+    ''', extra_env={'SECRET_KEY': 'test-secret', 'STAND_PASSWORD': 'test-password',
+                     'LOCAL_NO_AUTH': '0'})
+    assert proc.returncode == 0, proc.stderr
+    assert result['direct_calls'] == []
+    assert result['get_status'] == 200
+    assert result['post_status'] == 200
+
+
+def test_grep_no_unguarded_direct_tronscan_etherscan_calls_in_app_py():
+    """Статическая проверка: каждый оставшийся requests.get(...) к TronScan/
+    Etherscan в app.py стоит в ветке else после `if STAND_MODE:` (либо внутри
+    _stand_get/_stand_tronscan_get самого канала) — grep, а не полный AST,
+    но с окном контекста, которого достаточно для этого файла."""
+    import re
+    from pathlib import Path
+    text = (ROOT / 'app.py').read_text()
+    lines = text.split('\n')
+    offenders = []
+    for i, line in enumerate(lines):
+        if 'requests.get(' in line and ('tronscanapi.com' in line or 'etherscan.io' in line):
+            window = '\n'.join(lines[max(0, i - 14):i])
+            if 'STAND_MODE' not in window:
+                offenders.append((i + 1, line.strip()))
+        elif re.search(r"requests\.get\(\s*(url|balance_url|alt_url)\s*,", line):
+            # непрямая ссылка через переменную — ищем присвоение той же
+            # переменной строкой с tronscan/etherscan в ближайших строках выше
+            var = re.search(r"requests\.get\(\s*(\w+)\s*,", line).group(1)
+            window = '\n'.join(lines[max(0, i - 10):i])
+            if (f'{var} =' in window and ('tronscanapi.com' in window or 'etherscan.io' in window)
+                    and 'STAND_MODE' not in window):
+                offenders.append((i + 1, line.strip()))
+    assert offenders == [], f'найдены необёрнутые прямые вызовы: {offenders}'
