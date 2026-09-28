@@ -363,6 +363,24 @@ with sync_playwright() as playwright:
     assert host.locator('#fhInvoiceUsd').input_value()=='45000'
     assert page.locator('#crmDraftTariff').input_value()=='bank'
     page.locator('#crmDraftTariff').select_option('soft')
+    crm_soft=context.new_page()
+    crm_soft.goto('http://127.0.0.1:18917/crm',wait_until='domcontentloaded',timeout=20000)
+    crm_soft.evaluate('showSection("create")')
+    crm_soft.wait_for_function('document.querySelector("#dealKindSelect")?.dataset.upgraded === "true"')
+    pick(crm_soft,'dealKindSelect','mf_freehold')
+    pick(crm_soft,'payinMethod','crypto_direct')
+    crm_soft.locator('[name="payin_amount_usdt"]').fill('46000')
+    crm_soft.locator('#fhInvoiceUsd').fill('45000')
+    crm_soft.locator('#fhFeePercent').fill('1.5')
+    crm_soft.locator('#fhFeeFixed').fill('50')
+    crm_soft.evaluate('fhRecalcNow()')
+    page.evaluate('crmDraftActive.core.fhRecalcNow()')
+    crm_soft.wait_for_function('document.querySelector("#fhSummary")?.textContent.includes("45")')
+    page.wait_for_function('document.querySelector("#crmDraftHost")?.shadowRoot?.getElementById("fhSummary")?.textContent.includes("45")')
+    soft_summaries=[crm_soft.locator('#fhSummary').inner_text(),host.locator('#fhSummary').inner_text()]
+    print('freehold soft preview CRM/tasks:',soft_summaries[0]==soft_summaries[1])
+    assert soft_summaries[0]==soft_summaries[1]
+    crm_soft.close()
     page.locator('.card.edit-page > .row > button').first.click()
     saved=page.evaluate('(id) => {const d=deal(id);return [d.kind,d.ippsTariff,crmPayload(d).transfer_fee_percent,S.edit]}',result['id'])
     print('freehold edit:',saved)
