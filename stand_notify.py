@@ -75,25 +75,38 @@ def can_send(channel, recipient, operation):
 
 
 def bot_username():
-    global _bot_username
-    if _bot_username:
-        return _bot_username
+    global _status
+    expected = stand_egress.expected_bot_username()
+    if not expected:
+        _status = 'bot_identity_mismatch'
+        return None
     try:
         result = stand_egress.tg_call('getMe', {})
     except Exception:
-        _app.app.logger.exception('stand bot identity lookup failed')
+        _status = 'bot_identity_mismatch'
+        _app.app.logger.warning('stand bot identity lookup failed')
         return None
     if not isinstance(result, dict):
+        _status = 'bot_identity_mismatch'
+        _app.app.logger.warning('stand bot_identity_mismatch')
         return None
-    name = (result.get('result') or {}).get('username') if isinstance(result, dict) else None
-    if result.get('ok') and isinstance(name, str) and re.fullmatch(r'[A-Za-z0-9_]{5,32}', name):
-        _bot_username = name
-    return _bot_username
+    bot = result.get('result') if isinstance(result.get('result'), dict) else {}
+    name = bot.get('username')
+    if result.get('ok') and isinstance(name, str) and name.lower() == expected.lower():
+        if _status == 'bot_identity_mismatch':
+            _status = 'disabled'
+        return expected
+    _status = 'bot_identity_mismatch'
+    _app.app.logger.warning('stand bot_identity_mismatch')
+    return None
 
 
 def create_bind(admin_id):
+    global _status
     username = bot_username()
-    if not username:
+    if not username or username != stand_egress.expected_bot_username():
+        _status = 'bot_identity_mismatch'
+        _app.app.logger.warning('stand bot_identity_mismatch')
         return None
     nonce = secrets.token_urlsafe(24)
     db = _app.SessionLocal()
@@ -234,7 +247,8 @@ def poll_once():
         offset = db.execute(text('SELECT next_offset FROM stand_tg_offset WHERE id=1')).scalar() or 0
         result = stand_egress.tg_call('getUpdates', {'offset': offset, 'timeout': 20, 'allowed_updates': ['message']})
         if not isinstance(result, dict) or not result.get('ok'):
-            _status = 'error'
+            _status = ('bot_identity_mismatch' if isinstance(result, dict)
+                       and result.get('error') == 'bot_identity_mismatch' else 'error')
             _app.app.logger.warning('stand update poll rejected: %s',
                                     result.get('error_code', 'unknown') if isinstance(result, dict) else 'invalid_response')
             return False
@@ -269,6 +283,8 @@ def start_updates():
     global _status
     if not _app or not _app.STAND_MODE or not os.environ.get('STAND_TG_TOKEN') or os.environ.get('STAND_TG_UPDATES_ENABLED', '1') != '1':
         _status = 'disabled'
+        return False
+    if not bot_username():
         return False
     try:
         info = stand_egress.tg_call('getWebhookInfo', {})

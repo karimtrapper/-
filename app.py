@@ -4997,8 +4997,12 @@ def stand_tg_bind():
         db.close()
     link = stand_notify.create_bind(uid)
     if not link:
-        return jsonify({'success': False, 'error': 'bot_unavailable'}), 503
-    return jsonify({'success': True, 'url': link, 'expires_in': 600})
+        error = ('bot_identity_mismatch' if stand_notify.status() == 'bot_identity_mismatch'
+                 or stand_notify.stand_egress.bot_identity_status() else 'bot_unavailable')
+        return jsonify({'success': False, 'error': error,
+                        'bot_username': stand_notify.stand_egress.expected_bot_username()}), 503
+    return jsonify({'success': True, 'url': link, 'expires_in': 600,
+                    'bot_username': stand_notify.stand_egress.expected_bot_username()})
 
 
 @app.route('/api/stand/tg-status', methods=['GET'])
@@ -5011,12 +5015,19 @@ def stand_tg_status():
     db = get_session()
     try:
         users = db.query(AdminUser).order_by(AdminUser.id).all()
-        return jsonify({'success': True, 'bot': stand_notify.bot_username(),
+        bot = stand_notify.bot_username()
+        expected_bot = stand_notify.stand_egress.expected_bot_username()
+        error = ('bot_identity_mismatch' if (bot is not None and bot != expected_bot)
+                 or stand_notify.status() == 'bot_identity_mismatch'
+                 or stand_notify.stand_egress.bot_identity_status() else None)
+        return jsonify({'success': error is None, 'bot': bot,
+                        'bot_username': expected_bot,
+                        'error': error,
                         'updates': stand_notify.status(), 'mode': stand_notify.mode(),
                         'employees': [{'id': u.id, 'username': u.username,
                                        'role': u.role, 'bound': bool(u.telegram_user_id),
                                        'notify_enabled': bool(u.notify_enabled),
-                                       'login_disabled': bool(u.login_disabled)} for u in users]})
+                                       'login_disabled': bool(u.login_disabled)} for u in users]}), 503 if error else 200
     finally:
         db.close()
 
