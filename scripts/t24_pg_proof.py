@@ -25,6 +25,7 @@ def board():
     return {'deals': [{'id': 1474, 'code': 'СД-1474', 'client': 'PG synthetic T24',
                        'type': 'Обмен валюты', 'step': 's27', 'closed': False,
                        'crmDealId': None, 'sentToClient': True, 'pay': {},
+                       'amountUsdt': 100, 'payout': {'usdt': 90},
                        'files': {'receipt': [{'file': 'receipt.pdf',
                            'mime': 'application/pdf',
                            'data': 'data:application/pdf;base64,JVBERi0='}]},

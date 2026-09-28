@@ -32,4 +32,13 @@ assert.equal(final.payin_amount_usdt, 46000);
 assert.equal(final.payin_rate_rub_usdt, 92);
 assert.equal(final.notes, 'allowed descriptive change');
 assert.equal(final.agents[0].percent, 12);
+const rubDerived = {type:'Обмен валюты',payType:'Наличные',incomeAmount:100000,
+  rates:{broker:100,usdtThb:30},payout:{thb:3000},paySrc:'cash',
+  crmEdit:{payin_amount_usdt:999,payout_amount_usdt:999,notes:'still editable'}};
+ctx.crmPayload = () => ({payin_amount_usdt:996.60,payout_amount_usdt:100,
+  notes:'original',agents:[]});
+const derivedFinal = ctx.crmPayloadFinal(rubDerived);
+assert.equal(derivedFinal.payin_amount_usdt,996.60);
+assert.equal(derivedFinal.payout_amount_usdt,100);
+assert.equal(derivedFinal.notes,'still editable');
 console.log('T24 stale locked crmEdit ignored, descriptive/agent edit retained PASS');

@@ -18,6 +18,7 @@ def _board():
     return {'deals': [{'id': 1474, 'code': 'СД-1474', 'client': 'Synthetic T24',
                        'type': 'Обмен валюты', 'step': 's27', 'closed': False,
                        'crmDealId': None, 'sentToClient': True, 'pay': {},
+                       'amountUsdt': 100, 'payout': {'usdt': 90},
                        'files': {'receipt': [{'file': 'receipt.pdf',
                            'mime': 'application/pdf',
                            'data': 'data:application/pdf;base64,JVBERi0='}]},
@@ -314,7 +315,7 @@ def test_rates_and_company_sent_match_persisted_board(monkeypatch):
         deal = board['deals'][0]
         deal.update(type='Оплата недвижимости', kind='Лизхолд',
             postConv='coins', payType='По реквизитам', amountThb=600000,
-            incomeAmount=1932000, amountRub=1932000, companyPct=1,
+            incomeAmount=1932000, amountRub=1932000, amountUsdt=21000, companyPct=1,
             serverTransferComplete=True,
             rates={'broker': 92, 'client': 30, 'usdtThb': 32},
             transfer={'rate': 32, 'thb': 603000},
@@ -365,6 +366,8 @@ def _manual_draft(monkeypatch, kind='exchange'):
         deal.update(type='Оплата недвижимости', kind=kind,
                     amountThb=622370 if kind != 'Фрихолд' else None,
                     invoiceUsd=39010.91 if kind == 'Фрихолд' else None,
+                    amountUsdt=39533.77 if kind == 'Фрихолд' else 19929.17,
+                    rates={'usdtThb': 33.22} if kind != 'Фрихолд' else {},
                     ippsTariff='bank' if kind == 'Фрихолд' else None)
     client = _client(uid)
     created = client.put('/api/stand/state', json={'version': 1,
@@ -939,6 +942,121 @@ def test_manual_standard_types_close_once(monkeypatch, kind, crm):
     assert _counts() == (before[0] + 1, before[1] + 1)
 
 
+@pytest.mark.parametrize('kind,missing,error', [
+    ('exchange', 'payin', 'payin_basis_missing'),
+    ('exchange', 'payout', 'payout_basis_missing'),
+    ('Фрихолд', 'payin', 'payin_basis_missing'),
+    ('Лизхолд', 'invoice', 'invoice_basis_missing'),
+    ('Аренда', 'buy_rate', 'buy_rate_board_missing'),
+])
+def test_manual_close_requires_route_money_on_saved_board(monkeypatch, kind, missing, error):
+    uid, version = _manual_draft(monkeypatch, kind)
+    client = _client(uid)
+    crm = {**_crm(), 'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    if kind == 'Фрихолд':
+        crm.update(deal_kind='mf_freehold', payin_method='crypto_direct',
+                   payin_amount_usdt=39533.77, invoice_amount_usd=39010.91,
+                   transfer_fee_percent=.8, transfer_fee_fixed_usd=50,
+                   transfer_sent_usd=39373)
+    elif kind in ('Лизхолд', 'Аренда'):
+        crm.update(deal_kind='mf_realty', payin_method='crypto_direct',
+                   payin_amount_usdt=19929.17, invoice_amount_thb=622370,
+                   buy_rate_thb_usdt=33.22, company_percent=1)
+    control = _post(client, version=version, crm=crm)
+    assert control.status_code == 201, control.json
+    state = client.get('/api/stand/state').json
+    board = copy.deepcopy(state['data'])
+    deal = copy.deepcopy(board['deals'][0])
+    deal.update(id=1475, code='СД-1475', originMode=None, step='manual',
+                closed=False, crmDealId=None, sentToClient=False, log=[])
+    for field in ('crmAt', 'closedAt', 'closeReason'):
+        deal.pop(field, None)
+    if missing == 'payin':
+        deal.pop('amountUsdt', None)
+    elif missing == 'payout':
+        deal['payout'] = {}
+    elif missing == 'invoice':
+        deal.pop('amountThb', None)
+    else:
+        deal['rates'] = {}
+    board['deals'].append(deal)
+    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': board})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][1]['originMode'] == 'manual'
+    version = saved.json['version']
+    baseline = _counts()
+    response = client.post('/api/stand/deals/1475/crm-close',
+                           json={'version': version, 'crm': crm})
+    assert response.status_code == 409 and response.json['error'] == error, response.json
+    assert _counts() == baseline
+    unchanged = client.get('/api/stand/state').json
+    assert unchanged['version'] == version and unchanged['data'] == saved.json['data']
+
+
+@pytest.mark.parametrize('missing_side', ['payin', 'payout'])
+def test_manual_custom_requires_saved_usdt_basis(monkeypatch, missing_side):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    board = copy.deepcopy(client.get('/api/stand/state').json['data'])
+    board['deals'][0].update(custom=True, customData={
+        'payinCurrency': 'RUB', 'payinAmount': 92000, 'payinRate': 92,
+        'payinUsdt': 1000,
+        'payoutCurrency': 'THB', 'payoutAmount': 30000,
+        'payoutRate': 31.5, 'payoutUsdt': 952.38})
+    saved = client.put('/api/stand/state', json={'version': version, 'data': board})
+    assert saved.status_code == 200, saved.json
+    crm = {**_crm(), 'is_custom': True, 'payin_amount_usdt': 1000,
+           'payout_amount_usdt': 952.38,
+           'custom_payin_currency': 'RUB', 'custom_payin_amount': 92000,
+           'custom_payin_rate': 92, 'custom_payout_currency': 'THB',
+           'custom_payout_amount': 30000, 'custom_payout_rate': 31.5,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    crm.pop('deal_kind')
+    control = _post(client, version=saved.json['version'], crm=crm)
+    assert control.status_code == 201, control.json
+    state = client.get('/api/stand/state').json
+    board = copy.deepcopy(state['data'])
+    deal = copy.deepcopy(board['deals'][0])
+    deal.update(id=1475, code='СД-1475', originMode=None, step='manual',
+                closed=False, crmDealId=None, sentToClient=False, log=[])
+    for field in ('crmAt', 'closedAt', 'closeReason'):
+        deal.pop(field, None)
+    deal['customData'].pop(missing_side + 'Usdt')
+    board['deals'].append(deal)
+    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': board})
+    assert saved.status_code == 200, saved.json
+    baseline = _counts()
+    response = client.post('/api/stand/deals/1475/crm-close',
+                           json={'version': saved.json['version'], 'crm': crm})
+    assert response.status_code == 409 and response.json['error'] == 'custom_facts_missing'
+    assert _counts() == baseline
+
+
+def test_manual_exchange_derived_payout_requires_saved_thb_and_buy_rate(monkeypatch):
+    uid, version = _manual_draft(monkeypatch)
+    client = _client(uid)
+    board = copy.deepcopy(client.get('/api/stand/state').json['data'])
+    board['deals'][0].update(payout={'thb': 3000}, rates={'usdtThb': 30})
+    saved = client.put('/api/stand/state', json={'version': version, 'data': board})
+    assert saved.status_code == 200, saved.json
+    version = saved.json['version']
+    crm = {**_crm(), 'payout_amount_usdt': 100, 'payout_amount_thb': 3000,
+           'doc_invoice_url': 'https://docs.invalid/invoice',
+           'doc_contract_url': 'https://docs.invalid/contract',
+           'doc_payment_url': 'https://docs.invalid/payment'}
+    baseline = _counts()
+    wrong = _post(client, version=version, crm={**crm, 'payout_amount_usdt': 999})
+    assert wrong.status_code == 409 and wrong.json['error'] == 'payout_amount_mismatch'
+    assert _counts() == baseline
+    accepted = _post(client, version=version, crm=crm)
+    assert accepted.status_code == 201, accepted.json
+    assert accepted.json['deal']['payout_amount_usdt'] == 100
+
+
 def test_manual_custom_uses_persisted_fields_and_rejects_invalid_money(monkeypatch):
     uid, version = _manual_draft(monkeypatch)
     client = _client(uid)
@@ -1231,7 +1349,8 @@ def test_property_payloads_close_once_with_independent_money_check(monkeypatch, 
         deal = board['deals'][0]
         deal.update(type='Оплата недвижимости', kind=kind,
                     postConv='ipps_swift' if kind == 'Фрихолд' else 'coins',
-                    serverTransferComplete=True)
+                    serverTransferComplete=True,
+                    amountUsdt=crm['payin_amount_usdt'])
         if kind == 'Фрихолд':
             deal.update(invoiceUsd=39010.91, ippsTariff='bank')
         else:
