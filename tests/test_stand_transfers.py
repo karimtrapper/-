@@ -608,7 +608,201 @@ def test_crypto_payin_check_rejects_ruble_deal_and_wrong_step(monkeypatch):
     with appmod.app.test_client() as client:
         assert client.post('/api/stand/payin/check', json={'dealId': 1, 'hash': HASH}).status_code == 404
         assert client.post('/api/stand/payin/check', json={'dealId': 2, 'hash': HASH}).status_code == 409
-        assert client.post('/api/stand/payin/check', json={'dealId': 2, 'hash': 'demo:2:x'}).status_code == 400
+        assert client.post('/api/stand/payin/check', json={'dealId': 2, 'hash': 'demo:2:x'}).status_code == 409
+
+
+def test_erc_payin_uses_saved_receiver_and_network_with_t9_receipt(monkeypatch):
+    import stand_egress
+    from stand_transfers import ETH_TRANSFER_TOPIC, ETH_USDT
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.setenv('STAND_ETHERSCAN_API_KEY', 'synthetic-stand-key')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    receiver = '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
+    sender = '0x' + '1' * 40
+    calls = []
+    def read_get(op, params=None, _base_url=None):
+        calls.append(op)
+        if op == 'eth_tx_receipt':
+            return 200, {'result': {'transactionHash': params['txhash'], 'status': '0x1',
+                'blockNumber': '0x10', 'logs': [{'address': ETH_USDT,
+                'topics': [ETH_TRANSFER_TOPIC, '0x' + '0' * 24 + sender[2:],
+                           '0x' + '0' * 24 + receiver[2:].lower()],
+                'data': hex(1_250_000)}]}}, None
+        assert op == 'eth_block_by_number'
+        return 200, {'result': {'number': '0x10', 'timestamp': '0x6553f100'}}, None
+    monkeypatch.setattr(stand_egress, 'read_get', read_get)
+    state = {'deals': [
+        {'id': 7, 'payType': 'Крипта', 'step': 's14', 'walletId': 'teodor-erc',
+         'payinHashes': [], 'log': []},
+        {'id': 8, 'payType': 'Крипта', 'step': 's14', 'walletId': 'grusha',
+         'payinHashes': [{'hash': HASH, 'network': 'TRC20'}]}],
+        'convs': [], 'wallets': [{'id': 'teodor-erc', 'addr': '0x' + '3' * 40,
+                                  'net': 'ERC-20'}]}
+    _put_board(state)
+    with appmod.app.test_client() as client:
+        wrong_url = client.post('/api/stand/payin/check', json={
+            'dealId': 7, 'hash': 'https://tronscan.org/#/transaction/' + HASH})
+        assert wrong_url.status_code == 400
+        assert not calls
+        injected = client.post('/api/stand/payin/check', json={
+            'dealId': 7, 'hash': '0x' + HASH, 'receiver': '0x' + '3' * 40})
+        assert injected.status_code == 400 and not calls
+        first = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': '0x' + HASH})
+        assert first.status_code == 200, first.json
+        assert first.json['tx']['to'] == receiver
+        assert first.json['tx']['network'] == 'ERC20'
+        assert first.json['tx']['amount'] == 1.25
+        assert first.json['data']['deals'][0]['step'] == 's14'  # partial payment stays open
+        assert calls == ['eth_tx_receipt', 'eth_block_by_number']
+        duplicate = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': '0x' + HASH})
+        assert duplicate.status_code == 409
+        proposal = first.json['data']
+        proposal['deals'][0]['walletId'] = 'custom'
+        proposal['deals'][0]['payinCustom'] = {'network': 'ERC-20', 'addr': '0x' + '3' * 40}
+        tamper = client.put('/api/stand/state', json={'version': first.json['version'],
+                                                       'data': proposal})
+        assert tamper.status_code == 409
+        assert 'закреплены' in tamper.json['error']
+        # Two-step bypass attempt: hide crypto type, change receiver, then restore.
+        disguised = json.loads(json.dumps(first.json['data']))
+        disguised['deals'][0].update(payType='По реквизитам', curBase='rub',
+                                     walletId='custom', payinCustom={
+                                         'network': 'ERC-20', 'addr': '0x' + '3' * 40})
+        evasion = client.put('/api/stand/state', json={'version': first.json['version'],
+                                                        'data': disguised})
+        assert evasion.status_code == 409
+        after = client.get('/api/stand/state').json
+        assert after['version'] == first.json['version']
+        assert after['data']['deals'][0]['walletId'] == 'teodor-erc'
+
+
+@pytest.mark.parametrize('network,address', [
+    ('ERC-20', 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'),
+    ('TRC-20', '0x' + '2' * 40),
+    ('BEP-20', '0x' + '2' * 40),
+])
+def test_invalid_custom_target_and_early_assignment_fail_direct_put(monkeypatch, network, address):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    old = {'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's11',
+                      'walletId': 'grusha', 'log': []}], 'convs': [], 'wallets': []}
+    _put_board(old)
+    proposal = json.loads(json.dumps(old))
+    proposal['deals'][0].update(walletId='custom', payinCustom={'network': network,
+                                                                 'addr': address})
+    with appmod.app.test_client() as client:
+        bad = client.put('/api/stand/state', json={'version': 1, 'data': proposal})
+        assert bad.status_code == 409
+        assert 'корректные сеть и адрес' in bad.json['error']
+        old['deals'][0]['step'] = 's4'
+        _put_board(old)
+        early = client.put('/api/stand/state', json={'version': 1, 'data': proposal})
+        assert early.status_code == 409
+
+
+def test_erc_outbound_route_stops_at_s22(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    old = {'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's22',
+                      'walletId': 'teodor-erc', 'log': []}], 'convs': [], 'wallets': []}
+    _put_board(old)
+    proposal = json.loads(json.dumps(old))
+    proposal['deals'][0]['step'] = 's23'
+    with appmod.app.test_client() as client:
+        result = client.put('/api/stand/state', json={'version': 1, 'data': proposal})
+    assert result.status_code == 409
+    assert 'ERC-20 исходящий маршрут' in result.json['error']
+
+
+@pytest.mark.parametrize('problem', ['pending', 'reverted', 'wrong_contract',
+                                      'wrong_recipient', 'wrong_block'])
+def test_erc_bad_receipt_never_claims_or_mutates_board(monkeypatch, problem):
+    import stand_egress
+    from stand_transfers import ETH_TRANSFER_TOPIC, ETH_USDT
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.setenv('STAND_ETHERSCAN_API_KEY', 'synthetic-stand-key')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    receiver = '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
+    def read_get(op, params=None, _base_url=None):
+        if op == 'eth_tx_receipt':
+            if problem == 'pending':
+                return 200, {'result': None}, None
+            receipt = {'transactionHash': params['txhash'],
+                'status': '0x0' if problem == 'reverted' else '0x1',
+                'blockNumber': '0x10', 'logs': [{
+                    'address': '0x' + '4' * 40 if problem == 'wrong_contract' else ETH_USDT,
+                    'topics': [ETH_TRANSFER_TOPIC, '0x' + '0' * 24 + '1' * 40,
+                               '0x' + '0' * 24 + (('5' * 40) if problem == 'wrong_recipient'
+                                                   else receiver[2:].lower())],
+                    'data': hex(1_250_000)}]}
+            return 200, {'result': receipt}, None
+        return 200, {'result': {'number': '0x11' if problem == 'wrong_block' else '0x10',
+                                'timestamp': '0x6553f100'}}, None
+    monkeypatch.setattr(stand_egress, 'read_get', read_get)
+    _put_board({'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's14',
+                            'walletId': 'teodor-erc', 'payinHashes': [], 'log': []}],
+                'convs': [], 'wallets': []})
+    with appmod.app.test_client() as client:
+        result = client.post('/api/stand/payin/check', json={'dealId': 7,
+                                                              'hash': '0x' + HASH})
+        state = client.get('/api/stand/state').json
+    assert result.status_code == 422
+    assert state['version'] == 1
+    assert state['data']['deals'][0]['payinHashes'] == []
+
+
+def test_valid_custom_wallet_saves_on_s11_and_locks_after_package(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    old = {'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's11',
+                      'walletId': 'grusha', 'log': []}], 'convs': [], 'wallets': []}
+    _put_board(old)
+    proposal = json.loads(json.dumps(old))
+    proposal['deals'][0].update(walletId='custom', payinCustom={
+        'network': 'ERC-20', 'addr': '0x' + '2' * 40})
+    with appmod.app.test_client() as client:
+        saved = client.put('/api/stand/state', json={'version': 1, 'data': proposal})
+        assert saved.status_code == 200, saved.json
+        assert appmod._stand_payin_target(saved.json['data'], saved.json['data']['deals'][0]) == (
+            'erc20', '0x' + '2' * 40)
+        locked = json.loads(json.dumps(saved.json['data']))
+        locked['deals'][0]['docPack'] = {'version': 1}
+        _put_board(locked)
+        tampered = json.loads(json.dumps(locked))
+        tampered['deals'][0]['payinCustom']['addr'] = '0x' + '3' * 40
+        rejected = client.put('/api/stand/state', json={'version': 1, 'data': tampered})
+        assert rejected.status_code == 409
+
+
+def test_broker_incoming_and_outgoing_erc_stay_closed_before_t9_read(monkeypatch):
+    import stand_egress
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    calls = []
+    monkeypatch.setattr(stand_egress, 'read_get',
+                        lambda *args, **kwargs: calls.append(args) or (200, {}, None))
+    state = board()
+    state['deals'][1]['transfer']['sends'][0]['net'] = 'ERC-20'
+    _put_board(state)
+    with appmod.app.test_client() as client:
+        incoming = client.post('/api/stand/incoming/check', json={
+            'dealId': 1, 'hash': '0x' + HASH, 'network': 'ERC-20'})
+        outgoing = client.post('/api/stand/transfers/check', json={'dealId': 1})
+    assert incoming.status_code == 409
+    assert outgoing.status_code == 409
+    assert calls == []
+    state['deals'][0]['payType'] = 'Крипта'
+    state['deals'][0]['walletId'] = 'custom'
+    state['deals'][0]['payinCustom'] = {'network': 'TRC-20', 'addr': FROM}
+    state['deals'][1]['transfer']['sends'][0]['net'] = 'TRC-20'
+    _put_board(state)
+    with appmod.app.test_client() as client:
+        custom_outgoing = client.post('/api/stand/transfers/check', json={'dealId': 1})
+    assert custom_outgoing.status_code == 409
+    assert calls == []
 
 
 def test_verify_without_amount_and_sender_takes_both_from_chain():

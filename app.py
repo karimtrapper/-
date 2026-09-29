@@ -6445,6 +6445,33 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
+                or (before and (before.get('payType') == 'Крипта'
+                                or before.get('curBase') == 'usdt'))):
+            if not before and (deal.get('walletId') in ('custom', 'teodor-erc')
+                               or deal.get('payinCustom')):
+                return 'Новый кошелёк прихода выбирают на s11'
+            changed_target = bool(before and (
+                before.get('payType') != deal.get('payType')
+                or before.get('curBase') != deal.get('curBase')
+                or before.get('walletId') != deal.get('walletId')
+                or before.get('payinCustom') != deal.get('payinCustom')
+                or _stand_payin_target(previous, before) != _stand_payin_target(new_state, deal)))
+            if changed_target and (before.get('step') != 's11' or before.get('docPack')
+                                   or before.get('docVersion') or before.get('payinHashes')):
+                return 'Сеть и кошелёк прихода закреплены при подготовке договора'
+            if changed_target and actor not in ('operator', 'admin'):
+                return 'Кошелёк прихода выбирает операционист на s11'
+            if deal.get('payinCustom') and deal.get('walletId') != 'custom':
+                return 'Свой адрес разрешён только с выбором «Свой кошелёк»'
+            network, receiver = _stand_payin_target(new_state, deal)
+            if deal.get('step') in ('s11', 's11b', 's12', 's14', 's14m'):
+                if not network or not receiver:
+                    return 'Для кошелька прихода нужны корректные сеть и адрес'
+            if network == 'erc20' and deal.get('step') in ('s23', 's24', 's25', 's26', 's27', 'done'):
+                return 'ERC-20 исходящий маршрут не настроен; остановлено на s22'
+            if deal.get('walletId') == 'custom' and deal.get('step') in ('s23', 's24'):
+                return 'Для своего кошелька не определён подписант исходящего перевода'
         if not before:
             if deal.get('originMode') is not None:
                 return 'Режим происхождения сделки назначает только сервер'
@@ -6807,6 +6834,15 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
            [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
     if deal_id is not None and _stand_batch_main(snapshot, deal_id) is None:
         return {'success': False, 'error': 'Главная сделка пачки не определена', 'httpStatus': 409}
+    if deal_id is not None:
+        main = _stand_batch_main(snapshot, deal_id)
+        members = _stand_members(snapshot, deal_id)
+        if (_stand_payin_target(snapshot, main)[0] == 'erc20'
+                or main.get('walletId') == 'custom'
+                or any(d.get('walletId') == 'custom' for d in members)
+                or any(normalize_network(s.get('net') or 'TRC-20') == 'erc20'
+                       for d in members for s in (d.get('transfer') or {}).get('sends') or [])):
+            return {'success': False, 'error': 'Исходящий маршрут для ERC-20/своего кошелька не настроен', 'httpStatus': 409}
     blocked_convs = set()
     for selected in [c for c in snapshot.get('convs', [])
                      if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
@@ -6823,14 +6859,22 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
     jobs = []
     seen = set()
     for wanted in ids:
+        main = _stand_batch_main(snapshot, wanted)
+        if poll and (_stand_payin_target(snapshot, main)[0] == 'erc20'
+                     or main.get('walletId') == 'custom'):
+            continue
         for deal in _stand_members(snapshot, wanted):
             if deal.get('id') in seen:
+                continue
+            if poll and deal.get('walletId') == 'custom':
                 continue
             seen.add(deal.get('id'))
             for send in (deal.get('transfer') or {}).get('sends') or []:
                 if send.get('status') == 'confirmed' or (poll and send.get('status') not in (None, 'pending', 'error')):
                     continue
                 key = send_fingerprint(snapshot, deal, send)
+                if poll and key[1] == 'erc20':
+                    continue
                 jobs.append((deal.get('id'), key, deal, send, send.get('demoOutcome')))
     if deal_id is not None and not _stand_members(snapshot, deal_id):
         return None
@@ -6866,8 +6910,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         else:
             result = verify_transfer(send.get('hash') or send.get('ref'), key[1], sender, receiver,
                                      send.get('amount'), demo=bool(deal.get('demoTransfers')),
-                                     demo_outcome=send.get('demoOutcome'),
-                                     etherscan_key=os.environ.get('ETHERSCAN_API_KEY'))
+                                     demo_outcome=send.get('demoOutcome'))
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
         results.append((member_id, key, demo_outcome, result))
     db = get_session()
@@ -7004,6 +7047,8 @@ def stand_incoming_check():
         return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
     tx_hash = normalize_ref(data.get('hash'), normalize_network(data.get('network')))
     network = normalize_network(data.get('network'))
+    if network == 'erc20':
+        return jsonify({'success': False, 'error': 'ERC-20 приход брокера на стенде пока не настроен'}), 409
     if not tx_hash or tx_hash.startswith('demo:') or not network:
         return jsonify({'success': False, 'error': 'Нужен настоящий хеш и сеть'}), 400
     db = get_session()
@@ -7019,8 +7064,7 @@ def stand_incoming_check():
             return jsonify({'success': False, 'error': 'У кошелька пачки нет корректного адреса'}), 409
     finally:
         db.close()
-    checked = verify_transfer(tx_hash, network, None, receiver, None,
-                              etherscan_key=os.environ.get('ETHERSCAN_API_KEY'))
+    checked = verify_transfer(tx_hash, network, None, receiver, None)
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
                         'error': checked.get('checkError') or 'Перевод ещё не подтверждён'}), 422
@@ -7184,8 +7228,34 @@ def stand_incoming_unlink():
 
 def _stand_payin_receiver(state, deal):
     """Кошелёк, на который крипто-клиент платит USDT по сделке стенда."""
+    return _stand_payin_target(state, deal)[1]
+
+
+def _stand_payin_target(state, deal):
+    """Network and receiver come only from the saved stand deal and directory."""
     from stand_transfers import stand_wallet_address
-    return stand_wallet_address(state, deal.get('walletId') or 'grusha')
+    wallet_id = deal.get('walletId') or 'grusha'
+    if wallet_id == 'custom':
+        custom = deal.get('payinCustom') or {}
+        if not isinstance(custom, dict):
+            return None, None
+        if set(custom) != {'network', 'addr'} or custom.get('network') not in ('TRC-20', 'ERC-20'):
+            return None, None
+        network = normalize_network(custom.get('network'))
+        address = custom.get('addr')
+        return network, address if network and valid_address(address, network) else None
+    if deal.get('payinCustom'):
+        return None, None
+    if wallet_id == 'teodor-erc':
+        return 'erc20', '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
+    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None) or {}
+    raw_network = wallet.get('net') or wallet.get('network') or 'TRC-20'
+    network = normalize_network(raw_network)
+    if network == 'erc20':
+        # Only the reviewed Teodor directory entry may choose ERC on this stand.
+        return None, None
+    address = stand_wallet_address(state, wallet_id)
+    return network, address if network and valid_address(address, network) else None
 
 
 @app.route('/api/stand/payin/check', methods=['POST'])
@@ -7202,9 +7272,8 @@ def stand_payin_check():
         deal_id = int(data.get('dealId'))
     except (TypeError, ValueError):
         return jsonify({'success': False, 'error': 'dealId обязателен'}), 400
-    tx_hash = normalize_ref(data.get('hash'), 'trc20')
-    if not tx_hash or tx_hash.startswith('demo:'):
-        return jsonify({'success': False, 'error': 'Нужен полный хеш TRC-20 из 64 символов или ссылка Tronscan'}), 400
+    if any(key in data for key in ('receiver', 'address', 'addr', 'network', 'walletId')):
+        return jsonify({'success': False, 'error': 'Сеть и получатель берутся из сохранённой сделки'}), 400
     db = get_session()
     try:
         state = json.loads(_stand_row(db).data or '{}')
@@ -7213,18 +7282,22 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'Крипто-сделка не найдена'}), 404
         if deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка не ждёт прихода'}), 409
-        receiver = _stand_payin_receiver(state, deal)
-        if not valid_address(receiver, 'trc20'):
-            return jsonify({'success': False, 'error': 'У кошелька прихода нет корректного адреса'}), 409
+        network, receiver = _stand_payin_target(state, deal)
+        if not receiver:
+            return jsonify({'success': False, 'error': 'У кошелька прихода нет корректной сети и адреса'}), 409
     finally:
         db.close()
-    checked = verify_transfer(tx_hash, 'trc20', None, receiver, None)
+    tx_hash = normalize_ref(data.get('hash'), network)
+    if not tx_hash or tx_hash.startswith('demo:'):
+        return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
+    checked = verify_transfer(tx_hash, network, None, receiver, None)
     # Роль берём до сессии записи: current_role() закрывает общую scoped-сессию,
     # и изменения, сделанные до её вызова, молча теряются (приёмка 25.09)
     role = current_role() or 'система'
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
-                        'error': checked.get('checkError') or 'Перевод ещё не подтверждён в сети'}), 422
+                        'error': checked.get('checkError') or
+                                 f'Перевод не найден или не подтверждён в выбранной сети {network.upper()}'}), 422
     db = get_session()
     try:
         row = _stand_row(db, lock=True)
@@ -7232,11 +7305,13 @@ def stand_payin_check():
         deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
         if not deal or deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка изменилась — повторите проверку'}), 409
-        if _stand_payin_receiver(state, deal) != receiver:
-            return jsonify({'success': False, 'error': 'Кошелёк прихода изменился — повторите проверку'}), 409
-        used = any(normalize_ref(h.get('hash'), 'trc20') == tx_hash
+        if _stand_payin_target(state, deal) != (network, receiver):
+            return jsonify({'success': False, 'error': 'Сеть или кошелёк прихода изменились — повторите проверку'}), 409
+        used = any(normalize_network(h.get('network') or 'trc20') == network
+                   and normalize_ref(h.get('hash'), network) == tx_hash
                    for d in state.get('deals', []) for h in d.get('payinHashes') or []) or any(
-            normalize_ref(t.get('hash'), 'trc20') == tx_hash
+            normalize_network(t.get('net') or 'trc20') == network
+            and normalize_ref(t.get('hash'), network) == tx_hash
             for c in state.get('convs', []) for t in c.get('txs') or [])
         if used:
             return jsonify({'success': False, 'error': 'Этот хеш уже привязан к сделке'}), 409
@@ -7245,10 +7320,11 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'Перевод сделан раньше, чем завели сделку'}), 422
         sender = checked.get('from')
         payer = deal.get('payerWallet')
-        tx = {'hash': tx_hash, 'network': 'TRC20', 'amount': checked['verifiedAmount'],
+        tx = {'hash': tx_hash, 'network': network.upper(), 'amount': checked['verifiedAmount'],
               'from': sender, 'to': receiver, 'verified': True,
               'verifiedAt': checked['verifiedAt'], 'timestampMs': checked.get('timestampMs')}
-        if payer and sender and payer != sender:
+        if payer and sender and (payer.lower() != sender.lower() if network == 'erc20'
+                                 else payer != sender):
             tx['otherSender'] = True
         deal.setdefault('payinHashes', []).append(tx)
         deal.setdefault('log', []).append({
@@ -7411,16 +7487,19 @@ def _stand_doc_request(state, deal, F):
     if crypto:
         wallet_id = deal.get('walletId') or 'grusha'
         wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None) or {}
-        addr = _stand_payin_receiver(state, deal) or ''
-        if not re.fullmatch(r'T[1-9A-HJ-NP-Za-km-z]{33}', addr):
+        network, addr = _stand_payin_target(state, deal)
+        if not addr:
             missing.append('payTo')
         # Persisted grusha/vitaly metadata predates the confirmed wallet ownership.
         company = wallet_id in ('grusha', 'vitaly') and addr == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
         if not company:
-            company = (wallet.get('owner') or 'компания') == 'компания' and wallet_id not in ('andrey',)
-        money.update(payin_network='TRON (TRC-20)', payin_wallet=addr,
+            company = (wallet.get('owner') or 'компания') == 'компания' and wallet_id not in ('andrey', 'teodor-erc', 'custom')
+        money.update(payin_network='Ethereum (ERC-20)' if network == 'erc20' else 'TRON (TRC-20)',
+                     payin_wallet=addr or '',
                      payin_recipient='MF Corporation Company Limited' if company
-                     else (wallet.get('name') or wallet.get('owner') or ''),
+                     else ('Кошелёк Теодора · ERC-20' if wallet_id == 'teodor-erc'
+                           else 'Свой кошелёк' if wallet_id == 'custom'
+                           else wallet.get('name') or wallet.get('owner') or ''),
                      payin_recipient_role='Агент / Agent' if company
                      else 'Уполномоченное лицо Агента / Agent’s authorised person')
     else:
@@ -7531,6 +7610,9 @@ def stand_docs_issue():
 
     import docgen
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
+    if money.get('payin_method') == 'usdt':
+        network_label = 'ERC-20' if 'ERC-20' in money.get('payin_network', '') else 'TRC-20'
+        F['payTo'] = f"USDT {network_label}, {money['payin_wallet']}"
     stand_thb_pending = (deal_type == 'freehold'
                          and str(deal.get('invoiceCurrency') or 'usd').lower() == 'thb')
     note = '. '.join(req.get('notes') or [])
@@ -15660,13 +15742,13 @@ def _etherscan_tx_info(tx_hash):
     ручную сумму с пометкой «не сверено». Однозначно неуспешную транзакцию или
     receipt без USDT отклоняем: такой хэш нельзя использовать как подтверждение.
     """
-    # Отсутствие ключа/выключенная сеть проверяем ДО валидации хэша — как и
+    # Отсутствие ключа/закрытый generic CRM lookup проверяем ДО валидации хэша — как и
     # раньше: функция тихо отдаёт {} независимо от формата tx_hash, а не
     # падает на чужом формате хэша, который до сети всё равно не дойдёт.
     if STAND_MODE:
-        # Решение Карима: на стенде из сетей только TRC-20 — ERC-20/Etherscan
-        # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан.
-        app.logger.info('На стенде проверка ERC-20 выключена (только TRC-20)')
+        # Generic CRM lookup не является stand payin: ERC на стенде доступен
+        # только через /api/stand/payin/check с сохранённой сетью и получателем.
+        app.logger.info('Generic ERC lookup на стенде закрыт')
         return {}
     if not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return {}
@@ -15846,8 +15928,8 @@ def lookup_tx_by_network():
         return jsonify({'success': False,
                         'error': 'Выберите сеть: TRC-20 или ERC-20'}), 400
     if network == 'erc20' and STAND_MODE:
-        # Решение Карима: на стенде из сетей только TRC-20.
-        return jsonify({'success': False, 'error': 'На стенде проверка ERC-20 выключена',
+        # Endpoint policy: only /api/stand/payin/check may verify ERC on stand.
+        return jsonify({'success': False, 'error': 'Общий ERC-20 lookup на стенде закрыт',
                         'manual_fallback': True}), 503
     if network == 'erc20' and not (os.environ.get('ETHERSCAN_API_KEY') or '').strip():
         return jsonify({'success': False, 'error': 'Etherscan API не настроен',

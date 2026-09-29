@@ -193,6 +193,43 @@ def test_crypto_usdt_thb_uses_wallet_and_no_purpose(stand):
     assert GRUSHA in invoice and '10 769.23' in invoice
 
 
+@pytest.mark.parametrize('wallet_id,custom,expected_net,expected_addr', [
+    ('teodor-erc', None, 'ERC-20', '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'),
+    ('custom', {'network': 'ERC-20', 'addr': '0x' + '2' * 40}, 'ERC-20', '0x' + '2' * 40),
+    ('custom', {'network': 'TRC-20', 'addr': GRUSHA}, 'TRC-20', GRUSHA),
+])
+def test_crypto_directory_and_custom_network_in_issued_document(
+        stand, wallet_id, custom, expected_net, expected_addr):
+    deal = _deal(104, payType='Крипта', curBase='usdt', walletId=wallet_id)
+    if custom:
+        deal['payinCustom'] = custom
+    # A stale/forged saved entry must not override the reviewed Teodor address.
+    stand.put_board([deal], wallets=[{'id': 'teodor-erc', 'addr': '0x' + '3' * 40,
+                                      'net': 'ERC-20', 'owner': 'компания'}])
+    fields = _fields(rate='32,5', amountPay='10 769,23', amountThb='350 000',
+                     payTo='USDT '+expected_net+', '+expected_addr, purpose='')
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 104, 'docFields': fields})
+    assert response.status_code == 200, response.json
+    pack = response.json['pack']
+    assert pack['wallet'] == expected_addr and expected_net in pack['network']
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert expected_addr in invoice and expected_net in invoice
+
+
+@pytest.mark.parametrize('network,address', [
+    ('ERC-20', GRUSHA), ('TRC-20', '0x' + '2' * 40), ('BEP-20', GRUSHA),
+])
+def test_crypto_invalid_custom_network_or_address_cannot_issue(stand, network, address):
+    deal = _deal(105, payType='Крипта', curBase='usdt', walletId='custom',
+                 payinCustom={'network': network, 'addr': address})
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 105,
+        'docFields': _fields(rate='32,5', amountPay='10 769,23', amountThb='350 000',
+                            payTo='USDT '+network+', '+address, purpose='')})
+    assert response.status_code == 400
+    assert 'payTo' in response.json['fields']
+
+
 def test_missing_fields_return_400_with_stand_labels(stand):
     stand.put_board([_deal(5)])
     r = stand.post('/api/stand/docs/issue', json={'dealId': 5, 'docFields': _fields(passNo='', amountPay='')})

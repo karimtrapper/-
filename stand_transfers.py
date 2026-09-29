@@ -19,6 +19,7 @@ DEFAULT_WALLETS = {
     'grusha': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
     'andrey': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
     'teodor': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
+    'teodor-erc': '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',
 }
 LEGACY_GRUSHA_ADDRESS = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -309,6 +310,7 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     demo_outcome=None, get=requests.get, etherscan_key=None,
                     tronscan_key=None):
     """Сверить перевод по сети. Деньги эта функция не отправляет."""
+    stand_mode = os.environ.get('STAND_MODE') == '1'
     network = normalize_network(network)
     tx_hash = normalize_ref(ref, network)
     required = _amount(amount)
@@ -329,16 +331,13 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
         return _result(demo_outcome if demo_outcome in ('failed', 'pending') else 'pending', demo=True)
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
-    if os.environ.get('STAND_MODE') == '1':
-        if network == 'erc20':
-            # Решение Карима: на стенде из сетей только TRC-20. ERC-20/Etherscan
-            # отказывает до сети даже если STAND_ETHERSCAN_API_KEY задан —
-            # это явный выключатель, а не отсутствие ключа как раньше.
-            return _result('error', checkError='На стенде проверка ERC-20 выключена')
+    if stand_mode:
         # На стенде ходим в сеть только через контролируемый канал чтения T9
         # (stand_egress.read_get) — сокет-guard блокирует прямой requests.get.
         get = _stand_get
         tronscan_key = tronscan_key or os.environ.get('TRONSCAN_API_KEY')
+        if network == 'erc20':
+            etherscan_key = os.environ.get('STAND_ETHERSCAN_API_KEY')
     try:
         if network == 'trc20':
             headers = {'User-Agent': TRONSCAN_USER_AGENT}
@@ -383,7 +382,9 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                 return _result('pending')
             if str(receipt.get('transactionHash') or '').lower() != tx_hash:
                 return _result('mismatch', checkError='Etherscan ответил другим хешем')
-            if str(receipt.get('status') or '').lower() not in ('0x1', '1'):
+            if stand_mode and receipt.get('status') is None:
+                return _result('pending')
+            if str(receipt.get('status')).lower() not in ('0x1', '1'):
                 return _result('failed', checkError='Ethereum receipt failed')
             if not receipt.get('blockNumber'):
                 return _result('pending')
@@ -394,6 +395,10 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
             if block_response.status_code != 200:
                 return _result('error', checkError=f'Etherscan block HTTP {block_response.status_code}')
             block = (block_response.json() or {}).get('result') or {}
+            if stand_mode and block.get('number') and str(block['number']).lower() != str(receipt['blockNumber']).lower():
+                return _result('mismatch', checkError='Etherscan ответил другим блоком')
+            if stand_mode and block.get('hash') and receipt.get('blockHash') and str(block['hash']).lower() != str(receipt['blockHash']).lower():
+                return _result('mismatch', checkError='Etherscan ответил другим блоком')
             if not block.get('timestamp'):
                 return _result('error', checkError='Etherscan не отдал время блока')
             timestamp_ms = int(str(block['timestamp']), 16) * 1000
@@ -402,6 +407,9 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                 topics = log.get('topics') or []
                 if (str(log.get('address') or '').lower() == ETH_USDT
                     and len(topics) >= 3 and str(topics[0]).lower() == ETH_TRANSFER_TOPIC
+                    and (not stand_mode or (log.get('removed') is not True and len(topics) == 3
+                        and re.fullmatch(r'0x[0-9a-fA-F]{64}', str(topics[1]))
+                        and re.fullmatch(r'0x[0-9a-fA-F]{64}', str(topics[2]))))
                     and (sender is None or '0x' + str(topics[1])[-40:].lower() == sender.lower())
                     and '0x' + str(topics[2])[-40:].lower() == receiver.lower()):
                     matches.append(log)
