@@ -1372,16 +1372,20 @@ function payinWalletSelect(d,disabled){
         <input type="radio" name="payin_${d.id}" value="${htmlText(x.id)}"${!editing&&selectedKey===payinWalletKey(x)?' checked':''}${locked?' disabled':''} onchange="payinWalletSet(${d.id},this.value)">
         <span class="addr">${htmlText(x.addr)}</span><span class="wc-o">${htmlText(x.net||'TRC-20')} · владелец: ${htmlText(x.owner||'—')}</span>
       </label>`).join('')}
-      <div class="wcard payin-card${customOn?' on':''}">
+      <div class="wcard payin-card${customOn?' on':''}"${!customOn&&!locked?` role="button" tabindex="0" style="cursor:pointer" onclick="payinCustomEdit(${d.id})"`:''}>
         <input type="radio" name="payin_${d.id}" value="custom" aria-label="Свой кошелёк"${customOn?' checked':''}${locked?' disabled':''} onchange="payinCustomEdit(${d.id})">
-        ${customOn?`<select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" ${locked?'disabled':''} onchange="payinCustomSet(${d.id})">
-          <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
-          <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="Свой кошелёк: адрес" ${locked?'readonly':''} onchange="payinCustomSet(${d.id})">`
-          :`<span class="addr">Свой кошелёк: адрес</span><span class="wc-o">${htmlText(net)} · владелец: уточняется</span>`}
-        ${customOn?'<span class="wc-o">владелец: уточняется</span>':''}
+        ${editing?`<div style="flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" style="width:auto">
+            <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
+          <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="адрес кошелька" style="flex:1;min-width:220px">
+          <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();payinCustomSet(${d.id})">Готово</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="event.stopPropagation();payinCustomCancel(${d.id})">Отмена</button></div>`
+          :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · свой кошелёк${locked?'':' · <a href="#" onclick="event.preventDefault();event.stopPropagation();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
+          :`<span class="addr">＋ Свой кошелёк</span><span class="wc-o">указать адрес и сеть</span>`)}
       </div>
     </div></div>`;
 }
+function payinCustomCancel(id){S.payinCustomEdit=null;render();}
 function payinCustomSet(id){
   const d=deal(id), network=val('pcn_'+id), addr=String(val('pca_'+id)||'').trim();
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
