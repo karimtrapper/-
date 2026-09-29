@@ -460,3 +460,31 @@ def test_crypto_freehold_stale_rate_does_not_block_issue(stand):
     response = stand.post('/api/stand/docs/issue',
                           json={'dealId': deal['id'], 'docFields': fields})
     assert response.status_code == 200, response.json
+
+
+def test_crypto_freehold_payment_ignores_rate_inherited_from_agreement(stand):
+    # Второй платёж того же клиента идёт допником к уже выпущенному договору.
+    # Курс, оставшийся в money_json договора, не должен ронять крипто-фрихолд
+    # «Курс не соответствует суммам» (Карим, 29.09, СД-1475).
+    first = _deal(946, kind='Фрихолд', payType='Крипта', curBase='usdt',
+                  walletId='grusha', invoiceUsd=97500, amountUsdt=98800, ippsTariff='bank')
+    second = _deal(947, kind='Фрихолд', payType='Крипта', curBase='usdt',
+                   walletId='grusha', invoiceUsd=10000, amountUsdt=11000, ippsTariff='bank')
+    stand.put_board([first, second])
+    f1 = _fields(kind='Фрихолд', amountThb='97500', amountPay='98800', rate='',
+                 payTo='USDT TRC-20, ' + GRUSHA, purpose='')
+    r1 = stand.post('/api/stand/docs/issue', json={'dealId': 946, 'docFields': f1})
+    assert r1.status_code == 200, r1.json
+    db = appmod.get_session()
+    try:
+        a = db.query(appmod.Agreement).order_by(appmod.Agreement.id.desc()).first()
+        money = json.loads(a.money_json or '{}')
+        money['rate'] = '2.66'
+        a.money_json = json.dumps(money)
+        db.commit()
+    finally:
+        db.close()
+    f2 = _fields(kind='Фрихолд', amountThb='10000', amountPay='11000', rate='2.66',
+                 payTo='USDT TRC-20, ' + GRUSHA, purpose='')
+    r2 = stand.post('/api/stand/docs/issue', json={'dealId': 947, 'docFields': f2})
+    assert r2.status_code == 200, r2.json

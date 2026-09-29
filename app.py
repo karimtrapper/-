@@ -20318,6 +20318,10 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     fields.update(submitted_fields)
     money = json.loads(a.money_json or '{}')
     money.update(submitted_money)
+    if money.get('pair') == 'USDT_USD' and 'rate' not in submitted_money:
+        # Крипто-фрихолд: курса нет. Курс, оставшийся в рамочном договоре от прошлых
+        # выпусков, не наследуем — иначе «Курс не соответствует суммам» (Карим, 29.09).
+        money.pop('rate', None)
     money['deal_type'] = a.deal_type
     try:
         previous_basis = json.loads(a.money_json or '{}').get('rate_basis', doc_routes.INVERSE_RATE)
