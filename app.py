@@ -13426,8 +13426,41 @@ def _wallet_registry_fields(data):
     return fields, None
 
 
+WALLET_EDIT_ROLES = ('admin', 'operator', 'findir')
+
+
+def _wallet_edit_denied():
+    """На стенде реестр кошельков правят только admin/operator/findir: кошелёк с
+    «Принимаем оплату» попадает в договор клиенту. Роль берём ДО открытия сессии
+    записи — current_role() закрывает общую scoped-сессию. В проде ролей нет."""
+    if not STAND_MODE:
+        return None
+    if current_role() not in WALLET_EDIT_ROLES:
+        return jsonify({'success': False, 'error': 'Кошельки меняют только операционист, фин дир или админ'}), 403
+    return None
+
+
+def _wallet_network_mismatch(address, blockchain):
+    """Адрес и сеть кошелька должны совпадать: TRC-адрес с сетью ETH (и наоборот)
+    молча ломал «Куда платит клиент» в договоре. Виртуальные кошельки (имя) не трогаем."""
+    a = str(address or '').strip()
+    chain = str(blockchain or 'TRON').upper()
+    is_eth = chain == 'ETH' or chain.startswith('ERC')
+    if a.startswith('0x') and len(a) >= 40:
+        if not is_eth:
+            return 'Адрес 0x… — это сеть ERC-20, выберите сеть ETH'
+        if not re.fullmatch(r'0x[0-9a-fA-F]{40}', a):
+            return 'Неверный адрес ERC-20: 0x и 40 символов 0-9/a-f'
+    elif a.startswith('T') and len(a) >= 30 and is_eth:
+        return 'Адрес T… — это сеть TRC-20, выберите сеть TRON'
+    return None
+
+
 @app.route('/api/wallets', methods=['POST'])
 def add_wallet():
+    denied = _wallet_edit_denied()
+    if denied:
+        return denied
     session = get_session()
     try:
         data = request.get_json()
@@ -13451,6 +13484,9 @@ def add_wallet():
         registry_fields, registry_error = _wallet_registry_fields(data)
         if registry_error:
             return jsonify({'success': False, 'error': registry_error}), 400
+        mismatch = _wallet_network_mismatch(address, data.get('blockchain', 'TRON'))
+        if mismatch:
+            return jsonify({'success': False, 'error': mismatch}), 400
 
         # Проверяем что кошелёк не дублируется
         existing = session.query(Wallet).filter(Wallet.address == address).first()
@@ -13887,6 +13923,9 @@ def delete_wallet(wallet_id):
 def update_wallet(wallet_id):
     """Подпись кошелька. Адресов в мониторинге больше пяти, по строке `T...`
     оператор их не различает и не понимает, куда должен был прийти перевод."""
+    denied = _wallet_edit_denied()
+    if denied:
+        return denied
     session = get_session()
     try:
         data = request.get_json() or {}

@@ -168,3 +168,60 @@ def test_patch_wallet_owner_empty_string_clears_owner(tc):
     r = tc.patch(f'/api/wallets/{wid}', json={'owner': '  '})
     assert r.status_code == 200
     assert r.get_json()['wallet']['owner'] is None
+
+
+def _client_as(role, monkeypatch):
+    import app as appmod
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    app.config['TESTING'] = True
+    s = get_session()
+    try:
+        u = s.query(AdminUser).filter(AdminUser.username == f'wallet_{role}').first()
+        if not u:
+            u = AdminUser(username=f'wallet_{role}', display_name=role,
+                          password_hash=AdminUser.hash_password('x'), role=role)
+            s.add(u); s.commit()
+        uid = u.id
+    finally:
+        s.close()
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess['user_id'] = uid
+    return c
+
+
+def test_stand_manager_cannot_create_or_patch_wallet(monkeypatch):
+    c = _client_as('manager', monkeypatch)
+    r = c.post('/api/wallets', json={'address': ADDR, 'accepts_payin': True})
+    assert r.status_code == 403
+    s = get_session()
+    try:
+        assert s.query(Wallet).count() == 0
+        w = Wallet(address=ADDR2); s.add(w); s.commit(); wid = w.id
+    finally:
+        s.close()
+    r = c.patch(f'/api/wallets/{wid}', json={'accepts_payin': True})
+    assert r.status_code == 403
+    s = get_session()
+    try:
+        assert s.get(Wallet, wid).accepts_payin is False
+    finally:
+        s.close()
+
+
+def test_stand_operator_can_create_wallet(monkeypatch):
+    c = _client_as('operator', monkeypatch)
+    # виртуальный кошелёк (имя): создание без сетевых запросов, проверяем только роль
+    r = c.post('/api/wallets', json={'address': 'Касса операциониста', 'accepts_payin': False})
+    assert r.status_code == 200, r.get_json()
+
+
+def test_wallet_address_must_match_network(tc):
+    r = tc.post('/api/wallets', json={'address': ADDR, 'blockchain': 'ETH'})
+    assert r.status_code == 400
+    r = tc.post('/api/wallets', json={'address': '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',
+                                      'blockchain': 'TRON'})
+    assert r.status_code == 400
+    r = tc.post('/api/wallets', json={'address': '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',
+                                      'blockchain': 'ETH'})
+    assert r.status_code == 200, r.get_json()
