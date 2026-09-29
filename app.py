@@ -6223,6 +6223,94 @@ _STAND_STEP_ROLE = {
 }
 
 
+def _stand_current_step_role(state, deal):
+    """Role owning the persisted step, including its wallet signer at s23."""
+    step = deal.get('step')
+    if step != 's23':
+        return _STAND_STEP_ROLE.get(step)
+    conv = next((c for c in state.get('convs', [])
+                 if c.get('id') == deal.get('cnvId')), None)
+    wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
+    wallet = next((w for w in state.get('wallets', [])
+                   if w.get('id') == wallet_id), None)
+    return ((wallet or {}).get('role') or
+            ('teodor' if wallet_id in ('teodor', 'andrey') else 'findir'))
+
+
+def _stand_broker_handoff_problem(previous, state, before, deal):
+    """Admission for the operator's RUB send attestation at s18 -> s18w."""
+    from decimal import Decimal
+
+    convs = [c for c in state.get('convs') or []
+             if c.get('id') == deal.get('cnvId')]
+    if deal.get('cnvId') is None or len(convs) != 1:
+        return 'Нет пачки отправки рублей брокеру'
+    conv = convs[0]
+    if any(c.get('id') == conv['id'] for c in previous.get('convs') or []):
+        return 'Отправка брокеру требует новую пачку'
+    sources = conv.get('sources') or []
+    members = before.get('conv') or []
+    if (not isinstance(members, list) or any(type(member) is not int for member in members)
+            or deal.get('conv', []) != before.get('conv', [])):
+        return 'Некорректный состав пачки'
+    expected_ids = {deal.get('id'), *members}
+    if (not sources or {s.get('dealId') for s in sources} != expected_ids
+            or len(sources) != len(expected_ids)):
+        return 'Пачка не содержит все связанные сделки'
+    funding = _stand_check_batch_funding(state, conv, dispatch=False)
+    if funding:
+        return funding
+    wallet_id = conv.get('walletId')
+    wallets = [w for w in previous.get('wallets') or [] if w.get('id') == wallet_id]
+    if (not wallet_id or len(wallets) != 1 or deal.get('walletId') != wallet_id):
+        return 'Выберите сохранённый кошелёк получения USDT'
+    wallet = wallets[0]
+    if (not re.fullmatch(r'T[1-9A-HJ-NP-Za-km-z]{33}', str(wallet.get('addr') or ''))
+            or ((wallet.get('net') or wallet.get('network')) and
+                normalize_network(wallet.get('net') or wallet.get('network')) != 'trc20')
+            or (wallet.get('multisig') is True and wallet.get('role') != 'findir')
+            or (wallet.get('multisig') is False and wallet.get('role') != 'teodor')
+            or not isinstance(wallet.get('multisig'), bool)):
+        return 'Кошелёк получения должен иметь TRC20 адрес и допустимого подписанта'
+    rate = _amount(conv.get('rate'))
+    if (not isinstance(conv.get('broker'), str) or not conv['broker'].strip()
+            or rate is None or rate <= 0
+            or _amount((deal.get('rates') or {}).get('broker')) != rate
+            or conv.get('status') != 'sent' or not conv.get('at')
+            or not str(conv.get('requestNo') or '').strip()
+            or (_amount(conv.get('sentTs')) or Decimal(0)) <= 0):
+        return 'Нет сохранённого подтверждения отправки рублей брокеру'
+    rub = sum((_amount(s.get('rub')) or Decimal(0) for s in sources), Decimal(0))
+    if rub <= 0 or _amount(conv.get('rubTotal')) != rub:
+        return 'Сумма отправки брокеру не совпадает с подтверждёнными приходами'
+    # Mirror brokerSend() in tasks.html for positive RUB amounts. The client
+    # sends these rounded figures; each one must agree with the saved sources.
+    def js_round(value):
+        numeric = float(value)
+        if not math.isfinite(numeric) or numeric < 0 or numeric > 2**46:
+            return None
+        return Decimal(str(math.floor(numeric * 100 + .5) / 100))
+    ctrl = js_round(rub * Decimal('.001') + 40)
+    ours = js_round(rub * Decimal('.002'))
+    if ctrl is None or ours is None:
+        return 'Некорректная сумма отправки брокеру'
+    sent = js_round(rub - ctrl - ours)
+    held = js_round(ctrl + ours)
+    facts = {'sent': sent, 'held': held, 'feeCtrl': ctrl,
+             'feeOurs': ours, 'feePct': Decimal('.3'),
+             'feeFix': Decimal(40), 'feeCtrlPct': Decimal('.1'),
+             'feeOursPct': Decimal('.2')}
+    if sent is None or sent <= 0 or any(_amount(conv.get(k)) != expected
+                                         for k, expected in facts.items()):
+        return 'Расчёт отправки брокеру не совпадает с подтверждёнными RUB'
+    for source in sources:
+        source_rub = _amount(source.get('rub'))
+        expected_usdt = js_round(sent * source_rub / rub / rate)
+        if expected_usdt is None or expected_usdt <= 0 or _amount(source.get('usdt')) != expected_usdt:
+            return 'Распределение заявки брокеру не совпадает с источниками'
+    return None
+
+
 # Возвращает функция целиком (не отдельная строка) при устаревшем, но не
 # тронутом actor'ом назначении: роль сотрудника больше не подходит шагу, а
 # actor поле не трогал — это не его решение снять чужое назначение, поэтому
@@ -6384,6 +6472,15 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if not before and (deal.get('crmDealId') is not None or
                            (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена')):
             return 'Новую сделку нельзя создать с привязкой CRM или успешным закрытием'
+        step_changed = bool(before and before.get('step') != deal.get('step'))
+        if step_changed and not allow_crm_close and actor != 'admin':
+            required = _stand_current_step_role(previous, before)
+            if required and actor != required:
+                return f'Действие шага {before.get("step")} доступно роли {required}'
+        if step_changed and before.get('step') == 's18' and deal.get('step') == 's18w':
+            broker_problem = _stand_broker_handoff_problem(previous, new_state, before, deal)
+            if broker_problem:
+                return broker_problem
         assignee_problem = _stand_check_assignee(db, before, deal, actor, actor_id, new_state)
         if assignee_problem:
             return assignee_problem
@@ -6471,20 +6568,15 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
                         's26': 'operator', 's27': 'manager'}.get(before.get('step'))
             if before.get('step') == 's23':
-                conv = next((c for c in previous.get('convs', [])
-                             if c.get('id') == before.get('cnvId')), None)
-                wallet_id = (conv or {}).get('walletId') or before.get('walletId')
-                wallet = next((w for w in previous.get('wallets', [])
-                               if w.get('id') == wallet_id), None)
-                required = ((wallet or {}).get('role') or
-                            ('teodor' if wallet_id in ('teodor', 'andrey') else 'findir'))
+                required = _stand_current_step_role(previous, before)
             # Реквизиты для оплаты — параллельная задача менеджера (Карим, 25.09): их
             # можно править на любом шаге, пока инвойс не оплачен. Менеджеру пропускаем
             # правку, если менялись только реквизиты и их след в журнале.
             changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)}
-            manager_reqs = ((actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
+            manager_reqs = (not step_changed and (
+                            (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
                              and changed <= STAND_MANAGER_REQ_FIELDS)
-                            or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed)))
+                            or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))))
             if required and actor != required and not manager_reqs:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
