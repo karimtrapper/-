@@ -2827,8 +2827,7 @@ function docFields(d){
   const saved=d.docFields||{}, pp=prevPassport(d);
   const cryptoFreehold=isCrypto(d)&&d.kind==='Фрихолд';
   const oldFeeNote='Комиссия включена в курс, отдельно не взимается';
-  const cryptoFeeNote='Вознаграждение агента включено в сумму платежа, отдельно не взимается';
-  const unissued=!d.docPack&&!d.docVersion;
+  const cryptoFeeNote='Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately';
   const auto={
     /* из паспорта */
     /* ФИО — только из паспорта или из прошлой сделки знакомого клиента. Имя из заявки
@@ -2857,11 +2856,12 @@ function docFields(d){
     /* Назначение перевода клиента в Сбер пишет операционист в договоре — шаблон он правит,
        менеджер потом копирует готовое. На сборе документов его ещё никто не знает (Карим, 27.09) */
     purpose:isCrypto(d)?'':('Оплата по агентскому договору № '+d.code+', НДС не облагается'),
-    feeNote:cryptoFreehold&&unissued?cryptoFeeNote:oldFeeNote,
+    feeNote:cryptoFreehold?cryptoFeeNote:oldFeeNote,
     validTill:''
   };
   const out=Object.assign({},auto,saved);
-  if(cryptoFreehold&&unissued&&out.feeNote===oldFeeNote)out.feeNote=cryptoFeeNote;
+  // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
+  if(cryptoFreehold)out.feeNote=cryptoFeeNote;
   if(isCrypto(d)) out.purpose='';
   if(isCrypto(d)&&d.kind==='Фрихолд'){
     out.amountPay=d.amountUsdt==null?'':d.amountUsdt;
@@ -2918,8 +2918,8 @@ function docFieldSave(id){
     const a=String(cur[k]==null?'':cur[k]), n=t=>{t=t.replace(/[\s\u00a0]/g,'').replace(',','.');return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):null;};
     if(n(a)!=null&&n(v)!=null?n(a)!==n(v):a!==v) ch.push(k);
   });
-  // Оговорка не редактируется на s11: сохраним старую ручную правку либо
-  // актуальный дефолт для невыпущенного крипто-фрихолда.
+  // Оговорка не редактируется на s11; crypto-freehold выпускается с
+  // утверждённой фразой независимо от сохранённого исторического поля.
   if(cur.feeNote!=null)out.feeNote=cur.feeNote;
   d.docFields=out;
   return ch;

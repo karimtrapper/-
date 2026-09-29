@@ -7636,6 +7636,7 @@ def stand_docs_issue():
     """
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    import docgen
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -7658,18 +7659,11 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
-        # Старый автотекст о курсе недопустим для крипто-фрихолда без курса.
-        # Только ещё не выпущенный пакет получает утверждённый дефолт;
-        # ручную оговорку и уже выпущенный пакет сохраняем дословно.
+        # Новое/повторное приложение крипто-фрихолда выпускается только с
+        # утверждённой двуязычной оговоркой; ранее выпущенные файлы не трогаем.
         if (deal.get('kind') == 'Фрихолд'
-                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
-                and not deal.get('docPack') and not deal.get('docVersion')):
-            old_fee = 'Комиссия включена в курс, отдельно не взимается'
-            saved_fee = str((deal.get('docFields') or {}).get('feeNote') or '').strip()
-            incoming_fee = str(F.get('feeNote') or '').strip()
-            if incoming_fee in ('', old_fee):
-                F['feeNote'] = (saved_fee if saved_fee and saved_fee != old_fee else
-                                'Вознаграждение агента включено в сумму платежа, отдельно не взимается')
+                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+            F['feeNote'] = docgen.CRYPTO_FREEHOLD_AGENT_FEE
         if _stand_freehold_absurd_doc(deal, F):
             return jsonify({'success': False, 'error': 'freehold_amount_absurd',
                             'detail': 'Сумма клиента не может быть 10 × IPPS и выше. Проверьте сумму сделки.',
@@ -7694,7 +7688,6 @@ def stand_docs_issue():
                         'labels': [STAND_DOC_LABELS.get(k, k) for k in keys],
                         'detail': req['detail']}), 400
 
-    import docgen
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
     stand_thb_pending = (deal_type == 'freehold'
                          and str(deal.get('invoiceCurrency') or 'usd').lower() == 'thb')

@@ -498,9 +498,9 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(created.ippsTariff,'bank');
 }
 
-// Fee-note defaults apply only before crypto-freehold issuance.
+// The read-only clause previews the next issued crypto-freehold appendix.
 {
-  const approved='Вознаграждение агента включено в сумму платежа, отдельно не взимается';
+  const approved='Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately';
   const old='Комиссия включена в курс, отдельно не взимается';
   const d={kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,code:'SYN',rates:{},docFields:null};
   const ctx=run(['docFields'],[],{fake:()=>({}),approx:()=>({thb:97500,pay:98800}),
@@ -510,14 +510,15 @@ console.log('test_stand_freehold.js: OK');
   d.docFields={feeNote:old};
   assert.equal(ctx.docFields(d).feeNote,approved,'unissued saved old default is replaced');
   d.docFields={feeNote:'Индивидуальная оговорка клиента'};
-  assert.equal(ctx.docFields(d).feeNote,'Индивидуальная оговорка клиента');
+  assert.equal(ctx.docFields(d).feeNote,approved);
   const saveCtx=run(['docFieldSave'],['DOC_SRC'],{deal:()=>d,docFields:()=>ctx.docFields(d),
     document:{getElementById:()=>null}});
   saveCtx.docFieldSave(9101);
-  assert.equal(d.docFields.feeNote,'Индивидуальная оговорка клиента',
-    'hidden s11 field must retain a saved manual override');
+  assert.equal(d.docFields.feeNote,approved,
+    'hidden s11 field must use the legal clause for the next issue');
   d.docFields={feeNote:old};d.docPack={version:1};d.docVersion=1;
-  assert.equal(ctx.docFields(d).feeNote,old,'issued package is not silently rewritten');
+  assert.equal(ctx.docFields(d).feeNote,approved,'reissue preview uses the legal clause');
+  assert.equal(d.docFields.feeNote,old,'reading does not mutate an issued package');
   d.docPack=null;d.docVersion=0;d.payType='По реквизитам';d.docFields=null;
   assert.equal(ctx.docFields(d).feeNote,old,'RUB freehold keeps previous default');
   d.kind='Лизхолд';d.payType='Крипта';
@@ -535,7 +536,7 @@ console.log('test_stand_freehold.js: OK');
     ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
   const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},
     docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
-      feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается'}),
+      feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается / The Agent’s fee is included in the payment amount and is not charged separately'}),
     docParseLine:()=>'',isCrypto:x=>x.payType==='Крипта',ippsTariff:()=>({percent:0.8,fixed:50}),
     usd:x=>String(x),num:x=>x==null||x===''?null:Number(x),cleanNum:x=>String(x).replace(/\s/g,''),
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
@@ -549,7 +550,7 @@ console.log('test_stand_freehold.js: OK');
   assert.match(rendered,/Наш доход, USDT/);
   assert.match(rendered,/ГЛАВНОЕ · СУММА<\/div>/);
   assert.doesNotMatch(rendered,/ГЛАВНОЕ · СУММА И КУРС|Курс зафиксирован|id="df_rateAt"/);
-  assert.match(rendered,/Оговорка о комиссии в приложении: Вознаграждение агента включено в сумму платежа, отдельно не взимается/);
+  assert.match(rendered,/Оговорка о комиссии в приложении: Вознаграждение агента включено в сумму платежа, отдельно не взимается \/ The Agent’s fee is included in the payment amount and is not charged separately/);
   assert.doesNotMatch(rendered,/id="df_feeNote"|<textarea[^>]*id="df_feeNote"/);
   assert.match(rendered,/Укажите сумму клиента/);
   assert.doesNotMatch(rendered,/Сделка в минус|Подтвердить сделку в минус|-98330\.00/);

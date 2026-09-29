@@ -61,6 +61,10 @@ MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June',
 # Срок исполнения различается по флоу — сверено с живыми договорами:
 # аренда Фролова 1 рабочий день, фрихолд Антоненко и лизхолд Буровой по 3.
 EXECUTION_DAYS = {'freehold': '3', 'leasehold': '3', 'rental': '1'}
+CRYPTO_FREEHOLD_AGENT_FEE = (
+    'Вознаграждение агента включено в сумму платежа, отдельно не взимается / '
+    'The Agent’s fee is included in the payment amount and is not charged separately'
+)
 
 DEFAULTS = {
     'execution_days': '3',
@@ -459,21 +463,21 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     payin = doc_routes.amount(money.get('total_payin'), incoming)
     payout = doc_routes.amount((money.get('usd_equivalent') if deal_type == 'freehold' else None)
                               or money.get('transfer_amount'), outgoing)
+    crypto_freehold = deal_type == 'freehold' and incoming == 'USDT'
     # Формулировки дословно из живых документов: у Фролова (аренда) и Буровой
     # (лизхолд) комиссия «в курсе», у Антоненко (фрихолд) курса RUB/THB нет
     # вовсе — там «в согласованной сумме pay-in».
     if deal_type == 'freehold':
         pending = money.get('_stand_thb_pending')
-        default_fee = ('Вознаграждение агента включено в сумму платежа, отдельно не взимается'
-                       if incoming == 'USDT' else
-                       'Включена в согласованную сумму pay-in; отдельно не взимается / '
+        default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
                        'Included in the agreed pay-in amount; no separate charge')
     else:
         quote = doc_routes.rate_text(money, deal_type)
         default_fee = (f"Включена в курс {quote}, отдельно не взимается / "
                        f"Included in the rate of {quote}, "
                        f"not charged separately")
-    fee_note = money.get('fee_note') or default_fee
+    fee_note = (CRYPTO_FREEHOLD_AGENT_FEE if crypto_freehold
+                else money.get('fee_note') or default_fee)
 
     _set_field(t, 'Номер и дата', f'№ {number} от {date_ru_en(when)}')
     _set_field(t, 'Клиент / Client', client_line(f, 'ru') + '\n' + client_line(f, 'en'))
@@ -502,7 +506,7 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     if len(rows) > 1:
         # Крипто-фрихолд не имеет клиентского курса: обе строки Agent должны
         # содержать одну утверждённую оговорку, включая итоговый блок.
-        _set_cell(rows[-1].cells[-1], fee_note if deal_type == 'freehold' and incoming == 'USDT'
+        _set_cell(rows[-1].cells[-1], fee_note if crypto_freehold
                   else DEFAULTS['fee_included'])
     _set_field(t, 'Комиссия платёжного партнёра', DEFAULTS['fee_included'])
 
@@ -532,6 +536,13 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
                    money.get('registration_by') or 'застройщик / developer')
     if deal_type == 'rental':
         _set_field(t, 'Вид платежа', money.get('payment_type') or 'депозит / deposit')
+
+    if crypto_freehold:
+        obsolete = ('Комиссия платёжного партнёра и конвертация',
+                    'Источник курса и срок действия')
+        for row in list(t.rows):
+            if row.cells and any(label in row.cells[0].text for label in obsolete):
+                t._element.remove(row._element)
 
     _fill_client_signature(t, f, money)
 
