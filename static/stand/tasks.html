@@ -2593,7 +2593,7 @@ function taskToDeal(d,step){
   d.isTask=false;
   log(d,'Задача стала сделкой — деньги пошли, карточка попала в реестр');
 }
-function go(d,step,text){
+function go(d,step,text,persist=true){
   const prev=S.role;
   draftsClear(d.id);
   taskToDeal(d,step);
@@ -2615,20 +2615,20 @@ function go(d,step,text){
        Уведомление тут одно на переход: сервер разошлёт его в Телеграм. */
     noteAdd(to,'Задача на вас: '+(STEPS[step]?STEPS[step].title:step),d.id);
   }
-  save(); render();
+  if(persist)save(); render();
 }
 /* Деньги пришли — дальше две задачи сразу: операционист конвертирует (s18 у рублей,
    s22 у крипты), менеджер вносит реквизиты получателя. Реквизиты нужны только на
    оплате инвойса (s26) — там и ждём (Карим, 25.09: «параллельно, не последовательно»). */
 function reqOpen(d){return !!d&&!d.closed&&d.reqTask==='open';}
-function afterPayin(d,text){
+function afterPayin(d,text,persist=true){
   const F=flowOf(d), nxt=F[F.indexOf('s14')+1]||(isCrypto(d)?'s22':'s18');
   const need=!(d.payTo&&d.payTo.acc);
   d.reqTask=need?'open':'done';
-  go(d,nxt,text+' — '+(STEPS[nxt]?STEPS[nxt].title.toLowerCase():nxt)+' у операциониста'+(need?', реквизиты для оплаты — у менеджера параллельно':''));
   if(need) noteAdd('manager','Задача на вас: Реквизиты для оплаты — параллельно с конвертацией',d.id);
-  if(S.role==='manager'&&need){S.open=d.id;S.view='task';save();render();}
-  toast(need?'Операционист начал конвертацию — заполните реквизиты':'Операционист начал конвертацию');
+  if(S.role==='manager'&&need){S.open=d.id;S.view='task';}
+  go(d,nxt,text+' — '+(STEPS[nxt]?STEPS[nxt].title.toLowerCase():nxt)+' у операциониста'+(need?', реквизиты для оплаты — у менеджера параллельно':''),persist);
+  if(persist)toast(need?'Операционист начал конвертацию — заполните реквизиты':'Операционист начал конвертацию');
 }
 /* Реквизиты оплаты застройщику — поля формы «Реквизиты для оплаты». У фрихолда
    больше полей (SWIFT/BIC, отделение, адрес банка, POBO для софт-счёта) и сумма
@@ -6409,11 +6409,31 @@ function payinDrop(id,i){
 }
 /* После каждого перевода: сошлось в допуске — деньги у нас; меньше — ждём остаток;
    переплата — ручной разбор. */
-function payinSettle(id){
+/* Сетевой приход уже записан POST-ом. Финальный шаг отправляем одним PUT с
+   полученной от POST версией; при 409 показываем серверное состояние без merge
+   и без повторной записи поверх возможной правки коллеги. */
+async function standPayinCommit(message){
+  standBusy=true;
+  try{
+    const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({version:standVer,data:standSnapshot()})});
+    const j=await r.json();
+    if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
+    if(!r.ok||!j.success){toast((j.error==='conflict'?'Доску изменил коллега — ':'')+
+      (j.error==='conflict'?'проверьте приход и повторите действие':j.detail||j.error||'Не удалось завершить приход'));return false;}
+    toast(message);return true;
+  }catch(e){
+    if(standBase){standApply(standBase);render();}
+    toast('Не удалось подтвердить переход — обновите доску и проверьте приход');return false;
+  }
+  finally{standBusy=false;}
+}
+function payinSettle(id,network=false){
   const d=deal(id), exp=approx(d).pay, got=payinGot(d);
-  if(d.step!=='s14'){save();render();return;}
+  if(d.step!=='s14'){if(!network){save();render();}return;}
   const foreign=(d.payinHashes||[]).some(h=>payinForeign(d,h));
-  if(got<exp-PAYIN_TOL){save();render();
+  if(got<exp-PAYIN_TOL){if(!network){save();render();}
     toast(foreign?'Пришёл перевод не с кошелька клиента — засчитайте или уберите':'Получено '+money(got,'USDT')+' — ждём ещё '+money(rnd2(exp-got),'USDT'));return;}
   const hs=(d.payinHashes||[]).filter(h=>!payinForeign(d,h));
   d.incomeAmount=got; d.amountUsdt=d.amountUsdt||exp;
@@ -6422,9 +6442,12 @@ function payinSettle(id){
   d.pay.hash=(hs.slice().sort((x,y)=>(Number(y.amount)||0)-(Number(x.amount)||0))[0]||{}).hash||null;
   if(got>exp+PAYIN_TOL){
     d.incomeReview=['Переплата: пришло '+money(got,'USDT')+' вместо '+money(exp,'USDT')];
-    go(d,'s14m');toast('Пришло больше ожидания — нужен ручной разбор');return;}
+    go(d,'s14m',undefined,!network);
+    if(network)return standPayinCommit('Пришло больше ожидания — нужен ручной разбор');
+    toast('Пришло больше ожидания — нужен ручной разбор');return;}
   d.pay.usdt=got;
-  afterPayin(d,'Деньги у нас: '+money(got,'USDT')+(hs.length>1?' за '+hs.length+' перевода':''));
+  afterPayin(d,'Деньги у нас: '+money(got,'USDT')+(hs.length>1?' за '+hs.length+' перевода':''),!network);
+  if(network)return standPayinCommit('Деньги пришли — заполните реквизиты оплаты');
   toast('Деньги пришли — заполните реквизиты оплаты');
 }
 /* Клиент сказал, что больше не пришлёт: недобор разбирают руками с причиной */
@@ -6440,7 +6463,7 @@ async function payinCheck(id){
   if(!ref){toast('Вставьте хеш или ссылку на Tronscan');return;}
   if(!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш из 64 символов или ссылка с ним');return;}
   const j=await standAction('/api/stand/payin/check',{dealId:id,hash:ref});
-  if(j&&j.tx){toast('Проверено в сети: '+money(j.tx.amount,'USDT'));payinSettle(id);}
+  if(j&&j.tx)await payinSettle(id,true);
 }
 function payinDemo(id,kind){
   const d=deal(id), exp=approx(d).pay, left=rnd2(exp-payinGot(d));

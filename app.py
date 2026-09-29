@@ -6464,7 +6464,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Недопустимый новый ручной черновик'
                 deal['originMode'] = 'manual'
         elif (deal.get('originMode') != before.get('originMode')
-              or deal.get('manual') != before.get('manual')):
+              # Старые сделки не имели manual; migrate() в клиенте задаёт false.
+              # Отсутствие поля и false означают одно происхождение.
+              or (deal.get('manual') if deal.get('manual') is not None else False)
+              != (before.get('manual') if before.get('manual') is not None else False)):
             return 'Происхождение сделки нельзя изменить'
         elif before.get('originMode') == 'manual' and not allow_crm_close:
             if before.get('step') == 'manual' and deal.get('step') != 'manual':
