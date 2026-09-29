@@ -11,6 +11,8 @@
 pytest-прогоне.
 """
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -336,6 +338,98 @@ def test_conversion_return_has_tx_picker(html):
 
     show = _function_body(html, 'showConversion')
     assert '/api/transactions/outgoing' in show, 'список переводов не грузится при открытии пачки'
+
+
+def test_conversion_summary_names_partial_tranche_and_deferred_income(html):
+    """Копируемая задача отделяет подтверждённый транш от 15k ₽ без сделки."""
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node не установлен')
+    body = _function_body(html, 'buildConversionSummary')
+    script = 'function buildConversionSummary(c,d,dist) {' + body + '\n}\n' + r'''
+const result = buildConversionSummary(
+  {display_name:'CNV-0016',broker:'Tradex',sources_rub:265393.53,
+   held_rub:836.18,sent_rub:264557.35,rate_rub_usdt:85.8,
+   received_usdt:3078.46,delta_usdt:-4.96},
+  {composition:[],txs:[]},
+  {success:true,needs_input:true,to_return:[{label:'Андрей',address:'TWallet',
+    known_amount_usdt:2841.92,known_deal_ids:[660,664],deals:[],
+    deferred_deals:[]}],settled:[],blocked_deals:[],
+    unassigned_usdt:172.78,unassigned_incomes:[{sber_income_id:667,
+    operation_date:'2026-09-24',amount_rub:14895,share_usdt:172.78}],
+    stays_usdt:null,margin_usdt:null});
+process.stdout.write(result);
+const missingAddress = buildConversionSummary(
+  {display_name:'CNV-0016',sources_rub:1,sent_rub:1,received_usdt:1},
+  {composition:[],txs:[]},
+  {success:true,needs_input:true,to_return:[{label:'Андрей',address:null,
+    known_amount_usdt:2841.92,known_deal_ids:[660,664],deals:[],deferred_deals:[]}],
+    settled:[],blocked_deals:[],unassigned_usdt:0,unassigned_incomes:[],
+    stays_usdt:null,margin_usdt:null});
+process.stdout.write('\n---MISSING---\n' + missingAddress);
+'''
+    output = subprocess.run([node, '-e', script], text=True,
+                            capture_output=True, check=True, timeout=10).stdout
+    normal, missing = output.split('---MISSING---')
+    assert re.search(r'Возместить сейчас: 2[\s\u00a0\u202f]841,92 USDT · получатель Андрей · только #660/#664', normal)
+    assert 'Отложено: приходы без сделки — 172,78 USDT' in normal
+    assert re.search(r'14[\s\u00a0\u202f]895,00 ₽', normal)
+    assert 'Итог всей пачки не подтверждён' in normal
+    assert 'Снимок на ' in normal
+    assert 'реквизиты для возврата не указаны — отправку не ставить' in missing
+    assert 'Возместить сейчас' not in missing
+
+
+def test_conversion_return_posts_only_confirmed_deals(html):
+    """Свежая раскладка перед POST исключает отложенную сделку и нулевой транш."""
+    node = shutil.which('node')
+    if not node:
+        pytest.skip('node не установлен')
+    body = _function_body(html, 'returnFromConversion')
+    script = 'async function returnFromConversion(convId,walletId) {' + body + '\n}\n' + r'''
+const API_URL = '';
+const calls = [], notices = [];
+let dist = {success:true,needs_input:true,balanced:false,to_return:[{
+  wallet_id:1,address:'TWallet',founder:'Андрей',known_amount_usdt:2841.92,
+  known_deal_ids:[660,664],deals:[
+    {deal_id:660,cost_usdt:380},{deal_id:664,cost_usdt:2461.92},
+    {deal_id:667,cost_usdt:null}]}]};
+let shown = {knownAmount:'2841.92',knownDealIds:'660,664',walletAddress:'TWallet'};
+const document = {getElementById:id=>id.startsWith('convRetGroup')
+  ? {dataset:shown} : {value:'test-hash'}};
+function showToast(message) { notices.push(message); }
+function showConversion() {}
+async function fetch(url, opts) {
+  if (opts) {calls.push(JSON.parse(opts.body)); return {json:async()=>({success:true})};}
+  return {json:async()=>dist};
+}
+(async()=>{
+  await returnFromConversion(16,1);
+  dist = {...dist,to_return:[{...dist.to_return[0],known_amount_usdt:3004.92,
+    known_deal_ids:[660,664,667],deals:[
+      {deal_id:660,cost_usdt:380},{deal_id:664,cost_usdt:2461.92},
+      {deal_id:667,cost_usdt:163}]}]};
+  await returnFromConversion(16,1);
+  dist = {...dist,to_return:[{...dist.to_return[0],known_amount_usdt:0,
+    known_deal_ids:[],deals:[{deal_id:667,cost_usdt:null}]}]};
+  shown = {knownAmount:'0.00',knownDealIds:'',walletAddress:'TWallet'};
+  await returnFromConversion(16,1);
+  process.stdout.write(JSON.stringify({calls,notices}));
+})().catch(e=>{process.stderr.write(String(e));process.exit(1)});
+'''
+    result = subprocess.run([node, '-e', script], text=True,
+                            capture_output=True, check=True, timeout=10)
+    import json
+    data = json.loads(result.stdout)
+    assert len(data['calls']) == 1
+    assert data['calls'][0]['deal_ids'] == [660, 664]
+    assert data['calls'][0]['amount_usdt'] == 2841.92
+    assert data['calls'][0]['deal_allocations'] == [
+        {'deal_id': 660, 'amount_usdt': 380},
+        {'deal_id': 664, 'amount_usdt': 2461.92},
+    ]
+    assert 'Раскладка изменилась, обновите пачку и задачу' in data['notices']
+    assert 'Нет подтверждённой суммы' in data['notices'][-1]
 
 
 def test_conversion_card_can_delete_batch_safely(html):

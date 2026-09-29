@@ -7171,6 +7171,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 calcBinanceRate();
             } else if (payoutSource === 'founder_personal' && noConversionOn()) {
                 calcNoConvRate();       // курс проверки едет от суммы выдачи
+            } else if (payoutSource === 'founder_personal') {
+                payoutRefreshInfo();   // курс выбранного перевода зависит от THB
             }
         });
 
@@ -11275,6 +11277,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const L = [];
             L.push(`${c.display_name} · ${c.broker || '—'}${c.request_no ? ' · ' + c.request_no : ''}` +
                    `${c.sent_at ? ' · ' + c.sent_at.slice(0, 10) : ''}`);
+            if (dist && dist.needs_input) L.push(
+                `Снимок на ${new Date().toLocaleString('ru-RU')}; перед подписью сверить с текущей раскладкой ${c.display_name}`);
             L.push('');
             L.push(`Пришло на счёт: ${money(c.sources_rub)} ₽`);
             (d.composition || []).forEach(x => {
@@ -11302,6 +11306,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // «нужно возместить на кошелёк Андрея за 2 сделки Романа 383,14+387,78».
             // Всё это уже посчитано в раскладке, пересказывать цифры незачем.
             if (dist && dist.success) {
+                const blocked = dist.needs_input;
                 const deal = x => `#${x.deal_id} ${(x.client_name || '').trim()}`.padEnd(28).slice(0, 28);
                 // Свои баты — не «потерянный перевод»: без этой строки в чате
                 // начинают искать хеш, которого никогда не было
@@ -11313,16 +11318,30 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const noConvNote = 'выдал своими батами — конвертации не было, хеша выдачи нет';
                 (dist.to_return || []).forEach(g => {
                     L.push('');
-                    L.push(`Возместить ${g.label || g.founder || 'оунеру'}: ${money(g.amount_usdt)} USDT`);
+                    if (g.known_amount_usdt > 0) {
+                        const knownIds = (g.known_deal_ids || []).map(id => `#${id}`).join('/');
+                        L.push(g.address
+                            ? `Возместить сейчас: ${money(g.known_amount_usdt)} USDT · ` +
+                              `получатель ${g.label || g.founder || 'оунер'} · только ${knownIds}`
+                            : `Сумма возврата известна: ${money(g.known_amount_usdt)} USDT только ${knownIds}; ` +
+                              'реквизиты для возврата не указаны — отправку не ставить');
+                    } else {
+                        L.push(`Возмещение ${g.label || g.founder || 'оунеру'}: подтверждённых сумм пока нет`);
+                    }
+                    if (blocked) L.push('  Итог по всей пачке пока не определён; это только подтверждённый транш.');
                     L.push(`  кошелёк: ${g.address || '— не указан'}`);
                     if (g.no_conversion) L.push(`  ${noConvNote}`);
                     g.deals.forEach(x => L.push(dealLine(x)));
+                    (g.deferred_deals || []).forEach(x => L.push(
+                        `  Отложено: #${x.deal_id} ${x.client_name || ''} — ${x.reason}; ` +
+                        'ответственный за сделку должен уточнить и включить в следующий транш'));
                 });
                 (dist.settled || []).forEach(g => {
                     L.push('');
                     L.push(g.kind === 'auto'
-                        ? `Возмещать не пришлось: ${money(g.amount_usdt)} USDT пришли сразу на нужный кошелёк`
-                        : `Уже возвращено переводом: ${money(g.amount_usdt)} USDT`);
+                        ? `Возмещать не пришлось: ${g.amount_usdt === null ? 'сумма этой пачки не определена' : money(g.amount_usdt) + ' USDT пришли сразу на нужный кошелёк'}`
+                        : `Уже возвращено переводом: ${g.amount_usdt === null ? 'сумма этой пачки не определена' : money(g.amount_usdt) + ' USDT'}`);
+                    if (g.attribution_unknown) L.push('  ⚠️ Возмещение охватывает сделки вне этой пачки; сумма по этой пачке не определена');
                     if (g.tx_hash) L.push(`  хеш: ${g.tx_hash}`);
                     if (g.no_conversion) L.push(`  ${noConvNote}`);
                     g.deals.forEach(x => L.push(dealLine(x)));
@@ -11344,13 +11363,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
                 if (dist.unassigned_usdt) {
                     L.push('');
-                    L.push(`Приходы без сделки: ${money(dist.unassigned_usdt)} USDT`);
+                    L.push(`Отложено: приходы без сделки — ${money(dist.unassigned_usdt)} USDT`);
+                    (dist.unassigned_incomes || []).forEach(x => L.push(
+                        `  ⚠️ ${(x.operation_date || 'дата неизвестна').slice(0, 10)} · ` +
+                        `${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} · ` +
+                        `${money(x.share_usdt)} USDT · приход #${x.sber_income_id} не привязан к сделке; ` +
+                        'ответственный за сделку должен уточнить и включить в следующий транш'));
                 }
                 L.push('');
-                L.push(`Остаётся у нас: ${money(dist.stays_usdt)} USDT` +
+                L.push(`Остаётся у нас: ${blocked ? 'не определено' : money(dist.stays_usdt) + ' USDT'}` +
                        (dist.margin_usdt ? ` (маржа ${money(dist.margin_usdt)})` : ''));
+                (dist.blocked_deals || []).forEach(x => L.push(
+                    `⚠️ #${x.deal_id} ${x.client_name || ''}: ${x.reason}`));
                 if (dist.needs_input) {
-                    L.push('⚠️ по части сделок не отмечены переводы выдачи — суммы возврата неизвестны');
+                    L.push('⚠️ Итог всей пачки не подтверждён. Подтверждённый транш можно возместить отдельно.');
                 }
             }
             return L.join('\n');
@@ -11583,22 +11609,29 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function renderConvDistribution(convId, dist) {
             if (!dist || !dist.success || !dist.received_usdt) return '';
             const money = v => (v === null || v === undefined) ? '—' : cnvNum(v);
+            const blocked = dist.needs_input;
             const dealLine = x => `<div style="color:#64748b; font-size:0.85rem; margin-left:14px">
                 #${x.deal_id} ${escapeHtml(x.client_name || '')} — ${money(x.cost_usdt)}
                 ${x.cost_usdt === null ? '<span style="color:#dc2626">себестоимость неизвестна</span>'
                     : `<span style="color:#94a3b8">(доля ${money(x.share_usdt)}, маржа ${money(x.margin_usdt)})</span>`}</div>`;
 
             const ret = (dist.to_return || []).map(g => `
-                <div style="margin-top:8px">
-                    <div><b>Вернуть · ${escapeHtml(g.label || g.founder || 'оунеру')}</b>
-                        <b style="float:right">${money(g.amount_usdt)} USDT</b></div>
+                <div id="convRetGroup${g.wallet_id}" style="margin-top:8px"
+                     data-known-amount="${Number(g.known_amount_usdt || 0).toFixed(2)}"
+                     data-known-deal-ids="${(g.known_deal_ids || []).slice().sort((a,b) => a-b).join(',')}"
+                     data-wallet-address="${escapeHtml(g.address || '')}">
+                    <div><b>Возместить сейчас · ${escapeHtml(g.label || g.founder || 'оунеру')}</b>
+                        <b style="float:right">${money(g.known_amount_usdt)} USDT</b></div>
+                    ${blocked ? '<div style="color:#b45309">Это только подтверждённый транш; итог всей пачки пока неизвестен</div>' : ''}
                     <div style="font-family:monospace; font-size:0.8rem; color:#64748b">
                         ${g.address ? g.address : '<span style="color:#dc2626">кошелёк у сделки не указан</span>'}</div>
                     ${g.deals.map(dealLine).join('')}
-                    ${g.address && g.amount_usdt ? `
+                    ${(g.deferred_deals || []).map(x => `<div style="color:#b45309; font-size:0.85rem; margin-left:14px">
+                        Отложено #${x.deal_id}: ${escapeHtml(x.reason)}; уточнить и включить в следующий транш</div>`).join('')}
+                    ${g.address && g.known_amount_usdt > 0 ? `
                     <div style="display:flex; gap:6px; margin-top:6px">
                         <select class="form-control" id="convRetSel${g.wallet_id}" style="flex:1"
-                                onchange="pickConvRetTx(${g.wallet_id}, ${g.amount_usdt})">
+                                onchange="pickConvRetTx(${g.wallet_id}, ${g.known_amount_usdt})">
                             ${convRetTxOptions(g.address)}
                         </select>
                     </div>
@@ -11616,13 +11649,16 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     <b>${g.kind === 'auto' ? 'Возмещено приходом — перевод не потребовался'
                                            : 'Возвращено переводом'}</b>
                     <b style="float:right">${money(g.amount_usdt)} USDT</b>
+                    ${g.attribution_unknown ? '<div style="color:#b45309">Возмещение охватывает сделки вне этой пачки; сумма по ней не определена</div>' : ''}
                     ${g.tx_hash ? `<div style="font-family:monospace; font-size:0.8rem; color:#64748b">
                         ${g.incoming ? 'входящий' : 'исходящий'} ${g.tx_hash.slice(0, 20)}…</div>` : ''}
                     ${g.deals.map(dealLine).join('')}
                 </div>`).join('');
 
+            const blockedNote = (dist.blocked_deals || []).map(x =>
+                `<div>#${x.deal_id} ${escapeHtml(x.client_name || '')}: ${escapeHtml(x.reason)}</div>`).join('');
             const flag = dist.needs_input
-                ? '<div style="margin-top:8px; padding:8px; background:#fef2f2; border-radius:6px; color:#b91c1c">⚠️ Раскладка неполная: отметьте переводы выдачи по сделкам выше</div>'
+                ? `<div style="margin-top:8px; padding:8px; background:#fef2f2; border-radius:6px; color:#b91c1c">⚠️ Раскладка неполная. Сумма возврата не подтверждена. ${blockedNote}</div>`
                 : (dist.balanced
                     ? '<div style="margin-top:8px; padding:8px; background:#ecfdf5; border-radius:6px; color:#065f46">✅ приход разложен полностью</div>'
                     : '<div style="margin-top:8px; padding:8px; background:#fef2f2; border-radius:6px; color:#b91c1c">⚠️ раскладка не сходится с приходом</div>');
@@ -11649,7 +11685,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             #${x.deal_id} ${escapeHtml(x.client_name || '')} — ${money(x.share_usdt)}</div>`).join('')}
                 </div>` : ''}
                 ${dist.unassigned_usdt ? `<div style="margin-top:8px; color:#b45309">
-                    Приходы без сделки <b style="float:right">${money(dist.unassigned_usdt)} USDT</b></div>` : ''}
+                    Приходы без сделки <b style="float:right">${money(dist.unassigned_usdt)} USDT</b>
+                    ${(dist.unassigned_incomes || []).map(x => `<div style="margin-left:14px">
+                        ${escapeHtml((x.operation_date || 'дата неизвестна').slice(0, 10))} ·
+                        ${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} ·
+                        приход #${x.sber_income_id} не привязан к сделке</div>`).join('')}
+                </div>` : ''}
                 <div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px">
                     Остаётся у нас <b style="float:right">${money(dist.stays_usdt)} USDT</b>
                     ${dist.margin_usdt ? `<div style="color:#64748b; font-size:0.85rem">из них маржа ${money(dist.margin_usdt)}</div>` : ''}
@@ -11659,22 +11700,34 @@ ${Math.abs(c.debits_delta_rub) < 0.01
 
         async function returnFromConversion(convId, walletId) {
             const dist = await (await fetch(`/api/conversions/${convId}/distribution`)).json();
+            if (!dist.success) return showToast('Не удалось проверить раскладку', 'error');
             const g = (dist.to_return || []).find(x => x.wallet_id === walletId);
             if (!g) return showToast('Долг уже закрыт', 'error');
+            const known = (g.deals || []).filter(x =>
+                (g.known_deal_ids || []).includes(x.deal_id) && Number(x.cost_usdt) > 0);
+            const amount = Number(g.known_amount_usdt || 0);
+            const sum = Math.round(known.reduce((total, x) => total + Number(x.cost_usdt), 0) * 100) / 100;
+            const shown = document.getElementById(`convRetGroup${walletId}`)?.dataset;
+            const freshIds = (g.known_deal_ids || []).slice().sort((a,b) => a-b).join(',');
+            if (!shown || shown.knownAmount !== amount.toFixed(2) ||
+                shown.knownDealIds !== freshIds || shown.walletAddress !== (g.address || ''))
+                return showToast('Раскладка изменилась, обновите пачку и задачу', 'error');
+            if (!g.address || !known.length || amount <= 0 || Math.abs(sum - amount) > 0.01)
+                return showToast('Нет подтверждённой суммы и сделок для возврата', 'error');
             const hash = (document.getElementById(`convRetHash${walletId}`).value || '').trim();
             if (!hash) return showToast('Нужен хеш перевода оунеру', 'error');
             const r = await fetch(`${API_URL}/api/reimbursements`, {method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     founder_name: g.founder || g.label,
-                    deal_ids: g.deals.map(x => x.deal_id),
-                    amount_usdt: g.amount_usdt,
+                    deal_ids: known.map(x => x.deal_id),
+                    amount_usdt: amount,
                     tx_hashes: [hash],
-                    deal_allocations: g.deals.map(x => ({deal_id: x.deal_id, amount_usdt: x.cost_usdt})),
+                    deal_allocations: known.map(x => ({deal_id: x.deal_id, amount_usdt: x.cost_usdt})),
                 })});
             const res = await r.json();
             if (!res.success) return showToast(res.error || 'Не удалось создать возмещение', 'error');
-            showToast(`Возврат на ${g.amount_usdt} USDT записан`);
+            showToast(`Возврат на ${amount} USDT записан`);
             showConversion(convId);
         }
 

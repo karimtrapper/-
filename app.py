@@ -6278,17 +6278,32 @@ def conversion_distribution(db, conv):
         except (ValueError, TypeError):
             wl_deals_snapshot = []
 
-    per_deal, wl_rows = {}, []
+    per_deal, wl_rows, unassigned_incomes = {}, [], []
+    source_rub_by_deal = {}
+    source_rub_by_income = {}
+    for src in conv.sources:
+        source_rub_by_income[src.sber_income_id] = round(src.amount_rub or 0, 2)
+        inc = db.query(SberIncome).get(src.sber_income_id)
+        if inc and inc.claimed_deal_id:
+            source_rub_by_deal[inc.claimed_deal_id] = round(
+                source_rub_by_deal.get(inc.claimed_deal_id, 0) + (src.amount_rub or 0), 2)
     wl_to_pay = wl_margin = 0.0
     for sid, usdt in shares.items():
         inc = db.query(SberIncome).get(sid)
         if not inc:
+            unassigned_incomes.append({'sber_income_id': sid,
+                                       'amount_rub': None, 'operation_date': None,
+                                       'share_usdt': round(usdt, 2)})
             continue
         if inc.claimed_deal_id:
             per_deal[inc.claimed_deal_id] = round(per_deal.get(inc.claimed_deal_id, 0) + usdt, 2)
             continue
         wl = _match_wl_deal(inc.to_dict(), wl_deals_snapshot)
         if not wl:
+            unassigned_incomes.append({'sber_income_id': inc.id,
+                                       'amount_rub': source_rub_by_income.get(inc.id),
+                                       'operation_date': inc.operation_date,
+                                       'share_usdt': round(usdt, 2)})
             continue
         share = round(usdt, 2)
         to_pay = round(float(wl.get('usdt') or 0), 2) or None
@@ -6305,6 +6320,7 @@ def conversion_distribution(db, conv):
     to_return, settled, no_return_deals = {}, {}, []
     obligations = margin = no_return = 0.0
     needs_input = False
+    blocked_deals = []
     if any(r['to_pay_usdt'] is None for r in wl_rows):
         needs_input = True          # в реестре бота нет суммы к выплате
 
@@ -6318,6 +6334,31 @@ def conversion_distribution(db, conv):
                # Хеша выдачи у такой сделки нет и не будет — иначе в сводке её
                # читают как «перевод потеряли» и идут искать несуществующее
                'no_conversion': bool(deal.payout_no_conversion)}
+        # Полная себестоимость выдачи относится ко всей сделке. Если её рубли
+        # попали в эту пачку не целиком, сумму возврата по пачке утверждать нельзя.
+        # claimed_deal_id связывает приход со сделкой, а payin_amount_rub ловит
+        # также ручную часть, пока не привязанную к пулу Сбера.
+        linked_incomes = db.query(SberIncome).filter(
+            SberIncome.claimed_deal_id == deal.id).all()
+        linked_rub = round(sum(i.amount_rub or 0 for i in linked_incomes), 2)
+        acquiring_fee = round(sum(parse_sber_acquiring(i.purpose)['fee_rub']
+                                  for i in linked_incomes), 2)
+        source_rub = source_rub_by_deal.get(deal.id, 0)
+        # В карточке брутто, в SberIncome и ConversionSource — нетто.
+        required_rub = max(linked_rub,
+                           round((deal.payin_amount_rub or 0) - acquiring_fee, 2))
+        if required_rub - source_rub > 0.01:
+            missing_rub = round(required_rub - source_rub, 2)
+            reason = (f'В эту конвертацию вошло {source_rub:.2f} ₽ из '
+                      f'{required_rub:.2f} ₽ прихода сделки; '
+                      f'{missing_rub:.2f} ₽ ещё не входят в пачку. '
+                      'Разделите сделку или сверяйте конвертацию целиком.')
+            row['blocked_reason'] = reason
+            blocked_deals.append({'deal_id': deal.id,
+                                  'client_name': row['client_name'],
+                                  'missing_rub': missing_rub,
+                                  'reason': reason})
+            needs_input = True
         has_debt = (deal.payout_source == PayOutSource.FOUNDER_PERSONAL
                     and deal.needs_reimbursement is not False)
         if not has_debt:
@@ -6326,7 +6367,7 @@ def conversion_distribution(db, conv):
             continue
 
         cost = deal.payout_amount_usdt or _payout_cost_from_transfers(deal)
-        if cost:
+        if cost and not row.get('blocked_reason'):
             cost = round(cost, 2)
             row['cost_usdt'] = cost
             row['margin_usdt'] = round(share - cost, 2)
@@ -6335,6 +6376,8 @@ def conversion_distribution(db, conv):
         else:
             # Сумму возврата не знаем — «сошлось» тут было бы враньём
             needs_input = True
+            row['deferred_reason'] = (row.get('blocked_reason') or
+                                      'Себестоимость выдачи не подтверждена')
 
         if deal.reimbursement_id:
             reimb = db.query(Reimbursement).get(deal.reimbursement_id)
@@ -6345,7 +6388,7 @@ def conversion_distribution(db, conv):
                 'tx_hash': reimb.tx_hash if reimb else None,
                 'incoming': bool(reimb and reimb.settled_by_payin_tx_id),
                 'amount_usdt': 0.0, 'no_conversion': False, 'deals': []})
-            grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+            grp['amount_usdt'] = round(grp['amount_usdt'] + (row['cost_usdt'] or 0), 2)
             grp['no_conversion'] = grp['no_conversion'] or row['no_conversion']
             grp['deals'].append(row)
             continue
@@ -6358,31 +6401,71 @@ def conversion_distribution(db, conv):
             'label': (wallet.label if wallet else None) or deal.payout_founder_name or '',
             'founder': deal.payout_founder_name or '',
             'amount_usdt': 0.0, 'no_conversion': False, 'deals': []})
-        grp['amount_usdt'] = round(grp['amount_usdt'] + (cost or 0), 2)
+        grp['amount_usdt'] = round(grp['amount_usdt'] + (row['cost_usdt'] or 0), 2)
         grp['no_conversion'] = grp['no_conversion'] or row['no_conversion']
         grp['deals'].append(row)
         if not wallet:
             needs_input = True          # некуда возвращать
 
+    # Факт уже проведённого возмещения хранится в Reimbursement. Когда сделку
+    # позже заблокировали из-за нового прихода, её расчётная себестоимость в
+    # этой пачке неизвестна, но совершённый перевод не превратился в ноль.
+    for group in settled.values():
+        reimb = db.query(Reimbursement).get(group['reimbursement_id'])
+        if not reimb:
+            group['amount_usdt'] = None
+            group['attribution_unknown'] = True
+            continue
+        in_batch = {row['deal_id'] for row in group['deals']}
+        reimb_deals = {deal.id for deal in reimb.deals}
+        if in_batch == reimb_deals:
+            group['amount_usdt'] = round(reimb.amount_usdt, 2)
+        else:
+            # Одно возмещение охватывает сделки из других пачек. Его полную
+            # сумму нельзя приписывать этой конвертации без сохранённой аллокации.
+            group['amount_usdt'] = None
+            group['attribution_unknown'] = True
+
     wl_share_total = round(sum(r['share_usdt'] for r in wl_rows), 2)
     unassigned = round(received - sum(per_deal.values()) - wl_share_total, 2)
+    if unassigned > 0.01:
+        needs_input = True  # положительный приход без сделки нельзя объявлять нашей маржой
     stays = round(received - obligations - wl_to_pay, 2)
     balanced = (not needs_input
                 and abs(stays - round(margin + wl_margin + no_return + unassigned, 2)) < 0.02)
+    # Любая недостающая величина (себестоимость, кошелёк, WL-выплата,
+    # связь прихода) делает итог по пачке предварительным. Иначе сумма
+    # известных сделок выглядела бы готовым заданием на частичный перевод.
+    distribution_blocked = needs_input
+    for group in to_return.values():
+        known = [row for row in group['deals'] if row['cost_usdt'] is not None]
+        deferred = [row for row in group['deals'] if row['cost_usdt'] is None]
+        group['known_amount_usdt'] = round(sum(row['cost_usdt'] for row in known), 2)
+        group['known_deal_ids'] = [row['deal_id'] for row in known]
+        group['deferred_deals'] = [
+            {'deal_id': row['deal_id'], 'client_name': row['client_name'],
+             'reason': row.get('deferred_reason') or 'Сумма не подтверждена'}
+            for row in deferred]
+    if distribution_blocked:
+        for group in to_return.values():
+            group['amount_usdt'] = None
     return {
         'conversion': conv.display_name,
         'received_usdt': round(received, 2),
-        'to_return': sorted(to_return.values(), key=lambda x: -x['amount_usdt']),
-        'settled': sorted(settled.values(), key=lambda x: -x['amount_usdt']),
+        'to_return': sorted(to_return.values(),
+                            key=lambda x: -(x['amount_usdt'] or 0)),
+        'settled': sorted(settled.values(), key=lambda x: -(x['amount_usdt'] or 0)),
         'no_return_usdt': round(no_return, 2),
         'no_return_deals': no_return_deals,
         'wl_deals': wl_rows,
         'wl_usdt': round(wl_to_pay, 2),
         'unassigned_usdt': unassigned,
-        'margin_usdt': round(margin + wl_margin, 2),
-        'stays_usdt': stays,
+        'unassigned_incomes': unassigned_incomes,
+        'margin_usdt': None if distribution_blocked else round(margin + wl_margin, 2),
+        'stays_usdt': None if distribution_blocked else stays,
         'balanced': balanced,
         'needs_input': needs_input,
+        'blocked_deals': blocked_deals,
     }
 
 
