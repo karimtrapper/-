@@ -1244,18 +1244,26 @@ const BROKERS=['Tradex','Крипта-Платежи','Asia Capital','IPPS','Д�
 /* Кошельки, на которые брокер присылает USDT. Владелец решает процесс: кошелёк с
    мультисигом требует второй подписи — фин дир создаёт платёж, второй ключ подписывает.
    Обычный кошелёк: владелец сам инициирует перевод, вторая подпись не нужна
-   (правило Карима, 22.09). Адрес кошелька Виталия нужно подставить настоящий. */
+   (правило Карима, 22.09). */
 const WALLETS=[
-  {id:'vitaly', name:'Кошелёк Виталия',owner:'Виталий', role:'findir', addr:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', multisig:true,  note:'мультисиг: Виталий подписывает, Теодор одобряет'},
-  {id:'grusha', name:'Кошелёк Груши',  owner:'компания',role:'findir', addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', multisig:true,  note:'общий рабочий кошелёк, тоже с двумя подписями'},
+  {id:'vitaly', name:'Кошелёк Груши (мультисиг)',owner:'компания', role:'findir', addr:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', multisig:true, note:'старый ID vitaly; кошелёк компании, две подписи'},
+  {id:'grusha', name:'Кошелёк Груши (мультисиг)',owner:'компания',role:'findir', addr:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', multisig:true, note:'кошелёк компании, две подписи'},
   {id:'teodor', name:'Кошелёк Теодора',owner:'Теодор',  role:'teodor', addr:'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p', multisig:false, note:'личный: Теодор отправляет сам и вносит хеш'},
-  {id:'andrey', name:'Кошелёк Андрея', owner:'Андрей',  role:'teodor', addr:'адрес уточнить',                     multisig:false, note:'личный: владелец отправляет сам и вносит хеш'}
+  {id:'andrey', name:'Кошелёк Андрея', owner:'Андрей', role:'teodor', addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', multisig:false, note:'личный: Андрей подписывает сам и вносит хеш'}
 ];
 /* WALLETS — стартовый набор. Рабочий список живёт в состоянии, потому что кошельки
    заводят по ходу: появился новый — его должно быть видно в выборе сразу. */
 function wallets(){
   if(!Array.isArray(S.wallets)||!S.wallets.length) S.wallets=WALLETS.map(w=>Object.assign({},w));
-  return S.wallets;
+  /* View overlay for exact legacy built-ins; saved state stays untouched. */
+  return S.wallets.map(w=>{
+    const fixed=WALLETS.find(x=>x.id===w.id);
+    if(!fixed)return w;
+    if(w.id==='grusha'&&w.addr==='TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn')return Object.assign({},w,fixed);
+    if(w.id==='vitaly'&&w.addr==='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ')return Object.assign({},w,fixed);
+    if(w.id==='andrey'&&w.addr==='адрес уточнить')return Object.assign({},w,fixed);
+    return w;
+  }).concat(WALLETS.filter(w=>!S.wallets.some(saved=>saved.id===w.id)).map(w=>Object.assign({},w)));
 }
 function walletById(id){return wallets().find(w=>w.id===id)||null;}
 /* Кошелёк, на который крипто-клиент платит USDT. Раньше был зашит кошелёк Груши:
@@ -1327,7 +1335,7 @@ function walletAdd(id){
   const w={id:'w'+Date.now(),name:val('nw_name'),owner:val('nw_own'),
     role:multi?'findir':'teodor',addr:val('nw_addr'),multisig:multi,
     note:multi?'мультисиг: владелец подписывает, Теодор одобряет':'личный: владелец отправляет сам и вносит хеш'};
-  wallets().push(w);
+  S.wallets.push(w);
   S.walletNew=false;
   const d=deal(id);
   if(d){walletPick(id,w.id);log(d,'Добавлен кошелёк: '+w.name+' · '+w.addr+(multi?' · мультисиг':' · одна подпись'));}
@@ -6625,7 +6633,7 @@ function walletBlock(d){
           </select></div>
       </div>
       <div class="fg"><label class="fl">Адрес целиком<span class="rq">*</span></label>
-        <input class="fc addr" id="nw_addr" placeholder="TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"></div>
+        <input class="fc addr" id="nw_addr" placeholder="T… (34 символа TRC-20)"></div>
       <div class="row"><button class="btn btn-primary btn-sm" onclick="walletAdd(${d.id})">Добавить кошелёк</button>
       <button class="btn btn-outline btn-sm" onclick="walletFormOn(false)">Отмена</button></div>
     </div>`:`<div class="row" style="margin-top:10px">
@@ -8437,7 +8445,7 @@ function seedLeaseholdTest(){
     acc:'000-0-00000-0',inv:'DEMO-INV-'+main.id,
     purpose:'DEMO payment for unit L-01'};
   main.walletId='vitaly';main.postConv='coins';
-  main.transfer={to:'Coins.co.th · DEMO (не для отправки денег)',addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',rate:'31,20',thb:353500,
+  main.transfer={to:'Coins.co.th · DEMO (не для отправки денег)',addr:'DEMO — адрес Coins не задан',rate:'31,20',thb:353500,
     amount:'11330.13',net:'TRC-20',sends:[]};
   main.files={};
   ['pass','inv','spa','signed'].forEach(k=>{
@@ -8452,7 +8460,7 @@ function seedLeaseholdTest(){
   small.demoTransfers=true;small.incomeAmount=100000;small.readyAt=Date.now();
   small.rates={rubUsdt:'81,40',broker:'81,40',usdtThb:'31,20',client:'2,70',at:Date.now()};
   const addr='TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p';
-  if(!walletById('demo-andrey'))wallets().push({id:'demo-andrey',name:'DEMO: кошелёк Андрея',
+  if(!walletById('demo-andrey'))S.wallets.push({id:'demo-andrey',name:'DEMO: кошелёк Андрея',
     owner:'DEMO: Андрей',role:'teodor',addr:addr,multisig:false,
     note:'Тестовый адрес сценария; деньги не переводить'});
   small.postConv='refund';small.paySrc='founder';
@@ -8631,10 +8639,10 @@ function seedDemo(){
   seedCnv({broker:'Tradex',requestNo:'48',rate:'81,35',at:'21.09, 07:32',
     sources:[{dealId:g1.id,payer:'Гусев И.',date:'21.09',rub:1200000,usdt:14706.33,usdtFact:14706.33},
              {dealId:g2.id,payer:'Гусев И.',date:'21.09',rub:1708800,usdt:20942.02,usdtFact:20942.02}],
-    txs:[{hash:'0x7c4f19ab…a91e',net:'TRC20',amount:35648.35,to:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',toLabel:'кошелёк Груши'}]});
+    txs:[{hash:'0x7c4f19ab…a91e',net:'TRC20',amount:35648.35,to:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',toLabel:'Кошелёк Груши (мультисиг)'}]});
   seedCnv({broker:'Крипта-Платежи',requestNo:'51',rate:'81,20',at:'21.09, 18:04',
     sources:[{dealId:x.id,payer:'Бранова О.',date:'21.09',rub:393680,usdt:4833.24,usdtFact:4833.24}],
-    txs:[{hash:'0x5512aa7c…31bd',net:'TRC20',amount:4833.24,to:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',toLabel:'кошелёк Груши'}]});
+    txs:[{hash:'0x5512aa7c…31bd',net:'TRC20',amount:4833.24,to:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',toLabel:'Кошелёк Груши (мультисиг)'}]});
   /* Конвертацию не на чем показать, пока в очереди одна мелочь: пачка —
      это несколько сделок с разными деньгами и разными задачами после обмена
      (кому-то баты через Coins, кому-то оплата с IPPS, кто-то просто ждёт).

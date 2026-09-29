@@ -14,11 +14,13 @@ TRON_USDT = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
 ETH_USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7'
 ETH_TRANSFER_TOPIC = ('0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef')
 DEFAULT_WALLETS = {
+    # Legacy id kept for saved deals (including 1478/1479): it still means this address.
     'vitaly': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
-    'grusha': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+    'grusha': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
+    'andrey': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
     'teodor': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
-    # У Андрея в HTML placeholder; он никогда не проходит проверку адреса.
 }
+LEGACY_GRUSHA_ADDRESS = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
                  'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs')
@@ -77,11 +79,22 @@ def valid_address(value, network):
     return False
 
 
+def stand_wallet_address(state, wallet_id):
+    """Resolve a stand wallet without rewriting persisted wallet IDs or custom addresses."""
+    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+    address = (wallet or {}).get('addr')
+    # Only the exact old built-in mapping is stale; user-edited addresses retain precedence.
+    if wallet_id == 'grusha' and address == LEGACY_GRUSHA_ADDRESS:
+        return DEFAULT_WALLETS['grusha']
+    if wallet_id == 'andrey' and address == 'адрес уточнить':
+        return DEFAULT_WALLETS['andrey']
+    return address or DEFAULT_WALLETS.get(wallet_id)
+
+
 def expected_addresses(state, deal):
     conv = next((c for c in state.get('convs', []) if c.get('id') == deal.get('cnvId')), None)
     wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
-    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
-    sender = (wallet or {}).get('addr') or DEFAULT_WALLETS.get(wallet_id)
+    sender = stand_wallet_address(state, wallet_id)
     return sender, (deal.get('transfer') or {}).get('addr')
 
 

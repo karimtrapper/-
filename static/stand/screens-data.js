@@ -120,7 +120,7 @@ function scrCnvReceived(d,extra){
   const c=scrCnv(d,{status:'received'},extra);
   const got=c.sources.reduce((s,x)=>s+(x.usdt||0),0);
   c.txs=[{hash:'ed7f9fcd31249fcc0b6a7d2f2a5b18c4e9107ab3c8d5fe2210947bb6cd83ff41',
-          net:'TRC20',amount:got,to:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',toLabel:'Кошелёк Виталия'}];
+          net:'TRC20',amount:got,to:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',toLabel:'Кошелёк Груши (мультисиг)'}];
   c.receivedAt=now();
   c.sources.forEach(s=>{s.usdtFact=s.usdt;});
   d.pay.usdt=got;d.pay.hash=c.txs[0].hash;

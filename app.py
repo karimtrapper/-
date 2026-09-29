@@ -29,7 +29,7 @@ import gspread
 from html import escape as html_escape
 from stand_transfers import (preserve_server_fields, send_fingerprint,
                              expected_addresses, normalize_network, normalize_ref,
-                             verify_transfer, _amount, FREEHOLD_LOCKED_STEPS)
+                             verify_transfer, valid_address, _amount, FREEHOLD_LOCKED_STEPS)
 from google.oauth2.service_account import Credentials as GoogleCredentials
 
 # ==================== ТЕСТОВЫЙ СТЕНД ====================
@@ -7010,9 +7010,10 @@ def stand_incoming_check():
         conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
         if not conv:
             return jsonify({'success': False, 'error': 'Пачка не найдена'}), 404
-        wallet = next((w for w in state.get('wallets', []) if w.get('id') == conv.get('walletId')), None)
-        from stand_transfers import DEFAULT_WALLETS
-        receiver = (wallet or {}).get('addr') or DEFAULT_WALLETS.get(conv.get('walletId'))
+        from stand_transfers import stand_wallet_address
+        receiver = stand_wallet_address(state, conv.get('walletId'))
+        if not valid_address(receiver, network):
+            return jsonify({'success': False, 'error': 'У кошелька пачки нет корректного адреса'}), 409
     finally:
         db.close()
     checked = verify_transfer(tx_hash, network, None, receiver, None,
@@ -7032,9 +7033,8 @@ def stand_incoming_check():
         conv = next((c for c in state.get('convs', []) if c.get('id') == (deal or {}).get('cnvId')), None)
         if not conv:
             return jsonify({'success': False, 'error': 'Пачка изменилась — повторите проверку'}), 409
-        wallet = next((w for w in state.get('wallets', []) if w.get('id') == conv.get('walletId')), None)
-        from stand_transfers import DEFAULT_WALLETS
-        current_receiver = (wallet or {}).get('addr') or DEFAULT_WALLETS.get(conv.get('walletId'))
+        from stand_transfers import stand_wallet_address
+        current_receiver = stand_wallet_address(state, conv.get('walletId'))
         if current_receiver != receiver:
             return jsonify({'success': False, 'error': 'Кошелёк пачки изменился'}), 409
         if conv.get('sentTs') and checked['timestampMs'] < conv['sentTs']:
@@ -7181,10 +7181,8 @@ def stand_incoming_unlink():
 
 def _stand_payin_receiver(state, deal):
     """Кошелёк, на который крипто-клиент платит USDT по сделке стенда."""
-    from stand_transfers import DEFAULT_WALLETS
-    wallet_id = deal.get('walletId') or 'grusha'
-    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
-    return (wallet or {}).get('addr') or DEFAULT_WALLETS.get(wallet_id)
+    from stand_transfers import stand_wallet_address
+    return stand_wallet_address(state, deal.get('walletId') or 'grusha')
 
 
 @app.route('/api/stand/payin/check', methods=['POST'])
@@ -7213,6 +7211,8 @@ def stand_payin_check():
         if deal.get('step') != 's14':
             return jsonify({'success': False, 'error': 'Сделка не ждёт прихода'}), 409
         receiver = _stand_payin_receiver(state, deal)
+        if not valid_address(receiver, 'trc20'):
+            return jsonify({'success': False, 'error': 'У кошелька прихода нет корректного адреса'}), 409
     finally:
         db.close()
     checked = verify_transfer(tx_hash, 'trc20', None, receiver, None)
@@ -7411,7 +7411,10 @@ def _stand_doc_request(state, deal, F):
         addr = _stand_payin_receiver(state, deal) or ''
         if not re.fullmatch(r'T[1-9A-HJ-NP-Za-km-z]{33}', addr):
             missing.append('payTo')
-        company = (wallet.get('owner') or 'компания') == 'компания'
+        # Persisted grusha/vitaly metadata predates the confirmed wallet ownership.
+        company = wallet_id in ('grusha', 'vitaly') and addr == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
+        if not company:
+            company = (wallet.get('owner') or 'компания') == 'компания' and wallet_id not in ('andrey',)
         money.update(payin_network='TRON (TRC-20)', payin_wallet=addr,
                      payin_recipient='MF Corporation Company Limited' if company
                      else (wallet.get('name') or wallet.get('owner') or ''),

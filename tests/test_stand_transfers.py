@@ -556,7 +556,7 @@ def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch
         assert stored['version'] == first.json['version'], 'проверенный хеш сохранён в базе'
         assert stored['data']['deals'][0]['payinHashes'][0]['hash'] == HASH
         deal = first.json['data']['deals'][0]
-        assert seen == {'receiver': FROM, 'sender': None}
+        assert seen == {'receiver': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', 'sender': None}
         assert deal['payerWallet'] == TO
         assert deal['payinHashes'][0]['verified'] is True
         assert not deal['payinHashes'][0].get('otherSender')
@@ -582,6 +582,20 @@ def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch
         hs = applied.json['data']['deals'][0]['payinHashes']
         assert hs[0]['amount'] == 1.0, 'сумму проверенного хеша браузер не переписывает'
         assert 'verified' not in hs[2], 'отметку «проверено» браузер не ставит'
+
+
+def test_crypto_payin_unknown_explicit_wallet_fails_before_chain_check(monkeypatch):
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    _put_board({'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's14',
+                           'walletId': 'unknown'}], 'convs': [], 'wallets': []})
+    monkeypatch.setattr(appmod, 'verify_transfer',
+                        lambda *args, **kwargs: (_ for _ in ()).throw(
+                            AssertionError('chain check must not run')))
+    with appmod.app.test_client() as client:
+        response = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': HASH})
+    assert response.status_code == 409
+    assert 'кошелька прихода' in response.json['error']
 
 
 def test_crypto_payin_check_rejects_ruble_deal_and_wrong_step(monkeypatch):

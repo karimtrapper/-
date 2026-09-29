@@ -16,7 +16,7 @@ import stand_notify
 RUB_PAY_TO = ('ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · ПАО Сбербанк · '
               'р/с 40807810938720000286 · к/с 30101810400000000225 · БИК 044525225')
 PURPOSE = 'Оплата по агентскому договору № SD-9001, НДС не облагается'
-GRUSHA = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
+GRUSHA = 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
 
 
 def _fields(**over):
