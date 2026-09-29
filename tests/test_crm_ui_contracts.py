@@ -367,17 +367,37 @@ const missingAddress = buildConversionSummary(
     settled:[],blocked_deals:[],unassigned_usdt:0,unassigned_incomes:[],
     stays_usdt:null,margin_usdt:null});
 process.stdout.write('\n---MISSING---\n' + missingAddress);
+const deferredDeal = buildConversionSummary(
+  {display_name:'CNV-0016',sources_rub:1,sent_rub:1,received_usdt:1},
+  {composition:[],txs:[]},
+  {success:true,needs_input:true,to_return:[{label:'Андрей',address:'TWallet',
+    known_amount_usdt:2841.92,known_deal_ids:[660,664],deals:[
+      {deal_id:667,client_name:'Roman',share_usdt:172.78,cost_usdt:null,margin_usdt:null}],
+    deferred_deals:[{deal_id:667,client_name:'Roman',reason:'Себестоимость не подтверждена'}]}],
+    settled:[],blocked_deals:[],unassigned_usdt:0,unassigned_incomes:[],
+    stays_usdt:null,margin_usdt:null});
+process.stdout.write('\n---DEFERRED---\n' + deferredDeal);
 '''
     output = subprocess.run([node, '-e', script], text=True,
                             capture_output=True, check=True, timeout=10).stdout
-    normal, missing = output.split('---MISSING---')
-    assert re.search(r'Возместить сейчас: 2[\s\u00a0\u202f]841,92 USDT · получатель Андрей · только #660/#664', normal)
-    assert 'Отложено: приходы без сделки — 172,78 USDT' in normal
+    normal, rest = output.split('---MISSING---')
+    missing, deferred = rest.split('---DEFERRED---')
+    assert re.search(r'Возместить сейчас: 2[\s\u00a0\u202f]841,92 USDT · получатель Андрей · сейчас только подтверждённые сделки #660/#664', normal)
+    assert 'Нераспределённый приход USDT этой CNV: 172,78 USDT (это не подтверждённый долг)' in normal
     assert re.search(r'14[\s\u00a0\u202f]895,00 ₽', normal)
     assert 'Итог всей пачки не подтверждён' in normal
     assert 'Снимок на ' in normal
+    assert 'уже сконвертированы в этой CNV' in normal
+    assert 'пока не включать в платёж' in normal
+    assert 'после привязки определите, требуется ли возмещение; если требуется' in normal.lower()
+    assert 'по этой же CNV, без повторной конвертации' in normal
     assert 'реквизиты для возврата не указаны — отправку не ставить' in missing
     assert 'Возместить сейчас' not in missing
+    assert 'Отложено: #667 Roman' in deferred
+    assert 'Приход 172,78 USDT уже сконвертирован в этой CNV' in deferred
+    assert 'пока не включать в платёж' in deferred
+    card = _function_body(html, 'renderConvDistribution')
+    assert 'после привязки определите, требуется ли возмещение; если требуется' in card
 
 
 def test_conversion_return_posts_only_confirmed_deals(html):

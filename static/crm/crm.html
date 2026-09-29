@@ -11322,7 +11322,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                         const knownIds = (g.known_deal_ids || []).map(id => `#${id}`).join('/');
                         L.push(g.address
                             ? `Возместить сейчас: ${money(g.known_amount_usdt)} USDT · ` +
-                              `получатель ${g.label || g.founder || 'оунер'} · только ${knownIds}`
+                              `получатель ${g.label || g.founder || 'оунер'} · сейчас только подтверждённые сделки ${knownIds}`
                             : `Сумма возврата известна: ${money(g.known_amount_usdt)} USDT только ${knownIds}; ` +
                               'реквизиты для возврата не указаны — отправку не ставить');
                     } else {
@@ -11332,9 +11332,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     L.push(`  кошелёк: ${g.address || '— не указан'}`);
                     if (g.no_conversion) L.push(`  ${noConvNote}`);
                     g.deals.forEach(x => L.push(dealLine(x)));
-                    (g.deferred_deals || []).forEach(x => L.push(
-                        `  Отложено: #${x.deal_id} ${x.client_name || ''} — ${x.reason}; ` +
-                        'ответственный за сделку должен уточнить и включить в следующий транш'));
+                    (g.deferred_deals || []).forEach(x => {
+                        const row = (g.deals || []).find(d => d.deal_id === x.deal_id);
+                        L.push(`  Отложено: #${x.deal_id} ${x.client_name || ''} — ${x.reason}. ` +
+                            `Приход ${row ? money(row.share_usdt) + ' USDT' : 'USDT'} уже сконвертирован в этой CNV; ` +
+                            'пока не включать в платёж. После уточнения записать отдельное возмещение по этой же CNV, без повторной конвертации.');
+                    });
                 });
                 (dist.settled || []).forEach(g => {
                     L.push('');
@@ -11363,12 +11366,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 }
                 if (dist.unassigned_usdt) {
                     L.push('');
-                    L.push(`Отложено: приходы без сделки — ${money(dist.unassigned_usdt)} USDT`);
+                    L.push(`Нераспределённый приход USDT этой CNV: ${money(dist.unassigned_usdt)} USDT (это не подтверждённый долг)`);
                     (dist.unassigned_incomes || []).forEach(x => L.push(
                         `  ⚠️ ${(x.operation_date || 'дата неизвестна').slice(0, 10)} · ` +
                         `${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} · ` +
-                        `${money(x.share_usdt)} USDT · приход #${x.sber_income_id} не привязан к сделке; ` +
-                        'ответственный за сделку должен уточнить и включить в следующий транш'));
+                        `${money(x.share_usdt)} USDT уже сконвертированы в этой CNV · приход #${x.sber_income_id} не привязан к сделке; ` +
+                        'пока не включать в платёж. После привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV, без повторной конвертации.'));
                 }
                 L.push('');
                 L.push(`Остаётся у нас: ${blocked ? 'не определено' : money(dist.stays_usdt) + ' USDT'}` +
@@ -11376,7 +11379,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 (dist.blocked_deals || []).forEach(x => L.push(
                     `⚠️ #${x.deal_id} ${x.client_name || ''}: ${x.reason}`));
                 if (dist.needs_input) {
-                    L.push('⚠️ Итог всей пачки не подтверждён. Подтверждённый транш можно возместить отдельно.');
+                    L.push('⚠️ Итог всей пачки не подтверждён. Сейчас платить только по подтверждённым сделкам.');
                 }
             }
             return L.join('\n');
@@ -11627,7 +11630,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                         ${g.address ? g.address : '<span style="color:#dc2626">кошелёк у сделки не указан</span>'}</div>
                     ${g.deals.map(dealLine).join('')}
                     ${(g.deferred_deals || []).map(x => `<div style="color:#b45309; font-size:0.85rem; margin-left:14px">
-                        Отложено #${x.deal_id}: ${escapeHtml(x.reason)}; уточнить и включить в следующий транш</div>`).join('')}
+                        Отложено #${x.deal_id}: ${escapeHtml(x.reason)}. Приход уже в этой CNV; пока не включать в платёж.
+                        После уточнения записать отдельное возмещение по этой же CNV без повторной конвертации.</div>`).join('')}
                     ${g.address && g.known_amount_usdt > 0 ? `
                     <div style="display:flex; gap:6px; margin-top:6px">
                         <select class="form-control" id="convRetSel${g.wallet_id}" style="flex:1"
@@ -11685,11 +11689,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             #${x.deal_id} ${escapeHtml(x.client_name || '')} — ${money(x.share_usdt)}</div>`).join('')}
                 </div>` : ''}
                 ${dist.unassigned_usdt ? `<div style="margin-top:8px; color:#b45309">
-                    Приходы без сделки <b style="float:right">${money(dist.unassigned_usdt)} USDT</b>
+                    Нераспределённый приход USDT этой CNV (не долг) <b style="float:right">${money(dist.unassigned_usdt)} USDT</b>
                     ${(dist.unassigned_incomes || []).map(x => `<div style="margin-left:14px">
                         ${escapeHtml((x.operation_date || 'дата неизвестна').slice(0, 10))} ·
                         ${x.amount_rub === null ? 'сумма ₽ неизвестна' : money(x.amount_rub) + ' ₽'} ·
-                        приход #${x.sber_income_id} не привязан к сделке</div>`).join('')}
+                        приход #${x.sber_income_id} уже сконвертирован; после привязки определите, требуется ли возмещение; если требуется — оформите отдельно по этой же CNV без повторной конвертации</div>`).join('')}
                 </div>` : ''}
                 <div style="margin-top:8px; border-top:1px solid #e2e8f0; padding-top:6px">
                     Остаётся у нас <b style="float:right">${money(dist.stays_usdt)} USDT</b>
