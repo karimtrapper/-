@@ -39,10 +39,11 @@ def test_prod_mode_does_not_seed():
     assert app.STAND_MODE is False
     # Стартовый вызов _stand_seed_wallets() живёт только под `if STAND_MODE:`
     # рядом с _stand_seed_users() — если его вынесут из-под guard, этот grep поймает.
+    # Вызов стоит после миграции колонок wallets и только под `if STAND_MODE:`
     source = inspect.getsource(app)
-    guard = source[source.index('if STAND_MODE:\n    _stand_migrate()'):]
-    guard = guard[:guard.index('\n\n\n')]
-    assert '_stand_seed_wallets()' in guard
+    assert 'if STAND_MODE:\n    _stand_seed_wallets()' in source
+    assert source.count('_stand_seed_wallets()') == 1 + source.count('def _stand_seed_wallets()')
+    assert source.index('ALTER TABLE wallets ADD COLUMN') < source.index('if STAND_MODE:\n    _stand_seed_wallets()')
     # И по факту: без явного вызова функции реестр пуст
     s = get_session()
     try:

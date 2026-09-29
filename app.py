@@ -2520,7 +2520,6 @@ if STAND_MODE:
     _stand_migrate()
     stand_notify.init(sys.modules[__name__])
     _stand_seed_users()
-    _stand_seed_wallets()
 
 
 def _rebuild_agreements_without_name_constraint():
@@ -3185,6 +3184,12 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ kyc_files migration: {e}")
+
+# Реестр кошельков стенда сеем только после ALTER TABLE wallets выше: раньше
+# колонок is_multisig/accepts_payin/owner ещё нет, запрос падал и разметка молча
+# не применялась (29.09).
+if STAND_MODE:
+    _stand_seed_wallets()
 
 # ==================== WEBHOOK CONFIG ====================
 WEBHOOK_URL = os.environ.get('CRM_WEBHOOK_URL', '')
