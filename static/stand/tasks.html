@@ -6054,16 +6054,26 @@ async function checkDocParseCapability(){
     if(!standTyping())render();
   }catch(e){}
 }
+/* data:-URL файла → Blob без fetch: на стенде CSP connect-src 'self' запрещает fetch(data:),
+   из-за этого кнопка «Распознать документы» молча падала (Карим, 29.09). */
+function dataUrlBlob(u){
+  const m=/^data:([^;,]*)(;base64)?,(.*)$/s.exec(String(u||''));
+  if(!m)throw new Error('файл повреждён');
+  const raw=m[2]?atob(m[3]):decodeURIComponent(m[3]);
+  const b=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)b[i]=raw.charCodeAt(i);
+  return new Blob([b],{type:m[1]||'application/octet-stream'});
+}
 async function docParse(id,quiet){
   const d=deal(id); if(!d)return;
   const fd=new FormData(); let n=0;
-  for(const k of Object.keys(PARSE_SLOT)){
-    for(const f of filesOf(d,k)){
-      if(!f.data)continue;
-      const blob=await (await fetch(f.data)).blob();
-      fd.append(PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
+  try{
+    for(const k of Object.keys(PARSE_SLOT)){
+      for(const f of filesOf(d,k)){
+        if(!f.data)continue;
+        fd.append(PARSE_SLOT[k],dataUrlBlob(f.data),f.file||(k+'.pdf'));n++;
+      }
     }
-  }
+  }catch(e){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);return;}
   if(!n){if(!quiet)toast('Нет загруженных паспорта или инвойса — распознавать нечего');return;}
   fd.append('deal_type',d.kind==='Фрихолд'?'freehold':(d.kind==='Аренда'?'rental':'leasehold'));
   d.docParseState='идёт';render();
