@@ -7330,7 +7330,12 @@ def _stand_freehold_absurd_doc(deal, fields):
         # Match tasks.html freeholdFee then freeholdSend: round fee before S.
         fee = (x * tariff + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         s = (x + fee).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        amounts = [fields.get('amountPay'), deal.get('amountUsdt')]
+        submitted = fields.get('amountPay')
+        if submitted is not None:
+            submitted = _stand_num(submitted)
+            if submitted is None:
+                return True
+        amounts = [submitted, deal.get('amountUsdt')]
         if deal.get('freeholdMarkupPct') is not None:
             amounts.append(s * (1 + Decimal(str(deal['freeholdMarkupPct'])) / 100))
         return any(v is not None and (not Decimal(str(v)).is_finite() or

@@ -309,6 +309,14 @@ def test_crypto_freehold_doc_guard_matches_fee_then_send_rounding():
     assert appmod._stand_freehold_absurd_doc(deal, F)
 
 
+def test_crypto_freehold_doc_guard_accepts_localized_normal_amount():
+    _, deal, F = freehold_doc_deal()
+    deal.update(payType='Крипта', invoiceUsd=97500, ippsTariff='bank',
+                amountUsdt=98800, freeholdMarkupPct=None)
+    F['amountPay'] = '98 800,00'
+    assert not appmod._stand_freehold_absurd_doc(deal, F)
+
+
 def test_doc_request_usd_invoice_marks_thb_block_not_applicable():
     """Инвойс в USD: rate_source/usd_equivalent/thb_credit_status/developer_confirmation
     получают «Н/П» (пакет годен для выдачи — поправка автора спеки, 28.09),
