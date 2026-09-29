@@ -7586,6 +7586,10 @@ def _stand_doc_request(state, deal, F):
         missing.append('invNo')
     freehold = deal_type == 'freehold'
     thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
+    if crypto and freehold:
+        # Курса у крипто-фрихолда нет; старое значение из сохранённых полей пакета
+        # не должно ронять выпуск «курс не соответствует суммам» (Карим, 29.09).
+        rate = None
     missing += [k for k, v in (('amountThb', thb), ('amountPay', pay)) if v is None]
     # Крипто-фрихолд: внешнего курса нет вообще (спека 28.09-freehold-no-baht, п.4) —
     # шаги «Ответить курс»/«Расчёт клиенту» выпадают из пути, rate у сделки не появляется.

@@ -447,3 +447,16 @@ def test_leasehold_without_invoice_number_names_the_field(stand):
     r = stand.post('/api/stand/docs/issue', json={'dealId': 10, 'docFields': _fields(invNo='')})
     assert r.status_code == 400
     assert r.json['fields'] == ['invNo'] and 'номер инвойса' in r.json['detail']
+
+
+def test_crypto_freehold_stale_rate_does_not_block_issue(stand):
+    # Сохранённый со старой версии курс (2.66) у крипто-фрихолда не должен давать
+    # «Курс не соответствует суммам» — курса у такой сделки нет (Карим, 29.09).
+    deal = _deal(945, kind='Фрихолд', payType='Крипта', curBase='usdt',
+                 walletId='grusha', invoiceUsd=97500, amountUsdt=98800, ippsTariff='bank')
+    stand.put_board([deal])
+    fields = _fields(kind='Фрихолд', amountThb='97500', amountPay='98800',
+                     rate='2.66', payTo='USDT TRC-20, ' + GRUSHA, purpose='')
+    response = stand.post('/api/stand/docs/issue',
+                          json={'dealId': deal['id'], 'docFields': fields})
+    assert response.status_code == 200, response.json
