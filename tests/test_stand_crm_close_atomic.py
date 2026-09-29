@@ -543,7 +543,8 @@ def test_staged_http_workflow_cannot_fabricate_completion(monkeypatch, property_
     deal.update(step='s8' if property_deal else 's6', sentToClient=False)
     if property_deal:
         deal.update(type='Оплата недвижимости', kind='Фрихолд',
-                    postConv=route, payType='Крипта', invoiceUsd=100)
+                    postConv=route, payType='Крипта', invoiceUsd=100,
+                    amountUsdt=160)  # bank S=150.80; reach the anti-fabrication guard
         deal['pay'].update(usdt=120, invoicePaid=False)
         crm = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
                'payin_method': 'crypto_direct', 'payin_amount_usdt': 120,
