@@ -2143,8 +2143,25 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                             <input type="text" class="form-control" name="wallet_address"
                                 placeholder="TYourWalletAddress..." pattern="T[a-zA-Z0-9]{33}">
                         </div>
+                        <div class="form-group" style="flex: 1;">
+                            <label class="form-label">Владелец</label>
+                            <input type="text" class="form-control" name="wallet_owner" placeholder="Теодор">
+                        </div>
                         <div class="form-group" style="display: flex; align-items: flex-end;">
                             <button type="submit" class="btn btn-primary">Добавить</button>
+                        </div>
+                    </div>
+                    <!-- Единый реестр кошельков: отсюда задачник стенда берёт список для
+                         приёма оплаты от клиента (Карим, wallet-registry) — отдельного
+                         списка в задачнике больше нет. -->
+                    <div class="form-row">
+                        <div class="form-group" style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="walletIsMultisig" name="wallet_is_multisig">
+                            <label class="form-label" for="walletIsMultisig" style="margin:0;">Мультисиг (подписывает фин дир, одобряет Теодор)</label>
+                        </div>
+                        <div class="form-group" style="display:flex;align-items:center;gap:6px;">
+                            <input type="checkbox" id="walletAcceptsPayin" name="wallet_accepts_payin">
+                            <label class="form-label" for="walletAcceptsPayin" style="margin:0;">Принимаем оплату от клиентов</label>
                         </div>
                     </div>
                 </form>
@@ -6376,6 +6393,28 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const data = await response.json();
                 if (data.success) {
                     showToast(label.trim() ? 'Подпись сохранена' : 'Подпись убрана');
+                } else {
+                    showToast('Не сохранилось: ' + (data.error || 'ошибка'), 'error');
+                }
+            } catch (e) {
+                console.error(e);
+                showToast('Не сохранилось: нет связи с сервером', 'error');
+            }
+        }
+
+        // Флаги единого реестра кошельков: мультисиг, приём оплаты от клиента,
+        // владелец. От них зависит дропдаун «куда клиент платит USDT» на стенде —
+        // без перерисовки списка, чтобы не дёргать TronScan по каждому кошельку.
+        async function saveWalletRegistryField(walletId, field, value) {
+            try {
+                const response = await fetch(`${API_URL}/api/wallets/${walletId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [field]: value })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    showToast('Сохранено');
                 } else {
                     showToast('Не сохранилось: ' + (data.error || 'ошибка'), 'error');
                 }
@@ -12641,6 +12680,29 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                           : `<strong style="color: #10b981;">$${w.usdt_balance.toFixed(2)} USDT</strong>
                                         <span style="color: #666; font-size: 0.85rem;"> | ${w.trx_balance.toFixed(2)} TRX</span>`}
                                     </div>
+                                    <!-- Единый реестр кошельков: эти флаги решают, покажется ли
+                                         кошелёк в дропдауне «куда клиент платит USDT» на стенде. -->
+                                    <div style="margin-top: 0.5rem; display: flex; gap: 4px; flex-wrap: wrap;">
+                                        ${w.is_multisig ? '<span class="badge" style="background:#fef3c7;color:#92400e;">мультисиг</span>' : ''}
+                                        ${w.accepts_payin ? '<span class="badge" style="background:#dbeafe;color:#1e40af;">приём оплаты</span>' : ''}
+                                    </div>
+                                    <input type="text" value="${escapeHtml(w.owner || '')}"
+                                        placeholder="Владелец"
+                                        onchange="saveWalletRegistryField(${w.id}, 'owner', this.value)"
+                                        onkeydown="if (event.key === 'Enter') this.blur();"
+                                        style="width: 100%; border: none; background: transparent; font-size: 0.8rem; color: #475569; padding: 4px 0 0 0; outline: none; border-bottom: 1px dashed #a7f3d0; margin-top: 0.35rem;">
+                                    <div style="margin-top: 0.35rem; display: flex; gap: 10px; font-size: 0.78rem; color: #475569;">
+                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                                            <input type="checkbox" ${w.is_multisig ? 'checked' : ''}
+                                                onchange="saveWalletRegistryField(${w.id}, 'is_multisig', this.checked)">
+                                            Мультисиг (подписывает фин дир, одобряет Теодор)
+                                        </label>
+                                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;">
+                                            <input type="checkbox" ${w.accepts_payin ? 'checked' : ''}
+                                                onchange="saveWalletRegistryField(${w.id}, 'accepts_payin', this.checked)">
+                                            Принимаем оплату от клиентов
+                                        </label>
+                                    </div>
                                     <button class="btn btn-sm btn-danger" onclick="deleteWallet(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 2px 5px; font-size: 0.7rem;">×</button>
                                 </div>
                             `).join('')}
@@ -12757,7 +12819,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     body: JSON.stringify({
                         address,
                         is_monitored: true,
-                        is_balance: false
+                        is_balance: false,
+                        owner: this.wallet_owner.value,
+                        is_multisig: this.wallet_is_multisig.checked,
+                        accepts_payin: this.wallet_accepts_payin.checked
                     })
                 });
                 const data = await response.json();

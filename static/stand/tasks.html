@@ -1298,14 +1298,55 @@ function wallets(){
   }).concat(WALLETS.filter(w=>!S.wallets.some(saved=>saved.id===w.id)).map(w=>Object.assign({},w)));
 }
 function walletById(id){return wallets().find(w=>w.id===id)||null;}
-/* Кошелёк, на который крипто-клиент платит USDT. Раньше был зашит кошелёк Груши:
-   ни в договоре, ни на ожидании прихода выбрать другой было нельзя (Карим, 25.09).
-   От него же зависит дальше путь подписи: мультисиг — фин дир и Теодор,
-   личный — отправляет владелец. */
+/* Кошелёк, на который крипто-клиент платит USDT, — из единого реестра кошельков
+   CRM (вкладка «Транзакции»), а не из отдельного хардкода задачника (Карим,
+   wallet-registry). Реестр большой, поэтому вместо карточек — выпадающий список.
+   Легаси walletId ('grusha'/'vitaly'/'andrey'/'teodor'/'teodor-erc') резолвится
+   по известному адресу — старые сделки продолжают показывать тот же кошелёк. */
+let CRM_WALLETS=[];
+const LEGACY_PAYIN_ADDR={
+  grusha:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', vitaly:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
+  andrey:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', teodor:'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
+  'teodor-erc':'0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
+};
+async function loadCrmWallets(){
+  try{
+    const r=await fetch('/api/wallets?no_balances=true&all=true',{credentials:'same-origin'});
+    const j=await r.json();
+    if(j.success){CRM_WALLETS=j.wallets||[];render();}
+  }catch(e){/* реестр недоступен — список приёма пуст, форма сообщит об этом */}
+}
+function crmWalletNet(w){
+  const bc=String((w||{}).blockchain||'TRON').toUpperCase();
+  return (bc==='ETH'||bc.startsWith('ERC'))?'ERC-20':'TRC-20';
+}
+function crmWalletById(id){return CRM_WALLETS.find(w=>String(w.id)===String(id))||null;}
+function crmPayinChoices(net){return CRM_WALLETS.filter(w=>w.accepts_payin&&crmWalletNet(w)===net);}
+function payinWalletView(w){
+  return {id:String(w.id),name:w.label||w.owner||w.address,owner:w.owner||'—',
+    addr:w.address,net:crmWalletNet(w),multisig:!!w.is_multisig};
+}
+function payinDefaultWallet(net){
+  const choices=crmPayinChoices(net);
+  if(!choices.length)return null;
+  return payinWalletView(choices.find(w=>w.is_multisig)||choices[0]);
+}
 function payinWallet(d){
   if(d.walletId==='custom')return {id:'custom',name:'Свой кошелёк',owner:'владелец уточняется',
     addr:(d.payinCustom||{}).addr||'',net:(d.payinCustom||{}).network||'',multisig:null};
-  return walletById(d.walletId)||walletById('grusha');
+  const legacyAddr=LEGACY_PAYIN_ADDR[d.walletId];
+  if(legacyAddr){
+    const net=d.walletId==='teodor-erc'?'ERC-20':'TRC-20';
+    const found=CRM_WALLETS.find(w=>crmWalletNet(w)===net&&String(w.address).toLowerCase()===legacyAddr.toLowerCase());
+    if(found)return payinWalletView(found);
+    return {id:d.walletId,name:legacyAddr,owner:'—',addr:legacyAddr,net,
+      multisig:(d.walletId==='grusha'||d.walletId==='vitaly')};
+  }
+  if(d.walletId){
+    const w=crmWalletById(d.walletId);
+    if(w)return payinWalletView(w);
+  }
+  return payinDefaultWallet('TRC-20')||{id:null,name:'—',owner:'—',addr:'',net:'TRC-20',multisig:false};
 }
 function payinNet(d){return (payinWallet(d)||{}).net||'TRC-20';}
 function payToCrypto(w){
@@ -1313,87 +1354,113 @@ function payToCrypto(w){
   return 'USDT '+(w.net||'TRC-20')+', '+(w.addr||'');
 }
 function payinWalletSet(id,wid){
-  const d=deal(id), w=walletById(wid);
-  if(!w){toast('Кошелёк не найден');return;}
+  if(wid==='custom'){payinCustomEdit(id);return;}
+  const d=deal(id);
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');render();return;}
+  const w=crmWalletById(wid);
+  if(!w){toast('Кошелёк не найден в реестре');render();return;}
+  if(!w.accepts_payin){toast('«'+(w.label||w.owner||w.address)+'» не принимает оплату от клиентов');render();return;}
+  const view=payinWalletView(w);
+  if(!addrValid(view.addr,view.net)){toast('У «'+view.name+'» нет корректных сети и адреса');render();return;}
   const prev=payinWallet(d);
-  if(prev&&prev.id===w.id){S.payinCustomEdit=null;render();return;}
-  if(!addrValid(w.addr,w.net||'TRC-20')){toast('У «'+w.name+'» нет корректных сети и адреса');render();return;}
-  d.walletId=w.id;
+  if(prev&&prev.id===view.id){S.payinCustomEdit=null;render();return;}
+  d.walletId=view.id;
   delete d.payinCustom;
   S.payinCustomEdit=null;
   /* Адрес в пакете обновляем, только пока пакет не собран и адрес не правили руками.
      Собранный договор клиент уже видел — его не переписываем молча, а на ожидании
      прихода предупреждаем, что в договоре другой адрес. */
-  if(!d.docVersion&&d.docFields&&prev&&d.docFields.payTo===payToCrypto(prev)) d.docFields.payTo=payToCrypto(w);
-  log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+(w.multisig?' · мультисиг':' · личный, отправляет владелец'));
-  save();render();toast('Кошелёк прихода: '+w.name);
-}
-function payinWalletKey(w){
-  const net=w.net||'TRC-20';
-  const addr=String(w.addr||'').trim();
-  return net+'|'+(net==='ERC-20'?addr.toLowerCase():addr);
-}
-function payinDirectoryWallets(){
-  const byAddress=new Map();
-  wallets().filter(x=>((x.net||'TRC-20')!=='ERC-20'||x.id==='teodor-erc')&&addrValid(x.addr,x.net||'TRC-20')).forEach(w=>{
-    const key=payinWalletKey(w);
-    if(!byAddress.has(key)||w.id==='grusha')byAddress.set(key,w);
-  });
-  return [...byAddress.values()];
+  if(!d.docVersion&&d.docFields&&prev&&d.docFields.payTo===payToCrypto(prev)) d.docFields.payTo=payToCrypto(view);
+  log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+view.name+' · '+view.addr+(view.multisig?' · мультисиг':' · личный, отправляет владелец'));
+  save();render();toast('Кошелёк прихода: '+view.name);
 }
 function payinNetworkSet(id,net){
   if(net!=='TRC-20'&&net!=='ERC-20'){toast('Неизвестная сеть');return;}
   const d=deal(id);
   if(payinNet(d)===net&&S.payinCustomEdit!==id)return;
-  payinWalletSet(id,net==='ERC-20'?'teodor-erc':'grusha');
+  const def=payinDefaultWallet(net);
+  if(def)payinWalletSet(id,def.id);
+  else{toast('В реестре нет кошельков сети '+net+' с приёмом оплаты от клиентов');render();}
 }
 function payinCustomEdit(id){
   const d=deal(id);
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
   S.payinCustomEdit=id;render();
 }
+/* «Запомнить» доступно только операционисту и админу — они же ведут s11 */
+function payinCanRemember(){return S.role==='operator'||S.role==='admin';}
 /* Выбор на s11 показывает ровно тот адрес, который сохранён в сделке. */
 function payinWalletSelect(d,disabled){
   const locked=disabled||d.step!=='s11'||!!d.docPack||!!d.docVersion;
   const w=payinWallet(d), custom=d.payinCustom||{};
   const editing=!locked&&S.payinCustomEdit===d.id;
   const net=payinNet(d);
-  const choices=payinDirectoryWallets().filter(x=>(x.net||'TRC-20')===net);
-  const selectedKey=w.id==='custom'?'':payinWalletKey(w);
+  const choices=crmPayinChoices(net);
   const customOn=w.id==='custom'||editing;
   const customNet=custom.network||net;
   const customAddr=custom.addr||'';
+  const canForget=!locked&&!customOn&&w.id&&/^\d+$/.test(String(w.id));
   return `<div class="payin-choices">
     ${locked?'':`<div class="row payin-nets" role="group" aria-label="Сеть USDT">
       ${['TRC-20','ERC-20'].map(n=>`<button type="button" class="btn ${net===n?'btn-primary':'btn-outline'} btn-sm" aria-pressed="${net===n}" onclick="payinNetworkSet(${d.id},'${n}')">${n}</button>`).join('')}</div>`}
-    <div class="wcards" role="radiogroup" aria-label="Кошелёк, куда клиент платит USDT">
-      ${choices.map(x=>`<label class="wcard payin-card${!editing&&selectedKey===payinWalletKey(x)?' on':''}">
-        <input type="radio" name="payin_${d.id}" value="${htmlText(x.id)}"${!editing&&selectedKey===payinWalletKey(x)?' checked':''}${locked?' disabled':''} onchange="payinWalletSet(${d.id},this.value)">
-        <span class="addr">${htmlText(x.addr)}</span><span class="wc-o">${htmlText(x.net||'TRC-20')} · владелец: ${htmlText(x.owner||'—')}</span>
-      </label>`).join('')}
-      <div class="wcard payin-card${customOn?' on':''}"${!customOn&&!locked?` role="button" tabindex="0" style="cursor:pointer" onclick="payinCustomEdit(${d.id})"`:''}>
-        <input type="radio" name="payin_${d.id}" value="custom" aria-label="Свой кошелёк"${customOn?' checked':''}${locked?' disabled':''} onchange="payinCustomEdit(${d.id})">
-        ${editing?`<div style="flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-          <select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" style="width:auto">
-            <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
-          <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="адрес кошелька" style="flex:1;min-width:220px">
-          <button type="button" class="btn btn-primary btn-sm" onclick="event.stopPropagation();payinCustomSet(${d.id})">Готово</button>
-          <button type="button" class="btn btn-outline btn-sm" onclick="event.stopPropagation();payinCustomCancel(${d.id})">Отмена</button></div>`
-          :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · свой кошелёк${locked?'':' · <a href="#" onclick="event.preventDefault();event.stopPropagation();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
-          :`<span class="addr">＋ Свой кошелёк</span><span class="wc-o">указать адрес и сеть</span>`)}
-      </div>
-    </div></div>`;
+    <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+      <select class="fc" style="flex:1;min-width:260px" aria-label="Кошелёк, куда клиент платит USDT" ${locked?'disabled':''}
+        onchange="this.value==='custom'?payinCustomEdit(${d.id}):payinWalletSet(${d.id},this.value)">
+        ${choices.map(x=>`<option value="${htmlText(x.id)}"${!customOn&&String(w.id)===String(x.id)?' selected':''}>${htmlText(x.address)} · ${htmlText(crmWalletNet(x))} · ${htmlText(x.owner||'владелец не указан')}${x.is_multisig?' · мультисиг':''}</option>`).join('')}
+        <option value="custom"${customOn?' selected':''}>Свой кошелёк…</option>
+      </select>
+      ${canForget?`<a href="#" onclick="event.preventDefault();payinWalletForget(${d.id})" style="white-space:nowrap;font-size:0.8em;color:#64748b">удалить из списка</a>`:''}
+    </div>
+    ${customOn?`<div class="wcard payin-card on" style="margin-top:8px">
+      ${editing?`<div style="flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+        <select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" style="width:auto">
+          <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
+        <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="адрес кошелька" style="flex:1;min-width:220px">
+        ${payinCanRemember()?`<label style="display:flex;align-items:center;gap:4px;font-size:0.85em"><input type="checkbox" id="pcr_${d.id}"> Запомнить в список кошельков</label>`:''}
+        <button type="button" class="btn btn-primary btn-sm" onclick="payinCustomSet(${d.id})">Готово</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="payinCustomCancel(${d.id})">Отмена</button></div>`
+        :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · свой кошелёк${locked?'':' · <a href="#" onclick="event.preventDefault();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
+        :`<span class="addr">＋ Свой кошелёк</span><span class="wc-o">указать адрес и сеть</span>`)}
+    </div>`:''}
+  </div>`;
 }
 function payinCustomCancel(id){S.payinCustomEdit=null;render();}
-function payinCustomSet(id){
+async function payinCustomSet(id){
   const d=deal(id), network=val('pcn_'+id), addr=String(val('pca_'+id)||'').trim();
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
   if(!addrValid(addr,network)){toast('Адрес не соответствует сети '+network+' — выбор не сохранён');return;}
+  const remember=payinCanRemember()&&!!document.getElementById('pcr_'+id)?.checked;
   const prev=payinWallet(d);
-  d.walletId='custom';d.payinCustom={network,addr};
+  if(remember){
+    const blockchain=network==='ERC-20'?'ETH':'TRON';
+    const j=await standAction('/api/wallets',{address:addr,blockchain,accepts_payin:true,is_monitored:true});
+    if(!j)return; /* standAction уже показал toast об ошибке */
+    await loadCrmWallets();
+    d.walletId=String(j.wallet.id);
+    delete d.payinCustom;
+  }else{
+    d.walletId='custom';d.payinCustom={network,addr};
+  }
   if(d.docFields&&d.docFields.payTo===payToCrypto(prev))d.docFields.payTo=payToCrypto(payinWallet(d));
-  S.payinCustomEdit=null;save();render();toast('Свой кошелёк сохранён для этой сделки');
+  S.payinCustomEdit=null;save();render();
+  toast(remember?'Кошелёк сохранён в реестр и выбран':'Свой кошелёк сохранён для этой сделки');
+}
+/* «Удалить из списка»: снимаем только accepts_payin, кошелёк и его операции
+   остаются в реестре нетронутыми (Карим, wallet-registry). */
+async function payinWalletForget(id){
+  const d=deal(id);
+  if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
+  const w=payinWallet(d);
+  if(!w||!w.id||!/^\d+$/.test(String(w.id))){toast('Этот кошелёк нельзя убрать из списка отсюда');return;}
+  if(!confirm('Убрать «'+w.name+'» из списка приёма оплаты? Кошелёк и его операции останутся.'))return;
+  try{
+    const r=await fetch('/api/wallets/'+w.id,{method:'PATCH',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({accepts_payin:false})});
+    const j=await r.json();
+    if(!j.success){toast(j.error||'Не удалось убрать кошелёк');return;}
+    await loadCrmWallets();
+    toast('Кошелёк убран из списка приёма оплаты');
+  }catch(e){toast('Сеть недоступна — попробуйте ещё раз');}
 }
 function payinS11Fields(d,fld){
   if(!isCrypto(d))return fld('payTo','Куда платит клиент',{area:1});
@@ -8947,6 +9014,7 @@ async function standBoot(){
   await checkDocParseCapability();
   await fetchSberMirrorStatus();
   fetchMarket().then(ok=>{if(ok)render();});
+  loadCrmWallets();
   if(!refs().some(r=>r.prod)) refsSync(true);
   setInterval(()=>fetchMarket().then(ok=>{if(ok&&!standTyping())render();}),300000);
   /* Доска как в проде: пустая, без примеров (Карим, 25.09) */
@@ -8955,6 +9023,7 @@ async function standBoot(){
   setInterval(()=>standPull(false),2500);
   setInterval(fetchSberMirrorStatus,60000);
   setInterval(checkDocParseCapability,60000);
+  setInterval(loadCrmWallets,60000);
 }
 /* Переход из уведомления: ?deal=<id|код> открывает ту самую задачу.
    Без этого ссылка вела на общий список и человек искал сделку глазами. */

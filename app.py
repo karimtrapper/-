@@ -1452,8 +1452,13 @@ class Wallet(Base):
     active = Column(Boolean, default=True)
     is_monitored = Column(Boolean, default=True)  # Виден во вкладке Транзакции
     is_balance = Column(Boolean, default=False)   # Виден во вкладке Баланс (Binance)
+    # Единый реестр кошельков: кошелёк, куда клиенты платят USDT на стенде,
+    # берётся отсюда, а не из отдельного хардкода в задачнике (Карим, wallet-registry).
+    is_multisig = Column(Boolean, default=False)  # подписывает фин дир, одобряет Теодор
+    accepts_payin = Column(Boolean, default=False)  # принимаем оплату от клиентов
+    owner = Column(String(100), nullable=True)
     operations = relationship("WalletOperation", back_populates="wallet", cascade="all, delete-orphan")
-    
+
     def to_dict(self, session=None):
         # Если передан session, считаем системный баланс
         system_balance = 0
@@ -1471,6 +1476,9 @@ class Wallet(Base):
             'active': self.active,
             'is_monitored': self.is_monitored,
             'is_balance': self.is_balance,
+            'is_multisig': bool(self.is_multisig),
+            'accepts_payin': bool(self.accepts_payin),
+            'owner': self.owner,
             'system_balance': round(system_balance, 2)
         }
 
@@ -2431,6 +2439,45 @@ def _stand_seed_users():
         db.close()
 
 
+def _stand_seed_wallets():
+    """Известные кошельки реестра — только на стенде, идемпотентно.
+
+    Заводит недостающие строки и подставляет флаги, только если они ещё не
+    заданы (NULL) — если админ уже поменял мультисиг/оплату/владельца руками,
+    старт приложения это решение не переписывает.
+    """
+    seed = [
+        ('TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', 'TRON', True, True, 'компания', 'Кошелёк Груши'),
+        ('TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p', 'TRON', False, True, 'Теодор', None),
+        ('TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', 'TRON', False, True, 'Андрей', None),
+        ('0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9', 'ETH', False, True, 'Теодор', 'Теодор · ERC-20'),
+    ]
+    db = SessionLocal()
+    try:
+        for address, blockchain, multisig, payin, owner, label in seed:
+            w = db.query(Wallet).filter(Wallet.address == address).first()
+            if not w:
+                w = Wallet(address=address, blockchain=blockchain, label=label,
+                          is_monitored=True, is_balance=False,
+                          is_multisig=multisig, accepts_payin=payin, owner=owner)
+                db.add(w)
+                continue
+            # Флаги — только если ещё не заданы: is_multisig/accepts_payin по
+            # умолчанию False (не NULL), поэтому проверяем owner как признак
+            # «кошелёк уже настроен вручную».
+            if w.owner is None:
+                w.is_multisig = multisig
+                w.accepts_payin = payin
+                w.owner = owner
+        db.commit()
+        print('[STAND] Реестр кошельков засеян')
+    except Exception as exc:
+        db.rollback()
+        print(f'[STAND] Не удалось засеять реестр кошельков: {exc}')
+    finally:
+        db.close()
+
+
 def _stand_migrate():
     """Создаёт таблицы стенда; create_all не добавляет колонку в старую таблицу."""
     from sqlalchemy import text as _t
@@ -2473,6 +2520,7 @@ if STAND_MODE:
     _stand_migrate()
     stand_notify.init(sys.modules[__name__])
     _stand_seed_users()
+    _stand_seed_wallets()
 
 
 def _rebuild_agreements_without_name_constraint():
@@ -3098,6 +3146,27 @@ try:
         conn.commit()
 except Exception as e:
     print(f"ℹ️ mf_realty migration: {e}")
+
+# Единый реестр кошельков: кошелёк для оплаты USDT от клиента выбирают из wallets,
+# а не из отдельного хардкода в задачнике стенда. Колонки additive/nullable —
+# старый код продолжает работать на мигрированной БД без правок.
+_WALLET_REGISTRY_COLUMNS = [
+    ('is_multisig', 'BOOLEAN DEFAULT FALSE'), ('accepts_payin', 'BOOLEAN DEFAULT FALSE'),
+    ('owner', 'VARCHAR(100)'),
+]
+try:
+    with engine.connect() as conn:
+        is_pg = 'postgresql' in DATABASE_URL
+        for col, coltype in _WALLET_REGISTRY_COLUMNS:
+            sql_type = coltype if is_pg else coltype.replace('BOOLEAN DEFAULT FALSE', 'BOOLEAN DEFAULT 0')
+            if is_pg:
+                conn.execute(text(f"ALTER TABLE wallets ADD COLUMN IF NOT EXISTS {col} {sql_type}"))
+            else:
+                try: conn.execute(text(f"ALTER TABLE wallets ADD COLUMN {col} {sql_type}"))
+                except: pass
+        conn.commit()
+except Exception as e:
+    print(f"ℹ️ wallet_registry migration: {e}")
 
 # KYC: файлы переехали с диска в БД + видео-заявление клиента
 try:
@@ -7338,9 +7407,44 @@ def _stand_payin_receiver(state, deal):
     return _stand_payin_target(state, deal)[1]
 
 
+# Легаси walletId сохранённых сделок → адрес. Реестр кошельков CRM — источник
+# истины (единый реестр, wallet-registry), но старые сделки хранят эти строки,
+# и их нужно продолжать резолвить в тот же адрес.
+_LEGACY_PAYIN_WALLET_ADDR = {
+    'grusha': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
+    'vitaly': 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ',
+    'andrey': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+    'teodor': 'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p',
+    'teodor-erc': '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',
+}
+
+
+def _stand_wallet_network(wallet):
+    """'trc20'/'erc20' по blockchain кошелька CRM."""
+    blockchain = str(getattr(wallet, 'blockchain', '') or 'TRON').upper()
+    return 'erc20' if blockchain == 'ETH' or blockchain.startswith('ERC') else 'trc20'
+
+
+def _stand_payin_wallet_row(session, wallet_id):
+    """Строка реестра CRM для walletId сделки, включая легаси-адреса. None, если
+    не найдена (либо реестр ещё не засеян этим кошельком)."""
+    from sqlalchemy import func
+    address = _LEGACY_PAYIN_WALLET_ADDR.get(wallet_id)
+    if address:
+        return session.query(Wallet).filter(func.lower(Wallet.address) == address.lower()).first()
+    try:
+        wid = int(wallet_id)
+    except (TypeError, ValueError):
+        return None
+    return session.query(Wallet).filter(Wallet.id == wid, Wallet.accepts_payin == True,
+                                        Wallet.active == True).first()
+
+
 def _stand_payin_target(state, deal):
-    """Network and receiver come only from the saved stand deal and directory."""
-    from stand_transfers import stand_wallet_address
+    """Кошелёк и сеть прихода — из единого реестра кошельков CRM (`wallets`),
+    не из отдельного справочника задачника. Свой кошелёк, введённый вручную и не
+    сохранённый в реестр (`payinCustom`), резолвится напрямую из сделки."""
+    from sqlalchemy import func
     wallet_id = deal.get('walletId') or 'grusha'
     if wallet_id == 'custom':
         custom = deal.get('payinCustom') or {}
@@ -7353,16 +7457,22 @@ def _stand_payin_target(state, deal):
         return network, address if network and valid_address(address, network) else None
     if deal.get('payinCustom'):
         return None, None
-    if wallet_id == 'teodor-erc':
-        return 'erc20', '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
-    wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None) or {}
-    raw_network = wallet.get('net') or wallet.get('network') or 'TRC-20'
-    network = normalize_network(raw_network)
-    if network == 'erc20':
-        # Only the reviewed Teodor directory entry may choose ERC on this stand.
+    legacy_addr = _LEGACY_PAYIN_WALLET_ADDR.get(wallet_id)
+    # get_session() — общая scoped-сессия текущего запроса; её закрывает только
+    # вызвавший роут (finally), а не эта функция (иначе она обрывает
+    # транзакцию с ещё не закоммиченными изменениями в вызывающем коде —
+    # см. предупреждение у current_role()).
+    session = get_session()
+    wallet = _stand_payin_wallet_row(session, wallet_id)
+    if wallet:
+        network = _stand_wallet_network(wallet)
+        return network, wallet.address if valid_address(wallet.address, network) else None
+    if not legacy_addr:
         return None, None
-    address = stand_wallet_address(state, wallet_id)
-    return network, address if network and valid_address(address, network) else None
+    # Реестр ещё не знает этот легаси-адрес (до сева на стенде) — резолвим
+    # его как раньше, по фиксированной сети.
+    network = 'erc20' if wallet_id == 'teodor-erc' else 'trc20'
+    return network, legacy_addr if valid_address(legacy_addr, network) else None
 
 
 @app.route('/api/stand/payin/check', methods=['POST'])
@@ -7629,20 +7739,24 @@ def _stand_doc_request(state, deal, F):
 
     if crypto:
         wallet_id = deal.get('walletId') or 'grusha'
-        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None) or {}
         network, addr = _stand_payin_target(state, deal)
         if not addr:
             missing.append('payTo')
-        # Persisted grusha/vitaly metadata predates the confirmed wallet ownership.
-        company = wallet_id in ('grusha', 'vitaly') and addr == 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
-        if not company:
-            company = (wallet.get('owner') or 'компания') == 'компания' and wallet_id not in ('andrey', 'teodor-erc', 'custom')
+        owner = None
+        if wallet_id != 'custom' and addr:
+            # Общая scoped-сессия — не закрываем здесь (см. комментарий в
+            # _stand_payin_target).
+            row = _stand_payin_wallet_row(get_session(), wallet_id)
+            owner = row.owner if row else None
+        # Legacy grusha/vitaly без строки в реестре — считаем компанией, как раньше.
+        company = ((owner or ('компания' if wallet_id in ('grusha', 'vitaly') else None) or 'компания') == 'компания'
+                  and wallet_id not in ('andrey', 'teodor-erc', 'custom'))
         money.update(payin_network='Ethereum (ERC-20)' if network == 'erc20' else 'TRON (TRC-20)',
                      payin_wallet=addr or '',
                      payin_recipient='MF Corporation Company Limited' if company
                      else ('Кошелёк Теодора · ERC-20' if wallet_id == 'teodor-erc'
                            else 'Свой кошелёк' if wallet_id == 'custom'
-                           else wallet.get('name') or wallet.get('owner') or ''),
+                           else owner or ''),
                      payin_recipient_role='Агент / Agent' if company
                      else 'Уполномоченное лицо Агента / Agent’s authorised person')
     else:
@@ -13288,6 +13402,30 @@ def get_wallets():
     finally:
         session.close()
 
+def _wallet_registry_fields(data):
+    """Проверка полей реестра кошельков: булевы флаги и владелец до 100 символов.
+
+    Возвращает (fields, error) — fields подставляются в модель как есть,
+    error — готовая строка для 400-ответа, если валидация не прошла.
+    """
+    fields = {}
+    for flag in ('is_multisig', 'accepts_payin'):
+        if flag in data:
+            value = data.get(flag)
+            if not isinstance(value, bool):
+                return None, f'Поле {flag} должно быть true/false'
+            fields[flag] = value
+    if 'owner' in data:
+        owner = data.get('owner')
+        if owner is not None and not isinstance(owner, str):
+            return None, 'Поле owner должно быть строкой'
+        owner = (owner or '').strip()
+        if len(owner) > 100:
+            return None, 'Владелец — не больше 100 символов'
+        fields['owner'] = owner or None
+    return fields, None
+
+
 @app.route('/api/wallets', methods=['POST'])
 def add_wallet():
     session = get_session()
@@ -13310,6 +13448,10 @@ def add_wallet():
                 app.logger.info(f'[Wallet] адрес поправлен: {address} → {fixed_address}')
             address = fixed_address
 
+        registry_fields, registry_error = _wallet_registry_fields(data)
+        if registry_error:
+            return jsonify({'success': False, 'error': registry_error}), 400
+
         # Проверяем что кошелёк не дублируется
         existing = session.query(Wallet).filter(Wallet.address == address).first()
         if existing:
@@ -13317,16 +13459,21 @@ def add_wallet():
             if data.get('is_monitored'): existing.is_monitored = True
             if data.get('is_balance'): existing.is_balance = True
             if data.get('label'): existing.label = data['label']
+            for field, value in registry_fields.items():
+                setattr(existing, field, value)
             session.commit()
             invalidate_tronscan_cache()
             return jsonify({'success': True, 'wallet': existing.to_dict()})
-        
+
         wallet = Wallet(
             address=address,
             blockchain=data.get('blockchain', 'TRON'),
             label=data.get('label', ''),
             is_monitored=data.get('is_monitored', True),
-            is_balance=data.get('is_balance', False)
+            is_balance=data.get('is_balance', False),
+            is_multisig=registry_fields.get('is_multisig', False),
+            accepts_payin=registry_fields.get('accepts_payin', False),
+            owner=registry_fields.get('owner')
         )
         session.add(wallet)
         session.commit()
@@ -13754,6 +13901,11 @@ def update_wallet(wallet_id):
         for flag in ('is_monitored', 'is_balance', 'active'):
             if flag in data:
                 setattr(wallet, flag, bool(data.get(flag)))
+        registry_fields, registry_error = _wallet_registry_fields(data)
+        if registry_error:
+            return jsonify({'success': False, 'error': registry_error}), 400
+        for field, value in registry_fields.items():
+            setattr(wallet, field, value)
         session.commit()
         invalidate_tronscan_cache()
         return jsonify({'success': True, 'wallet': wallet.to_dict()})

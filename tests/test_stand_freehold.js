@@ -590,20 +590,21 @@ console.log('test_stand_freehold.js: OK');
   assert.match(rub,/курс партнёра USDT→THB и приход/);
 }
 
-// Duplicate stage wallet address appears once, with legacy vitaly still selected.
+// Payin s11 — выпадающий список из реестра CRM, легаси walletId 'grusha'
+// резолвится через тот же адрес и выбирает тот же <option> (wallet-registry).
 {
   const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
-  const vitaly={id:'vitaly',addr,name:'Старый',owner:'компания'};
-  const grusha={id:'grusha',addr,name:'Груша',owner:'компания'};
-  const ctx=run(['payinWalletSelect','payinDirectoryWallets','payinWalletKey','addrValid'],
-    ['ADDR_RE'],{S:{},wallets:()=>[vitaly,grusha],payinWallet:()=>vitaly,
-      payinNet:()=> 'TRC-20',htmlText:x=>String(x)});
-  const choices=ctx.payinDirectoryWallets();
+  const ctx=run(['payinWalletSelect','crmPayinChoices','payinWallet','payinWalletView',
+    'payinDefaultWallet','crmWalletNet','crmWalletById','payinNet','payinCanRemember','addrValid'],
+    ['ADDR_RE','LEGACY_PAYIN_ADDR'],
+    {S:{},CRM_WALLETS:[{id:1,address:addr,blockchain:'TRON',owner:'компания',
+      is_multisig:true,accepts_payin:true,label:'Груша'}],htmlText:x=>String(x)});
+  const choices=ctx.crmPayinChoices('TRC-20');
   assert.equal(choices.length,1);
-  assert.equal(choices[0].id,'grusha');
-  const rendered=ctx.payinWalletSelect({id:9101,step:'s11'},false);
-  assert.equal((rendered.match(/type="radio"/g)||[]).length,2);
-  assert.match(rendered,/value="grusha" checked/);
+  assert.equal(choices[0].id,1);
+  const rendered=ctx.payinWalletSelect({id:9101,step:'s11',walletId:'grusha'},false);
+  assert.equal((rendered.match(/<option value="1"/g)||[]).length,1);
+  assert.match(rendered,/<option value="1"[^>]* selected/);
   assert.doesNotMatch(rendered,/value="vitaly"/);
 }
 
