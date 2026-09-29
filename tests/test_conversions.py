@@ -1051,9 +1051,8 @@ def test_разнос_закрывает_сделку_и_шлёт_уведомл
         db.close()
 
 
-def test_частично_сконвертированный_приход_сделку_не_трогает(cli, incomes, monkeypatch):
-    """Пачка закрыла только часть прихода — доля ≠ весь приход, сделка ждёт."""
-    monkeypatch.setattr(appmod, '_tron_tx_amount', lambda h: None)
+def test_часть_привязанного_банковского_прихода_нельзя_включить_в_заявку(cli, incomes):
+    """Заявка отклоняется до отправки, если взяла лишь часть прихода сделки."""
     db = get_session()
     try:
         d = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
@@ -1066,14 +1065,12 @@ def test_частично_сконвертированный_приход_сде
     finally:
         db.close()
 
-    conv = cli.post('/api/conversions', json={
+    response = cli.post('/api/conversions', json={
         'broker': 'TRADEX', 'rate_rub_usdt': 83.35,
         'sources': [{'sber_income_id': incomes[1], 'amount_rub': 15000.0}],
-    }).get_json()['conversion']
-    tx_hash = _uid() + _uid()
-    r = cli.post(f"/api/conversions/{conv['id']}/txs", json={
-        'tx_hash': tx_hash, 'amount_usdt': 179.96})
-    assert r.get_json()['deals_closed'] == []
+    })
+    assert response.status_code == 409
+    assert f'Сделка #{deal_id}' in response.get_json()['error']
 
     db = get_session()
     try:
@@ -1083,11 +1080,181 @@ def test_частично_сконвертированный_приход_сде
     finally:
         db.close()
 
+    db = get_session()
+    try:
+        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.fixture
+def bank_pair():
+    """Одна сделка #667 с двумя банковскими частями 14 895 и 35 000 ₽."""
+    db = get_session()
+    try:
+        first = SberIncome(uuid=_uid(), operation_date='2026-09-24',
+                           amount_rub=14895, payer='Roman', purpose='первая часть')
+        second = SberIncome(uuid=_uid(), operation_date='2026-09-25',
+                            amount_rub=35000, payer='Roman', purpose='вторая часть')
+        deal = Deal(deal_type=DealType.PAY_IN, status=DealStatus.PENDING,
+                    client_name='Roman - Grusha', payin_method=PayInMethod.SBER_REQS,
+                    payin_amount_rub=49895,
+                    payin_parts=json.dumps([{'uuid': first.uuid, 'amount_rub': 14895},
+                                            {'uuid': second.uuid, 'amount_rub': 35000}]))
+        db.add_all([first, second, deal]); db.flush()
+        first.claimed_deal_id = second.claimed_deal_id = deal.id
+        db.commit()
+        ids = deal.id, first.id, second.id
+    finally:
+        db.close()
+    yield ids
+    db = get_session()
+    try:
+        db.query(ConversionSource).filter(
+            ConversionSource.sber_income_id.in_(ids[1:])).delete(synchronize_session=False)
+        db.query(Deal).filter(Deal.id == ids[0]).delete()
+        db.query(SberIncome).filter(SberIncome.id.in_(ids[1:])).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('force', [False, True])
+def test_заявка_не_берёт_лишь_первую_часть_сделки(cli, bank_pair, force):
+    deal_id, first_id, _second_id = bank_pair
+    response = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 85.8, 'force': force,
+        'sources': [{'sber_income_id': first_id, 'amount_rub': 14895}],
+    })
+    assert response.status_code == 409
+    assert f'Сделка #{deal_id}' in response.get_json()['error']
+    assert '14,895.00' in response.get_json()['error']
+    assert '49,895.00' in response.get_json()['error']
+
+
+def test_оба_прихода_сделки_можно_включить_в_одну_заявку(cli, bank_pair):
+    _deal_id, first_id, second_id = bank_pair
+    response = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 85.8,
+        'sources': [{'sber_income_id': first_id, 'amount_rub': 14895},
+                    {'sber_income_id': second_id, 'amount_rub': 35000}],
+    })
+    assert response.status_code == 200, response.get_json()
+    cli.delete(f"/api/conversions/{response.get_json()['conversion']['id']}")
+
+
+def test_после_заявки_нельзя_добавить_второй_банковский_приход(cli):
+    db = get_session()
+    try:
+        first = SberIncome(uuid=_uid(), operation_date='2026-09-24',
+                           amount_rub=14895, payer='Roman', purpose='первая часть')
+        second = SberIncome(uuid=_uid(), operation_date='2026-09-25',
+                            amount_rub=35000, payer='Roman', purpose='вторая часть')
+        db.add_all([first, second]); db.flush()
+        ids = first.id, second.id
+        first_uuid, second_uuid = first.uuid, second.uuid
+        db.commit()
+    finally:
+        db.close()
+    deal = cli.post('/api/deals', json={
+        'client_name': 'Roman - Grusha', 'status': 'pending',
+        'payin_method': 'sber_reqs', 'payin_amount_rub': 14895,
+        'payin_parts': [{'uuid': first_uuid, 'amount_rub': 14895}],
+        'skip_sync': True,
+    }).get_json()['deal']
+    conv = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 85.8,
+        'sources': [{'sber_income_id': ids[0], 'amount_rub': 14895}],
+    }).get_json()['conversion']
+    assert cli.put(f"/api/deals/{deal['id']}", json={
+        'notes': 'обычная правка', 'skip_sync': True}).status_code == 200
+    assert cli.put(f"/api/deals/{deal['id']}", json={
+        'notes': 'те же банковские поля', 'payin_method': 'sber_reqs',
+        'payin_amount_rub': 14895,
+        'payin_parts': [{'uuid': first_uuid, 'amount_rub': 14895}],
+        'skip_sync': True}).status_code == 200
+    changed_method = cli.put(f"/api/deals/{deal['id']}", json={
+        'payin_method': 'partners_cash', 'skip_sync': True})
+    assert changed_method.status_code == 409
+    assert changed_method.get_json()['error_code'] == 'bank_deal_conversion_lock'
+    db = get_session()
+    try:
+        assert db.query(Deal).get(deal['id']).payin_method == PayInMethod.SBER_REQS
+    finally:
+        db.close()
+    removed = cli.put(f"/api/deals/{deal['id']}", json={
+        'payin_amount_rub': 35000, 'payin_parts': [], 'skip_sync': True})
+    assert removed.status_code == 409
+    extra = cli.put(f"/api/deals/{deal['id']}", json={
+        'payin_amount_rub': 14895, 'payin_extra': [{
+            'method': 'sber_reqs', 'amount_rub': 35000,
+            'amount_usdt': 400, 'sber_uuids': [second_uuid]}],
+        'skip_sync': True})
+    assert extra.status_code == 409
+    assert extra.get_json()['error_code'] == 'bank_deal_conversion_lock'
+    response = cli.put(f"/api/deals/{deal['id']}", json={
+        'payin_amount_rub': 49895,
+        'payin_parts': [{'uuid': first_uuid, 'amount_rub': 14895},
+                        {'uuid': second_uuid, 'amount_rub': 35000}],
+        'skip_sync': True,
+    })
+    assert response.status_code == 409
+    assert f'#{deal["id"]} уже участвует в {conv["display_name"]}' in response.get_json()['error']
+    db = get_session()
+    try:
+        assert db.query(SberIncome).get(ids[1]).claimed_deal_id is None
+        assert db.query(Deal).get(deal['id']).payin_amount_rub == 14895
+    finally:
+        db.close()
     cli.delete(f"/api/conversions/{conv['id']}")
     db = get_session()
     try:
-        db.query(PayinTx).filter(PayinTx.tx_hash == tx_hash).delete()
-        db.query(Deal).filter(Deal.id == deal_id).delete()
+        db.query(Deal).filter(Deal.id == deal['id']).delete()
+        db.query(SberIncome).filter(SberIncome.id.in_(ids)).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+
+def test_нельзя_создать_сделку_с_новым_банковским_приходом_после_заявки(cli):
+    db = get_session()
+    try:
+        first = SberIncome(uuid=_uid(), operation_date='2026-09-24',
+                           amount_rub=14895, payer='Roman', purpose='первая часть')
+        second = SberIncome(uuid=_uid(), operation_date='2026-09-25',
+                            amount_rub=35000, payer='Roman', purpose='вторая часть')
+        db.add_all([first, second]); db.commit()
+        ids = first.id, second.id
+        uuids = first.uuid, second.uuid
+    finally:
+        db.close()
+    conv_response = cli.post('/api/conversions', json={
+        'broker': 'TRADEX', 'rate_rub_usdt': 85.8,
+        'sources': [{'sber_income_id': ids[0], 'amount_rub': 14895}],
+    })
+    assert conv_response.status_code == 200, conv_response.get_json()
+    conv = conv_response.get_json()['conversion']
+    response = cli.post('/api/deals', json={
+        'client_name': 'Roman - Grusha', 'status': 'pending',
+        'payin_method': 'sber_reqs', 'payin_amount_rub': 49895,
+        'payin_parts': [{'uuid': uuids[0], 'amount_rub': 14895},
+                        {'uuid': uuids[1], 'amount_rub': 35000}],
+        'skip_sync': True,
+    })
+    assert response.status_code == 409
+    assert response.get_json()['error_code'] == 'bank_deal_conversion_lock'
+    assert conv['display_name'] in response.get_json()['error']
+    db = get_session()
+    try:
+        assert db.query(SberIncome).get(ids[0]).claimed_deal_id is None
+        assert db.query(SberIncome).get(ids[1]).claimed_deal_id is None
+    finally:
+        db.close()
+    cli.delete(f"/api/conversions/{conv['id']}")
+    db = get_session()
+    try:
+        db.query(SberIncome).filter(SberIncome.id.in_(ids)).delete(synchronize_session=False)
         db.commit()
     finally:
         db.close()

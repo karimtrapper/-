@@ -5638,6 +5638,103 @@ def _converted_by_income(session, income_ids):
     return {iid: round(val or 0, 2) for iid, val in rows}
 
 
+def _lock_bank_conversion_mutations(session):
+    """Один порядок для изменения сделки и состава заявки до блокировок строк.
+
+    PostgreSQL сериализует короткие финансовые записи, включая гонку, когда
+    приход был свободным при чтении заявки, но параллельно занят сделкой.
+    SQLite в тестах уже сериализует записи.
+    """
+    if session.bind.dialect.name == 'postgresql':
+        session.execute(text('SELECT pg_advisory_xact_lock(76640016)'))
+
+
+class BankConversionConflict(ValueError):
+    """Состав банковских приходов сделки и заявки расходится."""
+
+
+def _deal_bank_gross_rub(deal):
+    """Банковские RUB части сделки, исключая наличные и крипту."""
+    return round(sum(float(part.get('amount_rub') or 0)
+                     for part in _payin_all_parts(deal)
+                     if part.get('method') in ('sber_reqs', 'sber_wl', 'spp_doverka')), 2)
+
+
+def _deal_bank_edit_signature(deal):
+    """Банковские поля сделки без порядка ключей JSON и заметок оператора."""
+    try:
+        parts = json.loads(deal.payin_parts) if deal.payin_parts else []
+    except (ValueError, TypeError):
+        parts = []
+    normalized = sorted((str(part.get('uuid') or ''), round(float(part.get('amount_rub') or 0), 2))
+                        for part in parts if isinstance(part, dict))
+    bank_parts = sorted((part.get('method'), round(float(part.get('amount_rub') or 0), 2),
+                         tuple(sorted(str(uid) for uid in (part.get('sber_uuids') or []))))
+                        for part in _payin_all_parts(deal)
+                        if part.get('method') in ('sber_reqs', 'sber_wl', 'spp_doverka'))
+    return (_deal_bank_gross_rub(deal), tuple(normalized), tuple(bank_parts),
+            deal.payin_method.value if deal.payin_method else None)
+
+
+def _bank_conversion_coverage(session, deal, sources):
+    """Проверить, что банковские части сделки входят в одну заявку целиком."""
+    incomes = session.query(SberIncome).filter(SberIncome.claimed_deal_id == deal.id).all()
+    if not incomes:
+        return None
+    by_id = {inc.id: inc for inc in incomes}
+    taken = round(sum(sources.get(inc.id, 0) for inc in incomes), 2)
+    required = round(sum(inc.amount_rub or 0 for inc in incomes), 2)
+    gross = round(sum((inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
+                      for inc in incomes), 2)
+    try:
+        parts = json.loads(deal.payin_parts) if deal.payin_parts else []
+    except (ValueError, TypeError):
+        parts = []
+    known_uuids = {inc.uuid for inc in incomes}
+    missing_uuids = [str(part.get('uuid')) for part in parts
+                     if isinstance(part, dict) and part.get('uuid')
+                     and str(part['uuid']) not in known_uuids]
+    incomplete = (any(sources.get(inc.id, 0) + 0.01 < (inc.amount_rub or 0)
+                      for inc in incomes)
+                  or bool(missing_uuids)
+                  or _deal_bank_gross_rub(deal) > gross + 1.0)
+    return {'incomplete': incomplete, 'taken_rub': taken,
+            'required_rub': required, 'incomes': by_id}
+
+
+def _validate_deal_bank_conversion_lock(session, deal, protected_income_ids=None):
+    """После заявки к сделке нельзя добавить другой банковский RUB приход."""
+    session.flush()
+    current_ids = {inc.id for inc in session.query(SberIncome).filter(
+        SberIncome.claimed_deal_id == deal.id).all()}
+    if protected_income_ids and current_ids != protected_income_ids:
+        prior = session.query(Conversion).join(
+            ConversionSource, ConversionSource.conversion_id == Conversion.id).filter(
+            ConversionSource.sber_income_id.in_(protected_income_ids),
+            Conversion.status != ConversionStatus.CANCELLED).first()
+        name = prior.display_name if prior else 'активной заявке'
+        raise BankConversionConflict(
+            f'#{deal.id} уже участвует в {name}; новый банковский приход '
+            'нельзя добавить к этой сделке. Создайте отдельную финансовую сделку '
+            'с подтверждённой себестоимостью или исправьте черновик')
+    rows = session.query(ConversionSource, Conversion).join(
+        Conversion, ConversionSource.conversion_id == Conversion.id).join(
+        SberIncome, ConversionSource.sber_income_id == SberIncome.id).filter(
+        SberIncome.claimed_deal_id == deal.id,
+        Conversion.status != ConversionStatus.CANCELLED).all()
+    if not rows:
+        return
+    conv_ids = {conv.id for _src, conv in rows}
+    conv = rows[0][1]
+    sources = {src.sber_income_id: src.amount_rub or 0 for src, _conv in rows}
+    coverage = _bank_conversion_coverage(session, deal, sources)
+    if len(conv_ids) > 1 or (coverage and coverage['incomplete']):
+        raise BankConversionConflict(
+            f'#{deal.id} уже участвует в {conv.display_name}; новый банковский приход '
+            'нельзя добавить к этой сделке. Создайте отдельную финансовую сделку '
+            'с подтверждённой себестоимостью или исправьте черновик')
+
+
 def _conversion_number(value, field, *, nullable=False, positive=False, maximum=None):
     """Проверить число до округления: bool, NaN и бесконечности не являются суммой."""
     import math
@@ -5742,7 +5839,7 @@ def _attach_sources(db, conv, sources_req, force=False):
         if not inc:
             raise ValueError(f'Приход #{sid} не найден')
         if inc.excluded and not force:
-            raise ValueError(
+            raise BankConversionConflict(
                 f'Приход {inc.amount_rub:,.2f} ₽ ({inc.payer or sid}) исключён '
                 f'из конвертаций{": " + inc.note if inc.note else ""}')
         take = item['amount_rub']
@@ -5763,6 +5860,27 @@ def _attach_sources(db, conv, sources_req, force=False):
                 f'доступно {free:,.2f} ₽, запрошено {take:,.2f} ₽')
         db.add(ConversionSource(conversion_id=conv.id, sber_income_id=sid, amount_rub=take))
     db.flush()
+
+
+def _validate_conversion_bank_deals(db, conv):
+    """Новая заявка берёт все банковские приходы каждой включённой сделки."""
+    db.flush()
+    sources = {src.sber_income_id: src.amount_rub or 0 for src in conv.sources}
+    deal_ids = {inc.claimed_deal_id for inc in db.query(SberIncome).filter(
+        SberIncome.id.in_(sources)).all() if inc.claimed_deal_id}
+    for deal in db.query(Deal).filter(Deal.id.in_(deal_ids)).order_by(Deal.id).all():
+        coverage = _bank_conversion_coverage(db, deal, sources)
+        other = db.query(ConversionSource).join(
+            Conversion, ConversionSource.conversion_id == Conversion.id).join(
+            SberIncome, ConversionSource.sber_income_id == SberIncome.id).filter(
+            SberIncome.claimed_deal_id == deal.id,
+            Conversion.id != conv.id,
+            Conversion.status != ConversionStatus.CANCELLED).first()
+        if coverage and (coverage['incomplete'] or other):
+            raise BankConversionConflict(
+                f'Сделка #{deal.id}: в заявке {coverage["taken_rub"]:,.2f} ₽ '
+                f'из банковских {coverage["required_rub"]:,.2f} ₽; включите '
+                'все поступления либо разделите сделку до заявки')
 
 
 def _clear_conversion_payin_uses(db, conv):
@@ -6048,6 +6166,10 @@ def _auto_settle_conversion(db, conv):
 
     Возвращает сделки, закрытые автозачётом — им нужны уведомления.
     """
+    # Несколько входящих tx не дают однозначной ссылки на оплативший долг tx.
+    # Ручной разнос остаётся доступен, но автозачёт в таком случае пропускаем.
+    if len(conv.txs or []) != 1:
+        return []
     # Куда пришли деньги этой пачки: адрес → id прихода
     addrs = {}
     for link in (conv.txs or []):
@@ -6057,6 +6179,7 @@ def _auto_settle_conversion(db, conv):
     deal_ids = _conversion_deal_ids(db, conv)
     if not addrs or not deal_ids:
         return []
+    current_shares = conversion_shares_for(conv)
 
     # Session настроена без autoflush: сохраняем рассчитанный приход перед
     # обновлением объектов из БД, иначе populate_existing сотрёт его.
@@ -6079,6 +6202,57 @@ def _auto_settle_conversion(db, conv):
         cost = deal.payout_amount_usdt or _payout_cost_from_transfers(deal)
         if not cost:
             continue                      # себестоимость неизвестна — гадать нельзя
+        # Приход на нужный адрес сам по себе не погашает всю выдачу: у сделки
+        # могут оставаться RUB части без конвертации, а текущая доля USDT может
+        # быть меньше полного долга. Смешанные адреса одной пачки не зачтём
+        # автоматически — по ним нет аллокации каждой сделки на каждый адрес.
+        received_sources = db.query(ConversionSource, Conversion).join(
+            Conversion, ConversionSource.conversion_id == Conversion.id).join(
+            SberIncome, ConversionSource.sber_income_id == SberIncome.id).filter(
+            SberIncome.claimed_deal_id == deal.id,
+            Conversion.status == ConversionStatus.RECEIVED).all()
+        received_by_income = {}
+        for src, _received_conv in received_sources:
+            received_by_income[src.sber_income_id] = round(
+                received_by_income.get(src.sber_income_id, 0) + (src.amount_rub or 0), 2)
+        coverage = _bank_conversion_coverage(db, deal, received_by_income)
+        if not coverage or coverage['incomplete'] or not deal.payin_amount_usdt:
+            continue
+        # SberIncome может быть общим для нескольких сделок (#501): его полная
+        # доля принадлежит сделке лишь в пропорции её payin_parts к gross прихода.
+        try:
+            parts = json.loads(deal.payin_parts) if deal.payin_parts else []
+        except (ValueError, TypeError):
+            parts = []
+        taken_by_uuid = {}
+        for part in parts:
+            if isinstance(part, dict) and part.get('uuid'):
+                uid = str(part['uuid'])
+                taken_by_uuid[uid] = taken_by_uuid.get(uid, 0) + float(part.get('amount_rub') or 0)
+        deal_share_here = 0
+        share_ambiguous = False
+        for src in conv.sources:
+            inc = coverage['incomes'].get(src.sber_income_id)
+            if not inc:
+                continue
+            gross = (inc.amount_rub or 0) + parse_sber_acquiring(inc.purpose)['fee_rub']
+            taken = taken_by_uuid.get(inc.uuid)
+            if taken is None:
+                if abs(gross - (deal.payin_amount_rub or 0)) > 1:
+                    share_ambiguous = True
+                    break
+                taken = gross
+            if gross <= 0 or taken <= 0 or taken > gross + 1:
+                share_ambiguous = True
+                break
+            deal_share_here += current_shares.get(src.sber_income_id, 0) * taken / gross
+        deal_share_here = round(deal_share_here, 2)
+        incoming_addresses = [(tx.to_address or '').strip() for link in conv.txs
+                              for tx in [db.query(PayinTx).get(link.payin_tx_id)] if tx]
+        if (share_ambiguous or deal_share_here + 0.01 < cost
+                or len(incoming_addresses) != len(conv.txs)
+                or any(addr != wallet.address.strip() for addr in incoming_addresses)):
+            continue
         key = (wallet.id, tx_id, deal.payout_founder_name or wallet.label or 'оунер')
         groups.setdefault(key, []).append((deal, round(cost, 2)))
 
@@ -6699,6 +6873,7 @@ def create_conversion():
     """Создать пачку: брокер, курс, ставка удержания, состав поступлений."""
     db = get_session()
     try:
+        _lock_bank_conversion_mutations(db)
         data = request.get_json(silent=True)
         try:
             fields = _conversion_fields(data)
@@ -6718,6 +6893,7 @@ def create_conversion():
         db.flush()
         try:
             _attach_sources(db, conv, sources, force=bool(data.get('force')))
+            _validate_conversion_bank_deals(db, conv)
             _attach_debits(db, conv, debits, force=bool(data.get('force')))
             # Списание из выписки знает дату платежа точно — она главнее введённой
             if conv.debits:
@@ -6726,6 +6902,10 @@ def create_conversion():
                 if dates:
                     conv.sent_at = _parse_sent_at(min(dates))
             _validate_conversion_totals(conv)
+        except BankConversionConflict as e:
+            db.rollback()
+            return jsonify({'success': False, 'error': str(e),
+                            'error_code': 'bank_deal_conversion_lock'}), 409
         except ValueError as e:
             db.rollback()
             return jsonify({'success': False, 'error': str(e)}), 409
@@ -7797,6 +7977,7 @@ def preview_mf_freehold():
 def create_deal():
     session = get_session()
     try:
+        _lock_bank_conversion_mutations(session)
         data = request.get_json()
         
         # Парсим дату если передана
@@ -8017,6 +8198,12 @@ def create_deal():
             _apply_payin_extra(session, deal, data['payin_extra'],
                                main_usdt=data.get('payin_amount_usdt'),
                                main_rub=data.get('payin_amount_rub'))
+        try:
+            _validate_deal_bank_conversion_lock(session, deal)
+        except BankConversionConflict as e:
+            session.rollback()
+            return jsonify({'success': False, 'error': str(e),
+                            'error_code': 'bank_deal_conversion_lock'}), 409
 
         # Доли сделки во входящих переводах: один перевод может обслуживать
         # несколько сделок, поэтому учёт ведётся реестром, а не флагом «занят»
@@ -8155,6 +8342,7 @@ def create_deal():
 def update_deal(deal_id):
     session = get_session()
     try:
+        _lock_bank_conversion_mutations(session)
         # CR-05: блокировка строки сделки. Защищает upsert WalletOperation ниже
         # (раньше два параллельных PUT могли создать две expense-операции, потому
         # что оба прошли через `if not existing_op:` до commit'а другого).
@@ -8163,6 +8351,18 @@ def update_deal(deal_id):
             return jsonify({'success': False, 'error': 'Сделка не найдена'}), 404
         
         data = request.get_json()
+        bank_fields_changed = any(key in data for key in (
+            'payin_parts', 'payin_extra', 'payin_amount_rub', 'payin_method'))
+        original_bank_signature = _deal_bank_edit_signature(deal) if bank_fields_changed else None
+        original_claimed_ids = ({row[0] for row in session.query(SberIncome.id).filter(
+            SberIncome.claimed_deal_id == deal.id).all()} if bank_fields_changed else set())
+        protected_income_ids = set()
+        if bank_fields_changed:
+            protected_income_ids = {row[0] for row in session.query(SberIncome.id).join(
+                ConversionSource, ConversionSource.sber_income_id == SberIncome.id).join(
+                Conversion, Conversion.id == ConversionSource.conversion_id).filter(
+                SberIncome.claimed_deal_id == deal.id,
+                Conversion.status != ConversionStatus.CANCELLED).all()}
         old_status = deal.status
         old_kind = deal.deal_kind
         
@@ -8418,6 +8618,28 @@ def update_deal(deal_id):
                 and deal.payout_amount_usdt):
             deal.status = DealStatus.COMPLETED
 
+        bank_signature_changed = (bank_fields_changed and
+                                  _deal_bank_edit_signature(deal) != original_bank_signature)
+        claim_ids_changed = (bank_fields_changed and
+                             {row[0] for row in session.query(SberIncome.id).filter(
+                                 SberIncome.claimed_deal_id == deal.id).all()} != original_claimed_ids)
+        if bank_signature_changed or claim_ids_changed:
+            try:
+                if protected_income_ids and bank_signature_changed:
+                    prior = session.query(Conversion).join(
+                        ConversionSource, ConversionSource.conversion_id == Conversion.id).filter(
+                        ConversionSource.sber_income_id.in_(protected_income_ids),
+                        Conversion.status != ConversionStatus.CANCELLED).first()
+                    name = prior.display_name if prior else 'активной заявке'
+                    raise BankConversionConflict(
+                        f'#{deal.id} уже участвует в {name}; банковский способ, сумму или '
+                        'части прихода нельзя менять после заявки. Исправьте черновик '
+                        'или создайте отдельную финансовую сделку')
+                _validate_deal_bank_conversion_lock(session, deal, protected_income_ids)
+            except BankConversionConflict as e:
+                session.rollback()
+                return jsonify({'success': False, 'error': str(e),
+                                'error_code': 'bank_deal_conversion_lock'}), 409
         session.commit()
 
         # Обновление агрегатов реферера при завершении сделки

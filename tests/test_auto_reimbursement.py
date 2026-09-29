@@ -164,6 +164,115 @@ def test_кошельки_совпали_долг_гасится_приходо�
         db.close()
 
 
+def test_старый_частичный_приход_на_кошелёк_фаундера_не_гасит_полный_долг(cli):
+    """Историческая неполная CNV не закрывает 541,65 USDT приходом 172,78 USDT."""
+    wid = _wallet(ANDREY, 'Андрей')
+    deal_id, first_id = _deal_with_income(cli, wid, rub=14895, cost=541.65, thb=18000)
+    db = get_session()
+    try:
+        extra = SberIncome(uuid=_uid(), operation_date='2026-09-25', amount_rub=35000,
+                           payer='Roman', purpose='вторая часть', claimed_deal_id=deal_id)
+        db.add(extra)
+        db.query(Deal).get(deal_id).payin_amount_rub = 49895
+        db.commit()
+        conv = Conversion(broker='TRADEX', rate_rub_usdt=85.8,
+                          status=ConversionStatus.SENT)
+        db.add(conv); db.flush()
+        db.add(ConversionSource(conversion_id=conv.id, sber_income_id=first_id,
+                                amount_rub=14895))
+        db.commit()
+        conv_id = conv.id
+    finally:
+        db.close()
+    import app as m
+    orig = m._tron_tx_to_address
+    m._tron_tx_to_address = lambda h: ANDREY
+    try:
+        result = cli.post(f'/api/conversions/{conv_id}/txs',
+                          json={'tx_hash': _uid(), 'amount_usdt': 172.78}).get_json()
+    finally:
+        m._tron_tx_to_address = orig
+    assert result['success'] is True
+    assert result['deals_auto_settled'] == []
+    db = get_session()
+    try:
+        assert db.query(Deal).get(deal_id).reimbursement_id is None
+        assert db.query(Reimbursement).count() == 0
+    finally:
+        db.close()
+
+
+def test_два_входящих_tx_не_дают_однозначного_автозачёта(cli, monkeypatch):
+    wid = _wallet(ANDREY, 'Андрей')
+    deal_id, income_id = _deal_with_income(cli, wid, cost=380)
+    db = get_session()
+    try:
+        conv = Conversion(broker='tradex', rate_rub_usdt=85.8,
+                          status=ConversionStatus.SENT)
+        db.add(conv); db.flush()
+        db.add(ConversionSource(conversion_id=conv.id, sber_income_id=income_id,
+                                amount_rub=34755))
+        db.commit()
+        conv_id = conv.id
+    finally:
+        db.close()
+    monkeypatch.setattr(appmod, '_tron_tx_to_address', lambda h: ANDREY)
+    first = cli.post(f'/api/conversions/{conv_id}/txs', json={
+        'tx_hash': _uid(), 'amount_usdt': 100}).get_json()
+    second = cli.post(f'/api/conversions/{conv_id}/txs', json={
+        'tx_hash': _uid(), 'amount_usdt': 300}).get_json()
+    assert first['success'] is True and first['deals_auto_settled'] == []
+    assert second['success'] is True and second['deals_auto_settled'] == []
+    db = get_session()
+    try:
+        assert db.query(Deal).get(deal_id).reimbursement_id is None
+        assert db.query(Reimbursement).count() == 0
+    finally:
+        db.close()
+
+
+@pytest.mark.parametrize('manual_usdt', [None, 1000])
+def test_общий_банковский_приход_не_гасит_долг_за_счёт_чужой_доли(cli, manual_usdt):
+    wid = _wallet(ANDREY, 'Андрей')
+    db = get_session()
+    try:
+        inc = SberIncome(uuid=_uid(), operation_date='2026-08-19',
+                         amount_rub=4800000, payer='Агент', purpose='общий приход')
+        db.add(inc); db.commit()
+        income_id, income_uuid = inc.id, inc.uuid
+    finally:
+        db.close()
+    response = cli.post('/api/deals', json={
+        'client_name': 'Доля общего прихода', 'status': 'pending',
+        'payin_method': 'sber_reqs', 'payin_amount_rub': 50000,
+        'payin_parts': [{'uuid': income_uuid, 'amount_rub': 50000}],
+        'payout_method': 'transfer', 'payout_source': 'founder_personal',
+        'payout_founder_name': 'Андрей', 'payout_wallet_id': wid,
+        'payout_amount_thb': 19800, 'skip_sync': True,
+        'payout_tx_hashes': [{'hash': _uid(), 'amount_usdt': 600,
+                             'to_address': 'TClient'}],
+    })
+    assert response.status_code == 201, response.get_json()
+    deal_id = response.get_json()['deal']['id']
+    if manual_usdt:
+        db = get_session()
+        try:
+            # В старой сделке могли вручную записать завышенный USDT-приход.
+            db.query(Deal).get(deal_id).payin_amount_usdt = manual_usdt
+            db.commit()
+        finally:
+            db.close()
+    conv_id = _batch(cli, [income_id], ANDREY, 55552.44)
+    db = get_session()
+    try:
+        deal = db.query(Deal).get(deal_id)
+        assert deal.payin_amount_usdt == (manual_usdt or 578.67)
+        assert deal.reimbursement_id is None
+        assert db.query(Reimbursement).count() == 0
+    finally:
+        db.close()
+
+
 def test_кошельки_разные_автозачёта_нет(cli):
     """Приход упал на другой кошелёк — нужен реальный перевод, сделка ждёт."""
     wid = _wallet(ANDREY, 'Андрей')

@@ -340,6 +340,13 @@ def test_conversion_return_has_tx_picker(html):
     assert '/api/transactions/outgoing' in show, 'список переводов не грузится при открытии пачки'
 
 
+def test_bank_deal_lock_never_offers_force_retry(html):
+    """409 по составу сделки показывается оператору без «всё равно создать»."""
+    body = _function_body(html, 'saveConversion') if 'function saveConversion(' in html else html[
+        html.index("let r = await fetch('/api/conversions', {method: 'POST'"):]
+    assert "r.status === 409 && d.error_code !== 'bank_deal_conversion_lock'" in body
+
+
 def test_conversion_summary_names_partial_tranche_and_deferred_income(html):
     """Копируемая задача отделяет подтверждённый транш от 15k ₽ без сделки."""
     node = shutil.which('node')

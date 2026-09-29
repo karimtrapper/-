@@ -11254,7 +11254,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             let r = await fetch('/api/conversions', {method: 'POST',
                 headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
             let d = await r.json();
-            if (!d.success && r.status === 409) {
+            if (!d.success && r.status === 409 && d.error_code !== 'bank_deal_conversion_lock') {
                 // Перебор над остатком счёта бывает осознанным (кейс 14.08) — спрашиваем
                 if (!confirm(d.error + '\n\nВсё равно создать?')) return;
                 body.force = true;
