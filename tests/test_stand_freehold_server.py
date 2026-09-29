@@ -104,19 +104,19 @@ def test_leasehold_coins_confirmation_still_advances_s24_to_s25():
 
 
 def test_freehold_fields_locked_from_s11_onward():
-    """ДЕНЬГИ №13: инвойс/тариф/наценка после s11 — клиентская правка не проходит."""
+    """Инвойс, тариф и согласованная сумма после s11 неизменны."""
     old = freehold_board(step='s12')
-    old['deals'][0]['freeholdMarkupPct'] = None
+    old['deals'][0]['amountUsdt'] = 46000
     new = json.loads(json.dumps(old))
     new['deals'][0]['invoiceUsd'] = 99999
     new['deals'][0]['ippsTariff'] = 'soft'
-    new['deals'][0]['freeholdMarkupPct'] = 5
+    new['deals'][0]['amountUsdt'] = 1
 
     preserve_server_fields(old, new)
 
     assert new['deals'][0]['invoiceUsd'] == 45000, 'инвойс зафиксирован с s11'
     assert new['deals'][0]['ippsTariff'] == 'bank', 'тариф зафиксирован с s11'
-    assert new['deals'][0]['freeholdMarkupPct'] is None, 'наценка зафиксирована (и её отсутствие тоже)'
+    assert new['deals'][0]['amountUsdt'] == 46000, 'согласованная сумма зафиксирована'
 
 
 @pytest.mark.parametrize('step', sorted(FREEHOLD_LOCKED_STEPS))
@@ -297,7 +297,10 @@ def test_crypto_freehold_doc_guard_fails_closed_on_malformed_board(field, value)
                 amountUsdt=98800)
     F['amountPay'] = '98800'
     deal[field] = value
-    assert appmod._stand_freehold_absurd_doc(deal, F)
+    assert appmod._stand_freehold_absurd_doc(deal, F) == (field != 'freeholdMarkupPct')
+    if field == 'freeholdMarkupPct':
+        deal['amountUsdt'] = None
+        assert appmod._stand_freehold_absurd_doc(deal, F), 'без явной суммы старый процент остаётся небезопасным'
 
 
 def test_crypto_freehold_doc_guard_matches_fee_then_send_rounding():

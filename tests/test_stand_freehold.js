@@ -53,6 +53,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   const ctx = run(['econ', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
     payinParts: () => [{ usdt: 45500, calc: 45500, fact: 45500, kept: 0, ctrl: 0 }],
     mfList: () => [], hashSum: () => null, pcAmount: () => null, refAgents: () => [],
+    isCrypto: () => false,
     num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''), Math,
   });
@@ -90,6 +91,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     payinParts: () => [{ usdt: 12000, calc: 11990, fact: 12000, kept: 0, ctrl: 0 }],
     mfList: x => x.mfPayout, mfSum: x => round2(x.mfPayout.reduce((s, t) => s + t.amount, 0)),
     hashSum: () => null, pcAmount: x => x.transfer.amount,
+    isCrypto: () => false,
     refAgents: () => [], num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''), Math,
   });
@@ -129,18 +131,15 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.equal(noRate.pay, null);
   assert.equal(noRate.approx, 'pay');
 
-  // Крипто-фрихолд: сумма клиенту = S + наценка, курса не спрашиваем вообще.
-  // Наценка без дефолта (Карим, 28.09) — без неё сумма клиенту не считается.
+  // Крипто-фрихолд: сумма клиента вводится явно, курс не нужен.
   const dc = { type: 'Оплата недвижимости', kind: 'Фрихолд', invoiceUsd: 45000,
-    ippsTariff: 'soft', payType: 'Крипта', curBase: 'usdt', rates: {}, freeholdMarkupPct: null };
-  const apcNoMarkup = ctx.approx(dc);
-  assert.equal(apcNoMarkup.cur, 'usdt'); assert.equal(apcNoMarkup.sign, 'USDT');
-  approxEq(apcNoMarkup.thb, 45000);
-  assert.equal(apcNoMarkup.pay, null, 'без наценки сумма клиенту не считается — нет дефолта');
-  assert.equal(apcNoMarkup.approx, 'pay');
-
-  const apc = ctx.approx(Object.assign({}, dc, { freeholdMarkupPct: 2 }));
-  approxEq(apc.pay, 45725.00 * 1.02);
+    ippsTariff: 'soft', payType: 'Крипта', curBase: 'usdt', rates: {}, amountUsdt: null,
+    freeholdMarkupPct: 100475 };
+  const absent = ctx.approx(dc);
+  assert.equal(absent.pay, null, 'старый процент не становится суммой клиента');
+  const apc = ctx.approx(Object.assign({}, dc, { amountUsdt: 46000 }));
+  approxEq(apc.pay, 46000);
+  assert.equal(apc.cur, 'usdt'); assert.equal(apc.sign, 'USDT');
 }
 
 // ── apMoney(): формат суммы застройщику — $, не ฿ ────────────────────────
@@ -157,6 +156,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 {
   const ctx = run(['ippsApplicationText', 'econ', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
     payinParts: () => [], hashSum: () => null, pcAmount: () => null, refAgents: () => [],
+    isCrypto: () => false,
     num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''), mfList: () => [], Math,
   });
@@ -270,7 +270,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.equal(d.invoiceUsd, 40000, 'нулевой инвойс не принимается');
 }
 
-// ── draftValid()/draftAmounts(): наценка крипто-фрихолда обязательна на заявке ──
+// ── draftValid()/draftAmounts(): план обязателен до создания сделки ──
 {
   const toasts = [];
   const ctx = run(['draftValid', 'draftAmounts'], [], {
@@ -279,20 +279,21 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
   });
   const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
-    sum: '45000', cur: 'fhusd', ippsTariff: 'bank', freeholdMarkupPct: null };
+    sum: '45000', cur: 'fhusd', ippsTariff: 'bank', amountUsdt: null };
   ctx.S = { draft: D };
-  assert.equal(ctx.draftValid(), false, 'без наценки заявку на крипто-фрихолд не создать');
-  assert.ok(toasts.some(t => t.includes('наценку')));
+  assert.equal(ctx.draftValid(), false, 'положительная сумма нужна перед созданием');
+  assert.equal(ctx.draftAmounts(D).amountUsdt, null);
 
-  D.freeholdMarkupPct = 2;
+  D.amountUsdt = '46000';
   assert.equal(ctx.draftValid(), true);
   const amounts = ctx.draftAmounts(D);
-  assert.equal(amounts.freeholdMarkupPct, 2);
+  assert.equal(amounts.amountUsdt, 46000);
+  assert.equal(amounts.freeholdMarkupPct, undefined);
   assert.equal(amounts.invoiceUsd, 45000);
 
-  // Рублёвый фрихолд наценку не спрашивает вообще
-  ctx.S.draft = Object.assign({}, D, { payType: 'По реквизитам', freeholdMarkupPct: null });
-  assert.equal(ctx.draftValid(), true, 'у рублёвого фрихолда наценки нет — не блокирует');
+  ctx.S.draft = Object.assign({}, D, { payType: 'По реквизитам' });
+  assert.equal(ctx.draftValid(), true, 'рублёвый фрихолд не меняется');
+  assert.equal(ctx.draftAmounts(ctx.S.draft).amountUsdt, null);
 }
 
 // ── syncFreeholdRate(): курс клиенту — ровно 4 знака, округление, не отказ ──
@@ -384,3 +385,208 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 }
 
 console.log('test_stand_freehold.js: OK');
+
+// Direct crypto-freehold amount: X=97500, bank S=98330, plan=98800, income=470.
+{
+  const d={id:9101,type:'Оплата недвижимости',kind:'Фрихолд',payType:'Крипта',
+    curBase:'fhusd',invoiceUsd:97500,ippsTariff:'bank',amountUsdt:98800,rates:{},
+    invoiceCurrency:'usd'};
+  const ctx=run(['freeholdInvoiceTariffBlock','freeholdInvoiceSet','freeholdLossFingerprint','draftFreeholdPreview',
+    'freeholdApprox','ippsTariff','freeholdFee','freeholdSend'],['IPPS_TARIFFS'],{
+    isCrypto:()=>true,deal:()=>d,save:()=>{},render:()=>{},log:()=>{},toast:()=>{},
+    usd:x=>`${Number(x).toFixed(2)} USDT`,num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
+    money:(x,c)=>`${Number(x).toFixed(2)} ${c}`,
+    cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
+  });
+  assert.equal(ctx.freeholdSend(97500,ctx.IPPS_TARIFFS.bank),98330);
+  assert.equal(ctx.freeholdApprox(d).pay,98800);
+  let html=ctx.freeholdInvoiceTariffBlock(d);
+  assert.ok(html.includes('Клиент отправит, USDT'));
+  assert.ok(html.includes('В IPPS уйдёт, USDT'));
+  assert.ok(html.includes('Сумму клиента, USDT, операционист может уточнить'));
+  assert.ok(html.includes('470.00'));
+  assert.ok(!html.includes('Сделка в минус'));
+  assert.ok(!html.includes('fh_mk_'));
+  assert.ok(ctx.draftFreeholdPreview({sum:'97500',ippsTariff:'bank',payType:'Крипта',amountUsdt:'98800'}).includes('470.00'));
+  ctx.freeholdInvoiceSet(9101,'ippsTariff','soft');
+  assert.equal(d.amountUsdt,98800,'смена тарифа не меняет введённую сумму');
+  assert.equal(ctx.freeholdSend(97500,ctx.IPPS_TARIFFS.soft),99012.5);
+  html=ctx.freeholdInvoiceTariffBlock(d);
+  assert.ok(html.includes('Сделка в минус'));
+  assert.ok(html.includes('-212.50'));
+  // Legacy percent cannot make 98.9m the planned contract amount.
+  d.freeholdMarkupPct=100475;
+  d.amountUsdt=null;
+  assert.equal(ctx.freeholdApprox(d).pay,null);
+  assert.ok(ctx.freeholdInvoiceTariffBlock(d).includes('сумму клиента нужно ввести явно'));
+}
+
+// CRM Pay-In is the verified hash fact, while the planned contract amount stays 98800.
+{
+  const ctx=run(['crmPayload','crmNet','ippsTariff','freeholdFee','freeholdSend'],
+    ['IPPS_TARIFFS','PAYIN_CRM'],{
+      econ:()=>({payin:98799.5,invoiceUsd:97500}),
+      payinParts:()=>[{usdt:98799.5,fact:98799.5}],
+      num:x=>x==null?null:Number(x),mfList:()=>[],refById:()=>null,isCrypto:()=>true,
+    });
+  const d={client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',payType:'Крипта',
+    amountUsdt:98800,invoiceUsd:97500,ippsTariff:'bank',rates:{},agents:[],payTo:{},
+    payinHashes:[{hash:'a'.repeat(64),network:'TRC20',amount:98799.5,verified:true}]};
+  const p=ctx.crmPayload(d);
+  assert.equal(p.payin_amount_usdt,98799.5);
+  assert.equal(p.invoice_amount_usd,97500);
+  assert.equal(p.transfer_sent_usd,98330);
+}
+
+// New-deal form: one direct crypto action, live economics, and safe payType toggling.
+{
+  const D={source:'none',sourceRef:'',client:'Synthetic',clientId:null,cq:'',type:'Оплата недвижимости',
+    kind:'Фрихолд',payType:'Крипта',mode:'need',cur:'fhusd',sum:'97500',ippsTariff:'bank',
+    invoiceCurrency:'usd',amountUsdt:'98800',agents:[],rq:'',note:''};
+  let rendered='';
+  const ctx=run(['viewCreateBody','draftSet','draftFreeholdPreview','draftValid','draftAmounts',
+    'freeholdSend','freeholdFee','askModes','ippsTariff'],['IPPS_TARIFFS'],{
+    S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
+    payWays:()=>['Крипта','По реквизитам'],draftAgentsBlock:()=>'',refFind:()=>[],
+    save:()=>{},render:()=>{rendered=ctx.viewCreateBody(D,'');},toast:()=>{},
+    usd:x=>Number(x).toFixed(2),num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
+    money:(x,c)=>`${Number(x).toFixed(2)} ${c}`,
+    cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
+  });
+  rendered=ctx.viewCreateBody(D,'');
+  assert.ok(rendered.includes('Клиент отправит, USDT'));
+  assert.ok(rendered.includes('98330.00'));
+  assert.ok(rendered.includes('470.00'));
+  assert.ok(rendered.includes('Наш доход 470.00 USDT'));
+  assert.ok(!rendered.includes('посчитаем после курса'));
+  assert.equal((rendered.match(/onclick="createGo\(\)"/g)||[]).length,1);
+  assert.ok(rendered.includes('>Создать сделку</button>'));
+  assert.ok(!rendered.includes('Создать заявку — курс спросит операционист'));
+  assert.ok(!rendered.includes('Курс знаю — сам'));
+  assert.ok(!rendered.includes('посчитаем после курса'));
+  assert.equal(ctx.draftValid(),true);
+  ctx.draftSet('payType','По реквизитам');
+  assert.equal(D.sum,'97500');assert.equal(D.ippsTariff,'bank');
+  assert.ok(rendered.includes('Создать заявку — курс спросит операционист'));
+  assert.ok(rendered.includes('Курс знаю — сам'));
+  assert.ok(!rendered.includes('id="d_amount_usdt"'));
+  assert.equal(ctx.draftAmounts(D).amountUsdt,null);
+  ctx.draftSet('payType','Крипта');
+  assert.equal(D.sum,'97500');assert.equal(D.ippsTariff,'bank');
+  assert.equal(D.amountUsdt,'98800');
+  assert.ok(rendered.includes('>Создать сделку</button>'));
+  assert.equal((rendered.match(/onclick="createGo\(\)"/g)||[]).length,1);
+  D.amountUsdt='98000';
+  assert.ok(ctx.draftFreeholdPreview(D).includes('Сделка в минус'));
+}
+
+// New crypto-freehold action starts at documents, preserving the direct plan.
+{
+  const D={clientId:1,client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',
+    payType:'Крипта',cur:'fhusd',sum:'97500',ippsTariff:'bank',amountUsdt:'98800'};
+  let created;
+  const ctx=run(['createGo','draftValid','draftAmounts'],[],{
+    S:{draft:D},ensureClient:()=>{},clientById:()=>({docs:false}),
+    newDeal:o=>(created={...o,id:9101}),log:()=>{},save:()=>{},render:()=>{},toast:()=>{},
+    num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
+    cleanNum:x=>String(x).replace(/[\s\u00a0]/g,'').replace(',','.'),
+  });
+  ctx.createGo();
+  assert.equal(created.step,'s8');
+  assert.equal(created.amountUsdt,98800);
+  assert.equal(created.invoiceUsd,97500);
+  assert.equal(created.ippsTariff,'bank');
+}
+
+// Executable s11 template: legacy percent-only deal has no invented loss,
+// and the amount field is editable before the first document package.
+{
+  const start=html.indexOf('  s11:()=>{');
+  const end=html.indexOf('\n  s11b:()=>{',start);
+  assert.ok(start>0&&end>start);
+  const s11='var renderS11='+html.slice(start+'  s11:'.length,end).trim().replace(/,$/,';');
+  const d={id:9101,kind:'Фрихолд',payType:'Крипта',invoiceUsd:97500,
+    ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
+  const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},
+    docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500'}),
+    docParseLine:()=>'',isCrypto:()=>true,ippsTariff:()=>({percent:0.8,fixed:50}),
+    usd:x=>String(x),num:x=>x==null||x===''?null:Number(x),cleanNum:x=>String(x).replace(/\s/g,''),
+    docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
+    money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
+  vm.createContext(ctx);
+  vm.runInContext(functions(['freeholdFee','freeholdSend','freeholdLossFingerprint'])+'\n'+s11,ctx);
+  let rendered=ctx.renderS11();
+  assert.match(rendered,/id="df_amountPay"[^>]*onchange="freeholdDocAmountSave/);
+  assert.match(rendered,/Курс сделки<\/label><input class="fc" readonly value="—"/);
+  assert.match(rendered,/В IPPS уйдёт, USDT/);
+  assert.match(rendered,/Наш доход, USDT/);
+  assert.match(rendered,/Укажите сумму клиента/);
+  assert.doesNotMatch(rendered,/Сделка в минус|Подтвердить сделку в минус|-98330\.00/);
+  d.amountUsdt=98800;
+  rendered=ctx.renderS11();
+  assert.match(rendered,/value="470\.00"/);
+  assert.match(rendered,/id="df_amountPay"[^>]*value="98 ?800"|id="df_amountPay"[^>]*value="98 800"/);
+}
+
+// Manager card shows the saved plan and verified fact, without rate promises.
+{
+  const d={id:9101,client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',
+    payType:'Крипта',amountUsdt:98800,rates:{},docs:{},log:[],pay:{},payout:{},
+    step:'s11',source:'test'};
+  const ctx=run(['overview'],[],{S:{role:'manager'},ROLES:{},SOURCES:{test:'Тест'},
+    approx:()=>({thb:97500,pay:98800,sign:'USDT',thbSign:'$'}),
+    fake:()=>({}),econ:()=>({parts:[{fact:98799.5}],ready:false,multi:false,payin:98799.5}),
+    docListRows:()=>({issued:[],client:[]}),isCrypto:()=>true,
+    apMoney:(ap,k)=>k==='pay'?ap.pay+' USDT':ap.thb+' $',
+    money:(v,s)=>v+' '+s,usd:v=>v+' USDT',stepTitle:()=>'',refSignal:()=>null,
+    cnvRow:()=>'',fillNote:()=>'',fixCard:()=>'',signedBlock:()=>''});
+  const rendered=ctx.overview(d,{},true,{i:1,n:10},'manager');
+  assert.match(rendered,/Клиент отправит<\/th><td>98800 USDT/);
+  assert.match(rendered,/План клиента<\/th><td>98800 USDT/);
+  assert.match(rendered,/Фактически пришло<\/th><td>98799\.5 USDT/);
+  assert.doesNotMatch(rendered,/Курс клиенту — ещё не проставлен|суммы подтверждены курсом|98895397/);
+}
+
+// Duplicate stage wallet address appears once, with legacy vitaly still selected.
+{
+  const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
+  const vitaly={id:'vitaly',addr,name:'Старый',owner:'компания'};
+  const grusha={id:'grusha',addr,name:'Груша',owner:'компания'};
+  const ctx=run(['payinWalletSelect','payinDirectoryWallets','walletCards','addrValid','walletSends'],
+    ['ADDR_RE'],{wallets:()=>[vitaly,grusha],payinWallet:()=>vitaly,
+      htmlText:x=>String(x),MF:{name:'MF'},copyAsk:()=>{}});
+  const choices=ctx.payinDirectoryWallets();
+  assert.equal(choices.length,1);
+  assert.equal(choices[0].id,'grusha');
+  const rendered=ctx.payinWalletSelect({id:9101},false);
+  assert.equal((rendered.match(/type="radio"/g)||[]).length,1);
+  assert.match(rendered,/value="grusha" checked/);
+}
+
+// Click-equivalent s11 issue: board PUT with the edited amount precedes docs POST.
+(async()=>{
+  const d={id:9101,kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,rates:{},docVersion:0};
+  const events=[];
+  const ctx=run([],[],{STAND:true,S:{docIssuing:null},standBusy:false,standPush:false,
+    standVer:17,standBase:{deals:[{id:9101,amountUsdt:98800}]},
+    deal:()=>d,isCrypto:()=>true,
+    standWaitSaved:async()=>events.push('wait'),
+    standSave:async()=>{events.push('put');ctx.standBase={deals:[{id:9101,amountUsdt:d.amountUsdt}]};ctx.standVer=18;},
+    fetch:async()=>{events.push('docs');return {status:200,json:async()=>({success:true,version:19,data:{deals:[d]}})};},
+    standApply:()=>{},render:()=>{},toast:()=>{},save:()=>{},log:()=>{},
+    go:()=>events.push('next'),num:x=>Number(x),cleanNum:x=>String(x).replace(/\s/g,'')});
+  const docIssueSource=html.match(/^async function docIssue\([^]*?^}/m);
+  assert.ok(docIssueSource);
+  vm.runInContext(docIssueSource[0],ctx);
+  await ctx.docIssue(9101,{amountPay:'98900',amountThb:'97500',rate:''},[],'');
+  assert.equal(d.amountUsdt,98900);
+  assert.ok(events.indexOf('put')<events.indexOf('docs'));
+  assert.ok(events.includes('next'));
+  events.length=0;
+  d.amountUsdt=98800;
+  ctx.standBase={deals:[{id:9101,amountUsdt:98800}]};
+  ctx.standSave=async()=>{events.push('denied-put');};
+  await ctx.docIssue(9101,{amountPay:'98900'},[],'');
+  assert.ok(events.includes('denied-put'));
+  assert.ok(!events.includes('docs'),'refused board save must prevent document issuance');
+})().catch(e=>{console.error(e);process.exitCode=1;});

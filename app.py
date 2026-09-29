@@ -5545,6 +5545,10 @@ def stand_crm_close(stand_deal_id):
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0, 'data': state,
                             'updated_by': row.updated_by}), 409
+        plan_problem = _stand_freehold_plan_problem(stand_deal)
+        if plan_problem:
+            return jsonify({'success': False, 'error': plan_problem,
+                            'version': row.version or 0, 'data': state}), 409
         if stand_deal.get('cnvId') is not None:
             conv = next((item for item in state.get('convs') or []
                          if item.get('id') == stand_deal['cnvId']), None)
@@ -5770,6 +5774,85 @@ def _stand_number(value):
     return float(_amount(value) or 0)
 
 
+def _stand_freehold_plan_problem(deal):
+    """Return the issue blocking a crypto freehold financial action, if any."""
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    if not (deal.get('kind') == 'Фрихолд' and
+            (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+        return None
+    try:
+        x = Decimal(str(deal.get('invoiceUsd')))
+        amount = Decimal(str(deal.get('amountUsdt')))
+        tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[deal.get('ippsTariff') or 'bank']
+        if not x.is_finite() or not amount.is_finite() or x <= 0 or amount <= 0:
+            return 'freehold_amount_required'
+        fee = (x * tariff + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        s = (x + fee).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if amount != amount.quantize(Decimal('0.01')):
+            return 'freehold_amount_required'
+        fingerprint = '|'.join(format(v.normalize(), 'f') for v in (x, amount, s)) + '|' + (deal.get('ippsTariff') or 'bank')
+        if amount < s and (deal.get('freeholdLossAck') or {}).get('fingerprint') != fingerprint:
+            return 'freehold_loss_ack_required'
+        return None
+    except (InvalidOperation, TypeError, ValueError, KeyError):
+        return 'freehold_amount_required'
+
+
+def _stand_freehold_loss_fingerprint(deal):
+    from decimal import Decimal, ROUND_HALF_UP
+    x = Decimal(str(deal['invoiceUsd']))
+    amount = Decimal(str(deal['amountUsdt']))
+    tariff_name = deal.get('ippsTariff') or 'bank'
+    tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[tariff_name]
+    fee = (x * tariff + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    s = (x + fee).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return '|'.join(format(v.normalize(), 'f') for v in (x, amount, s)) + '|' + tariff_name
+
+
+@app.route('/api/stand/deals/<int:deal_id>/freehold-loss-ack', methods=['POST'])
+def stand_freehold_loss_ack(deal_id):
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    actor = current_role()
+    payload = request.get_json(silent=True) or {}
+    if type(payload.get('version')) is not int:
+        return jsonify({'success': False, 'error': 'version_required'}), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        if payload['version'] != (row.version or 0):
+            return jsonify({'success': False, 'error': 'conflict',
+                            'version': row.version or 0, 'data': state}), 409
+        owner = _stand_current_step_role(state, deal)
+        if actor != 'admin' and actor != (owner or 'manager'):
+            return jsonify({'success': False, 'error': 'forbidden',
+                            'version': row.version or 0, 'data': state}), 409
+        if _stand_freehold_plan_problem({**deal, 'freeholdLossAck': {'fingerprint': 'invalid'}}) != 'freehold_loss_ack_required':
+            return jsonify({'success': False, 'error': 'freehold_loss_not_applicable',
+                            'version': row.version or 0, 'data': state}), 409
+        fingerprint = _stand_freehold_loss_fingerprint(deal)
+        if (deal.get('freeholdLossAck') or {}).get('fingerprint') == fingerprint:
+            return jsonify({'success': True, 'version': row.version or 0, 'data': state})
+        deal['freeholdLossAck'] = {'fingerprint': fingerprint,
+                                   'actorId': flask_session.get('user_id'),
+                                   'at': datetime.utcnow().isoformat()}
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version, 'data': state})
+    finally:
+        db.close()
+
+
 def _stand_broker_payin_basis(rub, rate):
     """Match T17 brokerSend/payinParts for a persisted RUB+broker-rate route.
 
@@ -5944,6 +6027,17 @@ def _stand_crm_fact_problem(board, crm, kind):
         if _amount(crm.get('payin_rate_rub_usdt')) != _amount(expected_broker):
             return 'payin_rate_mismatch'
     main_hashes = board.get('payinHashes') or []
+    if (kind == 'mf_freehold' and board.get('payType') == 'Крипта'
+            and not main_hashes):
+        return 'payin_basis_missing'
+    if kind == 'mf_freehold' and board.get('payType') == 'Крипта':
+        payer = board.get('payerWallet')
+        if any(not isinstance(h, dict) or not h.get('verified')
+               or (not h.get('senderOk') and
+                   (h.get('unknownSender') or
+                    (payer and h.get('from') and h.get('from') != payer)))
+               for h in main_hashes):
+            return 'payin_basis_unverified'
     if main_hashes:
         if not all(isinstance(h, dict) and positive(h.get('amount')) is not None
                    for h in main_hashes):
@@ -6445,6 +6539,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if 'freeholdLossAck' in deal and deal.get('freeholdLossAck') != (before or {}).get('freeholdLossAck'):
+            return 'freehold_loss_ack_server_only'
         if not before:
             if deal.get('originMode') is not None:
                 return 'Режим происхождения сделки назначает только сервер'
@@ -6476,6 +6572,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                            (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена')):
             return 'Новую сделку нельзя создать с привязкой CRM или успешным закрытием'
         step_changed = bool(before and before.get('step') != deal.get('step'))
+        if (step_changed and deal.get('step') not in ('s4', 's5', 's6', 's8')
+                and _stand_freehold_plan_problem(deal)):
+            return _stand_freehold_plan_problem(deal)
         if step_changed and not allow_crm_close and actor != 'admin':
             required = _stand_current_step_role(previous, before)
             if required and actor != required:
@@ -6501,6 +6600,14 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if any(before.get(key) != deal.get(key) for key in
                    ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb')):
                 return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
+            if before.get('amountUsdt') != deal.get('amountUsdt'):
+                editable = (before.get('step') == 's11' and deal.get('step') == 's11'
+                            and not before.get('docPack') and not before.get('docVersion')
+                            and not before.get('payinHashes') and not before.get('closed')
+                            and not before.get('serverTransferComplete')
+                            and actor in ('admin', _stand_current_step_role(previous, before)))
+                if not editable:
+                    return 'Сумму клиента можно менять только на подготовке договора до выпуска документов'
         if deal.get('crmDealId') != before.get('crmDealId') and not allow_crm_close:
             return 'CRM привязывается только сервером при закрытии'
         if (not before.get('closed') and deal.get('closed')
@@ -7336,7 +7443,7 @@ def _stand_freehold_absurd_doc(deal, fields):
             if submitted is None:
                 return True
         amounts = [submitted, deal.get('amountUsdt')]
-        if deal.get('freeholdMarkupPct') is not None:
+        if deal.get('amountUsdt') is None and deal.get('freeholdMarkupPct') is not None:
             amounts.append(s * (1 + Decimal(str(deal['freeholdMarkupPct'])) / 100))
         return any(v is not None and (not Decimal(str(v)).is_finite() or
                    Decimal(str(v)) >= 10 * s) for v in amounts)
@@ -7555,8 +7662,17 @@ def stand_docs_issue():
             return jsonify({'success': False, 'error': 'freehold_amount_absurd',
                             'detail': 'Сумма клиента не может быть 10 × IPPS и выше. Проверьте сумму сделки.',
                             'version': _stand_row(db).version, 'data': state}), 409
+        plan_problem = _stand_freehold_plan_problem(deal)
+        if plan_problem:
+            return jsonify({'success': False, 'error': plan_problem,
+                            'version': _stand_row(db).version, 'data': state}), 409
+        if (deal.get('kind') == 'Фрихолд' and deal.get('payType') == 'Крипта'
+                and _stand_num(F.get('amountPay')) != _amount(deal.get('amountUsdt'))):
+            return jsonify({'success': False, 'error': 'freehold_contract_amount_mismatch',
+                            'version': _stand_row(db).version, 'data': state}), 409
         req = _stand_doc_request(state, deal, F)
         prior = dict(deal.get('docPack') or {})
+        pre_version = _stand_row(db).version or 0
     finally:
         db.close()
     if req.get('error'):
@@ -7572,54 +7688,59 @@ def stand_docs_issue():
     note = '. '.join(req.get('notes') or [])
     db = get_session()
     try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if (row.version or 0) != pre_version:
+            db.close()
+            return jsonify({'success': False, 'error': 'conflict',
+                            'version': row.version or 0,
+                            'data': json.loads(row.data or '{}')}), 409
         a = None
         if prior.get('agreementId'):
             a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
         if a is not None and prior.get('mode') == 'agreement':
             payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a,
-                                                stand_thb_pending=stand_thb_pending)
+                                                stand_thb_pending=stand_thb_pending,
+                                                commit=False)
             mode = 'agreement'
         elif a is not None and prior.get('mode') == 'addendum':
             payload, code = _docs_payment(db, a, fields, money, payment_no=prior.get('paymentNo'),
-                                          stand_thb_pending=stand_thb_pending)
+                                          stand_thb_pending=stand_thb_pending, commit=False)
             mode = 'addendum'
         else:
             route_key = money['pair'] + ':' + money['payin_method']
             existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
             if existing is not None:
                 payload, code = _docs_payment(db, existing, fields, money,
-                                              stand_thb_pending=stand_thb_pending)
+                                              stand_thb_pending=stand_thb_pending, commit=False)
                 mode = 'addendum'
             else:
                 payload, code = _docs_new_agreement(db, deal_type, fields, money,
-                                                    stand_thb_pending=stand_thb_pending)
+                                                    stand_thb_pending=stand_thb_pending,
+                                                    commit=False)
                 mode = 'agreement'
                 if deal.get('isOld'):
                     note = '. '.join(filter(None, [
                         'Клиент отмечен знакомым, но его договора этого типа и маршрута '
                         'в базе нет — выпущен полный договор', note]))
         if code != 200:
+            db.rollback()
+            db.close()
             return jsonify(_stand_doc_error(payload)), code
     except Exception as exc:
         db.rollback()
+        db.close()
         app.logger.exception('stand_docs_issue')
         return jsonify({'success': False, 'error': 'server_error',
                         'detail': 'Документы не выпущены: ' + str(exc)[:200]}), 500
-    finally:
-        db.close()
-
     agreement, issued, used = payload['agreement'], payload['issued'], payload['money']
     purpose = ''
     if used.get('payin_method') == 'bank':
         purpose = used.get('payment_reference') or docgen.payment_reference(
             fields, 'bank', used.get('part'))
-    db = get_session()
     try:
-        row = _stand_row(db, lock=True)
-        state = json.loads(row.data or '{}')
-        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
-        if not deal:
-            return jsonify({'success': False, 'error': 'Сделка исчезла с доски'}), 409
         at = int(time.time() * 1000)
         version = int(deal.get('docVersion') or 0) + 1
         entries = [{'kind': STAND_DOC_KIND[x['kind']], 'docId': x['id'], 'file': x['filename'],
@@ -19968,7 +20089,7 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
 
 
 def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None,
-                        stand_thb_pending=False):
+                        stand_thb_pending=False, commit=True):
     """Ядро выпуска рамочного договора: договор + приложение 1 + инвойс.
 
     → (тело ответа, HTTP-код). Общее для CRM (POST /api/docs/agreements) и стенда.
@@ -20058,7 +20179,10 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
         if raw:
             _docs_save(db, a.id, f'source_{slot or "other"}', None, 1, f.filename, raw,
                        f.mimetype or 'application/octet-stream')
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return {'success': True, 'agreement': a.to_dict(), 'issued': [x.to_dict() for x in saved],
             'money': money}, 200
 
@@ -20088,7 +20212,7 @@ def docs_create_agreement():
 
 
 def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
-                  stand_thb_pending=False):
+                  stand_thb_pending=False, commit=True):
     """Ядро очередного платежа: доп. соглашение + инвойс со ссылкой на рамочный договор.
 
     → (тело ответа, HTTP-код). `payment_no` — перевыпуск допника того же платежа
@@ -20163,7 +20287,10 @@ def _docs_payment(db, a, submitted_fields, submitted_money, payment_no=None,
     a.payments_count = max(a.payments_count or 1, payment_no)
     a.fields_json = json.dumps(fields, ensure_ascii=False)
     a.money_json = json.dumps(money, ensure_ascii=False)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return {'success': True, 'agreement': a.to_dict(), 'issued': [x.to_dict() for x in saved],
             'money': money, 'payment_no': payment_no}, 200
 

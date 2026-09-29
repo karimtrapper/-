@@ -153,7 +153,12 @@ function crmDraftFill(active,d) {
   crmDraftValue(root,'dealKindSelect',kind);
   crmDraftValue(root,'payinMethod',method);
   crmDraftValue(root,'payin_amount_rub',d.amountRub);
-  crmDraftValue(root,'payin_amount_usdt',d.amountUsdt);
+  // Crypto freehold's amountUsdt is the contract plan. Pay-In is the
+  // verified receipt and must not be prefilled from that plan.
+  crmDraftValue(root,'payin_amount_usdt',kind==='mf_freehold'&&d.payType==='Крипта'
+    ?((d.payinHashes||[]).filter(h=>h.verified&&!h.unknownSender&&
+      (h.senderOk||!d.payerWallet||!h.from||h.from===d.payerWallet))
+      .reduce((sum,h)=>sum+(Number(h.amount)||0),0)||null):d.amountUsdt);
   crmDraftValue(root,'payin_rate_rub_usdt',d.rates?.broker);
   crmDraftValue(root,'payin_partner_name',d.payinPartner);
   crmDraftValue(root,'mfPurpose',d.realtyPurpose||d.object);
@@ -778,7 +783,9 @@ function crmDraftCommit(id) {
   const methods={sber_reqs:'По реквизитам',sber_wl:'СБП',crypto_direct:'Крипта',partners_cash:'Наличные'};
   d.payType=methods[crmDraftRead(r,'payinMethod')]||d.payType;
   d.amountRub=crmDraftNum(crmDraftRead(r,'payin_amount_rub'));
-  d.amountUsdt=crmDraftNum(crmDraftRead(r,'payin_amount_usdt'));
+  if(kind==='mf_freehold'&&d.payType==='Крипта'){
+    if(!crmDraftFreeholdLocked(d)) d.amountUsdt=crmDraftNum(document.getElementById('crmDraftPlanUsdt')?.value);
+  }else d.amountUsdt=crmDraftNum(crmDraftRead(r,'payin_amount_usdt'));
   d.rates=d.rates||{};
   d.rates.broker=crmDraftNum(crmDraftRead(r,'payin_rate_rub_usdt'));
   d.payinPartner=crmDraftRead(r,'payin_partner_name');

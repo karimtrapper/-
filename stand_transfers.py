@@ -24,9 +24,8 @@ LEGACY_GRUSHA_ADDRESS = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
                  'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs')
-# Шаги фрихолда с «Подготовить договор» и дальше — инвойс, тариф IPPS и наценка
-# зафиксированы (спека 28.09-freehold-no-baht, п.2: правится до s6/s8, с s11
-# только чтение).
+# Инвойс и тариф фиксируются с s11; сумму клиента операционист ещё может
+# исправить на s11 до первого выпуска документов.
 FREEHOLD_LOCKED_STEPS = {'s11', 's11b', 's12', 's14', 's14m', 's15', 's18', 's18w',
                          's22', 's23', 's24', 's25', 's26', 's27', 'done'}
 
@@ -166,16 +165,24 @@ def preserve_server_fields(old_state, new_state):
         old_conv = old_convs.get(previous.get('cnvId')) or {}
         if (previous.get('transfer') or {}).get('sends') or old_conv.get('txs'):
             deal['demoTransfers'] = bool(previous.get('demoTransfers'))
-        # Инвойс, тариф IPPS и наценка фрихолда фиксируются договором (с шага
-        # «Подготовить договор», s11) — UI делает поле readonly, но сервер обязан
-        # держать то же самое сам: правка через прямой PUT молча не проходит,
-        # сохраняется прежнее значение (QA ДЕНЬГИ №13, 28.09).
+        # Денежную основу инвойса фиксируем с s11. План клиента допускает
+        # последнюю правку на s11 до появления документов или прихода.
         if previous.get('kind') == 'Фрихолд' and previous.get('step') in FREEHOLD_LOCKED_STEPS:
-            for field in ('invoiceUsd', 'ippsTariff', 'freeholdMarkupPct', 'invoiceCurrency', 'invoiceThb'):
+            fields = ['invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb']
+            if (previous.get('step') != 's11' or previous.get('docPack')
+                    or previous.get('docVersion') or previous.get('payinHashes')):
+                fields.append('amountUsdt')
+            for field in fields:
                 if field in previous:
                     deal[field] = previous[field]
                 else:
                     deal.pop(field, None)
+        # Only the row-locked acknowledgement endpoint may create/change this.
+        # A changed financial fingerprint leaves the old ack in history but it
+        # no longer authorizes progression.
+        deal.pop('freeholdLossAck', None)
+        if previous.get('freeholdLossAck'):
+            deal['freeholdLossAck'] = previous['freeholdLossAck']
         for protected in ('serverSettled', 'serverTransferComplete'):
             deal.pop(protected, None)
             if previous.get(protected):

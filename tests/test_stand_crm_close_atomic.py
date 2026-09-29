@@ -306,6 +306,45 @@ def test_freehold_locked_board_money_cannot_be_spoofed_in_crm_payload(monkeypatc
     assert _counts() == (before[0] + 1, before[1] + 1)
 
 
+def test_crypto_freehold_plan_98800_closes_with_verified_98799_50_fact(monkeypatch):
+    """Contract plan and verified Pay-In remain separate through final CRM close."""
+    uid = _setup(monkeypatch)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(type='Оплата недвижимости', kind='Фрихолд', payType='Крипта',
+                    postConv='ipps_swift', invoiceUsd=97500, ippsTariff='bank',
+                    amountUsdt=98800, serverTransferComplete=True,
+                    payerWallet='T' + '1' * 33,
+                    payinHashes=[{'hash': 'synthetic-verified-in', 'amount': 98799.5,
+                                  'net': 'TRC20', 'verified': True,
+                                  'from': 'T' + '1' * 33}],
+                    payTo={'purpose': 'Synthetic property'},
+                    mfPayout=[{'hash': 'demo:fh:98800', 'net': 'TRC20', 'amount': 98330}])
+        deal['pay']['invoicePaid'] = True
+        row.data = json.dumps(state)
+        db.commit()
+        _seed_evidence(db, row, state, uid)
+    finally:
+        db.close()
+    crm = {'deal_kind': 'mf_freehold', 'client_name': 'Synthetic T24',
+           'payin_method': 'crypto_direct', 'payin_amount_usdt': 98799.5,
+           'payin_tx_hashes': [{'hash': 'synthetic-verified-in',
+                                'network': 'trc20', 'amount_usdt': 98799.5}],
+           'realty_purpose': 'Synthetic property',
+           'invoice_amount_usd': 97500, 'transfer_fee_percent': .8,
+           'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 98330,
+           'payout_tx_hashes': [{'hash': 'demo:fh:98800',
+                                 'network': 'trc20', 'amount_usdt': 98330}]}
+    closed = _post(_client(uid), crm=crm)
+    assert closed.status_code == 201, closed.json
+    assert closed.json['deal']['payin_amount_usdt'] == 98799.5
+    assert closed.json['data']['deals'][0]['amountUsdt'] == 98800
+    assert closed.json['data']['deals'][0]['step'] == 'done'
+
+
 def test_rates_and_company_sent_match_persisted_board(monkeypatch):
     uid = _setup(monkeypatch)
     db = m.get_session()
@@ -1395,6 +1434,7 @@ def test_freehold_ipps_server_settlement_receipt_sent_then_close(monkeypatch, co
         deal.update(type='Оплата недвижимости', kind='Фрихолд', step='s24',
             postConv='ipps_swift', cnvId=1, walletId='synthetic',
             demoTransfers=True, invoiceUsd=39010.91, ippsTariff='bank',
+            amountUsdt=39533.77,
             payinParts=[{'incId': 1474, 'amountRub': 3953377}],
             payType='Крипта',
             payinHashes=[{'hash': 'synthetic-in', 'amount': 39533.77,
