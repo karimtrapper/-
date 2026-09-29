@@ -57,6 +57,9 @@ def parse_transfer(row):
     if (not tx_hash or not _address(sender) or not _address(recipient)
             or row.get('contract_address') != USDT_TRC20
             or row.get('net', 'trc20') != 'trc20'
+            or row.get('event_type') != 'Transfer'
+            or row.get('contractRet') != 'SUCCESS'
+            or type(row.get('status')) is not int or row['status'] != 0
             or row.get('confirmed') is not True
             or row.get('finalResult') != 'SUCCESS'
             or not _timestamp(row.get('block_ts'))

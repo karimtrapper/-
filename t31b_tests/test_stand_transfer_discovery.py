@@ -17,11 +17,13 @@ MARKER = 1_700_000_000_000
 
 
 def row(n=1, *, quant='1000000', ts=MARKER, sender=OTHER, recipient=WALLET,
-        contract=USDT_TRC20, confirmed=True, result='SUCCESS', net='trc20'):
+        contract=USDT_TRC20, confirmed=True, result='SUCCESS', net='trc20',
+        event_type='Transfer', contract_ret='SUCCESS', status=0):
     return {'transaction_id': f'{n:064x}', 'quant': quant, 'block_ts': ts,
             'from_address': sender, 'to_address': recipient,
             'contract_address': contract, 'confirmed': confirmed,
-            'finalResult': result, 'net': net}
+            'finalResult': result, 'net': net, 'event_type': event_type,
+            'contractRet': contract_ret, 'status': status}
 
 
 def query(**overrides):
@@ -76,9 +78,15 @@ def test_parser_rejects_bad_chain_facts_and_matches_direction():
     assert good['amount'] == Decimal('1')
     for change in ({'sender': 'bad'}, {'recipient': 'bad'},
                    {'contract': OTHER}, {'confirmed': False}, {'result': 'FAILED'},
+                   {'event_type': 'Approval'}, {'contract_ret': 'REVERT'},
+                   {'status': 1}, {'status': True}, {'status': '0'},
                    {'net': 'erc20'}, {'quant': '1.0'}, {'quant': 1.0},
                    {'ts': '1700000000000'}):
         assert parse_transfer(row(**change)) is None
+    for missing in ('event_type', 'contractRet', 'status'):
+        record = row()
+        record.pop(missing)
+        assert parse_transfer(record) is None
     assert parse_transfer({**row(), 'transaction_id': 'bad'}) is None
     assert match_transfer(good, **match_query())
     assert not match_transfer(good, **match_query(counterparty_addr=THIRD))
@@ -88,6 +96,19 @@ def test_parser_rejects_bad_chain_facts_and_matches_direction():
     assert match_transfer(outgoing, **match_query(direction='outgoing', counterparty_addr=OTHER))
     assert not match_transfer(outgoing, **match_query(direction='outgoing', counterparty_addr=THIRD))
     assert not match_transfer(outgoing, **match_query())
+
+
+def test_documented_tronscan_transfer_shape_with_synthetic_identity():
+    # Official GET /api/token_trc20/transfers response example uses these
+    # field names/types. Identity and amount are synthetic, no live hash used.
+    # https://docs.tronscan.org/en/api/transactions-and-transfers/token-trc20-transfers
+    record = {**row(7, quant='239215838235000'), 'block': 82608490,
+              'approval_amount': '0', 'tokenType2': 'trc20',
+              'tokenInfo': {'tokenId': USDT_TRC20, 'tokenDecimal': 6,
+                            'tokenType': 'trc20'}}
+    parsed = parse_transfer(record)
+    assert parsed is not None
+    assert parsed['amount'] == Decimal('239215838.235')
 
 
 def test_bad_rows_duplicate_and_claimed_hash():
