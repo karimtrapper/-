@@ -1299,21 +1299,40 @@ function payinWalletSet(id,wid){
   log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+(w.multisig?' · мультисиг':' · личный, отправляет владелец'));
   save();render();toast('Кошелёк прихода: '+w.name);
 }
+function payinWalletKey(w){
+  const net=w.net||'TRC-20';
+  const addr=String(w.addr||'').trim();
+  return net+'|'+(net==='ERC-20'?addr.toLowerCase():addr);
+}
+function payinWalletLabel(w){
+  const net=w.net||'TRC-20';
+  const name=String(w.name||'');
+  return name+(name.endsWith(' · '+net)?'':' · '+net);
+}
+function payinDirectoryWallets(){
+  const byAddress=new Map();
+  wallets().filter(x=>((x.net||'TRC-20')!=='ERC-20'||x.id==='teodor-erc')&&addrValid(x.addr,x.net||'TRC-20')).forEach(w=>{
+    const key=payinWalletKey(w);
+    if(!byAddress.has(key)||w.id==='grusha')byAddress.set(key,w);
+  });
+  return [...byAddress.values()];
+}
 /* Имя осталось от select — вызовы и логика payinWalletSet прежние, но выбор теперь
    карточками: название, владелец, адрес целиком и кто отправляет дальше (Карим, 27.09) */
 function payinWalletSelect(d,disabled){
   const locked=disabled||d.step!=='s11'||!!d.docPack||!!d.docVersion;
   const w=payinWallet(d), custom=d.payinCustom||{};
   const editing=S.payinCustomEdit===d.id;
-  const choices=wallets().filter(x=>((x.net||'TRC-20')!=='ERC-20'||x.id==='teodor-erc')&&addrValid(x.addr,x.net||'TRC-20'));
+  const choices=payinDirectoryWallets();
+  const selectedKey=w.id==='custom'?'':payinWalletKey(w);
   return `<div class="fg"><select class="fc" ${locked?'disabled':''} onchange="this.value==='custom'?(S.payinCustomEdit=${d.id},render()):payinWalletSet(${d.id},this.value)">
-    ${choices.map(x=>`<option value="${htmlText(x.id)}"${!editing&&w.id===x.id?' selected':''}>${htmlText(x.name)} · ${htmlText(x.net||'TRC-20')} · ${htmlText(x.addr)}</option>`).join('')}
+    ${choices.map(x=>`<option value="${htmlText(x.id)}"${!editing&&selectedKey===payinWalletKey(x)?' selected':''}>${htmlText(payinWalletLabel(x))} · ${htmlText(x.addr)}</option>`).join('')}
     <option value="custom"${w.id==='custom'||editing?' selected':''}>Свой кошелёк</option></select>
     ${(w.id==='custom'||editing)?`<div class="row"><select class="fc" id="pcn_${d.id}" ${locked?'disabled':''}>
       <option value="TRC-20"${custom.network==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${custom.network==='ERC-20'?' selected':''}>ERC-20</option></select>
       <input class="fc addr" id="pca_${d.id}" value="${htmlText(custom.addr||'')}" placeholder="Адрес выбранной сети" ${locked?'readonly':''}>
       ${locked?'':`<button class="btn btn-secondary btn-sm" onclick="payinCustomSet(${d.id})">Сохранить свой кошелёк</button>`}</div>`:''}
-    <p class="fh">${htmlText(w.name)} · ${htmlText(w.net||'TRC-20')} · ${htmlText(w.addr)}</p></div>`;
+    <p class="fh">${htmlText(payinWalletLabel(w))} · ${htmlText(w.addr)}</p></div>`;
 }
 function payinCustomSet(id){
   const d=deal(id), network=val('pcn_'+id), addr=String(val('pca_'+id)||'').trim();
