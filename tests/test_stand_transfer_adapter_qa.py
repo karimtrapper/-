@@ -71,3 +71,17 @@ def test_invalid_explorer_link_never_calls_network():
                              SENDER, RECIPIENT, 600, get=get, etherscan_key='fixture-key')
     assert result['status'] == 'mismatch'
     assert calls == []
+
+
+def test_stand_erc_ignores_caller_key_without_stand_key(monkeypatch):
+    import stand_egress
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.delenv('STAND_ETHERSCAN_API_KEY', raising=False)
+    monkeypatch.setenv('ETHERSCAN_API_KEY', 'synthetic-prod-key')
+    calls = []
+    monkeypatch.setattr(stand_egress, 'read_get',
+                        lambda *args, **kwargs: calls.append(args) or (200, {}, None))
+    result = verify_transfer(HASH, 'ERC-20', None, RECIPIENT, None,
+                             etherscan_key='synthetic-prod-key')
+    assert result['status'] == 'error'
+    assert calls == []

@@ -313,6 +313,11 @@ a.hash:hover{background:#BAE6FD}
 .wc-h{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:14px}
 .wc-o{font-size:12.5px;color:var(--text-muted)}
 .wc-f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--text-sec)}
+.payin-nets{margin:0 0 10px}
+.payin-card{flex-direction:row;flex-wrap:wrap;align-items:center;gap:5px 12px;padding-top:10px;padding-bottom:10px}
+.payin-card .addr{overflow-wrap:anywhere}
+.payin-card select{max-width:130px}
+.payin-card input.addr{position:static;flex:1 1 220px;min-width:150px;width:auto;height:auto;margin:0;cursor:text}
 @media(max-width:620px){.wcards{grid-template-columns:1fr}}
 /* Суть сделки у Теодора — одна строка на сделку пачки */
 .sumline{font-size:14px;line-height:1.6;padding:10px 12px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg);margin-bottom:8px;overflow-wrap:anywhere}
@@ -1274,6 +1279,7 @@ const WALLETS=[
   {id:'vitaly', name:'Кошелёк Груши (мультисиг)',owner:'компания', role:'findir', addr:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', multisig:true, note:'старый ID vitaly; кошелёк компании, две подписи'},
   {id:'grusha', name:'Кошелёк Груши (мультисиг)',owner:'компания',role:'findir', addr:'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ', multisig:true, note:'кошелёк компании, две подписи'},
   {id:'teodor', name:'Кошелёк Теодора',owner:'Теодор',  role:'teodor', addr:'TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p', multisig:false, note:'личный: Теодор отправляет сам и вносит хеш'},
+  {id:'teodor-erc', name:'Кошелёк Теодора · ERC-20',owner:'Теодор',role:'teodor',addr:'0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',net:'ERC-20',multisig:false,note:'личный: Теодор подписывает сам'},
   {id:'andrey', name:'Кошелёк Андрея', owner:'Андрей', role:'teodor', addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', multisig:false, note:'личный: Андрей подписывает сам и вносит хеш'}
 ];
 /* WALLETS — стартовый набор. Рабочий список живёт в состоянии, потому что кошельки
@@ -1284,6 +1290,7 @@ function wallets(){
   return S.wallets.map(w=>{
     const fixed=WALLETS.find(x=>x.id===w.id);
     if(!fixed)return w;
+    if(w.id==='teodor-erc')return Object.assign({},fixed);
     if(w.id==='grusha'&&w.addr==='TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn')return Object.assign({},w,fixed);
     if(w.id==='vitaly'&&w.addr==='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ')return Object.assign({},w,fixed);
     if(w.id==='andrey'&&w.addr==='адрес уточнить')return Object.assign({},w,fixed);
@@ -1295,19 +1302,26 @@ function walletById(id){return wallets().find(w=>w.id===id)||null;}
    ни в договоре, ни на ожидании прихода выбрать другой было нельзя (Карим, 25.09).
    От него же зависит дальше путь подписи: мультисиг — фин дир и Теодор,
    личный — отправляет владелец. */
-function payinWallet(d){return walletById(d.walletId)||walletById('grusha');}
+function payinWallet(d){
+  if(d.walletId==='custom')return {id:'custom',name:'Свой кошелёк',owner:'владелец уточняется',
+    addr:(d.payinCustom||{}).addr||'',net:(d.payinCustom||{}).network||'',multisig:null};
+  return walletById(d.walletId)||walletById('grusha');
+}
+function payinNet(d){return (payinWallet(d)||{}).net||'TRC-20';}
 function payToCrypto(w){
   if(!w) return '';
-  return 'USDT · сеть TRC-20 · '+(w.owner==='компания'?'кошелёк '+MF.name:'кошелёк')+': '+(w.addr||'');
+  return 'USDT '+(w.net||'TRC-20')+', '+(w.addr||'');
 }
 function payinWalletSet(id,wid){
   const d=deal(id), w=walletById(wid);
   if(!w){toast('Кошелёк не найден');return;}
-  if(d.incomeAmount||(d.payinHashes||[]).length){toast('Деньги уже пришли — кошелёк прихода менять поздно');render();return;}
+  if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');render();return;}
   const prev=payinWallet(d);
-  if(prev&&prev.id===w.id)return;
-  if(!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(w.addr||'')){toast('У «'+w.name+'» нет корректного адреса TRC-20 — уточните его в справочнике кошельков');render();return;}
+  if(prev&&prev.id===w.id){S.payinCustomEdit=null;render();return;}
+  if(!addrValid(w.addr,w.net||'TRC-20')){toast('У «'+w.name+'» нет корректных сети и адреса');render();return;}
   d.walletId=w.id;
+  delete d.payinCustom;
+  S.payinCustomEdit=null;
   /* Адрес в пакете обновляем, только пока пакет не собран и адрес не правили руками.
      Собранный договор клиент уже видел — его не переписываем молча, а на ожидании
      прихода предупреждаем, что в договоре другой адрес. */
@@ -1315,18 +1329,72 @@ function payinWalletSet(id,wid){
   log(d,'Кошелёк для оплаты USDT: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+(w.multisig?' · мультисиг':' · личный, отправляет владелец'));
   save();render();toast('Кошелёк прихода: '+w.name);
 }
-/* Имя осталось от select — вызовы и логика payinWalletSet прежние, но выбор теперь
-   карточками: название, владелец, адрес целиком и кто отправляет дальше (Карим, 27.09) */
-function payinWalletSelect(d,disabled){
-  return walletCards(d,payinWallet(d),'payinWalletSet',disabled,'pw_'+d.id,payinDirectoryWallets());
+function payinWalletKey(w){
+  const net=w.net||'TRC-20';
+  const addr=String(w.addr||'').trim();
+  return net+'|'+(net==='ERC-20'?addr.toLowerCase():addr);
 }
 function payinDirectoryWallets(){
   const byAddress=new Map();
-  wallets().filter(w=>addrValid(String(w.addr||'').trim(),'TRC-20')).forEach(w=>{
-    const key=String(w.addr).trim();
+  wallets().filter(x=>((x.net||'TRC-20')!=='ERC-20'||x.id==='teodor-erc')&&addrValid(x.addr,x.net||'TRC-20')).forEach(w=>{
+    const key=payinWalletKey(w);
     if(!byAddress.has(key)||w.id==='grusha')byAddress.set(key,w);
   });
   return [...byAddress.values()];
+}
+function payinNetworkSet(id,net){
+  if(net!=='TRC-20'&&net!=='ERC-20'){toast('Неизвестная сеть');return;}
+  const d=deal(id);
+  if(payinNet(d)===net&&S.payinCustomEdit!==id)return;
+  payinWalletSet(id,net==='ERC-20'?'teodor-erc':'grusha');
+}
+function payinCustomEdit(id){
+  const d=deal(id);
+  if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
+  S.payinCustomEdit=id;render();
+}
+/* Выбор на s11 показывает ровно тот адрес, который сохранён в сделке. */
+function payinWalletSelect(d,disabled){
+  const locked=disabled||d.step!=='s11'||!!d.docPack||!!d.docVersion;
+  const w=payinWallet(d), custom=d.payinCustom||{};
+  const editing=!locked&&S.payinCustomEdit===d.id;
+  const net=payinNet(d);
+  const choices=payinDirectoryWallets().filter(x=>(x.net||'TRC-20')===net);
+  const selectedKey=w.id==='custom'?'':payinWalletKey(w);
+  const customOn=w.id==='custom'||editing;
+  const customNet=custom.network||net;
+  const customAddr=custom.addr||'';
+  return `<div class="payin-choices">
+    ${locked?'':`<div class="row payin-nets" role="group" aria-label="Сеть USDT">
+      ${['TRC-20','ERC-20'].map(n=>`<button type="button" class="btn ${net===n?'btn-primary':'btn-outline'} btn-sm" aria-pressed="${net===n}" onclick="payinNetworkSet(${d.id},'${n}')">${n}</button>`).join('')}</div>`}
+    <div class="wcards" role="radiogroup" aria-label="Кошелёк, куда клиент платит USDT">
+      ${choices.map(x=>`<label class="wcard payin-card${!editing&&selectedKey===payinWalletKey(x)?' on':''}">
+        <input type="radio" name="payin_${d.id}" value="${htmlText(x.id)}"${!editing&&selectedKey===payinWalletKey(x)?' checked':''}${locked?' disabled':''} onchange="payinWalletSet(${d.id},this.value)">
+        <span class="addr">${htmlText(x.addr)}</span><span class="wc-o">${htmlText(x.net||'TRC-20')} · владелец: ${htmlText(x.owner||'—')}</span>
+      </label>`).join('')}
+      <div class="wcard payin-card${customOn?' on':''}">
+        <input type="radio" name="payin_${d.id}" value="custom" aria-label="Свой кошелёк"${customOn?' checked':''}${locked?' disabled':''} onchange="payinCustomEdit(${d.id})">
+        ${customOn?`<select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" ${locked?'disabled':''} onchange="payinCustomSet(${d.id})">
+          <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
+          <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="Свой кошелёк: адрес" ${locked?'readonly':''} onchange="payinCustomSet(${d.id})">`
+          :`<span class="addr">Свой кошелёк: адрес</span><span class="wc-o">${htmlText(net)} · владелец: уточняется</span>`}
+        ${customOn?'<span class="wc-o">владелец: уточняется</span>':''}
+      </div>
+    </div></div>`;
+}
+function payinCustomSet(id){
+  const d=deal(id), network=val('pcn_'+id), addr=String(val('pca_'+id)||'').trim();
+  if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
+  if(!addrValid(addr,network)){toast('Адрес не соответствует сети '+network+' — выбор не сохранён');return;}
+  const prev=payinWallet(d);
+  d.walletId='custom';d.payinCustom={network,addr};
+  if(d.docFields&&d.docFields.payTo===payToCrypto(prev))d.docFields.payTo=payToCrypto(payinWallet(d));
+  S.payinCustomEdit=null;save();render();toast('Свой кошелёк сохранён для этой сделки');
+}
+function payinS11Fields(d,fld){
+  if(!isCrypto(d))return fld('payTo','Куда платит клиент',{area:1});
+  return `<div class="fr"><div class="fg w2"><label class="fl">Кошелёк, куда клиент платит USDT</label>
+    ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}</div></div>`;
 }
 const ADDR_RE={'TRC-20':/^T[1-9A-HJ-NP-Za-km-z]{33}$/,'ERC-20':/^0x[0-9a-fA-F]{40}$/};
 function addrValid(a,net){const re=ADDR_RE[net||'TRC-20'];return !!re&&re.test(String(a||'').trim());}
@@ -2862,7 +2930,7 @@ function docFields(d){
   const out=Object.assign({},auto,saved);
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
-  if(isCrypto(d)) out.purpose='';
+  if(isCrypto(d)){out.purpose='';out.payTo=payToCrypto(payinWallet(d));}
   if(isCrypto(d)&&d.kind==='Фрихолд'){
     out.amountPay=d.amountUsdt==null?'':d.amountUsdt;
     out.rate='';
@@ -6469,12 +6537,14 @@ function rnd2(v){return Math.round(v*100)/100;}
 function payinForeign(d,h){
   if(h.senderOk) return false;
   if(h.unknownSender) return true;
-  return !!(h.from&&d.payerWallet&&h.from!==d.payerWallet);
+  return !!(h.from&&d.payerWallet&&
+    (payinNet(d)==='ERC-20'?h.from.toLowerCase()!==d.payerWallet.toLowerCase():h.from!==d.payerWallet));
 }
 function payinGot(d){return rnd2((d.payinHashes||[]).filter(h=>!payinForeign(d,h)).reduce((s,h)=>s+(Number(h.amount)||0),0));}
 function payerWalletSet(id,v){
   const d=deal(id), a=String(v||'').trim();
-  if(a&&!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(a)){toast('Нужен адрес TRC-20: начинается с T, 34 символа');render();return;}
+  const network=payinNet(d);
+  if(a&&!addrValid(a,network)){toast('Нужен адрес '+network+' правильного формата');render();return;}
   if((d.payerWallet||'')===a)return;
   log(d,a?'Кошелёк клиента: '+a:'Кошелёк клиента убран');
   d.payerWallet=a||null;
@@ -6567,8 +6637,9 @@ function payinShort(id){
   go(d,'s14m');toast('Недобор — укажите причину');
 }
 async function payinCheck(id){
+  const d=deal(id), network=payinNet(d);
   const ref=String(val('ph_'+id)||'').trim();
-  if(!ref){toast('Вставьте хеш или ссылку на Tronscan');return;}
+  if(!ref){toast('Вставьте хеш или ссылку на обозреватель сети '+network);return;}
   if(!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш из 64 символов или ссылка с ним');return;}
   const j=await standAction('/api/stand/payin/check',{dealId:id,hash:ref});
   if(j&&j.tx)await payinSettle(id,true);
@@ -6578,7 +6649,7 @@ function payinDemo(id,kind){
   if(d.step!=='s14')return;
   const amount=kind==='test'?1:kind==='short'?rnd2(left-10):left;
   if(!(amount>0)){toast('Всё уже пришло');return;}
-  const h={amount,network:'TRC20',hash:'demo:payin:'+id+':'+Date.now(),demo:true};
+  const h={amount,network:payinNet(d).replace('-',''),hash:'demo:payin:'+id+':'+Date.now(),demo:true};
   /* Кошелёк клиента известен — наблюдатель узнаёт перевод по адресу. Не известен
      или перевод с другого адреса — наблюдатель видит только «пришло на наш кошелёк». */
   if(kind!=='other'&&d.payerWallet) h.from=d.payerWallet; else h.unknownSender=true;
@@ -7289,10 +7360,7 @@ function stepCard(d){
       ${fld('agentReg','Рег. номер')}
       ${fld('agentDir','Подписант')}
     </div>
-    ${isCrypto(d)?`<div class="fr"><div class="fg w2"><label class="fl">Кошелёк, куда клиент платит USDT</label>
-      ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
-      <p class="fh">адрес подставится в «Куда платит клиент»; мультисиг — дальше подпись фин дира и Теодора, личный — отправляет владелец</p></div></div>`:''}
-    ${fld('payTo','Куда платит клиент',{area:1})}
+    ${payinS11Fields(d,fld)}
     ${(isCrypto(d)&&d.kind==='Фрихолд')?`<p class="fh">Оговорка о комиссии в приложении: ${htmlText(F.feeNote)}</p>`:''}
 
     ${d.docErr?`<div class="alert a-warn"><div><b>Не создано.</b> ${htmlText(d.docErr)}.</div></div>`
@@ -7340,9 +7408,9 @@ function stepCard(d){
     ${isCrypto(d)?`<div class="chtitle" style="margin-top:18px">Как ждём приход
       <span>наблюдатель узнаёт перевод клиента по кошельку, а не по сумме — клиент часто сначала шлёт тест</span></div>
     <div class="fr">
-      <div class="fg" style="grid-column:1/-1"><label class="fl">На наш кошелёк · сеть TRC-20</label>${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}</div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">На наш кошелёк · сеть ${htmlText(payinNet(d))}</label>${payinWalletSelect(d,true)}</div>
       <div class="fg w2"><label class="fl">С кошелька клиента<span class="rq">*</span></label>
-        <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="адрес кошелька клиента, сеть TRC-20" onchange="payerWalletSet(${d.id},this.value)" ${d.payerUnknown?'disabled':''}>
+        <input class="fc addr" id="pwc_${d.id}" value="${d.payerWallet||''}" placeholder="адрес кошелька клиента, сеть ${htmlText(payinNet(d))}" onchange="payerWalletSet(${d.id},this.value)" ${d.payerUnknown?'disabled':''}>
         <label class="fh" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="pwu_${d.id}" ${d.payerUnknown?'checked':''} onchange="payerUnknownSet(${d.id},this.checked)">
           Клиент не прислал адрес — привяжу перевод по хешу</label></div>
     </div>`:''}
@@ -7369,7 +7437,7 @@ function stepCard(d){
       const exp=ap.pay, got=payinGot(d), left=rnd2(exp-got), hs=d.payinHashes||[], w=payinWallet(d)||{}, pt=(d.docFields||{}).payTo;
       return `<div class="fr">
       <div class="fg"><label class="fl">Ждём</label><input class="fc num" readonly value="${money(exp,'USDT')}"></div>
-      <div class="fg" style="grid-column:1/-1"><label class="fl">Наш кошелёк · сеть TRC-20</label>${payinWalletSelect(d,!!(d.incomeAmount||hs.length))}</div>
+      <div class="fg" style="grid-column:1/-1"><label class="fl">Наш кошелёк · сеть ${htmlText(payinNet(d))}</label>${payinWalletSelect(d,true)}</div>
       <div class="fg"><label class="fl">Допуск</label><input class="fc" readonly value="± ${PAYIN_TOL} USDT"></div>
     </div>
     ${(w.addr&&pt&&!String(pt).includes(w.addr))?`<div class="alert a-warn"><div>В договоре у клиента другой адрес — ${String(pt).replace(/[<>&]/g,'')}. Сообщите клиенту новый кошелёк или пересоберите пакет, иначе деньги придут не туда, где их ждём.</div></div>`:''}
@@ -7389,9 +7457,9 @@ function stepCard(d){
           :`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="payinDrop(${d.id},${i})">убрать</button>`}</div>`;}).join('')}
       <span class="hsum">получено <b>${money(got,'USDT')}</b> из ${money(exp,'USDT')}${left>PAYIN_TOL?' · ждём ещё <b>'+money(left,'USDT')+'</b>':''}</span></div>`:''}
     <div class="fg" style="margin-top:12px"><label class="fl">Добавить перевод по хешу <span class="sub2">скинули с другого кошелька, перевод не подтянулся сам — каждый хеш отдельно</span></label>
-      <div class="row" style="margin-top:0;flex-wrap:nowrap"><input class="fc" id="ph_${d.id}" placeholder="64 символа или ссылка tronscan.org">
+      <div class="row" style="margin-top:0;flex-wrap:nowrap"><input class="fc" id="ph_${d.id}" placeholder="64 символа или ссылка ${payinNet(d)==='ERC-20'?'etherscan.io':'tronscan.org'}">
         <button class="btn btn-primary btn-sm" onclick="payinCheck(${d.id})">Проверить в сети</button></div>
-      <p class="fh">Сервер находит перевод в TRON и сам берёт сумму и отправителя; руками сумму не вводим. Засчитываются только переводы на наш кошелёк после того, как завели сделку. Если отправитель не кошелёк клиента — решите, засчитать ли.</p></div>
+      <p class="fh">Сервер проверяет перевод в выбранной сети и сам берёт сумму и отправителя; руками сумму не вводим. Засчитываются только переводы на наш кошелёк после того, как завели сделку. Если отправитель не кошелёк клиента — решите, засчитать ли.</p></div>
     <div class="sim"><div class="h">Вебхук · демо — приход на кошелёк (в проде его ловит наблюдатель за кошельком)</div>
       <p>${d.payerWallet?'Наблюдатель узнаёт переводы с кошелька клиента.':'Кошелёк клиента не указан — наблюдатель покажет перевод как неопознанный.'} Нажмите по кнопке на каждый перевод.</p>
       ${got>0?'':`<button class="btn btn-secondary btn-sm" onclick="payinDemo(${d.id},'test')">Тестовый перевод 1 USDT</button>`}

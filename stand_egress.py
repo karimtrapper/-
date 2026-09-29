@@ -935,14 +935,6 @@ _READ_CHANNELS = {
     },
 }
 
-# Решение Карима: на стенде из сетей только TRC-20. Эти op остаются в
-# _READ_CHANNELS (валидны сами по себе, прод их использует не через read_get,
-# а свой отдельный код вне стенда), но на самом уровне канала отказывают до
-# сети при STAND_MODE=1 — независимо от того, какой вызывающий код и с каким
-# ключом до них добрался (defense-in-depth поверх отказа в stand_transfers.py
-# и app.py, которые до read_get для этих op сейчас вообще не доходят).
-_STAND_DISABLED_OPS = {'eth_tx_receipt', 'eth_block_by_number'}
-
 _MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
 # Любой 3xx (300–399) — контролируемый отказ, не только «типичные» редиректы:
 # 300/304/305/306 тоже не должны молча идти дальше как обычный ответ.
@@ -1160,8 +1152,6 @@ def read_get(op, params=None, _base_url=None):
     spec = _READ_CHANNELS.get(op)
     if spec is None:
         return None, None, 'unknown_op'
-    if op in _STAND_DISABLED_OPS and os.environ.get('STAND_MODE') == '1':
-        return None, None, 'erc20_disabled_on_stand'
     if params is None:
         params = {}
     if not isinstance(params, dict):

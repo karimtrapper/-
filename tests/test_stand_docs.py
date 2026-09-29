@@ -250,6 +250,26 @@ def test_crypto_freehold_fee_note_in_generated_appendix(
                    'Источник курса и срок действия' in x for x in labels)
     saved = stand.get('/api/stand/state').json['data']['deals'][0]
     assert saved['docFields']['feeNote'] == CRYPTO_FREEHOLD_AGENT_FEE
+    assert saved['docFields']['payTo'] == 'USDT TRC-20, ' + GRUSHA
+
+
+def test_crypto_freehold_erc_document_uses_saved_canonical_receiver(stand):
+    addr = '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'
+    deal = _deal(944, kind='Фрихолд', payType='Крипта', curBase='usdt',
+                 walletId='teodor-erc', invoiceUsd=97500, amountUsdt=98800,
+                 ippsTariff='bank')
+    stand.put_board([deal], wallets=[{'id': 'teodor-erc', 'addr': '0x' + '3' * 40,
+                                      'net': 'ERC-20', 'owner': 'компания'}])
+    fields = _fields(kind='Фрихолд', amountThb='97500', amountPay='98800',
+                     rate='', payTo='USDT TRC-20, ' + GRUSHA, purpose='')
+    response = stand.post('/api/stand/docs/issue',
+                          json={'dealId': deal['id'], 'docFields': fields})
+    assert response.status_code == 200, response.json
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['payTo'] == 'USDT ERC-20, ' + addr
+    assert saved['docFields']['feeNote'] == CRYPTO_FREEHOLD_AGENT_FEE
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert addr in invoice and 'ERC-20' in invoice
 
 
 @pytest.mark.parametrize('kind,amount_thb,amount_pay,rate,expected', [
@@ -274,6 +294,8 @@ def test_other_property_fee_note_generated_output_unchanged(
     agent_cells = _agent_fee_cells(stand, appendix_id)
     assert agent_cells == [expected, docgen.DEFAULTS['fee_included']]
     assert CRYPTO_FREEHOLD_FEE not in appendix
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['payTo'] == RUB_PAY_TO
 
 
 @pytest.mark.parametrize('kind,pay_type,cur_base,amount_thb,amount_pay,rate', [
@@ -316,6 +338,43 @@ def test_crypto_freehold_reissue_keeps_issued_appendix_bytes(stand):
     assert _agent_fee_cells(stand, second_id) == [CRYPTO_FREEHOLD_AGENT_FEE] * 2
     assert stand.get(f'/api/docs/file/{first_id}').data == first_bytes
     assert stand.get('/api/stand/state').json['data']['deals'][0]['docFields']['feeNote'] == CRYPTO_FREEHOLD_AGENT_FEE
+
+
+@pytest.mark.parametrize('wallet_id,custom,expected_net,expected_addr', [
+    ('teodor-erc', None, 'ERC-20', '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9'),
+    ('custom', {'network': 'ERC-20', 'addr': '0x' + '2' * 40}, 'ERC-20', '0x' + '2' * 40),
+    ('custom', {'network': 'TRC-20', 'addr': GRUSHA}, 'TRC-20', GRUSHA),
+])
+def test_crypto_directory_and_custom_network_in_issued_document(
+        stand, wallet_id, custom, expected_net, expected_addr):
+    deal = _deal(104, payType='Крипта', curBase='usdt', walletId=wallet_id)
+    if custom:
+        deal['payinCustom'] = custom
+    # A stale/forged saved entry must not override the reviewed Teodor address.
+    stand.put_board([deal], wallets=[{'id': 'teodor-erc', 'addr': '0x' + '3' * 40,
+                                      'net': 'ERC-20', 'owner': 'компания'}])
+    fields = _fields(rate='32,5', amountPay='10 769,23', amountThb='350 000',
+                     payTo='USDT '+expected_net+', '+expected_addr, purpose='')
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 104, 'docFields': fields})
+    assert response.status_code == 200, response.json
+    pack = response.json['pack']
+    assert pack['wallet'] == expected_addr and expected_net in pack['network']
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert expected_addr in invoice and expected_net in invoice
+
+
+@pytest.mark.parametrize('network,address', [
+    ('ERC-20', GRUSHA), ('TRC-20', '0x' + '2' * 40), ('BEP-20', GRUSHA),
+])
+def test_crypto_invalid_custom_network_or_address_cannot_issue(stand, network, address):
+    deal = _deal(105, payType='Крипта', curBase='usdt', walletId='custom',
+                 payinCustom={'network': network, 'addr': address})
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 105,
+        'docFields': _fields(rate='32,5', amountPay='10 769,23', amountThb='350 000',
+                            payTo='USDT '+network+', '+address, purpose='')})
+    assert response.status_code == 400
+    assert 'payTo' in response.json['fields']
 
 
 def test_missing_fields_return_400_with_stand_labels(stand):

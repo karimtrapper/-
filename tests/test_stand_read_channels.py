@@ -1411,25 +1411,26 @@ def test_read_ctx_inactive_during_body_read_phase_of_slow_drip():
     assert result['active_seen_during_read'] is False
 
 
-# ───── Решение Карима: на стенде из сетей только TRC-20 (ERC-20 выключен) ───
+# ───── ERC receipt через контролируемый канал чтения ───
 
-def test_verify_transfer_erc20_disabled_on_stand_even_with_key_set():
+def test_verify_transfer_erc20_uses_read_channel_on_stand():
     result, proc = run_script('''
         import stand_egress
         stand_egress.install()
         import stand_transfers as st
 
-        def fail_if_called(op, params=None, _base_url=None):
-            raise AssertionError(f'read_get не должен вызываться для ERC-20: {op}')
-        stand_egress.read_get = fail_if_called
+        calls = []
+        def fake_read_get(op, params=None, _base_url=None):
+            calls.append(op)
+            return 200, {'result': None}, None
+        stand_egress.read_get = fake_read_get
 
         r = st.verify_transfer('0x' + 'a' * 64, 'erc20',
                                '0x' + 'c' * 40, '0x' + 'b' * 40, 100)
-        OUT({'status': r['status'], 'checkError': r.get('checkError')})
+        OUT({'status': r['status'], 'calls': calls})
     ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
     assert proc.returncode == 0, proc.stderr
-    assert result['status'] == 'error'
-    assert 'ERC-20' in (result['checkError'] or '')
+    assert result == {'status': 'pending', 'calls': ['eth_tx_receipt']}
 
 
 def test_verify_transfer_trc20_unaffected_by_erc20_disable():
@@ -1546,9 +1547,9 @@ def test_continuous_drip_still_respects_deadline_not_full_body():
     assert result['elapsed'] <= 0.5, f"должен завершиться у дедлайна, не ждать полную передачу (~4с): {result['elapsed']}"
 
 
-# ── Решение Карима: канал сам блокирует eth_* при STAND_MODE, до транспорта ─
+# ── Канал допускает только фиксированные eth_* read ops ──
 
-def test_read_get_blocks_eth_ops_at_channel_level_on_stand_no_network():
+def test_read_get_allows_eth_read_ops_on_stand():
     result, proc = run_script(_fake_get_server_script() + '''
         _, _, err_receipt = stand_egress.read_get('eth_tx_receipt', {
             'chainid': '1', 'module': 'proxy', 'action': 'eth_getTransactionReceipt',
@@ -1559,8 +1560,7 @@ def test_read_get_blocks_eth_ops_at_channel_level_on_stand_no_network():
         OUT({'err_receipt': err_receipt, 'err_block': err_block, 'hits': len(FakeChain.hits)})
     ''', extra_env={'STAND_ETHERSCAN_API_KEY': 'stand-fake-key'})
     assert proc.returncode == 0, proc.stderr
-    assert result == {'err_receipt': 'erc20_disabled_on_stand',
-                      'err_block': 'erc20_disabled_on_stand', 'hits': 0}
+    assert result == {'err_receipt': None, 'err_block': None, 'hits': 2}
 
 
 def test_read_get_eth_ops_work_normally_outside_stand_mode():

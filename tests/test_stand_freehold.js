@@ -542,7 +542,7 @@ console.log('test_stand_freehold.js: OK');
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
   vm.createContext(ctx);
-  vm.runInContext(functions(['freeholdFee','freeholdSend','freeholdLossFingerprint'])+'\n'+s11,ctx);
+  vm.runInContext(functions(['freeholdFee','freeholdSend','freeholdLossFingerprint','payinS11Fields'])+'\n'+s11,ctx);
   let rendered=ctx.renderS11();
   assert.match(rendered,/id="df_amountPay"[^>]*onchange="freeholdDocAmountSave/);
   assert.match(rendered,/Курс сделки<\/label><input class="fc" readonly value="—"/);
@@ -595,15 +595,16 @@ console.log('test_stand_freehold.js: OK');
   const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
   const vitaly={id:'vitaly',addr,name:'Старый',owner:'компания'};
   const grusha={id:'grusha',addr,name:'Груша',owner:'компания'};
-  const ctx=run(['payinWalletSelect','payinDirectoryWallets','walletCards','addrValid','walletSends'],
-    ['ADDR_RE'],{wallets:()=>[vitaly,grusha],payinWallet:()=>vitaly,
-      htmlText:x=>String(x),MF:{name:'MF'},copyAsk:()=>{}});
+  const ctx=run(['payinWalletSelect','payinDirectoryWallets','payinWalletKey','addrValid'],
+    ['ADDR_RE'],{S:{},wallets:()=>[vitaly,grusha],payinWallet:()=>vitaly,
+      payinNet:()=> 'TRC-20',htmlText:x=>String(x)});
   const choices=ctx.payinDirectoryWallets();
   assert.equal(choices.length,1);
   assert.equal(choices[0].id,'grusha');
-  const rendered=ctx.payinWalletSelect({id:9101},false);
-  assert.equal((rendered.match(/type="radio"/g)||[]).length,1);
+  const rendered=ctx.payinWalletSelect({id:9101,step:'s11'},false);
+  assert.equal((rendered.match(/type="radio"/g)||[]).length,2);
   assert.match(rendered,/value="grusha" checked/);
+  assert.doesNotMatch(rendered,/value="vitaly"/);
 }
 
 // Click-equivalent s11 issue: board PUT with the edited amount precedes docs POST.
