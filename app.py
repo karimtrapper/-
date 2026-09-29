@@ -7312,6 +7312,31 @@ def _stand_plain(number):
     return text
 
 
+def _stand_freehold_absurd_doc(deal, fields):
+    """P0 cap for crypto freehold: reject either board or submitted pay >= 10*S.
+
+    The legacy percent is a percent, not a multiplier. A value such as 100475
+    therefore implies an enormous payment even if the submitted form is tame.
+    """
+    from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+    if not (deal.get('kind') == 'Фрихолд' and
+            (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')):
+        return False
+    try:
+        x = Decimal(str(deal.get('invoiceUsd')))
+        tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[deal.get('ippsTariff') or 'bank']
+        s = (x * (1 + tariff) + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        if not s.is_finite() or s <= 0:
+            return False
+        amounts = [fields.get('amountPay'), deal.get('amountUsdt')]
+        if deal.get('freeholdMarkupPct') is not None:
+            amounts.append(s * (1 + Decimal(str(deal['freeholdMarkupPct'])) / 100))
+        return any(v is not None and Decimal(str(v)).is_finite() and
+                   Decimal(str(v)) >= 10 * s for v in amounts)
+    except (InvalidOperation, TypeError, ValueError, KeyError):
+        return False
+
+
 def _stand_doc_request(state, deal, F):
     """Сделка стенда → deal_type, fields и money для генератора документов.
 
@@ -7519,6 +7544,10 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        if _stand_freehold_absurd_doc(deal, F):
+            return jsonify({'success': False, 'error': 'freehold_amount_absurd',
+                            'detail': 'Сумма клиента не может быть 10 × IPPS и выше. Проверьте сумму сделки.',
+                            'version': _stand_row(db).version, 'data': state}), 409
         req = _stand_doc_request(state, deal, F)
         prior = dict(deal.get('docPack') or {})
     finally:

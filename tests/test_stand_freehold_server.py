@@ -222,6 +222,68 @@ def freehold_doc_deal(invoice_currency='usd', invoice_thb=None):
     return state, deal, F
 
 
+def test_crypto_freehold_absurd_legacy_and_submitted_doc_refused_atomically(monkeypatch):
+    """Synthetic #1472 pattern: 100475% cannot issue any AgreementDoc."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'admin')
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    appmod._stand_migrate()
+    state, deal, F = freehold_doc_deal()
+    deal.update(payType='Крипта', curBase='fhusd', invoiceUsd=97500,
+                freeholdMarkupPct=100475, amountUsdt=None)
+    F.update(amountThb='97500', amountPay='98330', rate='')
+    deal['docFields'] = dict(F)
+    db = appmod.get_session()
+    try:
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state)
+        row.version = (row.version or 0) + 1
+        db.commit()
+        before_docs = db.query(appmod.AgreementDoc).count()
+    finally:
+        db.close()
+    with appmod.app.test_client() as client:
+        db = appmod.get_session()
+        try:
+            user = appmod.AdminUser(username='freehold_absurd_test', role='admin',
+                                    password_hash=appmod.AdminUser.hash_password('test'))
+            db.add(user)
+            db.commit()
+            uid = user.id
+        finally:
+            db.close()
+        with client.session_transaction() as sess:
+            sess['user_id'] = uid
+        before = client.get('/api/stand/state').json
+        response = client.post('/api/stand/docs/issue', json={'dealId': 1})
+        assert response.status_code == 409
+        assert response.json['error'] == 'freehold_amount_absurd'
+        assert response.json['version'] == before['version']
+        assert response.json['data'] == before['data']
+        after = client.get('/api/stand/state').json
+        assert after == before
+        # A safe board with an absurd client-supplied form is blocked as well.
+        deal.pop('freeholdMarkupPct')
+        deal['amountUsdt'] = 98800
+        db = appmod.get_session()
+        try:
+            row = appmod._stand_row(db)
+            row.data = json.dumps(state)
+            row.version = (row.version or 0) + 1
+            db.commit()
+        finally:
+            db.close()
+        response = client.post('/api/stand/docs/issue',
+                               json={'dealId': 1, 'docFields': {'amountPay': '98895397.50'}})
+        assert response.status_code == 409
+        assert response.json['error'] == 'freehold_amount_absurd'
+    db = appmod.get_session()
+    try:
+        assert db.query(appmod.AgreementDoc).count() == before_docs
+    finally:
+        db.close()
+
+
 def test_doc_request_usd_invoice_marks_thb_block_not_applicable():
     """Инвойс в USD: rate_source/usd_equivalent/thb_credit_status/developer_confirmation
     получают «Н/П» (пакет годен для выдачи — поправка автора спеки, 28.09),
