@@ -498,6 +498,32 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(created.ippsTariff,'bank');
 }
 
+// Fee-note defaults apply only before crypto-freehold issuance.
+{
+  const approved='Вознаграждение агента включено в сумму платежа, отдельно не взимается';
+  const old='Комиссия включена в курс, отдельно не взимается';
+  const d={kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,code:'SYN',rates:{},docFields:null};
+  const ctx=run(['docFields'],[],{fake:()=>({}),approx:()=>({thb:97500,pay:98800}),
+    prevPassport:()=>({}),parsed:()=>'',isCrypto:x=>x.payType==='Крипта',
+    MF:{name:'MF',reg:'1',dir:'Director'},payToCrypto:()=>'',payinWallet:()=>null});
+  assert.equal(ctx.docFields(d).feeNote,approved);
+  d.docFields={feeNote:old};
+  assert.equal(ctx.docFields(d).feeNote,approved,'unissued saved old default is replaced');
+  d.docFields={feeNote:'Индивидуальная оговорка клиента'};
+  assert.equal(ctx.docFields(d).feeNote,'Индивидуальная оговорка клиента');
+  const saveCtx=run(['docFieldSave'],['DOC_SRC'],{deal:()=>d,docFields:()=>ctx.docFields(d),
+    document:{getElementById:()=>null}});
+  saveCtx.docFieldSave(9101);
+  assert.equal(d.docFields.feeNote,'Индивидуальная оговорка клиента',
+    'hidden s11 field must retain a saved manual override');
+  d.docFields={feeNote:old};d.docPack={version:1};d.docVersion=1;
+  assert.equal(ctx.docFields(d).feeNote,old,'issued package is not silently rewritten');
+  d.docPack=null;d.docVersion=0;d.payType='По реквизитам';d.docFields=null;
+  assert.equal(ctx.docFields(d).feeNote,old,'RUB freehold keeps previous default');
+  d.kind='Лизхолд';d.payType='Крипта';
+  assert.equal(ctx.docFields(d).feeNote,old,'crypto leasehold keeps previous default');
+}
+
 // Executable s11 template: legacy percent-only deal has no invented loss,
 // and the amount field is editable before the first document package.
 {
@@ -508,8 +534,9 @@ console.log('test_stand_freehold.js: OK');
   const d={id:9101,kind:'Фрихолд',payType:'Крипта',invoiceUsd:97500,
     ippsTariff:'bank',amountUsdt:null,freeholdMarkupPct:100475,docs:{},docMiss:[]};
   const ctx={d,ap:{sign:'USDT'},S:{},DOC_SRC:{},DOC_LABEL:{},
-    docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500'}),
-    docParseLine:()=>'',isCrypto:()=>true,ippsTariff:()=>({percent:0.8,fixed:50}),
+    docFields:()=>({amountPay:d.amountUsdt==null?'':String(d.amountUsdt),amountThb:'97500',
+      feeNote:'Вознаграждение агента включено в сумму платежа, отдельно не взимается'}),
+    docParseLine:()=>'',isCrypto:x=>x.payType==='Крипта',ippsTariff:()=>({percent:0.8,fixed:50}),
     usd:x=>String(x),num:x=>x==null||x===''?null:Number(x),cleanNum:x=>String(x).replace(/\s/g,''),
     docReq:()=>[],fioHint:()=>'',payinWalletSelect:()=>'',htmlText:x=>String(x),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`};
@@ -520,12 +547,21 @@ console.log('test_stand_freehold.js: OK');
   assert.match(rendered,/Курс сделки<\/label><input class="fc" readonly value="—"/);
   assert.match(rendered,/В IPPS уйдёт, USDT/);
   assert.match(rendered,/Наш доход, USDT/);
+  assert.match(rendered,/ГЛАВНОЕ · СУММА<\/div>/);
+  assert.doesNotMatch(rendered,/ГЛАВНОЕ · СУММА И КУРС|Курс зафиксирован|id="df_rateAt"/);
+  assert.match(rendered,/Оговорка о комиссии в приложении: Вознаграждение агента включено в сумму платежа, отдельно не взимается/);
+  assert.doesNotMatch(rendered,/id="df_feeNote"|<textarea[^>]*id="df_feeNote"/);
   assert.match(rendered,/Укажите сумму клиента/);
   assert.doesNotMatch(rendered,/Сделка в минус|Подтвердить сделку в минус|-98330\.00/);
   d.amountUsdt=98800;
   rendered=ctx.renderS11();
   assert.match(rendered,/value="470\.00"/);
   assert.match(rendered,/id="df_amountPay"[^>]*value="98 ?800"|id="df_amountPay"[^>]*value="98 800"/);
+  d.payType='По реквизитам';
+  rendered=ctx.renderS11();
+  assert.match(rendered,/ГЛАВНОЕ · СУММА И КУРС/);
+  assert.match(rendered,/Курс зафиксирован|id="df_rateAt"/);
+  assert.doesNotMatch(rendered,/id="df_feeNote"|<textarea[^>]*id="df_feeNote"/);
 }
 
 // Manager card shows the saved plan and verified fact, without rate promises.
@@ -533,18 +569,24 @@ console.log('test_stand_freehold.js: OK');
   const d={id:9101,client:'Synthetic',type:'Оплата недвижимости',kind:'Фрихолд',
     payType:'Крипта',amountUsdt:98800,rates:{},docs:{},log:[],pay:{},payout:{},
     step:'s11',source:'test'};
-  const ctx=run(['overview'],[],{S:{role:'manager'},ROLES:{},SOURCES:{test:'Тест'},
+  const ctx=run(['overview','money'],[],{S:{role:'manager'},ROLES:{},SOURCES:{test:'Тест'},
     approx:()=>({thb:97500,pay:98800,sign:'USDT',thbSign:'$'}),
     fake:()=>({}),econ:()=>({parts:[{fact:98799.5}],ready:false,multi:false,payin:98799.5}),
-    docListRows:()=>({issued:[],client:[]}),isCrypto:()=>true,
+    docListRows:()=>({issued:[],client:[]}),isCrypto:x=>x.payType==='Крипта',
     apMoney:(ap,k)=>k==='pay'?ap.pay+' USDT':ap.thb+' $',
-    money:(v,s)=>v+' '+s,usd:v=>v+' USDT',stepTitle:()=>'',refSignal:()=>null,
+    usd:v=>'$'+v,stepTitle:()=>'',refSignal:()=>null,
     cnvRow:()=>'',fillNote:()=>'',fixCard:()=>'',signedBlock:()=>''});
-  const rendered=ctx.overview(d,{},true,{i:1,n:10},'manager');
+  const rendered=ctx.overview(d,{},true,{i:1,n:10},'manager').replace(/\u00a0/g,' ');
   assert.match(rendered,/Клиент отправит<\/th><td>98800 USDT/);
-  assert.match(rendered,/План клиента<\/th><td>98800 USDT/);
-  assert.match(rendered,/Фактически пришло<\/th><td>98799\.5 USDT/);
+  assert.match(rendered,/План клиента<\/th><td>98 800 USDT/);
+  assert.match(rendered,/Фактически пришло<\/th><td>98 799,5 USDT/);
+  assert.doesNotMatch(rendered,/План клиента<\/th><td>\$|Фактически пришло<\/th><td>\$/);
+  assert.match(rendered,/Фактическую прибыль покажем после подтверждения прихода USDT по хешам/);
+  assert.doesNotMatch(rendered,/курс партнёра USDT→THB и приход/);
   assert.doesNotMatch(rendered,/Курс клиенту — ещё не проставлен|суммы подтверждены курсом|98895397/);
+  d.payType='По реквизитам';
+  const rub=ctx.overview(d,{},true,{i:1,n:10},'manager');
+  assert.match(rub,/курс партнёра USDT→THB и приход/);
 }
 
 // Duplicate stage wallet address appears once, with legacy vitaly still selected.

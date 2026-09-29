@@ -17,6 +17,7 @@ RUB_PAY_TO = ('ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 ·
               'р/с 40807810938720000286 · к/с 30101810400000000225 · БИК 044525225')
 PURPOSE = 'Оплата по агентскому договору № SD-9001, НДС не облагается'
 GRUSHA = 'TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ'
+CRYPTO_FREEHOLD_FEE = 'Вознаграждение агента включено в сумму платежа, отдельно не взимается'
 
 
 def _fields(**over):
@@ -98,6 +99,14 @@ def _text(client, doc_id):
         for row in t.rows:
             parts += [c.text for c in row.cells]
     return '\n'.join(parts)
+
+
+def _agent_fee_cells(client, doc_id):
+    response = client.get(f'/api/docs/file/{doc_id}')
+    assert response.status_code == 200
+    doc = Document(io.BytesIO(response.data))
+    return [row.cells[-1].text for table in doc.tables for row in table.rows
+            if row.cells and 'Комиссия Агента' in row.cells[0].text]
 
 
 @pytest.mark.parametrize('currency,expected', [('thb', 'THB 1500000'), ('usd', 'USD 45000')])
@@ -191,6 +200,63 @@ def test_crypto_usdt_thb_uses_wallet_and_no_purpose(stand):
     assert pack['wallet'] == GRUSHA and 'TRC-20' in pack['network'] and pack['purpose'] == ''
     invoice = _text(stand, r.json['issued'][-1]['docId'])
     assert GRUSHA in invoice and '10 769.23' in invoice
+
+
+@pytest.mark.parametrize('pay_type,cur_base,saved_fee,submitted_fee,expected_fee', [
+    ('Крипта', 'usdt', 'Комиссия включена в курс, отдельно не взимается',
+     'Комиссия включена в курс, отдельно не взимается', CRYPTO_FREEHOLD_FEE),
+    (None, 'usdt', 'Комиссия включена в курс, отдельно не взимается',
+     'Комиссия включена в курс, отдельно не взимается', CRYPTO_FREEHOLD_FEE),
+    ('Крипта', 'usdt', 'Индивидуальная оговорка клиента',
+     'Индивидуальная оговорка клиента', 'Индивидуальная оговорка клиента'),
+    ('Крипта', 'usdt', 'Индивидуальная оговорка клиента',
+     'Комиссия включена в курс, отдельно не взимается', 'Индивидуальная оговорка клиента'),
+])
+def test_crypto_freehold_fee_note_in_generated_appendix(
+        stand, pay_type, cur_base, saved_fee, submitted_fee, expected_fee):
+    deal = _deal(940, kind='Фрихолд', payType=pay_type, curBase=cur_base,
+                 invoiceUsd=97500, amountUsdt=98800, ippsTariff='bank',
+                 docFields={'feeNote': saved_fee})
+    stand.put_board([deal], wallets=[{'id': 'grusha', 'addr': GRUSHA}])
+    fields = _fields(kind='Фрихолд', amountThb='97500', amountPay='98800', rate='',
+                     payTo='USDT · сеть TRC-20 · кошелёк: ' + GRUSHA,
+                     purpose='', feeNote=submitted_fee)
+    response = stand.post('/api/stand/docs/issue',
+                          json={'dealId': deal['id'], 'docFields': fields})
+    assert response.status_code == 200, response.json
+    appendix_id = next(x['docId'] for x in response.json['issued'] if x['kind'] == 'app')
+    appendix = _text(stand, appendix_id)
+    assert expected_fee in appendix
+    assert _agent_fee_cells(stand, appendix_id) == [expected_fee, expected_fee]
+    if expected_fee == CRYPTO_FREEHOLD_FEE:
+        assert 'Комиссия включена в курс, отдельно не взимается' not in appendix
+        assert appendix.count(CRYPTO_FREEHOLD_FEE) == 2
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['feeNote'] == expected_fee
+
+
+@pytest.mark.parametrize('kind,amount_thb,amount_pay,rate,expected', [
+    ('Фрихолд', '45000', '3710389.50', '82.4531',
+     'Включена в согласованную сумму pay-in; отдельно не взимается / '
+     'Included in the agreed pay-in amount; no separate charge'),
+    ('Лизхолд', '350000', '914795', '2.6137',
+     'Включена в курс 2.6137 RUB/THB, отдельно не взимается / '
+     'Included in the rate of 2.6137 RUB/THB, not charged separately'),
+])
+def test_other_property_fee_note_generated_output_unchanged(
+        stand, kind, amount_thb, amount_pay, rate, expected):
+    deal = _deal(941, kind=kind, invoiceUsd=45000 if kind == 'Фрихолд' else None,
+                 ippsTariff='bank' if kind == 'Фрихолд' else None)
+    stand.put_board([deal])
+    fields = _fields(kind=kind, amountThb=amount_thb, amountPay=amount_pay, rate=rate)
+    response = stand.post('/api/stand/docs/issue',
+                          json={'dealId': deal['id'], 'docFields': fields})
+    assert response.status_code == 200, response.json
+    appendix_id = next(x['docId'] for x in response.json['issued'] if x['kind'] == 'app')
+    appendix = _text(stand, appendix_id)
+    agent_cells = _agent_fee_cells(stand, appendix_id)
+    assert agent_cells == [expected, docgen.DEFAULTS['fee_included']]
+    assert CRYPTO_FREEHOLD_FEE not in appendix
 
 
 def test_missing_fields_return_400_with_stand_labels(stand):

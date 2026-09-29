@@ -464,7 +464,9 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
     # вовсе — там «в согласованной сумме pay-in».
     if deal_type == 'freehold':
         pending = money.get('_stand_thb_pending')
-        default_fee = ('Включена в согласованную сумму pay-in; отдельно не взимается / '
+        default_fee = ('Вознаграждение агента включено в сумму платежа, отдельно не взимается'
+                       if incoming == 'USDT' else
+                       'Включена в согласованную сумму pay-in; отдельно не взимается / '
                        'Included in the agreed pay-in amount; no separate charge')
     else:
         quote = doc_routes.rate_text(money, deal_type)
@@ -494,10 +496,14 @@ def _fill_appendix1(doc, f: dict, deal_type: str, money: dict, number: str, when
                f'{days} business day(s) after Clause 2.2 is met')
     _set_field(t, 'Контакт для подтверждения', DEFAULTS['confirmation_contact'])
 
-    # итоговый блок: обе комиссии по умолчанию вшиты в курс
+    # Итоговый блок: строка Agent повторяет основную оговорку крипто-фрихолда;
+    # остальные маршруты сохраняют прежний шаблон.
     rows = [r for r in t.rows if 'Комиссия Агента' in r.cells[0].text]
     if len(rows) > 1:
-        _set_cell(rows[-1].cells[-1], DEFAULTS['fee_included'])
+        # Крипто-фрихолд не имеет клиентского курса: обе строки Agent должны
+        # содержать одну утверждённую оговорку, включая итоговый блок.
+        _set_cell(rows[-1].cells[-1], fee_note if deal_type == 'freehold' and incoming == 'USDT'
+                  else DEFAULTS['fee_included'])
     _set_field(t, 'Комиссия платёжного партнёра', DEFAULTS['fee_included'])
 
     if deal_type == 'freehold':

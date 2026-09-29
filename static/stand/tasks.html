@@ -2825,6 +2825,10 @@ function prevPassport(d){
 function docFields(d){
   const F=fake(d), ap=approx(d);
   const saved=d.docFields||{}, pp=prevPassport(d);
+  const cryptoFreehold=isCrypto(d)&&d.kind==='Фрихолд';
+  const oldFeeNote='Комиссия включена в курс, отдельно не взимается';
+  const cryptoFeeNote='Вознаграждение агента включено в сумму платежа, отдельно не взимается';
+  const unissued=!d.docPack&&!d.docVersion;
   const auto={
     /* из паспорта */
     /* ФИО — только из паспорта или из прошлой сделки знакомого клиента. Имя из заявки
@@ -2853,10 +2857,11 @@ function docFields(d){
     /* Назначение перевода клиента в Сбер пишет операционист в договоре — шаблон он правит,
        менеджер потом копирует готовое. На сборе документов его ещё никто не знает (Карим, 27.09) */
     purpose:isCrypto(d)?'':('Оплата по агентскому договору № '+d.code+', НДС не облагается'),
-    feeNote:'Комиссия включена в курс, отдельно не взимается',
+    feeNote:cryptoFreehold&&unissued?cryptoFeeNote:oldFeeNote,
     validTill:''
   };
   const out=Object.assign({},auto,saved);
+  if(cryptoFreehold&&unissued&&out.feeNote===oldFeeNote)out.feeNote=cryptoFeeNote;
   if(isCrypto(d)) out.purpose='';
   if(isCrypto(d)&&d.kind==='Фрихолд'){
     out.amountPay=d.amountUsdt==null?'':d.amountUsdt;
@@ -2913,6 +2918,9 @@ function docFieldSave(id){
     const a=String(cur[k]==null?'':cur[k]), n=t=>{t=t.replace(/[\s\u00a0]/g,'').replace(',','.');return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):null;};
     if(n(a)!=null&&n(v)!=null?n(a)!==n(v):a!==v) ch.push(k);
   });
+  // Оговорка не редактируется на s11: сохраним старую ручную правку либо
+  // актуальный дефолт для невыпущенного крипто-фрихолда.
+  if(cur.feeNote!=null)out.feeNote=cur.feeNote;
   d.docFields=out;
   return ch;
 }
@@ -4304,7 +4312,7 @@ function overview(d,st,mine,p,wh){
     <div class="sec pi">PAY-IN</div>
     <table class="tbl">
       ${row('Метод',d.payType||'—')}
-      ${isCrypto(d)&&d.kind==='Фрихолд'?row('План клиента',usd(d.amountUsdt),'договорная сумма')+row('Фактически пришло',E.parts[0].fact!=null?usd(E.parts[0].fact):'ожидается','по подтверждённым хешам'):isCrypto(d)?row('Сумма USDT',usd(E.parts[0].usdt),E.parts[0].fact!=null?'по хэшу — факт':'со слов клиента, хэша ещё нет'):row('Сумма RUB',money(d.incomeAmount||d.amountRub,'₽'),
+      ${isCrypto(d)&&d.kind==='Фрихолд'?row('План клиента',d.amountUsdt==null?'укажите сумму':money(d.amountUsdt,'USDT'),'договорная сумма')+row('Фактически пришло',E.parts[0].fact!=null?money(E.parts[0].fact,'USDT'):'ожидается','по подтверждённым хешам'):isCrypto(d)?row('Сумма USDT',usd(E.parts[0].usdt),E.parts[0].fact!=null?'по хэшу — факт':'со слов клиента, хэша ещё нет'):row('Сумма RUB',money(d.incomeAmount||d.amountRub,'₽'),
         E.multi?'это первый канал, остальные ниже':(d.incomeAmount?(d.incomeAmount===ap.pay?'сошлось с ожидаемым':'разошлось с ожидаемым'):'ожидается'))}
       ${isCrypto(d)||!d.rates.broker?'':row('Курс к USDT',d.rates.broker)}
       ${isCrypto(d)?'':(E.parts[0].fact!=null
@@ -4409,7 +4417,9 @@ function overview(d,st,mine,p,wh){
     ${E.pockets==='два'?`<p style="font-size:12.5px;color:var(--green-darker);margin-top:4px">= ${money(E.feeThb,'฿')} на MF Corp + ${usd(E.crypto-E.agentsTotal)} на кошельке</p>`:''}
     ${d.notes?`<p style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light);font-size:13.5px"><b>Заметки:</b> ${d.notes}</p>`:''}
   </div>`:`<div class="card" style="margin-bottom:16px"><div class="sec fin">ФИНАНСЫ</div>
-    <div class="alert a-info" style="margin:0"><div>Прибыль посчитается, когда будут известны ${d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход'}. ${isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.'}</div></div></div>`}
+    <div class="alert a-info" style="margin:0"><div>${d.kind==='Фрихолд'&&isCrypto(d)
+      ?'Плановый доход известен из суммы клиента и отправки в IPPS. Фактическую прибыль покажем после подтверждения прихода USDT по хешам и расходов на оплату застройщика.'
+      :'Прибыль посчитается, когда будут известны '+(d.type==='Оплата недвижимости'?'курс партнёра USDT→THB и приход':'себестоимость выдачи и приход')+'. '+(isCrypto(d)?'':'Для рублёвой сделки нужен ещё курс обмена у брокера.')}</div></div></div>`}
 
   ${(docN||(S.role==='manager'&&signedBlock(d)))?`<div class="card" style="margin-bottom:16px"><div class="card-title">Документы<span class="sub">${docN} шт.</span></div>
     <div class="list">${docRows.issued.join('')}${docRows.client.join('')}</div>
@@ -7213,7 +7223,7 @@ function stepCard(d){
     ${d.partial?`<div class="alert a-warn"><div>Частичная оплата${d.partNo?' · '+d.partNo:''} по инвойсу на ${money(d.invoiceTotal,d.kind==='Фрихолд'?'$':'฿')} — в приложении указывается и платёж, и остаток.</div></div>`:''}
 
     <div class="keybox">
-      <div class="sec po" style="margin:0 0 10px">ГЛАВНОЕ · СУММА И КУРС</div>
+      <div class="sec po" style="margin:0 0 10px">${isCrypto(d)&&d.kind==='Фрихолд'?'ГЛАВНОЕ · СУММА':'ГЛАВНОЕ · СУММА И КУРС'}</div>
       <div class="fr">
         ${fld('amountThb',d.kind==='Фрихолд'?'Инвойс застройщику, $':'Сумма инвойса к оплате, ฿',{req:1,num:1,big:1,money:1,ro:d.kind==='Фрихолд'})}
         ${(isCrypto(d)&&d.kind==='Фрихолд')
@@ -7258,7 +7268,7 @@ function stepCard(d){
 
     <div class="sec po" style="margin:18px 0 10px">ДЕНЬГИ · ОСТАЛЬНОЕ</div>
     <div class="fr">
-      ${fld('rateAt','Курс зафиксирован',{ph:'дата и время'})}
+      ${isCrypto(d)&&d.kind==='Фрихолд'?'':fld('rateAt','Курс зафиксирован',{ph:'дата и время'})}
       ${fld('invoiceTotal','Инвойс целиком, '+(d.kind==='Фрихолд'?'$':'฿'),{num:1,money:1})}
       ${fld('partNo','Какой это платёж',{ph:'номер платежа из скольких'})}
     </div>
@@ -7273,7 +7283,7 @@ function stepCard(d){
       ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}
       <p class="fh">адрес подставится в «Куда платит клиент»; мультисиг — дальше подпись фин дира и Теодора, личный — отправляет владелец</p></div></div>`:''}
     ${fld('payTo','Куда платит клиент',{area:1})}
-    ${fld('feeNote','Оговорка о комиссии',{area:1})}
+    ${(isCrypto(d)&&d.kind==='Фрихолд')?`<p class="fh">Оговорка о комиссии в приложении: ${htmlText(F.feeNote)}</p>`:''}
 
     ${d.docErr?`<div class="alert a-warn"><div><b>Не создано.</b> ${htmlText(d.docErr)}.</div></div>`
       :(d.docMiss||[]).length?`<div class="alert a-warn"><div><b>Не создано:</b> не заполнено — ${d.docMiss.map(k=>DOC_LABEL[k]||k).join(', ')}. Поля отмечены красным выше.</div></div>`:''}

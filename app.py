@@ -7658,6 +7658,18 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        # Старый автотекст о курсе недопустим для крипто-фрихолда без курса.
+        # Только ещё не выпущенный пакет получает утверждённый дефолт;
+        # ручную оговорку и уже выпущенный пакет сохраняем дословно.
+        if (deal.get('kind') == 'Фрихолд'
+                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
+                and not deal.get('docPack') and not deal.get('docVersion')):
+            old_fee = 'Комиссия включена в курс, отдельно не взимается'
+            saved_fee = str((deal.get('docFields') or {}).get('feeNote') or '').strip()
+            incoming_fee = str(F.get('feeNote') or '').strip()
+            if incoming_fee in ('', old_fee):
+                F['feeNote'] = (saved_fee if saved_fee and saved_fee != old_fee else
+                                'Вознаграждение агента включено в сумму платежа, отдельно не взимается')
         if _stand_freehold_absurd_doc(deal, F):
             return jsonify({'success': False, 'error': 'freehold_amount_absurd',
                             'detail': 'Сумма клиента не может быть 10 × IPPS и выше. Проверьте сумму сделки.',
@@ -7666,7 +7678,8 @@ def stand_docs_issue():
         if plan_problem:
             return jsonify({'success': False, 'error': plan_problem,
                             'version': _stand_row(db).version, 'data': state}), 409
-        if (deal.get('kind') == 'Фрихолд' and deal.get('payType') == 'Крипта'
+        if (deal.get('kind') == 'Фрихолд'
+                and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt')
                 and _stand_num(F.get('amountPay')) != _amount(deal.get('amountUsdt'))):
             return jsonify({'success': False, 'error': 'freehold_contract_amount_mismatch',
                             'version': _stand_row(db).version, 'data': state}), 409
