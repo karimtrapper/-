@@ -7325,16 +7325,18 @@ def _stand_freehold_absurd_doc(deal, fields):
     try:
         x = Decimal(str(deal.get('invoiceUsd')))
         tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[deal.get('ippsTariff') or 'bank']
-        s = (x * (1 + tariff) + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        if not s.is_finite() or s <= 0:
-            return False
+        if not x.is_finite() or x <= 0:
+            return True
+        # Match tasks.html freeholdFee then freeholdSend: round fee before S.
+        fee = (x * tariff + 50).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        s = (x + fee).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         amounts = [fields.get('amountPay'), deal.get('amountUsdt')]
         if deal.get('freeholdMarkupPct') is not None:
             amounts.append(s * (1 + Decimal(str(deal['freeholdMarkupPct'])) / 100))
-        return any(v is not None and Decimal(str(v)).is_finite() and
-                   Decimal(str(v)) >= 10 * s for v in amounts)
+        return any(v is not None and (not Decimal(str(v)).is_finite() or
+                   Decimal(str(v)) >= 10 * s) for v in amounts)
     except (InvalidOperation, TypeError, ValueError, KeyError):
-        return False
+        return True
 
 
 def _stand_doc_request(state, deal, F):

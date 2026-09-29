@@ -242,6 +242,7 @@ def test_crypto_freehold_absurd_legacy_and_submitted_doc_refused_atomically(monk
         before_docs = db.query(appmod.AgreementDoc).count()
     finally:
         db.close()
+
     with appmod.app.test_client() as client:
         db = appmod.get_session()
         try:
@@ -282,6 +283,30 @@ def test_crypto_freehold_absurd_legacy_and_submitted_doc_refused_atomically(monk
         assert db.query(appmod.AgreementDoc).count() == before_docs
     finally:
         db.close()
+
+
+@pytest.mark.parametrize('field,value', [
+    ('freeholdMarkupPct', 'NaN'), ('freeholdMarkupPct', 'Infinity'),
+    ('freeholdMarkupPct', 'bad'), ('amountUsdt', 'NaN'),
+    ('amountUsdt', 'Infinity'), ('amountUsdt', 'bad'),
+    ('ippsTariff', 'bad'),
+])
+def test_crypto_freehold_doc_guard_fails_closed_on_malformed_board(field, value):
+    _, deal, F = freehold_doc_deal()
+    deal.update(payType='Крипта', invoiceUsd=97500, ippsTariff='bank',
+                amountUsdt=98800)
+    F['amountPay'] = '98800'
+    deal[field] = value
+    assert appmod._stand_freehold_absurd_doc(deal, F)
+
+
+def test_crypto_freehold_doc_guard_matches_fee_then_send_rounding():
+    _, deal, F = freehold_doc_deal()
+    deal.update(payType='Крипта', invoiceUsd='100.625', ippsTariff='bank',
+                amountUsdt=None, freeholdMarkupPct=None)
+    # 0.8% of 100.625 + 50 rounds to 50.81; S is 151.44.
+    F['amountPay'] = '1514.40'
+    assert appmod._stand_freehold_absurd_doc(deal, F)
 
 
 def test_doc_request_usd_invoice_marks_thb_block_not_applicable():
