@@ -16,11 +16,14 @@ const src=fs.readFileSync('static/stand/tasks.html','utf8');
 const broker=src.slice(src.indexOf('const BROKER_FEE='),
                        src.indexOf('/* Откуда физически',src.indexOf('const BROKER_FEE=')));
 const parts=src.slice(src.indexOf('function hashSum('),src.indexOf('function econ('));
-const field=src.match(/payin_amount_usdt:r2\(payinParts\(d\)\[0\]\?\.usdt(?:\?\?null)?\)/);
-if(!field)throw Error('T17 CRM serializer field expression changed');
-const box={cases:JSON.parse(process.argv[1]), field:field[0], result:null};
+const payloadStart=src.indexOf('const E=econ(d)',src.indexOf('function crmPayload('));
+const serializer=src.slice(payloadStart,src.indexOf('payin_rate_rub_usdt:',payloadStart));
+const field=serializer.match(/^\s*(payin_amount_usdt:r2\([^\n]+\)),\s*$/m);
+if(!field)throw Error('CRM serializer payin_amount_usdt expression missing');
+const box={cases:JSON.parse(process.argv[1]), field:field[1], result:null, crypto:null};
 vm.runInNewContext(`function num(x){return Number(x)||0}
 function isCrypto(d){return d.payType==='Крипта'}
+function payinForeign(d,h){return !!h.otherSender}
 function r2(v){return (v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100}
 ${broker}\n${parts}
 result=cases.map(([rub,rate])=>{
@@ -29,12 +32,20 @@ result=cases.map(([rub,rate])=>{
   return {control:b.ctrl,retained:b.ours,sent:b.sent,
           usdt:Math.round(main.usdt*100)/100,
           payloadUsdt:eval('({' + field + '})').payin_amount_usdt};
-});`,box);
-console.log(JSON.stringify(box.result));
+});
+const freehold={kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,rates:{},
+  payinHashes:[{hash:'confirmed',amount:98799.5,verified:true},
+               {hash:'unverified',amount:400,verified:false}]};
+const d=freehold;
+crypto={plan:d.amountUsdt,fact:payinParts(d)[0].fact,
+        payloadUsdt:eval('({' + field + '})').payin_amount_usdt};`,box);
+console.log(JSON.stringify({cash:box.result,crypto:box.crypto}));
 """
     run = subprocess.run(['node', '-e', script, json.dumps(cases)],
-                         check=True, capture_output=True, text=True)
-    actual = json.loads(run.stdout)
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stderr
+    result = json.loads(run.stdout)
+    actual = result['cash']
     for (rub, rate), expected in zip(cases, actual):
         saved = m._stand_broker_payin_basis(rub, rate)
         assert saved is not None
@@ -44,6 +55,8 @@ console.log(JSON.stringify(box.result));
     assert actual[0]['usdt'] == 996.60
     assert actual[2] == {'control': 140.01, 'retained': 200.03,
                          'sent': 99674.96, 'usdt': 996.75, 'payloadUsdt': 996.75}
+    assert result['crypto'] == {'plan': 98800, 'fact': 98799.5,
+                                'payloadUsdt': 98799.5}
 
 
 @pytest.mark.parametrize('rub,rate', [(None, 100), (100000, None),
