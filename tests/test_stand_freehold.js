@@ -475,6 +475,7 @@ console.log('test_stand_freehold.js: OK');
   assert.ok(!otherFlow.includes('cols-create-compact'));
   assert.ok(otherFlow.includes('class="card side"'));
   assert.match(html,/\.cols\.cols-create-compact\{grid-template-columns:minmax\(0,1fr\)\}/);
+  assert.match(html,/\.fh\.create-next\{font-size:12\.5px;line-height:1\.4;color:var\(--navy-600\)/);
   assert.match(html,/@media\(max-width:900px\)\{\.cols\{grid-template-columns:1fr\}/);
   assert.equal(ctx.draftValid(),true);
   ctx.draftSet('payType','По реквизитам');
