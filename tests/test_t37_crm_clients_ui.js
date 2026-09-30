@@ -218,6 +218,38 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
       throw new Error("Selecting a searched chat did not collapse the picker");
   }
 
+  // Fake state-save response separates operator delivery from the admin copy.
+  const previousRender=render, previousTyping=standTyping;
+  render=()=>{};standTyping=()=>false;
+  S.deals=[{id:777,step:'s8',closed:false}];
+  S.notes=[];
+  S.modal={id:777,step:'s11',to:'operator',noteId:'fake-note-operator',delivery:'pending'};
+  standBusy=false;standPush=false;standSaveScheduled=false;standClosing=false;
+  fetchResponses['/api/stand/state']={success:true,version:501,data:standSnapshot(),
+    notification_delivery:[
+      {note_id:'fake-note-operator',role:'admin',status:'sent'},
+      {note_id:'fake-note-operator',role:'operator',status:'suppressed'}
+    ]};
+  await standSave();
+  if(S.modal.delivery!=='suppressed'||S.modal.adminDelivery!=='sent')
+    throw new Error('Save response mixed operator delivery with the admin copy');
+  const operatorSuppressedText=notificationDeliveryText(S.modal);
+  if(operatorSuppressedText!=='Задача сохранена. Уведомление получил администратор; Настя увидит задачу в задачнике.')
+    throw new Error('Admin copy success was not explained honestly in the handoff status');
+  if(!notificationDeliveryText({to:'operator',delivery:'suppressed',adminDelivery:'failed'}).includes('не подтвердил отправку администраторской копии'))
+    throw new Error('Admin failure was omitted from the UI status');
+  if(!notificationDeliveryText({to:'operator',delivery:'suppressed',adminDelivery:'suppressed'}).includes('не отправлял уведомления'))
+    throw new Error('Suppressed admin copy was omitted from the UI status');
+  const previousTgLines=tgLines, previousStepTitle=stepTitle, previousRoleSwitch=canSwitchRole;
+  const previousNow=now, previousPayBlock=tgPayBlock;
+  tgLines=()=>[];stepTitle=()=>'';canSwitchRole=()=>false;now=()=>'';tgPayBlock=()=>'';
+  const modalHtml=viewModal();
+  if(!modalHtml.includes(operatorSuppressedText))
+    throw new Error('Modal did not show the aggregated admin/operator delivery status');
+  tgLines=previousTgLines;stepTitle=previousStepTitle;canSwitchRole=previousRoleSwitch;
+  now=previousNow;tgPayBlock=previousPayBlock;
+  render=previousRender;standTyping=previousTyping;
+
   // Keep the mandatory passport rule for new real estate deals.
   if (!jsCode.includes("if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}")) {
       throw new Error("Mandatory passport validation for a new deal is missing");

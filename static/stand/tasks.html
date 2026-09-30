@@ -755,7 +755,9 @@ async function standSave(){
         const modal=S.modal, delivered=j.notification_delivery||[];
         if(modal&&modal.noteId){
           const result=delivered.find(x=>String(x.note_id)===String(modal.noteId)&&x.role===modal.to);
+          const adminResult=delivered.find(x=>String(x.note_id)===String(modal.noteId)&&x.role==='admin');
           modal.delivery=result?result.status:'unknown';
+          modal.adminDelivery=adminResult?adminResult.status:'unknown';
         }
       }
       else {standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected'};if(S.modal&&S.modal.noteId)S.modal.delivery='save_failed';toast(j.detail||j.error||'Сервер не сохранил изменения');}
@@ -3744,13 +3746,45 @@ function tgPayBlock(d,step){
       <button class="btn btn-secondary btn-sm" onclick="copyAsk(${JSON.stringify(all).replace(/"/g,'&quot;')})">Скопировать всё одним текстом</button>
     </div></div>`;
 }
+function notificationDeliveryText(m){
+  if(!m)return '';
+  const delivery=m.delivery, admin=m.adminDelivery, to=m.to;
+  const recipient=to==='operator'?'операционисту':to==='manager'?'менеджеру':'адресату задачи';
+  if(delivery==='sent'){
+    if(to!=='admin'&&admin==='failed')return 'Уведомление доставлено '+recipient+'; Telegram не подтвердил администраторскую копию.';
+    if(to!=='admin'&&admin==='suppressed')return 'Уведомление доставлено '+recipient+'; администраторская копия не отправлялась.';
+    return 'Уведомление доставлено '+recipient+'.';
+  }
+  if(to==='operator'&&delivery==='suppressed'&&admin==='sent')
+    return 'Задача сохранена. Уведомление получил администратор; Настя увидит задачу в задачнике.';
+  if(to==='operator'&&delivery==='failed'&&admin==='sent')
+    return 'Задача сохранена. Telegram не подтвердил отправку Насте; уведомление получил администратор.';
+  if(delivery==='suppressed'&&admin==='sent')
+    return 'Задача сохранена. Уведомление получил администратор; адресат увидит задачу в задачнике.';
+  if(delivery==='failed'&&admin==='sent')
+    return 'Задача сохранена. Telegram не подтвердил отправку '+recipient+'; уведомление получил администратор.';
+  if(delivery==='failed'&&admin==='failed')
+    return 'Задача сохранена, но Telegram не подтвердил отправку ни адресату задачи, ни администратору.';
+  if(delivery==='failed'&&admin==='suppressed')
+    return 'Задача сохранена. Telegram не подтвердил отправку '+recipient+'; администраторская копия не отправлялась.';
+  if(delivery==='suppressed'&&admin==='failed')
+    return 'Задача сохранена. Telegram не подтвердил отправку администраторской копии; адресату задачи уведомление не отправлено.';
+  if(delivery==='suppressed'&&admin==='suppressed')
+    return 'Задача сохранена; Telegram не отправлял уведомления адресату и администратору.';
+  if(delivery==='failed')return 'Задача сохранена; Telegram не подтвердил отправку уведомления '+recipient+'.';
+  if(delivery==='suppressed')return 'Задача сохранена; Telegram не отправил уведомление '+recipient+'.';
+  if(delivery==='save_failed')return 'Задача не сохранена; Telegram не вызывался.';
+  if(delivery==='unknown')return 'Задача сохранена; статус доставки Telegram не подтверждён.';
+  return 'Сохраняем задачу и проверяем доставку…';
+}
 function viewModal(){
   const m=S.modal,d=deal(m.id),st=STEPS[m.step];
   if(!d||!st)return '';
   const lines=tgLines(d,m.step);
+  const deliveryText=notificationDeliveryText(m);
   return `<div class="ov" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-h"><div class="t">${m.delivery==='sent'?'Задача отправлена в Telegram':'Передача задачи · предпросмотр'}</div>
-      <div class="s">Адресат: <b>${ROLES[m.to].n} · ${ROLES[m.to].t.toLowerCase()}</b>. ${m.delivery==='sent'?'Уведомление доставлено в Telegram.':m.delivery==='failed'?'Telegram не подтвердил отправку.':m.delivery==='suppressed'?'Задача сохранена, но Telegram не отправил уведомление — проверьте привязку и настройки.':m.delivery==='save_failed'?'Задача не сохранена; Telegram не вызывался.':m.delivery==='unknown'?'Задача сохранена; статус доставки Telegram не подтверждён.':'Сохраняем задачу и проверяем доставку…'}</div></div>
+      <div class="s">Адресат: <b>${ROLES[m.to].n} · ${ROLES[m.to].t.toLowerCase()}</b>. ${deliveryText}</div></div>
     <div class="modal-b">
       <div class="tgwrap">
         <div class="tgbot"><span class="av">GR</span><span class="nm">Grusha Задачник</span></div>
@@ -3774,7 +3808,7 @@ function viewModal(){
           /* Чужой ролью на стенде не поработаешь: у каждого свой логин. Кнопка
              «перейти как» обещала бы доступ, которого нет. */
           : `<button class="btn btn-primary" onclick="closeModal()">Понятно</button>
-             <span class="sub2" style="align-self:center">${m.delivery==='sent'?'Уведомление доставлено':m.delivery==='failed'?'Не удалось отправить уведомление':m.delivery==='suppressed'?'Нет доставки в Telegram':m.delivery==='save_failed'?'Сохранение не подтверждено':m.delivery==='unknown'?'Доставка не подтверждена':'Ожидаем ответ сервера'} · задачу ведёт ${ROLES[m.to].n}</span>`}
+             <span class="sub2" style="align-self:center">${deliveryText} Задачу ведёт ${ROLES[m.to].n}.</span>`}
       </div>
     </div></div></div>`;
 }
@@ -8503,11 +8537,8 @@ async function act(id,step){
       const published=current&&current.step==='s11'&&filesOf(current,'inv').length>0&&
         (current.isOld||filesOf(current,'pass').length>0);
       if(!saved.ok||!published){toast('Передача не сохранена — проверьте вложения и повторите');return;}
-      const delivery=(S.modal||{}).delivery;
-      toast(delivery==='sent'?'Документы сохранены, уведомление доставлено операционисту':
-        delivery==='failed'?'Документы сохранены, но Telegram не отправил уведомление':
-        delivery==='suppressed'?'Документы сохранены, задача передана на доске; Telegram выключен или не привязан':
-        'Документы сохранены и переданы операционисту; статус Telegram пока неизвестен');
+      toast(notificationDeliveryText(S.modal)||
+        'Документы сохранены и переданы операционисту на доске; доставка Telegram не подтверждена.');
     }else toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
