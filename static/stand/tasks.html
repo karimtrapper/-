@@ -6661,10 +6661,17 @@ async function fileAppend(id,k,f){
     log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
   save();render();
   if(STAND&&!SCREEN&&!SNAP){
-    const saved=await standWaitSaved();
-    const current=deal(id), confirmed=current&&filesOf(current,k).some(x=>x.file===f.file&&x.bytes===f.bytes);
-    if(!saved.ok||!confirmed){
-      await standPull(true);toast('Файл не сохранён — проверьте связь и повторите');return;
+    try{
+      const saved=await standWaitSaved();
+      const serverDeal=(standBase&&standBase.deals||[]).find(x=>x.id===id);
+      const target=managerDraftDocTarget(d,k)?serverDeal&&serverDeal._managerDraft:serverDeal;
+      const confirmed=!!(saved.ok&&target&&Array.isArray((target.files||{})[k])&&
+        target.files[k].some(x=>x&&x.file===f.file&&x.bytes===f.bytes));
+      if(!confirmed){
+        await standPull(true);toast('Файл не сохранён — проверьте связь и повторите');return;
+      }
+    }catch(e){
+      await standPull(true);toast('Не удалось подтвердить файл — проверьте связь и повторите');return;
     }
   }
   toast(f.demo?'Тестовый PDF добавлен':'Файл сохранён');

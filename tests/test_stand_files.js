@@ -101,4 +101,26 @@ function fixture() {
   assert.match(row,/Открыть/);
   assert.doesNotMatch(row,/не приложен/);
 }
-console.log('stand files: 4 сценария PASS');
+(async()=>{
+  {
+    const {ctx, d, toasts} = fixture();
+    ctx.STAND=true;
+    ctx.standWaitSaved=async()=>{throw new Error('timeout');};
+    ctx.standPull=async()=>{};
+    await ctx.fileAppend(1,'receipt',{file:'timeout.pdf',size:'1 КБ',at:'30.09',
+      mime:'application/pdf',bytes:12,data:'data:application/pdf;base64,JVBERi0xLjQK'});
+    assert.match(toasts.at(-1),/Не удалось подтвердить/);
+    assert.doesNotMatch(toasts.at(-1),/Файл сохранён/);
+  }
+  {
+    const {ctx, toasts} = fixture();
+    ctx.STAND=true;
+    ctx.standWaitSaved=async()=>({ok:true});
+    ctx.standPull=async()=>{};
+    ctx.standBase={deals:[{id:1,files:{receipt:[{file:'saved.pdf',bytes:12}]}}]};
+    await ctx.fileAppend(1,'receipt',{file:'saved.pdf',size:'1 КБ',at:'30.09',
+      mime:'application/pdf',bytes:12,data:'data:application/pdf;base64,JVBERi0xLjQK'});
+    assert.equal(toasts.at(-1),'Файл сохранён');
+  }
+  console.log('stand files: 6 сценариев PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});
