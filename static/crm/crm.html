@@ -609,8 +609,9 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
     display: flex; flex-direction: column; align-items: center;
     font-size: 10px; color: var(--text-muted); background: none;
     border: none; cursor: pointer; padding: 6px 8px;
-    min-width: 56px; gap: 2px;
+    flex: 1 1 0; min-width: 0; gap: 2px;
 }
+.bottom-nav-item span:last-child { white-space: nowrap; }
 .bottom-nav-item .icon { font-size: 20px; }
 .bottom-nav-item.active { color: var(--coral); }
 
@@ -3760,11 +3761,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 // Update bottom nav highlight
                 const bottomNav = document.getElementById('bottomNav');
                 if (bottomNav) {
-                    const map = {dashboard:0, deals:1, create:2, kyc:3};
                     bottomNav.querySelectorAll('.bottom-nav-item').forEach((b) => b.classList.remove('active'));
-                    if (map[tab.dataset.section] !== undefined) {
-                        bottomNav.querySelectorAll('.bottom-nav-item')[map[tab.dataset.section]].classList.add('active');
-                    }
+                    bottomNav.querySelector(`[data-nav-section="${tab.dataset.section}"]`)?.classList.add('active');
                 }
             });
         });
@@ -5718,7 +5716,17 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                    подтверждённый прод (QA перепроверка, FAIL №5, 28.09). */
                 AUTH_STAND = (d && d.success && d.user && typeof d.user.stand === 'boolean') ? d.user.stand : null;
             } catch (e) { AUTH_STAND = null; }
+            applyStandMobileNav();
             refreshStandDependentLinks();
+        }
+        function applyStandMobileNav() {
+            const {isStand} = standLinkState();
+            const tasks = document.getElementById('standTasksNav');
+            const dashboard = document.querySelector('#bottomNav [data-nav-section="dashboard"]');
+            const dashboardMore = document.getElementById('standDashboardMore');
+            if (tasks) tasks.style.display = isStand ? 'flex' : 'none';
+            if (dashboard) dashboard.style.display = isStand ? 'none' : 'flex';
+            if (dashboardMore) dashboardMore.style.display = isStand ? 'flex' : 'none';
         }
         /* Вкладка «Рефереры» могла отрисоваться раньше, чем ответили /api/stand/roles
            или /api/auth/me — тогда список честно показал «не удалось проверить
@@ -5754,6 +5762,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 STAND_ROLES = d.roles;
                 refreshStandDependentLinks();
                 document.querySelectorAll('.stand-only').forEach(el => el.style.display = '');
+                applyStandMobileNav();
                 // На стенде Telegram-входа нет — заголовок не должен обещать обратное
                 const sec = document.querySelector('#admins .card-title');
                 if (sec) sec.textContent = 'Сотрудники';
@@ -5956,11 +5965,8 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             // Update bottom nav highlight
             const bottomNav = document.getElementById('bottomNav');
             if (bottomNav) {
-                const map = {dashboard:0, deals:1, create:2, kyc:3};
-                bottomNav.querySelectorAll('.bottom-nav-item').forEach((b,i) => b.classList.remove('active'));
-                if (map[sectionName] !== undefined) {
-                    bottomNav.querySelectorAll('.bottom-nav-item')[map[sectionName]].classList.add('active');
-                }
+                bottomNav.querySelectorAll('.bottom-nav-item').forEach(b => b.classList.remove('active'));
+                bottomNav.querySelector(`[data-nav-section="${sectionName}"]`)?.classList.add('active');
             }
         }
 
@@ -15231,6 +15237,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
     <div class="more-overlay" id="moreOverlay" onclick="closeMorePanel()"></div>
     <div class="more-panel" id="morePanel">
         <div class="more-panel-grid">
+            <button class="more-panel-item stand-only" id="standDashboardMore" onclick="showSection('dashboard'); closeMorePanel();" style="display:none"><span class="icon">📊</span><span>Дашборд</span></button>
             <button class="more-panel-item" onclick="showSection('balance'); closeMorePanel();"><span class="icon">💰</span><span>Баланс</span></button>
             <button class="more-panel-item" onclick="showSection('reimbursements'); closeMorePanel();"><span class="icon">🔄</span><span>Возмещения</span></button>
             <button class="more-panel-item" onclick="showSection('transactions'); closeMorePanel();"><span class="icon">🔗</span><span>Транзакции</span></button>
@@ -15243,10 +15250,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
     </div>
     <!-- Bottom Nav -->
     <nav class="bottom-nav" id="bottomNav">
-        <button class="bottom-nav-item active" onclick="showSection('dashboard')"><span class="icon">📊</span><span>Дашборд</span></button>
-        <button class="bottom-nav-item" onclick="showSection('deals')"><span class="icon">📋</span><span>Сделки</span></button>
-        <button class="bottom-nav-item" onclick="showSection('create')"><span class="icon">➕</span><span>Создать</span></button>
-        <button class="bottom-nav-item" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
+        <button class="bottom-nav-item active" data-nav-section="dashboard" onclick="showSection('dashboard')"><span class="icon">📊</span><span>Дашборд</span></button>
+        <a class="bottom-nav-item stand-only" id="standTasksNav" href="/tasks" style="display:none;text-decoration:none"><span class="icon">✅</span><span>Задачник</span></a>
+        <button class="bottom-nav-item" data-nav-section="deals" onclick="showSection('deals')"><span class="icon">📋</span><span>Сделки</span></button>
+        <button class="bottom-nav-item" data-nav-section="create" onclick="showSection('create')"><span class="icon">➕</span><span>Создать</span></button>
+        <button class="bottom-nav-item" data-nav-section="kyc" onclick="showSection('kyc')"><span class="icon">🛡</span><span>KYC</span></button>
         <button class="bottom-nav-item" onclick="toggleMorePanel()" id="moreBtn"><span class="icon">⋯</span><span>Ещё</span></button>
     </nav>
 </body>

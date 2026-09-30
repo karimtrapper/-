@@ -469,12 +469,15 @@ a.hash:hover{background:#BAE6FD}
 .bellbtn svg{flex-shrink:0}
 .bellbtn .c{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
   border-radius:999px;background:var(--coral);color:#fff;font-size:11px;font-weight:700}
-@media(max-width:620px){
+@media(max-width:700px){
+  /* На телефонах flex-дети с длинным текстом не должны задавать ширину странице.
+     Горизонтально прокручиваются только роли и вкладки; карточки остаются в viewport. */
+  .proto,.top-nav,.nav,.container,#app,.card,.cols>*{min-width:0;max-width:100%}
   /* шапка: роль, колокольчик и сборка в одну строку, подписи — прочь */
-  .proto{position:static;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));gap:8px;flex-wrap:nowrap}
+  .proto{position:static;width:100%;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));gap:8px;flex-wrap:nowrap}
   .proto .lab{display:none}
   .proto .build{order:3;margin-left:auto;font-size:10.5px;padding:2px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
-  .proto #roles{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-width:0}
+  .proto #roles{display:flex;flex:1 1 auto;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;min-width:0}
   .proto #roles::-webkit-scrollbar{display:none}
   .proto .rolebtn{padding:7px 12px;font-size:13px;white-space:nowrap;min-height:36px}
   .proto .spacer{display:none}
@@ -488,14 +491,14 @@ a.hash:hover{background:#BAE6FD}
   .notebox{position:fixed;top:auto;bottom:0;left:0;right:0;width:auto;max-width:none;max-height:72vh;
     border-radius:var(--r-lg) var(--r-lg) 0 0;padding-bottom:env(safe-area-inset-bottom)}
   /* разделы CRM: компактная полоса, прокрутка вбок, имя роли уже есть в шапке */
-  .top-nav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding:6px 12px;gap:6px}
+  .top-nav{width:100%;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;padding:6px 12px;gap:6px}
   .top-nav::-webkit-scrollbar{display:none}
   .top-nav a{padding:7px 12px;font-size:13px}
   .top-nav .who{display:none}
   /* вкладки задачника прилипают к верху: до «Задачника» и «Сделок» — один тап
      с любого места длинной карточки. Край затухает — видно, что есть ещё. */
-  .nav{position:sticky;top:0;z-index:150;padding:0 12px;box-shadow:0 1px 0 var(--border)}
-  .nav-tabs{padding:6px 0;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+  .nav{position:sticky;top:0;z-index:150;width:100%;padding:0 12px;box-shadow:0 1px 0 var(--border)}
+  .nav-tabs{min-width:0;padding:6px 0;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
   .nav-tab{padding:9px 13px;font-size:14px;min-height:40px}
   .container{padding:14px 12px calc(96px + env(safe-area-inset-bottom))}
   .page-h{font-size:20px}
