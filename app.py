@@ -7378,6 +7378,8 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     old_sends = (before.get('transfer') or {}).get('sends') or []
     confirmed_legacy = bool(old_sends) and all(s.get('status') == 'confirmed' for s in old_sends)
     new_sends = (deal.get('transfer') or {}).get('sends') or []
+    if new_sends != old_sends and not (old_order and old_order.get('confirmedAt')):
+        return 'Исходящий перевод можно добавить или изменить только после сохранённого поручения менеджера'
     if issuing:
         if actor not in ('manager', 'admin'):
             return 'Поручить исходящий перевод может только менеджер'

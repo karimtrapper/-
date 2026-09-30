@@ -238,6 +238,58 @@ def test_admin_role_choice_can_commit_one_manager_instruction_idempotently(monke
     assert [n.get('id') for n in after.json['data']['notes']] == note_ids
 
 
+def test_s22_same_step_pending_send_is_rejected_atomically_but_manager_payto_save_works(monkeypatch):
+    """A pending demo send cannot be planted before the s22 manager instruction."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, '_stand_deliver_notes', lambda: None)
+    monkeypatch.setenv('LOCAL_NO_AUTH', '1')
+    appmod._stand_migrate()
+    db = appmod.get_session()
+    try:
+        user = appmod.AdminUser(username='freehold_s22_send_guard_test', role='manager',
+                                password_hash=appmod.AdminUser.hash_password('synthetic'))
+        db.add(user)
+        db.flush()
+        user_id = user.id
+        state = {'wallets': [], 'convs': [],
+                 'deals': [manager_s22_deal(demo=True)], 'notes': []}
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        db.commit()
+    finally:
+        db.close()
+
+    with appmod.app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['user_id'] = user_id
+        before = client.get('/api/stand/state')
+        assert before.status_code == 200
+        payload = copy.deepcopy(before.json['data'])
+        payload['deals'][0]['transfer']['sends'] = [{
+            'ref': 'synthetic:pending-demo-send', 'hash': None,
+            'net': 'TRC-20', 'amount': 10130, 'status': 'pending', 'demo': True,
+        }]
+        denied = client.put('/api/stand/state', json={
+            'version': before.json['version'], 'role': 'manager', 'data': payload})
+        assert denied.status_code == 409, denied.json
+        assert 'после сохранённого поручения' in denied.json['error']
+        unchanged = client.get('/api/stand/state')
+        assert unchanged.json['version'] == before.json['version']
+        assert unchanged.json['data'] == before.json['data']
+
+        # The guard still permits the manager's separate requisites-save action on s22.
+        requisites = copy.deepcopy(unchanged.json['data'])
+        requisites['deals'][0]['payTo']['acc'] = 'SYNTHETIC-ACCOUNT-UPDATED'
+        requisites['deals'][0]['log'].append({'text': 'saved synthetic requisites'})
+        allowed = client.put('/api/stand/state', json={
+            'version': unchanged.json['version'], 'role': 'manager', 'data': requisites})
+        assert allowed.status_code == 200, allowed.json
+        assert allowed.json['data']['deals'][0]['step'] == 's22'
+        assert allowed.json['data']['deals'][0]['transfer']['sends'] == []
+        assert allowed.json['data']['deals'][0]['payTo']['acc'] == 'SYNTHETIC-ACCOUNT-UPDATED'
+
+
 def test_freehold_transfer_confirmation_advances_s24_to_s26():
     state = freehold_board()
     members = state['deals']
