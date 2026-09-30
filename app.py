@@ -6641,6 +6641,24 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                             for s in (before.get('transfer') or {}).get('sends') or []))
         if protected and deal_id not in new_deals:
             return 'Подтверждённую или закрытую сделку нельзя удалить'
+    # Общий инвариант (QA 30.09, три пути обхода): кто подписывает отправку на s23 —
+    # фин дир (мультисиг) или владелец (личный) — не может поменяться «на ходу».
+    # Считаем роль s23 для сделки до и после PUT; если она изменилась (другой
+    # кошелёк пачки, новая пачка, переезд в чужую пачку, правка своего кошелька),
+    # это допустимо только там, где кошелёк выбирают: на s11 (кошелёк прихода) или
+    # на s18 (кошелёк пачки), и шаг при этом не прыгает дальше s18w.
+    def _signer_s23(state, d):
+        return _stand_current_step_role(state, dict(d, step='s23'))
+    for deal in new_state.get('deals', []):
+        was = old.get(deal.get('id'))
+        if not was:
+            continue
+        if _signer_s23(previous, was) == _signer_s23(new_state, deal):
+            continue
+        before_step, after_step = was.get('step'), deal.get('step')
+        allowed = {'s11': ('s11',), 's18': ('s18', 's18w')}.get(before_step, ())
+        if after_step not in allowed:
+            return 'Кошелёк отправки меняют только на шаге выбора кошелька, отдельно от продвижения сделки'
     for deal in new_state.get('deals', []):
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
