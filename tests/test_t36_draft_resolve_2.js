@@ -1,61 +1,85 @@
 const fs = require('fs');
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
 
-let S = { draft: {}, clients: [], deals: [], chatClientMap: {} };
-let CRM_CLIENTS = [];
-let TG_CHATS = [{ key: 'Елизавета:id6', account: 'Елизавета', id: 'id6', name: 'Chat 6' }, { key: 'Елизавета:id7', account: 'Елизавета', id: 'id7', name: 'Chat 7' }];
-let WA_CHATS = [];
-let BX_DEALS = [];
-let toast = () => {};
-let render = () => {};
-let save = () => {};
-let bxRefCode = () => null;
-let refByCode = () => null;
-let refOfClient = () => null;
-let clientsInit = () => [];
-let clientById = (id) => null;
-function knownBy(src, ref) { return []; }
+const scripts = [];
+const scriptRegex = /<script.*?>([\s\S]*?)<\/script>/gi;
+let match;
+while ((match = scriptRegex.exec(html)) !== null) {
+    scripts.push(match[1]);
+}
+let jsCode = scripts.join('\n');
 
-const getChatObjStr = html.match(/function getChatObj\(.*?\n}/s)[0];
-const isKnownRefStr = html.match(/function isKnownRef\(.*?\n}/s)[0];
-const draftResolveStr = html.match(/function draftResolve\(\).*?\n}/s)[0];
-const draftClientClearStr = html.match(/function draftClientClear\(\).*?\n}/s)[0];
+jsCode = jsCode.replace(/window\.location\.reload\(\)/g, "undefined")
+               .replace(/location\.search/g, "''")
+               .replace(/localStorage\.setItem/g, "(() => {})")
+               .replace(/localStorage\.getItem/g, "(() => null)")
+               .replace(/document\.title/g, "dummy")
+               .replace(/document\.body/g, "({ classList: { add: ()=>{} } })");
 
-eval(getChatObjStr);
-eval(isKnownRefStr);
-eval(draftResolveStr);
-eval(draftClientClearStr);
+const evalPrefix = `
+let fetchResponses = {};
+global.fetch = async (url) => {
+  if (fetchResponses[url]) return { ok: true, json: async () => fetchResponses[url] };
+  return { ok: false };
+};
+global.FormData = class {};
+global.alert = console.log;
+global.prompt = () => null;
+global.document = { 
+  addEventListener: () => {}, 
+  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' }) 
+};
+global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: { replaceState: ()=>{} } };
+`;
 
-// Scenario 1: Select Chat 6 (Unknown, strict mode)
-S.draft = { source: 'tg', sourceRef: 'Елизавета:id6', clientManual: false, client: '', cq: '' };
-draftResolve();
-if (S.draft.client !== '') throw new Error("Expected empty client, got " + S.draft.client);
-if (S.draft.cq !== 'Chat 6') throw new Error("Expected prefilled cq=Chat 6, got " + S.draft.cq);
+const assertions = `
+(async () => {
+try {
+  fetchResponses['/api/clients'] = { success: true, clients: [] };
+  fetchResponses['/api/stand/channels'] = { success: true, data: { tg: [{ id: 'id6', account: 'Елизавета', name: 'Chat 6' }, { id: 'id7', account: 'Елизавета', name: 'Chat 7' }] } };
+  
+  await fetchChannels();
+  await fetchCrmClients();
 
-// Scenario 2: Change mind, select Chat 7
-S.draft.sourceRef = 'Елизавета:id7';
-draftResolve();
-if (S.draft.client !== '') throw new Error("Expected empty client, got " + S.draft.client);
-if (S.draft.cq !== 'Chat 7') throw new Error("Expected prefilled cq=Chat 7, got " + S.draft.cq);
+  // Scenario 1: Select Chat 6 (Unknown, strict mode)
+  S.draft = { source: 'tg', sourceRef: 'Елизавета:id6', clientManual: false, client: '', cq: '' };
+  draftResolve();
+  if (S.draft.client !== '') throw new Error("Expected empty client, got " + S.draft.client);
+  if (S.draft.cq !== 'Chat 6') throw new Error("Expected prefilled cq=Chat 6, got " + S.draft.cq);
 
-// Scenario 3: Manually type name
-S.draft.clientManual = true;
-S.draft.client = 'Ivan';
-S.draft.sourceRef = 'Елизавета:id6';
-draftResolve();
-if (S.draft.client !== 'Ivan') throw new Error("Expected Ivan, got " + S.draft.client);
+  // Scenario 2: Change mind, select Chat 7
+  S.draft.sourceRef = 'Елизавета:id7';
+  draftResolve();
+  if (S.draft.client !== '') throw new Error("Expected empty client, got " + S.draft.client);
+  if (S.draft.cq !== 'Chat 7') throw new Error("Expected prefilled cq=Chat 7, got " + S.draft.cq);
 
-// Scenario 4: Change mind AGAIN after manual type - name should NOT change
-S.draft.sourceRef = 'Елизавета:id7';
-draftResolve();
-if (S.draft.client !== 'Ivan') throw new Error("Expected Ivan, got " + S.draft.client);
+  // Scenario 3: Manually type name
+  S.draft.clientManual = true;
+  S.draft.client = 'Ivan';
+  S.draft.sourceRef = 'Елизавета:id6';
+  draftResolve();
+  if (S.draft.client !== 'Ivan') throw new Error("Expected Ivan, got " + S.draft.client);
 
-// Scenario 5: User clears manual client, then resolves
-draftClientClear();
-if (S.draft.clientManual !== false) throw new Error("Expected clientManual false after clear");
-S.draft.sourceRef = 'Елизавета:id6';
-draftResolve();
-if (S.draft.client !== '') throw new Error("Expected empty client after clear, got " + S.draft.client);
-if (S.draft.cq !== 'Chat 6') throw new Error("Expected cq=Chat 6, got " + S.draft.cq);
+  // Scenario 4: Change mind AGAIN after manual type - name should NOT change
+  S.draft.sourceRef = 'Елизавета:id7';
+  draftResolve();
+  if (S.draft.client !== 'Ivan') throw new Error("Expected Ivan, got " + S.draft.client);
 
-console.log("All scenarios passed.");
+  // Scenario 5: User clears manual client, then resolves
+  draftClientClear();
+  if (S.draft.clientManual !== false) throw new Error("Expected clientManual false after clear");
+  S.draft.sourceRef = 'Елизавета:id6';
+  draftResolve();
+  if (S.draft.client !== '') throw new Error("Expected empty client after clear, got " + S.draft.client);
+  if (S.draft.cq !== 'Chat 6') throw new Error("Expected cq=Chat 6, got " + S.draft.cq);
+
+  console.log("All scenarios passed.");
+  process.exit(0);
+} catch(e) {
+  console.error(e);
+  process.exit(1);
+}
+})();
+`
+
+eval(evalPrefix + jsCode + assertions);

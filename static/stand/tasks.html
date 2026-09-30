@@ -3957,10 +3957,10 @@ function srcAfterClient(D){
   const who=c?c.name:'новый клиент';
   return `<div class="alert a-warn" style="margin-top:12px"><div>
     ${D.clientManual
-      ? 'Клиент выбран вручную'+(D.sourceRef?', а чат остался прежний — <b>'+htmlText(D.sourceRef)+'</b>':', чат не выбран')+'. Укажите, откуда пишет '+who+': '+(tg?'в карточке записан <b>'+tg+'</b>':'в карточке чата нет — выберите из списка выше или впишите вручную')+'.'
+      ? 'Клиент выбран вручную'+(D.sourceRef?', а чат остался прежний — <b>'+htmlText(D.sourceRef)+'</b>':', чат не выбран')+'. Укажите, откуда пишет '+htmlText(who)+': '+(tg?'в карточке записан <b>'+htmlText(tg)+'</b>':'в карточке чата нет — выберите из списка выше или впишите вручную')+'.'
       : 'Меняете клиента'+(D.sourceRef?' — чат <b>'+htmlText(D.sourceRef)+'</b> остался от прежнего':'')+'. Выберите клиента ниже, а здесь укажите, из какого чата он пишет: из списка или вручную.'}
   </div>${tg?`<button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap"
-      onclick="draftTakeChat(${JSON.stringify(tg).replace(/"/g,'&quot;')})">Взять из карточки</button>`:''}</div>`;
+      onclick="draftTakeChat(${htmlText(JSON.stringify(tg))})">Взять из карточки</button>`:''}</div>`;
 }
 /* Чат из карточки клиента может быть из любого канала — подставляем вместе с каналом,
    иначе номер WhatsApp окажется записан как телеграм. */
@@ -4333,6 +4333,7 @@ function draftResolve(){
   if (!S.chatClientMap) S.chatClientMap = {};
   const mappedId = S.chatClientMap[D.source+':'+D.sourceRef];
   const mappedClient = mappedId ? clientById(mappedId) : null;
+  let resolvedClient = null;
   const k=knownBy(D.source,D.sourceRef);
   if(!D.clientManual) {
     if(mappedClient) {
@@ -4340,12 +4341,14 @@ function draftResolve(){
       D.clientId = mappedClient.id;
       D.pickOther = false;
       D.cq = '';
+      resolvedClient = mappedClient;
     }
     else if(k.length && k[0].clientId != null) {
       D.client=k[0].client;
       D.clientId=k[0].clientId;
       D.pickOther = false;
       D.cq = '';
+      resolvedClient = clientById(k[0].clientId);
     }
     else {
       const obj = getChatObj(D.source, D.sourceRef);
@@ -4361,10 +4364,14 @@ function draftResolve(){
   const code=D.source==='bitrix'?bxRefCode(D.sourceRef):null;
   const byLink=code?refByCode(code):null;
   /* 2) иначе — смотрим, закреплён ли клиент за кем-то по прошлым сделкам */
-  const byClient=byLink?null:refOfClient(D.clientId,D.source,D.sourceRef);
+  const manual=D.refSrc==='выбрал менеджер';
   if(byLink){D.refId=byLink.id;D.refKnown=true;D.refSrc='ссылка '+code;D.agents=agentsDefault(byLink.id);}
-  else if(byClient){D.refId=byClient;D.refKnown=true;D.refSrc='закреплён за клиентом';D.agents=agentsDefault(byClient);}
-  else {D.refId=null;D.refKnown=(D.source==='bitrix');D.refSrc=D.source==='bitrix'?'в карточке метки нет':null;}
+  else if(!manual){
+    const clientRefId = resolvedClient ? resolvedClient.refId : null;
+    const byClient = clientRefId || refOfClient(D.clientId,D.source,D.sourceRef);
+    if(byClient){D.refId=byClient;D.refKnown=true;D.refSrc='закреплён за клиентом';D.agents=agentsDefault(byClient);}
+    else {D.refId=null;D.refKnown=(D.source==='bitrix');D.refSrc=D.source==='bitrix'?'в карточке метки нет':null;}
+  }
   save();render();
   if(k.length)toast('Узнали клиента: '+k[0].client);
   if(byLink)toast('Реферал по ссылке: '+byLink.name);
