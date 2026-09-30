@@ -2365,8 +2365,8 @@ function agentsFromSignal(ctx,id){
 }
 /* Кто привёл — свойство клиента, а не сделки: один раз пришёл по ссылке партнёра
    и остаётся за ним. Поэтому при заведении новой сделки реферер подставляется сам. */
-function refOfClient(client,source,sourceRef){
-  const prev=S.deals.filter(d=>d.refId&&(d.client===client||(d.source===source&&d.sourceRef===sourceRef)));
+function refOfClient(clientId,source,sourceRef){
+  const prev=S.deals.filter(d=>d.refId&&((clientId!=null&&d.clientId===clientId)||(source&&sourceRef&&d.source===source&&d.sourceRef===sourceRef)));
   return prev.length?prev[0].refId:null;
 }
 /* Начисление появляется только у состоявшейся сделки. У проваленной реферер
@@ -3957,8 +3957,8 @@ function srcAfterClient(D){
   const who=c?c.name:'новый клиент';
   return `<div class="alert a-warn" style="margin-top:12px"><div>
     ${D.clientManual
-      ? 'Клиент выбран вручную'+(D.sourceRef?', а чат остался прежний — <b>'+D.sourceRef+'</b>':', чат не выбран')+'. Укажите, откуда пишет '+who+': '+(tg?'в карточке записан <b>'+tg+'</b>':'в карточке чата нет — выберите из списка выше или впишите вручную')+'.'
-      : 'Меняете клиента'+(D.sourceRef?' — чат <b>'+D.sourceRef+'</b> остался от прежнего':'')+'. Выберите клиента ниже, а здесь укажите, из какого чата он пишет: из списка или вручную.'}
+      ? 'Клиент выбран вручную'+(D.sourceRef?', а чат остался прежний — <b>'+htmlText(D.sourceRef)+'</b>':', чат не выбран')+'. Укажите, откуда пишет '+who+': '+(tg?'в карточке записан <b>'+tg+'</b>':'в карточке чата нет — выберите из списка выше или впишите вручную')+'.'
+      : 'Меняете клиента'+(D.sourceRef?' — чат <b>'+htmlText(D.sourceRef)+'</b> остался от прежнего':'')+'. Выберите клиента ниже, а здесь укажите, из какого чата он пишет: из списка или вручную.'}
   </div>${tg?`<button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap"
       onclick="draftTakeChat(${JSON.stringify(tg).replace(/"/g,'&quot;')})">Взять из карточки</button>`:''}</div>`;
 }
@@ -4056,7 +4056,7 @@ function viewCreateBody(D,srcCard){
   const found=clientFind(D.cq);
   const cl=D.clientId?clientById(D.clientId):null;
   return `<div class="strip"><span class="id">Новая заявка</span><span class="it">${D.kind==='Фрихолд'&&D.payType==='Крипта'?'сумма клиента и инвойс — затем документы':'заведите клиента и что он хочет — запрос уйдёт операционисту'}</span>
-    ${D.sourceRef?`<span class="sp"></span><span class="it">Источник: <b>${SOURCES[D.source]} · ${D.sourceRef}</b></span>`:''}</div>
+    ${D.sourceRef?`<span class="sp"></span><span class="it">Источник: <b>${SOURCES[D.source]} · ${htmlText(D.sourceRef)}</b></span>`:''}</div>
   <div class="cols"><div>
     ${srcCard}
     <div class="card">
@@ -4079,7 +4079,7 @@ function viewCreateBody(D,srcCard){
           <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
         ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${htmlText(D.cq)}»</button>`:''}
-        ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${D.client}»</button>`:''}
+        ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${htmlText(D.client)}»</button>`:''}
         ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">За клиентом закреплены договоры и паспорт — поэтому выбираем из справочника, а не пишем имя строкой.</p>`:''}`)}
     </div>
 
@@ -4196,7 +4196,10 @@ function draftClientNew(){
   if(!name)return;
   const id=Math.max(0,...S.clients.map(c=>c.id))+1;
   S.clients.push({id:id,name:name,tg:D.sourceRef||'',docs:false,refId:null});
-  D.clientId=id;D.client=name;D.cq='';D.pickOther=false;D.clientManual=true;save();render();toast('Клиент создан: '+name);
+  D.clientId=id;D.client=name;D.cq='';D.pickOther=false;D.clientManual=true;
+  if (!S.chatClientMap) S.chatClientMap = {};
+  if (D.sourceRef && D.source !== 'none' && !D.srefOther) S.chatClientMap[D.source+':'+D.sourceRef] = id;
+  save();render();toast('Клиент создан: '+name);
 }
 /* Имя клиента не спрашиваем: на первом шаге уже выбран чат или карточка Битрикса,
    имя в них есть. Поиск открывается только если это оказался другой человек. */
@@ -4335,14 +4338,18 @@ function draftResolve(){
     if(mappedClient) {
       D.client = mappedClient.name;
       D.clientId = mappedClient.id;
+      D.pickOther = false;
+      D.cq = '';
     }
-    else if(k.length) {
+    else if(k.length && k[0].clientId != null) {
       D.client=k[0].client;
       D.clientId=k[0].clientId;
+      D.pickOther = false;
+      D.cq = '';
     }
     else {
       const obj = getChatObj(D.source, D.sourceRef);
-      D.cq = obj && obj.name ? obj.name : (D.sourceRef||'');
+      D.cq = k.length ? k[0].client : (obj && obj.name ? obj.name : (D.sourceRef||''));
       D.client = '';
       D.clientId = null;
       D.pickOther = true;
@@ -4354,7 +4361,7 @@ function draftResolve(){
   const code=D.source==='bitrix'?bxRefCode(D.sourceRef):null;
   const byLink=code?refByCode(code):null;
   /* 2) иначе — смотрим, закреплён ли клиент за кем-то по прошлым сделкам */
-  const byClient=byLink?null:refOfClient(D.client,D.source,D.sourceRef);
+  const byClient=byLink?null:refOfClient(D.clientId,D.source,D.sourceRef);
   if(byLink){D.refId=byLink.id;D.refKnown=true;D.refSrc='ссылка '+code;D.agents=agentsDefault(byLink.id);}
   else if(byClient){D.refId=byClient;D.refKnown=true;D.refSrc='закреплён за клиентом';D.agents=agentsDefault(byClient);}
   else {D.refId=null;D.refKnown=(D.source==='bitrix');D.refSrc=D.source==='bitrix'?'в карточке метки нет':null;}
@@ -4367,10 +4374,17 @@ function draftResolve(){
 function ensureClient(D){
   if(D.clientId||!D.client) return;
   const ex=S.clients.find(c=>c.name===D.client);
-  if(ex){D.clientId=ex.id;return;}
+  if(ex){
+     D.clientId=ex.id;
+     if (!S.chatClientMap) S.chatClientMap = {};
+     if (D.sourceRef && D.source !== 'none' && !D.srefOther) S.chatClientMap[D.source+':'+D.sourceRef] = ex.id;
+     return;
+  }
   const id=Math.max(0,...S.clients.map(c=>c.id))+1;
   S.clients.push({id:id,name:D.client,tg:D.sourceRef||'',docs:false,refId:D.refId||null});
   D.clientId=id;
+  if (!S.chatClientMap) S.chatClientMap = {};
+  if (D.sourceRef && D.source !== 'none' && !D.srefOther) S.chatClientMap[D.source+':'+D.sourceRef] = id;
 }
 function draftValid(){
   const D=S.draft;
@@ -9275,9 +9289,9 @@ async function fetchCrmClients() {
     const json = await res.json();
     if (json.success && json.clients) {
       CRM_CLIENTS = json.clients
-        .filter(c => c && c.id && !isNaN(parseInt(c.id)) && parseInt(c.id) > 0)
+        .filter(c => c && c.id && Number.isSafeInteger(Number(c.id)) && Number(c.id) > 0)
         .map(c => ({
-        id: 'crm:' + parseInt(c.id),
+        id: 'crm:' + Number(c.id),
         name: c.name,
         tg: c.telegram,
         phone: c.phone,
@@ -9288,10 +9302,12 @@ async function fetchCrmClients() {
       }));
     } else {
       crmClientsError = true;
+      CRM_CLIENTS = [];
     }
   } catch (e) {
     console.error("fetchCrmClients error", e);
     crmClientsError = true;
+    CRM_CLIENTS = [];
   }
 }
 
