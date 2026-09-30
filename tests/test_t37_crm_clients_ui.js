@@ -246,6 +246,12 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   const modalHtml=viewModal();
   if(!modalHtml.includes(operatorSuppressedText))
     throw new Error('Modal did not show the aggregated admin/operator delivery status');
+  if(!modalHtml.includes('class="t">Задача сохранена</div>'))
+    throw new Error('Saved handoff still looks like a preview');
+  if(modalHtml.split(operatorSuppressedText).length-1!==1)
+    throw new Error('Delivery status is duplicated in the modal');
+  if(!modalHtml.includes('Ответственный:'))
+    throw new Error('Modal footer lost the task owner');
   tgLines=previousTgLines;stepTitle=previousStepTitle;canSwitchRole=previousRoleSwitch;
   now=previousNow;tgPayBlock=previousPayBlock;
   render=previousRender;standTyping=previousTyping;

@@ -3782,8 +3782,10 @@ function viewModal(){
   if(!d||!st)return '';
   const lines=tgLines(d,m.step);
   const deliveryText=notificationDeliveryText(m);
+  const modalTitle=m.delivery==='pending'?'Передача задачи · предпросмотр':
+    m.delivery==='save_failed'?'Не удалось сохранить задачу':'Задача сохранена';
   return `<div class="ov" onclick="if(event.target===this)closeModal()"><div class="modal">
-    <div class="modal-h"><div class="t">${m.delivery==='sent'?'Задача отправлена в Telegram':'Передача задачи · предпросмотр'}</div>
+    <div class="modal-h"><div class="t">${modalTitle}</div>
       <div class="s">Адресат: <b>${ROLES[m.to].n} · ${ROLES[m.to].t.toLowerCase()}</b>. ${deliveryText}</div></div>
     <div class="modal-b">
       <div class="tgwrap">
@@ -3808,7 +3810,7 @@ function viewModal(){
           /* Чужой ролью на стенде не поработаешь: у каждого свой логин. Кнопка
              «перейти как» обещала бы доступ, которого нет. */
           : `<button class="btn btn-primary" onclick="closeModal()">Понятно</button>
-             <span class="sub2" style="align-self:center">${deliveryText} Задачу ведёт ${ROLES[m.to].n}.</span>`}
+             <span class="sub2" style="align-self:center">Ответственный: ${ROLES[m.to].n}.</span>`}
       </div>
     </div></div></div>`;
 }
