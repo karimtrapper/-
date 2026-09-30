@@ -4173,7 +4173,8 @@ function viewCreateBody(D,srcCard){
   <h4 style="margin-top:18px">Как повести дальше</h4>
   <p>${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Сумма клиента фиксируется в USDT. Курс сделки здесь не нужен.':'Через операциониста — если курс нужно спрашивать. Сам — если знаете курс. Без шагов — мелкий обмен, который просто ждёт конвертации. Внести целиком — когда задачник не нужен вообще.'}</p></div></div>`;
 }
-function draftClientPick(id){
+function draftClientPick(id_raw){
+  const id = typeof id_raw === 'string' && /^\d+$/.test(id_raw) ? Number(id_raw) : id_raw;
   const D=S.draft,c=clientById(id);
   D.clientId=id;D.client=c.name;D.cq='';D.pickOther=false;D.clientManual=true;
   if (!S.chatClientMap) S.chatClientMap = {};
@@ -5781,7 +5782,8 @@ function editClientFromChat(id){
 /* Клиент выбирается из справочника — как в CRM: поиск с выпадающим списком */
 function editClientSearch(id,q){const d=deal(id);d.clientQ=q;save();render();}
 function editClientClear(id){const d=deal(id);d.clientId=null;d.client='';d.clientQ='';d.clientPinned=false;save();render();}
-function editClientPick(id,cid){
+function editClientPick(id,cid_raw){
+  const cid = typeof cid_raw === 'string' && /^\d+$/.test(cid_raw) ? Number(cid_raw) : cid_raw;
   const d=deal(id), c=clientById(cid);
   d.clientId=cid;d.client=c.name;d.clientQ='';d.clientPinned=true;
   if(c.refId&&!(d.agents||[]).length){d.agents=agentsDefault(c.refId);syncRef(d);}

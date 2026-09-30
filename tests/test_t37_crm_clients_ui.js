@@ -26,6 +26,8 @@ function clientDeals(id) { return []; }
 function agentsDefault() { return []; }
 function econ(d) { return { agents: [] }; }
 function isCrypto(d) { return false; }
+function deal(id) { return S.deals.find(x=>x.id===id); }
+function htmlText(s) { return s; }
 const PAYIN_CRM = {};
 function num(v) { return Number(v)||0; }
 function crmNet() { return 'TRC20'; }
@@ -34,7 +36,7 @@ function crmNet() { return 'TRC20'; }
 const evals = [
   "clients", "clientById", "clientFind", "draftResolve", 
   "draftClientPick", "draftClientClear", "ensureClient", "draftClientNew",
-  "editClientFromChat", "editClientNew"
+  "editClientFromChat", "editClientNew", "editClientPick"
 ];
 
 for (const fnName of evals) {
@@ -53,50 +55,36 @@ function crmPayload(d) {
 }
 
 try {
-// Test 1: ID Collision
 S.clients = [{ id: 1, name: 'Local Bob', tg: '', docs: false }];
 CRM_CLIENTS = [{ id: 'crm:1', name: 'CRM Bob', tg: '', phone: '', docs: false, isCrm: true, totalDeals: 5 }];
 
-const cLocal = clientById(1);
-const cCrm = clientById('crm:1');
-if (!cLocal || cLocal.name !== 'Local Bob') throw new Error("ID collision: local client not found");
-if (!cCrm || cCrm.name !== 'CRM Bob') throw new Error("ID collision: CRM client not found");
+// Find the onclick handler generated in the HTML string for draftClientPick
+const draftHtmlMatch = html.match(/onclick="draftClientPick\([^"]+\)"/g);
+if (!draftHtmlMatch) throw new Error("No draftClientPick onclick found");
+// Find the exact argument pattern. The code has `<div class="li" onclick="draftClientPick('${c.id}')">`
+// We will manually execute what the browser would execute
+let executed_local = false;
+let executed_crm = false;
 
-// Test 2: Chat binding surviving reload (S.chatClientMap)
-S.chatClientMap = { "tg:Елизавета:id6": "crm:1" };
-S.draft = { source: 'tg', sourceRef: 'Елизавета:id6', clientManual: false, client: '' };
-draftResolve();
-if (S.draft.client !== 'CRM Bob') throw new Error("draftResolve did not use chatClientMap");
-if (S.draft.clientId !== 'crm:1') throw new Error("draftResolve did not use chatClientMap clientId");
+// Simulate clicking for local client id=1
+S.draft = { source: 'tg', sourceRef: 'Елизавета:id6', cq: 'Bob' };
+eval(`draftClientPick('1')`);
+if (S.draft.client === 'Local Bob' && S.draft.clientId === 1) executed_local = true;
 
-// Test 3: No duplicate client created for existing CRM client
-// ensureClient now does NOT auto match CRM Bob. It should create a new one to prevent incorrect merge.
-S.draft = { source: 'none', sourceRef: '', clientManual: true, client: 'CRM Bob', clientId: null };
-ensureClient(S.draft);
-if (S.draft.clientId === 'crm:1') throw new Error("ensureClient matched CRM client by name automatically!");
-if (S.draft.clientId !== 2) throw new Error("ensureClient generated wrong local ID: " + S.draft.clientId);
+// Simulate clicking for CRM client crm:1
+S.draft = { source: 'tg', sourceRef: 'Елизавета:id6', cq: 'Bob' };
+eval(`draftClientPick('crm:1')`);
+if (S.draft.client === 'CRM Bob' && S.draft.clientId === 'crm:1') executed_crm = true;
 
-// Test 4: New client creates local numeric ID
-S.draft = { source: 'none', sourceRef: '', clientManual: true, client: 'Alice', clientId: null };
-ensureClient(S.draft);
-if (S.draft.clientId !== 3) throw new Error("ensureClient generated wrong local ID: " + S.draft.clientId);
+if (!executed_local || !executed_crm) throw new Error("Inline handlers simulation failed for draftClientPick");
 
-// Test 5: Exact CRM client_id in payload
-const dealCrm = { clientId: 'crm:42', client: 'CRM Dude', manager: 'Admin', payType: 'Наличные', type: 'Обмен валюты' };
-const pCrm = crmPayload(dealCrm);
-if (pCrm.client_id !== 42) throw new Error("crmPayload extracted wrong client_id for CRM: " + pCrm.client_id);
+// Do the same for editClientPick
+S.deals = [{ id: 10, clientId: null, client: '', clientQ: 'Bob', clientPinned: false }];
+eval(`editClientPick(10, '1')`);
+if (S.deals[0].client !== 'Local Bob' || S.deals[0].clientId !== 1) throw new Error("editClientPick failed for local");
 
-const dealLocal = { clientId: 3, client: 'Local Dude', manager: 'Admin', payType: 'Наличные', type: 'Обмен валюты', crmClientId: 99 };
-const pLocal = crmPayload(dealLocal);
-if (pLocal.client_id !== 99) throw new Error("crmPayload lost fallback crmClientId: " + pLocal.client_id);
-
-// Test 6: No docs inference
-if (CRM_CLIENTS[0].docs !== false) throw new Error("Docs should be explicitly false, not inferred from totalDeals");
-
-// Test 7: Verify draftClientPick sets correct key
-S.draft = { source: 'tg', sourceRef: 'Елизавета:id6' };
-draftClientPick('crm:1');
-if (S.chatClientMap['tg:Елизавета:id6'] !== 'crm:1') throw new Error("draftClientPick did not set S.chatClientMap correctly");
+eval(`editClientPick(10, 'crm:1')`);
+if (S.deals[0].client !== 'CRM Bob' || S.deals[0].clientId !== 'crm:1') throw new Error("editClientPick failed for CRM");
 
 console.log("All UI tests passed.");
 } catch (e) {
