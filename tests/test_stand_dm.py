@@ -114,18 +114,6 @@ def test_karim_only_mute_role_change_unbind_and_no_backfill(dm, monkeypatch):
     board([note(5), note(4), note(3)])
     notify.deliver()
     assert log_status('dm-note-5', ids['manager'])[0] == 'suppressed'
-
-
-def test_delivery_result_distinguishes_sent_from_suppressed(dm, monkeypatch):
-    calls, _, board = dm
-    board([note(31, 'operator')])
-    monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
-    result = notify.deliver()
-    statuses = {item['role']: item['status'] for item in result
-                if item['note_id'] == 'dm-note-31'}
-    assert statuses['admin'] == 'sent'
-    assert statuses['operator'] == 'suppressed'
-    assert len(sends(calls)) == 1
     db = appmod.SessionLocal()
     manager = db.query(appmod.AdminUser).get(ids['manager'])
     manager.notify_enabled = True
@@ -136,6 +124,48 @@ def test_delivery_result_distinguishes_sent_from_suppressed(dm, monkeypatch):
     notify.deliver()
     assert log_status('dm-note-6', ids['manager'])[0] == 'suppressed'
     assert log_status('dm-note-5', ids['manager'])[0] == 'suppressed'
+
+
+def test_delivery_result_distinguishes_sent_from_suppressed(dm, monkeypatch):
+    calls, ids, board = dm
+    board([note(31, 'operator')])
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
+    result = notify.deliver()
+    statuses = {item['role']: item['status'] for item in result
+                if item['note_id'] == 'dm-note-31'}
+    assert statuses['admin'] == 'sent'
+    assert statuses['operator'] == 'suppressed'
+    assert len(sends(calls)) == 1
+
+
+def test_delivery_result_aggregates_multiple_users_of_one_role(dm, monkeypatch):
+    calls, ids, board = dm
+    db = appmod.SessionLocal()
+    second = appmod.AdminUser(username='dm_test_operator2', display_name='operator2',
+        role='operator', password_hash='unused', notify_enabled=False,
+        telegram_user_id=105)
+    db.add(second); db.commit(); ids['operator2'] = second.id; db.close()
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'enabled')
+    board([note(32, 'operator')])
+    result = notify.deliver()
+    statuses = {(item['note_id'], item['role']): item['status'] for item in result}
+    assert statuses[('dm-note-32', 'operator')] == 'sent'
+    # The admin copy is aggregated under admin and cannot override operator status.
+    assert statuses[('dm-note-32', 'admin')] == 'sent'
+    assert [x['chat_id'] for x in sends(calls)].count(103) == 1
+
+    def fail_one_operator(method, payload):
+        calls.append((method, payload))
+        if method == 'getMe':
+            return {'ok': True, 'result': {'username': 'grusha_stand_bot'}}
+        if method == 'sendMessage' and payload['chat_id'] == 103:
+            return {'ok': False, 'error_code': 403}
+        return {'ok': True}
+    monkeypatch.setattr(notify.stand_egress, 'tg_call', fail_one_operator)
+    board([note(33, 'operator')])
+    result = notify.deliver()
+    statuses = {(item['note_id'], item['role']): item['status'] for item in result}
+    assert statuses[('dm-note-33', 'operator')] == 'failed'
 
 
 def test_failed_403_429_and_timeout_retry_without_group(dm, monkeypatch):

@@ -290,6 +290,9 @@ def deliver():
                                                'WHERE note_id=:note_id AND admin_id=:admin_id'),
                                           {'note_id': row_key, 'admin_id': user.id}).first()
                     if existing and (existing[0] != 'failed' or existing[1] >= _MAX_ATTEMPTS):
+                        delivery_results.append({'note_id': note_id,
+                                                 'role': user.role or 'admin',
+                                                 'status': existing[0]})
                         continue
                     chat_id = user.telegram_user_id
                     if suppress_only:
@@ -333,7 +336,18 @@ def deliver():
                     lock_conn.execute(text('SELECT pg_advisory_unlock(:key)'), {'key': _LOCK_KEY + 1})
                 finally:
                     lock_conn.close()
-    return delivery_results
+    # The UI reports the role that owns a task. Admin copies are separate role
+    # results, and multiple users with the same role collapse deterministically.
+    grouped = {}
+    for item in delivery_results:
+        key = (str(item['note_id']), item['role'])
+        grouped.setdefault(key, set()).add(item['status'])
+    result = []
+    for (note_id, role), statuses in grouped.items():
+        status = ('sent' if 'sent' in statuses else
+                  'failed' if 'failed' in statuses else 'suppressed')
+        result.append({'note_id': note_id, 'role': role, 'status': status})
+    return sorted(result, key=lambda item: (item['note_id'], item['role']))
 
 
 def status():
