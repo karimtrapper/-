@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
-const { chromium, devices } = require(path.resolve(__dirname, '../../../node_modules/playwright'));
+const { chromium, webkit, devices } = require(path.resolve(__dirname, '../../../node_modules/playwright'));
 
 const root = path.resolve(__dirname, '..');
 const mime = { '.html': 'text/html; charset=utf-8', '.json': 'application/json; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
@@ -13,6 +13,7 @@ const server = http.createServer((req, res) => {
   const target = pathname === '/tasks' ? 'static/stand/tasks.html'
     : pathname === '/crm' ? 'static/crm/crm.html'
       : pathname.startsWith('/tasks/') ? `static/stand/${pathname.slice('/tasks/'.length)}`
+        : pathname.startsWith('/walkthrough/') ? `static/stand/${pathname.slice(1)}`
         : pathname.replace(/^\//, '');
   const file = path.resolve(root, target);
   if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
@@ -25,7 +26,8 @@ const server = http.createServer((req, res) => {
 async function main() {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const base = `http://127.0.0.1:${server.address().port}`;
-  const browser = await chromium.launch({ headless: true });
+  const browserType = process.env.BROWSER === 'webkit' ? webkit : chromium;
+  const browser = await browserType.launch({ headless: true });
   let apiMode = 'prod';
   const writes = [];
   try {
@@ -79,6 +81,11 @@ async function main() {
     assert.equal(await page.locator('#bottomNav [data-nav-section="deals"]').getAttribute('class'), 'bottom-nav-item active');
     await page.evaluate(() => document.querySelector('#standTasksNav').click());
     await page.waitForURL('**/tasks');
+    // Synthetic mode keeps actual role switching local: save() is disabled and
+    // every server request remains read-only while exercising the real handlers.
+    await page.goto(`${base}/tasks?snap=walkthrough/leasehold-rub/01.json`);
+    await page.evaluate(() => { standMe = 'admin'; render(); });
+    await page.waitForFunction(() => document.querySelector('#roles .rolebtn'));
 
     // Use read-only walkthrough snapshots as synthetic deal data. Sweep every
     // role/step at the requested CSS widths, then a document card and bottom sheet.
@@ -86,6 +93,17 @@ async function main() {
       await page.setViewportSize({ width, height: 844 });
       const sweep = await page.evaluate(async () => {
         const failures = [];
+        const viewportMeta = document.querySelector('meta[name="viewport"]')?.content || '';
+        const roles = document.querySelector('#roles');
+        const roleBtn = roles?.querySelector('.rolebtn');
+        const roleLayout = {
+          railWidth: roles?.getBoundingClientRect().width || 0,
+          visibleButtonWidth: roleBtn?.getBoundingClientRect().width || 0,
+          railClientWidth: roles?.clientWidth || 0,
+          metaShrinkToFit: viewportMeta.includes('shrink-to-fit=no'),
+        };
+        if (roleLayout.railWidth < innerWidth - 24 || roleLayout.visibleButtonWidth < 90 || !roleLayout.metaShrinkToFit)
+          failures.push({ roleLayout });
         for (let i = 1; i <= 21; i++) {
           const n = String(i).padStart(2, '0');
           const snap = await (await fetch(`/static/stand/walkthrough/leasehold-rub/${n}.json`)).json();
@@ -106,7 +124,7 @@ async function main() {
         const d = S.deals.find(x => x.id === S.open);
         S.modal = { id: d.id, step: d.step, to: 'operator', delivery: 'pending' }; render();
         const modalWidth = document.querySelector('.modal')?.getBoundingClientRect().width || 0;
-        return { failures, documentWidth, modalWidth, viewport: innerWidth,
+        return { failures, documentWidth, modalWidth, roleLayout, viewport: innerWidth,
           html: document.documentElement.scrollWidth, body: document.body.scrollWidth };
       });
       assert.deepEqual(sweep.failures, [], `${width}px viewport overflow: ${JSON.stringify(sweep.failures)}`);
@@ -114,7 +132,20 @@ async function main() {
       assert.ok(sweep.modalWidth > 0 && sweep.modalWidth <= width, `${width}px modal width ${sweep.modalWidth}`);
       assert.equal(sweep.html, width);
       assert.equal(sweep.body, width);
+      assert.ok(sweep.roleLayout.railWidth >= width - 24, `${width}px role rail width ${sweep.roleLayout.railWidth}`);
+      assert.ok(sweep.roleLayout.visibleButtonWidth >= 90, `${width}px role button width ${sweep.roleLayout.visibleButtonWidth}`);
+      assert.equal(sweep.roleLayout.metaShrinkToFit, true);
+      console.log(`${width}px: roles rail ${sweep.roleLayout.railWidth.toFixed(1)}px, first role ${sweep.roleLayout.visibleButtonWidth.toFixed(1)}px`);
     }
+    // Scroll the real role rail and activate a role through its click handler.
+    // SNAP makes setRole() render locally without a PUT.
+    await page.evaluate(() => { standMe = 'admin'; S.role = 'manager'; S.modal = null; S.open = null; render(); });
+    await page.evaluate(() => { const el = document.querySelector('#roles'); el.scrollLeft = el.scrollWidth; });
+    assert.ok(await page.locator('#roles').evaluate(el => el.scrollLeft > 0), 'role rail did not scroll horizontally');
+    await page.getByRole('button', { name: 'Фин дир' }).click();
+    assert.equal(await page.evaluate(() => S.role), 'findir');
+    assert.equal(await page.locator('#roles .rolebtn.on').innerText(), 'Фин дир');
+    console.log('Role rail: horizontally scrolled and Фин дир activated by click');
     assert.deepEqual(writes, [], `unexpected mutating API calls: ${writes.join(', ')}`);
     await context.close();
     console.log('PASS: prod/stand mobile navigation, five slots, Deals active state, /tasks link, 21 synthetic frames at 375/390/430px, documents and modal widths; no API writes');

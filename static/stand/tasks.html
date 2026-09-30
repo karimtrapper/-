@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, shrink-to-fit=no">
 <title>Задачник CalcCRM — кликабельный прототип</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -473,18 +473,22 @@ a.hash:hover{background:#BAE6FD}
   /* На телефонах flex-дети с длинным текстом не должны задавать ширину странице.
      Горизонтально прокручиваются только роли и вкладки; карточки остаются в viewport. */
   .proto,.top-nav,.nav,.container,#app,.card,.cols>*{min-width:0;max-width:100%}
-  /* шапка: роль, колокольчик и сборка в одну строку, подписи — прочь */
-  .proto{position:static;width:100%;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));gap:8px;flex-wrap:nowrap}
+  /* Два отдельных ряда не дают длинному market chip схлопнуть переключатель ролей.
+     Роли занимают всю ширину и прокручиваются внутри шапки; body не расширяется. */
+  .proto{position:static;width:100%;padding:8px 12px;padding-top:max(8px,env(safe-area-inset-top));
+    display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"roles roles" "market market" "bell build" "tools tools";
+    align-items:center;gap:8px;}
   .proto .lab{display:none}
-  .proto .build{order:3;margin-left:auto;font-size:10.5px;padding:2px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:42vw}
-  .proto #roles{display:flex;flex:1 1 auto;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;min-width:0}
+  .proto .build{grid-area:build;justify-self:end;margin:0;font-size:10.5px;padding:2px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:min(65vw,260px)}
+  .proto #roles{grid-area:roles;display:flex;width:100%;min-width:0;gap:6px;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none}
   .proto #roles::-webkit-scrollbar{display:none}
-  .proto .rolebtn{padding:7px 12px;font-size:13px;white-space:nowrap;min-height:36px}
+  .proto .rolebtn{flex:0 0 auto;padding:7px 12px;font-size:13px;white-space:nowrap;min-height:40px}
+  .proto #market{grid-area:market;display:flex;min-width:0;width:100%;max-width:100%;overflow:hidden}
+  .proto #market .chip{max-width:100%;flex-wrap:wrap;justify-content:center}
+  .proto #bell{grid-area:bell;justify-self:start;min-width:0}
   .proto .spacer{display:none}
   .proto #admintools:empty{display:none}
-  /* у админа — своя строка: переключатель ролей и инструменты доски не влезают в одну */
-  .proto:has(#admintools:not(:empty)){flex-wrap:wrap;row-gap:6px}
-  .proto #admintools{order:4;flex:1 1 100%;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+  .proto #admintools{grid-area:tools;min-width:0;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
   .proto #admintools .ghost{white-space:nowrap;padding:6px 10px;font-size:12px;min-height:36px}
   .bellbtn{min-height:40px;min-width:44px;padding:6px 10px;justify-content:center}
   .bellbtn .bl{display:none}
