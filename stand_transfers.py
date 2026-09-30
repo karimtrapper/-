@@ -163,6 +163,12 @@ def preserve_server_fields(old_state, new_state):
     for deal in new_state.get('deals', []):
         transfer = deal.get('transfer') or {}
         previous = old_deals.get(deal.get('id')) or {}
+        # IPPS payout approval is stamped only by /api/stand/state after the
+        # manager's guarded s22→s23 handoff. Keep it through stale client writes.
+        if previous.get('ippsPayoutOrder'):
+            deal['ippsPayoutOrder'] = previous['ippsPayoutOrder']
+        else:
+            deal.pop('ippsPayoutOrder', None)
         # Preserve a signature on stale snapshots. A changed signature is kept
         # only after app._stand_guard_transition validated it against a live
         # StandChannel row and the server HMAC.

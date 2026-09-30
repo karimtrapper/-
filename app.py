@@ -5823,6 +5823,20 @@ def stand_state_put():
         if problem:
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
+        previous_by_id = {d.get('id'): d for d in previous.get('deals') or []}
+        for deal in clean.get('deals') or []:
+            before = previous_by_id.get(deal.get('id')) or {}
+            if (before.get('step') == 's22' and deal.get('step') == 's23'
+                    and before.get('kind') == 'Фрихолд'
+                    and deal.get('_ippsPayoutInstruction') is True):
+                transfer = deal.get('transfer') or {}
+                deal['ippsPayoutOrder'] = {
+                    'amount': round(_stand_number(transfer.get('amount')), 2),
+                    'network': transfer.get('net'),
+                    'address': str(transfer.get('addr') or '').strip(),
+                    'confirmedAt': datetime.utcnow().isoformat(timespec='seconds') + 'Z',
+                }
+            deal.pop('_ippsPayoutInstruction', None)
         if actor in ('manager', 'admin') and actor_id is not None:
             old_by_id = {d.get('id'): d for d in previous.get('deals') or []}
             for deal in clean.get('deals') or []:
@@ -7155,6 +7169,8 @@ def _stand_current_step_role(state, deal):
     в реестр — тогда его owner/multisig лежат в deal.payinCustom, а не в общем
     списке state.wallets."""
     step = deal.get('step')
+    if step == 's22' and deal.get('kind') == 'Фрихолд':
+        return 'manager'
     if step != 's23':
         return _STAND_STEP_ROLE.get(step)
     conv = next((c for c in state.get('convs', [])
@@ -7343,6 +7359,96 @@ def _stand_canonical_payout(payout):
     return payout
 
 
+def _stand_freehold_ipps_order_problem(state, before, deal, actor):
+    """Require a manager-confirmed, server-stamped snapshot before freehold sends."""
+    if not (deal.get('kind') == 'Фрихолд' or before.get('kind') == 'Фрихолд'):
+        return None
+    issuing = before.get('step') == 's22' and deal.get('step') == 's23'
+    if before.get('step') == 's22' and deal.get('step') != 's22' and not issuing:
+        return 'С s22 фрихолда можно перейти только по сохранённому поручению менеджера на s23'
+    if deal.get('_ippsPayoutInstruction') and not issuing:
+        return 'Подтверждение поручения действует только при переходе менеджера с s22 на s23'
+    old_order = before.get('ippsPayoutOrder')
+    if deal.get('ippsPayoutOrder') != old_order:
+        return 'Поручение IPPS фиксирует только сервер'
+    if (before.get('step') == 's22'
+            and (deal.get('demoTransfers') != before.get('demoTransfers')
+                 or deal.get('payinHashes') != before.get('payinHashes'))):
+        return 'Приход и demo-флаг нельзя менять на задаче поручения'
+    old_sends = (before.get('transfer') or {}).get('sends') or []
+    confirmed_legacy = bool(old_sends) and all(s.get('status') == 'confirmed' for s in old_sends)
+    new_sends = (deal.get('transfer') or {}).get('sends') or []
+    if issuing:
+        if actor not in ('manager', 'admin'):
+            return 'Поручить исходящий перевод может только менеджер'
+        if deal.get('_ippsPayoutInstruction') is not True:
+            return 'Для поручения IPPS используйте подтверждение менеджера'
+        if before.get('reqTask') not in ('open', 'done') or deal.get('reqTask') != 'done':
+            return 'Сначала менеджер должен сохранить реквизиты заявки, затем поручить перевод'
+        # Do not accept client edits to the evidence used for the funding limit.
+        if _stand_payto_problem(before):
+            return _stand_payto_problem(before)
+        if (deal.get('type') != 'Оплата недвижимости'
+                or deal.get('postConv') != 'ipps_swift'):
+            return 'Для фрихолда требуется маршрут IPPS'
+        transfer = deal.get('transfer') or {}
+        try:
+            from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+            invoice = Decimal(str(deal.get('invoiceUsd')))
+            amount = Decimal(str(transfer.get('amount')))
+            tariff = {'bank': Decimal('0.008'), 'soft': Decimal('0.015')}[deal.get('ippsTariff') or 'bank']
+            expected = (invoice + (invoice * tariff + Decimal('50')).quantize(
+                Decimal('0.01'), rounding=ROUND_HALF_UP)).quantize(
+                    Decimal('0.01'), rounding=ROUND_HALF_UP)
+            if invoice <= 0 or amount != expected:
+                return 'Сумма поручения должна совпасть с расчётом договора'
+        except (InvalidOperation, TypeError, ValueError, KeyError):
+            return 'Некорректная сумма поручения IPPS'
+        network = transfer.get('net')
+        from stand_transfers import valid_address
+        if network != 'TRC-20' or not valid_address(transfer.get('addr'), 'trc20'):
+            return 'Для исходящего IPPS сейчас поддерживается только TRC-20 с полным адресом'
+        # Funding proof must come from the previously committed snapshot. Never let
+        # this same PUT change a real receipt into demo or edit its amount.
+        funding_deal = before
+        payin_hashes = [h for h in funding_deal.get('payinHashes') or [] if isinstance(h, dict)]
+        if (funding_deal.get('demoTransfers') is True and payin_hashes
+                and all(h.get('demo') is True and _stand_number(h.get('amount')) > 0
+                        for h in payin_hashes)):
+            # Isolated synthetic path for the explicitly marked stand demo flow.
+            # No unverified production hash can qualify through this branch.
+            verified_in = sum(_stand_number(h.get('amount')) for h in payin_hashes)
+        else:
+            verified_in = sum(_stand_number(h.get('amount')) for h in payin_hashes
+                              if h.get('verified') is True)
+        if funding_deal.get('cnvId') is not None:
+            conv = next((c for c in state.get('convs') or []
+                         if c.get('id') == funding_deal.get('cnvId')), None)
+            source = next((s for s in (conv or {}).get('sources') or []
+                           if s.get('dealId') == funding_deal.get('id')), None)
+            confirmed = sum(_stand_number(t.get('amount')) for t in (conv or {}).get('txs') or []
+                            if t.get('status') == 'confirmed')
+            if source and confirmed > 0:
+                verified_in = max(verified_in, min(confirmed, _stand_number(
+                    source.get('usdtFact') or source.get('usdt'))))
+        if verified_in <= 0 or amount > verified_in + 0.005:
+            return 'Сумма поручения превышает подтверждённый приход или приход ещё не проверен'
+        if new_sends:
+            return 'Сначала сохраните поручение менеджера; исходящий перевод ещё не начат'
+        return None
+    if not old_order and not confirmed_legacy:
+        if (before.get('step') in ('s23', 's24') and
+                (deal.get('step') != before.get('step') or new_sends != old_sends)):
+            return 'Ждём сохранённого поручения менеджера перед исходящим переводом'
+    if old_order:
+        transfer = deal.get('transfer') or {}
+        if (abs(_stand_number(transfer.get('amount')) - _stand_number(old_order.get('amount'))) > 0.005
+                or transfer.get('net') != old_order.get('network')
+                or transfer.get('addr') != old_order.get('address')):
+            return 'Перевод должен совпадать с подтверждённым поручением менеджера'
+    return None
+
+
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False):
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
@@ -7428,6 +7534,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        if (not before and (deal.get('ippsPayoutOrder') or deal.get('_ippsPayoutInstruction'))):
+            return 'Поручение IPPS назначает только сервер'
+        if before:
+            order_problem = _stand_freehold_ipps_order_problem(previous, before, deal, actor)
+            if order_problem:
+                return order_problem
         prior_bitrix_proof = (before or {}).get('bitrixCloseProof')
         next_bitrix_proof = deal.get('bitrixCloseProof')
         if next_bitrix_proof and next_bitrix_proof != prior_bitrix_proof:
@@ -7544,7 +7656,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'Документы клиента публикуются после подтверждения шага s8'
         if before and actor not in (None, 'admin'):
             changed = {key for key in set(before) | set(deal)
-                       if before.get(key) != deal.get(key)}
+                       if before.get(key) != deal.get(key)
+                       and not (key in ('files', 'docs', 'docMeta')
+                                and not before.get(key) and not deal.get(key))}
             owner = _stand_current_step_role(previous, before)
             if changed and owner and actor != owner and not step_changed:
                 manager_parallel = (actor == 'manager' and (
@@ -7560,7 +7674,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if before.get('step') != 'manual' and before.get('payTo') != deal.get('payTo'):
                 if actor != 'manager':
                     return 'Реквизиты оплаты подтверждает менеджер'
-                if before.get('reqTask') != 'open' and before.get('step') != 's15':
+                if (before.get('reqTask') != 'open' and before.get('step') != 's15'
+                        and not (before.get('step') == 's22'
+                                 and before.get('kind') == 'Фрихолд'
+                                 and not before.get('ippsPayoutOrder'))):
                     return 'Реквизиты можно публиковать только в задаче менеджера'
                 payto_problem = _stand_payto_problem(deal)
                 if payto_problem:
@@ -7568,7 +7685,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (actor == 'manager' and before.get('reqTask') == 'open'
                     and before.get('step') != 's15'
                     and deal.get('reqTask') == 'open'
-                    and any(before.get(key) != deal.get(key) for key in ('dev', 'bank'))):
+                    and any(before.get(key) != deal.get(key) for key in ('dev', 'bank'))
+                    and not (before.get('step') == 's22' and before.get('kind') == 'Фрихолд')):
                 return 'Реквизиты публикуются при подтверждении задачи менеджера'
             if before.get('reqTask') != deal.get('reqTask') and actor == 'manager':
                 if deal.get('reqTask') == 'open' and not (
@@ -7583,28 +7701,22 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     payto_problem = _stand_payto_problem(deal)
                     if payto_problem:
                         return payto_problem
-            if (step_changed and before.get('step') in ('s25', 's26')
-                    and (before.get('step') == 's26' or deal.get('kind') == 'Фрихолд')):
+            if step_changed and before.get('step') == 's26':
                 payto_problem = _stand_payto_problem(deal)
                 if payto_problem:
                     return payto_problem
-            # Гейт перед оплатой (T34 п.3): отправка заявки в IPPS (фрихолд, действие
-            # шага s25) и оплата инвойса (действие шага s26) — без свежего
-            # подтверждения менеджера сервер их не пропустит, даже если клиент обошёл
-            # disabled кнопки в разметке. before.step — реальный шаг действия: клиент
-            # выставляет pay.ippsSent/invoicePaid и следующий step в одном PUT.
+            # s25 больше не отправляет заявку IPPS: её согласуют до перевода.
+            # Свежая проверка payTo остаётся обязательной перед оплатой инвойса на s26.
             old_pay, new_pay = before.get('pay') or {}, deal.get('pay') or {}
-            if (before.get('step') == 's25' and not old_pay.get('ippsSent')
-                    and new_pay.get('ippsSent') and not _stand_payto_confirmed(deal)):
-                return 'Ждём подтверждения реквизитов от менеджера'
+            if (before.get('kind') == 'Фрихолд' and not old_pay.get('ippsSent')
+                    and new_pay.get('ippsSent')):
+                return 'Заявка IPPS согласуется до исходящего перевода, повторная отправка на s25 отключена'
             if (before.get('step') == 's26' and not old_pay.get('invoicePaid')
                     and new_pay.get('invoicePaid') and not _stand_payto_confirmed(deal)):
                 return 'Ждём подтверждения реквизитов от менеджера'
-            # Уйти с шага оплаты без подтверждения тоже нельзя: иначе PUT «только step
-            # s26→s27 / s25→s26», без флага оплаты, проезжал гейт (QA 30.09).
-            if (step_changed and (before.get('step') == 's26'
-                                  or (before.get('step') == 's25' and deal.get('kind') == 'Фрихолд'))
-                    and not _stand_payto_confirmed(deal)):
+            # Уйти с оплаты без подтверждения тоже нельзя: иначе PUT «только s26→s27»
+            # проезжал бы гейт без invoicePaid.
+            if step_changed and before.get('step') == 's26' and not _stand_payto_confirmed(deal):
                 return 'Ждём подтверждения реквизитов от менеджера'
         if (step_changed and deal.get('step') not in ('s4', 's5', 's6', 's8')
                 and _stand_freehold_plan_problem(deal)):
@@ -7709,12 +7821,16 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if actor not in (None, 'admin') and before != deal:
             required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
                         's26': 'operator', 's27': 'manager'}.get(before.get('step'))
+            if before.get('step') == 's22' and before.get('kind') == 'Фрихолд':
+                required = 'manager'
             if before.get('step') == 's23':
                 required = _stand_current_step_role(previous, before)
             # Реквизиты для оплаты — параллельная задача менеджера (Карим, 25.09): их
             # можно править на любом шаге, пока инвойс не оплачен. Менеджеру пропускаем
             # правку, если менялись только реквизиты и их след в журнале.
-            changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)}
+            changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)
+                       and not (k in ('files', 'docs', 'docMeta')
+                                and not before.get(k) and not deal.get(k))}
             manager_reqs = (not step_changed and (
                             (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
                              and changed <= STAND_MANAGER_REQ_FIELDS)
@@ -7888,7 +8004,7 @@ def _stand_settle_verified(state, members):
                         'text': (f'Перевод {verb} и подтверждён в сети · {ref} · '
                                  f'{float(s.get("verifiedAmount") or 0):,.2f}'.replace(',', ' ').replace('.', ',') + ' USDT'
                                  + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
-            main['step'] = 's25'
+            main['step'] = 's26' if main.get('kind') == 'Фрихолд' else 's25'
             main['serverTransferComplete'] = True
             # Мелкие сделки пачки с Coins и переводом клиенту: клиент получает деньги,
             # когда перевод подтверждён, — это закрытие сделки и хеши выдачи в Pay-Out.
@@ -7927,7 +8043,8 @@ def _stand_settle_verified(state, members):
                             f"перевод подтверждён, сделка закрыта")
             prefix = 'DEMO · ' if main.get('demoTransfers') else ''
             proof = 'тестовые переводы подтверждены' if prefix else 'все переводы пачки подтверждены'
-            next_action = 'отправьте заявку в IPPS' if main.get('postConv') == 'ipps_swift' else 'известите Coins'
+            next_action = ('учтите MT103 по ранее согласованной заявке'
+                           if main.get('postConv') == 'ipps_swift' else 'известите Coins')
             _stand_note(state, f"stand:coins:{main['id']}", 'operator', main,
                         f"{prefix}{main.get('code') or main['id']}: {proof}; {next_action}")
             changed = True
@@ -7944,8 +8061,32 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         db.close()
     ids = ([deal_id] if deal_id is not None else
            [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
+    if deal_id is None:
+        allowed = []
+        for wanted in ids:
+            selected = next((d for d in snapshot.get('deals', []) if d.get('id') == wanted), None)
+            main = _stand_batch_main(snapshot, wanted)
+            fh = main if (main or {}).get('kind') == 'Фрихолд' else selected
+            sends = ((fh or {}).get('transfer') or {}).get('sends') or []
+            legacy_confirmed = bool(sends) and all(s.get('status') == 'confirmed' for s in sends)
+            if ((fh or {}).get('kind') != 'Фрихолд'
+                    or (fh.get('ippsPayoutOrder') or {}).get('confirmedAt')
+                    or legacy_confirmed):
+                allowed.append(wanted)
+        ids = allowed
     if deal_id is not None and _stand_batch_main(snapshot, deal_id) is None:
         return {'success': False, 'error': 'Главная сделка пачки не определена', 'httpStatus': 409}
+    if deal_id is not None:
+        selected = next((d for d in snapshot.get('deals', []) if d.get('id') == deal_id), None)
+        main = _stand_batch_main(snapshot, deal_id)
+        fh = main if (main or {}).get('kind') == 'Фрихолд' else selected
+        if (fh or {}).get('kind') == 'Фрихолд':
+            sends = (fh.get('transfer') or {}).get('sends') or []
+            legacy_confirmed = bool(sends) and all(s.get('status') == 'confirmed' for s in sends)
+            if not (fh.get('ippsPayoutOrder') or {}).get('confirmedAt') and not legacy_confirmed:
+                return {'success': False,
+                        'error': 'Ждём поручения менеджера перед проверкой исходящего перевода',
+                        'httpStatus': 409}
     if deal_id is not None:
         main = _stand_batch_main(snapshot, deal_id)
         members = _stand_members(snapshot, deal_id)
@@ -8114,6 +8255,12 @@ def stand_transfers_demo():
         main = _stand_batch_main(state, deal_id)
         if main is None:
             return jsonify({'success': False, 'error': 'Главная сделка пачки не определена'}), 409
+        if main.get('kind') == 'Фрихолд':
+            sends = (main.get('transfer') or {}).get('sends') or []
+            legacy_confirmed = bool(sends) and all(s.get('status') == 'confirmed' for s in sends)
+            if not (main.get('ippsPayoutOrder') or {}).get('confirmedAt') and not legacy_confirmed:
+                return jsonify({'success': False,
+                                'error': 'Ждём поручения менеджера перед исходящим переводом'}), 409
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
         wallet_id = (conv or {}).get('walletId') or main.get('walletId')
         wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)

@@ -45,7 +45,200 @@ def freehold_board(step='s24'):
     }
 
 
-def test_freehold_transfer_confirmation_advances_s24_to_s25():
+def manager_s22_deal(*, demo=False, req_task='open'):
+    deal = freehold_board('s22')['deals'][0]
+    deal.update({
+        'type': 'Оплата недвижимости', 'payType': 'Крипта', 'curBase': 'usdt',
+        'invoiceUsd': 10000, 'amountUsdt': 11000, 'reqTask': req_task, 'pay': {},
+        'payTo': {'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
+                  'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
+                  'purpose': 'Synthetic invoice payment', 'amount': 10000},
+        'transfer': {'amount': 45410, 'to': 'IPPS', 'addr': IPPS_WALLET,
+                     'net': 'TRC-20', 'sends': []},
+        'demoTransfers': demo,
+        'payinHashes': ([{'hash': 'demo:incoming:1:a', 'amount': 1, 'demo': True},
+                         {'hash': 'demo:incoming:1:b', 'amount': 10999, 'demo': True}]
+                        if demo else
+                        [{'hash': 'synthetic-verified-in', 'amount': 50000, 'verified': True}]),
+    })
+    return deal
+
+
+def authorized_s23_state(*, demo=False, req_task='open'):
+    state = {'wallets': [], 'convs': [], 'deals': [manager_s22_deal(demo=demo, req_task=req_task)],
+             'notes': []}
+    d = state['deals'][0]
+    d.update(step='s23', reqTask='done', postConv='ipps_swift',
+             transfer={'amount': 10130, 'to': 'IPPS',
+                       'addr': IPPS_WALLET, 'net': 'TRC-20', 'sends': []},
+             _ippsPayoutInstruction=True,
+             log=[{'text': 'Manager explicitly confirmed group details and instructed finance'}])
+    return state
+
+
+def test_s22_freehold_is_manager_owned_but_other_s22_roles_are_unchanged():
+    fh = manager_s22_deal()
+    exchange = {'id': 2, 'kind': None, 'type': 'Обмен валюты', 'step': 's22'}
+    assert appmod._stand_current_step_role({'deals': [fh]}, fh) == 'manager'
+    assert appmod._stand_current_step_role({'deals': [exchange]}, exchange) == 'operator'
+
+
+def test_s22_manager_can_save_swift_details_before_instruction():
+    before = {'wallets': [], 'convs': [], 'deals': [manager_s22_deal()], 'notes': []}
+    after = json.loads(json.dumps(before))
+    after['deals'][0]['payTo']['acc'] = 'SYNTHETIC-ACCOUNT-2'
+    after['deals'][0]['dev'] = after['deals'][0]['payTo']['dev']
+    after['deals'][0]['bank'] = 'Synthetic Bank · SYNTHETIC-ACCOUNT-2'
+    after['deals'][0]['log'] = [{'text': 'saved synthetic requisites'}]
+    assert appmod._stand_guard_transition(before, after, actor='manager') is None
+
+
+def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_funding():
+    before = {'wallets': [], 'convs': [], 'deals': [manager_s22_deal(demo=True)], 'notes': []}
+    allowed = authorized_s23_state(demo=True)
+    assert appmod._stand_guard_transition(before, allowed, actor='manager') is None
+    assert appmod._stand_guard_transition(before, allowed, actor='admin') is None
+
+    bad_actor = json.loads(json.dumps(allowed))
+    assert 'только менеджер' in appmod._stand_guard_transition(before, bad_actor, actor='operator')
+
+    bad_marker = json.loads(json.dumps(allowed))
+    bad_marker['deals'][0].pop('_ippsPayoutInstruction')
+    assert 'подтверждение менеджера' in appmod._stand_guard_transition(before, bad_marker, actor='manager')
+
+    bad_contract = json.loads(json.dumps(allowed))
+    bad_contract['deals'][0]['transfer']['amount'] = 10129
+    assert 'расчётом договора' in appmod._stand_guard_transition(before, bad_contract, actor='manager')
+
+    bad_network = json.loads(json.dumps(allowed))
+    bad_network['deals'][0]['transfer'].update(net='ERC-20', addr='0x' + 'a' * 40)
+    assert 'поддерживается только TRC-20' in appmod._stand_guard_transition(before, bad_network, actor='manager')
+
+    insufficient = json.loads(json.dumps(before))
+    insufficient['deals'][0]['payinHashes'] = [
+        {'hash': 'demo:incoming:1:a', 'amount': 1, 'demo': True},
+        {'hash': 'demo:incoming:1:b', 'amount': 9999, 'demo': True},
+    ]
+    insufficient_after = authorized_s23_state(demo=True)
+    insufficient_after['deals'][0]['payinHashes'] = json.loads(json.dumps(
+        insufficient['deals'][0]['payinHashes']))
+    assert 'превышает подтверждённый приход' in appmod._stand_guard_transition(
+        insufficient, insufficient_after, actor='manager')
+
+    spoofed = json.loads(json.dumps(before))
+    spoofed['deals'][0]['step'] = 's23'
+    spoofed['deals'][0]['reqTask'] = 'done'
+    spoofed['deals'][0]['postConv'] = 'ipps_swift'
+    spoofed['deals'][0]['demoTransfers'] = True
+    spoofed['deals'][0]['payinHashes'] = [
+        {'hash': 'demo:incoming:fake:a', 'amount': 1, 'demo': True},
+        {'hash': 'demo:incoming:fake:b', 'amount': 10999, 'demo': True},
+    ]
+    spoofed['deals'][0]['_ippsPayoutInstruction'] = True
+    assert 'нельзя менять на задаче поручения' in appmod._stand_guard_transition(
+        before, spoofed, actor='manager')
+
+    real_before = {'wallets': [], 'convs': [],
+                   'deals': [manager_s22_deal(demo=False)], 'notes': []}
+    spoofed_real = authorized_s23_state(demo=True)
+    assert 'нельзя менять на задаче поручения' in appmod._stand_guard_transition(
+        real_before, spoofed_real, actor='manager')
+
+    for destination in ('s24', 's26'):
+        forged_jump = json.loads(json.dumps(allowed))
+        forged_jump['deals'][0]['step'] = destination
+        assert 'только по сохранённому поручению' in appmod._stand_guard_transition(
+            before, forged_jump, actor='manager')
+
+    before23_deal = dict(manager_s22_deal(demo=True), step='s23',
+                         postConv='ipps_swift', reqTask='done')
+    before23 = {'wallets': [], 'convs': [], 'deals': [before23_deal], 'notes': []}
+    s23_no_order = json.loads(json.dumps(before23))
+    s23_no_order['deals'][0]['transfer']['sends'] = [
+        {'ref': 'synthetic-send', 'amount': 10130, 'net': 'TRC-20', 'status': 'pending'}]
+    assert 'поручения менеджера' in appmod._stand_freehold_ipps_order_problem(
+        s23_no_order, before23_deal, s23_no_order['deals'][0], 'findir')
+
+
+def test_confirmed_legacy_freehold_transfer_without_order_is_not_blocked():
+    before = freehold_board('s24')
+    d = before['deals'][0]
+    d['kind'] = 'Фрихолд'
+    d['postConv'] = 'ipps_swift'
+    d['transfer']['sends'][0].update(status='confirmed', verifiedAmount=45410)
+    after = json.loads(json.dumps(before))
+    assert appmod._stand_freehold_ipps_order_problem(
+        after, before['deals'][0], after['deals'][0], 'teodor') is None
+
+
+def test_legacy_confirmed_freehold_s25_can_continue_without_fabricated_order():
+    before = freehold_board('s25')
+    d = before['deals'][0]
+    d.update(postConv='ipps_swift', amountUsdt=45500, serverTransferComplete=True,
+             transfer={'addr': IPPS_WALLET, 'amount': 45410, 'net': 'TRC-20', 'sends': [
+                 {'ref': 'demo:legacy-confirmed', 'hash': None, 'net': 'TRC-20',
+                  'amount': 45410, 'verifiedAmount': 45410, 'status': 'confirmed'}]})
+    after = json.loads(json.dumps(before))
+    after['deals'][0]['step'] = 's26'
+    assert appmod._stand_freehold_ipps_order_problem(
+        before, d, after['deals'][0], 'operator') is None
+    assert appmod._stand_guard_transition(before, after, actor='operator') is None
+    assert after['deals'][0].get('ippsPayoutOrder') is None
+
+
+def test_admin_role_choice_can_commit_one_manager_instruction_idempotently(monkeypatch):
+    """Admin viewing as manager may save the explicit s22 handoff; stale retry cannot duplicate it."""
+    monkeypatch.setattr(appmod, 'STAND_MODE', True)
+    monkeypatch.setattr(appmod, '_stand_deliver_notes', lambda: None)
+    appmod._stand_migrate()
+    db = appmod.get_session()
+    try:
+        user = appmod.AdminUser(username='freehold_order_admin_test',
+                                role='admin',
+                                password_hash=appmod.AdminUser.hash_password('synthetic'))
+        db.add(user)
+        db.flush()
+        user_id = user.id
+        state = {'wallets': [], 'convs': [],
+                 'deals': [manager_s22_deal(demo=True)], 'notes': []}
+        row = appmod._stand_row(db)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        db.commit()
+    finally:
+        db.close()
+
+    client = appmod.app.test_client()
+    with client.session_transaction() as sess:
+        sess['user_id'] = user_id
+    before = client.get('/api/stand/state')
+    assert before.status_code == 200
+    payload = authorized_s23_state(demo=True)
+    put = client.put('/api/stand/state', json={
+        'version': before.json['version'], 'role': 'manager', 'data': payload})
+    assert put.status_code == 200, put.json
+    saved = put.json['data']['deals'][0]
+    proof = saved['ippsPayoutOrder']
+    assert proof['amount'] == 10130
+    assert proof['network'] == 'TRC-20'
+    assert proof['address'] == IPPS_WALLET
+    assert proof['confirmedAt']
+    assert '_ippsPayoutInstruction' not in saved
+    assert saved['step'] == 's23'
+    note_ids = [n.get('id') for n in put.json['data']['notes']]
+    assert len(note_ids) == len(set(note_ids))
+    version = put.json['version']
+
+    retry = client.put('/api/stand/state', json={
+        'version': before.json['version'], 'role': 'manager', 'data': payload})
+    assert retry.status_code == 409
+    after = client.get('/api/stand/state')
+    assert after.json['version'] == version
+    assert after.json['data']['deals'][0]['ippsPayoutOrder'] == proof
+    assert [n.get('id') for n in after.json['data']['notes']] == note_ids
+
+
+def test_freehold_transfer_confirmation_advances_s24_to_s26():
     state = freehold_board()
     members = state['deals']
 
@@ -56,22 +249,22 @@ def test_freehold_transfer_confirmation_advances_s24_to_s25():
     members[0]['transfer']['sends'][0].update(status='confirmed', verifiedAmount=45410)
     appmod._stand_settle_verified(state, members)
 
-    assert members[0]['step'] == 's25', 'подтверждённый IPPS-перевод продвигает s24→s25, как Coins у лизхолда'
+    assert members[0]['step'] == 's26', 'подтверждённый IPPS-перевод ведёт к учёту MT103, без поздней отправки заявки'
     assert members[0]['serverTransferComplete'] is True
     assert members[0]['mfPayout'][0]['amount'] == 45410
     assert members[0]['mfPayout'][0]['hash'] == 'demo:1:1'
     assert members[0]['payout']['usdt'] == 45410
 
-    # Уведомление про заявку в IPPS, а не «известите Coins» (QA №8/№9)
+    # Уведомление про учёт MT103, а не повторную отправку заявки после перевода.
     texts = [n.get('text', '') for n in state['notes']]
-    assert any('IPPS' in t for t in texts)
+    assert any('MT103' in t for t in texts)
     assert not any('Coins' in t for t in texts)
 
     # Повторный вызов не плодит второе уведомление и не двигает шаг дальше
     notes_before = len(state['notes'])
     appmod._stand_settle_verified(state, members)
     assert len(state['notes']) == notes_before
-    assert members[0]['step'] == 's25'
+    assert members[0]['step'] == 's26'
 
 
 def test_freehold_transfer_confirmation_requires_full_amount():
@@ -501,7 +694,7 @@ def test_closed_freehold_accepts_only_empty_hashes_normalization():
     deal['transfer']['sends'][0].update(hash='demo:send:1', status='confirmed',
                                          verifiedAmount=45410)
     appmod._stand_settle_verified(state, state['deals'])
-    assert deal['step'] == 's25'
+    assert deal['step'] == 's26'
     assert deal['serverTransferComplete'] is True
     assert deal['payout']['hashes'] == [
         {'hash': 'demo:send:1', 'amount': 45410, 'network': 'TRC20'}]

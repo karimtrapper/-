@@ -201,11 +201,11 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
   assert.ok(textSoft.startsWith('POBO: IVANOV IVAN'), 'POBO — первой строкой у софт-счёта');
 }
 
-// ── flowOf(): крипто-фрихолд без s5/s6; рублёвый фрихолд с s25 (IPPS) ────
+// ── flowOf(): freehold согласует IPPS до перевода; s25 остаётся legacy-экраном ────
 {
   const ctx = run(['stepTitle'], ['STEPS'], {});
   assert.equal(ctx.stepTitle({step:'s25', kind:'Фрихолд', postConv:'ipps_swift'}),
-    'Отправить заявку в IPPS');
+    'Ожидать MT103 по согласованной заявке');
   assert.equal(ctx.stepTitle({step:'s25', kind:'Лизхолд', postConv:'coins'}), 'Известить Coins');
 }
 
@@ -223,7 +223,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
     step: 's22', postConv: 'ipps_swift' };
   const F2 = ctx.flowOf(rubFreehold);
   assert.ok(F2.includes('s5') && F2.includes('s6'), 'рублёвый фрихолд: курс всё равно спрашиваем у брокера');
-  assert.ok(F2.includes('s25'), 'IPPS-маршрут — s25 в пути остаётся, это «Отправить заявку в IPPS»');
+  assert.ok(!F2.includes('s25'), 'заявка согласуется до перевода, после подтверждения отправки — сразу учёт MT103');
 
   // Регресс: лизхолд с postConv!=='coins' всё ещё теряет s25, как раньше
   const leaseKeep = { type: 'Оплата недвижимости', kind: 'Лизхолд', step: 's22', postConv: 'keep' };
@@ -676,6 +676,133 @@ console.log('test_stand_freehold.js: OK');
   assert.match(rendered,/<option value="1"[^>]* selected/);
   assert.doesNotMatch(rendered,/value="vitaly"/);
 }
+
+// Freehold s22 belongs to the manager, including live-like reqTask=open records;
+// other s22 routes remain operator-owned. The actual card treats the known address
+// as a suggestion and requires the manager's explicit confirmation.
+{
+  const ctx=run(['stepWho','myTasks','reqOpen','stepCard'],['STEPS','SOURCES_PAY'],{
+    S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
+    STEPS:{},STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:x=>String(x),
+    freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
+    dealWallet:()=>null,hashSum:()=>11000,cnvMembers:d=>[d],pcOut:()=>10130,
+    payToReady:d=>!!d.payTo?.acc,needsPayConfirm:()=>false,sendHead:()=> 'Исходящий перевод',
+    num:x=>Number(x)||0,avgUsdt:()=>1,isCrypto:()=>true,
+    transferModeBlock:()=>'',packTasks:()=>'',needsSecondSign:()=>false,
+    SOURCES_PAY:{coins:{cur:'usdt'}},
+  });
+  const liveLike={id:1473,kind:'Фрихолд',type:'Оплата недвижимости',step:'s22',
+    reqTask:'open',pay:{},payTo:{},transfer:{},invoiceUsd:10000,ippsTariff:'bank',
+    demoTransfers:true,payinHashes:[{amount:1,demo:true},{amount:10999,demo:true}]};
+  const newWithEarlyPayTo={...liveLike,id:1474,reqTask:'done',payTo:{acc:'synthetic'}};
+  const exchange={id:1475,kind:'',type:'Обмен валюты',step:'s22',reqTask:'done'};
+  ctx.S.deals=[liveLike,newWithEarlyPayTo,exchange];
+  assert.equal(ctx.stepWho(liveLike),'manager');
+  assert.deepEqual(Array.from(ctx.myTasks('operator')).map(d=>d.id),[1475]);
+  assert.deepEqual(Array.from(ctx.myTasks('manager')).map(d=>d.id),[1473,1474]);
+  const markup=ctx.stepCard(liveLike);
+  assert.match(markup,/Согласовать заявку IPPS и поручить перевод/);
+  assert.match(markup,/id="p_swift"/);
+  assert.match(markup,/id="p_acc"/);
+  assert.match(markup,/id="p_purp"/);
+  assert.match(markup,/id="fh_order_ack"/);
+  assert.match(markup,/это не подтверждение/);
+  assert.match(markup,/DEMO · тестовый приход/);
+  assert.match(markup,/Не выполнять реальный исходящий перевод/);
+  assert.match(markup,/Сохранить реквизиты заявки/);
+  assert.doesNotMatch(markup,/Операционисту на отправку|Передать фин диру на подпись/);
+
+  const finance=ctx.stepCard({...liveLike,id:1477,step:'s23',
+    rates:{usdtThb:1},ippsPayoutOrder:{amount:10130,network:'TRC-20',address:'T'+'A'.repeat(33),confirmedAt:'synthetic'}});
+  assert.match(finance,/DEMO · тестовый приход/);
+  assert.match(finance,/не подтверждение реальных денег/);
+  assert.match(finance,/Не выполнять реальный исходящий перевод/);
+
+  ctx.payToReady=()=>true;
+  ctx.ippsApplicationText=()=> 'Synthetic IPPS application';
+  const soft=ctx.stepCard({...liveLike,id:1476,ippsTariff:'soft',payTo:{
+    dev:'Synthetic Ltd',bank:'Synthetic Bank',acc:'SYNTH-ACCOUNT',swift:'SYNTHXX1',
+    purpose:'Synthetic purpose',pobo:'SYNTH CLIENT',amount:10000}});
+  assert.match(soft,/id="p_pobo"/);
+  assert.match(soft,/Synthetic IPPS application/);
+  assert.match(soft,/Копировать текст для группы/);
+  assert.match(soft,/Копирование ничего не отправляет/);
+}
+
+// Saving SWIFT details is a separate, idempotent manager action; copying the group
+// text is local-only and cannot mark the instruction as approved.
+{
+  const deal={id:1473,kind:'Фрихолд',step:'s22',reqTask:'open',payTo:{},log:[]};
+  const calls=[];
+  const values={p_dev:'Synthetic Ltd',p_bank:'Synthetic Bank',p_acc:'SYNTH-ACCOUNT',
+    p_inv:'INV-SYNTH',p_purp:'Synthetic purpose',p_swift:'SYNTHXX1',
+    p_branch:'',p_bankaddr:''};
+  const ctx=run(['freeholdIpPsPayToSave','freeholdIpPsCopyGroup'],[],{
+    S:{role:'manager'},deal:()=>deal,val:id=>values[id]||'',
+    payToRequired:()=>({}),need:()=>false,payToFromForm:()=>({
+      dev:values.p_dev,bank:values.p_bank,acc:values.p_acc,inv:values.p_inv,
+      purpose:values.p_purp,swift:values.p_swift,amount:10000,branch:'',bankAddr:''}),
+    payToReady:()=>true,log:(d,text)=>{calls.push(text);d.log.push({text});},
+    save:()=>calls.push('save'),render:()=>calls.push('render'),toast:x=>calls.push(x),
+    num:Number,cleanNum:x=>String(x),ippsApplicationText:()=> 'Synthetic application',
+    copyAsk:x=>calls.push('copy:'+x),
+  });
+  ctx.freeholdIpPsPayToSave(1473);
+  assert.equal(deal.reqTask,'open');
+  assert.equal(deal.payTo.acc,'SYNTH-ACCOUNT');
+  const logs=deal.log.length;
+  ctx.freeholdIpPsPayToSave(1473);
+  assert.equal(deal.log.length,logs,'repeat save does not add a duplicate note');
+  ctx.freeholdIpPsCopyGroup(1473);
+  assert.ok(calls.some(x=>String(x).startsWith('copy:')));
+  assert.equal(deal.ippsPayoutOrder,undefined,'copy/save alone is not an authorization');
+}
+
+// The real act(s22) branch waits for the server's saved proof. A refused save rolls
+// the local step and notification modal back to the committed standBase; a retry can
+// then succeed without an automatic second PUT or notification.
+(async()=>{
+  const original={id:1473,kind:'Фрихолд',type:'Оплата недвижимости',step:'s22',
+    reqTask:'open',payTo:{dev:'Synthetic',bank:'Synthetic Bank',acc:'SYNTH-ACCOUNT',
+      swift:'SYNTHXX1',purpose:'Synthetic purpose',amount:10000},
+    invoiceUsd:10000,amountUsdt:11000,ippsTariff:'bank',pay:{},
+    payinHashes:[{amount:1},{amount:10999}],transfer:{sends:[]}};
+  const d=JSON.parse(JSON.stringify(original)), notices=[], events=[];
+  let outcome={ok:false,error:'save_rejected'};
+  const values={fh_order_amount:'10130',fh_order_net:'TRC-20',
+    fh_order_addr:'T'+'A'.repeat(33),p_dev:'Synthetic',p_bank:'Synthetic Bank',
+    p_acc:'SYNTH-ACCOUNT',p_swift:'SYNTHXX1',p_purp:'Synthetic purpose',
+    p_inv:'',p_branch:'',p_bankaddr:''};
+  const ctx=run([],[],{STAND:true,S:{role:'manager',modal:{id:1473}},standBusy:false,
+    standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
+      id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
+    num:Number,cleanNum:x=>String(x).replace(/[^\d.,]/g,''),NETS:['TRC-20'],
+    addrValid:()=>true,payToReady:()=>true,payToFromForm:()=>({...d.payTo}),
+    convOf:()=>null,hashSum:()=>11000,freeholdSend:()=>10130,ippsTariff:()=>({}),
+    toast:m=>notices.push(m),go:(x,to)=>{x.step=to;events.push('go:'+to);},
+    standWaitSaved:async()=>{events.push('wait');if(outcome.ok){d.ippsPayoutOrder={
+      amount:10130,network:'TRC-20',address:values.fh_order_addr,confirmedAt:'synthetic'};}
+      return outcome;},
+    standRollbackHandoff:id=>{events.push('rollback');Object.keys(d).forEach(k=>delete d[k]);
+      Object.assign(d,JSON.parse(JSON.stringify(original)));ctx.S.modal=null;},
+  });
+  const source=html.match(/^async function act\([^]*?^}/m);
+  assert.ok(source,'actual tasks.html act() exists');
+  vm.runInContext(source[0],ctx);
+  await ctx.act(1473,'s22');
+  assert.equal(d.step,'s22');
+  assert.equal(ctx.S.modal,null);
+  assert.ok(events.includes('wait')&&events.includes('rollback'));
+  assert.ok(notices.some(x=>/не подтверждено сервером/.test(x)));
+  assert.ok(!notices.some(x=>/Поручение сохранено/.test(x)));
+
+  events.length=0;notices.length=0;ctx.S.modal={id:1473};outcome={ok:true};
+  await ctx.act(1473,'s22');
+  assert.equal(d.step,'s23');
+  assert.ok(d.ippsPayoutOrder.confirmedAt);
+  assert.ok(events.includes('wait'));
+  assert.ok(notices.some(x=>/Поручение сохранено/.test(x)));
+})().catch(e=>{console.error(e);process.exitCode=1;});
 
 // Click-equivalent s11 issue: board PUT with the edited amount precedes docs POST.
 (async()=>{
