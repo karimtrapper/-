@@ -3955,7 +3955,9 @@ function srcManualBlock(D){
    источник врёт, а по нему потом узнают клиента в следующей сделке. */
 function srcAfterClient(D){
   if(D.source==='none') return '';
-  if(!D.clientManual&&!D.pickOther) return '';
+  /* pickOther открывает селектор клиента, но само по себе не означает
+     несовпадение. Предупреждаем только о явно выбранном вручную клиенте. */
+  if(!D.clientManual) return '';
   const c=D.clientId?clientById(D.clientId):null;
   const tg=c&&c.tg?c.tg:null;
   if(D.clientManual&&D.sourceRef&&tg&&D.sourceRef===tg) return '';
@@ -4001,20 +4003,20 @@ function viewCreate(){
   const D=S.draft;
   const all=D.source==='tg'?TG_CHATS:D.source==='wa'?WA_CHATS:D.source==='bitrix'?BX_DEALS:[];
   const f=filterChats(D);
-  const shown=(D.allChats||(D.q||'').trim())?f:f.slice(0,5);
+  const shown=(D.q||'').trim()?f:f.slice(0,5);
   const warn=srcAfterClient(D);
   /* Выбор источника — это инструмент, а не постоянная часть формы: чат выбран,
      список свернулся в одну строку и не отжирает экран (Карим, 23.09). */
-  const srcDone=(D.sourceRef||D.source==='none')&&!D.srcEdit&&!warn;
+  const srcDone=(D.sourceRef||D.source==='none')&&!D.srcEdit;
   if(srcDone) return viewCreateBody(D,`<div class="card" style="margin-bottom:14px">
     <div class="payrow" style="border-bottom:none;padding:0;align-items:center">
       <div><div class="k">ОТКУДА КЛИЕНТ</div>
         <div class="v"><b>${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(getChatObj(D.source, D.sourceRef)?getChatObj(D.source, D.sourceRef).name+' ('+getChatObj(D.source, D.sourceRef).account+')':D.sourceRef):''}</b>${
-          D.source==='none'?' — переписки нет, клиента ищем по имени':(D.srefOther?' — чат вписан вручную':' — по этому чату узнаём клиента')}</div></div>
+          D.source==='none'?' — переписки нет, клиента ищем по имени':(D.srefOther?' — чат вписан вручную':(D.client?' — по этому чату узнали клиента':' — клиента выберите ниже'))}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="draftSrcEdit()">Сменить источник</button>
-    </div></div>`);
+    </div>${warn}</div>`);
   const srcCard=`<div class="card" style="margin-bottom:14px">
-    <div class="card-title">Откуда клиент<span class="sub">канал и переписка — чтобы узнать клиента и записать источник</span></div>
+    <div class="card-title">Откуда клиент<span class="sub">Выберите канал и чат или найдите его поиском</span></div>
     <div class="chips" style="margin-bottom:14px">${Object.keys(SOURCES).map(k=>
       `<span class="chip ${D.source===k?'on':''}" onclick="draftSet('source','${k}')">${SOURCES[k]}</span>`).join('')}</div>
     ${all.length?`<div class="fl">${D.source==='bitrix'?'Сделка в Битриксе':'Чат'}</div>
@@ -4026,12 +4028,10 @@ function viewCreate(){
       <span class="av">${esc((c.name||'??').slice(0,2).toUpperCase())}</span><div><div class="t1">${htmlText(c.name)}</div>
       <div class="t2">${htmlText(c.account)} · ${k.length?'работали · '+k.length+' сдел.':(D.source==='bitrix'?'сделка':(c.last_active ? 'акт. ' + (new Date(c.last_active*1000).toLocaleDateString() === new Date().toLocaleDateString() ? 'сегодня' : new Date(c.last_active*1000).toLocaleDateString()) : 'недавний'))}</div></div>
       <span class="t3">${k.length?'<span class="badge b-done">знакомый</span>':(D.sourceRef===c.key?'выбрано':'')}</span></div>`}).join('')}</div>
-    ${(shown.length<f.length)?`<button class="btn btn-outline btn-sm" style="margin-top:9px" onclick="draftSet('allChats',true)">Показать все — ещё ${f.length-shown.length}</button>
-      <p class="fh" style="margin-top:8px">Сверху последние ${shown.length}; остальные — поиском.</p>`
-      :`<p class="fh" style="margin-top:9px">Найдено ${f.length} из ${all.length}${D.q?' · по запросу «'+htmlText(D.q)+'»':''}</p>`}`:
+    <p class="fh" style="margin-top:9px">${D.q?'Найдено '+f.length+' из '+all.length+' · по запросу «'+htmlText(D.q)+'»':'Последние '+shown.length+' из '+all.length+' · остальные найдёте поиском'}</p>`:
     `<div class="alert a-warn" style="margin-top:4px"><div>Ничего не нашлось по «${htmlText(D.q)}». Проверьте написание или выберите «Без переписки».</div></div>`}`:
     (D.source==='none'
-      ?`<div class="alert a-info"><div>Переписки нет — клиент позвонил или пришёл по рекомендации. Найдите его по имени в справочнике ниже или заведите нового: карточка нужна, чтобы к ней привязались договор и паспорт.</div></div>`
+      ?`<div class="alert a-info"><div>Без переписки найдите клиента в справочнике или добавьте нового.</div></div>`
       :`<div class="alert a-info"><div>Список чатов ${SOURCES[D.source]} сюда пока не подтягивается. Впишите чат вручную или создавайте задачу без привязки — чат необязателен, канал запишется.</div></div>`)}
     ${srcManualBlock(D)}
     ${(D.srcPrev&&D.srcPrev.sourceRef)?`<div class="row" style="margin-top:10px">
@@ -4070,11 +4070,11 @@ function viewCreateBody(D,srcCard){
     <div class="fg"><label class="fl">Клиент${D.source==='none'?'<span class="rq">*</span><span class="sub2"> переписки нет — ищем по имени</span>':''}</label>
       ${(!D.pickOther&&cl)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((cl.name||"").slice(0,2).toUpperCase())}</span>
         <span><b>${htmlText(cl.name)}</b> · ${(cl.totalDeals||0)+clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':(cl.isCrm?' · Старая база · паспорт нужно загрузить в заявку':' · договора нет')}
-          <div class="fh">Узнан по источнику: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}</div></span>
+          <div class="fh">Найден по источнику</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Сменить</button></div>`
       :((!D.pickOther&&D.client)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((D.client||"").slice(0,2).toUpperCase())}</span>
         <span><b>${htmlText(D.client)}</b> · ${D.clientId && String(D.clientId).startsWith('crm:') ? 'клиент из старой базы CRM' : 'новый клиент'}
-          <div class="fh">Имя взято из источника: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}. В справочнике такого клиента нет — карточка заведётся вместе со сделкой.</div></span>
+          <div class="fh">Имя из источника · карточка будет создана со сделкой</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
           oninput="rememberFocus();draftSet('cq',this.value)">
@@ -4086,7 +4086,7 @@ function viewCreateBody(D,srcCard){
         ${(!D.searchCrm)?`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">🔍 Поискать в старой базе CRM</a></div>`:`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', false);return false" style="color:var(--coral)">🔙 Вернуться к новым карточкам</a></div>`}
         ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать нового клиента «${htmlText(D.cq)}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${htmlText(D.client)}»</button>`:''}
-        ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">Выберите клиента, документы добавите к заявке.</p>`:''}`)}
+        ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">Выберите клиента или добавьте нового.</p>`:''}`)}
     </div>
 
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
@@ -4321,7 +4321,7 @@ function draftSet(k,v,silent){
     if(preview)preview.innerHTML=draftFreeholdPreview(S.draft);
   }
   /* чат выбран — сразу узнаём клиента и реферала: отдельного шага «Дальше» больше нет */
-  if(k==='sourceRef'&&v){S.draft.srcEdit=false;S.draft.srcPrev=null;draftResolve();return;}
+  if(k==='sourceRef'&&v){S.draft.srcEdit=false;S.draft.srcPrev=null;S.draft.allChats=false;draftResolve();return;}
   save();if(!silent)render();
 }
 function draftFreeholdPreview(D){
@@ -4361,7 +4361,7 @@ function draftResolve(){
       D.cq = k.length ? k[0].client : (obj && obj.name ? obj.name : (D.sourceRef||''));
       D.client = '';
       D.clientId = null;
-      D.pickOther = true;
+      D.pickOther = false;
     }
   }
   /* 1) метка реферальной ссылки — только у лида из Битрикса */

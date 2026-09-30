@@ -167,6 +167,62 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   }
   console.log("Search persistence UI test passed.");
 
+
+  // Test 15: viewCreate() UX after selecting an unknown chat
+  S.draft = { source: 'tg', sourceRef: 'Елизавета:unknown123', clientManual: false, client: '', cq: 'Unknown Chat Name', srcEdit: false, pickOther: false };
+  S.clients = [];
+  CRM_CLIENTS = [];
+  TG_CHATS = [{ key: 'Елизавета:unknown123', id: 'unknown123', account: 'Елизавета', name: 'Unknown Chat Name' }];
+
+  const viewHtml = viewCreate();
+  if (viewHtml.includes('Показать все — ещё')) {
+      throw new Error("viewCreate did not collapse the chat list for unknown chat");
+  }
+  if (!viewHtml.includes('клиента выберите ниже')) {
+      throw new Error("viewCreate summary did not show 'клиента выберите ниже'");
+  }
+  if (!viewHtml.includes('Создать нового клиента «Unknown Chat Name»')) {
+      throw new Error("viewCreateBody did not show client creation UI for unknown chat");
+  }
+
+  // Test 16: Regression on manual warning after client change
+  S.draft.clientManual = true;
+  S.draft.client = 'Ivan';
+  S.draft.sourceRef = 'Елизавета:unknown123';
+  const warnHtml = viewCreate();
+  if (!warnHtml.includes('Клиент выбран вручную, а чат остался прежний')) {
+      throw new Error("Warning for manual client and chat was not shown or not collapsed appropriately");
+  }
+  if (warnHtml.includes('Начните вводить имя или номер') || warnHtml.includes('Показать все')) {
+      throw new Error("Manual client warning expanded the chat picker");
+  }
+
+  // Test 17: five recent chats by default, sixth chat reachable by search
+  TG_CHATS = Array.from({ length: 8 }, (_, i) => ({
+      key: 'Елизавета:chat' + (i + 1), id: 'chat' + (i + 1), account: 'Елизавета',
+      name: 'Chat ' + (i + 1), last_active: 2000000000 - i
+  }));
+  S.draft = { source: 'tg', sourceRef: '', clientManual: false, client: '', cq: '', q: '' };
+  let pickerHtml = viewCreate();
+  if (!pickerHtml.includes('Chat 5') || pickerHtml.includes('Chat 6')) {
+      throw new Error("Default chat picker did not show exactly the first five chats");
+  }
+  S.draft.q = 'Chat 6';
+  pickerHtml = viewCreate();
+  if (!pickerHtml.includes('Chat 6') || pickerHtml.includes('Chat 1')) {
+      throw new Error("Chat search did not find the sixth chat exclusively");
+  }
+  draftSet('sourceRef', 'Елизавета:chat6', true);
+  pickerHtml = viewCreate();
+  if (!pickerHtml.includes('ОТКУДА КЛИЕНТ') || pickerHtml.includes('id="q"')) {
+      throw new Error("Selecting a searched chat did not collapse the picker");
+  }
+
+  // Keep the mandatory passport rule for new real estate deals.
+  if (!jsCode.includes("if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}")) {
+      throw new Error("Mandatory passport validation for a new deal is missing");
+  }
+
   console.log("All real function tests passed.");
   process.exit(0);
 } catch(e) {
