@@ -4688,7 +4688,7 @@ function overview(d,st,mine,p,wh){
 
   ${(d.closed&&d.closeReason==='Успешно завершена'&&!d.manual)?crmGapsBlock(d,'Сделка закрыта, но в карточке CRM не хватает'):''}
   ${d.crmDealId?`<div class="alert a-ok" style="margin:0 0 14px"><div><b>В CRM: сделка #${d.crmDealId}</b> · внесена ${d.crmAt||''} — <a href="/crm?deal=${d.crmDealId}" target="_blank">открыть в CRM</a></div></div>`:''}
-  ${d.bitrixSync?`<div class="alert ${d.bitrixSync.status==='success'?'a-ok':'a-warn'}" style="margin:0 0 14px"><div><b>${d.bitrixSync.status==='success'?'Bitrix: сделка переведена в WON':'Bitrix не обновлён'}</b>${d.bitrixSync.status==='error'&&d.bitrixSync.error==='wrong_category'?' — сделка в другой воронке.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_lost'?' — сделка уже закрыта как проигранная.':''}</div>${d.bitrixSync.status!=='success'&&canRole('manager')?`<button class="btn btn-outline btn-sm" onclick="crmRetryBitrix(${d.id})">Повторить</button>`:''}</div>`:''}
+  ${d.bitrixSync?`<div class="alert ${d.bitrixSync.status==='success'?'a-ok':'a-warn'}" style="margin:0 0 14px"><div><b>${d.bitrixSync.status==='success'?'Bitrix: сделка переведена в '+(d.bitrixSync.kind==='lose'?'LOSE':'WON'):'Bitrix не обновлён'}</b>${d.bitrixSync.status==='error'&&d.bitrixSync.error==='wrong_category'?' — сделка в другой воронке.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_lost'?' — сделка уже закрыта как проигранная.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_won'?' — сделка уже закрыта как успешная.':''}</div>${d.bitrixSync.status!=='success'&&canRole('manager')?`<button class="btn btn-outline btn-sm" onclick="crmRetryBitrix(${d.id})">Повторить</button>`:''}</div>`:''}
   <div class="card" style="margin-bottom:16px">
     <div class="sec pi">PAY-IN</div>
     <table class="tbl">
@@ -5360,6 +5360,24 @@ async function crmPushClose(id){
   }catch(e){toast('CRM недоступна — закрытие не подтверждено');}
   finally{standClosing=false;}
 }
+async function standCloseLose(id,reason){
+  if(standClosing)return;
+  standClosing=true;
+  try{
+    await standWaitSaved();
+    const r=await fetch('/api/stand/deals/'+id+'/crm-close-lose',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({version:standVer,reason})});
+    const j=await r.json();
+    if(!j.success){
+      if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
+      toast(j.error==='conflict'?'Доска изменилась — попробуйте закрыть ещё раз':'Отказ не сохранён: '+(j.error||r.status));return;
+    }
+    standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();
+    toast('Отказ сохранён в CRM · сделка #'+(j.deal||{}).id);
+    if(j.bitrix_sync&&j.bitrix_sync.status!=='success')toast('Bitrix не обновлён — повтор доступен в карточке сделки',6000);
+  }catch(e){toast('Отказ не сохранён — сервер не подтвердил закрытие');}
+  finally{standClosing=false;}
+}
 async function crmRetryBitrix(id){
   if(standClosing)return;
   standClosing=true;
@@ -5367,9 +5385,12 @@ async function crmRetryBitrix(id){
     const r=await fetch('/api/stand/deals/'+id+'/bitrix-close-retry',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
     const j=await r.json();
     if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
-    if(j.success)toast('Bitrix обновлён · WON');
+    const syncDeal=(j.data&&j.data.deals||[]).find(x=>x.id===id);
+    const won=!syncDeal||!syncDeal.bitrixSync||syncDeal.bitrixSync.kind!=='lose';
+    if(j.success)toast(won?'Bitrix обновлён · WON':'Bitrix обновлён · LOSE');
     else if(j.error==='wrong_category')toast('Bitrix не обновлён — сделка в другой воронке');
     else if(j.error==='already_lost')toast('Bitrix не обновлён — сделка уже закрыта как проигранная');
+    else if(j.error==='already_won')toast('Bitrix не обновлён — сделка уже закрыта как успешная');
     else toast('Bitrix не обновлён — повторите попытку позже');
   }catch(e){toast('Bitrix не обновлён — сервер недоступен, повторите попытку');}
   finally{standClosing=false;}
@@ -6371,7 +6392,8 @@ function markVerified(id){const d=deal(id);d.verified=!d.verified;
 function askClose(id){
   const d=deal(id);
   const r=prompt('Причина закрытия:\n'+CLOSE_REASONS.map((x,i)=>(i+1)+'. '+x).join('\n'),'1');
-  if(!r)return;closeDeal(d,CLOSE_REASONS[Number(r)-1]||CLOSE_REASONS[0]);
+  if(!r)return;const reason=CLOSE_REASONS[Number(r)-1]||CLOSE_REASONS[0];
+  if(STAND)standCloseLose(id,reason);else closeDeal(d,reason);
 }
 function val(id){const e=document.getElementById(id);return e?e.value.trim():'';}
 /* Кнопка, которая молча не срабатывает, читается как «дальше не идёт». Поэтому
@@ -8692,7 +8714,7 @@ function act(id,step){
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
     const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
     if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
-    closeDeal(d,'Успешно завершена');return;}
+    if(STAND){crmPushClose(d.id);return;}closeDeal(d,'Успешно завершена');return;}
 }
 
 /* ---------- поступления ---------- */

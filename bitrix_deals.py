@@ -218,3 +218,19 @@ def close_lose(deal_id: int, reason: str = '') -> tuple[bool, str]:
     if result.get('result') is True:
         return True, ''
     return False, str(result.get('error_description') or result.get('error') or result)
+
+
+def close_lose_for_stand(deal_id: int, reason: str) -> tuple[bool, str]:
+    """Scoped LOSE write; caller has already persisted the refusal in CRM/stand."""
+    if not reason:
+        return False, 'reason_required'
+    fields = dict(LOSE_FIELDS_BASE)
+    fields['STAGE_ID'] = STAGE_LOSE
+    fields['UF_CRM_1610719896135'] = reason
+    payload = {'id': str(deal_id)}
+    for key, val in fields.items():
+        payload[f'fields[{key}]'] = val
+    result = _post('crm.deal.update', payload, stand_close_sync=True)
+    if result.get('result') is True:
+        return True, ''
+    return False, str(result.get('error_description') or result.get('error') or result)

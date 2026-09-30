@@ -266,9 +266,104 @@ def _mock_bitrix(monkeypatch, *, remote=None, update_result=(True, '')):
         calls.append(('won', deal_id, payload.copy()))
         return update_result
 
+    def close_lose(deal_id, reason):
+        db = m.get_session()
+        try:
+            board = db.query(m.StandState).filter_by(id=1).one()
+            state = json.loads(board.data)
+            saved = db.query(m.Deal).filter_by(bitrix_deal_id=deal_id).one()
+            assert state['deals'][0]['closeReason'] == saved.lose_reason == reason
+            assert saved.status == m.DealStatus.LOSE
+        finally:
+            db.close()
+        calls.append(('lose', deal_id, reason))
+        return update_result
+
     monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', get_deal)
     monkeypatch.setattr(bitrix_deals, 'close_won_for_stand', close_won)
+    monkeypatch.setattr(bitrix_deals, 'close_lose_for_stand', close_lose)
     return calls
+
+
+def _post_lose(client, version=1, reason='Передумал покупать'):
+    return client.post('/api/stand/deals/1474/crm-close-lose',
+                       json={'version': version, 'reason': reason})
+
+
+def test_refusal_persists_crm_and_local_reason_before_bitrix_lose(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['status'] == 'lose'
+    assert response.json['deal']['lose_reason'] == 'Передумал покупать'
+    local = response.json['data']['deals'][0]
+    assert local['closed'] and local['closeReason'] == 'Передумал покупать'
+    assert local['bitrixSync']['kind'] == 'lose'
+    assert response.json.get('bitrix_sync') == {'status': 'success', 'error': None}, response.json.get('bitrix_sync')
+    assert [call[0] for call in calls] == ['get', 'lose']
+    assert calls[-1] == ('lose', bitrix_id, 'Передумал покупать')
+    duplicate = _post_lose(_client(uid), version=1, reason='Не наш профиль')
+    assert duplicate.status_code == 200 and duplicate.json['duplicate'] is True
+    assert duplicate.json['deal']['lose_reason'] == 'Передумал покупать'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert [call[0] for call in calls] == ['get', 'lose']
+
+
+@pytest.mark.parametrize('source,manual', [('tg', False), ('bitrix', True)])
+def test_refusal_from_telegram_or_manual_bitrix_source_does_not_sync(monkeypatch, source, manual):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid, source=source, manual=manual)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['deal']['status'] == 'lose'
+    assert response.json['deal']['bitrix_deal_id'] is None
+    assert calls == []
+
+
+def test_refusal_requires_reason_and_crm_commit_before_any_bitrix_write(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    assert _post_lose(_client(uid), reason='invented').status_code == 400
+    assert calls == []
+    original = m._create_deal_impl
+    monkeypatch.setattr(m, '_create_deal_impl',
+                        lambda *a, **kw: (m.jsonify({'success': False, 'error': 'fake'}), 500))
+    failed = _post_lose(_client(uid))
+    assert failed.status_code == 500
+    assert calls == []
+    assert _counts() == baseline
+    monkeypatch.setattr(m, '_create_deal_impl', original)
+
+
+def test_refusal_bitrix_timeout_pending_retry_uses_saved_crm_reason_and_link(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=TimeoutError())
+    response = _post_lose(_client(uid))
+    assert response.status_code == 201
+    assert response.json['data']['deals'][0]['bitrixSync']['status'] == 'error'
+    import bitrix_deals
+    def already_lost(deal_id):
+        calls.append(('retry_get', deal_id))
+        return {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'LOSE'}
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', already_lost)
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 5, 'reason': 'forged'})
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert retry.json['data']['deals'][0]['bitrixSync']['status'] == 'success'
+    assert calls[-1] == ('retry_get', bitrix_id)
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
 
 
 def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
