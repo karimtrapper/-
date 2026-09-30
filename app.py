@@ -6403,6 +6403,12 @@ def _stand_current_step_role(state, deal):
         return _STAND_STEP_ROLE.get(step)
     conv = next((c for c in state.get('convs', [])
                  if c.get('id') == deal.get('cnvId')), None)
+    if conv is None:
+        # Боковая сделка пачки без своего cnvId: подписант — по кошельку пачки, в
+        # sources которой она финансируется, иначе мультисиг-доля ушла бы одному
+        # подписанту (QA 30.09, смешанная пачка).
+        conv = next((c for c in state.get('convs', [])
+                     if any(x.get('dealId') == deal.get('id') for x in c.get('sources') or [])), None)
     conv_wallet_id = (conv or {}).get('walletId')
     wallet_id = conv_wallet_id or deal.get('walletId')
     if wallet_id == 'custom' and not conv_wallet_id:
@@ -6519,6 +6525,9 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
         step = deal.get('step')
         if step == 's23' and state is not None:
             conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
+            if conv is None:
+                conv = next((c for c in state.get('convs') or []
+                             if any(x.get('dealId') == deal.get('id') for x in c.get('sources') or [])), None)
             conv_wallet_id = (conv or {}).get('walletId')
             wallet_id = conv_wallet_id or deal.get('walletId')
             # Крипто-сделка с «Указать кошелёк…» без «Запомнить»: owner/multisig
