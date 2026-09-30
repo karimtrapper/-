@@ -6392,13 +6392,24 @@ _STAND_STEP_ROLE = {
 
 
 def _stand_current_step_role(state, deal):
-    """Role owning the persisted step, including its wallet signer at s23."""
+    """Role owning the persisted step, including its wallet signer at s23.
+
+    Кошелёк отправки для крипто-сделок обычно совпадает с кошельком приёма
+    (client payin), выбранным на s11 через «Указать кошелёк…» и не сохранённым
+    в реестр — тогда его owner/multisig лежат в deal.payinCustom, а не в общем
+    списке state.wallets."""
     step = deal.get('step')
     if step != 's23':
         return _STAND_STEP_ROLE.get(step)
     conv = next((c for c in state.get('convs', [])
                  if c.get('id') == deal.get('cnvId')), None)
-    wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
+    conv_wallet_id = (conv or {}).get('walletId')
+    wallet_id = conv_wallet_id or deal.get('walletId')
+    if wallet_id == 'custom' and not conv_wallet_id:
+        custom = deal.get('payinCustom') or {}
+        if isinstance(custom, dict) and isinstance(custom.get('multisig'), bool):
+            return 'findir' if custom['multisig'] else 'teodor'
+        return 'findir'
     wallet = next((w for w in state.get('wallets', [])
                    if w.get('id') == wallet_id), None)
     return ((wallet or {}).get('role') or
@@ -6508,7 +6519,15 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
         step = deal.get('step')
         if step == 's23' and state is not None:
             conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
-            wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
+            conv_wallet_id = (conv or {}).get('walletId')
+            wallet_id = conv_wallet_id or deal.get('walletId')
+            # Крипто-сделка с «Указать кошелёк…» без «Запомнить»: owner/multisig
+            # лежат в payinCustom, а не в общем state.wallets (см. _stand_current_step_role).
+            if wallet_id == 'custom' and not conv_wallet_id:
+                custom = deal.get('payinCustom') or {}
+                if isinstance(custom, dict) and custom.get('multisig') is False:
+                    return 'teodor'
+                return 'findir'
             wallet = next((w for w in state.get('wallets') or [] if w.get('id') == wallet_id), None)
             if wallet and not wallet.get('multisig'):
                 return wallet.get('role') or 'teodor'
@@ -6641,7 +6660,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if network == 'erc20' and deal.get('step') in ('s23', 's24', 's25', 's26', 's27', 'done'):
                 return 'ERC-20 исходящий маршрут не настроен; остановлено на s22'
             if deal.get('walletId') == 'custom' and deal.get('step') in ('s23', 's24'):
-                return 'Для своего кошелька не определён подписант исходящего перевода'
+                # multisig явно задан в форме «Указать кошелёк…» (чекбокс обязателен
+                # к выбору, owner — к заполнению) — тогда подписант известен и без
+                # «Запомнить» в реестр (Карим, wallet-registry).
+                custom = deal.get('payinCustom') or {}
+                if not isinstance(custom, dict) or not isinstance(custom.get('multisig'), bool):
+                    return 'Для своего кошелька не определён подписант исходящего перевода'
         if not before:
             if deal.get('originMode') is not None:
                 return 'Режим происхождения сделки назначает только сервер'
@@ -7455,7 +7479,15 @@ def _stand_payin_target(state, deal):
         custom = deal.get('payinCustom') or {}
         if not isinstance(custom, dict):
             return None, None
-        if set(custom) != {'network', 'addr'} or custom.get('network') not in ('TRC-20', 'ERC-20'):
+        # owner/multisig — чей кошелёк и подписант, нужны для флоу отправки, если
+        # его не «запомнили» в реестр (см. форму «Указать кошелёк…» на s11).
+        allowed_keys = {'network', 'addr', 'owner', 'multisig'}
+        if (not set(custom) <= allowed_keys or 'network' not in custom or 'addr' not in custom
+                or custom.get('network') not in ('TRC-20', 'ERC-20')):
+            return None, None
+        if 'owner' in custom and custom.get('owner') is not None and not isinstance(custom.get('owner'), str):
+            return None, None
+        if 'multisig' in custom and not isinstance(custom.get('multisig'), bool):
             return None, None
         network = normalize_network(custom.get('network'))
         address = custom.get('addr')

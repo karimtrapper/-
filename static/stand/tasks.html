@@ -1282,22 +1282,40 @@ const WALLETS=[
   {id:'teodor-erc', name:'Кошелёк Теодора · ERC-20',owner:'Теодор',role:'teodor',addr:'0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',net:'ERC-20',multisig:false,note:'личный: Теодор подписывает сам'},
   {id:'andrey', name:'Кошелёк Андрея', owner:'Андрей', role:'teodor', addr:'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn', multisig:false, note:'личный: Андрей подписывает сам и вносит хеш'}
 ];
-/* WALLETS — стартовый набор. Рабочий список живёт в состоянии, потому что кошельки
-   заводят по ходу: появился новый — его должно быть видно в выборе сразу. */
+/* WALLETS — легаси-фолбэк, пока единый реестр CRM (CRM_WALLETS, /api/wallets)
+   ещё не загрузился или не знает адрес старой сделки. Рабочий список — S.wallets,
+   зеркало реестра в форме, которую понимает сервер (role/multisig/addr в общем
+   состоянии стенда, см. _stand_check_assignee в app.py): сервер решает, чей это шаг
+   s23, по этому же полю, поэтому синхронизируем его при каждой загрузке реестра
+   (Карим, wallet-registry — единый реестр кошельков на весь флоу, не только приём). */
+function crmWalletToLegacy(w){
+  return {id:String(w.id), name:w.label||((w.owner?w.owner+' · ':'')+w.address),
+    owner:w.owner||'владелец не указан', role:w.is_multisig?'findir':'teodor',
+    addr:w.address, multisig:!!w.is_multisig};
+}
+function syncWalletRegistry(){
+  /* Легаси id ('grusha'/'vitaly'/'andrey'/'teodor'/'teodor-erc') резолвятся по
+     известному адресу в реестре CRM — старые сделки продолжают показывать тот же
+     кошелёк. Реестр ещё не знает адрес — держим старый хардкод как подстраховку. */
+  const byLegacy=Object.keys(LEGACY_PAYIN_ADDR).map(id=>{
+    const addr=LEGACY_PAYIN_ADDR[id];
+    const found=CRM_WALLETS.find(w=>String(w.address).toLowerCase()===addr.toLowerCase());
+    if(found)return Object.assign(crmWalletToLegacy(found),{id});
+    const legacy=WALLETS.find(w=>w.id===id);
+    return legacy?Object.assign({},legacy):null;
+  }).filter(Boolean);
+  const legacyAddrs=new Set(byLegacy.map(w=>String(w.addr||'').toLowerCase()));
+  /* Активные кошельки с приёмом оплаты ИЛИ мониторингом — это и есть «в работе»,
+     остальные (архивные) в выборе отправки/пачки не нужны. */
+  const registry=CRM_WALLETS.filter(w=>w.active!==false&&(w.is_monitored||w.accepts_payin)
+    &&!legacyAddrs.has(String(w.address||'').toLowerCase())).map(crmWalletToLegacy);
+  S.wallets=byLegacy.concat(registry);
+}
 function wallets(){
   if(!Array.isArray(S.wallets)||!S.wallets.length) S.wallets=WALLETS.map(w=>Object.assign({},w));
-  /* View overlay for exact legacy built-ins; saved state stays untouched. */
-  return S.wallets.map(w=>{
-    const fixed=WALLETS.find(x=>x.id===w.id);
-    if(!fixed)return w;
-    if(w.id==='teodor-erc')return Object.assign({},fixed);
-    if(w.id==='grusha'&&w.addr==='TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn')return Object.assign({},w,fixed);
-    if(w.id==='vitaly'&&w.addr==='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ')return Object.assign({},w,fixed);
-    if(w.id==='andrey'&&w.addr==='адрес уточнить')return Object.assign({},w,fixed);
-    return w;
-  }).concat(WALLETS.filter(w=>!S.wallets.some(saved=>saved.id===w.id)).map(w=>Object.assign({},w)));
+  return S.wallets;
 }
-function walletById(id){return wallets().find(w=>w.id===id)||null;}
+function walletById(id){return wallets().find(w=>String(w.id)===String(id))||null;}
 /* Кошелёк, на который крипто-клиент платит USDT, — из единого реестра кошельков
    CRM (вкладка «Транзакции»), а не из отдельного хардкода задачника (Карим,
    wallet-registry). Реестр большой, поэтому вместо карточек — выпадающий список.
@@ -1313,7 +1331,7 @@ async function loadCrmWallets(){
   try{
     const r=await fetch('/api/wallets?no_balances=true&all=true',{credentials:'same-origin'});
     const j=await r.json();
-    if(j.success){CRM_WALLETS=j.wallets||[];render();}
+    if(j.success){CRM_WALLETS=j.wallets||[];syncWalletRegistry();render();}
   }catch(e){/* реестр недоступен — список приёма пуст, форма сообщит об этом */}
 }
 function crmWalletNet(w){
@@ -1332,8 +1350,9 @@ function payinDefaultWallet(net){
   return payinWalletView(choices.find(w=>w.is_multisig)||choices[0]);
 }
 function payinWallet(d){
-  if(d.walletId==='custom')return {id:'custom',name:'Свой кошелёк',owner:'владелец уточняется',
-    addr:(d.payinCustom||{}).addr||'',net:(d.payinCustom||{}).network||'',multisig:null};
+  if(d.walletId==='custom'){const c=d.payinCustom||{};
+    return {id:'custom',name:'Указанный кошелёк',owner:c.owner||'владелец уточняется',
+      addr:c.addr||'',net:c.network||'',multisig:!!c.multisig};}
   const legacyAddr=LEGACY_PAYIN_ADDR[d.walletId];
   if(legacyAddr){
     const net=d.walletId==='teodor-erc'?'ERC-20':'TRC-20';
@@ -1387,8 +1406,10 @@ function payinCustomEdit(id){
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
   S.payinCustomEdit=id;render();
 }
-/* «Запомнить» доступно только операционисту и админу — они же ведут s11 */
-function payinCanRemember(){return S.role==='operator'||S.role==='admin';}
+/* «Запомнить» доступно операционисту, фин диру и админу — правами на реестр
+   кошельков сервер и так ограничивает (_wallet_edit_denied, WALLET_EDIT_ROLES) */
+function payinCanRemember(){return S.role==='operator'||S.role==='findir'||S.role==='admin';}
+const PAYIN_OWNERS=['Андрей','Теодор','Виталий','компания'];
 /* Выбор на s11 показывает ровно тот адрес, который сохранён в сделке. */
 function payinWalletSelect(d,disabled){
   const locked=disabled||d.step!=='s11'||!!d.docPack||!!d.docVersion;
@@ -1399,6 +1420,9 @@ function payinWalletSelect(d,disabled){
   const customOn=w.id==='custom'||editing;
   const customNet=custom.network||net;
   const customAddr=custom.addr||'';
+  const customOwner=custom.owner||'';
+  const customOther=!PAYIN_OWNERS.includes(customOwner);
+  const customMultisig=!!custom.multisig;
   const canForget=!locked&&!customOn&&w.id&&/^\d+$/.test(String(w.id));
   return `<div class="payin-choices">
     ${locked?'':`<div class="row payin-nets" role="group" aria-label="Сеть USDT">
@@ -1407,7 +1431,7 @@ function payinWalletSelect(d,disabled){
       <select class="fc" style="flex:1;min-width:260px" aria-label="Кошелёк, куда клиент платит USDT" ${locked?'disabled':''}
         onchange="this.value==='custom'?payinCustomEdit(${d.id}):payinWalletSet(${d.id},this.value)">
         ${choices.map(x=>`<option value="${htmlText(x.id)}"${!customOn&&String(w.id)===String(x.id)?' selected':''}>${htmlText(x.address)} · ${htmlText(crmWalletNet(x))} · ${htmlText(x.owner||'владелец не указан')}${x.is_multisig?' · мультисиг':''}</option>`).join('')}
-        <option value="custom"${customOn?' selected':''}>Свой кошелёк…</option>
+        <option value="custom"${customOn?' selected':''}>Указать кошелёк…</option>
       </select>
       ${canForget?`<a href="#" onclick="event.preventDefault();payinWalletForget(${d.id})" style="white-space:nowrap;font-size:0.8em;color:#64748b">удалить из списка</a>`:''}
     </div>
@@ -1416,11 +1440,19 @@ function payinWalletSelect(d,disabled){
         <select class="fc" id="pcn_${d.id}" aria-label="Сеть своего кошелька" style="width:auto">
           <option value="TRC-20"${customNet==='TRC-20'?' selected':''}>TRC-20</option><option value="ERC-20"${customNet==='ERC-20'?' selected':''}>ERC-20</option></select>
         <input class="fc addr" id="pca_${d.id}" aria-label="Адрес своего кошелька" value="${htmlText(customAddr)}" placeholder="адрес кошелька" style="flex:1;min-width:220px">
+        <select class="fc" id="pco_${d.id}" aria-label="Чей кошелёк" style="width:auto"
+          onchange="const o=document.getElementById('pco2_${d.id}');if(o)o.style.display=this.value==='__other'?'inline-block':'none'">
+          ${PAYIN_OWNERS.map(o=>`<option value="${htmlText(o)}"${!customOther&&customOwner===o?' selected':''}>${htmlText(o)}</option>`).join('')}
+          <option value="__other"${customOther?' selected':''}>другой…</option>
+        </select>
+        <input class="fc" id="pco2_${d.id}" aria-label="Имя владельца" placeholder="имя владельца" value="${customOther?htmlText(customOwner):''}"
+          style="min-width:140px;display:${customOther?'inline-block':'none'}">
+        <label style="display:flex;align-items:center;gap:4px;font-size:0.85em"><input type="checkbox" id="pcm_${d.id}"${customMultisig?' checked':''}> Мультисиг (подписывает фин дир, одобряет Теодор)</label>
         ${payinCanRemember()?`<label style="display:flex;align-items:center;gap:4px;font-size:0.85em"><input type="checkbox" id="pcr_${d.id}"> Запомнить в список кошельков</label>`:''}
         <button type="button" class="btn btn-primary btn-sm" onclick="payinCustomSet(${d.id})">Готово</button>
         <button type="button" class="btn btn-outline btn-sm" onclick="payinCustomCancel(${d.id})">Отмена</button></div>`
-        :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · свой кошелёк${locked?'':' · <a href="#" onclick="event.preventDefault();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
-        :`<span class="addr">＋ Свой кошелёк</span><span class="wc-o">указать адрес и сеть</span>`)}
+        :(w.id==='custom'?`<span class="addr">${htmlText(customAddr)}</span><span class="wc-o">${htmlText(customNet)} · ${htmlText(customOwner||'владелец не указан')}${customMultisig?' · мультисиг':''}${locked?'':' · <a href="#" onclick="event.preventDefault();payinCustomEdit('+d.id+')">изменить</a>'}</span>`
+        :`<span class="addr">＋ Указать кошелёк</span><span class="wc-o">адрес, сеть и владелец</span>`)}
     </div>`:''}
   </div>`;
 }
@@ -1429,17 +1461,21 @@ async function payinCustomSet(id){
   const d=deal(id), network=val('pcn_'+id), addr=String(val('pca_'+id)||'').trim();
   if(d.step!=='s11'||d.docPack||d.docVersion||(d.payinHashes||[]).length){toast('Кошелёк прихода закреплён на s11');return;}
   if(!addrValid(addr,network)){toast('Адрес не соответствует сети '+network+' — выбор не сохранён');return;}
+  const ownerSel=val('pco_'+id);
+  const owner=(ownerSel==='__other'?String(val('pco2_'+id)||'').trim():ownerSel)||'';
+  if(!owner){toast('Укажите владельца кошелька');return;}
+  const multisig=!!document.getElementById('pcm_'+id)?.checked;
   const remember=payinCanRemember()&&!!document.getElementById('pcr_'+id)?.checked;
   const prev=payinWallet(d);
   if(remember){
     const blockchain=network==='ERC-20'?'ETH':'TRON';
-    const j=await standAction('/api/wallets',{address:addr,blockchain,accepts_payin:true,is_monitored:true});
+    const j=await standAction('/api/wallets',{address:addr,blockchain,accepts_payin:true,is_monitored:true,owner,is_multisig:multisig});
     if(!j)return; /* standAction уже показал toast об ошибке */
     await loadCrmWallets();
     d.walletId=String(j.wallet.id);
     delete d.payinCustom;
   }else{
-    d.walletId='custom';d.payinCustom={network,addr};
+    d.walletId='custom';d.payinCustom={network,addr,owner,multisig};
   }
   if(d.docFields&&d.docFields.payTo===payToCrypto(prev))d.docFields.payTo=payToCrypto(payinWallet(d));
   S.payinCustomEdit=null;save();render();
@@ -1471,23 +1507,26 @@ const ADDR_RE={'TRC-20':/^T[1-9A-HJ-NP-Za-km-z]{33}$/,'ERC-20':/^0x[0-9a-fA-F]{4
 function addrValid(a,net){const re=ADDR_RE[net||'TRC-20'];return !!re&&re.test(String(a||'').trim());}
 function walletSends(w){return w.multisig?'мультисиг — подписывает фин дир, одобряет Теодор'
   :'личный — отправляет сам '+(w.owner||'владелец');}
-/* Карточки-радио вместо списка. Кошелёк без корректного адреса TRC-20 серый и не
-   выбирается: брокер или клиент прислали бы USDT в никуда. Когда выбор уже закреплён
+/* Выпадающий список вместо карточек: реестр CRM большой, карточками неудобно
+   (Карим, wallet-registry). Формат опции — «адрес · сеть · владелец[ · мультисиг]»,
+   как в приёме оплаты на s11. Кошелёк без корректного адреса TRC-20 из списка не
+   показываем: брокер или клиент прислали бы USDT в никуда. Когда выбор уже закреплён
    (деньги пришли), показываем только выбранный. */
 function walletCards(d,cur,fn,disabled,name,choices){
   const source=choices||wallets();
-  const list=disabled?source.filter(w=>cur&&(w.id===cur.id||
+  const pool=disabled?source.filter(w=>cur&&(w.id===cur.id||
     (choices&&w.addr===cur.addr))):source;
-  return `<div class="wcards" role="radiogroup">${list.map(w=>{
-    const ok=addrValid(w.addr,'TRC-20'), on=!!cur&&(cur.id===w.id||
-      (choices&&w.addr===cur.addr)), off=disabled||!ok;
-    return `<label class="wcard${on?' on':''}${ok?'':' bad'}${disabled?' ro':''}">
-      <input type="radio" name="${name}" value="${w.id}"${on?' checked':''}${off?' disabled':''} onchange="${fn}(${d.id},this.value)">
-      <div class="wc-h"><b>${htmlText(w.name)}</b><span class="wc-o">владелец: ${htmlText(w.owner||'—')}</span></div>
-      <div class="addr">${ok?htmlText(w.addr):'нет корректного адреса TRC-20 · '+htmlText(w.addr||'адрес не указан')}</div>
-      <div class="wc-f"><span>${walletSends(w)}</span>${ok?`<button type="button" class="btn btn-outline btn-sm" style="white-space:nowrap"
-        onclick="event.preventDefault();event.stopPropagation();copyAsk(${htmlText(JSON.stringify(w.addr))})">копировать</button>`:''}</div>
-    </label>`;}).join('')}</div>`;
+  let list=pool.filter(w=>addrValid(w.addr,'TRC-20'));
+  if(cur&&!list.some(w=>String(w.id)===String(cur.id)))list=list.concat([cur]);
+  return `<select class="fc" aria-label="Кошелёк" name="${name}" ${disabled?'disabled':''}
+      onchange="${fn}(${d.id},this.value)">
+    ${!cur?`<option value="">— выберите кошелёк —</option>`:''}
+    ${list.map(w=>`<option value="${htmlText(w.id)}"${cur&&String(cur.id)===String(w.id)?' selected':''}>
+      ${htmlText(w.addr)} · TRC-20 · ${htmlText(w.owner||'владелец не указан')}${w.multisig?' · мультисиг':''}</option>`).join('')}
+  </select>
+  ${cur?`<p class="fh" style="margin-top:6px">${walletSends(cur)}
+    <button type="button" class="btn btn-outline btn-sm" style="white-space:nowrap;margin-left:8px"
+      onclick="copyAsk(${htmlText(JSON.stringify(cur.addr))})">копировать</button></p>`:''}`;
 }
 /* Куда брокер прислал USDT — кошелёк пачки, а не всегда общий кошелёк Груши */
 function cnvTo(c){
@@ -1502,24 +1541,39 @@ function walletPick(id,wid){
   save();render();
 }
 function walletFormOn(v){S.walletNew=!!v;save();render();}
-function walletAdd(id){
+/* Новый кошелёк уходит в единый реестр CRM (POST /api/wallets), а не в локальный
+   список задачника — иначе он не был бы виден на других шагах и другим ролям
+   (Карим, wallet-registry). Роли на запись реестра сервер проверяет сам
+   (_wallet_edit_denied — operator/findir/admin). */
+async function walletAdd(id){
   if(need({nw_name:'название кошелька',nw_own:'владелец',nw_addr:'адрес'}))return;
   const multi=val('nw_type')==='multisig';
-  if(!addrValid(val('nw_addr'),'TRC-20')){const e=document.getElementById('nw_addr');if(e)e.classList.add('bad');
+  const addr=val('nw_addr'), name=val('nw_name'), owner=val('nw_own');
+  if(!addrValid(addr,'TRC-20')){const e=document.getElementById('nw_addr');if(e)e.classList.add('bad');
     toast('Адрес не похож на кошелёк TRC-20 — T и ещё 33 символа');return;}
-  const w={id:'w'+Date.now(),name:val('nw_name'),owner:val('nw_own'),
-    role:multi?'findir':'teodor',addr:val('nw_addr'),multisig:multi,
-    note:multi?'мультисиг: владелец подписывает, Теодор одобряет':'личный: владелец отправляет сам и вносит хеш'};
-  S.wallets.push(w);
+  const j=await standAction('/api/wallets',{address:addr,blockchain:'TRON',label:name,
+    owner,is_multisig:multi,is_monitored:true});
+  if(!j)return; /* standAction уже показал toast об ошибке */
+  await loadCrmWallets();
   S.walletNew=false;
   const d=deal(id);
-  if(d){walletPick(id,w.id);log(d,'Добавлен кошелёк: '+w.name+' · '+w.addr+(multi?' · мультисиг':' · одна подпись'));}
+  if(d){walletPick(id,String(j.wallet.id));log(d,'Добавлен кошелёк: '+name+' · '+addr+(multi?' · мультисиг':' · одна подпись'));}
   save();render();toast('Кошелёк добавлен и выбран');
 }
-/* Кошелёк сделки берётся из её пачки конвертации: он выбран ещё при отправке рублей */
+/* Кошелёк сделки — из её пачки конвертации (выбран при отправке рублей брокеру),
+   либо walletId самой сделки. У крипты пачки нет: USDT клиента приходят прямо на
+   walletId, выбранный на s11 (payinWalletSet/payinCustomSet), и с него же потом
+   уходят на s23 — «Указать кошелёк…» без «Запомнить» держит owner/multisig в
+   payinCustom, а не в реестре, поэтому резолвим его тут же, как payinWallet(d). */
 function dealWallet(d){
   const c=convOf(d);
-  return walletById((c&&c.walletId)||d.walletId)||null;
+  const wid=(c&&c.walletId)||(d&&d.walletId);
+  if(wid==='custom'){
+    const cc=(d&&d.payinCustom)||{};
+    return {id:'custom',name:'Указанный кошелёк',owner:cc.owner||'владелец уточняется',
+      addr:cc.addr||'',net:cc.network||'',multisig:!!cc.multisig,role:cc.multisig?'findir':'teodor'};
+  }
+  return walletById(wid)||null;
 }
 function needsSecondSign(d){const w=dealWallet(d);return !w||w.multisig;}
 /* У общего кошелька владелец — компания, а подписывает живой человек: фин дир */
@@ -8735,12 +8789,12 @@ function seedLeaseholdTest(){
     payType:'По реквизитам',amountRub:100000,amountThb:37000,curBase:'rub',step:'ready'});
   small.demoTransfers=true;small.incomeAmount=100000;small.readyAt=Date.now();
   small.rates={rubUsdt:'81,40',broker:'81,40',usdtThb:'31,20',client:'2,70',at:Date.now()};
+  /* Адрес тестового сценария совпадает с легаси-кошельком Теодора — своего
+     синтетического кошелька заводить не нужно, S.wallets теперь зеркало реестра
+     CRM и перезаписывается синком, ручной push сюда не переживёт (Карим, wallet-registry). */
   const addr='TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p';
-  if(!walletById('demo-andrey'))S.wallets.push({id:'demo-andrey',name:'DEMO: кошелёк Андрея',
-    owner:'DEMO: Андрей',role:'teodor',addr:addr,multisig:false,
-    note:'Тестовый адрес сценария; деньги не переводить'});
   small.postConv='refund';small.paySrc='founder';
-  small.transfer={walletId:'demo-andrey',to:'DEMO: Андрей',addr:addr,
+  small.transfer={walletId:'teodor',to:'DEMO: Андрей',addr:addr,
     amount:'1185.90',thb:37000,net:'TRC-20',sends:[]};
   small.payout={method:'баты выдал фаундер своими',source:SOURCES_PAY.founder.t,
     founder:'DEMO: Андрей',ownBaht:true,thb:37000};

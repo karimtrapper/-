@@ -596,7 +596,7 @@ console.log('test_stand_freehold.js: OK');
   const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
   const ctx=run(['payinWalletSelect','crmPayinChoices','payinWallet','payinWalletView',
     'payinDefaultWallet','crmWalletNet','crmWalletById','payinNet','payinCanRemember','addrValid'],
-    ['ADDR_RE','LEGACY_PAYIN_ADDR'],
+    ['ADDR_RE','LEGACY_PAYIN_ADDR','PAYIN_OWNERS'],
     {S:{},CRM_WALLETS:[{id:1,address:addr,blockchain:'TRON',owner:'компания',
       is_multisig:true,accepts_payin:true,label:'Груша'}],htmlText:x=>String(x)});
   const choices=ctx.crmPayinChoices('TRC-20');

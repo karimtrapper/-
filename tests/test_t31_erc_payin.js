@@ -25,11 +25,14 @@ const deal = {id: 1478, step: 's11', walletId: 'vitaly',
 const beforeDeal = JSON.stringify(deal);
 let saves = 0;
 const inputs = {};
+const checks = {};
 const messages = [];
 const ctx = vm.createContext({S: {deals: [deal], role: 'manager'}, CRM_WALLETS: registry,
   htmlText: value => String(value), deal: id => id === deal.id ? deal : null,
   isCrypto: d => d.payType === 'Крипта', save: () => { saves++; }, render: () => {},
-  log: () => {}, toast: message => messages.push(message), val: id => inputs[id]});
+  log: () => {}, toast: message => messages.push(message), val: id => inputs[id],
+  // «Чей кошелёк»/мультисиг/«Запомнить» читаются через DOM (owner-select + чекбоксы)
+  document: {getElementById: id => (id in checks ? {checked: checks[id]} : null)}});
 vm.runInContext(html.slice(start, end), ctx);
 const run = source => vm.runInContext(source, ctx);
 
@@ -82,7 +85,7 @@ picker = run('payinWalletSelect(S.deals[0],true)');
 assert.ok(picker.includes('disabled'));
 deal.step = 's11';
 
-inputs.pcn_1478 = 'ERC-20'; inputs.pca_1478 = GRUSHA;
+inputs.pcn_1478 = 'ERC-20'; inputs.pca_1478 = GRUSHA; inputs.pco_1478 = 'Теодор';
 run('payinCustomSet(1478)');
 assert.equal(deal.walletId, '1'); // адрес не подошёл сети — выбор не сохранён
 assert.equal(saves, 2);
@@ -102,7 +105,7 @@ assert.equal(deal.walletId, '1');
 assert.equal(saves, 4);
 
 run('payinCustomEdit(1478)');
-inputs.pcn_1478 = 'TRC-20'; inputs.pca_1478 = CUSTOM_TRC;
+inputs.pcn_1478 = 'TRC-20'; inputs.pca_1478 = CUSTOM_TRC; inputs.pco_1478 = 'Теодор';
 run('payinCustomSet(1478)');
 assert.equal(deal.walletId, 'custom');
 assert.equal(deal.payinCustom.network, 'TRC-20');
