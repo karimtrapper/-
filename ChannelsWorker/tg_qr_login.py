@@ -48,29 +48,29 @@ async def _check_account_phone(client, expected_digits):
 
 async def main():
     os.umask(0o077)
-    
-    api_id_raw = os.environ.get("SYNC_TG_API_ID_ELIZAVETA")
-    api_hash = os.environ.get("SYNC_TG_API_HASH_ELIZAVETA")
     session_file = os.environ.get("SYNC_TG_SESSION_FILE_ELIZAVETA", "/data/elizaveta.session")
-
-    if not api_id_raw or not api_hash:
-        write_status("error: SYNC_TG_API_ID_ELIZAVETA or SYNC_TG_API_HASH_ELIZAVETA missing")
-        return
-
-    expected_phone = os.environ.get("SYNC_TG_EXPECTED_PHONE_ELIZAVETA")
-    if not expected_phone:
-        write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA missing")
-        return
-        
-    expected_digits = ''.join(filter(str.isdigit, expected_phone))
-    if len(expected_digits) < 5:
-        write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA is invalid")
-        return
-
-    write_status("waiting")
-
     client = None
+
     try:
+        api_id_raw = os.environ.get("SYNC_TG_API_ID_ELIZAVETA")
+        api_hash = os.environ.get("SYNC_TG_API_HASH_ELIZAVETA")
+
+        if not api_id_raw or not api_hash:
+            write_status("error: SYNC_TG_API_ID_ELIZAVETA or SYNC_TG_API_HASH_ELIZAVETA missing")
+            return
+
+        expected_phone = os.environ.get("SYNC_TG_EXPECTED_PHONE_ELIZAVETA")
+        if not expected_phone:
+            write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA missing")
+            return
+            
+        expected_digits = ''.join(filter(str.isdigit, expected_phone))
+        if len(expected_digits) < 5:
+            write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA is invalid")
+            return
+
+        write_status("waiting")
+
         api_id = int(api_id_raw)
         client = TelegramClient(session_file, api_id, api_hash)
         
@@ -79,8 +79,6 @@ async def main():
         if await client.is_user_authorized():
             if await _check_account_phone(client, expected_digits):
                 write_status("authorized")
-            if os.path.exists(URL_FILE):
-                os.remove(URL_FILE)
             return
 
         qr = await client.qr_login()
@@ -96,8 +94,6 @@ async def main():
                 user = await qr.wait(timeout=timeout)
                 if await _check_account_phone(client, expected_digits):
                     write_status("authorized")
-                if os.path.exists(URL_FILE):
-                    os.remove(URL_FILE)
                 break
                 
             except asyncio.TimeoutError:
@@ -106,8 +102,6 @@ async def main():
                 except Exception as e:
                     print(f"QR recreate failed: {type(e).__name__}")
                     write_status("error")
-                    if os.path.exists(URL_FILE):
-                        os.remove(URL_FILE)
                     break
                 
             except SessionPasswordNeededError:
@@ -117,32 +111,27 @@ async def main():
                         await client.sign_in(password=pwd)
                         if await _check_account_phone(client, expected_digits):
                             write_status("authorized")
-                        if os.path.exists(URL_FILE):
-                            os.remove(URL_FILE)
                         break
                     except Exception as e:
                         print(f"2FA sign in failed: {type(e).__name__}")
                         write_status("error")
-                        if os.path.exists(URL_FILE):
-                            os.remove(URL_FILE)
                         break
                 else:
                     write_status("2fa_required")
-                    if os.path.exists(URL_FILE):
-                        os.remove(URL_FILE)
                     break
             except Exception as e:
                 print(f"Error during QR wait: {type(e).__name__}")
                 write_status("error")
-                if os.path.exists(URL_FILE):
-                    os.remove(URL_FILE)
                 break
     except Exception as e:
         print(f"Fatal error: {type(e).__name__}")
         write_status("error")
-        if os.path.exists(URL_FILE):
-            os.remove(URL_FILE)
     finally:
+        if os.path.exists(URL_FILE):
+            try:
+                os.remove(URL_FILE)
+            except Exception:
+                pass
         if client:
             try:
                 await client.disconnect()

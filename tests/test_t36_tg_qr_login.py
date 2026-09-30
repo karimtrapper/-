@@ -288,3 +288,31 @@ async def test_qr_login_recreate_failure(fake_env, monkeypatch):
         assert f.read() == "error"
     assert not os.path.exists(url_file)
     assert client_instance.disconnected is True
+
+@pytest.mark.anyio
+async def test_qr_login_stale_cleanup_on_early_exit(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.delenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", raising=False)
+    
+    # Pre-create a stale URL file and a session file with 0644 permissions
+    with open(url_file, "w") as f:
+        f.write("tg://login?token=stale")
+        
+    session_file = str(tmp_path / "test.session")
+    with open(session_file, "w") as f:
+        f.write("dummy session")
+    os.chmod(session_file, 0o644)
+    
+    # Run the main function. It should exit early because expected phone is missing
+    await tg_qr_login.main()
+    
+    # Assert URL is removed
+    assert not os.path.exists(url_file)
+    
+    # Assert status is error
+    with open(status_file, "r") as f:
+        assert f.read() == "error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA missing"
+        
+    # Assert session file was chmodded to 0600
+    st = os.stat(session_file)
+    assert (st.st_mode & 0o777) == 0o600
