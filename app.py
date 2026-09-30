@@ -6931,6 +6931,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if (before.get('step') == 's26' and not old_pay.get('invoicePaid')
                     and new_pay.get('invoicePaid') and not _stand_payto_confirmed(deal)):
                 return 'Ждём подтверждения реквизитов от менеджера'
+            # Уйти с шага оплаты без подтверждения тоже нельзя: иначе PUT «только step
+            # s26→s27 / s25→s26», без флага оплаты, проезжал гейт (QA 30.09).
+            if (step_changed and (before.get('step') == 's26'
+                                  or (before.get('step') == 's25' and deal.get('kind') == 'Фрихолд'))
+                    and not _stand_payto_confirmed(deal)):
+                return 'Ждём подтверждения реквизитов от менеджера'
         if (step_changed and deal.get('step') not in ('s4', 's5', 's6', 's8')
                 and _stand_freehold_plan_problem(deal)):
             return _stand_freehold_plan_problem(deal)
