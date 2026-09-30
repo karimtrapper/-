@@ -65,6 +65,29 @@ def _put(client, current, deal, *, notes=None):
     return client.put('/api/stand/state', json={'version': current['version'], 'data': data})
 
 
+def test_full_board_skips_unchanged_foreign_deal_but_rejects_real_edit(board):
+    client, role, seed = board
+    operator_deal = _deal('s5')
+    manager_deal = _deal('s6')
+    manager_deal['id'] = 3402
+    seed({'deals': [operator_deal, manager_deal], 'convs': [], 'wallets': [], 'notes': []})
+    role['value'] = 'operator'
+    before = _get(client)
+    changed = copy.deepcopy(before['data'])
+    changed['deals'][0]['notes'] = 'оператор обновил свою сделку'
+    saved = client.put('/api/stand/state', json={'version': before['version'], 'data': changed})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][1] == manager_deal
+
+    current = _get(client)
+    illicit = copy.deepcopy(current['data'])
+    illicit['deals'][1]['log'].append({'text': 'чужое изменение'})
+    denied = client.put('/api/stand/state', json={'version': current['version'], 'data': illicit})
+    assert denied.status_code == 409
+    assert 'роли manager' in denied.json['error']
+    assert _get(client) == current
+
+
 @pytest.mark.parametrize('step', ['s5', 's11'])
 def test_early_requisites_are_private_until_native_manager_confirmation(board, step):
     client, role, seed = board

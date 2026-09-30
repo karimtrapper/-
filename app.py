@@ -6848,7 +6848,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             changed = {key for key in set(before) | set(deal)
                        if before.get(key) != deal.get(key)}
             owner = _stand_current_step_role(previous, before)
-            if owner and actor != owner and not step_changed:
+            if changed and owner and actor != owner and not step_changed:
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
                     (before.get('reqTask') == 'open' and
