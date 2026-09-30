@@ -3193,6 +3193,13 @@ function docFileName(d,k,ext){
 function docDownload(id,k,ext){
   if(typeof ext==='number'||ext===undefined){
     const d=deal(id), f=filesOf(d,k)[typeof ext==='number'?ext:0];
+    if(f && f.data === '__detached__') {
+       const url = fileUrl(id, k, typeof ext==='number'?ext:0) + '&download=1';
+       const a=document.createElement('a');
+       a.href=url;a.download=f.file||'document';a.style.display='none';
+       document.body.appendChild(a);a.click();a.remove();
+       log(d,'Скачан файл: '+(DOCT[k]||k)+' · '+f.file);save();return;
+    }
     const blob=f&&fileBlob(f);
     if(!blob){toast('Файл не загружен — скачивать нечего');return;}
     const url=URL.createObjectURL(blob), a=document.createElement('a');
@@ -3383,7 +3390,14 @@ function docOpen(id,k,index){
   if(k==='dog'||k==='app'||k==='bill'){docDownload(id,k,'file');return;}
   const d=deal(id), files=filesOf(d,k);
   if(files.length||k==='receipt'||k==='signed'){
-    const f=files[index==null?0:index], blob=f&&fileBlob(f);
+    const f=files[index==null?0:index];
+    if(f && f.data === '__detached__') {
+       const url = fileUrl(id, k, index==null?0:index);
+       const tab=window.open(url,'_blank','noopener,noreferrer');
+       if(!tab)toast('Браузер заблокировал окно — используйте «Скачать»');
+       return;
+    }
+    const blob=f&&fileBlob(f);
     if(!blob){toast('Файл не загружен — откройте его после загрузки');return;}
     const url=URL.createObjectURL(blob), tab=window.open(url,'_blank','noopener,noreferrer');
     if(!tab)toast('Браузер заблокировал окно — используйте «Скачать»');
@@ -5380,7 +5394,11 @@ function startManual(){
   /* Черновик ручной сделки создаётся сразу, и брошенный на полпути он оставался
      в общем списке как «Без имени». На стенде это мусор у всех на виду —
      подчищаем прошлые пустышки, прежде чем завести новую. */
-  S.deals=(S.deals||[]).filter(x=>!(x.manualNew&&!x.client&&!x.amountRub&&!x.amountThb&&!x.amountUsdt));
+  const hasFiles = x => typeof x.files==='object'&&x.files!==null&&Object.values(x.files).some(l=>l&&l.length>0);
+  const hasDocs = x => typeof x.docs==='object'&&x.docs!==null&&Object.values(x.docs).some(v=>v);
+  const hasData = x => hasFiles(x) || (x.notes||[]).length>0 || hasDocs(x);
+  const isReallyEmpty = x => x.manualNew && !x.client && !x.amountRub && !x.amountThb && !x.amountUsdt && !x.incomeAmount && !hasData(x) && !(x._managerDraft && hasData(x._managerDraft));
+  S.deals=(S.deals||[]).filter(x=>!isReallyEmpty(x));
   const d=newDeal({source:'tg',sourceRef:'',client:'',type:'Обмен валюты',
     payType:'По реквизитам',curBase:'rub',step:'manual',manual:true,manualNew:true});
   S.edit=d.id;save();render();
@@ -6286,13 +6304,15 @@ const FILE_NAMES={
   receipt:['bank_receipt_scb.pdf','receipt_part2.pdf','swift_confirmation.pdf','receipt_scan.jpg']
 };
 function fileValid(f){
-  if(!f||typeof f.data!=='string'||f.data.length>3*1024*1024||
-      (f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>2*1024*1024)))return false;
+  if(!f||typeof f.data!=='string')return false;
+  if(f.data!=='__detached__' && f.data.length>3*1024*1024)return false;
+  if(f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>2*1024*1024))return false;
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
   const ext=String(f.file||'').split('.').pop().toLowerCase();
-  if(!Object.prototype.hasOwnProperty.call(allowed,f.mime)||!allowed[f.mime].includes(ext)||
-      !f.data.startsWith('data:'+f.mime+';base64,'))return false;
+  if(!Object.prototype.hasOwnProperty.call(allowed,f.mime)||!allowed[f.mime].includes(ext))return false;
+  if(f.data==='__detached__')return true;
+  if(!f.data.startsWith('data:'+f.mime+';base64,'))return false;
   try{
     const first=atob(f.data.split(',')[1].slice(0,32));
     if(f.mime==='application/pdf')return first.startsWith('%PDF-');
@@ -6354,7 +6374,16 @@ async function docParse(id,quiet){
     for(const k of Object.keys(PARSE_SLOT)){
       for(const f of filesOf(d,k)){
         if(!f.data)continue;
-        fd.append(PARSE_SLOT[k],dataUrlBlob(f.data),f.file||(k+'.pdf'));n++;
+        let blob;
+        if(f.data==='__detached__'){
+          const url = fileUrl(id, k, filesOf(d,k).indexOf(f));
+          const r = await fetch(url, {credentials: 'same-origin'});
+          if(!r.ok) throw new Error('Не удалось скачать файл ' + f.file);
+          blob = await r.blob();
+        } else {
+          blob = dataUrlBlob(f.data);
+        }
+        fd.append(PARSE_SLOT[k],blob,f.file||(k+'.pdf'));n++;
       }
     }
   }catch(e){d.docParseState='ошибка: '+e.message;save();render();if(!quiet)toast('Не удалось прочитать файл: '+e.message);return;}
@@ -6394,6 +6423,10 @@ async function docParse(id,quiet){
 }
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
 const MANAGER_DRAFT_DOCS=['pass','inv','spa','ipds'];
+function fileUrl(id, k, index) {
+  const isDraft = managerDraftDocTarget(deal(id), k) ? 1 : 0;
+  return `/api/stand/file/${id}/${k}/${index}?draft=${isDraft}`;
+}
 function managerDraftDocTarget(d,k){
   if(S.role!=='manager'||!MANAGER_DRAFT_DOCS.includes(k)||
      !['s4','s5','s6','s8'].includes(d.step))return null;
@@ -6451,7 +6484,7 @@ function fileSync(d,k){
    input.onchange, и drop пришлось бы дублировать логику заново. */
 function fileAddReal(id,k,f){
   if(!f)return;
-  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.data||'').length,0),0);
+  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.bytes?Math.ceil(ff.bytes*4/3):(ff.data||'').length),0),0);
   const ext=String(f.name||'').split('.').pop().toLowerCase();
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
@@ -6467,7 +6500,7 @@ function fileAddReal(id,k,f){
   reader.readAsDataURL(f);
 }
 function fileAppend(id,k,f){
-  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.data||'').length,0),0);
+  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.bytes?Math.ceil(ff.bytes*4/3):(ff.data||'').length),0),0);
   const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
   const l=filesOf(d,k);
   if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}

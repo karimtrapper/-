@@ -5145,6 +5145,81 @@ def _stand_project_private_drafts(response):
     return response
 
 
+def _stand_strip_files(data):
+    if not isinstance(data, dict) or 'deals' not in data:
+        return data
+    out = dict(data)
+    out['deals'] = []
+    for deal in data['deals']:
+        d = dict(deal)
+        def _strip(target):
+            if 'files' in target and isinstance(target['files'], dict):
+                target['files'] = dict(target['files'])
+                for k, flist in target['files'].items():
+                    target['files'][k] = []
+                    for f in flist:
+                        if not isinstance(f, dict):
+                            target['files'][k].append(f)
+                            continue
+                        fc = dict(f)
+                        if 'data' in fc and fc['data'] and fc['data'] != '__detached__':
+                            fc['data'] = '__detached__'
+                        target['files'][k].append(fc)
+        _strip(d)
+        if '_managerDraft' in d and isinstance(d['_managerDraft'], dict):
+            d['_managerDraft'] = dict(d['_managerDraft'])
+            _strip(d['_managerDraft'])
+        out['deals'].append(d)
+    return out
+
+
+def _stand_restore_files(previous, incoming):
+    if not isinstance(previous, dict) or not isinstance(incoming, dict):
+        return
+    prev_deals = {d.get('id'): d for d in previous.get('deals', []) if isinstance(d, dict)}
+    
+    def _restore(prev_target, target):
+        if not isinstance(target, dict):
+            return
+        if not isinstance(target.get('files'), dict):
+            target['files'] = prev_target.get('files', {})
+        if not isinstance(target.get('files'), dict):
+            return
+        prev_files = prev_target.get('files', {}) if isinstance(prev_target.get('files'), dict) else {}
+        for k, flist in target['files'].items():
+            if not isinstance(flist, list):
+                continue
+            prev_flist = list(prev_files.get(k, [])) if isinstance(prev_files.get(k), list) else []
+            for i, f in enumerate(flist):
+                if isinstance(f, dict) and f.get('data') == '__detached__':
+                    match = None
+                    if i < len(prev_flist) and isinstance(prev_flist[i], dict):
+                        pf = prev_flist[i]
+                        if pf.get('file') == f.get('file') and pf.get('bytes') == f.get('bytes'):
+                            match = pf
+                            prev_flist[i] = None
+                    if not match:
+                        for j, pf in enumerate(prev_flist):
+                            if isinstance(pf, dict) and pf.get('file') == f.get('file') and pf.get('bytes') == f.get('bytes'):
+                                match = pf
+                                prev_flist[j] = None
+                                break
+                    if match and match.get('data'):
+                        f['data'] = match.get('data')
+                    else:
+                        raise ValueError('invalid_file_marker')
+
+    for deal in incoming.get('deals', []):
+        if not isinstance(deal, dict):
+            continue
+        prev_deal = prev_deals.get(deal.get('id'), {})
+        _restore(prev_deal, deal)
+        
+        if '_managerDraft' in deal and isinstance(deal['_managerDraft'], dict):
+            prev_draft = prev_deal.get('_managerDraft', {}) if isinstance(prev_deal.get('_managerDraft'), dict) else {}
+            _restore(prev_draft, deal['_managerDraft'])
+
+
 @app.route('/api/stand/state', methods=['GET'])
 def stand_state_get():
     """Состояние задачника целиком: клиент опрашивает его раз в пару секунд."""
@@ -5154,9 +5229,71 @@ def stand_state_get():
     try:
         row = _stand_row(db)
         return jsonify({'success': True, 'version': row.version or 0,
-                        'data': json.loads(row.data or '{}'),
+                        'data': _stand_strip_files(json.loads(row.data or '{}')),
                         'updated_by': row.updated_by,
                         'role': current_role()})
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/file/<int:deal_id>/<kind>/<int:index>', methods=['GET'])
+def stand_file_get(deal_id, kind, index):
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+        
+    role = current_role()
+    if not role:
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        data = json.loads(row.data or '{}')
+        deals = data.get('deals', [])
+        deal = next((d for d in deals if isinstance(d, dict) and d.get('id') == deal_id), None)
+        if not deal:
+            return "Deal not found", 404
+            
+        use_draft = request.args.get('draft') == '1'
+        if use_draft and role not in ('manager', 'admin'):
+            return "Forbidden", 403
+            
+        target = deal.get('_managerDraft') if use_draft else deal
+        if not target:
+            return "Files not found", 404
+
+        files = target.get('files', {})
+        if not isinstance(files, dict):
+            return "Files not found", 404
+        flist = files.get(kind, [])
+        if not isinstance(flist, list) or index < 0 or index >= len(flist):
+            return "File not found", 404
+        f = flist[index]
+        if not isinstance(f, dict) or not f.get('data'):
+            return "File data missing", 404
+        
+        raw = f['data']
+        if raw.startswith('data:'):
+            parts = raw.split(',', 1)
+            if len(parts) == 2:
+                meta = parts[0]
+                content = parts[1]
+                mime = meta.split(';')[0][5:]
+                allowed_mimes = {'application/pdf', 'image/png', 'image/jpeg', 'image/webp'}
+                if mime not in allowed_mimes:
+                    return "Invalid MIME type", 400
+                import base64
+                try:
+                    b = base64.b64decode(content)
+                    is_dl = request.args.get('download')
+                    headers = {'X-Content-Type-Options': 'nosniff'}
+                    if is_dl:
+                        from urllib.parse import quote
+                        filename = f.get('file', 'file')
+                        headers['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
+                    return app.response_class(b, mimetype=mime, headers=headers)
+                except Exception as e:
+                    return str(e), 500
+        return "Invalid file format", 400
     finally:
         db.close()
 
@@ -5318,9 +5455,13 @@ def stand_state_put():
         if base is not None and int(base) != (row.version or 0):
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0,
-                            'data': json.loads(row.data or '{}'),
+                            'data': _stand_strip_files(json.loads(row.data or '{}')),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
+        try:
+            _stand_restore_files(previous, payload['data'])
+        except ValueError:
+            return jsonify({'success': False, 'error': 'invalid_file_marker', 'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         # Other roles receive a projected board. Preserve the hidden draft in
         # their versioned PUT, and reject any attempt to forge it explicitly.
         if actor not in ('manager', 'admin'):
@@ -5329,14 +5470,36 @@ def stand_state_put():
             if any(deal_id not in submitted_ids and old_deal.get('_managerDraft')
                    for deal_id, old_deal in old_deals.items()):
                 return jsonify({'success': False, 'error': 'manager_draft_forbidden',
-                                'version': row.version or 0, 'data': previous}), 409
+                                'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
             for deal in payload['data'].get('deals', []):
                 old_draft = old_deals.get(deal.get('id'), {}).get('_managerDraft')
                 if '_managerDraft' in deal and deal['_managerDraft'] != old_draft:
                     return jsonify({'success': False, 'error': 'manager_draft_forbidden',
-                                    'version': row.version or 0, 'data': previous}), 409
+                                    'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
                 if old_draft is not None:
                     deal['_managerDraft'] = old_draft
+        def _is_truly_empty_manual(d):
+            if not isinstance(d, dict) or not d.get('manualNew'):
+                return False
+            if d.get('client') or d.get('amountRub') or d.get('amountThb') or d.get('amountUsdt') or d.get('incomeAmount'):
+                return False
+            def _has_data(target):
+                if not isinstance(target, dict): return False
+                if target.get('notes') or any(v for v in (target.get('docs') if isinstance(target.get('docs'), dict) else {}).values() if v):
+                    return True
+                files = target.get('files')
+                if isinstance(files, dict) and any(flist for flist in files.values() if flist):
+                    return True
+                return False
+            if _has_data(d): return False
+            if _has_data(d.get('_managerDraft')): return False
+            return True
+
+        old_ids = {d.get('id') for d in previous.get('deals', []) if isinstance(d, dict) and d.get('id') and not _is_truly_empty_manual(d)}
+        new_ids = {d.get('id') for d in payload['data'].get('deals', []) if isinstance(d, dict)}
+        if old_ids - new_ids:
+            return jsonify({'success': False, 'error': 'missing_deals_forbidden',
+                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         actor_id = flask_session.get('user_id')
         problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem == '__stale_assignee__':
@@ -5353,12 +5516,12 @@ def stand_state_put():
             problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem:
             return jsonify({'success': False, 'error': problem,
-                            'version': row.version or 0, 'data': previous}), 409
+                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         clean = preserve_server_fields(previous, payload['data'])
         problem = _stand_check_funding_state(previous, clean)
         if problem:
             return jsonify({'success': False, 'error': problem,
-                            'version': row.version or 0, 'data': previous}), 409
+                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         if actor in ('manager', 'admin') and actor_id is not None:
             old_by_id = {d.get('id'): d for d in previous.get('deals') or []}
             for deal in clean.get('deals') or []:
@@ -5376,7 +5539,7 @@ def stand_state_put():
         row.updated_at = datetime.utcnow()
         db.commit()
         _stand_deliver_notes()
-        return jsonify({'success': True, 'version': row.version, 'data': clean})
+        return jsonify({'success': True, 'version': row.version, 'data': _stand_strip_files(clean)})
     finally:
         db.close()
 
@@ -5387,6 +5550,18 @@ def _stand_close_fingerprint(deal, kind):
     # The stand editor omits the default TRC20 label on older, unverified
     # conversion hashes. Normalize that representation without losing the
     # actual route: ERC20 or a changed hash still changes the fingerprint.
+    def _clean_receipts():
+        receipts = (deal.get('files') or {}).get('receipt') or []
+        cleaned = []
+        for f in receipts:
+            if isinstance(f, dict):
+                fc = dict(f)
+                if 'data' in fc:
+                    fc['data'] = '__detached__'
+                cleaned.append(fc)
+            else:
+                cleaned.append(f)
+        return cleaned
     payin_hashes = []
     for item in deal.get('payinHashes') or []:
         if not isinstance(item, dict):
@@ -5415,10 +5590,10 @@ def _stand_close_fingerprint(deal, kind):
                    'transfer': deal.get('transfer'), 'payout': deal.get('payout'),
                    'mfPayout': deal.get('mfPayout'), 'payTo': deal.get('payTo')},
         'receipt': {'invoicePaid': pay.get('invoicePaid'),
-                    'receipt': (deal.get('files') or {}).get('receipt'),
+                    'receipt': _clean_receipts(),
                     'docsReceipt': (deal.get('docs') or {}).get('receipt')},
         'sent': {'sentToClient': deal.get('sentToClient'),
-                 'receipt': (deal.get('files') or {}).get('receipt')},
+                 'receipt': _clean_receipts()},
     }[kind]
     return hashlib.sha256(json.dumps(fields, ensure_ascii=False, sort_keys=True,
                                      separators=(',', ':'), default=str).encode()).hexdigest()
