@@ -409,9 +409,9 @@ func handleMessage(client *whatsmeow.Client, messageStore *MessageStore, msg *ev
 
 		// Log based on message type
 		if mediaType != "" {
-			fmt.Printf("[%s] %s %s: [%s: %s] %s\n", timestamp, direction, sender, mediaType, filename, content)
+			fmt.Printf("[%s] %s %s: [%s] <content hidden>\n", timestamp, direction, sender, mediaType)
 		} else if content != "" {
-			fmt.Printf("[%s] %s %s: %s\n", timestamp, direction, sender, content)
+			fmt.Printf("[%s] %s %s: <content hidden>\n", timestamp, direction, sender)
 		}
 	}
 }
@@ -911,7 +911,7 @@ func handleHistorySync(client *whatsmeow.Client, messageStore *MessageStore, his
 				}
 
 				// Log the message content for debugging
-				logger.Infof("Message content: %v, Media Type: %v", content, mediaType)
+				logger.Infof("Message parsed, Media Type: %v, HasText: %v", mediaType, content != "")
 
 				// Skip messages with no content and no media
 				if content == "" && mediaType == "" {
@@ -971,11 +971,11 @@ func handleHistorySync(client *whatsmeow.Client, messageStore *MessageStore, his
 					syncedCount++
 					// Log successful message storage
 					if mediaType != "" {
-						logger.Infof("Stored message: [%s] %s -> %s: [%s: %s] %s",
-							timestamp.Format("2006-01-02 15:04:05"), sender, chatJID, mediaType, filename, content)
+						logger.Infof("Stored message: [%s] %s -> %s: [%s] <content hidden>",
+							timestamp.Format("2006-01-02 15:04:05"), sender, chatJID, mediaType)
 					} else {
-						logger.Infof("Stored message: [%s] %s -> %s: %s",
-							timestamp.Format("2006-01-02 15:04:05"), sender, chatJID, content)
+						logger.Infof("Stored message: [%s] %s -> %s: <content hidden>",
+							timestamp.Format("2006-01-02 15:04:05"), sender, chatJID)
 					}
 				}
 			}

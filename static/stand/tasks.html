@@ -4195,7 +4195,7 @@ function draftClientNew(){
    имя в них есть. Поиск открывается только если это оказался другой человек. */
 function draftPickOther(){const D=S.draft;D.pickOther=true;D.cq='';save();render();}
 function draftPickBack(){const D=S.draft;D.pickOther=false;D.cq='';save();render();}
-function draftClientClear(){const D=S.draft;D.clientId=null;D.client='';D.cq='';D.pickOther=true;save();render();}
+function draftClientClear(){const D=S.draft;D.clientId=null;D.client='';D.cq='';D.pickOther=true;D.clientManual=false;save();render();}
 function draftRefNew(){
   const D=S.draft,name=(D.rq||'').trim(); if(!name)return;
   const r=refAdd({name:name});
@@ -4314,9 +4314,14 @@ function draftFreeholdPreview(D){
 }
 function draftResolve(){
   const D=S.draft;
-  D.clientManual=false;
   const k=knownBy(D.source,D.sourceRef);
-  if(!D.client) D.client=k.length?k[0].client:(D.sourceRef||'');
+  if(!D.clientManual) {
+    if(k.length) D.client=k[0].client;
+    else {
+      const obj = getChatObj(D.source, D.sourceRef);
+      D.client = obj && obj.name ? obj.name : (D.sourceRef||'');
+    }
+  }
   /* 1) метка реферальной ссылки — только у лида из Битрикса */
   const byTg=clients().find(c=>c.tg&&c.tg===D.sourceRef);
   if(byTg&&!D.clientId){D.clientId=byTg.id;D.client=byTg.name;}

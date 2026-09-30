@@ -29,6 +29,7 @@ import urllib.request
 import asyncio
 import tempfile
 import shutil
+import uuid
 from datetime import datetime
 
 STAND_BASE_URL = os.environ.get("STAND_BASE_URL", "https://grusha-new.up.railway.app").rstrip('/')
@@ -61,6 +62,21 @@ ACCOUNTS = [
 
 def push_to_stand(channel, account_name, chats):
     url = f"{STAND_BASE_URL}/api/stand/channels/sync"
+    sync_tag = uuid.uuid4().hex
+    chunk_size = 4000
+    
+    total = len(chats)
+    if total == 0:
+        # Push empty sync with is_last=True
+        _push_chunk(url, channel, account_name, [], sync_tag, True)
+        return
+
+    for i in range(0, total, chunk_size):
+        chunk = chats[i:i + chunk_size]
+        is_last = (i + chunk_size >= total)
+        _push_chunk(url, channel, account_name, chunk, sync_tag, is_last)
+        
+def _push_chunk(url, channel, account_name, chunk, sync_tag, is_last):
     req = urllib.request.Request(url, method="POST")
     req.add_header("Authorization", f"Bearer {STAND_CHANNEL_SYNC_KEY}")
     req.add_header("Content-Type", "application/json")
@@ -68,13 +84,15 @@ def push_to_stand(channel, account_name, chats):
     payload = {
         "channel": channel,
         "account": account_name,
-        "chats": chats
+        "chats": chunk,
+        "sync_tag": sync_tag,
+        "is_last": is_last
     }
     
     try:
         with urllib.request.urlopen(req, data=json.dumps(payload).encode('utf-8')) as res:
             resp = json.loads(res.read().decode())
-            print(f"[OK] Synced {len(chats)} {channel} chats for {account_name}.")
+            print(f"[OK] Synced {len(chunk)} {channel} chats for {account_name} (is_last={is_last}).")
     except Exception as e:
         print(f"[ERROR] Failed to push {channel} to stand for {account_name}: {e}")
         raise
@@ -156,9 +174,9 @@ def sync_whatsapp(account_name, db_path, api_url=None):
             c.execute("PRAGMA table_info(chats)")
             cols = [r[1] for r in c.fetchall()]
             if 'last_message_time' in cols:
-                c.execute("SELECT jid, name, last_message_time FROM chats ORDER BY last_message_time DESC LIMIT 5000")
+                c.execute("SELECT jid, name, last_message_time FROM chats ORDER BY last_message_time DESC")
             else:
-                c.execute("SELECT jid, name, 0 FROM chats LIMIT 5000")
+                c.execute("SELECT jid, name, 0 FROM chats")
                 
             for row in c.fetchall():
                 jid, name, last_message_time = row
@@ -228,6 +246,8 @@ def sync_bitrix():
             req.add_header("Content-Type", "application/json")
             with urllib.request.urlopen(req, data=json.dumps(payload).encode('utf-8')) as res:
                 resp = json.loads(res.read().decode())
+                if "error" in resp or "result" not in resp:
+                    raise ValueError(f"Bitrix API error or invalid response: {resp}")
                 for d in resp.get("result", []):
                     ts = _parse_bitrix_date(d.get("DATE_MODIFY"))
                     deals.append({
@@ -244,7 +264,7 @@ def sync_bitrix():
         deals.sort(key=lambda x: x["last_active"] or -1, reverse=True)
         push_to_stand("bitrix", "Grusha", deals)
     except Exception as e:
-        print(f"[ERROR] Bitrix sync failed: HTTP/Network error")
+        print(f"[ERROR] Bitrix sync failed: {e}")
 
 def main():
     if not STAND_CHANNEL_SYNC_KEY:

@@ -2376,6 +2376,7 @@ class StandChannel(Base):
     chat_id = Column(String(100), nullable=False)
     name = Column(String(255), nullable=False)
     last_active = Column(Integer, nullable=False, default=0)
+    sync_tag = Column(String(50), nullable=True)
     __table_args__ = (UniqueConstraint('channel', 'account', 'chat_id', name='uq_stand_channel'),)
 
 class StandCrmLink(Base):
@@ -5338,6 +5339,8 @@ def stand_channels_sync():
     channel = payload.get('channel')
     account = payload.get('account')
     chats = payload.get('chats', [])
+    sync_tag = payload.get('sync_tag')
+    is_last = payload.get('is_last', True)
     
     if not isinstance(chats, list):
         return jsonify({'success': False, 'error': 'chats must be a list'}), 400
@@ -5348,10 +5351,13 @@ def stand_channels_sync():
     account = str(account)[:100]
         
     if len(chats) > 5000:
-        return jsonify({'success': False, 'error': 'too many records'}), 400
+        return jsonify({'success': False, 'error': 'too many records per chunk'}), 400
         
     db = get_session()
     try:
+        if sync_tag:
+            sync_tag = str(sync_tag)[:50]
+            
         for c in chats:
             if not isinstance(c, dict): continue
             chat_id = str(c.get('id', ''))[:100]
@@ -5369,32 +5375,44 @@ def stand_channels_sync():
             if row:
                 row.name = name
                 row.last_active = last_active
+                if sync_tag:
+                    row.sync_tag = sync_tag
             else:
                 row = StandChannel(
                     channel=channel,
                     account=account,
                     chat_id=chat_id,
                     name=name,
-                    last_active=last_active
+                    last_active=last_active,
+                    sync_tag=sync_tag
                 )
                 db.add(row)
         
-        # Удаляем те, которых больше нет в источнике (синхронизация полная)
-        incoming_ids = [str(c.get('id', ''))[:100] for c in chats if isinstance(c, dict) and str(c.get('id', ''))]
-        if incoming_ids:
-            db.query(StandChannel).filter(
-                StandChannel.channel == channel,
-                StandChannel.account == account,
-                StandChannel.chat_id.notin_(incoming_ids)
-            ).delete(synchronize_session=False)
-        elif chats == []:
-            db.query(StandChannel).filter_by(channel=channel, account=account).delete(synchronize_session=False)
+        if is_last:
+            db.flush()
+            if sync_tag:
+                db.query(StandChannel).filter(
+                    StandChannel.channel == channel,
+                    StandChannel.account == account,
+                    (StandChannel.sync_tag != sync_tag) | (StandChannel.sync_tag.is_(None))
+                ).delete(synchronize_session=False)
+            else:
+                incoming_ids = [str(c.get('id', ''))[:100] for c in chats if isinstance(c, dict) and str(c.get('id', ''))]
+                if incoming_ids:
+                    db.query(StandChannel).filter(
+                        StandChannel.channel == channel,
+                        StandChannel.account == account,
+                        StandChannel.chat_id.notin_(incoming_ids)
+                    ).delete(synchronize_session=False)
+                elif chats == []:
+                    db.query(StandChannel).filter_by(channel=channel, account=account).delete(synchronize_session=False)
 
         db.commit()
         return jsonify({'success': True, 'count': len(chats)})
     except Exception as e:
         db.rollback()
-        return jsonify({'success': False, 'error': str(e)}), 500
+        app.logger.error(f'stand_channels_sync error: {e}')
+        return jsonify({'success': False, 'error': 'server_error'}), 500
     finally:
         db.close()
 
