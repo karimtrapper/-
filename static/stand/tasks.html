@@ -4212,7 +4212,7 @@ function draftClientNew(){
 function draftPickOther(){const D=S.draft;D.pickOther=true;D.cq='';save();render();}
 function draftPickBack(){const D=S.draft;D.pickOther=false;D.cq='';save();render();}
 function draftClientClear(){
-  const D=S.draft; 
+  const D=S.draft;
   if (D.sourceRef && S.chatClientMap && S.chatClientMap[D.source+':'+D.sourceRef]) {
     delete S.chatClientMap[D.source+':'+D.sourceRef];
   }

@@ -25,9 +25,9 @@ global.fetch = async (url) => {
 global.FormData = class {};
 global.alert = console.log;
 global.prompt = () => null;
-global.document = { 
-  addEventListener: () => {}, 
-  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' }) 
+global.document = {
+  addEventListener: () => {},
+  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' })
 };
 global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: { replaceState: ()=>{} } };
 `;
@@ -37,7 +37,7 @@ const assertions = `
 try {
   fetchResponses['/api/clients'] = { success: true, clients: [] };
   fetchResponses['/api/stand/channels'] = { success: true, data: { tg: [{ id: 'id6', account: 'Елизавета', name: 'Chat 6' }, { id: 'id7', account: 'Елизавета', name: 'Chat 7' }] } };
-  
+
   await fetchChannels();
   await fetchCrmClients();
 

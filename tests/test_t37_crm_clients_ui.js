@@ -25,9 +25,9 @@ global.fetch = async (url) => {
 global.FormData = class {};
 global.alert = console.log;
 global.prompt = () => null;
-global.document = { 
-  addEventListener: () => {}, 
-  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' }) 
+global.document = {
+  addEventListener: () => {},
+  getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} }, textContent: '' })
 };
 global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: { replaceState: ()=>{} } };
 `;
@@ -44,7 +44,7 @@ try {
       { id: null, name: "Null CRM" }
     ]
   };
-  
+
   await fetchCrmClients();
   if (CRM_CLIENTS.length !== 1) throw new Error("fetchCrmClients did not filter correctly: " + CRM_CLIENTS.length);
   if (CRM_CLIENTS[0].id !== "crm:100") throw new Error("fetchCrmClients ID incorrect");
@@ -60,7 +60,7 @@ try {
   };
   const payload = crmPayload(dealTest);
   if (payload.client_id !== 100) throw new Error("crmPayload extracted wrong client_id: " + payload.client_id);
-  
+
   const dealLocal = {
     id: 1000,
     clientId: 42,
@@ -80,10 +80,10 @@ try {
     client: 'Should be cleared',
     clientId: 999
   };
-  
+
   TG_CHATS = [{ key: 'Елизавета:unknown123', id: 'unknown123', account: 'Елизавета', name: 'Unknown Chat Name' }];
   draftResolve();
-  
+
   if (S.draft.client !== '') throw new Error("draftResolve did not clear D.client for unknown chat");
   if (S.draft.clientId !== null) throw new Error("draftResolve did not clear D.clientId for unknown chat");
   if (S.draft.cq !== 'Unknown Chat Name') throw new Error("draftResolve did not set D.cq correctly");
@@ -97,7 +97,7 @@ try {
       throw new Error("standSnapshot did not include chatClientMap");
   }
 
-  S.chatClientMap = {}; 
+  S.chatClientMap = {};
   standApply(snapshot);
 
   if (!S.chatClientMap || S.chatClientMap['tg:Елизавета:persisted'] !== 'crm:100') {
@@ -117,7 +117,7 @@ try {
   if (!crmClientsError) {
       throw new Error("crmClientsError was not set on fetch failure");
   }
-  
+
   S.draft = { source: 'tg', sourceRef: 'Елизавета:unknown', cq: 'test', clientManual: false, client: '', clientId: null, pickOther: true };
   const htmlOutput = viewCreateBody(S.draft, '');
   if (!htmlOutput.includes('База клиентов CalcCRM недоступна, повторите позже')) {
@@ -143,9 +143,9 @@ try {
   if (foundLocalOnly.some(x => x.id === 'crm:1')) {
       throw new Error("clientFind returned CRM client without searchCrm=true");
   }
-  
+
   S.draft.searchCrm = true;
-  
+
 const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   if (!foundWithCrm.some(x => x.id === 'crm:1')) {
       throw new Error("clientFind failed to return CRM client with searchCrm=true");
@@ -159,7 +159,7 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   if (S.draft.searchCrm !== true) {
       throw new Error("searchCrm was reset on input");
   }
-  
+
   // Changing source resets it
   draftSet('source', 'bitrix', true);
   if (S.draft.searchCrm !== false) {
