@@ -2262,11 +2262,15 @@ function brokerSend(rub,fee){
    паспорт и история. Поэтому в сделке он выбирается из справочника. */
 /* Справочник клиентов стенда начинается пустым — карточки заводятся со сделками */
 function clientsInit(){return [];}
-function clients(){ if(!S.clients)S.clients=clientsInit(); return [...S.clients, ...CRM_CLIENTS]; }
-function clientById(id){return clients().find(c=>c.id===id);}
-function clientFind(q){
+function clients(){ if(!S.clients)S.clients=clientsInit(); return S.clients; }
+function clientById(id){
+  const cid = typeof id === 'string' && /^\d+$/.test(id) ? Number(id) : id;
+  return clients().find(c=>c.id===cid) || CRM_CLIENTS.find(c=>c.id===cid);
+}
+function clientFind(q, searchCrm){
   q=(q||'').trim().toLowerCase(); if(!q)return [];
-  return clients().filter(c=>(c.name+' '+(c.tg||'')+' '+(c.phone||'')).toLowerCase().includes(q)).slice(0,6);
+  const base = searchCrm ? [...clients(), ...CRM_CLIENTS] : clients();
+  return base.filter(c=>(c.name+' '+(c.tg||'')+' '+(c.phone||'')).toLowerCase().includes(q)).slice(0,6);
 }
 function clientDeals(id){return S.deals.filter(d=>d.clientId===id);}
 /* Банк получения батов — нужен, когда клиент платит в ฿ или мы выдаём на тайский счёт */
@@ -4053,7 +4057,7 @@ function draftSrcCancel(){
   save();render();toast('Источник оставили как был');
 }
 function viewCreateBody(D,srcCard){
-  const found=clientFind(D.cq);
+  const found=clientFind(D.cq, D.searchCrm);
   const cl=D.clientId?clientById(D.clientId):null;
   return `<div class="strip"><span class="id">Новая заявка</span><span class="it">${D.kind==='Фрихолд'&&D.payType==='Крипта'?'сумма клиента и инвойс — затем документы':'заведите клиента и что он хочет — запрос уйдёт операционисту'}</span>
     ${D.sourceRef?`<span class="sp"></span><span class="it">Источник: <b>${SOURCES[D.source]} · ${htmlText(D.sourceRef)}</b></span>`:''}</div>
@@ -4064,11 +4068,11 @@ function viewCreateBody(D,srcCard){
 
     <div class="fg"><label class="fl">Клиент${D.source==='none'?'<span class="rq">*</span><span class="sub2"> переписки нет — ищем по имени</span>':''}</label>
       ${(!D.pickOther&&cl)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((cl.name||"").slice(0,2).toUpperCase())}</span>
-        <span><b>${htmlText(cl.name)}</b> · ${(cl.totalDeals||0)+clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':(cl.isCrm?' · договор не проверен':' · договора нет')}
+        <span><b>${htmlText(cl.name)}</b> · ${(cl.totalDeals||0)+clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':(cl.isCrm?' · Старая база · паспорт нужно загрузить в заявку':' · договора нет')}
           <div class="fh">Узнан по источнику: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Сменить</button></div>`
       :((!D.pickOther&&D.client)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((D.client||"").slice(0,2).toUpperCase())}</span>
-        <span><b>${htmlText(D.client)}</b> · новый клиент
+        <span><b>${htmlText(D.client)}</b> · ${D.clientId && String(D.clientId).startsWith('crm:') ? 'клиент из старой базы CRM' : 'новый клиент'}
           <div class="fh">Имя взято из источника: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}. В справочнике такого клиента нет — карточка заведётся вместе со сделкой.</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
@@ -4076,9 +4080,10 @@ function viewCreateBody(D,srcCard){
         ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
         ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick('${c.id}')">
           <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
-          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
+          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · Старая база · паспорт нужно загрузить в заявку':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
-        ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${htmlText(D.cq)}»</button>`:''}
+        ${(!D.searchCrm && (D.cq||'').trim().length>1)?`<div class="fh" style="margin-top:8px">Не тот человек? <a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">Поискать в старой базе CRM</a></div>`:''}
+        ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать нового клиента «${htmlText(D.cq)}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${htmlText(D.client)}»</button>`:''}
         ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">За клиентом закреплены договоры и паспорт — поэтому выбираем из справочника, а не пишем имя строкой.</p>`:''}`)}
     </div>
@@ -5805,7 +5810,8 @@ function editClientFromChat(id){
   d.clientId=cid;d.client=name;d.clientQ='';save();render();toast('Карточка клиента создана: '+name);
 }
 /* Клиент выбирается из справочника — как в CRM: поиск с выпадающим списком */
-function editClientSearch(id,q){const d=deal(id);d.clientQ=q;save();render();}
+function editClientSearch(id,q){const d=deal(id);d.clientQ=q;d.searchCrm=false;save();render();}
+function editSearchCrm(id){const d=deal(id);d.searchCrm=true;save();render();}
 function editClientClear(id){const d=deal(id);d.clientId=null;d.client='';d.clientQ='';d.clientPinned=false;save();render();}
 function editClientPick(id,cid_raw){
   const cid = typeof cid_raw === 'string' && /^\d+$/.test(cid_raw) ? Number(cid_raw) : cid_raw;
@@ -5993,9 +5999,10 @@ function viewEditLegacy(){
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
           ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
           ${(d.clientQ||'').trim()?`<div class="dd">
-            ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
-              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
-            ${(d.clientQ||'').trim().length>1?`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${htmlText(d.clientQ)}»</b><span>нового клиента в справочнике</span></div>`:''}
+            ${clientFind(d.clientQ, d.searchCrm).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
+              <b>${htmlText(c.name)}</b><span>${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · Старая база · паспорт нужно загрузить в заявку':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
+            ${(!d.searchCrm)?`<div class="ddi" onclick="editSearchCrm(${d.id})"><b>🔍 Поискать в старой базе CRM</b></div>`:''}
+            ${(d.clientQ||'').trim().length>1?`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${htmlText(d.clientQ)}»</b><span>нового клиента в задачнике</span></div>`:''}
           </div>`:''}
           <input type="hidden" id="e_client" value="${(d.client||'').replace(/"/g,'&quot;')}">`}
       </div>

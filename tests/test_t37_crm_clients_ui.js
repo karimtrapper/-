@@ -135,6 +135,23 @@ try {
       throw new Error("XSS escaping failed in srcAfterClient for who text: " + srcAfter);
   }
 
+
+  // Test 13: Fallback search UI
+  CRM_CLIENTS = [{ id: 'crm:1', name: 'CRM Bob', tg: '', phone: '', docs: false, isCrm: true, totalDeals: 5 }];
+  S.draft = { source: 'none', cq: 'CRM Bob', searchCrm: false };
+  const foundLocalOnly = clientFind(S.draft.cq, S.draft.searchCrm);
+  if (foundLocalOnly.some(x => x.id === 'crm:1')) {
+      throw new Error("clientFind returned CRM client without searchCrm=true");
+  }
+  
+  S.draft.searchCrm = true;
+  
+const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
+  if (!foundWithCrm.some(x => x.id === 'crm:1')) {
+      throw new Error("clientFind failed to return CRM client with searchCrm=true");
+  }
+  console.log("Fallback search UI test passed.");
+
   console.log("All real function tests passed.");
   process.exit(0);
 } catch(e) {
