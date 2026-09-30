@@ -2261,11 +2261,11 @@ function brokerSend(rub,fee){
    паспорт и история. Поэтому в сделке он выбирается из справочника. */
 /* Справочник клиентов стенда начинается пустым — карточки заводятся со сделками */
 function clientsInit(){return [];}
-function clients(){ if(!S.clients)S.clients=clientsInit(); return S.clients; }
+function clients(){ if(!S.clients)S.clients=clientsInit(); return [...CRM_CLIENTS, ...S.clients]; }
 function clientById(id){return clients().find(c=>c.id===id);}
 function clientFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return [];
-  return clients().filter(c=>(c.name+' '+(c.tg||'')).toLowerCase().includes(q)).slice(0,6);
+  return clients().filter(c=>(c.name+' '+(c.tg||'')+' '+(c.phone||'')).toLowerCase().includes(q)).slice(0,6);
 }
 function clientDeals(id){return S.deals.filter(d=>d.clientId===id);}
 /* Банк получения батов — нужен, когда клиент платит в ฿ или мы выдаём на тайский счёт */
@@ -4072,9 +4072,9 @@ function viewCreateBody(D,srcCard){
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
           oninput="rememberFocus();draftSet('cq',this.value)">
-        ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick(${c.id})">
+        ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick('${c.id}')">
           <span class="av">${c.name.slice(0,2).toUpperCase()}</span>
-          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':' · договора нет'}${c.tg?' · '+c.tg:''}</div></div>
+          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+c.tg:''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
         ${(D.cq||'').trim().length>1&&!found.length?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${D.cq}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${D.client}»</button>`:''}
@@ -4176,26 +4176,36 @@ function viewCreateBody(D,srcCard){
 function draftClientPick(id){
   const D=S.draft,c=clientById(id);
   D.clientId=id;D.client=c.name;D.cq='';D.pickOther=false;D.clientManual=true;
+  if (!S.chatClientMap) S.chatClientMap = {};
+  if (D.sourceRef && D.source !== 'none' && !D.srefOther) {
+     S.chatClientMap[D.source+':'+D.sourceRef] = id;
+  }
   /* реферал переезжает вместе с клиентом, но ручной выбор и метку ссылки не трогаем */
   const manual=D.refSrc==='выбрал менеджер'||(D.refSrc||'').indexOf('ссылка')===0;
   if(!manual){
     if(c.refId){D.refId=c.refId;D.refKnown=true;D.refSrc='закреплён за клиентом';D.agents=agentsDefault(c.refId);}
     else {D.refId=null;D.refKnown=false;D.refSrc=null;D.agents=[];}
   }
-  save();render();toast('Клиент: '+c.name+(c.docs?' · договор есть':''));
+  save();render();toast('Клиент: '+c.name+(c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')));
 }
 function draftClientNew(){
   const D=S.draft,name=(D.cq||'').trim();
   if(!name)return;
-  const id=Math.max(0,...clients().map(c=>c.id))+1;
-  clients().push({id:id,name:name,tg:D.sourceRef||'',docs:false,refId:null});
+  const id=Math.max(0,...S.clients.map(c=>c.id))+1;
+  S.clients.push({id:id,name:name,tg:D.sourceRef||'',docs:false,refId:null});
   D.clientId=id;D.client=name;D.cq='';D.pickOther=false;D.clientManual=true;save();render();toast('Клиент создан: '+name);
 }
 /* Имя клиента не спрашиваем: на первом шаге уже выбран чат или карточка Битрикса,
    имя в них есть. Поиск открывается только если это оказался другой человек. */
 function draftPickOther(){const D=S.draft;D.pickOther=true;D.cq='';save();render();}
 function draftPickBack(){const D=S.draft;D.pickOther=false;D.cq='';save();render();}
-function draftClientClear(){const D=S.draft;D.clientId=null;D.client='';D.cq='';D.pickOther=true;D.clientManual=false;save();render();}
+function draftClientClear(){
+  const D=S.draft; 
+  if (D.sourceRef && S.chatClientMap && S.chatClientMap[D.source+':'+D.sourceRef]) {
+    delete S.chatClientMap[D.source+':'+D.sourceRef];
+  }
+  D.clientId=null;D.client='';D.cq='';D.pickOther=true;D.clientManual=false;save();render();
+}
 function draftRefNew(){
   const D=S.draft,name=(D.rq||'').trim(); if(!name)return;
   const r=refAdd({name:name});
@@ -4314,12 +4324,23 @@ function draftFreeholdPreview(D){
 }
 function draftResolve(){
   const D=S.draft;
+  if (!S.chatClientMap) S.chatClientMap = {};
+  const mappedId = S.chatClientMap[D.source+':'+D.sourceRef];
+  const mappedClient = mappedId ? clientById(mappedId) : null;
   const k=knownBy(D.source,D.sourceRef);
   if(!D.clientManual) {
-    if(k.length) D.client=k[0].client;
+    if(mappedClient) {
+      D.client = mappedClient.name;
+      D.clientId = mappedClient.id;
+    }
+    else if(k.length) {
+      D.client=k[0].client;
+      D.clientId=k[0].clientId;
+    }
     else {
       const obj = getChatObj(D.source, D.sourceRef);
       D.client = obj && obj.name ? obj.name : (D.sourceRef||'');
+      D.clientId = null;
     }
   }
   /* 1) метка реферальной ссылки — только у лида из Битрикса */
@@ -4340,10 +4361,10 @@ function draftResolve(){
    чтобы договоры и паспорт было к чему привязывать. */
 function ensureClient(D){
   if(D.clientId||!D.client) return;
-  const ex=clients().find(c=>c.name===D.client);
+  const ex=S.clients.find(c=>c.name===D.client);
   if(ex){D.clientId=ex.id;return;}
-  const id=Math.max(0,...clients().map(c=>c.id))+1;
-  clients().push({id:id,name:D.client,tg:D.sourceRef||'',docs:false,refId:D.refId||null});
+  const id=Math.max(0,...S.clients.map(c=>c.id))+1;
+  S.clients.push({id:id,name:D.client,tg:D.sourceRef||'',docs:false,refId:D.refId||null});
   D.clientId=id;
 }
 function draftValid(){
@@ -4927,7 +4948,7 @@ function crmPayload(d){
       });base-=sum;
     });
     return {deal_type:'pay_in',status:'completed',skip_sync:true,
-      manager_name:d.manager||'Елизавета',client_id:d.crmClientId??null,
+      manager_name:d.manager||'Елизавета',client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
       client_name:d.client||null,is_custom:true,
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
@@ -4954,7 +4975,7 @@ function crmPayload(d){
   const E=econ(d), po=d.payout||{}, rub=!isCrypto(d), prop=d.type==='Оплата недвижимости';
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
-  const p={client_name:d.client, client_id:d.crmClientId??null,
+  const p={client_name:d.client, client_id:typeof d.clientId==='string'&&d.clientId.startsWith('crm:')?parseInt(d.clientId.slice(4)):(d.crmClientId??null),
     manager_name:d.manager||'Елизавета', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
@@ -5753,8 +5774,8 @@ function editRefSet(id,v){
 }
 function editClientFromChat(id){
   const d=deal(id), name=(d.client||d.sourceRef||'').trim(); if(!name)return;
-  const cid=Math.max(0,...clients().map(c=>c.id))+1;
-  clients().push({id:cid,name:name,tg:d.sourceRef||'',docs:false,refId:null});
+  const cid=Math.max(0,...S.clients.map(c=>c.id))+1;
+  S.clients.push({id:cid,name:name,tg:d.sourceRef||'',docs:false,refId:null});
   d.clientId=cid;d.client=name;d.clientQ='';save();render();toast('Карточка клиента создана: '+name);
 }
 /* Клиент выбирается из справочника — как в CRM: поиск с выпадающим списком */
@@ -5768,8 +5789,8 @@ function editClientPick(id,cid){
 }
 function editClientNew(id){
   const d=deal(id), name=(d.clientQ||'').trim(); if(!name)return;
-  const cid=Math.max(0,...clients().map(c=>c.id))+1;
-  clients().push({id:cid,name:name,tg:d.sourceRef||'',docs:false,refId:null});
+  const cid=Math.max(0,...S.clients.map(c=>c.id))+1;
+  S.clients.push({id:cid,name:name,tg:d.sourceRef||'',docs:false,refId:null});
   d.clientId=cid;d.client=name;d.clientQ='';save();render();toast('Клиент создан: '+name);
 }
 /* Поля выдачи зависят от источника — так же, как в рабочей CRM: у кассы своя пара
@@ -5944,8 +5965,8 @@ function viewEditLegacy(){
           <input class="fc" id="e_clientq" value="${(d.clientQ||'').replace(/"/g,'&quot;')}"
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
           ${(d.clientQ||'').trim()?`<div class="dd">
-            ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},${c.id})">
-              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':''}${c.tg?' · '+c.tg:''}</span></div>`).join('')}
+            ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
+              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+c.tg:''}</span></div>`).join('')}
             ${clientFind(d.clientQ).length?'':`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${d.clientQ}»</b><span>нового клиента в справочнике</span></div>`}
           </div>`:''}
           <input type="hidden" id="e_client" value="${(d.client||'').replace(/"/g,'&quot;')}">`}
@@ -9235,6 +9256,31 @@ function bootScreen(){
   return true;
 }
 
+
+let CRM_CLIENTS = [];
+
+async function fetchCrmClients() {
+  try {
+    const res = await fetch('/api/clients');
+    if (!res.ok) throw new Error('API error');
+    const json = await res.json();
+    if (json.success && json.clients) {
+      CRM_CLIENTS = json.clients.map(c => ({
+        id: 'crm:' + c.id,
+        name: c.name,
+        tg: c.telegram,
+        phone: c.phone,
+        refId: c.referrer_id || null,
+        docs: false,
+        isCrm: true,
+        totalDeals: c.total_deals || 0
+      }));
+    }
+  } catch (e) {
+    console.error("fetchCrmClients error", e);
+  }
+}
+
 async function fetchChannels() {
   try {
     const res = await fetch('/api/stand/channels');
@@ -9264,6 +9310,7 @@ async function standBoot(){
     }catch(e){}
   }catch(e){}
   await fetchChannels();
+  await fetchCrmClients();
   await standPull(true);
   await checkDocParseCapability();
   await fetchSberMirrorStatus();
