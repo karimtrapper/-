@@ -98,6 +98,8 @@ td{overflow-wrap:anywhere}
 .card-title{font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .card-title .sub{font-size:12.5px;font-weight:500;color:var(--text-sec)}
 .cols{display:grid;grid-template-columns:1fr 310px;gap:16px;align-items:start}
+.cols.cols-create-compact{grid-template-columns:minmax(0,1fr)}
+.create-next{font-size:12.5px;line-height:1.4;color:var(--navy-600);margin-bottom:0}
 .badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
 .b-new{background:var(--coral-light);color:#9A3412}
 .b-work{background:var(--blue-light);color:#1E40AF}
@@ -4080,9 +4082,10 @@ function draftSrcCancel(){
 function viewCreateBody(D,srcCard){
   const found=clientFind(D.cq, D.searchCrm);
   const cl=D.clientId?clientById(D.clientId):null;
+  const cryptoFreehold=D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта';
   return `<div class="strip"><span class="id">Новая заявка</span><span class="it">${D.kind==='Фрихолд'&&D.payType==='Крипта'?'сумма клиента и инвойс — затем документы':'заведите клиента и что он хочет — запрос уйдёт операционисту'}</span>
     ${D.sourceRef?`<span class="sp"></span><span class="it">Источник: <b>${SOURCES[D.source]} · ${htmlText(D.sourceRef)}</b></span>`:''}</div>
-  <div class="cols"><div>
+  <div class="cols${cryptoFreehold?' cols-create-compact':''}"><div>
     ${srcCard}
     <div class="card">
     <div class="card-title">Что человек хочет<span class="sub">завести быстро — остальное соберётся по ходу</span></div>
@@ -4193,13 +4196,12 @@ function viewCreateBody(D,srcCard){
       <button class="btn btn-outline" onclick="createFull()">Внести целиком</button>
       ${!STAND?`<button class="btn btn-outline" onclick="createClosed()">Закрыть сразу</button>`:''}`}
     </div>
-    <p class="fh" style="margin-top:10px">${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Курс не нужен: задача начнётся со сбора документов.':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
+    <p class="fh${cryptoFreehold?' create-next':''}" style="margin-top:10px">${cryptoFreehold?'Далее: загрузить паспорт и инвойс → передать Насте':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
   </div>
-  </div></div>
-  <div class="card side"><h4>Что нужно на входе</h4>
+  ${cryptoFreehold?'':`<div class="card side"><h4>Что нужно на входе</h4>
   <p>${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Клиент, инвойс, тариф IPPS и сумма в USDT.':'Клиент, тип сделки, способ оплаты и сумма.'}</p>
   <h4 style="margin-top:18px">Дальше</h4>
-  <p>${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Сбор документов → проверка операционистом.':'Запросить курс у операциониста или указать его самостоятельно.'}</p></div></div>`;
+  <p>Запросить курс у операциониста или указать его самостоятельно.</p></div>`}</div>`;
 }
 function draftClientPick(id_raw){
   const id = typeof id_raw === 'string' && /^\d+$/.test(id_raw) ? Number(id_raw) : id_raw;

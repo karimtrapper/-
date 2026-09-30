@@ -446,8 +446,9 @@ console.log('test_stand_freehold.js: OK');
   let rendered='';
   const ctx=run(['viewCreateBody','draftSet','draftFreeholdPreview','draftValid','draftAmounts',
     'freeholdSend','freeholdFee','askModes','ippsTariff'],['IPPS_TARIFFS'],{
-    S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
+    STAND:true,S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
     payWays:()=>['Крипта','По реквизитам'],draftAgentsBlock:()=>'',refFind:()=>[],
+    htmlText:s=>String(s||''),
     save:()=>{},render:()=>{rendered=ctx.viewCreateBody(D,'');},toast:()=>{},
     usd:x=>Number(x).toFixed(2),num:x=>x==null||x===''?null:Number(String(x).replace(',','.')),
     money:(x,c)=>`${Number(x).toFixed(2)} ${c}`,
@@ -464,6 +465,17 @@ console.log('test_stand_freehold.js: OK');
   assert.ok(!rendered.includes('Создать заявку — курс спросит операционист'));
   assert.ok(!rendered.includes('Курс знаю — сам'));
   assert.ok(!rendered.includes('посчитаем после курса'));
+  assert.match(rendered,/class="cols cols-create-compact"/);
+  assert.ok(!rendered.includes('class="card side"'));
+  assert.ok(rendered.includes('Далее: загрузить паспорт и инвойс → передать Насте'));
+  assert.ok(rendered.includes('>Создать сделку</button>'));
+  // The real tasks.html template keeps other flows in the two-column layout.
+  const otherFlow=ctx.viewCreateBody(Object.assign({},D,{payType:'По реквизитам'}),'');
+  assert.match(otherFlow,/class="cols"/);
+  assert.ok(!otherFlow.includes('cols-create-compact'));
+  assert.ok(otherFlow.includes('class="card side"'));
+  assert.match(html,/\.cols\.cols-create-compact\{grid-template-columns:minmax\(0,1fr\)\}/);
+  assert.match(html,/@media\(max-width:900px\)\{\.cols\{grid-template-columns:1fr\}/);
   assert.equal(ctx.draftValid(),true);
   ctx.draftSet('payType','По реквизитам');
   assert.equal(D.sum,'97500');assert.equal(D.ippsTariff,'bank');
