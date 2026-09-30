@@ -5206,7 +5206,7 @@ def _stand_restore_files(previous, incoming):
         return
     prev_deals = {d.get('id'): d for d in previous.get('deals', []) if isinstance(d, dict)}
     
-    def _restore(prev_target, target):
+    def _restore(prev_target, target, fallback_target=None):
         if not isinstance(target, dict):
             return
         if not isinstance(target.get('files'), dict):
@@ -5214,6 +5214,9 @@ def _stand_restore_files(previous, incoming):
         if not isinstance(target.get('files'), dict):
             return
         prev_files = prev_target.get('files', {}) if isinstance(prev_target.get('files'), dict) else {}
+        fallback_files = (fallback_target.get('files', {})
+                          if isinstance(fallback_target, dict)
+                          and isinstance(fallback_target.get('files'), dict) else {})
         for k, flist in target['files'].items():
             if not isinstance(flist, list):
                 continue
@@ -5232,6 +5235,16 @@ def _stand_restore_files(previous, incoming):
                                 match = pf
                                 prev_flist[j] = None
                                 break
+                    if not match:
+                        draft_flist = (fallback_files.get(k, [])
+                                       if isinstance(fallback_files.get(k), list) else [])
+                        draft_flist = list(draft_flist)
+                        for j, pf in enumerate(draft_flist):
+                            if (isinstance(pf, dict) and pf.get('file') == f.get('file')
+                                    and pf.get('bytes') == f.get('bytes')):
+                                match = pf
+                                draft_flist[j] = None
+                                break
                     if match and match.get('data'):
                         f['data'] = match.get('data')
                     else:
@@ -5241,10 +5254,9 @@ def _stand_restore_files(previous, incoming):
         if not isinstance(deal, dict):
             continue
         prev_deal = prev_deals.get(deal.get('id'), {})
-        _restore(prev_deal, deal)
-        
+        prev_draft = prev_deal.get('_managerDraft', {}) if isinstance(prev_deal.get('_managerDraft'), dict) else {}
+        _restore(prev_deal, deal, fallback_target=prev_draft)
         if '_managerDraft' in deal and isinstance(deal['_managerDraft'], dict):
-            prev_draft = prev_deal.get('_managerDraft', {}) if isinstance(prev_deal.get('_managerDraft'), dict) else {}
             _restore(prev_draft, deal['_managerDraft'])
 
 
@@ -5614,7 +5626,8 @@ def _stand_tg_send(text):
 def _stand_deliver_notes():
     """После commit доставить новые заметки по ролям в личку."""
     if STAND_MODE:
-        stand_notify.deliver()
+        return stand_notify.deliver()
+    return []
 
 
 @app.route('/api/stand/tg-bind', methods=['POST'])
@@ -5745,6 +5758,7 @@ def stand_state_put():
                             'data': _stand_strip_files(json.loads(row.data or '{}')),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
+        previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
         try:
             _stand_restore_files(previous, payload['data'])
         except ValueError:
@@ -5825,8 +5839,14 @@ def stand_state_put():
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
         row.updated_at = datetime.utcnow()
         db.commit()
-        _stand_deliver_notes()
-        return jsonify({'success': True, 'version': row.version, 'data': _stand_strip_files(clean)})
+        delivered = _stand_deliver_notes() or []
+        new_note_ids = {str(n.get('id')) for n in clean.get('notes') or []
+                        if str(n.get('id')) not in previous_note_ids}
+        notification_delivery = [item for item in delivered
+                                 if str(item.get('note_id')) in new_note_ids]
+        return jsonify({'success': True, 'version': row.version,
+                        'data': _stand_strip_files(clean),
+                        'notification_delivery': notification_delivery})
     finally:
         db.close()
 
@@ -7513,9 +7533,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         elif before.get('originMode') == 'manual' and not allow_crm_close:
             if before.get('step') == 'manual' and deal.get('step') != 'manual':
                 return 'Ручной черновик закрывается только через CRM'
-        if not before and (deal.get('crmDealId') is not None or
-                           (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена')):
-            return 'Новую сделку нельзя создать с привязкой CRM или успешным закрытием'
+        if not before and (deal.get('crmDealId') is not None or deal.get('closed')):
+            return 'Новую сделку нельзя создать уже закрытой или с привязкой CRM'
         step_changed = bool(before and before.get('step') != deal.get('step'))
         if (before and actor not in ('manager', 'admin')
                 and _stand_client_docs_changed(before, deal)):
@@ -7625,10 +7644,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Сумму клиента можно менять только на подготовке договора до выпуска документов'
         if deal.get('crmDealId') != before.get('crmDealId') and not allow_crm_close:
             return 'CRM привязывается только сервером при закрытии'
-        if (not before.get('closed') and deal.get('closed')
-                 and deal.get('closeReason') == 'Успешно завершена'
-                 and not allow_crm_close):
-            return 'Успешное закрытие в CRM выполняется отдельной кнопкой'
+        if not before.get('closed') and deal.get('closed') and not allow_crm_close:
+            return 'Закрывайте сделку кнопкой закрытия в CRM — статус и причина должны сохраниться вместе'
         protected = (before.get('closed') or before.get('crmDealId')
                      or before.get('serverTransferComplete')
                      or before.get('cnvId') in accepted_conv_ids

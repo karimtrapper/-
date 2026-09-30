@@ -6,9 +6,9 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const names = ['docDownload', 'docOpen', 'fileValid', 'fileBlob', 'demoPdfData',
-  'filesOf', 'fileSync', 'fileAdd', 'fileAddReal', 'fileAppend', 'fileDel'];
+  'filesOf', 'fileSync', 'fileAdd', 'fileAddReal', 'fileAppend', 'fileDel', 'docRow'];
 const source = names.map(name => {
-  const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
+  const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, `нет функции ${name}`);
   return found[0];
 }).join('\n');
@@ -19,8 +19,11 @@ function fixture() {
   const toasts = [], clicks = [], opened = [];
   const input = {files: [], click: () => clicks.push('picker')};
   const link = {style: {}, click: () => clicks.push('download'), remove: () => {}};
-  const ctx = {S, DOCT: {receipt: 'Чек'}, deal: () => d, now: () => '24.09',
-    managerDraftDocTarget: () => null,
+  const ctx = {S, STAND: false, SCREEN: false, SNAP: false,
+    DOCT: {receipt: 'Чек'}, deal: () => d, now: () => '24.09',
+    managerDraftDocTarget: (deal, k) => deal.step === 's8' ? deal._managerDraft : null,
+    htmlText: s => String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])),
+    DOCT: {pass: 'Загранпаспорт'}, doctOf: (deal,k) => ({pass:'Загранпаспорт'}[k]||k),
     save: () => {}, render: () => {}, log: (x, s) => x.log.push(s),
     toast: s => toasts.push(s), document: {createElement: tag => tag === 'input' ? input : link,
       body: {appendChild: () => {}}}, window: {open: url => {opened.push(url);return {}; }},
@@ -86,5 +89,16 @@ function fixture() {
   input.onchange();
   assert.equal((d.files.receipt || []).length, 0);
   assert.ok(toasts.at(-1).includes('8 МБ'));
+}
+{
+  const {ctx, d} = fixture();
+  d.step='s8';d.docs={};d._managerDraft={files:{pass:[{
+    file:'passport.pdf',size:'1 КБ',at:'30.09',mime:'application/pdf',bytes:12,
+    data:'data:application/pdf;base64,JVBERi0xLjQK',demo:false}]},docs:{pass:true},
+    docMeta:{pass:{file:'passport.pdf',size:'1 КБ',at:'30.09'}}};
+  const row=ctx.docRow(d,'pass','Загранпаспорт','обязательно');
+  assert.match(row,/passport\.pdf/);
+  assert.match(row,/Открыть/);
+  assert.doesNotMatch(row,/не приложен/);
 }
 console.log('stand files: 4 сценария PASS');

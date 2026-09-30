@@ -366,6 +366,79 @@ def test_refusal_bitrix_timeout_pending_retry_uses_saved_crm_reason_and_link(mon
     assert _counts() == (baseline[0] + 1, baseline[1] + 1)
 
 
+def test_s8_manager_draft_files_publish_without_losing_bytes(monkeypatch):
+    uid = _setup(monkeypatch)
+    monkeypatch.setattr(m, '_stand_deliver_notes', lambda: [])
+    db = m.SessionLocal()
+    try:
+        row = m._stand_row(db)
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(step='s8', isOld=False, type='Оплата недвижимости', kind='Фрихолд',
+                    payType='Крипта', invoiceUsd=45000, amountUsdt=45000,
+                    ippsTariff='bank')
+        deal['freeholdLossAck'] = {
+            'fingerprint': m._stand_freehold_loss_fingerprint(deal)}
+        row.data = json.dumps(state)
+        db.commit()
+        version = row.version
+    finally:
+        db.close()
+    pdf = b'%PDF-1.4\nsynthetic stand document\n%%EOF'
+    import base64
+    def uploaded(name):
+        return {'file': name, 'size': '1 КБ', 'at': '30.09',
+                'mime': 'application/pdf', 'bytes': len(pdf),
+                'data': 'data:application/pdf;base64,' + base64.b64encode(pdf).decode(),
+                'demo': False}
+    client = _client(uid)
+    state = client.get('/api/stand/state').json
+    payload = copy.deepcopy(state['data'])
+    payload['deals'][0]['_managerDraft'] = {
+        'files': {'pass': [uploaded('passport.pdf')], 'inv': [uploaded('invoice.pdf')]},
+        'docs': {'pass': True, 'inv': True},
+        'docMeta': {'pass': {'file': 'passport.pdf', 'size': '1 КБ', 'at': '30.09'},
+                    'inv': {'file': 'invoice.pdf', 'size': '1 КБ', 'at': '30.09'}}}
+    draft_saved = client.put('/api/stand/state', json={'version': state['version'], 'data': payload})
+    assert draft_saved.status_code == 200, draft_saved.json
+    draft_deal = draft_saved.json['data']['deals'][0]
+    assert draft_deal['_managerDraft']['files']['pass'][0]['data'] == '__detached__'
+    assert client.get('/api/stand/file/1474/pass/0?draft=1').data == pdf
+
+    # Reproduce the browser publish step using its detached server snapshot.
+    transferred = copy.deepcopy(draft_saved.json['data'])
+    item = transferred['deals'][0]
+    manager_draft = item.pop('_managerDraft')
+    item['files'] = manager_draft['files']
+    item['docs'] = manager_draft['docs']
+    item['docMeta'] = manager_draft['docMeta']
+    item['step'] = 's11'
+    transferred['notes'] = [{'id': 'synthetic-s8-operator', 'role': 'operator',
+                             'dealId': 1474, 'text': 'synthetic s8 transfer',
+                             'at': 1, 'read': False}]
+    published = client.put('/api/stand/state', json={
+        'version': draft_saved.json['version'], 'data': transferred})
+    assert published.status_code == 200, published.json
+    published_deal = published.json['data']['deals'][0]
+    assert published_deal['step'] == 's11'
+    assert published_deal['docs']['pass'] and published_deal['docs']['inv']
+    assert client.get('/api/stand/file/1474/pass/0').data == pdf
+    assert client.get('/api/stand/file/1474/inv/0').data == pdf
+
+
+def test_state_put_cannot_close_bitrix_deal_locally(monkeypatch):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    client = _client(uid)
+    current = client.get('/api/stand/state').json
+    changed = copy.deepcopy(current['data'])
+    deal = changed['deals'][0]
+    deal.update(closed=True, closeReason='Передумал покупать', closedAt='30.09', step='done')
+    response = client.put('/api/stand/state', json={'version': current['version'], 'data': changed})
+    assert response.status_code == 409
+    assert 'закрывайте сделку' in response.json['error'].lower()
+
+
 def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
     uid = _setup(monkeypatch)
     bitrix_id = _select_bitrix_origin(uid)

@@ -114,6 +114,18 @@ def test_karim_only_mute_role_change_unbind_and_no_backfill(dm, monkeypatch):
     board([note(5), note(4), note(3)])
     notify.deliver()
     assert log_status('dm-note-5', ids['manager'])[0] == 'suppressed'
+
+
+def test_delivery_result_distinguishes_sent_from_suppressed(dm, monkeypatch):
+    calls, _, board = dm
+    board([note(31, 'operator')])
+    monkeypatch.setenv('STAND_NOTIFY_MODE', 'karim_only')
+    result = notify.deliver()
+    statuses = {item['role']: item['status'] for item in result
+                if item['note_id'] == 'dm-note-31'}
+    assert statuses['admin'] == 'sent'
+    assert statuses['operator'] == 'suppressed'
+    assert len(sends(calls)) == 1
     db = appmod.SessionLocal()
     manager = db.query(appmod.AdminUser).get(ids['manager'])
     manager.notify_enabled = True

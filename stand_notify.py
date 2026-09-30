@@ -222,7 +222,8 @@ def _format_note(note, deals, stand_label=False):
 def deliver():
     """Повторять только failed; suppressed и sent остаются окончательными."""
     if not _app or not _app.STAND_MODE:
-        return
+        return []
+    delivery_results = []
     with _delivery_lock:
         lock_conn = None
         db = _app.SessionLocal()
@@ -322,6 +323,9 @@ def deliver():
                                {'note_id': row_key, 'admin_id': user.id, 'status': status,
                                 'attempts': attempts, 'at': datetime.utcnow()})
                     db.commit()
+                    delivery_results.append({'note_id': note_id,
+                                             'role': user.role or 'admin',
+                                             'status': status})
         finally:
             db.close()
             if lock_conn is not None:
@@ -329,6 +333,7 @@ def deliver():
                     lock_conn.execute(text('SELECT pg_advisory_unlock(:key)'), {'key': _LOCK_KEY + 1})
                 finally:
                     lock_conn.close()
+    return delivery_results
 
 
 def status():
