@@ -2268,8 +2268,9 @@ function clientById(id){
   return clients().find(c=>c.id===cid) || CRM_CLIENTS.find(c=>c.id===cid);
 }
 function clientFind(q, searchCrm){
-  q=(q||'').trim().toLowerCase(); if(!q)return [];
-  const base = searchCrm ? [...clients(), ...CRM_CLIENTS] : clients();
+  const base = searchCrm ? CRM_CLIENTS : clients();
+  if(!q) return base.slice(0,6);
+  q=q.trim().toLowerCase();
   return base.filter(c=>(c.name+' '+(c.tg||'')+' '+(c.phone||'')).toLowerCase().includes(q)).slice(0,6);
 }
 function clientDeals(id){return S.deals.filter(d=>d.clientId===id);}
@@ -4082,10 +4083,10 @@ function viewCreateBody(D,srcCard){
           <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
           <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · Старая база · паспорт нужно загрузить в заявку':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
-        ${(!D.searchCrm && (D.cq||'').trim().length>1)?`<div class="fh" style="margin-top:8px">Не тот человек? <a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">Поискать в старой базе CRM</a></div>`:''}
+        ${(!D.searchCrm)?`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', true);return false" style="color:var(--coral)">🔍 Поискать в старой базе CRM</a></div>`:`<div class="fh" style="margin-top:8px"><a href="#" onclick="draftSet('searchCrm', false);return false" style="color:var(--coral)">🔙 Вернуться к новым карточкам</a></div>`}
         ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать нового клиента «${htmlText(D.cq)}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${htmlText(D.client)}»</button>`:''}
-        ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">За клиентом закреплены договоры и паспорт — поэтому выбираем из справочника, а не пишем имя строкой.</p>`:''}`)}
+        ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">Выберите клиента, документы добавите к заявке.</p>`:''}`)}
     </div>
 
     <div class="fg"><label class="fl">Тип запроса<span class="rq">*</span></label>
@@ -4297,7 +4298,7 @@ function draftRefSel(v){
 function draftSet(k,v,silent){
   if(k==='source'){
     const D=S.draft;
-    D.q='';D.sourceRef='';D.allChats=false;D.srcEdit=(v!=='none');
+    D.q='';D.sourceRef='';D.allChats=false;D.srcEdit=(v!=='none');D.searchCrm=false;
     /* клиента узнавали по прошлому чату — с новым каналом это знание недействительно.
        Выбранного руками не трогаем. */
     if(!D.clientManual){
@@ -5810,8 +5811,8 @@ function editClientFromChat(id){
   d.clientId=cid;d.client=name;d.clientQ='';save();render();toast('Карточка клиента создана: '+name);
 }
 /* Клиент выбирается из справочника — как в CRM: поиск с выпадающим списком */
-function editClientSearch(id,q){const d=deal(id);d.clientQ=q;d.searchCrm=false;save();render();}
-function editSearchCrm(id){const d=deal(id);d.searchCrm=true;save();render();}
+function editClientSearch(id,q){const d=deal(id);d.clientQ=q;save();render();}
+function editSearchCrm(id,v){const d=deal(id);d.searchCrm=v;save();render();}
 function editClientClear(id){const d=deal(id);d.clientId=null;d.client='';d.clientQ='';d.clientPinned=false;save();render();}
 function editClientPick(id,cid_raw){
   const cid = typeof cid_raw === 'string' && /^\d+$/.test(cid_raw) ? Number(cid_raw) : cid_raw;
@@ -5998,10 +5999,10 @@ function viewEditLegacy(){
           <input class="fc" id="e_clientq" value="${(d.clientQ||'').replace(/"/g,'&quot;')}"
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
           ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
-          ${(d.clientQ||'').trim()?`<div class="dd">
+          ${(d.clientQ!=null)?`<div class="dd">
             ${clientFind(d.clientQ, d.searchCrm).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
               <b>${htmlText(c.name)}</b><span>${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · Старая база · паспорт нужно загрузить в заявку':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
-            ${(!d.searchCrm)?`<div class="ddi" onclick="editSearchCrm(${d.id})"><b>🔍 Поискать в старой базе CRM</b></div>`:''}
+            ${(!d.searchCrm)?`<div class="ddi" onclick="editSearchCrm(${d.id}, true)"><b>🔍 Поискать в старой базе CRM</b></div>`:`<div class="ddi" onclick="editSearchCrm(${d.id}, false)"><b>🔙 Вернуться к новым карточкам</b></div>`}
             ${(d.clientQ||'').trim().length>1?`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${htmlText(d.clientQ)}»</b><span>нового клиента в задачнике</span></div>`:''}
           </div>`:''}
           <input type="hidden" id="e_client" value="${(d.client||'').replace(/"/g,'&quot;')}">`}

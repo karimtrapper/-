@@ -152,6 +152,21 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
   }
   console.log("Fallback search UI test passed.");
 
+
+  // Test 14: searchCrm persists on input
+  S.draft.searchCrm = true;
+  draftSet('cq', 'new query', true);
+  if (S.draft.searchCrm !== true) {
+      throw new Error("searchCrm was reset on input");
+  }
+  
+  // Changing source resets it
+  draftSet('source', 'bitrix', true);
+  if (S.draft.searchCrm !== false) {
+      throw new Error("searchCrm was NOT reset on source change");
+  }
+  console.log("Search persistence UI test passed.");
+
   console.log("All real function tests passed.");
   process.exit(0);
 } catch(e) {
