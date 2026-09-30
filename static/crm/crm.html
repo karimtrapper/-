@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
     <title>CRM - Учет сделок</title>
     <link rel="icon" type="image/png" href="/static/kyc/grusha-logo.png">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -636,6 +636,20 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
 /* ---- RESPONSIVE ---- */
 @media (max-width: 640px) {
+    /* Four global links do not fit one line at phone widths. Wrapping keeps
+       the layout viewport at the device width so fixed mobile navigation
+       remains in the hit-test area; logout wraps with the links when needed. */
+    .top-nav { flex-wrap: wrap; gap: 4px; padding: 6px 8px; }
+    .top-nav a { padding: 6px 9px; font-size: 13px; }
+    .top-nav .instruction-btn { padding: 6px 9px; font-size: 13px; }
+    .top-nav .logout-btn { margin-left: auto; }
+    /* Date range and direction filters inside Dashboard's period bar have
+       intrinsic widths that otherwise widen the page beyond the viewport. */
+    #periodSelector { min-width: 0; max-width: 100%; }
+    #periodSelector > * { max-width: 100%; }
+    #periodSelector > span { display: flex !important; flex: 1 1 100%; flex-wrap: wrap; min-width: 0; }
+    #periodSelector input[type="date"] { min-width: 0; max-width: 100%; }
+    #periodSelector #dashKind { margin-left: 0 !important; }
     .crm-nav, .nav { display: none; }
     .crm-header { display: flex; }
     .container { padding: 16px 14px 120px; }

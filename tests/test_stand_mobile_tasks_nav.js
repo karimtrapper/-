@@ -33,6 +33,7 @@ async function main() {
   try {
     const context = await browser.newContext({ ...devices['iPhone 15'] });
     const page = await context.newPage();
+    await page.setViewportSize({ width: 375, height: 812 });
     await page.route('**/api/**', async route => {
       const req = route.request();
       if (req.method() !== 'GET' && req.method() !== 'HEAD') {
@@ -74,12 +75,21 @@ async function main() {
       dashboardMore: getComputedStyle(document.querySelector('#standDashboardMore')).display,
     }));
     assert.deepEqual(nav, { visible: 5, tasks: 'flex', dashboard: 'none', dashboardMore: 'flex' });
-    await page.evaluate(() => document.querySelector('#moreBtn').click());
+    const crmLayout = await page.evaluate(() => ({
+      viewport: innerWidth,
+      html: document.documentElement.scrollWidth,
+      body: document.body.scrollWidth,
+      nav: document.querySelector('#bottomNav').getBoundingClientRect().width,
+      viewportMeta: document.querySelector('meta[name="viewport"]').content,
+    }));
+    assert.deepEqual(crmLayout, { viewport: 375, html: 375, body: 375, nav: 375,
+      viewportMeta: 'width=device-width, initial-scale=1.0, shrink-to-fit=no' });
+    await page.locator('#moreBtn').click();
     assert.equal(await page.locator('#standDashboardMore').isVisible(), true);
     await page.evaluate(() => closeMorePanel());
-    await page.evaluate(() => document.querySelector('#bottomNav [data-nav-section="deals"]').click());
+    await page.locator('#bottomNav [data-nav-section="deals"]').click();
     assert.equal(await page.locator('#bottomNav [data-nav-section="deals"]').getAttribute('class'), 'bottom-nav-item active');
-    await page.evaluate(() => document.querySelector('#standTasksNav').click());
+    await page.locator('#standTasksNav').click();
     await page.waitForURL('**/tasks');
     // Synthetic mode keeps actual role switching local: save() is disabled and
     // every server request remains read-only while exercising the real handlers.
