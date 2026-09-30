@@ -2872,6 +2872,13 @@ function payToRequired(d){
   }else r.p_amt='сумма';
   return r;
 }
+function payToReady(d){
+  const pt=d.payTo||{};
+  if(!['dev','bank','acc','purpose'].every(k=>String(pt[k]||'').trim()))return false;
+  if(d.kind==='Фрихолд')return !!String(pt.swift||'').trim()&&
+    ((d.ippsTariff||'bank')!=='soft'||!!String(pt.pobo||'').trim());
+  return Number(pt.amount)>0;
+}
 function payToFromForm(d){
   const base={dev:val('p_dev'),bank:val('p_bank'),acc:val('p_acc'),inv:val('p_inv'),purpose:val('p_purp')};
   if(d.kind==='Фрихолд'){
@@ -2883,6 +2890,8 @@ function payToFromForm(d){
   }
   return base;
 }
+function managerDraft(d){return d._managerDraft||(d._managerDraft={});}
+function managerPayTo(d){return (d.payTo&&d.payTo.acc)?d.payTo:((d._managerDraft||{}).payTo||d.payTo||{});}
 function payToLogLine(d){
   const pt=d.payTo||{};
   return d.kind==='Фрихолд'
@@ -2891,10 +2900,16 @@ function payToLogLine(d){
 }
 function reqSave(id){
   const d=deal(id); if(!d)return;
+  if(!reqOpen(d)&&d.step!=='s15'){
+    managerDraft(d).payTo=payToFromForm(d);
+    draftsClear(d.id);save();render();toast('Черновик реквизитов сохранён — его видите только вы');
+    return;
+  }
   /* назначение для банка застройщика указывает менеджер вместе с реквизитами и правит
      его до оплаты; операционист на оплате только копирует (Карим, 27.09) */
   if(need(payToRequired(d)))return;
   d.payTo=payToFromForm(d);
+  if(d._managerDraft)delete d._managerDraft.payTo;
   d.dev=d.dev||d.payTo.dev; d.bank=d.bank||(d.payTo.bank+' · '+d.payTo.acc);
   saveNote(d,'s15');
   d.reqTask='done'; draftsClear(d.id);
@@ -4376,6 +4391,27 @@ function assigneeBlock(d,who){
 }
 
 /* ---------- карточка сделки ---------- */
+function managerEarlyDocs(d){
+  return S.role==='manager'&&['s4','s5','s6'].includes(d.step)&&d.type==='Оплата недвижимости';
+}
+function managerDraftCommentSave(id){
+  const d=deal(id);if(!d||S.role!=='manager')return;
+  managerDraft(d).comment=val('md_comment');
+  save();render();toast('Черновик комментария сохранён');
+}
+function managerEarlyDocsBlock(d){
+  if(S.role!=='manager'||d.type!=='Оплата недвижимости')return '';
+  const early=managerEarlyDocs(d);
+  const draft=d._managerDraft||{};
+  return `<div class="card"><div class="card-title">${early?'Документы клиента · черновик':'Документы клиента · дополнить'}</div>
+    <p class="fh">${early?'Файлы и комментарий увидит операционист после вашего подтверждения шага «Документы клиента».':'Документы уже переданы на s8; новые вложения доступны в сделке сразу.'}</p>
+    ${fileBlock(d,'pass','Паспорт клиента','можно загрузить заранее')}
+    ${fileBlock(d,'inv','Инвойс застройщика','можно загрузить заранее')}
+    ${fileBlock(d,'spa',d.kind==='Фрихолд'?'SPA с застройщиком':'Договор с застройщиком','можно загрузить заранее')}
+    ${early?`<div class="fg" style="margin-top:12px"><label class="fl">Комментарий к документам</label>
+      <textarea class="fc" id="md_comment">${htmlText(draft.comment||'')}</textarea></div>
+    <div class="row"><button class="btn btn-secondary" onclick="managerDraftCommentSave(${d.id})">Сохранить комментарий</button></div>`:''}</div>`;
+}
 function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
@@ -4390,15 +4426,17 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
-    else if(!mine&&S.role==='manager'&&reqOpen(d)){
-      /* Параллельная задача менеджера — со своей целью, как любой шаг (аудит 27.09, №15) */
+    else if(!mine){
+      const status=`<div class="card" style="margin-bottom:12px">Сейчас: ${(who&&ROLES[who])?ROLES[who].t:'—'} — ${stepTitle(d)}</div>`;
+      const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
+      const canDraft=managerSide&&d.reqTask!=='done';
+      const own=managerSide?`<div class="card-title" style="margin:10px 0">Ваши задачи по этой сделке — можно заполнить заранее</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
-      body=goalCard(side)+stepCard(side)+`<p class="fh" style="margin-top:12px">Параллельно: операционист сейчас на шаге «${stepTitle(d)}». Реквизиты нужны к оплате инвойса — без них операционист не заплатит.</p>`+ctxCard(d);}
-    else if(!mine) body=(who?assigneeBlock(d,who):'')+`<div class="card"><div class="alert a-info"><div>Сейчас ход роли «<b>${(who&&ROLES[who])?ROLES[who].t:'—'}</b>» — ${stepTitle(d)}.
-      ${canSwitchRole()?'Переключите роль наверху, чтобы продолжить.':'Когда шаг сделают, задача придёт к вам, если следующий ход ваш.'}</div></div>
-      <div class="row"><button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button>
-      ${(S.role==='manager'&&d.payTo&&d.payTo.acc&&!(d.pay||{}).invoicePaid&&['s18','s18w','s22','s23','s24','s25','s26'].indexOf(d.step)>=0)
-        ?`<button class="btn btn-secondary" onclick="reqReopen(${d.id},'правка менеджера')">Изменить реквизиты для оплаты</button>`:''}</div></div>`;
+      body=status+own+(canDraft?stepCard(side):'')+
+        (managerSide?managerEarlyDocsBlock(d):'')+
+        (managerSide&&d.reqTask==='done'&&d.payTo&&d.payTo.acc
+          ?`<button class="btn btn-secondary" onclick="reqReopen(${d.id},'правка менеджера')">Изменить реквизиты для оплаты</button>`:'');
+    }
     /* На s12 документы для клиента — первым делом, выше сводки сделки: менеджер не
        должен их искать (Карим, 25.09 — «в самом видном месте»). Дальше цель, сам шаг с
        полями и кнопкой, а сводка «Что это за сделка» — в самом низу свёрнутой (Карим, 27.09). */
@@ -6302,6 +6340,29 @@ async function docParse(id,quiet){
   }catch(e){const dd=deal(id);dd.docParseState='ошибка сети';save();render();if(!quiet)toast('Распознавание недоступно');}
 }
 function parsed(d,k){return ((d.docParse||{}).fields||{})[k]||'';}
+const MANAGER_DRAFT_DOCS=['pass','inv','spa','ipds'];
+function managerDraftDocTarget(d,k){
+  if(S.role!=='manager'||!MANAGER_DRAFT_DOCS.includes(k)||
+     !['s4','s5','s6','s8'].includes(d.step))return null;
+  if(d.step==='s8'&&d.docs&&d.docs[k])return null;
+  const draft=managerDraft(d);
+  draft.files=draft.files||{};draft.docs=draft.docs||{};draft.docMeta=draft.docMeta||{};
+  return draft;
+}
+function managerDraftPublishDocs(d){
+  const draft=d._managerDraft||{};
+  if(draft.files){
+    d.files=d.files||{};d.docs=d.docs||{};d.docMeta=d.docMeta||{};
+    MANAGER_DRAFT_DOCS.forEach(k=>{
+      if((draft.files[k]||[]).length){
+        d.files[k]=draft.files[k];d.docs[k]=true;
+        if((draft.docMeta||{})[k])d.docMeta[k]=draft.docMeta[k];
+      }
+    });
+  }
+  if(draft.comment&&!d.docComment)d.docComment=draft.comment;
+  delete draft.files;delete draft.docs;delete draft.docMeta;delete draft.comment;
+}
 function docParseLine(d){
   const st=d.docParseState, P=(d.docParse||{}).fields||{};
   const unavailable=STAND&&DOC_PARSE_AVAILABLE===false;
@@ -6316,19 +6377,21 @@ function docParseLine(d){
     <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="docParse(${d.id})" ${st==='идёт'||unavailable?'disabled':''}>${got?'Распознать заново':'Распознать документы'}</button></div>`;
 }
 function filesOf(d,k){
-  d.files=d.files||{};
+  const target=managerDraftDocTarget(d,k)||d;
+  target.files=target.files||{};
   /* Старые записи с одним именем файла не содержат байтов: их нельзя выдавать за чек. */
-  if(!Array.isArray(d.files[k]))d.files[k]=[];
-  d.files[k]=d.files[k].filter(fileValid);
-  if(k==='receipt'||k==='signed')d.docs[k]=d.files[k].length>0;
-  return d.files[k];
+  if(!Array.isArray(target.files[k]))target.files[k]=[];
+  target.files[k]=target.files[k].filter(fileValid);
+  if(k==='receipt'||k==='signed')d.docs[k]=target.files[k].length>0;
+  return target.files[k];
 }
 function fileSync(d,k){
   const l=filesOf(d,k);
-  d.docs[k]=l.length>0;
-  d.docMeta=d.docMeta||{};
-  if(l.length) d.docMeta[k]={file:l[0].file+(l.length>1?' и ещё '+(l.length-1):''),size:l[0].size,at:l[0].at};
-  else delete d.docMeta[k];
+  const target=managerDraftDocTarget(d,k)||d;
+  target.docs=target.docs||{};target.docs[k]=l.length>0;
+  target.docMeta=target.docMeta||{};
+  if(l.length) target.docMeta[k]={file:l[0].file+(l.length>1?' и ещё '+(l.length-1):''),size:l[0].size,at:l[0].at};
+  else delete target.docMeta[k];
 }
 /* Проверка и добавление одного настоящего File — общий путь для выбора через диалог
    и для перетаскивания файла в зону (Карим, 25.09): раньше это жило только внутри
@@ -6358,7 +6421,8 @@ function fileAppend(id,k,f){
   if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
   if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
   l.push(f);fileSync(d,k);
-  log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
+  if(!managerDraftDocTarget(d,k))
+    log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
   save();render();toast(f.demo?'Тестовый PDF добавлен':'Файл приложен');
 }
 function fileAdd(id,k){
@@ -6387,7 +6451,7 @@ function fileDel(id,k,i){
   if(i<0||i>=l.length)return;
   const [x]=l.splice(i,1);
   fileSync(d,k);
-  log(d,'Файл убран: '+(DOCT[k]||k)+(x?' · '+x.file:''));
+  if(!managerDraftDocTarget(d,k))log(d,'Файл убран: '+(DOCT[k]||k)+(x?' · '+x.file:''));
   save();render();
 }
 /* Блок «много файлов»: список с открытием и удалением плюс кнопка добавления */
@@ -6477,7 +6541,8 @@ const NOTE_CFG={
 function stepNote(d){
   const k=d.step, cfg=NOTE_CFG[k]||{};
   if(cfg.none) return '';
-  const v=(d.stepNotes||{})[k]||(cfg.legacy?d[cfg.legacy]||'':'');
+  const v=(d.stepNotes||{})[k]||(k==='s8'?(d._managerDraft||{}).comment||'':'')||
+    (cfg.legacy?d[cfg.legacy]||'':'');
   /* свёрнут, пока пуст: необязательное поле не должно отодвигать главную кнопку за
      первый экран (Карим, 27.09). Поле в разметке всегда — act() читает его и свёрнутым */
   const on=v||((S.noteOpen||{})[d.id+k]);
@@ -7630,7 +7695,7 @@ function stepCard(d){
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни уходит запрос клиенту')">Запросить доплату</button></div></div>`,
 
   s15:()=>{
-    const pt=d.payTo||{};
+    const pt=managerPayTo(d);
     if(d.kind==='Фрихолд'){
       const t=ippsTariff(d), soft=(d.ippsTariff||'bank')==='soft', F2=docFields(d);
       const amount=econ(d).invoiceUsd||d.invoiceUsd||ap.thb||0;
@@ -7671,7 +7736,7 @@ function stepCard(d){
       <!--note-->
       <div class="row mainrow">${!d._side
         ?`<button class="btn btn-primary" onclick="act(${d.id},'s15')">Передать операционисту на оплату</button>`
-        :`<button class="btn btn-primary" onclick="reqSave(${d.id})">Сохранить реквизиты</button>`}</div>
+        :`<button class="btn btn-primary" onclick="reqSave(${d.id})">${reqOpen(d)?'Подтвердить и передать реквизиты':'Сохранить черновик'}</button>`}</div>
       <div class="alert a-info" style="margin-top:14px"><div>Заполняет менеджер: операционист отправит заявку в IPPS по этим реквизитам. Тариф и сумма зафиксированы договором — их меняют только через возврат на «Собрать пакет документов».</div></div></div>`;
     }
     return `<div class="card"><div class="card-title">Реквизиты для оплаты инвойса
@@ -7697,7 +7762,7 @@ function stepCard(d){
     <!--note-->
     <div class="row mainrow">${!d._side
       ?`<button class="btn btn-primary" onclick="act(${d.id},'s15')">Передать операционисту на оплату</button>`
-      :`<button class="btn btn-primary" onclick="reqSave(${d.id})">Сохранить реквизиты</button>`}</div>
+      :`<button class="btn btn-primary" onclick="reqSave(${d.id})">${reqOpen(d)?'Подтвердить и передать реквизиты':'Сохранить черновик'}</button>`}</div>
     <div class="alert a-info" style="margin-top:14px"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не наше «Оплата по агентскому договору» для Сбера.</div></div></div>`;},
 
   s18:()=>{
@@ -8165,9 +8230,10 @@ function act(id,step){
     }
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
-    if(!d.isOld&&!d.docs.pass){toast('Нужен паспорт');return;}
-    if(!d.docs.inv){toast('Нужен инвойс');return;}
-    d.docComment=val('sn_s8');go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');
+    if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}
+    if(!filesOf(d,'inv').length){toast('Нужен инвойс');return;}
+    managerDraftPublishDocs(d);
+    d.docComment=val('sn_s8')||d.docComment||'';go(d,'s11','Документы переданы операционисту');toast('Ушло операционисту');
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
@@ -8203,6 +8269,7 @@ function act(id,step){
   if(step==='s15'){
     if(need(payToRequired(d)))return;
     d.payTo=payToFromForm(d);
+    if(d._managerDraft)delete d._managerDraft.payTo;
     d.dev=d.dev||d.payTo.dev; d.bank=d.bank||(d.payTo.bank+' · '+d.payTo.acc);
     log(d,'Реквизиты для оплаты заполнены: '+payToLogLine(d));
     /* Реквизиты правят и по возврату с оплаты: тогда деньги уже сконвертированы и
@@ -8366,6 +8433,7 @@ function act(id,step){
   if(step==='s25'){
     if(!cnvMembers(d).filter(pcSends).every(sendDone)){toast('Не все переводы подтверждены');return;}
     if(d.kind==='Фрихолд'){
+      if(!payToReady(d)){toast('Нужны подтверждённые реквизиты менеджера — заявку в IPPS не отправляем');return;}
       if(d.pay.ippsSent){toast('Заявка уже отправлена');return;}
       d.pay.ippsSent=true;
       log(d,'Заявка в IPPS отправлена: '+usd(sendSum(d)||pcAmount(d)||0)+' — застройщику должно дойти '+usd(econ(d).invoiceUsd||0));
@@ -8392,11 +8460,12 @@ function act(id,step){
        Без чека шаг не закрывается: именно его менеджер отправит клиенту. */
     const pt=d.payTo||{};
     if(!pt.acc){toast('Нет реквизитов — верните задачу менеджеру');return;}
+    if(!String(pt.purpose||'').trim()){toast('Менеджер не указал назначение для банка застройщика — верните с вопросом');return;}
+    if(!payToReady(d)){toast('Нет подтверждённых реквизитов — верните задачу менеджеру');return;}
     if(d.postConv==='coins'&&!d.pay.coinsCredit){toast('Сначала подтвердите зачисление батов от Coins на SCB');return;}
     if(d.pay.invoicePaid){toast('Оплата инвойса уже учтена');return;}
     /* Назначение для банка застройщика вносит менеджер в реквизитах (Карим, 27.09):
        операционист его не пишет, а без него не платит — возвращает с вопросом */
-    if(!String(pt.purpose||'').trim()){toast('Менеджер не указал назначение для банка застройщика — верните с вопросом');return;}
     if(!d.docs.receipt){toast('Приложите чек банка — его отправят клиенту');return;}
     if(d.kind==='Фрихолд'){
       /* IPPS платит из отправленных USDT — на батном счёте SCB для фрихолда денег

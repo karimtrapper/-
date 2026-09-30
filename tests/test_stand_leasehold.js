@@ -133,13 +133,13 @@ const round2 = x => Math.round(x * 100) / 100;
     kind: 'Лизхолд', amountThb: 350000, postConv: 'coins',
     transfer: {thb: 353500, amount: 11217.95,
       sends: [{amount: 11217.95, verifiedAmount: 11217.95, status: 'confirmed', hash: 'tx-a'}]},
-    pay: {}, payTo: {acc: '123', amount: 350000, dev: 'Developer'}, docs: {},
+    pay: {}, payTo: {acc: '123', amount: 350000, dev: 'Developer', bank: 'Bank'}, docs: {},
     payout: {source: 'Coins / Bitazza', usdt: 11217.95}, log: []};
   const S = {deals: [d], wallets: {scb: 2100000}};
   const inputs = {};
   let scb = 2100000;
   const toasts = [];
-  const ctx = run(['act'], {
+  const ctx = run(['act', 'payToReady'], {
     S, document: {getElementById: () => null}, deal: () => d,
     saveNote: () => {}, cnvMembers: () => [d], pcSends: () => true,
     sendDone: () => d.transfer.sends[0].status === 'confirmed',
@@ -198,6 +198,7 @@ const round2 = x => Math.round(x * 100) / 100;
     const asked = [];
     const ctx = run([fn, 'payToRequired'], {
       S: {deals: [d]}, deal: () => d, document: {getElementById: () => null},
+      reqOpen: () => true,
       saveNote: () => {}, need: map => { asked.push(Object.keys(map)); return true; },
       val: () => '', toast: () => {}, Math,
     });

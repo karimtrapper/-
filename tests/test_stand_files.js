@@ -20,6 +20,7 @@ function fixture() {
   const input = {files: [], click: () => clicks.push('picker')};
   const link = {style: {}, click: () => clicks.push('download'), remove: () => {}};
   const ctx = {S, DOCT: {receipt: 'Чек'}, deal: () => d, now: () => '24.09',
+    managerDraftDocTarget: () => null,
     save: () => {}, render: () => {}, log: (x, s) => x.log.push(s),
     toast: s => toasts.push(s), document: {createElement: tag => tag === 'input' ? input : link,
       body: {appendChild: () => {}}}, window: {open: url => {opened.push(url);return {}; }},

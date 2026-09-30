@@ -5118,6 +5118,33 @@ def _stand_row(db, lock=False):
     return row
 
 
+def _stand_public_state(state, role):
+    """Keep unconfirmed manager inputs out of every other role's board view."""
+    if role in ('manager', 'admin') or not isinstance(state, dict):
+        return state
+    public = dict(state)
+    public['deals'] = [{k: v for k, v in deal.items() if k != '_managerDraft'}
+                       for deal in state.get('deals', [])]
+    return public
+
+
+@app.after_request
+def _stand_project_private_drafts(response):
+    # Actions besides /state also return a fresh board snapshot. Project all
+    # stand JSON responses so errors and version conflicts cannot leak drafts.
+    if (not STAND_MODE or not request.path.startswith('/api/stand/')
+            or response.mimetype != 'application/json'):
+        return response
+    role = current_role()
+    if role in ('manager', 'admin'):
+        return response
+    body = response.get_json(silent=True)
+    if isinstance(body, dict) and isinstance(body.get('data'), dict):
+        body['data'] = _stand_public_state(body['data'], role)
+        response.set_data(json.dumps(body, ensure_ascii=False))
+    return response
+
+
 @app.route('/api/stand/state', methods=['GET'])
 def stand_state_get():
     """Состояние задачника целиком: клиент опрашивает его раз в пару секунд."""
@@ -5294,6 +5321,22 @@ def stand_state_put():
                             'data': json.loads(row.data or '{}'),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
+        # Other roles receive a projected board. Preserve the hidden draft in
+        # their versioned PUT, and reject any attempt to forge it explicitly.
+        if actor not in ('manager', 'admin'):
+            old_deals = {deal.get('id'): deal for deal in previous.get('deals', [])}
+            submitted_ids = {deal.get('id') for deal in payload['data'].get('deals', [])}
+            if any(deal_id not in submitted_ids and old_deal.get('_managerDraft')
+                   for deal_id, old_deal in old_deals.items()):
+                return jsonify({'success': False, 'error': 'manager_draft_forbidden',
+                                'version': row.version or 0, 'data': previous}), 409
+            for deal in payload['data'].get('deals', []):
+                old_draft = old_deals.get(deal.get('id'), {}).get('_managerDraft')
+                if '_managerDraft' in deal and deal['_managerDraft'] != old_draft:
+                    return jsonify({'success': False, 'error': 'manager_draft_forbidden',
+                                    'version': row.version or 0, 'data': previous}), 409
+                if old_draft is not None:
+                    deal['_managerDraft'] = old_draft
         actor_id = flask_session.get('user_id')
         problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem == '__stale_assignee__':
@@ -6360,22 +6403,54 @@ def _stand_valid_receipt(deal):
     return False
 
 
-STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes'}
-# Подписанный договор и файлы клиента менеджер загружает на любом шаге (Карим, 27.09):
-# путь это не двигает, поэтому пропускаем правку, если менялись только эти документы.
+STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes', '_managerDraft'}
+STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment'}
+STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
+                                    'amount', 'swift', 'branch', 'bankAddr', 'pobo'}
+# До штатного s8 клиентские файлы живут в приватном черновике. После передачи
+# на s11 менеджер сохраняет прежнюю возможность исправить их до закрытия.
 STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'ipds'}
 
 
 def _stand_manager_docs_only(before, deal, changed):
     if not changed <= {'files', 'docs', 'docMeta', 'log'}:
         return False
+    allowed = ({'signed'} if before.get('step') in ('s4', 's5', 's6', 's8')
+               else STAND_MANAGER_DOC_KINDS)
     for key in changed - {'log'}:
         old, new = before.get(key) or {}, deal.get(key) or {}
         if not isinstance(old, dict) or not isinstance(new, dict):
             return False
-        if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in STAND_MANAGER_DOC_KINDS):
+        if any(old.get(k) != new.get(k) for k in set(old) | set(new) if k not in allowed):
             return False
     return True
+
+
+def _stand_client_docs_changed(before, deal):
+    for field in ('files', 'docs', 'docMeta'):
+        old, new = before.get(field) or {}, deal.get(field) or {}
+        if not isinstance(old, dict) or not isinstance(new, dict):
+            return True
+        if any((old.get(kind) or None) != (new.get(kind) or None)
+               for kind in ('pass', 'inv', 'spa', 'ipds')):
+            return True
+    return False
+
+
+def _stand_payto_problem(deal):
+    payto = deal.get('payTo') or {}
+    required = ('dev', 'bank', 'acc', 'purpose')
+    if deal.get('kind') == 'Фрихолд':
+        required += ('swift',)
+        if (deal.get('ippsTariff') or 'bank') == 'soft':
+            required += ('pobo',)
+    else:
+        amount = _amount(payto.get('amount'))
+        if amount is None or amount <= 0:
+            return 'Нужна сумма оплаты инвойса'
+    if any(not str(payto.get(key) or '').strip() for key in required):
+        return 'Нужны подтверждённые реквизиты для оплаты инвойса'
+    return None
 
 
 # Зеркало STEPS[step].who из static/stand/tasks.html — только статическая
@@ -6672,6 +6747,25 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        draft = deal.get('_managerDraft')
+        old_draft = (before or {}).get('_managerDraft')
+        if draft != old_draft:
+            if actor not in ('manager', 'admin'):
+                return 'Черновик менеджера доступен только менеджеру'
+            if (draft is not None and
+                    (not isinstance(draft, dict) or
+                     set(draft) - STAND_MANAGER_DRAFT_FIELDS or
+                     any(not isinstance(draft.get(key), dict) for key in ('payTo', 'files', 'docs', 'docMeta')
+                         if key in draft) or
+                     set(draft.get('payTo') or {}) - STAND_MANAGER_DRAFT_PAYTO_FIELDS or
+                     any(set(draft.get(key) or {}) - {'pass', 'inv', 'spa', 'ipds'}
+                         for key in ('files', 'docs', 'docMeta')) or
+                     ('comment' in draft and not isinstance(draft['comment'], str)))):
+                return 'Некорректный черновик менеджера'
+            publishing = bool(before and (before.get('step') != deal.get('step') or
+                                          before.get('payTo') != deal.get('payTo')))
+            if previous.get('notes') != new_state.get('notes') and not publishing:
+                return 'Сохранение черновика не отправляет уведомления'
         if 'freeholdLossAck' in deal and deal.get('freeholdLossAck') != (before or {}).get('freeholdLossAck'):
             return 'freehold_loss_ack_server_only'
         if (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
@@ -6710,6 +6804,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 if not isinstance(custom, dict) or not isinstance(custom.get('multisig'), bool):
                     return 'Для своего кошелька не определён подписант исходящего перевода'
         if not before:
+            if (not deal.get('manual') and
+                    (deal.get('reqTask') or deal.get('payTo') or
+                     _stand_client_docs_changed({}, deal))):
+                return 'Новая сделка не может публиковать реквизиты или документы заранее'
             if deal.get('originMode') is not None:
                 return 'Режим происхождения сделки назначает только сервер'
             if not deal.get('manual') and deal.get('step') == 'manual':
@@ -6740,6 +6838,57 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                            (deal.get('closed') and deal.get('closeReason') == 'Успешно завершена')):
             return 'Новую сделку нельзя создать с привязкой CRM или успешным закрытием'
         step_changed = bool(before and before.get('step') != deal.get('step'))
+        if (before and actor not in ('manager', 'admin')
+                and _stand_client_docs_changed(before, deal)):
+            return 'Документы клиента меняет менеджер'
+        if (before and before.get('step') in ('s4', 's5', 's6', 's8')
+                and not step_changed and _stand_client_docs_changed(before, deal)):
+            return 'Документы клиента публикуются после подтверждения шага s8'
+        if before and actor not in (None, 'admin'):
+            changed = {key for key in set(before) | set(deal)
+                       if before.get(key) != deal.get(key)}
+            owner = _stand_current_step_role(previous, before)
+            if owner and actor != owner and not step_changed:
+                manager_parallel = (actor == 'manager' and (
+                    changed <= {'_managerDraft'} or
+                    (before.get('reqTask') == 'open' and
+                     changed <= STAND_MANAGER_REQ_FIELDS) or
+                    (before.get('reqTask') == 'done' and deal.get('reqTask') == 'open'
+                     and before.get('payTo') and changed <= STAND_MANAGER_REQ_FIELDS) or
+                    _stand_manager_docs_only(before, deal, changed)))
+                if not manager_parallel:
+                    return f'Действие шага {before.get("step")} доступно роли {owner}'
+            if before.get('step') != 'manual' and before.get('payTo') != deal.get('payTo'):
+                if actor != 'manager':
+                    return 'Реквизиты оплаты подтверждает менеджер'
+                if before.get('reqTask') != 'open' and before.get('step') != 's15':
+                    return 'Реквизиты можно публиковать только в задаче менеджера'
+                payto_problem = _stand_payto_problem(deal)
+                if payto_problem:
+                    return payto_problem
+            if (actor == 'manager' and before.get('reqTask') == 'open'
+                    and before.get('step') != 's15'
+                    and deal.get('reqTask') == 'open'
+                    and any(before.get(key) != deal.get(key) for key in ('dev', 'bank'))):
+                return 'Реквизиты публикуются при подтверждении задачи менеджера'
+            if before.get('reqTask') != deal.get('reqTask') and actor == 'manager':
+                if deal.get('reqTask') == 'open' and not (
+                        (before.get('step') in ('s14', 's14m') and step_changed) or
+                        (before.get('reqTask') == 'done' and before.get('payTo')
+                         and not (before.get('pay') or {}).get('invoicePaid'))):
+                    return 'Задача реквизитов открывается после прихода оплаты'
+                if (deal.get('reqTask') == 'done' and before.get('reqTask') != 'open'
+                        and before.get('step') != 's15'):
+                    return 'Задача реквизитов ещё не открыта'
+                if deal.get('reqTask') == 'done':
+                    payto_problem = _stand_payto_problem(deal)
+                    if payto_problem:
+                        return payto_problem
+            if (step_changed and before.get('step') in ('s25', 's26')
+                    and (before.get('step') == 's26' or deal.get('kind') == 'Фрихолд')):
+                payto_problem = _stand_payto_problem(deal)
+                if payto_problem:
+                    return payto_problem
         if (step_changed and deal.get('step') not in ('s4', 's5', 's6', 's8')
                 and _stand_freehold_plan_problem(deal)):
             return _stand_freehold_plan_problem(deal)
