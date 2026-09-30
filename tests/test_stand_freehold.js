@@ -32,6 +32,32 @@ function run(fnNames, constNames, context) {
   vm.runInContext(consts(constNames) + '\n' + functions(fnNames), context);
   return context;
 }
+function divTree(markup) {
+  const root={tag:'root',classes:[],children:[]}, stack=[root];
+  for(let i=0;i<markup.length;){
+    if(markup[i]!=='<'){i++;continue;}
+    let j=i+1,quote=null;
+    for(;j<markup.length;j++){
+      const ch=markup[j];
+      if(quote){if(ch===quote)quote=null;}
+      else if(ch==='"'||ch==="'")quote=ch;
+      else if(ch==='>')break;
+    }
+    if(j===markup.length)throw new Error('unterminated HTML tag');
+    const tag=markup.slice(i,j+1);
+    if(/^<div\b/i.test(tag)){
+      const match=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i);
+      const node={tag:'div',classes:match?match[2].split(/\s+/).filter(Boolean):[],children:[]};
+      stack.at(-1).children.push(node);stack.push(node);
+    }else if(/^<\/div\s*>/i.test(tag)){
+      if(stack.length===1)throw new Error('closing div without an open parent');
+      stack.pop();
+    }
+    i=j+1;
+  }
+  if(stack.length!==1)throw new Error(`${stack.length-1} unclosed div wrapper(s)`);
+  return root;
+}
 const round2 = x => Math.round(x * 100) / 100;
 const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !~ ${b}`);
 
@@ -445,7 +471,7 @@ console.log('test_stand_freehold.js: OK');
     invoiceCurrency:'usd',amountUsdt:'98800',agents:[],rq:'',note:''};
   let rendered='';
   const ctx=run(['viewCreateBody','draftSet','draftFreeholdPreview','draftValid','draftAmounts',
-    'freeholdSend','freeholdFee','askModes','ippsTariff'],['IPPS_TARIFFS'],{
+    'freeholdSend','freeholdFee','askModes','ippsTariff','pairOf'],['IPPS_TARIFFS','PAIRS','PAIR_PAYCUR'],{
     STAND:true,S:{draft:D},SOURCES:{none:'Без переписки'},clientFind:()=>[],clientById:()=>null,
     payWays:()=>['Крипта','По реквизитам'],draftAgentsBlock:()=>'',refFind:()=>[],
     htmlText:s=>String(s||''),
@@ -477,6 +503,36 @@ console.log('test_stand_freehold.js: OK');
   assert.match(html,/\.cols\.cols-create-compact\{grid-template-columns:minmax\(0,1fr\)\}/);
   assert.match(html,/\.fh\.create-next\{font-size:12\.5px;line-height:1\.4;color:var\(--navy-600\)/);
   assert.match(html,/@media\(max-width:900px\)\{\.cols\{grid-template-columns:1fr\}/);
+  const variants=[
+    {type:'Оплата недвижимости',kind:'Фрихолд',payType:'Крипта',compact:true},
+    {type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам'},
+    {type:'Оплата недвижимости',kind:'Лизхолд',payType:'По реквизитам'},
+    {type:'Обмен валюты',kind:'',payType:'Крипта'}
+  ];
+  const desktopColumns=html.match(/\.cols\{display:grid;grid-template-columns:([^;]+);/)[1];
+  for(const viewport of [1280,390]){
+    for(const variant of variants){
+      const markup=ctx.viewCreateBody(Object.assign({},D,variant),'');
+      const root=divTree(markup);
+      const find=(node,predicate)=>[...(predicate(node)?[node]:[]),...node.children.flatMap(x=>find(x,predicate))];
+      const grid=find(root,node=>node.classes.includes('cols'))[0];
+      assert.ok(grid,`${variant.type}/${variant.kind}/${variant.payType}: missing grid`);
+      const left=grid.children[0];
+      assert.ok(left,`${variant.type}/${variant.kind}: missing left column`);
+      if(variant.compact){
+        assert.ok(grid.classes.includes('cols-create-compact'));
+        assert.equal(grid.children.length,1,'crypto freehold has no side card or empty grid column');
+        assert.ok(!find(left,node=>node.classes.includes('side')).length);
+      }else{
+        assert.equal(grid.children.length,2,'side card is the second grid sibling');
+        assert.ok(grid.children[1].classes.includes('side'));
+        assert.ok(!find(left,node=>node.classes.includes('side')).length);
+      }
+      const columns=grid.classes.includes('cols-create-compact')?'minmax(0,1fr)':
+        (viewport<=900?'1fr':desktopColumns);
+      assert.equal(columns,variant.compact?'minmax(0,1fr)':(viewport<=900?'1fr':'1fr 310px'));
+    }
+  }
   assert.equal(ctx.draftValid(),true);
   ctx.draftSet('payType','По реквизитам');
   assert.equal(D.sum,'97500');assert.equal(D.ippsTariff,'bank');

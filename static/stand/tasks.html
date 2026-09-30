@@ -4198,6 +4198,7 @@ function viewCreateBody(D,srcCard){
     </div>
     <p class="fh${cryptoFreehold?' create-next':''}" style="margin-top:10px">${cryptoFreehold?'Далее: загрузить паспорт и инвойс → передать Насте':'Заявка отправляет запрос курса операционисту. Остальные кнопки создают сделку для самостоятельного ведения.'}</p>
   </div>
+  </div>
   ${cryptoFreehold?'':`<div class="card side"><h4>Что нужно на входе</h4>
   <p>${D.kind==='Фрихолд'&&D.payType==='Крипта'?'Клиент, инвойс, тариф IPPS и сумма в USDT.':'Клиент, тип сделки, способ оплаты и сумма.'}</p>
   <h4 style="margin-top:18px">Дальше</h4>
