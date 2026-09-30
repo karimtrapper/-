@@ -28,38 +28,56 @@ def write_status(status):
     write_atomic(STATUS_FILE, status, 0o644)
     print(f"Status updated: {status}")
 
-async def _check_account_phone(client):
-    expected_phone = os.environ.get("SYNC_TG_EXPECTED_PHONE_ELIZAVETA")
-    if expected_phone:
-        expected_digits = ''.join(filter(str.isdigit, expected_phone))
-        if expected_digits:
-            me = await client.get_me()
-            if me and me.phone:
-                actual_digits = ''.join(filter(str.isdigit, me.phone))
-                if actual_digits != expected_digits:
-                    print("Phone mismatch. Logging out.")
-                    await client.log_out()
-                    write_status("wrong_account")
-                    return False
+async def _check_account_phone(client, expected_digits):
+    me = await client.get_me()
+    
+    if not me or not me.phone:
+        print("Phone mismatch: no phone number returned. Logging out.")
+        await client.log_out()
+        write_status("wrong_account")
+        return False
+        
+    actual_digits = ''.join(filter(str.isdigit, me.phone))
+    if actual_digits != expected_digits:
+        print("Phone mismatch. Logging out.")
+        await client.log_out()
+        write_status("wrong_account")
+        return False
+        
     return True
 
 async def main():
-    api_id = os.environ.get("SYNC_TG_API_ID_ELIZAVETA")
+    os.umask(0o077)
+    
+    api_id_raw = os.environ.get("SYNC_TG_API_ID_ELIZAVETA")
     api_hash = os.environ.get("SYNC_TG_API_HASH_ELIZAVETA")
     session_file = os.environ.get("SYNC_TG_SESSION_FILE_ELIZAVETA", "/data/elizaveta.session")
 
-    if not api_id or not api_hash:
+    if not api_id_raw or not api_hash:
         write_status("error: SYNC_TG_API_ID_ELIZAVETA or SYNC_TG_API_HASH_ELIZAVETA missing")
+        return
+
+    expected_phone = os.environ.get("SYNC_TG_EXPECTED_PHONE_ELIZAVETA")
+    if not expected_phone:
+        write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA missing")
+        return
+        
+    expected_digits = ''.join(filter(str.isdigit, expected_phone))
+    if len(expected_digits) < 5:
+        write_status("error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA is invalid")
         return
 
     write_status("waiting")
 
-    client = TelegramClient(session_file, int(api_id), api_hash)
-    await client.connect()
-
+    client = None
     try:
+        api_id = int(api_id_raw)
+        client = TelegramClient(session_file, api_id, api_hash)
+        
+        await client.connect()
+
         if await client.is_user_authorized():
-            if await _check_account_phone(client):
+            if await _check_account_phone(client, expected_digits):
                 write_status("authorized")
             if os.path.exists(URL_FILE):
                 os.remove(URL_FILE)
@@ -70,49 +88,73 @@ async def main():
         while True:
             write_atomic(URL_FILE, qr.url, 0o600)
             
-            # Use qr.expires to calculate timeout with a 2-second buffer before expiry
-            # Telethon qr.expires is a timezone-aware datetime in UTC
             now = datetime.now(timezone.utc)
             timeout = (qr.expires - now).total_seconds()
             timeout = max(1.0, timeout - 2.0)
             
             try:
                 user = await qr.wait(timeout=timeout)
-                if await _check_account_phone(client):
+                if await _check_account_phone(client, expected_digits):
                     write_status("authorized")
                 if os.path.exists(URL_FILE):
                     os.remove(URL_FILE)
                 break
                 
             except asyncio.TimeoutError:
-                # Token is about to expire, recreate it
-                await qr.recreate()
-                
-            except SessionPasswordNeededError:
-                # If 2FA is needed, check if password is provided via env
-                pwd = os.environ.get("SYNC_TG_2FA_PASSWORD_ELIZAVETA")
-                if pwd:
-                    await client.sign_in(password=pwd)
-                    if await _check_account_phone(client):
-                        write_status("authorized")
+                try:
+                    await qr.recreate()
+                except Exception as e:
+                    print(f"QR recreate failed: {type(e).__name__}")
+                    write_status("error")
                     if os.path.exists(URL_FILE):
                         os.remove(URL_FILE)
                     break
+                
+            except SessionPasswordNeededError:
+                pwd = os.environ.get("SYNC_TG_2FA_PASSWORD_ELIZAVETA")
+                if pwd:
+                    try:
+                        await client.sign_in(password=pwd)
+                        if await _check_account_phone(client, expected_digits):
+                            write_status("authorized")
+                        if os.path.exists(URL_FILE):
+                            os.remove(URL_FILE)
+                        break
+                    except Exception as e:
+                        print(f"2FA sign in failed: {type(e).__name__}")
+                        write_status("error")
+                        if os.path.exists(URL_FILE):
+                            os.remove(URL_FILE)
+                        break
                 else:
                     write_status("2fa_required")
                     if os.path.exists(URL_FILE):
                         os.remove(URL_FILE)
                     break
             except Exception as e:
-                import traceback
-                traceback.print_exc()
+                print(f"Error during QR wait: {type(e).__name__}")
                 write_status("error")
                 if os.path.exists(URL_FILE):
                     os.remove(URL_FILE)
                 break
-
+    except Exception as e:
+        print(f"Fatal error: {type(e).__name__}")
+        write_status("error")
+        if os.path.exists(URL_FILE):
+            os.remove(URL_FILE)
     finally:
-        await client.disconnect()
+        if client:
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+        for ext in ['', '-journal', '-wal', '-shm']:
+            p = session_file + ext
+            if os.path.exists(p):
+                try:
+                    os.chmod(p, 0o600)
+                except Exception:
+                    pass
 
 if __name__ == "__main__":
     try:

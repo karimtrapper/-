@@ -12,7 +12,9 @@ import tg_qr_login
 if not hasattr(tg_qr_login, "TelegramClient"):
     tg_qr_login.TelegramClient = None
 if not hasattr(tg_qr_login, "SessionPasswordNeededError"):
-    class DummyError(Exception): pass
+    class DummyError(Exception):
+        def __init__(self, request=None, response=None):
+            pass
     tg_qr_login.SessionPasswordNeededError = DummyError
 
 class FakeQRLogin:
@@ -86,6 +88,7 @@ def fake_env(monkeypatch, tmp_path):
     monkeypatch.setenv("SYNC_TG_API_ID_ELIZAVETA", "123")
     monkeypatch.setenv("SYNC_TG_API_HASH_ELIZAVETA", "abc")
     monkeypatch.setenv("SYNC_TG_SESSION_FILE_ELIZAVETA", str(tmp_path / "test.session"))
+    monkeypatch.setenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", "66840915772")
     
     # Override FILE paths
     url_file = str(tmp_path / "url.txt")
@@ -207,3 +210,81 @@ async def test_qr_login_2fa_with_password(fake_env, monkeypatch):
     with open(status_file, "r") as f:
         assert f.read() == "authorized"
     assert not os.path.exists(url_file)
+
+@pytest.mark.anyio
+async def test_qr_login_missing_phone(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.setenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", "66840915772")
+    
+    class FakeTelegramClientNoPhone(FakeTelegramClient):
+        async def get_me(self):
+            me = MagicMock()
+            me.phone = None
+            return me
+
+    client_instance = FakeTelegramClientNoPhone(None, None, None, "success")
+    with patch("tg_qr_login.TelegramClient", lambda s, i, h: client_instance):
+        with patch("asyncio.wait_for", lambda coro, timeout: coro):
+            await tg_qr_login.main()
+        
+    with open(status_file, "r") as f:
+        assert f.read() == "wrong_account"
+    assert client_instance.logged_out is True
+    assert client_instance.disconnected is True
+
+@pytest.mark.anyio
+async def test_qr_login_2fa_wrong_password(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.setenv("SYNC_TG_2FA_PASSWORD_ELIZAVETA", "wrong_pass")
+    monkeypatch.setenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", "66840915772")
+    
+    client_instance = FakeTelegramClient(None, None, None, "2fa")
+    with patch("tg_qr_login.TelegramClient", lambda s, i, h: client_instance):
+        await tg_qr_login.main()
+        
+    with open(status_file, "r") as f:
+        assert f.read() == "error"
+    assert not os.path.exists(url_file)
+    assert client_instance.disconnected is True
+
+@pytest.mark.anyio
+async def test_qr_login_missing_expected_phone(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.delenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", raising=False)
+    
+    await tg_qr_login.main()
+        
+    with open(status_file, "r") as f:
+        assert f.read() == "error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA missing"
+
+@pytest.mark.anyio
+async def test_qr_login_invalid_expected_phone(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.setenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", "+12")
+    
+    await tg_qr_login.main()
+        
+    with open(status_file, "r") as f:
+        assert f.read() == "error: SYNC_TG_EXPECTED_PHONE_ELIZAVETA is invalid"
+
+@pytest.mark.anyio
+async def test_qr_login_recreate_failure(fake_env, monkeypatch):
+    tmp_path, url_file, status_file = fake_env
+    monkeypatch.setenv("SYNC_TG_EXPECTED_PHONE_ELIZAVETA", "66840915772")
+    
+    class FakeQRLoginFailRecreate(FakeQRLogin):
+        async def recreate(self):
+            raise ValueError("Recreate failed")
+
+    class FakeTelegramClientFailRecreate(FakeTelegramClient):
+        async def qr_login(self):
+            return FakeQRLoginFailRecreate("timeout_then_success")
+
+    client_instance = FakeTelegramClientFailRecreate(None, None, None, "timeout_then_success")
+    with patch("tg_qr_login.TelegramClient", lambda s, i, h: client_instance):
+        await tg_qr_login.main()
+        
+    with open(status_file, "r") as f:
+        assert f.read() == "error"
+    assert not os.path.exists(url_file)
+    assert client_instance.disconnected is True
