@@ -152,7 +152,7 @@ const round2 = x => Math.round(x * 100) / 100;
     balTake: (_src, amount) => {scb -= amount; return amount;},
     SOURCES_PAY: {scb: {t: 'SCB'}}, approx: () => ({thb: 350000}),
     now: () => '24.09, 17:00', moneyKop: String, money: String,
-    Math, Number, String,
+    payToConfirmed: () => true, Math, Number, String,
   });
   // bal() в настоящем состоянии возвращает объект по ссылке.
   ctx.bal = () => ({get scb() {return scb;}, set scb(v) {scb = v;}});

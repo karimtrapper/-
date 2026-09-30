@@ -6403,7 +6403,8 @@ def _stand_valid_receipt(deal):
     return False
 
 
-STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes', '_managerDraft'}
+STAND_MANAGER_REQ_FIELDS = {'payTo', 'dev', 'bank', 'reqTask', 'log', 'stepNotes',
+                             '_managerDraft', 'payToConfirm'}
 STAND_MANAGER_DRAFT_FIELDS = {'payTo', 'files', 'docs', 'docMeta', 'comment'}
 STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
                                     'amount', 'swift', 'branch', 'bankAddr', 'pobo'}
@@ -6451,6 +6452,21 @@ def _stand_payto_problem(deal):
     if any(not str(payto.get(key) or '').strip() for key in required):
         return 'Нужны подтверждённые реквизиты для оплаты инвойса'
     return None
+
+
+def _stand_payto_confirmed(deal):
+    """Подтверждение реквизитов менеджером перед оплатой (T34 п.3): сверяем
+    сохранённый снимок payTo с текущим — правка после подтверждения снимает
+    его сама, отдельного флага сброса не заводим (то же правило, что в клиенте)."""
+    confirm = deal.get('payToConfirm')
+    if not isinstance(confirm, dict):
+        return False
+    snap = confirm.get('payTo')
+    if not isinstance(snap, dict):
+        return False
+    payto = deal.get('payTo') or {}
+    keys = set(snap) | set(payto)
+    return all(str(snap.get(k) or '') == str(payto.get(k) or '') for k in keys)
 
 
 # Зеркало STEPS[step].who из static/stand/tasks.html — только статическая
@@ -6766,6 +6782,19 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                                           before.get('payTo') != deal.get('payTo')))
             if previous.get('notes') != new_state.get('notes') and not publishing:
                 return 'Сохранение черновика не отправляет уведомления'
+        # Подтверждение реквизитов перед оплатой (T34 п.3): пишет только менеджер,
+        # снимок — тот же формат payTo. Смысл подтверждения ("совпадает с текущим
+        # payTo") сервер выводит сам в _stand_payto_confirmed — подделать нечем.
+        confirm = deal.get('payToConfirm')
+        old_confirm = (before or {}).get('payToConfirm')
+        if confirm != old_confirm:
+            if actor not in ('manager', 'admin'):
+                return 'Подтверждение реквизитов доступно только менеджеру'
+            if confirm is not None and (
+                    not isinstance(confirm, dict) or set(confirm) - {'payTo', 'at'}
+                    or not isinstance(confirm.get('payTo'), dict)
+                    or set(confirm.get('payTo') or {}) - STAND_MANAGER_DRAFT_PAYTO_FIELDS):
+                return 'Некорректное подтверждение реквизитов'
         if 'freeholdLossAck' in deal and deal.get('freeholdLossAck') != (before or {}).get('freeholdLossAck'):
             return 'freehold_loss_ack_server_only'
         if (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
@@ -6851,6 +6880,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             if changed and owner and actor != owner and not step_changed:
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
+                    changed <= {'payToConfirm', 'log'} or
                     (before.get('reqTask') == 'open' and
                      changed <= STAND_MANAGER_REQ_FIELDS) or
                     (before.get('reqTask') == 'done' and deal.get('reqTask') == 'open'
@@ -6889,6 +6919,18 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 payto_problem = _stand_payto_problem(deal)
                 if payto_problem:
                     return payto_problem
+            # Гейт перед оплатой (T34 п.3): отправка заявки в IPPS (фрихолд, действие
+            # шага s25) и оплата инвойса (действие шага s26) — без свежего
+            # подтверждения менеджера сервер их не пропустит, даже если клиент обошёл
+            # disabled кнопки в разметке. before.step — реальный шаг действия: клиент
+            # выставляет pay.ippsSent/invoicePaid и следующий step в одном PUT.
+            old_pay, new_pay = before.get('pay') or {}, deal.get('pay') or {}
+            if (before.get('step') == 's25' and not old_pay.get('ippsSent')
+                    and new_pay.get('ippsSent') and not _stand_payto_confirmed(deal)):
+                return 'Ждём подтверждения реквизитов от менеджера'
+            if (before.get('step') == 's26' and not old_pay.get('invoicePaid')
+                    and new_pay.get('invoicePaid') and not _stand_payto_confirmed(deal)):
+                return 'Ждём подтверждения реквизитов от менеджера'
         if (step_changed and deal.get('step') not in ('s4', 's5', 's6', 's8')
                 and _stand_freehold_plan_problem(deal)):
             return _stand_freehold_plan_problem(deal)

@@ -101,6 +101,7 @@ function run(names, context) {
     stepTitle: () => 'Подготовить договор', progress: () => ({i: 4, n: 12}),
     stepCard: () => 'REQ_FORM', managerEarlyDocsBlock: () => 'DOC_FORM',
     docSide: () => '', pathCard: () => '', overview: () => '', quotesCard: () => '',
+    needsPayConfirm: () => false, payToConfirmBlock: () => 'CONFIRM_BLOCK',
   });
   const manager = ctx.viewDeal(d);
   assert.match(manager, /Сейчас: Операционист — Подготовить договор/);
@@ -125,6 +126,58 @@ function run(names, context) {
   assert.equal(ctx.payToReady(d), false);
   d.payTo.pobo = 'TEST CLIENT';
   assert.equal(ctx.payToReady(d), true);
+}
+
+// T34 п.3: подтверждение реквизитов перед оплатой — гейт s26/IPPS, сброс при правке,
+// уведомление операционисту при подтверждении (Карим).
+{
+  const payTo = {dev: 'Developer', bank: 'Bank', acc: '123', purpose: 'INV-1', amount: 100};
+  const d = {id: 51, kind: 'Лизхолд', type: 'Оплата недвижимости', step: 's26',
+    pay: {}, payTo: Object.assign({}, payTo)};
+  const ctx = run(['payGateStep', 'payToReady', 'payToConfirmed', 'needsPayConfirm'], {});
+  assert.equal(ctx.payGateStep(d), 's26');
+  assert.equal(ctx.needsPayConfirm(d), true, 'ready but not yet confirmed');
+  d.payToConfirm = {payTo: Object.assign({}, payTo)};
+  assert.equal(ctx.payToConfirmed(d), true);
+  assert.equal(ctx.needsPayConfirm(d), false);
+  d.payTo.acc = '999';
+  assert.equal(ctx.payToConfirmed(d), false, 'editing requisites resets confirmation');
+  assert.equal(ctx.needsPayConfirm(d), true);
+  d.pay.invoicePaid = true;
+  assert.equal(ctx.payGateStep(d), null, 'gate closes once actually paid');
+}
+
+// Freehold gate opens at s25 (IPPS send) instead of s26.
+{
+  const d = {id: 52, kind: 'Фрихолд', type: 'Оплата недвижимости', step: 's25', pay: {},
+    payTo: {dev: 'Developer', bank: 'Bank', swift: 'TESTTHBK', acc: '123',
+      purpose: 'INV-1', ippsTariff: 'bank'}, ippsTariff: 'bank'};
+  const ctx = run(['payGateStep', 'payToReady', 'needsPayConfirm', 'payToConfirmed'], {});
+  assert.equal(ctx.payGateStep(d), 's25');
+  assert.equal(ctx.needsPayConfirm(d), true);
+  d.pay.ippsSent = true;
+  assert.equal(ctx.payGateStep(d), null, 'once sent, the s25 gate is done — s26 only confirms MT103');
+}
+
+// Confirm button: only the manager can press it, and it notifies the operator.
+{
+  const payTo = {dev: 'Developer', bank: 'Bank', acc: '123', purpose: 'INV-1', amount: 100};
+  const d = {id: 53, kind: 'Лизхолд', type: 'Оплата недвижимости', step: 's26', pay: {},
+    payTo: Object.assign({}, payTo), log: []};
+  let saves = 0, notifications = [];
+  const ctx = run(['payToConfirm', 'payGateStep', 'payToReady'], {
+    d, deal: () => d, S: {role: 'operator'}, now: () => 1,
+    log: (x, text) => x.log.push(text), noteAdd: (role, text) => notifications.push([role, text]),
+    payToLogLine: () => 'Developer', save: () => saves++, render: () => {}, toast: () => {},
+  });
+  ctx.payToConfirm(53);
+  assert.equal(d.payToConfirm, undefined, 'operator cannot confirm');
+  ctx.S.role = 'manager';
+  ctx.payToConfirm(53);
+  assert.equal(JSON.stringify(d.payToConfirm.payTo), JSON.stringify(payTo));
+  assert.equal(saves, 1);
+  assert.equal(notifications.length, 1);
+  assert.equal(notifications[0][0], 'operator');
 }
 
 console.log('test_t34_parallel.js: OK');

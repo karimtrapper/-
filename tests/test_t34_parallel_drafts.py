@@ -224,7 +224,7 @@ def test_ipps_application_requires_published_requisites_at_s25(board):
     send['pay']['ippsSent'] = True
     denied = _put(client, before, send)
     assert denied.status_code == 409
-    assert 'реквизиты' in denied.json['error'].lower()
+    assert 'реквизит' in denied.json['error'].lower()
     assert _get(client) == before
 
     role['value'] = 'manager'
@@ -233,11 +233,29 @@ def test_ipps_application_requires_published_requisites_at_s25(board):
     draft['reqTask'] = 'open'
     seed(draft)  # native afterPayin fixture: the manager task is now open
     opened = _get(client)
-    confirmed = copy.deepcopy(opened['data']['deals'][0])
-    confirmed['payTo'] = {'dev': 'Developer', 'bank': 'Bank', 'swift': 'TESTTHBK',
+    published = copy.deepcopy(opened['data']['deals'][0])
+    published['payTo'] = {'dev': 'Developer', 'bank': 'Bank', 'swift': 'TESTTHBK',
                           'acc': '123', 'purpose': 'invoice INV-1'}
-    confirmed['reqTask'] = 'done'
-    assert _put(client, opened, confirmed).status_code == 200
+    published['reqTask'] = 'done'
+    assert _put(client, opened, published).status_code == 200
+
+    # Реквизиты опубликованы, но ещё не подтверждены перед оплатой (T34 п.3) —
+    # заявка в IPPS без свежего подтверждения менеджера всё ещё под запретом.
+    role['value'] = 'operator'
+    unconfirmed = _get(client)
+    send = copy.deepcopy(unconfirmed['data']['deals'][0])
+    send['step'] = 's26'
+    send['pay']['ippsSent'] = True
+    still_denied = _put(client, unconfirmed, send)
+    assert still_denied.status_code == 409
+    assert 'подтверждени' in still_denied.json['error'].lower()
+
+    role['value'] = 'manager'
+    ready_to_confirm = _get(client)
+    confirmed = copy.deepcopy(ready_to_confirm['data']['deals'][0])
+    confirmed['payToConfirm'] = {'payTo': confirmed['payTo'], 'at': 1}
+    assert _put(client, ready_to_confirm, confirmed).status_code == 200
+
     role['value'] = 'operator'
     ready = _get(client)
     send = copy.deepcopy(ready['data']['deals'][0])
