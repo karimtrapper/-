@@ -2218,7 +2218,7 @@ function quoteRow(d,c,dir){
 function cpRow(d,c,q){
   const u=cpChat(c);
   return `<div class="li" style="align-items:flex-start">
-    <span class="av">${c.name.slice(0,2).toUpperCase()}</span>
+    <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
     <div><div class="t1">${htmlText(c.name)}${c.note?` <span class="sub2">· ${c.note}</span>`:''}</div>
     <div class="t2">«${q}»</div></div>
     <span class="t3" style="white-space:nowrap">
@@ -4066,17 +4066,17 @@ function viewCreateBody(D,srcCard){
         <span><b>${cl.name}</b> · ${clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':' · договора нет'}
           <div class="fh">Узнан по источнику: ${SOURCES[D.source]}${D.sourceRef?' · '+D.sourceRef:''}</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Сменить</button></div>`
-      :((!D.pickOther&&D.client)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${D.client.slice(0,2).toUpperCase()}</span>
-        <span><b>${D.client}</b> · новый клиент
+      :((!D.pickOther&&D.client)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((D.client||"").slice(0,2).toUpperCase())}</span>
+        <span><b>${htmlText(D.client)}</b> · новый клиент
           <div class="fh">Имя взято из источника: ${SOURCES[D.source]}${D.sourceRef?' · '+D.sourceRef:''}. В справочнике такого клиента нет — карточка заведётся вместе со сделкой.</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
           oninput="rememberFocus();draftSet('cq',this.value)">
         ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick('${c.id}')">
-          <span class="av">${c.name.slice(0,2).toUpperCase()}</span>
-          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+c.tg:''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
+          <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
+          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
-        ${(D.cq||'').trim().length>1&&!found.length?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${D.cq}»</button>`:''}
+        ${(D.cq||'').trim().length>1?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${htmlText(D.cq)}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${D.client}»</button>`:''}
         ${!(D.cq||'').trim()?`<p class="fh" style="margin-top:8px">За клиентом закреплены договоры и паспорт — поэтому выбираем из справочника, а не пишем имя строкой.</p>`:''}`)}
     </div>
@@ -4340,8 +4340,10 @@ function draftResolve(){
     }
     else {
       const obj = getChatObj(D.source, D.sourceRef);
-      D.client = obj && obj.name ? obj.name : (D.sourceRef||'');
+      D.cq = obj && obj.name ? obj.name : (D.sourceRef||'');
+      D.client = '';
       D.clientId = null;
+      D.pickOther = true;
     }
   }
   /* 1) метка реферальной ссылки — только у лида из Битрикса */
@@ -5959,17 +5961,17 @@ function viewEditLegacy(){
     </div>
     <div class="fr">
       <div class="fg" style="position:relative"><label class="fl">Клиент</label>
-        ${d.clientId?`<div class="derived"><span class="av" style="width:28px;height:28px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${(d.client||'??').slice(0,2).toUpperCase()}</span>
-          <span><b>${d.client}</b> · ${clientDeals(d.clientId).length} сдел.${(clientById(d.clientId)||{}).docs?' · договор есть':''}</span>
+        ${d.clientId?`<div class="derived"><span class="av" style="width:28px;height:28px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((d.client||"??").slice(0,2).toUpperCase())}</span>
+          <span><b>${htmlText(d.client)}</b> · ${clientDeals(d.clientId).length} сдел.${(clientById(d.clientId)||{}).docs?' · договор есть':''}</span>
           <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="editClientClear(${d.id})">Сменить</button></div>`
-        :`${(d.client&&!(d.clientQ||'').trim())?`<div class="derived" style="margin-bottom:8px"><span><b>${d.client}</b> — имя из чата, карточки в справочнике нет</span>
+        :`${(d.client&&!(d.clientQ||'').trim())?`<div class="derived" style="margin-bottom:8px"><span><b>${htmlText(d.client)}</b> — имя из чата, карточки в справочнике нет</span>
             <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="editClientFromChat(${d.id})">Создать карточку</button></div>`:''}
           <input class="fc" id="e_clientq" value="${(d.clientQ||'').replace(/"/g,'&quot;')}"
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
           ${(d.clientQ||'').trim()?`<div class="dd">
             ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
-              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+c.tg:''}</span></div>`).join('')}
-            ${clientFind(d.clientQ).length?'':`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${d.clientQ}»</b><span>нового клиента в справочнике</span></div>`}
+              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
+            ${(d.clientQ||'').trim().length>1?`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${htmlText(d.clientQ)}»</b><span>нового клиента в справочнике</span></div>`:''}
           </div>`:''}
           <input type="hidden" id="e_client" value="${(d.client||'').replace(/"/g,'&quot;')}">`}
       </div>
@@ -9268,7 +9270,7 @@ async function fetchCrmClients() {
     const json = await res.json();
     if (json.success && json.clients) {
       CRM_CLIENTS = json.clients.map(c => ({
-        id: 'crm:' + c.id,
+        id: 'crm:' + parseInt(c.id),
         name: c.name,
         tg: c.telegram,
         phone: c.phone,
