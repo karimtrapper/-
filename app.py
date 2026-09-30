@@ -6594,6 +6594,19 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         return 'Нельзя дублировать сделку на доске'
     for old_conv in previous.get('convs', []):
         new_conv = new_convs.get(old_conv.get('id'))
+        # Кошелёк пачки (куда брокер пришлёт USDT / с какого отправляем) решает, будет
+        # ли шаг фин дира: мультисиг — фин дир + Теодор, личный — сразу владелец.
+        # Менять его можно только стоя на s18 и не сдвигая шаг в том же запросе, иначе
+        # одним PUT «s11→s23 + мультисиг→личный кошелёк пачки» выпадал фин дир (QA 30.09).
+        if new_conv and old_conv.get('walletId') != new_conv.get('walletId'):
+            linked = [d.get('id') for d in previous.get('deals', [])
+                      if d.get('cnvId') == old_conv.get('id')]
+            linked += [x.get('dealId') for x in old_conv.get('sources') or []
+                       if x.get('dealId') not in linked]
+            for did in linked:
+                was, now = old.get(did) or {}, new_deals.get(did) or {}
+                if was.get('step') != 's18' or now.get('step') != was.get('step'):
+                    return 'Кошелёк пачки меняют только на шаге отправки брокеру, отдельно от смены шага'
         accepted_main = next((d for d in previous.get('deals', [])
                               if d.get('cnvId') == old_conv.get('id')
                               and d.get('postConv') in ('coins', 'ipps_swift')
