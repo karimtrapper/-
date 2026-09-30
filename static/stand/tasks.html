@@ -606,7 +606,7 @@ const KEY='grusha_proto_v2';
    коллеги на экране прыгала бы твоя карточка. */
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
-                    'wallets','refs','clients','bal','txpool','avg','avgU'];
+                    'wallets','refs','clients','bal','txpool','avg','avgU','chatClientMap'];
 let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false,
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let sberMirrorStatus=null;
@@ -877,6 +877,7 @@ function migrate(st){
     (st.clients||[]).forEach(c=>{ if(c.refId!=null&&remap[c.refId]!==undefined) c.refId=remap[c.refId]; });
   }
   if(!Array.isArray(st.clients)||!st.clients.length) st.clients=clientsInit();
+  if(!st.chatClientMap||typeof st.chatClientMap!=='object') st.chatClientMap={};
   if(!Array.isArray(st.wallets)||!st.wallets.length) st.wallets=WALLETS.map(w=>Object.assign({},w));
   st.walletNew=!!st.walletNew;
   st.cpEdit=st.cpEdit||null;
@@ -2261,7 +2262,7 @@ function brokerSend(rub,fee){
    паспорт и история. Поэтому в сделке он выбирается из справочника. */
 /* Справочник клиентов стенда начинается пустым — карточки заводятся со сделками */
 function clientsInit(){return [];}
-function clients(){ if(!S.clients)S.clients=clientsInit(); return [...CRM_CLIENTS, ...S.clients]; }
+function clients(){ if(!S.clients)S.clients=clientsInit(); return [...S.clients, ...CRM_CLIENTS]; }
 function clientById(id){return clients().find(c=>c.id===id);}
 function clientFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return [];
@@ -4062,16 +4063,17 @@ function viewCreateBody(D,srcCard){
     <div class="card-title">Что человек хочет<span class="sub">завести быстро — остальное соберётся по ходу</span></div>
 
     <div class="fg"><label class="fl">Клиент${D.source==='none'?'<span class="rq">*</span><span class="sub2"> переписки нет — ищем по имени</span>':''}</label>
-      ${(!D.pickOther&&cl)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${cl.name.slice(0,2).toUpperCase()}</span>
-        <span><b>${cl.name}</b> · ${clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':' · договора нет'}
-          <div class="fh">Узнан по источнику: ${SOURCES[D.source]}${D.sourceRef?' · '+D.sourceRef:''}</div></span>
+      ${(!D.pickOther&&cl)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((cl.name||"").slice(0,2).toUpperCase())}</span>
+        <span><b>${htmlText(cl.name)}</b> · ${(cl.totalDeals||0)+clientDeals(cl.id).length} сдел.${cl.docs?' · договор есть':(cl.isCrm?' · договор не проверен':' · договора нет')}
+          <div class="fh">Узнан по источнику: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Сменить</button></div>`
       :((!D.pickOther&&D.client)?`<div class="derived"><span class="av" style="width:30px;height:30px;border-radius:8px;background:var(--navy-200);display:inline-flex;align-items:center;justify-content:center;font-size:11.5px;font-weight:700;color:var(--navy-600)">${htmlText((D.client||"").slice(0,2).toUpperCase())}</span>
         <span><b>${htmlText(D.client)}</b> · новый клиент
-          <div class="fh">Имя взято из источника: ${SOURCES[D.source]}${D.sourceRef?' · '+D.sourceRef:''}. В справочнике такого клиента нет — карточка заведётся вместе со сделкой.</div></span>
+          <div class="fh">Имя взято из источника: ${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(D.sourceRef):''}. В справочнике такого клиента нет — карточка заведётся вместе со сделкой.</div></span>
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
           oninput="rememberFocus();draftSet('cq',this.value)">
+        ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
         ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick('${c.id}')">
           <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
           <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
@@ -5968,6 +5970,7 @@ function viewEditLegacy(){
             <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="editClientFromChat(${d.id})">Создать карточку</button></div>`:''}
           <input class="fc" id="e_clientq" value="${(d.clientQ||'').replace(/"/g,'&quot;')}"
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
+          ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
           ${(d.clientQ||'').trim()?`<div class="dd">
             ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
               <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
@@ -9262,14 +9265,18 @@ function bootScreen(){
 
 
 let CRM_CLIENTS = [];
+let crmClientsError = false;
 
 async function fetchCrmClients() {
   try {
+    crmClientsError = false;
     const res = await fetch('/api/clients');
     if (!res.ok) throw new Error('API error');
     const json = await res.json();
     if (json.success && json.clients) {
-      CRM_CLIENTS = json.clients.map(c => ({
+      CRM_CLIENTS = json.clients
+        .filter(c => c && c.id && !isNaN(parseInt(c.id)) && parseInt(c.id) > 0)
+        .map(c => ({
         id: 'crm:' + parseInt(c.id),
         name: c.name,
         tg: c.telegram,
@@ -9279,9 +9286,12 @@ async function fetchCrmClients() {
         isCrm: true,
         totalDeals: c.total_deals || 0
       }));
+    } else {
+      crmClientsError = true;
     }
   } catch (e) {
     console.error("fetchCrmClients error", e);
+    crmClientsError = true;
   }
 }
 

@@ -7,7 +7,7 @@ global.fetch = async (url) => {
 global.FormData = class {};
 global.alert = console.log;
 global.prompt = () => null;
-global.document = { addEventListener: () => {}, getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {} }) };
+global.document = { addEventListener: () => {}, getElementById: () => ({ innerHTML: '', style: {}, scrollIntoView: () => {}, focus: () => {}, classList: { add: ()=>{}, remove: ()=>{} } }) };
 global.window = { addEventListener: () => {}, setTimeout: (f) => f(), history: { replaceState: ()=>{} } };
 
 
@@ -19,7 +19,7 @@ const KEY='grusha_proto_v2';
    коллеги на экране прыгала бы твоя карточка. */
 const STAND=true;
 const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChats',
-                    'wallets','refs','clients','bal','txpool','avg','avgU'];
+                    'wallets','refs','clients','bal','txpool','avg','avgU','chatClientMap'];
 let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false,
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let sberMirrorStatus=null;
@@ -290,6 +290,7 @@ function migrate(st){
     (st.clients||[]).forEach(c=>{ if(c.refId!=null&&remap[c.refId]!==undefined) c.refId=remap[c.refId]; });
   }
   if(!Array.isArray(st.clients)||!st.clients.length) st.clients=clientsInit();
+  if(!st.chatClientMap||typeof st.chatClientMap!=='object') st.chatClientMap={};
   if(!Array.isArray(st.wallets)||!st.wallets.length) st.wallets=WALLETS.map(w=>Object.assign({},w));
   st.walletNew=!!st.walletNew;
   st.cpEdit=st.cpEdit||null;
@@ -1674,7 +1675,7 @@ function brokerSend(rub,fee){
    паспорт и история. Поэтому в сделке он выбирается из справочника. */
 /* Справочник клиентов стенда начинается пустым — карточки заводятся со сделками */
 function clientsInit(){return [];}
-function clients(){ if(!S.clients)S.clients=clientsInit(); return [...CRM_CLIENTS, ...S.clients]; }
+function clients(){ if(!S.clients)S.clients=clientsInit(); return [...S.clients, ...CRM_CLIENTS]; }
 function clientById(id){return clients().find(c=>c.id===id);}
 function clientFind(q){
   q=(q||'').trim().toLowerCase(); if(!q)return [];
@@ -3485,6 +3486,7 @@ function viewCreateBody(D,srcCard){
         <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="draftPickOther()">Это другой человек</button></div>`
       :`<input class="fc" id="cq" value="${(D.cq||'').replace(/"/g,'&quot;')}" placeholder="Начните вводить имя клиента"
           oninput="rememberFocus();draftSet('cq',this.value)">
+        ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
         ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick('${c.id}')">
           <span class="av">${htmlText((c.name||"").slice(0,2).toUpperCase())}</span>
           <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${(c.totalDeals||0)+clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':' · договора нет')}${c.tg?' · '+htmlText(c.tg):''}${c.isCrm?' <span class="badge b-pend">база CRM</span>':''}</div></div>
@@ -5381,6 +5383,7 @@ function viewEditLegacy(){
             <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="editClientFromChat(${d.id})">Создать карточку</button></div>`:''}
           <input class="fc" id="e_clientq" value="${(d.clientQ||'').replace(/"/g,'&quot;')}"
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
+          ${crmClientsError ? `<div class="alert a-warn" style="margin-top:8px;display:flex;align-items:center;gap:12px;padding:8px"><div style="flex:1;font-size:12.5px">База клиентов CalcCRM недоступна, повторите позже.</div><button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="fetchCrmClients().then(()=>render());return false">Повтор</button></div>` : ''}
           ${(d.clientQ||'').trim()?`<div class="dd">
             ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},'${c.id}')">
               <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':(c.isCrm?' · договор не проверен':'')}${c.tg?' · '+htmlText(c.tg):''}</span></div>`).join('')}
@@ -8675,9 +8678,11 @@ function bootScreen(){
 
 
 let CRM_CLIENTS = [];
+let crmClientsError = false;
 
 async function fetchCrmClients() {
   try {
+    crmClientsError = false;
     const res = await fetch('/api/clients');
     if (!res.ok) throw new Error('API error');
     const json = await res.json();
@@ -8694,9 +8699,12 @@ async function fetchCrmClients() {
         isCrm: true,
         totalDeals: c.total_deals || 0
       }));
+    } else {
+      crmClientsError = true;
     }
   } catch (e) {
     console.error("fetchCrmClients error", e);
+    crmClientsError = true;
   }
 }
 
@@ -8778,10 +8786,8 @@ else {
 }
 
 
-// Tests
 (async () => {
 try {
-  // Test 1: fetchCrmClients with bad IDs and good IDs
   fetchResponses['/api/clients'] = {
     success: true,
     clients: [
@@ -8796,14 +8802,14 @@ try {
   if (CRM_CLIENTS.length !== 1) throw new Error("fetchCrmClients did not filter correctly: " + CRM_CLIENTS.length);
   if (CRM_CLIENTS[0].id !== "crm:100") throw new Error("fetchCrmClients ID incorrect");
 
-  // Test 2: crmPayload
   const dealTest = {
     id: 999,
     clientId: 'crm:100',
     client: 'Valid CRM',
     manager: 'Елизавета',
     payType: 'Наличные',
-    type: 'Обмен валюты', rates: { usdtThb: 30 }
+    type: 'Обмен валюты',
+    rates: { usdtThb: 30 }
   };
   const payload = crmPayload(dealTest);
   if (payload.client_id !== 100) throw new Error("crmPayload extracted wrong client_id: " + payload.client_id);
@@ -8811,15 +8817,15 @@ try {
   const dealLocal = {
     id: 1000,
     clientId: 42,
-    crmClientId: 55, // fallback
+    crmClientId: 55,
     client: 'Local Bob',
     payType: 'Наличные',
-    type: 'Обмен валюты', rates: { usdtThb: 30 }
+    type: 'Обмен валюты',
+    rates: { usdtThb: 30 }
   };
   const payloadLocal = crmPayload(dealLocal);
   if (payloadLocal.client_id !== 55) throw new Error("crmPayload fallback failed: " + payloadLocal.client_id);
 
-  // Test 3: Unknown chat through draftResolve
   S.draft = {
     source: 'tg',
     sourceRef: 'Елизавета:unknown123',
@@ -8828,14 +8834,50 @@ try {
     clientId: 999
   };
   
-  // Set TG_CHATS so getChatObj finds it
   TG_CHATS = [{ key: 'Елизавета:unknown123', id: 'unknown123', account: 'Елизавета', name: 'Unknown Chat Name' }];
-  
   draftResolve();
   
   if (S.draft.client !== '') throw new Error("draftResolve did not clear D.client for unknown chat");
   if (S.draft.clientId !== null) throw new Error("draftResolve did not clear D.clientId for unknown chat");
   if (S.draft.cq !== 'Unknown Chat Name') throw new Error("draftResolve did not set D.cq correctly");
+
+  S.chatClientMap = {};
+  S.draft = { source: 'tg', sourceRef: 'Елизавета:persisted', clientManual: false, client: '', cq: '' };
+  draftClientPick('crm:100');
+
+  const snapshot = standSnapshot();
+  if (!snapshot.chatClientMap || snapshot.chatClientMap['tg:Елизавета:persisted'] !== 'crm:100') {
+      throw new Error("standSnapshot did not include chatClientMap");
+  }
+
+  S.chatClientMap = {}; 
+  standApply(snapshot);
+
+  if (!S.chatClientMap || S.chatClientMap['tg:Елизавета:persisted'] !== 'crm:100') {
+      throw new Error("standApply did not restore chatClientMap");
+  }
+
+  S.draft = { source: 'tg', sourceRef: 'Елизавета:persisted', clientManual: false, client: '', cq: '' };
+  draftResolve();
+
+  if (S.draft.client !== 'Valid CRM' || S.draft.clientId !== 'crm:100') {
+      throw new Error("draftResolve did not return the expected CRM client after reload");
+  }
+
+
+  // Test 11: crmClientsError sets flag and does not crash
+  fetchResponses['/api/clients'] = null; // simulate 500 error
+  await fetchCrmClients();
+  if (!crmClientsError) {
+      throw new Error("crmClientsError was not set on fetch failure");
+  }
+  
+  S.draft = { source: 'tg', sourceRef: 'Елизавета:unknown', cq: 'test', clientManual: false, client: '', clientId: null, pickOther: true };
+  const htmlOutput = viewCreateBody(S.draft, '');
+  if (!htmlOutput.includes('База клиентов CalcCRM недоступна, повторите позже')) {
+      throw new Error("UI did not render the API error message");
+  }
+  console.log("Error state UI test passed.");
 
   console.log("All real function tests passed.");
 } catch(e) {
