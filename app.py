@@ -213,6 +213,14 @@ def check_auth():
                        '/static/kyc/grusha-logo.png'}
         if path in login_paths:
             return None
+
+        if path == '/api/stand/channels/sync' and request.method == 'POST':
+            key = os.environ.get('STAND_CHANNEL_SYNC_KEY', '')
+            auth = request.headers.get('Authorization', '')
+            if not key or not hmac.compare_digest(auth, f'Bearer {key}'):
+                return jsonify({'success': False, 'error': 'unauthorized'}), 401
+            return None
+
         uid = flask_session.get('user_id')
         docparse_role = None
         if uid:
@@ -2359,6 +2367,17 @@ class StandState(Base):
     generation = Column(String(32))
 
 
+
+class StandChannel(Base):
+    __tablename__ = 'stand_channels'
+    id = Column(Integer, primary_key=True)
+    channel = Column(String(50), nullable=False)
+    account = Column(String(100), nullable=False)
+    chat_id = Column(String(100), nullable=False)
+    name = Column(String(255), nullable=False)
+    last_active = Column(Integer, nullable=False, default=0)
+    __table_args__ = (UniqueConstraint('channel', 'account', 'chat_id', name='uq_stand_channel'),)
+
 class StandCrmLink(Base):
     """Permanent origin of a CRM row created by the stand close transaction."""
     __tablename__ = 'stand_crm_links'
@@ -2397,7 +2416,7 @@ class StandSberMirrorState(Base):
 # и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
 STAND_ONLY_TABLES = frozenset({
     'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
-    'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence',
+    'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence', 'stand_channels',
 })
 
 Base.metadata.create_all(
@@ -2415,8 +2434,8 @@ def _stand_seed_users():
     сохраняем: старт приложения не должен отменять решение администратора.
     """
     seed = [('karim', 'Карим', 'admin'),
-            ('marina', 'Марина', 'manager'),
-            ('artem', 'Артём', 'operator'),
+            ('marina', 'Елизавета', 'manager'),
+            ('artem', 'Настя', 'operator'),
             ('vitaliy', 'Виталий', 'findir'),
             ('teodor', 'Теодор', 'teodor')]
     pwd = os.environ.get('STAND_PASSWORD', 'grusha-stand')
@@ -2429,6 +2448,14 @@ def _stand_seed_users():
             db.add(AdminUser(username=username, display_name=name, role=role,
                              notify_enabled=(username == 'karim'),
                              password_hash=AdminUser.hash_password(pwd)))
+        
+        # Миграция старых фиктивных имён
+        marina_user = db.query(AdminUser).filter_by(username='marina').first()
+        if marina_user and marina_user.display_name == 'Марина':
+            marina_user.display_name = 'Елизавета'
+        artem_user = db.query(AdminUser).filter_by(username='artem').first()
+        if artem_user and artem_user.display_name == 'Артём':
+            artem_user.display_name = 'Настя'
         db.commit()
         print('[STAND] Пользователи ролей готовы: ' +
               ', '.join(f'{u}/{r}' for u, _, r in seed))
@@ -5297,6 +5324,102 @@ def stand_file_get(deal_id, kind, index):
     finally:
         db.close()
 
+import hmac
+
+@app.route('/api/stand/channels/sync', methods=['POST'])
+def stand_channels_sync():
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+        
+    payload = request.json
+    if not isinstance(payload, dict):
+        return jsonify({'success': False, 'error': 'payload must be a JSON object'}), 400
+        
+    channel = payload.get('channel')
+    account = payload.get('account')
+    chats = payload.get('chats', [])
+    
+    if not isinstance(chats, list):
+        return jsonify({'success': False, 'error': 'chats must be a list'}), 400
+    
+    if channel not in ('tg', 'wa', 'bitrix') or not account:
+        return jsonify({'success': False, 'error': 'invalid channel or account'}), 400
+        
+    account = str(account)[:100]
+        
+    if len(chats) > 5000:
+        return jsonify({'success': False, 'error': 'too many records'}), 400
+        
+    db = get_session()
+    try:
+        for c in chats:
+            if not isinstance(c, dict): continue
+            chat_id = str(c.get('id', ''))[:100]
+            name = str(c.get('name', ''))[:255]
+            if not chat_id: continue
+            
+            try:
+                last_active = int(c.get('last_active', 0))
+            except (ValueError, TypeError):
+                last_active = 0
+            
+            row = db.query(StandChannel).filter_by(
+                channel=channel, account=account, chat_id=chat_id
+            ).first()
+            if row:
+                row.name = name
+                row.last_active = last_active
+            else:
+                row = StandChannel(
+                    channel=channel,
+                    account=account,
+                    chat_id=chat_id,
+                    name=name,
+                    last_active=last_active
+                )
+                db.add(row)
+        
+        # Удаляем те, которых больше нет в источнике (синхронизация полная)
+        incoming_ids = [str(c.get('id', ''))[:100] for c in chats if isinstance(c, dict) and str(c.get('id', ''))]
+        if incoming_ids:
+            db.query(StandChannel).filter(
+                StandChannel.channel == channel,
+                StandChannel.account == account,
+                StandChannel.chat_id.notin_(incoming_ids)
+            ).delete(synchronize_session=False)
+        elif chats == []:
+            db.query(StandChannel).filter_by(channel=channel, account=account).delete(synchronize_session=False)
+
+        db.commit()
+        return jsonify({'success': True, 'count': len(chats)})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        db.close()
+
+@app.route('/api/stand/channels', methods=['GET'])
+def stand_channels_get():
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not current_role():
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    db = get_session()
+    try:
+        rows = db.query(StandChannel).order_by(StandChannel.last_active.desc()).all()
+        res = {'tg': [], 'wa': [], 'bitrix': []}
+        for r in rows:
+            if r.channel not in res:
+                res[r.channel] = []
+            res[r.channel].append({
+                'id': r.chat_id,
+                'name': r.name,
+                'account': r.account,
+                'last_active': r.last_active
+            })
+        return jsonify({'success': True, 'data': res})
+    finally:
+        db.close()
 
 @app.route('/api/stand/sber-mirror/status', methods=['GET'])
 def stand_sber_mirror_status():
@@ -5307,7 +5430,7 @@ def stand_sber_mirror_status():
     return jsonify(status(sys.modules[__name__]))
 
 
-STAND_ROLE_PEOPLE = {'manager': 'Марина · менеджер', 'operator': 'Артём · операционист',
+STAND_ROLE_PEOPLE = {'manager': 'Елизавета · менеджер', 'operator': 'Настя · операционист',
                      'findir': 'Виталий · фин. директор', 'teodor': 'Теодор', 'admin': 'Админ'}
 
 

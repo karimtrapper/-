@@ -122,7 +122,7 @@ function run(names, context) {
     {id: 1, name: 'Чужой реферер', code: 'GR-OTHER', prod: true}, // коллизия по СТАРОМУ числовому id
   ]};
   const d = {
-    client: 'Клиент', manager: 'Марина', payType: 'По реквизитам', type: 'Обмен', kind: '',
+    client: 'Клиент', manager: 'Елизавета', payType: 'По реквизитам', type: 'Обмен', kind: '',
     object: '', payerWallet: '', incomeAmount: 100000, amountRub: null,
     rates: {broker: '2,5'}, payinHashes: [], payout: {thb: 30000, hashes: []}, paySrc: 'cash',
     agents: [

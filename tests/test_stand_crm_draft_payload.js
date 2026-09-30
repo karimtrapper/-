@@ -26,7 +26,7 @@ const ctx = {
 vm.createContext(ctx);
 vm.runInContext(constants+'\n'+['hashSum','payinParts','crmNet','crmPayload'].map(fn).join('\n'),ctx);
 const base = {
-  client:'synthetic',manager:'Марина',type:'Оплата недвижимости',kind:'Аренда',
+  client:'synthetic',manager:'Елизавета',type:'Оплата недвижимости',kind:'Аренда',
   payType:'По реквизитам',amountRub:100000,amountUsdt:1000,incomeAmount:100000,
   amountThb:35000,rates:{broker:100,usdtThb:33,sellRate:32.5,client:32.5},
   spread:null,companyPct:0,agents:[],object:'rental unit',

@@ -27,7 +27,7 @@ def _board():
 
 def _crm():
     return {'deal_kind': 'exchange', 'client_name': 'Synthetic T24',
-            'manager_name': 'Марина', 'payin_method': 'sber_reqs',
+            'manager_name': 'Елизавета', 'payin_method': 'sber_reqs',
             'payin_amount_usdt': 100, 'payout_method': 'transfer',
             'payout_source': 'cash_batch', 'payout_amount_usdt': 90}
 

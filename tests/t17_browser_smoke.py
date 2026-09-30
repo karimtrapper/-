@@ -9,8 +9,8 @@ from urllib.parse import urlparse, parse_qs
 appmod = runpy.run_path('tests/t17_fenced_smoke.py')['app']
 db=appmod.get_session()
 try:
-    if not db.query(appmod.Manager).filter_by(name='Марина').first():
-        db.add(appmod.Manager(name='Марина',active=True))
+    if not db.query(appmod.Manager).filter_by(name='Елизавета').first():
+        db.add(appmod.Manager(name='Елизавета',active=True))
     db.add(appmod.Referrer(name='T17 Agent',code='T17AGENT',token='t17-synthetic-agent',
                            default_percent=10,comp_model='revshare',active=True,is_test=True))
     db.add(appmod.Referrer(name='T17 Agent Two',code='T17AGENT2',token='t17-synthetic-agent-two',

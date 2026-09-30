@@ -769,8 +769,8 @@ const SCREEN=(new URLSearchParams(location.search)).get('screen')||null;
 const SNAP=(function(){const v=(new URLSearchParams(location.search)).get('snap')||'';
   return /^walkthrough\/[\w\-\/]+\.json$/.test(v)?v:null;})();
 const ROLES={
-  manager:{t:'Менеджер',n:'Марина'},
-  operator:{t:'Операционист',n:'Артём'},
+  manager:{t:'Менеджер',n:'Елизавета'},
+  operator:{t:'Операционист',n:'Настя'},
   findir:{t:'Фин дир',n:'Виталий'},
   teodor:{t:'Теодор',n:'Теодор'},
   admin:{t:'Админ',n:'Карим'}
@@ -833,7 +833,7 @@ function migrate(st){
     if(d.manual===undefined) d.manual=false;          // заведена без задачника
     if(d.pair===undefined) d.pair=(d.type==='Обмен валюты'?(isCrypto(d)?'USDT → THB':'RUB → THB'):null);
     if(d.agentsMode===undefined) d.agentsMode=null;   // каскадом / в долю
-    if(d.manager===undefined) d.manager='Марина';     // кто ведёт сделку
+    if(d.manager===undefined) d.manager='Елизавета';     // кто ведёт сделку
     if(d.isTask===undefined) d.isTask=false;          // задача ещё не стала сделкой
     if(d.srefOther===undefined) d.srefOther=false;    // чат введён вручную, не из списка
     if(d.clientPinned===undefined) d.clientPinned=(d.clientId!=null); // клиента выбрали руками
@@ -2204,7 +2204,7 @@ function quoteRow(d,c,dir){
   const isBest=q&&best&&best.cpId===c.id;
   const editing=!q||S.qEdit===c.id+'|'+dir;
   return `<div class="hrow" style="margin-bottom:6px">
-    <span style="min-width:160px;font-size:13px;${isBest?'font-weight:700':''}">${c.name}${isBest?' <span class="badge b-done">в сделке</span>':''}</span>
+    <span style="min-width:160px;font-size:13px;${isBest?'font-weight:700':''}">${htmlText(c.name)}${isBest?' <span class="badge b-done">в сделке</span>':''}</span>
     ${editing
       ? `<input class="fc num" style="max-width:120px" id="q_${c.id}_${dir}" value="${q?q.rate:''}" placeholder="${dir==='rub'?'курс, ₽ за 1 USDT':'курс, ฿ за 1 USDT'}">
          <button class="btn btn-secondary btn-sm" onclick="quoteSet(${d.id},'${c.id}','${dir}')">${q?'Сохранить':'Отправить'}</button>
@@ -2219,7 +2219,7 @@ function cpRow(d,c,q){
   const u=cpChat(c);
   return `<div class="li" style="align-items:flex-start">
     <span class="av">${c.name.slice(0,2).toUpperCase()}</span>
-    <div><div class="t1">${c.name}${c.note?` <span class="sub2">· ${c.note}</span>`:''}</div>
+    <div><div class="t1">${htmlText(c.name)}${c.note?` <span class="sub2">· ${c.note}</span>`:''}</div>
     <div class="t2">«${q}»</div></div>
     <span class="t3" style="white-space:nowrap">
       <a href="#" style="color:var(--coral)" onclick="copyAsk(${JSON.stringify(q).replace(/"/g,'&quot;')});return false">копировать</a>
@@ -2337,7 +2337,11 @@ function refIdLit(id){
    код записан в карточке. Из Telegram и WhatsApp человек пишет напрямую — метки нет,
    и «реферала нет» тут утверждать нельзя. Это два разных незнания. */
 const BX_REF={'Левченко Анна':'GR-LIDIA','Мартиросян К.':'GR-VALERA','Соколова М.':'GR-ROMAN'};
-function bxRefCode(sourceRef){return BX_REF[sourceRef]||null;}
+function bxRefCode(sourceRef){
+  const obj = getChatObj('bitrix', sourceRef);
+  const name = obj ? obj.name : sourceRef;
+  return BX_REF[name]||null;
+}
 /* Молчим, когда молчать правильно. Отсутствие агента — это норма: клиент чаще всего
    приходит сам. Спрашивать имеет смысл только если след есть: метка в карточке
    Битрикса, партнёр, закреплённый за клиентом, или прошлая сделка из того же чата
@@ -2794,9 +2798,9 @@ function progress(d){
 
 const CLOSE_REASONS=['Не устроил курс','Ушёл к конкуренту','Передумал покупать','Не наш профиль','Перестал отвечать','Не прошёл проверку'];
 const SOURCES={bitrix:'Битрикс',tg:'Telegram',wa:'WhatsApp',none:'Без переписки'};
-const TG_CHATS=[];  // как в проде: чаты приходят из интеграции, на стенде — «вписать вручную»
-const WA_CHATS=[];
-const BX_DEALS=[];
+let TG_CHATS=[];  // как в проде: чаты приходят из интеграции, на стенде — «вписать вручную»
+let WA_CHATS=[];
+let BX_DEALS=[];
 
 /* ============ операции ============ */
 function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
@@ -3019,7 +3023,7 @@ function newDeal(o){
     cnvId:null,stepNotes:{},clientId:(o.clientId!==undefined?o.clientId:null),bank:o.bank||null,
     refId:(o.refId!==undefined?o.refId:null),refPaid:false,
     refKnown:(o.refKnown!==undefined?o.refKnown:(o.refId!=null)),refSrc:o.refSrc||null,
-    selfCame:!!o.selfCame,agentsMode:o.agentsMode||null,manager:o.manager||'Марина',
+    selfCame:!!o.selfCame,agentsMode:o.agentsMode||null,manager:o.manager||'Елизавета',
     payinExtra:o.payinExtra||[],payinParts:o.payinParts||[],payinHashes:o.payinHashes||[],
     payout:o.payout||null,notes:o.notes||'',
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
@@ -3031,7 +3035,8 @@ function deal(id){return S.deals.find(x=>x.id===id);}
 /* клиент узнаётся по источнику: та же карточка Битрикса или тот же чат */
 function knownBy(source,ref){
   if(!ref)return [];
-  return S.deals.filter(d=>d.source===source&&d.sourceRef===ref);
+  const bareRef = ref.includes(':') ? ref.split(':').slice(1).join(':') : ref;
+  return S.deals.filter(d=>d.source===source&&(d.sourceRef===ref || d.sourceRef===bareRef));
 }
 
 const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',ipds:'Анкета ИПДС',
@@ -3617,7 +3622,7 @@ function viewCnv(){
   const gap=Math.round((got-plan)*100)/100;
   return `<div class="ov" onclick="if(event.target===this)cnvClose()"><div class="modal big">
     <div class="modal-h" style="display:flex;align-items:flex-start;gap:12px">
-      <div style="flex:1"><div class="t">${c.name} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
+      <div style="flex:1"><div class="t">${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <div class="s">Статус: <b>${c.status==='received'?'получено':(c.status==='sent'?'рубли ушли, ждём USDT':'собираем состав')}</b> · курс ${c.rate} ₽/USDT · ${c.at||''}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="cnvClose()">Закрыть</button></div>
     <div class="modal-b">
@@ -3917,7 +3922,7 @@ function startCreate(){S.draft={mode:'need',source:'tg',sourceRef:'',q:'',cq:'',
 function filterChats(D){
   const all=D.source==='tg'?TG_CHATS:D.source==='wa'?WA_CHATS:D.source==='bitrix'?BX_DEALS:[];
   const q=(D.q||'').trim().toLowerCase();
-  return q?all.filter(c=>c.toLowerCase().includes(q)):all;
+  return q?all.filter(c=>(c.name||'').toLowerCase().includes(q)||(c.key||'').toLowerCase().includes(q)):all;
 }
 /* Панель «клиент у нас впервые» убрана: клиент теперь выбирается из справочника по
    чату, и его история видна прямо в карточке клиента — отдельная плашка об этом же
@@ -3958,10 +3963,21 @@ function srcAfterClient(D){
 }
 /* Чат из карточки клиента может быть из любого канала — подставляем вместе с каналом,
    иначе номер WhatsApp окажется записан как телеграм. */
+
+function getChatObj(src, v) {
+  if(!v) return null;
+  const all=src==='tg'?TG_CHATS:src==='wa'?WA_CHATS:src==='bitrix'?BX_DEALS:[];
+  return all.find(c => c.key === v || c.id === v) || all.find(c => c.name === v);
+}
+function isKnownRef(src, v) {
+  const bareRef = String(v||'').includes(':') ? String(v).split(':').slice(1).join(':') : v;
+  return getChatObj(src, v) !== null || (bareRef !== v && getChatObj(src, bareRef) !== null);
+}
+
 function draftTakeChat(v){
   const D=S.draft;
-  D.source=(WA_CHATS.indexOf(v)>=0)?'wa':(BX_DEALS.indexOf(v)>=0)?'bitrix':(TG_CHATS.indexOf(v)>=0)?'tg':D.source;
-  D.sourceRef=v;D.q='';D.srcEdit=false;D.srcPrev=null;D.srefOther=(TG_CHATS.indexOf(v)<0&&WA_CHATS.indexOf(v)<0&&BX_DEALS.indexOf(v)<0);
+  D.source=(isKnownRef('wa', v))?'wa':(isKnownRef('bitrix', v))?'bitrix':(isKnownRef('tg', v))?'tg':D.source;
+  D.sourceRef=v;D.q='';D.srcEdit=false;D.srcPrev=null;D.srefOther=!(isKnownRef('tg', v)||isKnownRef('wa', v)||isKnownRef('bitrix', v));
   save();render();toast('Источник: '+SOURCES[D.source]+' · '+v);
 }
 function draftSrefManual(){
@@ -3987,7 +4003,7 @@ function viewCreate(){
   if(srcDone) return viewCreateBody(D,`<div class="card" style="margin-bottom:14px">
     <div class="payrow" style="border-bottom:none;padding:0;align-items:center">
       <div><div class="k">ОТКУДА КЛИЕНТ</div>
-        <div class="v"><b>${SOURCES[D.source]}${D.sourceRef?' · '+D.sourceRef:''}</b>${
+        <div class="v"><b>${SOURCES[D.source]}${D.sourceRef?' · '+htmlText(getChatObj(D.source, D.sourceRef)?getChatObj(D.source, D.sourceRef).name+' ('+getChatObj(D.source, D.sourceRef).account+')':D.sourceRef):''}</b>${
           D.source==='none'?' — переписки нет, клиента ищем по имени':(D.srefOther?' — чат вписан вручную':' — по этому чату узнаём клиента')}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="draftSrcEdit()">Сменить источник</button>
     </div></div>`);
@@ -3997,23 +4013,23 @@ function viewCreate(){
       `<span class="chip ${D.source===k?'on':''}" onclick="draftSet('source','${k}')">${SOURCES[k]}</span>`).join('')}</div>
     ${all.length?`<div class="fl">${D.source==='bitrix'?'Сделка в Битриксе':'Чат'}</div>
     <div class="searchbox"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="q" class="qinp" value="${(D.q||'').replace(/"/g,'&quot;')}" placeholder="${D.source==='bitrix'?'Поиск по сделкам Битрикса':'Начните вводить имя или номер'}"
+      <input id="q" class="qinp" value="${htmlText(D.q)}" placeholder="${D.source==='bitrix'?'Поиск по сделкам Битрикса':'Начните вводить имя или номер'}"
         oninput="rememberFocus();draftSet('q',this.value)"></div>
-    ${f.length?`<div class="list">${shown.map(c=>{const k=knownBy(D.source,c);
-      return `<div class="li ${D.sourceRef===c?'on':''}" onclick="draftSet('sourceRef',${JSON.stringify(c).replace(/"/g,'&quot;')})">
-      <span class="av">${c.slice(0,2).toUpperCase()}</span><div><div class="t1">${c}</div>
-      <div class="t2">${k.length?'работали · '+k.length+' сдел.':(D.source==='bitrix'?'стадия «Новый»':'последнее сообщение сегодня')}</div></div>
-      <span class="t3">${k.length?'<span class="badge b-done">знакомый</span>':(D.sourceRef===c?'выбрано':'')}</span></div>`}).join('')}</div>
+    ${f.length?`<div class="list">${shown.map(c=>{const k=knownBy(D.source,c.key);
+      return `<div class="li ${D.sourceRef===c.key?'on':''}" onclick="draftSet('sourceRef',${JSON.stringify(c.key).replace(/"/g,'&quot;')})">
+      <span class="av">${esc((c.name||'??').slice(0,2).toUpperCase())}</span><div><div class="t1">${htmlText(c.name)}</div>
+      <div class="t2">${htmlText(c.account)} · ${k.length?'работали · '+k.length+' сдел.':(D.source==='bitrix'?'сделка':(c.last_active ? 'акт. ' + (new Date(c.last_active*1000).toLocaleDateString() === new Date().toLocaleDateString() ? 'сегодня' : new Date(c.last_active*1000).toLocaleDateString()) : 'недавний'))}</div></div>
+      <span class="t3">${k.length?'<span class="badge b-done">знакомый</span>':(D.sourceRef===c.key?'выбрано':'')}</span></div>`}).join('')}</div>
     ${(shown.length<f.length)?`<button class="btn btn-outline btn-sm" style="margin-top:9px" onclick="draftSet('allChats',true)">Показать все — ещё ${f.length-shown.length}</button>
       <p class="fh" style="margin-top:8px">Сверху последние ${shown.length}; остальные — поиском.</p>`
-      :`<p class="fh" style="margin-top:9px">Найдено ${f.length} из ${all.length}${D.q?' · по запросу «'+D.q+'»':''}</p>`}`:
-    `<div class="alert a-warn" style="margin-top:4px"><div>Ничего не нашлось по «${D.q}». Проверьте написание или выберите «Без переписки».</div></div>`}`:
+      :`<p class="fh" style="margin-top:9px">Найдено ${f.length} из ${all.length}${D.q?' · по запросу «'+htmlText(D.q)+'»':''}</p>`}`:
+    `<div class="alert a-warn" style="margin-top:4px"><div>Ничего не нашлось по «${htmlText(D.q)}». Проверьте написание или выберите «Без переписки».</div></div>`}`:
     (D.source==='none'
       ?`<div class="alert a-info"><div>Переписки нет — клиент позвонил или пришёл по рекомендации. Найдите его по имени в справочнике ниже или заведите нового: карточка нужна, чтобы к ней привязались договор и паспорт.</div></div>`
       :`<div class="alert a-info"><div>Список чатов ${SOURCES[D.source]} сюда пока не подтягивается. Впишите чат вручную или создавайте задачу без привязки — чат необязателен, канал запишется.</div></div>`)}
     ${srcManualBlock(D)}
     ${(D.srcPrev&&D.srcPrev.sourceRef)?`<div class="row" style="margin-top:10px">
-      <button class="btn btn-outline btn-sm" onclick="draftSrcCancel()">Оставить как было — ${SOURCES[D.srcPrev.source]}${D.srcPrev.sourceRef?' · '+D.srcPrev.sourceRef:''}</button></div>`:''}
+      <button class="btn btn-outline btn-sm" onclick="draftSrcCancel()">Оставить как было — ${SOURCES[D.srcPrev.source]}${D.srcPrev.sourceRef?' · '+(getChatObj(D.srcPrev.source, D.srcPrev.sourceRef)?htmlText(getChatObj(D.srcPrev.source, D.srcPrev.sourceRef).name):D.srcPrev.sourceRef):''}</button></div>`:''}
     ${warn}
   </div>`;
   return viewCreateBody(D,srcCard);
@@ -4058,7 +4074,7 @@ function viewCreateBody(D,srcCard){
           oninput="rememberFocus();draftSet('cq',this.value)">
         ${found.length?`<div class="list" style="margin-top:8px">${found.map(c=>`<div class="li" onclick="draftClientPick(${c.id})">
           <span class="av">${c.name.slice(0,2).toUpperCase()}</span>
-          <div><div class="t1">${c.name}</div><div class="t2">${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':' · договора нет'}${c.tg?' · '+c.tg:''}</div></div>
+          <div><div class="t1">${htmlText(c.name)}</div><div class="t2">${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':' · договора нет'}${c.tg?' · '+c.tg:''}</div></div>
           <span class="t3">выбрать</span></div>`).join('')}</div>`:''}
         ${(D.cq||'').trim().length>1&&!found.length?`<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="draftClientNew()">Создать клиента «${D.cq}»</button>`:''}
         ${(D.client||D.clientId)?`<button class="btn btn-outline btn-sm" style="margin-top:8px;margin-left:8px" onclick="draftPickBack()">Вернуть «${D.client}»</button>`:''}
@@ -4554,7 +4570,7 @@ function cnvRow(d){
     <span style="color:var(--text-muted);font-size:12.5px">— рубли на счёте, брокер ещё не выбран</span></p>`;
   const mine=c.sources.find(x=>x.dealId===d.id)||{};
   return `<p style="margin-top:10px"><b>Конвертация:</b>
-    <a href="#" onclick="cnvOpen(${c.id});return false">${c.name}</a> · ${c.broker} · курс ${c.rate} ·
+    <a href="#" onclick="cnvOpen(${c.id});return false">${htmlText(c.name)}</a> · ${c.broker} · курс ${c.rate} ·
     <b class="pos">${usd(mine.usdtFact!=null?mine.usdtFact:mine.usdt)}</b>
     <span style="color:var(--text-muted);font-size:12.5px">${mine.usdtFact!=null?'· по хэшу':'· ожидание по курсу'}${c.sources.length>1?` · пачка из ${c.sources.length} приходов`:''}</span></p>`;
 }
@@ -4906,7 +4922,7 @@ function crmPayload(d){
       });base-=sum;
     });
     return {deal_type:'pay_in',status:'completed',skip_sync:true,
-      manager_name:d.manager||'Марина',client_id:d.crmClientId??null,
+      manager_name:d.manager||'Елизавета',client_id:d.crmClientId??null,
       client_name:d.client||null,is_custom:true,
       created_at:c.date?new Date(c.date+'T12:00:00').toISOString():null,
       payin_method:c.payinMethod||'crypto_direct',payin_tx_hash:c.payinTxHash||null,
@@ -4934,7 +4950,7 @@ function crmPayload(d){
   const r2=v=>(v==null||v===''||!isFinite(v))?null:Math.round(v*100)/100;
   const hx=l=>(l||[]).filter(h=>h&&h.hash).map(h=>({hash:h.hash,network:crmNet(h.network||h.net),amount_usdt:h.amount??h.amount_usdt??null}));
   const p={client_name:d.client, client_id:d.crmClientId??null,
-    manager_name:d.manager||'Марина', status:'completed', skip_sync:true,
+    manager_name:d.manager||'Елизавета', status:'completed', skip_sync:true,
     payin_method:PAYIN_CRM[d.payType]||'sber_reqs',
     payin_amount_rub:rub?(d.incomeAmount||d.amountRub||null):null,
     /* API _apply_payin_extra прибавит дополнительные части само. Основной
@@ -5450,7 +5466,7 @@ function hashRows(d,ei){
 /* Экран правки — тот же, что в работающей CRM: отдельная страница, те же блоки в том
    же порядке и с теми же названиями (Pay-In, Pay-Out, партнёр, расчёт прибыли).
    Прошлая версия была модалкой со своей вёрсткой — Карим: «ты полностью поменял его». */
-const MANAGERS=['Марина','Карим','Валера','Груша'];
+const MANAGERS=['Елизавета'];
 /* Тип сделки — тот же селект, что в форме CRM: обычная, кастомная, MF-недвижимость,
    фрихолд. В прототипе это раскладывается на type+kind, но человеку показываем одно поле. */
 const DEAL_KINDS=[['exchange','Обычная (обмен)'],['custom','Кастомная — нестандартные валюты'],
@@ -5710,6 +5726,7 @@ function sberManual(id){
   log(d,'Зарегистрирован тестовый приход #'+incId+': '+money(a,'₽'));
   sberTake(id,incId);
 }
+const esc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 function chatList(src){return src==='tg'?TG_CHATS:(src==='wa'?WA_CHATS:(src==='bitrix'?BX_DEALS:[]));}
 function editSrcSet(id,v){editApply(id);const d=deal(id);d.source=v;d.sourceRef='';d.srefOther=false;save();render();}
 function editRefSet(id,v){
@@ -5899,13 +5916,13 @@ function viewEditLegacy(){
 
     <div class="fr">
       <div class="fg"><label class="fl">Менеджер</label>
-        <select class="fc" id="e_manager">${opt(MANAGERS,d.manager||MANAGERS[0])}</select></div>
+        <select class="fc" id="e_manager">${opt((d.manager && !MANAGERS.includes(d.manager)) ? [d.manager].concat(MANAGERS) : MANAGERS, d.manager||MANAGERS[0])}</select></div>
       <div class="fg"><label class="fl">Откуда обращение</label>
         <select class="fc" onchange="editSrcSet(${d.id},this.value)">${Object.keys(SOURCES).map(k=>`<option value="${k}"${d.source===k?' selected':''}>${SOURCES[k]}</option>`).join('')}</select></div>
       <div class="fg"><label class="fl">${d.source==='bitrix'?'Карточка в Битриксе':'Чат'}</label>
         ${chatList(d.source).length&&!d.srefOther?`<select class="fc" onchange="editRefSet(${d.id},this.value)">
             <option value="">— не выбран —</option>
-            ${chatList(d.source).map(c=>`<option${d.sourceRef===c?' selected':''}>${c}</option>`).join('')}
+            ${chatList(d.source).map(c=>`<option value="${c.key}"${d.sourceRef===c.key?' selected':''}>${htmlText(c.name)} (${htmlText(c.account)})</option>`).join('')}
             <option value="__other">— другой: ввести вручную —</option>
           </select>`
         :`<input class="fc" id="e_sref" value="${(d.sourceRef||'').replace(/"/g,'&quot;')}" placeholder="${d.source==='none'?'телефон, офис, рекомендация':'имя или номер'}">
@@ -5923,7 +5940,7 @@ function viewEditLegacy(){
             placeholder="${d.client?'или найти другого в справочнике…':'Поиск или новый клиент…'}" oninput="rememberFocus();editClientSearch(${d.id},this.value)">
           ${(d.clientQ||'').trim()?`<div class="dd">
             ${clientFind(d.clientQ).map(c=>`<div class="ddi" onclick="editClientPick(${d.id},${c.id})">
-              <b>${c.name}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':''}${c.tg?' · '+c.tg:''}</span></div>`).join('')}
+              <b>${htmlText(c.name)}</b><span>${clientDeals(c.id).length} сдел.${c.docs?' · договор есть':''}${c.tg?' · '+c.tg:''}</span></div>`).join('')}
             ${clientFind(d.clientQ).length?'':`<div class="ddi" onclick="editClientNew(${d.id})"><b>+ Создать «${d.clientQ}»</b><span>нового клиента в справочнике</span></div>`}
           </div>`:''}
           <input type="hidden" id="e_client" value="${(d.client||'').replace(/"/g,'&quot;')}">`}
@@ -8041,7 +8058,7 @@ function stepCard(d){
     return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}<span class="sub">${(dealWallet(d)||{}).name?'с кошелька '+htmlText(dealWallet(d).name):''}</span></div>
 
     ${c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
-      <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${c.name} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
+      <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <table class="tbl">
         ${trow('Пришло на счёт',money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽'),c.sources.length>1?'пачка из '+c.sources.length+' приходов':'')}
         ${c.held?trow('Удержано',moneyKop(c.held,'₽'),'валютный контроль '+moneyKop(c.feeCtrl||0,'₽')+' · на рублёвый счёт '+moneyKop(c.feeOurs||0,'₽')+' (отдельный контур)'):''}
@@ -8760,7 +8777,7 @@ function viewConvs(){
     const got=c.txs.reduce((s,x)=>s+(x.amount||0),0);
     const gap=Math.round((got-plan)*100)/100;
     return `<tr class="clickable" onclick="cnvOpen(${c.id})">
-      <td><b>${c.name}</b></td><td>${c.at||''}</td><td>${c.broker}</td><td>${c.requestNo||''}</td>
+      <td><b>${htmlText(c.name)}</b></td><td>${c.at||''}</td><td>${c.broker}</td><td>${c.requestNo||''}</td>
       <td class="num">${moneyKop(c.sent||c.rubTotal,'₽')}</td><td class="num">${c.rate}</td>
       <td class="num">${got?usd(got):'<span style="color:var(--text-muted)">ждём</span>'}</td>
       <td class="num">${got?(Math.abs(gap)<0.01?'<span class="badge b-done">0</span>':'<span class="badge b-pend">'+(gap>0?'+':'−')+usd(Math.abs(gap)).replace('$','')+'</span>'):'—'}</td>
@@ -8927,7 +8944,7 @@ function seedLeaseholdTest(){
   S.role='manager';
   const main=newDeal({source:'none',client:'Тест · лизхолд Coins',type:'Оплата недвижимости',
     kind:'Лизхолд',payType:'По реквизитам',object:'DEMO Phuket, unit L-01',
-    amountRub:931000,amountThb:350000,curBase:'rub',step:'s14',manager:'Марина'});
+    amountRub:931000,amountThb:350000,curBase:'rub',step:'s14',manager:'Елизавета'});
   main.demoTransfers=true;main.docVersion=1;main.companyPct=1;
   main.rates={rubUsdt:'81,40',broker:'81,40',usdtThb:'31,20',client:'2,66',at:Date.now()};
   main.expect={amount:931000,acc:'…0286 · Сбер',tol:1000,
@@ -9212,6 +9229,22 @@ function bootScreen(){
   if(window.self!==window.top) document.body.classList.add('embed');
   return true;
 }
+
+async function fetchChannels() {
+  try {
+    const res = await fetch('/api/stand/channels');
+    const json = await res.json();
+    if (json.success && json.data) {
+      const setKey = (arr) => { arr.forEach(c => c.key = c.account + ':' + c.id); return arr; };
+      TG_CHATS = setKey(json.data.tg || []);
+      WA_CHATS = setKey(json.data.wa || []);
+      BX_DEALS = setKey(json.data.bitrix || []);
+    }
+  } catch (e) {
+    console.error("fetchChannels error", e);
+  }
+}
+
 async function standBoot(){
   try{
     const me=await (await fetch('/api/auth/me',{credentials:'same-origin'})).json();
@@ -9225,6 +9258,7 @@ async function standBoot(){
       if(admins.success) STAND_EMPLOYEES=admins.admins||[];
     }catch(e){}
   }catch(e){}
+  await fetchChannels();
   await standPull(true);
   await checkDocParseCapability();
   await fetchSberMirrorStatus();
@@ -9236,6 +9270,7 @@ async function standBoot(){
   render();
   standOpenFromLink();
   setInterval(()=>standPull(false),2500);
+  setInterval(fetchChannels, 60000);
   setInterval(fetchSberMirrorStatus,60000);
   setInterval(checkDocParseCapability,60000);
   setInterval(loadCrmWallets,60000);
