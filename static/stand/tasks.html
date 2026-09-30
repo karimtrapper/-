@@ -776,6 +776,18 @@ async function standWaitSaved(){
   }
   return standLastSaveResult;
 }
+function standRollbackHandoff(id){
+  const saved=(standBase&&Array.isArray(standBase.deals)?standBase.deals:[])
+    .find(x=>String(x.id)===String(id));
+  if(!saved)return false;
+  const index=(S.deals||[]).findIndex(x=>String(x.id)===String(id));
+  if(index<0)return false;
+  S.deals[index]=standClone(saved);
+  S.notes=standClone(Array.isArray(standBase.notes)?standBase.notes:[]);
+  S.modal=null;
+  render();
+  return true;
+}
 /* Режим экранов: ?screen=<id> собирает сделку сразу на нужном шаге.
    Состояние живёт только в памяти — рабочий прототип в localStorage не трогаем. */
 const SCREEN=(new URLSearchParams(location.search)).get('screen')||null;
@@ -8535,10 +8547,15 @@ async function act(id,step){
     managerDraftPublishDocs(d);
     d.docComment=val('sn_s8')||d.docComment||'';go(d,'s11','Документы переданы операционисту');
     if(STAND&&!SCREEN&&!SNAP){
-      const saved=await standWaitSaved(), current=deal(id);
+      let saved;
+      try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
+      const current=deal(id);
       const published=current&&current.step==='s11'&&filesOf(current,'inv').length>0&&
         (current.isOld||filesOf(current,'pass').length>0);
-      if(!saved.ok||!published){toast('Передача не сохранена — проверьте вложения и повторите');return;}
+      if(!saved.ok||!published){
+        standRollbackHandoff(id);
+        toast('Передача не сохранена — файлы остались на шаге документов; повторите попытку.');return;
+      }
       toast(notificationDeliveryText(S.modal)||
         'Документы сохранены и переданы операционисту на доске; доставка Telegram не подтверждена.');
     }else toast('Ушло операционисту');

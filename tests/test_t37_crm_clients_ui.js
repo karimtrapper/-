@@ -18,7 +18,10 @@ jsCode = jsCode.replace(/window\.location\.reload\(\)/g, "undefined")
 
 const evalPrefix = `
 let fetchResponses = {};
+global.fetchCalls = [];
 global.fetch = async (url) => {
+  fetchCalls.push(url);
+  if (typeof fetchResponses[url] === 'function') return fetchResponses[url](url);
   if (fetchResponses[url]) return { ok: true, json: async () => fetchResponses[url] };
   return { ok: false };
 };
@@ -254,6 +257,87 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
     throw new Error('Modal footer lost the task owner');
   tgLines=previousTgLines;stepTitle=previousStepTitle;canSwitchRole=previousRoleSwitch;
   now=previousNow;tgPayBlock=previousPayBlock;
+
+  const previousFns={render,saveNote,go,val,docParse,toast};
+  const handoffToasts=[];
+  render=()=>{};saveNote=()=>{};val=()=>'';docParse=()=>{};
+  toast=message=>handoffToasts.push(message);
+  const makeHandoffDeal=()=>({id:778,code:'SYNTH-778',step:'s8',isOld:false,
+    type:'Оплата недвижимости',kind:'Фрихолд',payType:'Крипта',docs:{},docMeta:{},files:{},
+    _managerDraft:{docs:{pass:true,inv:true},docMeta:{pass:{file:'p.pdf'},inv:{file:'i.pdf'}},
+      files:{pass:[{file:'p.pdf',mime:'application/pdf',bytes:8,data:'data:application/pdf;base64,JVBERi0xLjQK'}],
+        inv:[{file:'i.pdf',mime:'application/pdf',bytes:8,data:'data:application/pdf;base64,JVBERi0xLjQK'}]}}});
+  const runFailedHandoff=async response=>{
+    const handoffDeal=makeHandoffDeal();
+    S.role='manager';S.deals=[handoffDeal];S.notes=[{id:'confirmed-note'}];S.modal=null;
+    standBase=standClone({deals:[handoffDeal],notes:standClone(S.notes)});
+    standVer=30;standBusy=false;standPush=false;standSaveScheduled=false;standClosing=false;
+    standLastSaveResult={ok:true};
+    fetchResponses['/api/stand/state']=response;
+    go=(d,next)=>{d.step=next;S.notes.unshift({id:'pending-handoff-note',role:'operator',dealId:d.id});
+      S.modal={id:d.id,step:next,to:'operator',noteId:'pending-handoff-note',delivery:'pending'};save();};
+    await act(778,'s8');
+    const restored=deal(778);
+    if(!restored||restored.step!=='s8')throw new Error('Failed s8 handoff left the local deal on the operator step');
+    if(filesOf(restored,'pass').length!==1||filesOf(restored,'inv').length!==1)
+      throw new Error('Failed handoff discarded confirmed manager draft files');
+    if(S.modal!==null||notificationDeliveryText(S.modal)!=='')
+      throw new Error('Failed handoff left a delivery modal claiming it was sent');
+    if(!handoffToasts.some(x=>x.includes('файлы остались на шаге документов')))
+      throw new Error('Failed handoff did not explain that files remain on s8');
+    return restored;
+  };
+  const statePutCount=()=>fetchCalls.filter(url=>url==='/api/stand/state').length;
+  let beforeHandoffPuts=statePutCount();
+  await runFailedHandoff({success:false,error:'synthetic rejection'});
+  if(statePutCount()-beforeHandoffPuts!==1)throw new Error('Rejected handoff issued a duplicate PUT');
+  const retryData=standClone(standBase);
+  const retryDeal=retryData.deals.find(x=>x.id===778);
+  retryDeal.files=retryDeal._managerDraft.files;retryDeal.docs=retryDeal._managerDraft.docs;
+  retryDeal.docMeta=retryDeal._managerDraft.docMeta;delete retryDeal._managerDraft.files;
+  delete retryDeal._managerDraft.docs;delete retryDeal._managerDraft.docMeta;retryDeal.step='s11';
+  retryData.notes.unshift({id:'pending-handoff-note',role:'operator',dealId:778});
+  fetchResponses['/api/stand/state']={success:true,version:31,data:retryData,notification_delivery:[
+    {note_id:'pending-handoff-note',role:'operator',status:'sent'}]};
+  await act(778,'s8');
+  if(deal(778).step!=='s11')throw new Error('Successful retry could not hand the task to the operator');
+  if(statePutCount()-beforeHandoffPuts!==2)throw new Error('Successful retry sent an unexpected number of PUTs');
+  beforeHandoffPuts=statePutCount();
+  await runFailedHandoff(async()=>Promise.reject(new Error('synthetic network timeout')));
+  if(statePutCount()-beforeHandoffPuts!==1)throw new Error('Timed out handoff issued a duplicate PUT');
+
+  // A request still in flight at the wait timeout must not trigger another PUT;
+  // if the original later succeeds, standSave must apply and render that response.
+  const originalWaitSaved=standWaitSaved;
+  let pendingWaits=0,resolvePendingPut=null,pendingSavedData=null,lastRenderedStep=null;
+  const pendingDeal=makeHandoffDeal();
+  S.role='manager';S.deals=[pendingDeal];S.notes=[{id:'confirmed-note'}];S.modal=null;
+  standBase=standClone({deals:[pendingDeal],notes:standClone(S.notes)});
+  standVer=40;standBusy=false;standPush=false;standSaveScheduled=false;standClosing=false;
+  standLastSaveResult={ok:true};
+  render=()=>{lastRenderedStep=deal(778)?.step||null;};
+  go=(d,next)=>{d.step=next;S.notes.unshift({id:'pending-late-note',role:'operator',dealId:d.id});
+    S.modal={id:d.id,step:next,to:'operator',noteId:'pending-late-note',delivery:'pending'};
+    pendingSavedData=standClone(standSnapshot());save();};
+  fetchResponses['/api/stand/state']=()=>new Promise(resolve=>{resolvePendingPut=resolve;});
+  standWaitSaved=async()=>{
+    pendingWaits++;
+    if(pendingWaits===1)return {ok:true};
+    throw new Error('synthetic wait timeout');
+  };
+  beforeHandoffPuts=statePutCount();
+  await act(778,'s8');
+  if(deal(778).step!=='s8'||S.modal!==null)throw new Error('Pending timeout did not roll back the local handoff');
+  if(statePutCount()-beforeHandoffPuts!==1)throw new Error('Timeout rollback issued another PUT');
+  standWaitSaved=originalWaitSaved;
+  resolvePendingPut({ok:true,json:async()=>({success:true,version:41,data:pendingSavedData,
+    notification_delivery:[{note_id:'pending-late-note',role:'operator',status:'sent'}]})});
+  await originalWaitSaved();
+  if(deal(778).step!=='s11'||lastRenderedStep!=='s11')
+    throw new Error('Late success response was not applied and rendered: step='+deal(778).step+', rendered='+lastRenderedStep+', save='+JSON.stringify(standLastSaveResult));
+  if(statePutCount()-beforeHandoffPuts!==1)throw new Error('Late response caused a duplicate PUT');
+  render=previousFns.render;saveNote=previousFns.saveNote;go=previousFns.go;
+  val=previousFns.val;docParse=previousFns.docParse;toast=previousFns.toast;
   render=previousRender;standTyping=previousTyping;
 
   // Keep the mandatory passport rule for new real estate deals.
