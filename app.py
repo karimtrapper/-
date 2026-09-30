@@ -5429,15 +5429,142 @@ def stand_channels_get():
         for r in rows:
             if r.channel not in res:
                 res[r.channel] = []
-            res[r.channel].append({
+            entry = {
                 'id': r.chat_id,
                 'name': r.name,
                 'account': r.account,
                 'last_active': r.last_active
-            })
+            }
+            if r.channel == 'bitrix' and r.account == 'Grusha' and re.fullmatch(r'[1-9][0-9]*', r.chat_id):
+                entry['close_proof'] = _stand_bitrix_close_proof(r.chat_id)
+            res[r.channel].append(entry)
         return jsonify({'success': True, 'data': res})
     finally:
         db.close()
+
+
+def _stand_bitrix_close_proof(deal_id):
+    message = f'stand-bitrix-close|Grusha|{deal_id}'.encode()
+    return hmac.new(str(app.secret_key).encode(), message, hashlib.sha256).hexdigest()
+
+
+def _stand_bitrix_origin(db, deal):
+    """Resolve only a selected, signed Grusha card still present in StandChannel."""
+    if (deal.get('source') != 'bitrix' or deal.get('srefOther')
+            or not re.fullmatch(r'Grusha:[1-9][0-9]*', str(deal.get('sourceRef') or ''))):
+        return None
+    bitrix_id = str(deal['sourceRef'].split(':', 1)[1])
+    proof = str(deal.get('bitrixCloseProof') or '')
+    if not hmac.compare_digest(proof, _stand_bitrix_close_proof(bitrix_id)):
+        return None
+    channel = db.query(StandChannel).filter_by(
+        channel='bitrix', account='Grusha', chat_id=bitrix_id).first()
+    return int(bitrix_id) if channel else None
+
+
+def _stand_bitrix_payload(crm_deal):
+    """Immutable input shape expected by bitrix_deals.close_won, from CRM row."""
+    enum_value = lambda value: getattr(value, 'value', value)
+    return {
+        'payin_amount_usdt': crm_deal.payin_amount_usdt or 0,
+        'payin_amount_rub': crm_deal.payin_amount_rub or 0,
+        'payin_method': enum_value(crm_deal.payin_method) or 'crypto_direct',
+        'payout_amount_thb': crm_deal.payout_amount_thb or 0,
+        'payout_method': enum_value(crm_deal.payout_method) or 'transfer',
+    }
+
+
+def _stand_bitrix_sync_status(stand_deal_id, generation, status, error=None):
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if not row or row.generation != generation:
+            return None
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', [])
+                     if d.get('id') == stand_deal_id), None)
+        if not deal or not deal.get('bitrixSync'):
+            return None
+        sync = deal['bitrixSync']
+        sync.update(status=status, updatedAt=datetime.utcnow().isoformat())
+        if error:
+            sync['error'] = error
+        else:
+            sync.pop('error', None)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_at = datetime.utcnow()
+        row.updated_by = 'Bitrix close sync'
+        db.commit()
+        return {'version': row.version, 'data': state}
+    except Exception:
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
+def _stand_try_bitrix_close(stand_deal_id, generation):
+    """Read current Bitrix stage, then idempotently transition only its default pipeline deal."""
+    db = get_session()
+    try:
+        state_row = _stand_row(db)
+        if not state_row or state_row.generation != generation:
+            return 'error', 'origin_unavailable'
+        state = json.loads(state_row.data or '{}')
+        stand_deal = next((d for d in state.get('deals', [])
+                           if d.get('id') == stand_deal_id), None)
+        if not stand_deal or not stand_deal.get('bitrixSync'):
+            return 'error', 'origin_unavailable'
+        sync = stand_deal['bitrixSync']
+        bitrix_id = sync.get('bitrix_deal_id')
+        crm_deal_id = stand_deal.get('crmDealId')
+        crm_deal = db.query(Deal).filter_by(id=crm_deal_id,
+                                            bitrix_deal_id=bitrix_id).first()
+        if not crm_deal or not isinstance(bitrix_id, int):
+            return 'error', 'crm_link_unavailable'
+        payload = json.loads(json.dumps(sync.get('payload') or {}))
+    finally:
+        db.close()
+    if os.environ.get('STAND_BITRIX_CLOSE_ENABLED') != '1':
+        return 'error', 'sync_disabled'
+    try:
+        import bitrix_deals
+        remote = bitrix_deals.get_deal_for_stand_close(bitrix_id)
+        if not remote:
+            return 'error', 'bitrix_read_failed'
+        try:
+            remote_id = int(remote.get('ID'))
+        except (TypeError, ValueError):
+            return 'error', 'bitrix_identity_mismatch'
+        if isinstance(remote.get('ID'), bool) or remote_id != bitrix_id:
+            return 'error', 'bitrix_identity_mismatch'
+        category = str(remote.get('CATEGORY_ID', ''))
+        stage = str(remote.get('STAGE_ID', ''))
+        if category != str(bitrix_deals.BITRIX_PIPELINE_ID):
+            return 'error', 'wrong_category'
+        if stage == bitrix_deals.STAGE_WON:
+            return 'success', None
+        if stage == bitrix_deals.STAGE_LOSE:
+            return 'error', 'already_lost'
+        ok, _err = bitrix_deals.close_won_for_stand(bitrix_id, payload)
+        return ('success', None) if ok else ('error', 'bitrix_update_failed')
+    except Exception:
+        # Never include provider exception text; requests errors can contain the webhook URL.
+        return 'error', 'bitrix_unavailable'
+
+
+def _stand_bitrix_sync_response(stand_deal_id, generation):
+    status, error = _stand_try_bitrix_close(stand_deal_id, generation)
+    saved = _stand_bitrix_sync_status(stand_deal_id, generation, status, error)
+    if not saved:
+        # Initial close transaction already committed pending. Never tell the UI
+        # that Bitrix succeeded until that success state is durable as well.
+        return 'pending', 'sync_status_unavailable', None
+    return status, error, saved
 
 @app.route('/api/stand/sber-mirror/status', methods=['GET'])
 def stand_sber_mirror_status():
@@ -6024,6 +6151,9 @@ def stand_crm_close(stand_deal_id):
         crm_data = dict(payload['crm'])
         if crm_data.get('bitrix_deal_id') is not None:
             return jsonify({'success': False, 'error': 'foreign_origin_forbidden'}), 400
+        bitrix_id = _stand_bitrix_origin(db, stand_deal)
+        if bitrix_id and db.query(Deal).filter_by(bitrix_deal_id=bitrix_id).first():
+            return jsonify({'success': False, 'error': 'bitrix_already_linked'}), 409
         # CRM's existing custom form omits deal_kind. The persisted stand type
         # determines the storage kind; an explicit conflicting kind is rejected.
         if (crm_data.get('deal_kind') is None and kind == 'exchange'
@@ -6051,6 +6181,10 @@ def stand_crm_close(stand_deal_id):
                     return jsonify({'success': False, 'error': 'custom_required_fields'}), 400
         crm_data['status'] = 'completed'
         crm_data['skip_sync'] = True
+        if bitrix_id:
+            # Never trust an ID supplied by the browser: derive it from the signed
+            # selected StandChannel card and bind it to this CRM row transactionally.
+            crm_data['bitrix_deal_id'] = bitrix_id
         result = _create_deal_impl(db, data=crm_data, defer_commit=True)
         response, status = result if isinstance(result, tuple) else (result, 200)
         created = response.get_json() or {}
@@ -6069,6 +6203,12 @@ def stand_crm_close(stand_deal_id):
         closed.update(crmDealId=crm_id, crmAt=datetime.utcnow().isoformat(),
                       closed=True, closeReason='Успешно завершена',
                       closedAt=datetime.utcnow().isoformat(), step='done')
+        if bitrix_id:
+            closed['bitrixSync'] = {
+                'status': 'pending', 'bitrix_deal_id': bitrix_id,
+                'payload': _stand_bitrix_payload(crm_row),
+                'updatedAt': datetime.utcnow().isoformat(),
+            }
         closed.setdefault('log', []).append('Внесена в CRM: сделка #' + str(crm_id))
         closed['log'].append('Закрыта: Успешно завершена')
         problem = _stand_guard_transition(state, updated, actor,
@@ -6084,6 +6224,12 @@ def stand_crm_close(stand_deal_id):
         row.updated_at = datetime.utcnow()
         db.commit()
         created.update(version=row.version, data=updated)
+        if bitrix_id:
+            sync_status, sync_error, sync_saved = _stand_bitrix_sync_response(
+                stand_deal_id, row.generation)
+            created['bitrix_sync'] = {'status': sync_status, 'error': sync_error}
+            if sync_saved:
+                created.update(version=sync_saved['version'], data=sync_saved['data'])
         try:
             _stand_deliver_notes()
         except Exception:
@@ -6095,6 +6241,48 @@ def stand_crm_close(stand_deal_id):
         return jsonify({'success': False, 'error': 'close_failed'}), 500
     finally:
         db.close()
+
+
+@app.route('/api/stand/deals/<int:stand_deal_id>/bitrix-close-retry', methods=['POST'])
+def stand_bitrix_close_retry(stand_deal_id):
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() not in ('manager', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        if not row:
+            return jsonify({'success': False, 'error': 'not_found'}), 404
+        state = json.loads(row.data or '{}')
+        stand_deal = next((d for d in state.get('deals', [])
+                           if d.get('id') == stand_deal_id), None)
+        if (not stand_deal or not stand_deal.get('closed')
+                or stand_deal.get('closeReason') != 'Успешно завершена'
+                or not stand_deal.get('bitrixSync')):
+            return jsonify({'success': False, 'error': 'bitrix_link_missing'}), 409
+        link = db.query(StandCrmLink).filter_by(
+            origin=f'{row.generation}:{stand_deal_id}',
+            crm_deal_id=stand_deal.get('crmDealId')).first()
+        crm = db.query(Deal).filter_by(id=stand_deal.get('crmDealId')).first()
+        sync = stand_deal['bitrixSync']
+        if (not link or not crm or crm.bitrix_deal_id != sync.get('bitrix_deal_id')
+                or not isinstance(sync.get('payload'), dict)):
+            return jsonify({'success': False, 'error': 'bitrix_link_invalid'}), 409
+        generation = row.generation
+        current_status = sync.get('status')
+        if current_status == 'success':
+            return jsonify({'success': True, 'bitrix_sync': {'status': 'success'},
+                            'version': row.version, 'data': _stand_strip_files(state)})
+    finally:
+        db.close()
+    status, error, saved = _stand_bitrix_sync_response(stand_deal_id, generation)
+    if not saved:
+        return jsonify({'success': False, 'error': 'sync_state_unavailable'}), 503
+    return jsonify({'success': status == 'success',
+                    'bitrix_sync': {'status': status, 'error': error},
+                    'version': saved['version'], 'data': _stand_strip_files(saved['data'])}), (
+                        200 if status == 'success' else 502)
 
 
 @app.route('/api/stand/reset', methods=['POST'])
@@ -7079,6 +7267,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if 'closeEvidence' in deal:
             return 'Подтверждения закрытия назначает только сервер'
         before = old.get(deal.get('id'))
+        prior_bitrix_proof = (before or {}).get('bitrixCloseProof')
+        next_bitrix_proof = deal.get('bitrixCloseProof')
+        if next_bitrix_proof and next_bitrix_proof != prior_bitrix_proof:
+            if _stand_bitrix_origin(db, deal) is None:
+                return 'Выберите сделку Bitrix из актуального списка — вручную привязать нельзя'
         draft = deal.get('_managerDraft')
         old_draft = (before or {}).get('_managerDraft')
         if draft != old_draft:

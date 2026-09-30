@@ -163,6 +163,17 @@ def preserve_server_fields(old_state, new_state):
     for deal in new_state.get('deals', []):
         transfer = deal.get('transfer') or {}
         previous = old_deals.get(deal.get('id')) or {}
+        # Preserve a signature on stale snapshots. A changed signature is kept
+        # only after app._stand_guard_transition validated it against a live
+        # StandChannel row and the server HMAC.
+        if (previous.get('bitrixCloseProof') and not deal.get('bitrixCloseProof')
+                and deal.get('source') == previous.get('source')
+                and deal.get('sourceRef') == previous.get('sourceRef')):
+            deal['bitrixCloseProof'] = previous['bitrixCloseProof']
+        if previous.get('bitrixSync'):
+            deal['bitrixSync'] = previous['bitrixSync']
+        else:
+            deal.pop('bitrixSync', None)
         old_conv = old_convs.get(previous.get('cnvId')) or {}
         if (previous.get('transfer') or {}).get('sends') or old_conv.get('txs'):
             deal['demoTransfers'] = bool(previous.get('demoTransfers'))

@@ -220,6 +220,261 @@ def test_board_reset_rotates_origin_generation(monkeypatch):
     assert second.json['deal']['id'] != first_id
 
 
+def _select_bitrix_origin(uid, *, source='bitrix', manual=False, bitrix_id=None):
+    bitrix_id = str(bitrix_id or 910000000 + uid * 100)
+    db = m.get_session()
+    try:
+        row = db.query(m.StandState).filter_by(id=1).one()
+        channel = db.query(m.StandChannel).filter_by(
+            channel='bitrix', account='Grusha', chat_id=bitrix_id).first()
+        if channel is None:
+            db.add(m.StandChannel(channel='bitrix', account='Grusha', chat_id=bitrix_id,
+                                  name='Synthetic Bitrix deal', last_active=10))
+        state = json.loads(row.data)
+        deal = state['deals'][0]
+        deal.update(source=source, sourceRef=f'Grusha:{bitrix_id}', srefOther=manual)
+        deal['bitrixCloseProof'] = m._stand_bitrix_close_proof(bitrix_id)
+        row.data = json.dumps(state)
+        db.commit()
+    finally:
+        db.close()
+    return int(bitrix_id)
+
+
+def _mock_bitrix(monkeypatch, *, remote=None, update_result=(True, '')):
+    import bitrix_deals
+    calls = []
+
+    def get_deal(deal_id):
+        db = m.get_session()
+        try:
+            board = db.query(m.StandState).filter_by(id=1).one()
+            state = json.loads(board.data)
+            assert state['deals'][0]['closed'] is True, 'Bitrix read happened before DB commit'
+            assert db.query(m.Deal).filter_by(bitrix_deal_id=deal_id).count() == 1
+        finally:
+            db.close()
+        calls.append(('get', deal_id))
+        if isinstance(remote, Exception):
+            raise remote
+        result = {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'}
+        if remote:
+            result.update(remote)
+        return result
+
+    def close_won(deal_id, payload):
+        calls.append(('won', deal_id, payload.copy()))
+        return update_result
+
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', get_deal)
+    monkeypatch.setattr(bitrix_deals, 'close_won_for_stand', close_won)
+    return calls
+
+
+def test_linked_bitrix_close_writes_crm_link_and_won_after_commit(monkeypatch):
+    uid = _setup(monkeypatch)
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201, response.json
+    assert response.json['bitrix_sync'] == {'status': 'success', 'error': None}
+    assert [call[0] for call in calls] == ['get', 'won']
+    assert calls[0][1] == calls[1][1] == bitrix_id
+    assert calls[1][2] == {
+        'payin_amount_usdt': 100.0, 'payin_amount_rub': 0,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 0,
+        'payout_method': 'transfer'}
+    saved = response.json['data']['deals'][0]['bitrixSync']
+    assert saved['status'] == 'success'
+    assert saved['bitrix_deal_id'] == bitrix_id
+    assert response.json['deal']['bitrix_deal_id'] == bitrix_id
+
+
+@pytest.mark.parametrize('source,manual', [('tg', False), ('bitrix', True)])
+def test_tg_or_manual_bitrix_source_never_syncs(monkeypatch, source, manual):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid, source=source, manual=manual)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201, response.json
+    assert calls == []
+    assert response.json['deal']['bitrix_deal_id'] is None
+    assert 'bitrixSync' not in response.json['data']['deals'][0]
+
+
+def test_bitrix_selection_can_change_to_another_live_card_before_close(monkeypatch):
+    uid = _setup(monkeypatch)
+    id_a = _select_bitrix_origin(uid)
+    id_b = id_a + 1
+    db = m.get_session()
+    try:
+        db.add(m.StandChannel(channel='bitrix', account='Grusha', chat_id=str(id_b),
+                              name='Second synthetic deal', last_active=11))
+        db.commit()
+    finally:
+        db.close()
+    client = _client(uid)
+    state = client.get('/api/stand/state').json
+    changed = copy.deepcopy(state['data'])
+    changed['deals'][0]['sourceRef'] = f'Grusha:{id_b}'
+    changed['deals'][0]['bitrixCloseProof'] = m._stand_bitrix_close_proof(str(id_b))
+    saved = client.put('/api/stand/state', json={'version': state['version'], 'data': changed})
+    assert saved.status_code == 200, saved.json
+    assert saved.json['data']['deals'][0]['bitrixCloseProof'] == m._stand_bitrix_close_proof(str(id_b))
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    closed = _post(client, version=saved.json['version'])
+    assert closed.status_code == 201, closed.json
+    assert calls[0] == ('get', id_b)
+    assert closed.json['deal']['bitrix_deal_id'] == id_b
+
+
+def test_bitrix_id_tampering_and_crm_failure_never_call_bitrix(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch)
+    forged = _crm()
+    forged['bitrix_deal_id'] = 999999
+    assert _post(_client(uid), crm=forged).json['error'] == 'foreign_origin_forbidden'
+    assert calls == []
+
+    original = m._create_deal_impl
+    monkeypatch.setattr(m, '_create_deal_impl',
+                        lambda *a, **kw: (m.jsonify({'success': False, 'error': 'fake'}), 500))
+    failed = _post(_client(uid))
+    assert failed.status_code == 500, failed.json
+    assert calls == []
+    assert _counts() == baseline
+    monkeypatch.setattr(m, '_create_deal_impl', original)
+
+
+def test_already_won_and_duplicate_close_are_idempotent(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote={'CATEGORY_ID': '0', 'STAGE_ID': 'WON'})
+    first = _post(_client(uid))
+    crm_id = first.json['deal']['id']
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 7, 'payload': {'payin_amount_usdt': 999}})
+    duplicate = _post(_client(uid), version=1)
+    assert first.json['bitrix_sync']['status'] == 'success'
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert duplicate.status_code == 200 and duplicate.json['deal']['id'] == crm_id
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert [call[0] for call in calls] == ['get']
+
+
+def test_bitrix_timeout_keeps_crm_closed_and_retry_uses_saved_link(monkeypatch):
+    uid = _setup(monkeypatch)
+    baseline = _counts()
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=TimeoutError())
+    response = _post(_client(uid))
+    assert response.status_code == 201 and response.json['success'] is True
+    assert response.json['bitrix_sync']['status'] == 'error'
+    assert response.json['data']['deals'][0]['bitrixSync']['status'] == 'error'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+
+    import bitrix_deals
+    def now_won(deal_id):
+        calls.append(('get_retry', deal_id))
+        return {'ID': str(deal_id), 'CATEGORY_ID': '0', 'STAGE_ID': 'WON'}
+    monkeypatch.setattr(bitrix_deals, 'get_deal_for_stand_close', now_won)
+    retry = _client(uid).post('/api/stand/deals/1474/bitrix-close-retry', json={
+        'bitrix_deal_id': 999, 'payload': {'payin_amount_usdt': 1}})
+    assert retry.status_code == 200 and retry.json['success'] is True
+    assert retry.json['data']['deals'][0]['bitrixSync']['status'] == 'success'
+    assert _counts() == (baseline[0] + 1, baseline[1] + 1)
+    assert calls[-1] == ('get_retry', 910000000 + uid * 100)
+
+
+@pytest.mark.parametrize('remote,error', [
+    ({'CATEGORY_ID': '1', 'STAGE_ID': 'PREPARATION'}, 'wrong_category'),
+    ({'CATEGORY_ID': '0', 'STAGE_ID': 'LOSE'}, 'already_lost'),
+])
+def test_bitrix_wrong_pipeline_or_lost_is_never_updated(monkeypatch, remote, error):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=remote)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync']['error'] == error
+    assert [call[0] for call in calls] == ['get']
+
+
+@pytest.mark.parametrize('remote', [
+    {'ID': 'not-a-number', 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'},
+    {'ID': '999999999999', 'CATEGORY_ID': '0', 'STAGE_ID': 'PREPARATION'},
+])
+def test_bitrix_identity_mismatch_never_updates(monkeypatch, remote):
+    uid = _setup(monkeypatch)
+    bitrix_id = _select_bitrix_origin(uid)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    calls = _mock_bitrix(monkeypatch, remote=remote)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync']['error'] == 'bitrix_identity_mismatch'
+    assert [call[0] for call in calls] == ['get']
+    assert calls[0][1] == bitrix_id
+
+
+def test_stand_sync_flag_defaults_off_without_real_bitrix_calls(monkeypatch):
+    uid = _setup(monkeypatch)
+    _select_bitrix_origin(uid)
+    monkeypatch.delenv('STAND_BITRIX_CLOSE_ENABLED', raising=False)
+    calls = _mock_bitrix(monkeypatch)
+    response = _post(_client(uid))
+    assert response.status_code == 201
+    assert response.json['bitrix_sync'] == {'status': 'error', 'error': 'sync_disabled'}
+    assert calls == []
+
+
+def test_bitrix_stand_helper_uses_existing_won_fields_and_regular_calls_stay_blocked(monkeypatch):
+    import bitrix_deals
+    monkeypatch.setenv('STAND_MODE', '1')
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '1')
+    monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', 'https://example.invalid/hooks')
+    posted = []
+    monkeypatch.setattr(bitrix_deals.requests, 'post',
+                        lambda url, data, timeout: (posted.append((url, data, timeout)) or
+                            type('Response', (), {'status_code': 200,
+                                'json': lambda self: {'result': True}})()))
+    ok, err = bitrix_deals.close_won_for_stand(123456, {
+        'payin_amount_usdt': 100, 'payin_amount_rub': 8200,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 3100,
+        'payout_method': 'transfer'})
+    assert ok and not err and len(posted) == 1
+    assert posted[0][0] == 'https://example.invalid/hooks/crm.deal.update'
+    payload = posted[0][1]
+    assert payload['id'] == '123456'
+    assert payload['fields[STAGE_ID]'] == 'WON'
+    assert payload['fields[OPPORTUNITY]'] == '100'
+    assert payload['fields[UF_CRM_PAYIN_NATIVE]'] == '8200|RUB'
+    assert payload['fields[UF_CRM_1761207574105]'] == '3100|THB'
+    monkeypatch.setattr(bitrix_deals, 'BITRIX_WEBHOOK', 'https://example.invalid/hooks/')
+    ok, err = bitrix_deals.close_won_for_stand(123456, {
+        'payin_amount_usdt': 100, 'payin_amount_rub': 8200,
+        'payin_method': 'sber_reqs', 'payout_amount_thb': 3100,
+        'payout_method': 'transfer'})
+    assert ok and not err and len(posted) == 2
+    assert posted[1][0] == posted[0][0]
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals.close_won(123456, {'payin_amount_usdt': 1})
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals._post('crm.deal.list', {}, stand_close_sync=True)
+    monkeypatch.setenv('STAND_BITRIX_CLOSE_ENABLED', '0')
+    with pytest.raises(bitrix_deals.BitrixError, match='stand_blocked'):
+        bitrix_deals.get_deal_for_stand_close(123456)
+
+
 def test_custom_exchange_uses_existing_crm_contract(monkeypatch):
     uid = _setup(monkeypatch)
     db = m.get_session()

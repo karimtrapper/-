@@ -3011,7 +3011,7 @@ function newDeal(o){
   if(!o.client) o.client=o.sourceRef||'Без имени';
   const d={id:S.seq,code:'СД-'+S.seq,createdAt:now(),step:o.step,closed:false,
     manual:!!o.manual,manualNew:!!o.manualNew,log:[],
-    source:o.source,sourceRef:o.sourceRef,client:o.client,type:o.type,
+    source:o.source,sourceRef:o.sourceRef,bitrixCloseProof:o.bitrixCloseProof||null,client:o.client,type:o.type,
     pair:(o.type==='Обмен валюты'?(o.pair||(o.payType==='Крипта'?'USDT → THB':'RUB → THB')):null),
     direction:o.direction||o.pair||'RUB → THB',
     kind:(o.type==='Оплата недвижимости'?(o.kind||''):''),payType:o.payType||'По реквизитам',curBase:o.curBase||'thb',
@@ -3985,13 +3985,15 @@ function isKnownRef(src, v) {
 function draftTakeChat(v){
   const D=S.draft;
   D.source=(isKnownRef('wa', v))?'wa':(isKnownRef('bitrix', v))?'bitrix':(isKnownRef('tg', v))?'tg':D.source;
+  const selected=getChatObj(D.source,v);
+  D.bitrixCloseProof=D.source==='bitrix'&&selected?selected.close_proof||null:null;
   D.sourceRef=v;D.q='';D.srcEdit=false;D.srcPrev=null;D.srefOther=!(isKnownRef('tg', v)||isKnownRef('wa', v)||isKnownRef('bitrix', v));
   save();render();toast('Источник: '+SOURCES[D.source]+' · '+v);
 }
 function draftSrefManual(){
   const D=S.draft, v=(D.srefManualV||'').trim();
   if(!v){toast('Впишите чат или номер');return;}
-  D.sourceRef=v;D.srefOther=true;D.srefManual=false;D.srefManualV='';D.srcEdit=false;D.srcPrev=null;
+  D.sourceRef=v;D.bitrixCloseProof=null;D.srefOther=true;D.srefManual=false;D.srefManualV='';D.srcEdit=false;D.srcPrev=null;
   /* если клиента уже выбрали руками — не перетираем его тем, что найдётся по чату */
   if(D.clientManual){save();render();}
   else draftResolve();
@@ -4044,6 +4046,7 @@ function draftSrcEdit(){
   const D=S.draft;
   /* запоминаем прежний источник: передумал менять — вернём одной кнопкой */
   D.srcPrev={source:D.source,sourceRef:D.sourceRef,srefOther:!!D.srefOther,
+    bitrixCloseProof:D.bitrixCloseProof||null,
     clientId:D.clientId,client:D.client,clientManual:!!D.clientManual,
     refId:D.refId,refKnown:!!D.refKnown,refSrc:D.refSrc,agents:(D.agents||[]).map(x=>Object.assign({},x))};
   D.srcEdit=true;save();render();
@@ -4052,6 +4055,7 @@ function draftSrcCancel(){
   const D=S.draft, p=D.srcPrev;
   if(!p){D.srcEdit=false;save();render();return;}
   Object.assign(D,{source:p.source,sourceRef:p.sourceRef,srefOther:p.srefOther,
+    bitrixCloseProof:p.bitrixCloseProof||null,
     clientId:p.clientId,client:p.client,clientManual:p.clientManual,
     refId:p.refId,refKnown:p.refKnown,refSrc:p.refSrc,agents:(p.agents||[]).map(x=>Object.assign({},x))});
   D.srcEdit=false;D.srcPrev=null;D.q='';D.srefManual=false;D.pickOther=false;
@@ -4298,7 +4302,7 @@ function draftRefSel(v){
 function draftSet(k,v,silent){
   if(k==='source'){
     const D=S.draft;
-    D.q='';D.sourceRef='';D.allChats=false;D.srcEdit=(v!=='none');D.searchCrm=false;
+    D.q='';D.sourceRef='';D.bitrixCloseProof=null;D.allChats=false;D.srcEdit=(v!=='none');D.searchCrm=false;
     /* клиента узнавали по прошлому чату — с новым каналом это знание недействительно.
        Выбранного руками не трогаем. */
     if(!D.clientManual){
@@ -4321,7 +4325,11 @@ function draftSet(k,v,silent){
     if(preview)preview.innerHTML=draftFreeholdPreview(S.draft);
   }
   /* чат выбран — сразу узнаём клиента и реферала: отдельного шага «Дальше» больше нет */
-  if(k==='sourceRef'&&v){S.draft.srcEdit=false;S.draft.srcPrev=null;S.draft.allChats=false;draftResolve();return;}
+  if(k==='sourceRef'&&v){
+    const chat=getChatObj(S.draft.source,v);
+    S.draft.bitrixCloseProof=S.draft.source==='bitrix'&&chat?chat.close_proof||null:null;
+    S.draft.srcEdit=false;S.draft.srcPrev=null;S.draft.allChats=false;draftResolve();return;
+  }
   save();if(!silent)render();
 }
 function draftFreeholdPreview(D){
@@ -4680,6 +4688,7 @@ function overview(d,st,mine,p,wh){
 
   ${(d.closed&&d.closeReason==='Успешно завершена'&&!d.manual)?crmGapsBlock(d,'Сделка закрыта, но в карточке CRM не хватает'):''}
   ${d.crmDealId?`<div class="alert a-ok" style="margin:0 0 14px"><div><b>В CRM: сделка #${d.crmDealId}</b> · внесена ${d.crmAt||''} — <a href="/crm?deal=${d.crmDealId}" target="_blank">открыть в CRM</a></div></div>`:''}
+  ${d.bitrixSync?`<div class="alert ${d.bitrixSync.status==='success'?'a-ok':'a-warn'}" style="margin:0 0 14px"><div><b>${d.bitrixSync.status==='success'?'Bitrix: сделка переведена в WON':'Bitrix не обновлён'}</b>${d.bitrixSync.status==='error'&&d.bitrixSync.error==='wrong_category'?' — сделка в другой воронке.':d.bitrixSync.status==='error'&&d.bitrixSync.error==='already_lost'?' — сделка уже закрыта как проигранная.':''}</div>${d.bitrixSync.status!=='success'&&canRole('manager')?`<button class="btn btn-outline btn-sm" onclick="crmRetryBitrix(${d.id})">Повторить</button>`:''}</div>`:''}
   <div class="card" style="margin-bottom:16px">
     <div class="sec pi">PAY-IN</div>
     <table class="tbl">
@@ -5346,8 +5355,23 @@ async function crmPushClose(id){
        (тот же j.warning, что при 409) — CRM (crm.html) его показывает, задачник
        раньше молчал. Цифру нужно перепроверить, поэтому тост держим дольше (QA FAIL №4). */
     toast('Сделка закрыта — Успешно завершена · CRM #'+cd.id);
+    if(j.bitrix_sync&&j.bitrix_sync.status==='error')toast('Bitrix не обновлён — повтор доступен в карточке сделки',6000);
     if(j.warning)toast(j.warning,6000);
   }catch(e){toast('CRM недоступна — закрытие не подтверждено');}
+  finally{standClosing=false;}
+}
+async function crmRetryBitrix(id){
+  if(standClosing)return;
+  standClosing=true;
+  try{
+    const r=await fetch('/api/stand/deals/'+id+'/bitrix-close-retry',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});
+    const j=await r.json();
+    if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
+    if(j.success)toast('Bitrix обновлён · WON');
+    else if(j.error==='wrong_category')toast('Bitrix не обновлён — сделка в другой воронке');
+    else if(j.error==='already_lost')toast('Bitrix не обновлён — сделка уже закрыта как проигранная');
+    else toast('Bitrix не обновлён — повторите попытку позже');
+  }catch(e){toast('Bitrix не обновлён — сервер недоступен, повторите попытку');}
   finally{standClosing=false;}
 }
 function crmGapsBlock(d,title){
@@ -5786,11 +5810,13 @@ function sberManual(id){
 }
 const esc = s => (s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 function chatList(src){return src==='tg'?TG_CHATS:(src==='wa'?WA_CHATS:(src==='bitrix'?BX_DEALS:[]));}
-function editSrcSet(id,v){editApply(id);const d=deal(id);d.source=v;d.sourceRef='';d.srefOther=false;save();render();}
+function editSrcSet(id,v){editApply(id);const d=deal(id);d.source=v;d.sourceRef='';d.bitrixCloseProof=null;d.srefOther=false;save();render();}
 function editRefSet(id,v){
   editApply(id);const d=deal(id);
-  if(v==='__other'){d.srefOther=true;d.sourceRef='';save();render();return;}
+  if(v==='__other'){d.srefOther=true;d.sourceRef='';d.bitrixCloseProof=null;save();render();return;}
   d.srefOther=false;d.sourceRef=v;
+  const selected=chatList(d.source).find(c=>c.key===v);
+  d.bitrixCloseProof=d.source==='bitrix'&&selected?selected.close_proof||null:null;
   /* Клиента, выбранного руками, чат не перебивает. Всё остальное пересобираем:
      сменили чат — сменился и человек, иначе в сделке останется чужое имя. */
   if(v&&!d.clientPinned){
