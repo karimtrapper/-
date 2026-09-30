@@ -19,6 +19,7 @@ COPY --from=builder /wa-bridge /app/wa-bridge
 
 # Скрипт синхронизации из основного репо
 COPY sync_channels_to_stand.py /app/sync_channels_to_stand.py
+COPY tg_qr_login.py /app/tg_qr_login.py
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
 # Persistent volume будет монтироваться в /data
