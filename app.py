@@ -6646,7 +6646,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 or before.get('walletId') != deal.get('walletId')
                 or before.get('payinCustom') != deal.get('payinCustom')
                 or _stand_payin_target(previous, before) != _stand_payin_target(new_state, deal)))
-            if changed_target and (before.get('step') != 's11' or before.get('docPack')
+            # Кошелёк прихода меняют только стоя на s11 и не сдвигая шаг в том же
+            # запросе: иначе одним PUT «s11→s23 + мультисиг→личный» выпадал фин дир (QA 30.09).
+            if changed_target and (before.get('step') != 's11' or deal.get('step') != 's11'
+                                   or before.get('docPack')
                                    or before.get('docVersion') or before.get('payinHashes')):
                 return 'Сеть и кошелёк прихода закреплены при подготовке договора'
             if changed_target and actor not in ('operator', 'admin'):
