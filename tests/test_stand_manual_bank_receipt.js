@@ -48,8 +48,22 @@ assert.match(card, /Ожидает сверки оператором/);
 assert.match(card, /Сверил фактическое зачисление/);
 assert.match(card, /не подтверждение Сбер API/);
 assert.match(html, /Другой счёт/);
+assert.match(html, /Корреспондентский счёт \(20 цифр\)/);
+assert.match(html, /БИК банка \(9 цифр\)/);
 assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
+assert.match(html, /d\.manualBankReceipt\?'':`<div class="sim"><div class="h">Вебхук банка · DEMO/);
 assert.match(html, /Вебхук банка · DEMO/);
+
+const fieldsStart = html.indexOf('function docFields(d){');
+const fieldsEnd = html.indexOf('/* ФИО по паспорту', fieldsStart);
+assert.ok(fieldsStart >= 0 && fieldsEnd > fieldsStart);
+const fieldCtx = vm.createContext({fake:()=>({}), approx:()=>({pay:10000,thb:1000}),
+  parsed:()=>'', isCrypto:()=>false, payinWallet:()=>null, prevPassport:()=>({}),
+  MF:{rubName:'MF Corp',inn:'9909726886',kpp:'770387001',bank:'Sber',acc:'4080',ks:'3010',bik:'0445'},
+  htmlText:String});
+vm.runInContext(html.slice(fieldsStart, fieldsEnd), fieldCtx);
+const customFields=vm.runInContext(`docFields({id:1,code:'X',rates:{client:10},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345',correspondent:'30101810000000000000',bik:'044525225'}})`,fieldCtx);
+assert.match(customFields.payTo,/Test Bank · р\/с 40702810900000012345 · к\/с 30101810000000000000 · БИК 044525225/);
 
 run('manualBankReceiptConfirm(77)');
 assert.match(calls.at(-1)[1], /Сначала сверьте/);

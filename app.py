@@ -7503,6 +7503,48 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if before and before.get('manualBankReceipt') != deal.get('manualBankReceipt'):
             return 'Заявка и подтверждение ручного прихода меняются только специальными действиями'
         receipt = (before or {}).get('manualBankReceipt') or {}
+        # Пока ручная запись ожидает сверки, у сделки не может появиться
+        # параллельный приход из пула или DEMO. После подтверждения допускаем
+        # только неизменную пару части и дохода, созданную ниже специальным route.
+        if before and receipt.get('status') in ('pending', 'confirmed'):
+            old_parts = before.get('payinParts') or []
+            new_parts = deal.get('payinParts') or []
+            if receipt.get('status') == 'pending' and new_parts != old_parts:
+                return 'Для ручного прихода нельзя добавлять другие части оплаты'
+            if receipt.get('status') == 'confirmed' and new_parts != old_parts:
+                return 'К подтверждённому ручному приходу нельзя добавлять другие части оплаты'
+            newly_attached = [i for i in (new_state.get('incomes') or [])
+                              if i.get('dealId') == deal.get('id')
+                              and str(i.get('id')) not in old_income_by_id]
+            if newly_attached:
+                return 'Для ручного прихода нельзя добавлять другие поступления'
+            if receipt.get('status') == 'pending' and (
+                    deal.get('incomeAmount') != before.get('incomeAmount')
+                    or any(i.get('dealId') == deal.get('id')
+                           for i in new_state.get('incomes') or [])):
+                return 'Ожидающий ручной приход нельзя смешивать с другими поступлениями'
+            if receipt.get('status') == 'confirmed':
+                allowed_ids = {str(p.get('incId')) for p in old_parts
+                               if p.get('manualReceiptId') == receipt.get('id')}
+                attached_ids = {str(i.get('id')) for i in new_state.get('incomes') or []
+                                if i.get('dealId') == deal.get('id')}
+                if attached_ids != allowed_ids:
+                    return 'К подтверждённому ручному приходу нельзя привязать другие поступления'
+        if before and before.get('rubReceivingAccount') != deal.get('rubReceivingAccount'):
+            if before.get('step') != 's11' or before.get('docPack') or before.get('docVersion'):
+                return 'Реквизиты для документов меняют до выпуска пакета на шаге s11'
+        raw_account = deal.get('rubReceivingAccount')
+        if raw_account is not None and (not isinstance(raw_account, dict)
+                or set(raw_account) - {'mode', 'bank', 'account', 'correspondent', 'bik'}
+                or raw_account.get('mode') not in ('sber', 'custom')):
+            return 'Некорректные реквизиты для документов'
+        account = raw_account or {}
+        if (account.get('mode') == 'custom' and deal.get('step') != 's11' and (
+                not str(account.get('bank') or '').strip()
+                or not re.fullmatch(r'\d{20}', str(account.get('account') or ''))
+                or not re.fullmatch(r'\d{20}', str(account.get('correspondent') or ''))
+                or not re.fullmatch(r'\d{9}', str(account.get('bik') or '')))):
+            return 'Перед выходом с s11 укажите банк, полный счёт, корреспондентский счёт и БИК'
         if receipt.get('status') in ('pending', 'confirmed'):
             old_expect, new_expect = before.get('expect') or {}, deal.get('expect') or {}
             if any(old_expect.get(key) != new_expect.get(key)
@@ -8725,11 +8767,11 @@ def _stand_manual_receipt_text(value, limit):
 
 @app.route('/api/stand/manual-bank-receipt', methods=['POST'])
 def stand_manual_bank_receipt():
-    """Manager records an unverified bank receipt; only operator can confirm it."""
+    """Manager or operator records a pending receipt; only operator confirms it."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     actor = current_role()
-    if actor not in ('manager', 'admin'):
+    if actor not in ('manager', 'operator', 'admin'):
         return jsonify({'success': False, 'error': 'forbidden'}), 403
     data = request.get_json(silent=True) or {}
     if type(data.get('version')) is not int:
@@ -8771,8 +8813,18 @@ def stand_manual_bank_receipt():
         if not deal or deal.get('step') != 's14' or deal.get('payType') == 'Крипта':
             return jsonify({'success': False, 'error': 'Сделка не ждёт RUB приход'}), 409
         expected = deal.get('expect') or {}
-        if (expected.get('acc') != 'custom' or expected.get('bank') != bank
-                or expected.get('account') != account):
+        receiving = deal.get('rubReceivingAccount') or {}
+        if not isinstance(receiving, dict):
+            return jsonify({'success': False, 'error': 'Некорректные реквизиты получателя'}), 409
+        if receiving.get('mode') == 'custom':
+            if (not re.fullmatch(r'\d{20}', str(receiving.get('correspondent') or ''))
+                    or not re.fullmatch(r'\d{9}', str(receiving.get('bik') or ''))):
+                return jsonify({'success': False, 'error': 'Для выбранных реквизитов нужны корреспондентский счёт и БИК'}), 409
+            expected_bank, expected_account = receiving.get('bank'), receiving.get('account')
+        else:
+            expected_bank, expected_account = expected.get('bank'), expected.get('account')
+        if ((expected.get('acc') != 'custom' and receiving.get('mode') != 'custom') or expected_bank != bank
+                or expected_account != account):
             return jsonify({'success': False, 'error': 'Ручной приход должен совпадать с выбранными реквизитами «Другой счёт»'}), 409
         if deal.get('manualBankReceipt') or deal.get('payinParts') or deal.get('incomeAmount'):
             return jsonify({'success': False, 'error': 'По сделке уже есть ручная заявка'}), 409
@@ -8783,6 +8835,8 @@ def stand_manual_bank_receipt():
         deal['manualBankReceipt'] = {
             'id': secrets.token_hex(12), 'status': 'pending', 'bank': bank,
             'account': account, 'actualAmount': float(actual), 'payer': payer,
+            'bankBik': receiving.get('bik') if receiving.get('mode') == 'custom' else None,
+            'correspondentAccount': receiving.get('correspondent') if receiving.get('mode') == 'custom' else None,
             'bankPurpose': bank_purpose,
             'statementDate': statement_date, 'statementRef': statement_ref,
             'documentsAcknowledged': docs_ack,
@@ -8792,13 +8846,24 @@ def stand_manual_bank_receipt():
             'requestedRole': actor, 'requestedAt': stamp}
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
             'role': actor, 'text': 'Ручной RUB приход записан на подтверждение оператору'})
+        event_id = f"stand:manual-bank-receipt:{deal_id}:{deal['manualBankReceipt']['id']}"
+        _stand_note(state, event_id, 'operator', deal,
+                    f"Нужна сверка ручного RUB прихода по сделке {deal.get('code') or deal_id}: {bank}, {actual:.2f} ₽")
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
         row.updated_at = datetime.utcnow()
         db.commit()
+        try:
+            delivered = _stand_deliver_notes() or []
+        except Exception:
+            app.logger.exception('manual bank receipt notification delivery failed')
+            delivered = []
+        notification_delivery = [item for item in delivered
+                                 if str(item.get('note_id')) == event_id]
         return jsonify({'success': True, 'version': row.version,
-                        'data': _stand_strip_files(state), 'receipt': deal['manualBankReceipt']})
+                        'data': _stand_strip_files(state), 'receipt': deal['manualBankReceipt'],
+                        'notification_delivery': notification_delivery})
     except Exception:
         db.rollback()
         app.logger.exception('stand manual bank receipt request failed')
@@ -8836,9 +8901,21 @@ def stand_manual_bank_receipt_confirm(deal_id):
         if not deal or deal.get('step') != 's14' or receipt.get('status') != 'pending':
             return jsonify({'success': False, 'error': 'pending_receipt_not_found'}), 409
         expected = deal.get('expect') or {}
-        if (expected.get('acc') != 'custom' or expected.get('bank') != receipt.get('bank')
-                or expected.get('account') != receipt.get('account')):
+        receiving = deal.get('rubReceivingAccount') or {}
+        if not isinstance(receiving, dict):
+            return jsonify({'success': False, 'error': 'Некорректные реквизиты получателя'}), 409
+        if receiving.get('mode') == 'custom' and (
+                receipt.get('bankBik') != receiving.get('bik')
+                or receipt.get('correspondentAccount') != receiving.get('correspondent')):
+            return jsonify({'success': False, 'error': 'Реквизиты банка изменились — сверка остановлена'}), 409
+        expected_bank = receiving.get('bank') if receiving.get('mode') == 'custom' else expected.get('bank')
+        expected_account = receiving.get('account') if receiving.get('mode') == 'custom' else expected.get('account')
+        if ((expected.get('acc') != 'custom' and receiving.get('mode') != 'custom') or expected_bank != receipt.get('bank')
+                or expected_account != receipt.get('account')):
             return jsonify({'success': False, 'error': 'Реквизиты ожидания изменились — сверка остановлена'}), 409
+        if deal.get('payinParts') or deal.get('incomeAmount') is not None or any(
+                i.get('dealId') == deal_id for i in state.get('incomes') or []):
+            return jsonify({'success': False, 'error': 'К сделке привязаны другие приходы; ручную сверку остановили'}), 409
         if not (receipt.get('bank') and receipt.get('account') and receipt.get('statementRef')
                 and receipt.get('bankPurpose')
                 and receipt.get('statementDate') and _stand_number(receipt.get('actualAmount')) > 0):
@@ -9175,6 +9252,31 @@ def stand_docs_issue():
         F = dict(deal.get('docFields') or {})
         F.update({k: v for k, v in (submitted or {}).items()
                   if v is None or (isinstance(v, (str, int, float)) and not isinstance(v, bool))})
+        # Если счёт был выбран структурно на s11, генератор всегда получает
+        # именно этот снимок, даже если браузер пришлёт подменённый payTo при
+        # повторном выпуске. Старые файлы при этом не переписываются.
+        rub_account = deal.get('rubReceivingAccount') or {}
+        if not isinstance(rub_account, dict) or set(rub_account) - {'mode', 'bank', 'account', 'correspondent', 'bik'}:
+            return jsonify({'success': False, 'error': 'invalid_receiving_account',
+                            'detail': 'Некорректные реквизиты получателя'}), 400
+        if rub_account and rub_account.get('mode') not in ('sber', 'custom'):
+            return jsonify({'success': False, 'error': 'invalid_receiving_account',
+                            'detail': 'Некорректный способ оплаты'}), 400
+        if rub_account:
+            if rub_account.get('mode') == 'custom':
+                if (not str(rub_account.get('bank') or '').strip()
+                        or not re.fullmatch(r'\d{20}', str(rub_account.get('account') or ''))
+                        or not re.fullmatch(r'\d{20}', str(rub_account.get('correspondent') or ''))
+                        or not re.fullmatch(r'\d{9}', str(rub_account.get('bik') or ''))):
+                    return jsonify({'success': False, 'error': 'incomplete_receiving_account',
+                                    'detail': 'Укажите банк, полный счёт, корреспондентский счёт и БИК'}), 400
+                F['payTo'] = (f"ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · {rub_account['bank'].strip()} · "
+                             f"р/с {rub_account['account']} · к/с {rub_account['correspondent']} · "
+                             f"БИК {rub_account['bik']}")
+            elif rub_account.get('mode') == 'sber':
+                F['payTo'] = ("ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · "
+                             "ПАО Сбербанк · р/с 40807810938720000286 · "
+                             "к/с 30101810400000000225 · БИК 044525225")
         # Новое/повторное приложение крипто-фрихолда выпускается только с
         # утверждённой двуязычной оговоркой; ранее выпущенные файлы не трогаем.
         if (deal.get('kind') == 'Фрихолд'

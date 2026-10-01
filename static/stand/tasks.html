@@ -1535,9 +1535,30 @@ async function payinWalletForget(id){
   }catch(e){toast('Сеть недоступна — попробуйте ещё раз');}
 }
 function payinS11Fields(d,fld){
-  if(!isCrypto(d))return fld('payTo','Куда платит клиент',{area:1});
+  if(!isCrypto(d)){
+    const a=d.rubReceivingAccount||{mode:'sber',bank:'',account:''};
+    return `<div class="fr"><div class="fg w2"><label class="fl">Куда клиент переводит рубли</label>
+      <select class="fc" onchange="rubReceivingAccountSave(${d.id},this.value)">
+        <option value="sber"${a.mode!=='custom'?' selected':''}>Сбер · реквизиты MF Corporation</option>
+        <option value="custom"${a.mode==='custom'?' selected':''}>Другой счёт</option></select>
+      ${a.mode==='custom'?`<input class="fc" id="rub_bank_${d.id}" placeholder="Банк получателя" value="${htmlText(a.bank||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_account_${d.id}" inputmode="numeric" placeholder="Полный номер банковского счёта" value="${htmlText(a.account||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_corr_${d.id}" inputmode="numeric" placeholder="Корреспондентский счёт (20 цифр)" value="${htmlText(a.correspondent||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_bik_${d.id}" inputmode="numeric" placeholder="БИК банка (9 цифр)" value="${htmlText(a.bik||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px">`:''}
+      <p class="fh">Эти данные попадут в документы клиента и станут ожидаемым счётом на s14. Проверьте банк и полный номер до выпуска.</p></div></div>
+      <div style="display:none">${fld('payTo','Куда платит клиент',{area:1})}</div>`;
+  }
   return `<div class="fr"><div class="fg w2"><label class="fl">Кошелёк, куда клиент платит USDT</label>
     ${payinWalletSelect(d,!!(d.incomeAmount||(d.payinHashes||[]).length))}</div></div>`;
+}
+function rubReceivingAccountSave(id,mode){
+  const d=deal(id); if(!d)return;
+  if(mode==='custom'){
+    const bank=(document.getElementById('rub_bank_'+id)?.value||d.rubReceivingAccount?.bank||'').trim();
+    const account=(document.getElementById('rub_account_'+id)?.value||d.rubReceivingAccount?.account||'').trim();
+    const correspondent=(document.getElementById('rub_corr_'+id)?.value||d.rubReceivingAccount?.correspondent||'').trim();
+    const bik=(document.getElementById('rub_bik_'+id)?.value||d.rubReceivingAccount?.bik||'').trim();
+    d.rubReceivingAccount={mode:'custom',bank,account,correspondent,bik};
+  }else d.rubReceivingAccount={mode:'sber'};
+  d.docFields=d.docFields||{}; d.docFields.payTo=docFields(d).payTo;
+  save(); render();
 }
 const ADDR_RE={'TRC-20':/^T[1-9A-HJ-NP-Za-km-z]{33}$/,'ERC-20':/^0x[0-9a-fA-F]{40}$/};
 function addrValid(a,net){const re=ADDR_RE[net||'TRC-20'];return !!re&&re.test(String(a||'').trim());}
@@ -3004,7 +3025,7 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&d.manualBankReceipt?.status==='pending')));}
+function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom')))));}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -3179,7 +3200,9 @@ function docFields(d){
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
       ? payToCrypto(payinWallet(d))
-      : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik,
+      : (d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'
+          ? MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+String(d.rubReceivingAccount.bank||'').trim()+' · р/с '+String(d.rubReceivingAccount.account||'').trim()+' · к/с '+String(d.rubReceivingAccount.correspondent||'').trim()+' · БИК '+String(d.rubReceivingAccount.bik||'').trim()
+          : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik),
     /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
        USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
     /* Назначение перевода клиента в Сбер пишет операционист в договоре — шаблон он правит,
@@ -3189,6 +3212,7 @@ function docFields(d){
     validTill:''
   };
   const out=Object.assign({},auto,saved);
+  if(!isCrypto(d)&&d.rubReceivingAccount)out.payTo=auto.payTo;
   // Поле показывает текст следующего выпуска; старые выпущенные файлы не меняются.
   if(cryptoFreehold)out.feeNote=cryptoFeeNote;
   if(isCrypto(d)){out.purpose='';out.payTo=payToCrypto(payinWallet(d));}
@@ -4678,7 +4702,8 @@ function viewDeal(d){
       const canDraft=managerSide&&d.reqTask!=='done';
       const own=(managerSide&&!confirmGate)?`<div class="card-title" style="margin:10px 0">Ваши задачи по этой сделке — можно заполнить заранее</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
-      const manualReceiptSide=S.role==='operator'&&d.manualBankReceipt?.status==='pending'?manualBankReceiptBlock(d):'';
+      const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&
+        (d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom'))?manualBankReceiptBlock(d):'';
       body=status+manualReceiptSide+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
@@ -6835,8 +6860,8 @@ function expectOf(d){
   const e=d.expect||{};
   return {
     amount:(e.amount!=null?e.amount:(ap.pay||'')),
-    acc:e.acc||'…0286 · Сбер',
-    bank:e.bank||'', account:e.account||'',
+    acc:e.acc||(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?'custom':'…0286 · Сбер'),
+    bank:(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?d.rubReceivingAccount.bank:(e.bank||'')), account:(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?d.rubReceivingAccount.account:(e.account||'')),
     tol:(e.tol!=null?e.tol:1000),
     purpose:(e.purpose!=null?e.purpose:(F.purpose||'')),
     purposeEdited:e.purpose!=null&&e.purpose!==(F.purpose||'')
@@ -7053,14 +7078,15 @@ function manualBankReceiptBlock(d){
   const r=d.manualBankReceipt, issued=!!(d.docPack||d.docVersion);
   if(r){
     return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">Ручной банковский приход <span class="sub2">${r.status==='confirmed'?'✅ Подтверждён оператором':'⏳ Ожидает сверки оператором'}</span></div>
-      <p class="fh">${sberText(r.bank)} · счёт ${sberText(r.account)} · ${money(r.actualAmount,'₽')} · плательщик ${sberText(r.payer)} · назначение: ${sberText(r.bankPurpose)} · выписка ${sberText(r.statementDate)} · ${sberText(r.statementRef)}</p>
+      <p class="fh">${sberText(r.bank)} · счёт ${sberText(r.account)}${r.correspondentAccount?' · к/с '+sberText(r.correspondentAccount):''}${r.bankBik?' · БИК '+sberText(r.bankBik):''} · ${money(r.actualAmount,'₽')} · плательщик ${sberText(r.payer)} · назначение: ${sberText(r.bankPurpose)} · выписка ${sberText(r.statementDate)} · ${sberText(r.statementRef)}</p>
       ${issued?`<p class="fh">Документы были выпущены с реквизитами: ${sberText(r.documentPayToAtRequest||'не сохранены')}. Менеджер отметил, что клиенту сообщены новые реквизиты/документы исправляются.</p>`:''}
       ${r.status==='pending'&&S.role==='operator'?`<label class="fh"><input type="checkbox" id="mbr_verify_${d.id}"> Сверил фактическое зачисление и счёт в банковской выписке</label><button class="btn btn-success btn-sm" style="margin-top:8px" onclick="manualBankReceiptConfirm(${d.id})">Подтвердить приход</button>`:''}
+      ${r.status==='confirmed'&&S.role==='manager'?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="payinDone(${d.id})">Продолжить сделку</button>`:''}
       ${r.status==='confirmed'?`<p class="fh" style="color:#047857">Подтвердил пользователь #${r.confirmedBy} · ${sberText(r.confirmedAt)}</p>`:''}
       <p class="fh">Отдельный ручной источник; это не подтверждение Сбер API и не запись зеркала Сбера.</p></div>`;
   }
-  if(S.role!=='manager'&&S.role!=='admin')return '';
-  return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">По реквизитам · вручную <span class="sub2">заявка менеджера → сверка оператором</span></div>
+  if(S.role!=='manager'&&S.role!=='operator'&&S.role!=='admin')return '';
+  return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">По реквизитам · вручную <span class="sub2">${S.role==='operator'?'оператор записывает и сверяет по выписке':'запись менеджера → сверка оператором'}</span></div>
     ${issued?`<div class="alert a-warn"><div>Выпущенные документы содержат: <b>${sberText(docFields(d).payTo||'—')}</b>. Сообщите клиенту новые данные или исправьте документы.</div></div>`:''}
     <p class="fh">Для ручной заявки выберите «Другой счёт» выше и заполните банк и полный номер там. Здесь будет записан именно этот получатель.</p>
     <div class="fr"><div class="fg"><label class="fl">Фактически зачислено, ₽</label><input class="fc num" id="mbr_amount_${d.id}" inputmode="decimal"></div>
@@ -7069,7 +7095,7 @@ function manualBankReceiptBlock(d){
       <div class="fg"><label class="fl">Дата зачисления</label><input class="fc" id="mbr_date_${d.id}" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
       <div class="fg"><label class="fl">Номер / ссылка строки выписки</label><input class="fc" id="mbr_ref_${d.id}"></div></div>
     ${issued?`<label class="fh"><input type="checkbox" id="mbr_docs_${d.id}"> Клиенту сообщил новые реквизиты или исправлю документы</label>`:''}
-    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="manualBankReceiptRequest(${d.id})">Передать оператору на сверку</button>
+    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="manualBankReceiptRequest(${d.id})">${S.role==='operator'?'Записать приход и сверить выписку':'Передать оператору на сверку'}</button>
     <p class="fh">Заявка неподтверждена и не даёт продолжить сделку до сверки с выпиской.</p></div>`;
 }
 async function manualBankReceiptRequest(id){
@@ -8038,9 +8064,9 @@ function stepCard(d){
         <input class="fc num" id="w_amt" value="${ex.amount}" onchange="expectSet(${d.id},'amount',this.value)">
         <p class="fh">можно поправить: клиент перевёл чуть больше или меньше</p></div>
       <div class="fg"><label class="fl">Счёт зачисления</label>
-        <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)">
+        <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''}>
           ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк'].map(a=>`<option value="${a}"${ex.acc===a?' selected':''}>${a}</option>`).join('')}<option value="custom"${ex.acc==='custom'?' selected':''}>Другой счёт</option></select>
-        ${ex.acc==='custom'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" style="margin-top:7px">`:''}</div>
+        ${ex.acc==='custom'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''} style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''} style="margin-top:7px">`:''}</div>
       <div class="fg"><label class="fl">Допуск, ₽</label>
         <input class="fc num" id="w_tol" value="${ex.tol}" onchange="expectSet(${d.id},'tol',this.value)">
         <p class="fh">в пределах допуска приход сойдётся сам</p></div>
@@ -8052,11 +8078,10 @@ function stepCard(d){
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
     ${manualBankReceiptBlock(d)}
-    <div class="sim"><div class="h">Вебхук банка · DEMO</div>
+    ${d.manualBankReceipt?'':`<div class="sim"><div class="h">Вебхук банка · DEMO</div>
       <p>Это только учебная симуляция: запись помечается DEMO и не подтверждает реальный приход.</p>
       <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Создать тестовый приход ${money(Number(ex.amount),'₽')}</button>
-      <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Создать тестовую недоплату</button></div>
-    ${payinPool(d)}`;})()}</div>`,
+      <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Создать тестовую недоплату</button></div>${payinPool(d)}`}`;})()}</div>`,
 
   s14m:()=>`<div class="card"><div class="card-title">Разобрать поступление</div>
     <div class="alert a-warn"><div>Ждали <b>${money(Number(expectOf(d).amount),ap.sign)}</b>, в выбранных приходах <b>${money(payinSum(d)||d.incomeAmount,ap.sign)}</b>.
@@ -8666,6 +8691,9 @@ async function act(id,step){
     if(!d.docParse)docParse(d.id,true);return;}
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
+    const rubAccount=d.rubReceivingAccount||{};
+    if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||String(rubAccount.account||'').replace(/\D/g,'').length<8||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
+      toast('Укажите банк, номер счёта, корреспондентский счёт (20 цифр) и БИК (9 цифр) до выпуска документов');render();return;}
     const miss=docReq(d).filter(k=>!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
       d.docMiss=miss;save();render();

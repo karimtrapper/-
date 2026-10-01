@@ -442,6 +442,23 @@ def test_zip_contains_current_pack_with_own_file(stand):
     assert any(n.startswith('MF_Agreement_leasehold') for n in names)
 
 
+def test_structured_custom_rub_account_is_used_in_documents_even_if_browser_payto_differs(stand):
+    account = {'mode': 'custom', 'bank': 'Synthetic Bank',
+               'account': '40702810900000012345',
+               'correspondent': '30101810000000000000', 'bik': '044525225'}
+    deal = _deal(948, rubReceivingAccount=account)
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={
+        'dealId': deal['id'], 'docFields': _fields(payTo='FORGED BANK · р/с 99999999999999999999')})
+    assert response.status_code == 200, response.json
+    texts = [_text(stand, entry['docId']) for entry in response.json['issued']]
+    invoice_text = texts[-1]
+    for requisite in ('Synthetic Bank', '40702810900000012345',
+                      '30101810000000000000', '044525225', '770387001'):
+        assert requisite in invoice_text
+    assert 'FORGED BANK' not in invoice_text
+
+
 def test_leasehold_without_invoice_number_names_the_field(stand):
     stand.put_board([_deal(10)])
     r = stand.post('/api/stand/docs/issue', json={'dealId': 10, 'docFields': _fields(invNo='')})
