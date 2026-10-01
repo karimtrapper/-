@@ -140,6 +140,20 @@ def preserve_server_fields(old_state, new_state):
                             if not (isinstance(i, dict) and i.get('source') == 'sber'
                                     and i.get('id') not in old_incomes)]
     old_deals = {d.get('id'): d for d in old_state.get('deals', [])}
+    received_deals = {d.get('id'): d for d in new_state.get('deals', [])
+                      if isinstance(d, dict)}
+    for deal_id, previous in old_deals.items():
+        incoming = received_deals.get(deal_id)
+        if incoming is None:
+            continue
+        if previous.get('issuedDocPayTo') is not None:
+            incoming['issuedDocPayTo'] = previous['issuedDocPayTo']
+        elif previous.get('docVersion'):
+            # Backfill legacy boards once: the only available record of the
+            # issued payment details is the docFields snapshot.
+            incoming['issuedDocPayTo'] = (previous.get('docFields') or {}).get('payTo')
+        else:
+            incoming.pop('issuedDocPayTo', None)
     old_convs = {c.get('id'): c for c in old_state.get('convs', [])}
     for conv in new_state.get('convs', []):
         previous = old_convs.get(conv.get('id')) or {}

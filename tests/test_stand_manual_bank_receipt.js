@@ -50,6 +50,8 @@ assert.match(card, /не подтверждение Сбер API/);
 assert.match(html, /Другой счёт/);
 assert.match(html, /Корреспондентский счёт \(20 цифр\)/);
 assert.match(html, /БИК банка \(9 цифр\)/);
+assert.match(html, /display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px/);
+assert.match(html, /display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1\.45/);
 assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
 assert.match(html, /d\.manualBankReceipt\?'':`<div class="sim"><div class="h">Вебхук банка · DEMO/);
 assert.match(html, /Вебхук банка · DEMO/);
@@ -64,6 +66,15 @@ const fieldCtx = vm.createContext({fake:()=>({}), approx:()=>({pay:10000,thb:100
 vm.runInContext(html.slice(fieldsStart, fieldsEnd), fieldCtx);
 const customFields=vm.runInContext(`docFields({id:1,code:'X',rates:{client:10},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345',correspondent:'30101810000000000000',bik:'044525225'}})`,fieldCtx);
 assert.match(customFields.payTo,/Test Bank · р\/с 40702810900000012345 · к\/с 30101810000000000000 · БИК 044525225/);
+
+const expectStart=html.indexOf('function expectOf(d){');
+const expectEnd=html.indexOf('function expectSet(',expectStart);
+const expectCtx=vm.createContext({approx:()=>({pay:10000}),docFields:()=>({purpose:'payment'})});
+vm.runInContext(html.slice(expectStart,expectEnd),expectCtx);
+const expected=vm.runInContext(`expectOf({expect:{acc:'…0286 · Сбер',bank:'Old Bank',account:'00000000000000000000'},rubReceivingAccount:{mode:'custom',bank:'Test Bank',account:'40702810900000012345'}})`,expectCtx);
+assert.equal(expected.acc,'custom');
+assert.equal(expected.bank,'Test Bank');
+assert.equal(expected.account,'40702810900000012345');
 
 run('manualBankReceiptConfirm(77)');
 assert.match(calls.at(-1)[1], /Сначала сверьте/);

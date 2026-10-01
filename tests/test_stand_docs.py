@@ -156,6 +156,7 @@ def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     saved = stand.get('/api/stand/state').json['data']['deals'][0]
     assert [e['kind'] for e in saved['docsIssued']] == ['dog', 'app', 'bill']
     assert saved['docVersion'] == 1 and saved['docPack']['agreementId'] == pack['agreementId']
+    assert saved['issuedDocPayTo'] == _fields()['payTo']
     assert 'Выпущен пакет документов' in saved['log'][-1]['text']
 
     by = {e['kind']: e['docId'] for e in saved['docsIssued']}
@@ -171,6 +172,8 @@ def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     assert again.status_code == 200, again.json
     assert again.json['pack']['agreementId'] == pack['agreementId']
     assert again.json['pack']['version'] == 2 and again.json['pack']['mode'] == 'agreement'
+    saved_again = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved_again['issuedDocPayTo'] == _fields(amountPay='914 795')['payTo']
     db = appmod.get_session()
     try:
         assert db.query(appmod.Agreement).count() == 1

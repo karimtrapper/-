@@ -16,7 +16,8 @@ def board():
             'rubReceivingAccount': {'mode': 'custom', 'bank': 'Test Bank',
                 'account': '40702810900000012345',
                 'correspondent': '30101810000000000000', 'bik': '044525225'},
-            'expect': {'acc': 'custom', 'bank': 'Test Bank', 'account': '40702810900000012345'},
+            # Старое значение счёта может сохраниться; structured account — актуальный источник.
+            'expect': {'acc': '…0286 · Сбер', 'bank': 'Сбер', 'account': '40807810938720000286'},
             'docVersion': 1, 'docFields': {'payTo': 'Старый банк · р/с 407028...'},
             'payinParts': [], 'log': [], 'closed': False}
     return {'deals': [deal], 'incomes': [], 'convs': [], 'wallets': [], 'notes': []}
@@ -93,6 +94,34 @@ def test_manager_request_is_pending_operator_only_and_documents_ack_required(mon
     put = client.put('/api/stand/state', json={'version': saved.json['version'], 'data': moved})
     assert put.status_code == 409
     assert snapshot(client)['data']['deals'][0]['step'] == 's14'
+
+
+def test_matching_issued_document_account_does_not_need_acknowledgment(monkeypatch):
+    state = board()
+    issued_payto = (
+        'ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · Test Bank · '
+        'р/с 40702810900000012345 · к/с 30101810000000000000 · БИК 044525225')
+    state['deals'][0]['docFields']['payTo'] = issued_payto
+    state['deals'][0]['issuedDocPayTo'] = issued_payto
+    client = seed(monkeypatch, state)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+
+    # The browser cannot rewrite either the issued snapshot or its editable
+    # source field through an ordinary board PUT after package issuance.
+    current = snapshot(client)
+    forged = copy.deepcopy(current['data'])
+    forged['deals'][0]['issuedDocPayTo'] = 'Test Bank · 40702810900000012345'
+    forged['deals'][0]['docFields']['payTo'] = 'Test Bank · 40702810900000012345'
+    rejected = client.put('/api/stand/state', json={'version': current['version'], 'data': forged})
+    assert rejected.status_code == 409
+    assert snapshot(client)['data']['deals'][0]['issuedDocPayTo'] == issued_payto
+
+    data = payload(); data['documentsAcknowledged'] = False
+    response = client.post('/api/stand/manual-bank-receipt', json=data)
+    assert response.status_code == 200, response.json
+    assert response.json['receipt']['documentMismatch'] is False
+    assert response.json['receipt']['documentsAcknowledged'] is False
+    assert response.json['data']['deals'][0]['manualBankReceipt']['documentPayToAtRequest'] == issued_payto
 
 
 def test_operator_confirmation_creates_immutable_manual_provenance(monkeypatch):

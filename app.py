@@ -7503,6 +7503,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if before and before.get('manualBankReceipt') != deal.get('manualBankReceipt'):
             return 'Заявка и подтверждение ручного прихода меняются только специальными действиями'
         receipt = (before or {}).get('manualBankReceipt') or {}
+        if before and before.get('docVersion') and before.get('docFields') != deal.get('docFields'):
+            return 'Поля выпущенных документов нельзя править через доску — используйте перевыпуск пакета'
         # Пока ручная запись ожидает сверки, у сделки не может появиться
         # параллельный приход из пула или DEMO. После подтверждения допускаем
         # только неизменную пару части и дохода, созданную ниже специальным route.
@@ -8829,7 +8831,19 @@ def stand_manual_bank_receipt():
         if deal.get('manualBankReceipt') or deal.get('payinParts') or deal.get('incomeAmount'):
             return jsonify({'success': False, 'error': 'По сделке уже есть ручная заявка'}), 409
         docs_issued = bool(deal.get('docPack') or deal.get('docVersion'))
-        if docs_issued and not docs_ack:
+        document_payto = _stand_manual_receipt_text(
+            deal.get('issuedDocPayTo') if deal.get('issuedDocPayTo') is not None
+            else (deal.get('docFields') or {}).get('payTo'), 300)
+        if receiving.get('mode') == 'custom':
+            doc_required = [receiving.get('bank'), receiving.get('account'),
+                            receiving.get('correspondent'), receiving.get('bik')]
+        else:
+            doc_required = [expected_bank, expected_account]
+        document_mismatch = bool(docs_issued) and (
+            not document_payto or any(not str(value or '').strip()
+                or str(value).strip().lower() not in document_payto.lower()
+                for value in doc_required))
+        if document_mismatch and not docs_ack:
             return jsonify({'success': False, 'error': 'Подтвердите, что клиенту сообщили новые реквизиты или документы будут исправлены'}), 409
         stamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
         deal['manualBankReceipt'] = {
@@ -8839,11 +8853,15 @@ def stand_manual_bank_receipt():
             'correspondentAccount': receiving.get('correspondent') if receiving.get('mode') == 'custom' else None,
             'bankPurpose': bank_purpose,
             'statementDate': statement_date, 'statementRef': statement_ref,
-            'documentsAcknowledged': docs_ack,
-            'documentPayToAtRequest': _stand_manual_receipt_text(
-                (deal.get('docFields') or {}).get('payTo'), 300),
+            'documentsAcknowledged': docs_ack if document_mismatch else False,
+            'documentMismatch': document_mismatch,
+            'documentPayToAtRequest': document_payto,
             'requestedBy': flask_session.get('user_id'),
             'requestedRole': actor, 'requestedAt': stamp}
+        # Legacy packages predate the explicit immutable snapshot. Capture the
+        # exact requisites used for this decision once, without rewriting them.
+        if docs_issued and deal.get('issuedDocPayTo') is None:
+            deal['issuedDocPayTo'] = document_payto
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
             'role': actor, 'text': 'Ручной RUB приход записан на подтверждение оператору'})
         event_id = f"stand:manual-bank-receipt:{deal_id}:{deal['manualBankReceipt']['id']}"
@@ -9386,6 +9404,7 @@ def stand_docs_issue():
             'note': note, 'at': at}
         deal['docVersion'] = version
         deal['docFields'] = F
+        deal['issuedDocPayTo'] = F.get('payTo')
         deal['docMiss'] = []
         # Договор выпущен — клиент теперь знакомый: следующая сделка пойдёт допником
         # и не будет заново просить паспорт (приёмка 25.09)
