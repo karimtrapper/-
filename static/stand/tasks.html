@@ -1003,6 +1003,10 @@ function payCur(d){return (d.payType==='Крипта'||d.curBase==='usdt')?'usdt
    — комментарий на каждом шаге: он честнее фиксирует, что клиент на самом деле просил. */
 function mainKey(o){return o.payType==='Крипта'?'usdt':(o.payType==='Наличные'?'cash':'rub');}
 function isCrypto(d){return payCur(d)==='usdt';}
+function rubReceivingBankLabel(d){
+  const a=d&&d.rubReceivingAccount;
+  return a&&a.mode==='custom'?(String(a.bank||'').trim()||'другой банк'):'Сбер';
+}
 /* Фрихолд без батов (спека 28.09-freehold-no-baht): инвойс застройщику X — в USD,
    тариф IPPS выбирает менеджер при заявке — банк 0,8% + 50$ (обычный FET-платёж) или
    софт-счёт 1,5% + 50$ (платёж от имени клиента, строка POBO в заявке — Land Department
@@ -3446,7 +3450,7 @@ function docSendBlock(d){
     dog:['Агентский договор','Клиент подписывает и присылает скан обратно — загрузить его можно на любом шаге, в блоке «Документы»'],
     app:[P.mode==='addendum'?'Допсоглашение к договору '+(P.agreementNumber||''):'Приложение 1 к договору',
          'Сумма и курс этого платежа: '+money(ap.pay,ap.sign)+' → '+money(ap.thb,ap.thbSign||'฿')+' по курсу '+(d.rates.client||'—')+' '+rateUnit(d)+'. Клиент сверяет и подписывает'],
-    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':' на счёт MF в Сбере')]};
+    bill:['Счёт на оплату','По нему клиент платит: '+money(ap.pay,ap.sign)+(isCrypto(d)?' на кошелёк USDT':` на счёт MF в ${rubReceivingBankLabel(d)}`)]};
   const rows=['dog','app','bill'].map(k=>[k,docFileOf(d,k)]).filter(x=>x[1]);
   const sent=d.docsSent;
   return `<div class="paybox" style="margin-bottom:16px">
@@ -7302,7 +7306,7 @@ function stepGoal(d){
             ['Получатель получит',money2(ap.thb,ap.thbSign||'฿')]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's14': return {t:'Дождаться денег от клиента и опознать их',
-      nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':'счёт Сбера'],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
+      nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':`счёт в ${htmlText(rubReceivingBankLabel(d))}`],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
     case 's15': {const pt=d.payTo||{};
       return {t:d.kind==='Фрихолд'?'Внести реквизиты для оплаты застройщику (IPPS SWIFT)':'Внести реквизиты для оплаты инвойса',
         nums:[['К оплате',money2(pt.amount||d.amountThb||ap.thb,ap.thbSign||'฿')],['Получатель',pt.dev||d.dev||'ещё не внесён'],
@@ -7920,7 +7924,7 @@ function stepCard(d){
         <div class="fg"><label class="fl">Наш доход, %</label><input class="fc" id="fh_doc_pct_${d.id}" readonly value="${d.amountUsdt>0?((d.amountUsdt/freeholdSend(d.invoiceUsd||0,ippsTariff(d))-1)*100).toFixed(4):'—'}"></div></div>
         <div id="fh_doc_loss_${d.id}">${d.amountUsdt>0&&d.amountUsdt<freeholdSend(d.invoiceUsd||0,ippsTariff(d))?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${d.amountUsdt>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
       <p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
-      ${isCrypto(d)?'':fld('purpose','Назначение платежа в Сбер — клиент впишет его в перевод',{req:1,area:1})}
+      ${isCrypto(d)?'':fld('purpose',d.rubReceivingAccount?.mode==='custom'?'Назначение перевода — клиент впишет его в платёжное поручение':'Назначение платежа в Сбер — клиент впишет его в перевод',{req:1,area:1})}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>
@@ -8033,7 +8037,7 @@ function stepCard(d){
       <button class="btn btn-secondary" onclick="rerate(${d.id},'курс поехал, пока клиент думал')">Запросить курсы заново</button>
     </div></div>`,
 
-  s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':'рубли на счёт Сбера'}</span></div>
+  s14:()=>`<div class="card"><div class="card-title">Ждём приход<span class="sub">${isCrypto(d)?'USDT на кошелёк':`рубли на счёт в ${htmlText(rubReceivingBankLabel(d))}`}</span></div>
     ${isCrypto(d)?(function(){
       const exp=ap.pay, got=payinGot(d), left=rnd2(exp-got), hs=d.payinHashes||[], w=payinWallet(d)||{}, pt=(d.docFields||{}).payTo;
       return `<div class="fr">
@@ -8175,7 +8179,7 @@ function stepCard(d){
     <div class="row mainrow">${!d._side
       ?`<button class="btn btn-primary" onclick="act(${d.id},'s15')">Передать операционисту на оплату</button>`
       :`<button class="btn btn-primary" onclick="reqSave(${d.id})">${reqOpen(d)?'Подтвердить и передать реквизиты':'Сохранить черновик'}</button>`}</div>
-    <div class="alert a-info" style="margin-top:14px"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не наше «Оплата по агентскому договору» для Сбера.</div></div></div>`;},
+    <div class="alert a-info" style="margin-top:14px"><div>Заполняет менеджер: операционист платит по этим реквизитам и не ищет их в переписке. Назначение здесь — то, что требует банк получателя, а не назначение входящего платежа клиента по договору.</div></div></div>`;},
 
   s18:()=>{
     const extra=pendingEx(d.id);

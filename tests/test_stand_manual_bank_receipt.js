@@ -76,6 +76,20 @@ assert.equal(expected.acc,'custom');
 assert.equal(expected.bank,'Test Bank');
 assert.equal(expected.account,'40702810900000012345');
 
+const labelStart=html.indexOf('function rubReceivingBankLabel(d){');
+const labelEnd=html.indexOf('\n}',labelStart)+2;
+assert.ok(labelStart>=0&&labelEnd>labelStart);
+const labelCtx=vm.createContext({});
+vm.runInContext(html.slice(labelStart,labelEnd),labelCtx);
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:'Test Bank'}})",labelCtx),'Test Bank');
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'custom',bank:''}})",labelCtx),'другой банк');
+assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'sber'}})",labelCtx),'Сбер');
+assert.match(html,/на счёт MF в \$\{rubReceivingBankLabel\(d\)\}/);
+assert.match(html,/рубли на счёт в \$\{htmlText\(rubReceivingBankLabel\(d\)\)\}/);
+assert.doesNotMatch(html,/счёт MF в Сбере/);
+assert.doesNotMatch(html,/рубли на счёт Сбера/);
+assert.match(html,/Назначение перевода — клиент впишет его в платёжное поручение/);
+
 run('manualBankReceiptConfirm(77)');
 assert.match(calls.at(-1)[1], /Сначала сверьте/);
 elements.mbr_verify_77.checked = true;
