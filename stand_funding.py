@@ -61,9 +61,16 @@ def check_batch(state, conv, *, dispatch=False):
             income = incomes.get(key)
             part_rub = money(part.get('amountRub'), positive=True)
             income_rub = money((income or {}).get('grossRub') or (income or {}).get('rub'), positive=True)
+            manual_receipt = deal.get('manualBankReceipt') or {}
+            manual_ok = (income is not None and income.get('source') == 'manual_confirmed'
+                         and manual_receipt.get('status') == 'confirmed'
+                         and manual_receipt.get('confirmedAt')
+                         and manual_receipt.get('confirmedBy')
+                         and income.get('manualReceiptId') == manual_receipt.get('id')
+                         and part_rub == money(manual_receipt.get('actualAmount'), positive=True))
             if (key in used_income or not income or income.get('dealId') != deal['id']
                     or income.get('excluded') or part_rub is None or part_rub != income_rub
-                    or not (income.get('source') == 'sber' or income.get('demo') is True)):
+                    or not (income.get('source') == 'sber' or income.get('demo') is True or manual_ok)):
                 return 'Приход RUB не подтверждён, повторно использован или не принадлежит сделке'
             used_income.add(key)
             total += part_rub

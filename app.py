@@ -5896,6 +5896,7 @@ def _stand_close_fingerprint(deal, kind):
         'payin': {'type': deal.get('type'), 'kind': deal.get('kind'),
                   'payType': deal.get('payType'), 'incomeAmount': deal.get('incomeAmount'),
                   'amountRub': deal.get('amountRub'), 'amountUsdt': deal.get('amountUsdt'),
+                  'manualBankReceipt': deal.get('manualBankReceipt'),
                   'brokerRate': (deal.get('rates') or {}).get('broker'),
                   'payinParts': deal.get('payinParts'), 'payinExtra': deal.get('payinExtra'),
                   'payinHashes': payin_hashes, 'cnvId': deal.get('cnvId'),
@@ -5971,6 +5972,21 @@ def _stand_close_fact_source(state, deal, kind):
             return None, 'verified_payin_missing'
         parts = deal.get('payinParts') or []
         incomes = {i.get('id'): i for i in state.get('incomes') or []}
+        manual_receipt = deal.get('manualBankReceipt') or {}
+        if (manual_receipt.get('status') == 'confirmed'
+                and manual_receipt.get('confirmedAt')
+                and manual_receipt.get('confirmedBy')
+                and parts and all(
+                    (income := incomes.get(p.get('incId'))) is not None
+                    and income.get('source') == 'manual_confirmed'
+                    and income.get('manualReceiptId') == manual_receipt.get('id')
+                    and _stand_number(p.get('amountRub')) > 0
+                    and abs(_stand_number(p.get('amountRub')) -
+                            _stand_number(income.get('rub'))) < .01
+                    for p in parts)
+                and abs(sum(_stand_number(p.get('amountRub')) for p in parts) -
+                        _stand_number(manual_receipt.get('actualAmount'))) < .01):
+            return 'manual_bank_confirmed', None
         if (parts and all((incomes.get(p.get('incId')) or {}).get('source') == 'sber'
                           and _stand_number(p.get('amountRub')) > 0
                           and abs(_stand_number(p.get('amountRub')) -
@@ -7465,6 +7481,51 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                          and d.get('step') in committed_steps}
     if len(new_deals) != len(new_state.get('deals', [])):
         return 'Нельзя дублировать сделку на доске'
+    old_income_by_id = {str(i.get('id')): i for i in previous.get('incomes') or []}
+    new_income_by_id = {str(i.get('id')): i for i in new_state.get('incomes') or []}
+    if any(income.get('source') == 'manual_confirmed'
+           and (old_income_by_id.get(str(income.get('id'))) is None
+                or old_income_by_id[str(income.get('id'))].get('source') != 'manual_confirmed')
+           for income in new_state.get('incomes') or []):
+        return 'Ручной приход подтверждается только оператором'
+    if any(income.get('source') == 'manual_confirmed'
+           and new_income_by_id.get(key) != income
+           for key, income in old_income_by_id.items()):
+        return 'Подтверждённый ручной приход нельзя удалить или менять'
+    for income in new_state.get('incomes') or []:
+        old_income = old_income_by_id.get(str(income.get('id')))
+        if old_income and old_income.get('source') == 'manual_confirmed' and income != old_income:
+            return 'Подтверждённый ручной приход нельзя менять'
+    for deal in new_state.get('deals') or []:
+        before = old.get(deal.get('id'))
+        if before is None and deal.get('manualBankReceipt'):
+            return 'Заявку на ручной приход создаёт менеджер специальным действием'
+        if before and before.get('manualBankReceipt') != deal.get('manualBankReceipt'):
+            return 'Заявка и подтверждение ручного прихода меняются только специальными действиями'
+        receipt = (before or {}).get('manualBankReceipt') or {}
+        if receipt.get('status') in ('pending', 'confirmed'):
+            old_expect, new_expect = before.get('expect') or {}, deal.get('expect') or {}
+            if any(old_expect.get(key) != new_expect.get(key)
+                   for key in ('acc', 'bank', 'account', 'amount')):
+                return 'Счёт и ожидаемую сумму ручного прихода нельзя менять после заявки'
+        if receipt.get('status') == 'confirmed':
+            receipt_parts = [p for p in deal.get('payinParts') or []
+                             if p.get('manualReceiptId') == receipt.get('id')]
+            previous_receipt_parts = [p for p in before.get('payinParts') or []
+                                      if p.get('manualReceiptId') == receipt.get('id')]
+            expected = _stand_number(receipt.get('actualAmount'))
+            if (len(receipt_parts) != 1
+                    or receipt_parts != previous_receipt_parts
+                    or abs(_stand_number(receipt_parts[0].get('amountRub')) - expected) >= .01
+                    or abs(_stand_number(deal.get('incomeAmount')) - expected) >= .01):
+                return 'Подтверждённую сумму и привязку ручного прихода нельзя менять'
+        if before and before.get('step') in ('s14', 's14m') and deal.get('step') != before.get('step'):
+            receipt = before.get('manualBankReceipt') or {}
+            if receipt.get('status') == 'pending':
+                return 'Ждём подтверждения ручного прихода оператором'
+            if receipt.get('status') == 'confirmed' and not _stand_close_fact_source(
+                    previous, before, 'payin')[0]:
+                return 'Нет подтверждённого ручного прихода'
     for old_conv in previous.get('convs', []):
         new_conv = new_convs.get(old_conv.get('id'))
         # Кошелёк пачки (куда брокер пришлёт USDT / с какого отправляем) решает, будет
@@ -8597,12 +8658,15 @@ def stand_payin_check():
             return jsonify({'success': False, 'error': 'У кошелька прихода нет корректной сети и адреса'}), 409
     finally:
         db.close()
+
+
     tx_hash = normalize_ref(data.get('hash'), network)
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
     checked = verify_transfer(tx_hash, network, None, receiver, None)
     # Роль берём до сессии записи: current_role() закрывает общую scoped-сессию,
     # и изменения, сделанные до её вызова, молча теряются (приёмка 25.09)
+
     role = current_role() or 'система'
     if checked['status'] != 'confirmed':
         return jsonify({'success': False, 'status': checked['status'],
@@ -8650,6 +8714,168 @@ def stand_payin_check():
         row.updated_at = datetime.utcnow()
         db.commit()
         return jsonify({'success': True, 'tx': tx, 'version': row.version, 'data': state})
+    finally:
+        db.close()
+
+def _stand_manual_receipt_text(value, limit):
+    if not isinstance(value, str):
+        return ''
+    return re.sub(r'\s+', ' ', value).strip()[:limit]
+
+
+@app.route('/api/stand/manual-bank-receipt', methods=['POST'])
+def stand_manual_bank_receipt():
+    """Manager records an unverified bank receipt; only operator can confirm it."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    actor = current_role()
+    if actor not in ('manager', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    if type(data.get('version')) is not int:
+        return jsonify({'success': False, 'error': 'version_required'}), 400
+    try:
+        deal_id = int(data.get('dealId'))
+        actual = _amount(data.get('actualAmount'))
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'invalid_payload'}), 400
+    bank = _stand_manual_receipt_text(data.get('bank'), 100)
+    account = _stand_manual_receipt_text(data.get('account'), 100)
+    payer = _stand_manual_receipt_text(data.get('payer'), 120)
+    bank_purpose = _stand_manual_receipt_text(data.get('bankPurpose'), 250)
+    statement_ref = _stand_manual_receipt_text(data.get('statementRef'), 120)
+    statement_date = _stand_manual_receipt_text(data.get('statementDate'), 20)
+    docs_ack = data.get('documentsAcknowledged') is True
+    from decimal import Decimal
+    try:
+        valid_date = datetime.strptime(statement_date, '%Y-%m-%d').date().isoformat() == statement_date
+    except ValueError:
+        valid_date = False
+    if (actual is None or actual <= 0 or actual > 10**12 or not bank or
+            actual != actual.quantize(Decimal('0.01')) or
+            not re.search(r'\d{8,}', account) or not payer or not bank_purpose or not statement_ref or
+            not valid_date):
+        return jsonify({'success': False, 'error': 'Заполните банк, полный счёт, сумму, плательщика, дату и ссылку/номер выписки'}), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if data['version'] != (row.version or 0):
+            state = json.loads(row.data or '{}')
+            return jsonify({'success': False, 'error': 'conflict', 'version': row.version or 0,
+                            'data': _stand_strip_files(state)}), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        if not deal or deal.get('step') != 's14' or deal.get('payType') == 'Крипта':
+            return jsonify({'success': False, 'error': 'Сделка не ждёт RUB приход'}), 409
+        expected = deal.get('expect') or {}
+        if (expected.get('acc') != 'custom' or expected.get('bank') != bank
+                or expected.get('account') != account):
+            return jsonify({'success': False, 'error': 'Ручной приход должен совпадать с выбранными реквизитами «Другой счёт»'}), 409
+        if deal.get('manualBankReceipt') or deal.get('payinParts') or deal.get('incomeAmount'):
+            return jsonify({'success': False, 'error': 'По сделке уже есть ручная заявка'}), 409
+        docs_issued = bool(deal.get('docPack') or deal.get('docVersion'))
+        if docs_issued and not docs_ack:
+            return jsonify({'success': False, 'error': 'Подтвердите, что клиенту сообщили новые реквизиты или документы будут исправлены'}), 409
+        stamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
+        deal['manualBankReceipt'] = {
+            'id': secrets.token_hex(12), 'status': 'pending', 'bank': bank,
+            'account': account, 'actualAmount': float(actual), 'payer': payer,
+            'bankPurpose': bank_purpose,
+            'statementDate': statement_date, 'statementRef': statement_ref,
+            'documentsAcknowledged': docs_ack,
+            'documentPayToAtRequest': _stand_manual_receipt_text(
+                (deal.get('docFields') or {}).get('payTo'), 300),
+            'requestedBy': flask_session.get('user_id'),
+            'requestedRole': actor, 'requestedAt': stamp}
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
+            'role': actor, 'text': 'Ручной RUB приход записан на подтверждение оператору'})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version,
+                        'data': _stand_strip_files(state), 'receipt': deal['manualBankReceipt']})
+    except Exception:
+        db.rollback()
+        app.logger.exception('stand manual bank receipt request failed')
+        return jsonify({'success': False, 'error': 'manual_receipt_failed'}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/manual-bank-receipt/<int:deal_id>/confirm', methods=['POST'])
+def stand_manual_bank_receipt_confirm(deal_id):
+    """Operator confirms the manager's pending entry against the bank statement."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    actor = current_role()
+    if actor not in ('operator', 'admin'):
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    data = request.get_json(silent=True) or {}
+    if type(data.get('version')) is not int:
+        return jsonify({'success': False, 'error': 'version_required'}), 400
+    if data.get('statementVerified') is not True:
+        return jsonify({'success': False, 'error': 'Оператор должен подтвердить сверку с выпиской'}), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if data['version'] != (row.version or 0):
+            state = json.loads(row.data or '{}')
+            return jsonify({'success': False, 'error': 'conflict', 'version': row.version or 0,
+                            'data': _stand_strip_files(state)}), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
+        receipt = (deal or {}).get('manualBankReceipt') or {}
+        if not deal or deal.get('step') != 's14' or receipt.get('status') != 'pending':
+            return jsonify({'success': False, 'error': 'pending_receipt_not_found'}), 409
+        expected = deal.get('expect') or {}
+        if (expected.get('acc') != 'custom' or expected.get('bank') != receipt.get('bank')
+                or expected.get('account') != receipt.get('account')):
+            return jsonify({'success': False, 'error': 'Реквизиты ожидания изменились — сверка остановлена'}), 409
+        if not (receipt.get('bank') and receipt.get('account') and receipt.get('statementRef')
+                and receipt.get('bankPurpose')
+                and receipt.get('statementDate') and _stand_number(receipt.get('actualAmount')) > 0):
+            return jsonify({'success': False, 'error': 'pending_receipt_incomplete'}), 409
+        income_id = max([int(i.get('id')) for i in state.get('incomes') or []
+                         if str(i.get('id', '')).isdigit()] + [0]) + 1
+        stamp = datetime.utcnow().isoformat(timespec='seconds') + 'Z'
+        receipt.update({'status': 'confirmed', 'confirmedBy': flask_session.get('user_id'),
+                        'confirmedRole': actor, 'confirmedAt': stamp})
+        display_date = datetime.strptime(receipt['statementDate'], '%Y-%m-%d').strftime('%d.%m')
+        income = {'id': income_id, 'date': display_date,
+            'payer': receipt['payer'], 'rub': receipt['actualAmount'], 'grossRub': receipt['actualAmount'],
+            'kind': 'банк', 'acc': f"{receipt['bank']} · {receipt['account']}",
+            'purpose': receipt['bankPurpose'], 'dealId': deal_id, 'cnvId': None,
+            'excluded': False, 'demo': False, 'source': 'manual_confirmed',
+            'manualReceiptId': receipt['id'], 'confirmedBy': receipt['confirmedBy'],
+            'confirmedRole': actor, 'confirmedAt': stamp,
+            'statementDate': receipt['statementDate'], 'statementRef': receipt['statementRef']}
+        state.setdefault('incomes', []).append(income)
+        deal.setdefault('payinParts', []).append({'amountRub': receipt['actualAmount'],
+            'payer': receipt['payer'], 'date': display_date, 'kind': 'bank',
+            'net': None, 'fee': None, 'incId': income_id, 'acc': income['acc'],
+            'purpose': receipt['bankPurpose'], 'demo': False, 'manualReceiptId': receipt['id']})
+        deal['incomeAmount'] = receipt['actualAmount']
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
+            'role': actor, 'text': 'Оператор сверил ручной RUB приход по банковской выписке'})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        return jsonify({'success': True, 'version': row.version,
+                        'data': _stand_strip_files(state), 'incomeId': income_id})
+    except Exception:
+        db.rollback()
+        app.logger.exception('stand manual bank receipt confirmation failed')
+        return jsonify({'success': False, 'error': 'manual_receipt_confirmation_failed'}), 500
     finally:
         db.close()
 

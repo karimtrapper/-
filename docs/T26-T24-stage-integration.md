@@ -37,6 +37,24 @@ EPERM denials: foreign loopback, external address and a native child. The
 Python ledger cannot count those native denied attempts; they are reported
 separately.
 
+## Manual RUB bank receipt interim route (2026-10-01)
+
+For a client paying by bank details outside the Sber API, the manager can record
+the receiving bank, full account number, actual RUB amount, payer, statement
+date and operation reference at s14. This creates only a pending request. The
+manager cannot write `source=sber`, confirm the receipt, or advance while it is
+pending. An operator attests to matching it with the bank statement; the server
+then writes a distinct `manual_confirmed` income plus immutable actor, time and
+statement fields. RUB batch admission and close evidence recognize this
+provenance separately from Sber mirror and DEMO.
+
+If documents were already issued, the manager sees the account details recorded
+in the document and acknowledges that the client receives corrected details or
+a corrected document before submitting. The manual receipt UI is separate from
+the explicitly DEMO payment buttons. No bank API, external statement fetch,
+live payment, or deployment is part of this route. Offline regressions are in
+`tests/test_stand_manual_bank_receipt.py` and `.js`.
+
 ## Remaining functional limit
 
 Standalone Coins/client workflow without an authoritative persisted recipient

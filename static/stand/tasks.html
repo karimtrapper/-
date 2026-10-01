@@ -3004,7 +3004,7 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))));}
+function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&d.manualBankReceipt?.status==='pending')));}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -3495,8 +3495,10 @@ function rubBatchReady(x){
   const ids=new Set();let total=0;
   for(const p of parts){
     const i=incomes().find(v=>String(v.id)===String(p.incId));
+    const manual=x.manualBankReceipt;
+    const manualOk=i&&i.source==='manual_confirmed'&&manual?.status==='confirmed'&&manual.confirmedAt&&manual.confirmedBy&&i.manualReceiptId===manual.id&&Number(p.amountRub)===Number(manual.actualAmount);
     if(!i||ids.has(String(p.incId))||i.dealId!==x.id||i.excluded||
-      !(i.source==='sber'||i.demo===true)||Number(p.amountRub)!==Number(i.grossRub||i.rub))return false;
+      !(i.source==='sber'||i.demo===true||manualOk)||Number(p.amountRub)!==Number(i.grossRub||i.rub))return false;
     ids.add(String(p.incId));total+=Number(p.amountRub);
   }
   return Math.round(total*100)===Math.round(rub*100);
@@ -4676,7 +4678,8 @@ function viewDeal(d){
       const canDraft=managerSide&&d.reqTask!=='done';
       const own=(managerSide&&!confirmGate)?`<div class="card-title" style="margin:10px 0">Ваши задачи по этой сделке — можно заполнить заранее</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
-      body=status+(confirmGate?payToConfirmBlock(d):'')+
+      const manualReceiptSide=S.role==='operator'&&d.manualBankReceipt?.status==='pending'?manualBankReceiptBlock(d):'';
+      body=status+manualReceiptSide+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
         (managerSide&&!confirmGate&&d.reqTask==='done'&&d.payTo&&d.payTo.acc
@@ -4805,7 +4808,7 @@ function overview(d,st,mine,p,wh){
       <div style="margin-top:7px">Итого пришло: <b>${usd(E.payin)}</b>${E.byFact?' — по хэшам, это факт':''} · курсы у каналов разные, поэтому считаем по частям, а не по среднему${(E.payinDiff!=null&&Math.abs(E.payinDiff)>=0.01)?`<br><span style="color:var(--text-muted);font-size:12px">Расчёт по курсам давал ${usd(E.payinCalc)} — разница ${E.payinDiff>0?'+':'−'}${usd(Math.abs(E.payinDiff)).replace('$','')} $</span>`:''}</div></div>`:''}
     ${(d.payinParts&&d.payinParts.length)?`<div class="box box-blue">
       <b>Приход частями (${d.payinParts.length}):</b>
-      ${d.payinParts.map(p=>`<div style="margin-top:3px">${p.kind==='acquiring'?'📲':'🏦'} ${money(p.amountRub,'₽')}${p.kind==='acquiring'?` <span style="color:var(--text-muted)">(эквайринг: на счёт ${money(p.net,'₽')} + комиссия ${money(p.fee,'₽')})</span>`:(p.payer?' · '+p.payer:'')}${p.date?' · '+p.date:''}</div>`).join('')}</div>`:''}
+      ${d.payinParts.map(p=>`<div style="margin-top:3px">${p.kind==='acquiring'?'📲':'🏦'} ${money(p.amountRub,'₽')}${p.kind==='acquiring'?` <span style="color:var(--text-muted)">(эквайринг: на счёт ${money(p.net,'₽')} + комиссия ${money(p.fee,'₽')})</span>`:(p.payer?' · '+htmlText(p.payer):'')}${p.date?' · '+htmlText(p.date):''}</div>`).join('')}</div>`:''}
     ${(!E.multi&&d.payinHashes&&d.payinHashes.length)?`<p style="margin-top:10px"><b>Хэши Pay-In (${d.payinHashes.length}):</b><br>
       ${d.payinHashes.map(h=>`<span style="display:inline-block;margin:3px 0">${hashLink(h.hash,h.network,h.amount)}</span><br>`).join('')}</p>`:''}
     ${(!E.multi&&!(d.payinHashes||[]).length&&d.pay.hash)?`<p style="margin-top:10px"><b>Хэш Pay-In:</b> ${hashLink(d.pay.hash,'TRC20')} ${d.closed?'✅':'⏳'}</p>`:''}
@@ -5828,8 +5831,9 @@ function payinIssues(d){
     if(!x||x.dealId!==d.id||x.excluded) issues.push('Часть прихода не связана с доступной записью');
     if(x&&Number(x.grossRub||x.rub)!==Number(p.amountRub)) issues.push('Сумма части отличается от записи прихода');
     const acc=x&&x.acc, purpose=x&&x.purpose;
+    const manual=d.manualBankReceipt, manualAccount=manual&&x&&x.source==='manual_confirmed'&&x.manualReceiptId===manual.id&&manual.status==='confirmed'&&manual.confirmedAt&&manual.confirmedBy&&Number(p.amountRub)===Number(manual.actualAmount)&&acc===manual.bank+' · '+manual.account;
     if(!acc) issues.push('Счёт прихода не указан');
-    else if(acc!==ex.acc) issues.push('Счёт прихода '+acc+' вместо '+ex.acc);
+    else if(!manualAccount&&acc!==ex.acc) issues.push('Счёт прихода '+acc+' вместо '+ex.acc);
     if(!purpose) issues.push('Назначение платежа не указано');
     else if(String(purpose).trim().toLowerCase()!==String(ex.purpose).trim().toLowerCase())
       issues.push('Назначение отличается от ожидаемого');
@@ -5846,8 +5850,8 @@ function payinPool(d){
     ${(d.payinParts||[]).length?(d.payinParts||[]).map((x,i)=>`<div class="sbrow taken">
       <span>${x.kind==='acquiring'?'📲':'🏦'} <b>${money(x.amountRub,'₽')}</b>
         ${x.kind==='acquiring'?`<span class="sub2">(зачислено ${money(x.net,'₽')} + комиссия ${money(x.fee,'₽')})</span>`:''}
-        <span class="sub2">· ${x.payer||''} · ${x.date||''} · ${x.acc||'счёт неизвестен'} · ${x.purpose||'назначение неизвестно'}</span></span>
-      <button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button></div>`).join(''):''}
+        <span class="sub2">· ${sberText(x.payer||'')} · ${sberText(x.date||'')} · ${sberText(x.acc||'счёт неизвестен')} · ${sberText(x.purpose||'назначение неизвестно')}</span>${x.manualReceiptId?'<span class="net"> · подтверждено оператором</span>':''}</span>
+      ${x.manualReceiptId?'':`<button class="btn btn-outline btn-sm" onclick="sberDrop(${d.id},${i})">Убрать</button>`}</div>`).join(''):''}
     ${sberFree().length?sberFree().slice(0,6).map(x=>`<div class="sbrow">
       <span><span class="net">${sberText(x.kind)}${x.demo?' · тест':x.source==='sber'?' · Сбер':''}</span> <b>${money(x.rub,'₽')}</b>
         <span class="sub2">· ${sberText(x.payer)} · ${sberText(x.date)} · ${sberText(x.acc||'счёт неизвестен')} · ${sberText(x.purpose||'назначение неизвестно')}</span></span>
@@ -6832,6 +6836,7 @@ function expectOf(d){
   return {
     amount:(e.amount!=null?e.amount:(ap.pay||'')),
     acc:e.acc||'…0286 · Сбер',
+    bank:e.bank||'', account:e.account||'',
     tol:(e.tol!=null?e.tol:1000),
     purpose:(e.purpose!=null?e.purpose:(F.purpose||'')),
     purposeEdited:e.purpose!=null&&e.purpose!==(F.purpose||'')
@@ -6839,7 +6844,7 @@ function expectOf(d){
 }
 function expectSet(id,k,v){
   const d=deal(id), was=expectOf(d);
-  if(!['amount','tol','acc','purpose'].includes(k))return;
+  if(!['amount','tol','acc','bank','account','purpose'].includes(k))return;
   const nv=(k==='amount'||k==='tol')?Number(String(v).replace(/\s/g,'').replace(',','.')):String(v).trim();
   if((k==='amount'||k==='tol')&&(!Number.isFinite(nv)||(k==='amount'?nv<=0:nv<0))){
     toast(k==='amount'?'Ожидаемая сумма должна быть больше нуля':'Допуск не может быть отрицательным');render();return;}
@@ -7043,6 +7048,41 @@ function incomeOff(id){
   log(d,'Симуляция: создан тестовый приход #'+incId+' на '+money(actual,'₽'));
   sberTake(id,incId);
   payinDone(id);}
+
+function manualBankReceiptBlock(d){
+  const r=d.manualBankReceipt, issued=!!(d.docPack||d.docVersion);
+  if(r){
+    return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">Ручной банковский приход <span class="sub2">${r.status==='confirmed'?'✅ Подтверждён оператором':'⏳ Ожидает сверки оператором'}</span></div>
+      <p class="fh">${sberText(r.bank)} · счёт ${sberText(r.account)} · ${money(r.actualAmount,'₽')} · плательщик ${sberText(r.payer)} · назначение: ${sberText(r.bankPurpose)} · выписка ${sberText(r.statementDate)} · ${sberText(r.statementRef)}</p>
+      ${issued?`<p class="fh">Документы были выпущены с реквизитами: ${sberText(r.documentPayToAtRequest||'не сохранены')}. Менеджер отметил, что клиенту сообщены новые реквизиты/документы исправляются.</p>`:''}
+      ${r.status==='pending'&&S.role==='operator'?`<label class="fh"><input type="checkbox" id="mbr_verify_${d.id}"> Сверил фактическое зачисление и счёт в банковской выписке</label><button class="btn btn-success btn-sm" style="margin-top:8px" onclick="manualBankReceiptConfirm(${d.id})">Подтвердить приход</button>`:''}
+      ${r.status==='confirmed'?`<p class="fh" style="color:#047857">Подтвердил пользователь #${r.confirmedBy} · ${sberText(r.confirmedAt)}</p>`:''}
+      <p class="fh">Отдельный ручной источник; это не подтверждение Сбер API и не запись зеркала Сбера.</p></div>`;
+  }
+  if(S.role!=='manager'&&S.role!=='admin')return '';
+  return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">По реквизитам · вручную <span class="sub2">заявка менеджера → сверка оператором</span></div>
+    ${issued?`<div class="alert a-warn"><div>Выпущенные документы содержат: <b>${sberText(docFields(d).payTo||'—')}</b>. Сообщите клиенту новые данные или исправьте документы.</div></div>`:''}
+    <p class="fh">Для ручной заявки выберите «Другой счёт» выше и заполните банк и полный номер там. Здесь будет записан именно этот получатель.</p>
+    <div class="fr"><div class="fg"><label class="fl">Фактически зачислено, ₽</label><input class="fc num" id="mbr_amount_${d.id}" inputmode="decimal"></div>
+      <div class="fg"><label class="fl">Плательщик</label><input class="fc" id="mbr_payer_${d.id}"></div>
+      <div class="fg"><label class="fl">Назначение платежа из выписки</label><input class="fc" id="mbr_purpose_${d.id}" placeholder="Текст, указанный плательщиком"></div>
+      <div class="fg"><label class="fl">Дата зачисления</label><input class="fc" id="mbr_date_${d.id}" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="fg"><label class="fl">Номер / ссылка строки выписки</label><input class="fc" id="mbr_ref_${d.id}"></div></div>
+    ${issued?`<label class="fh"><input type="checkbox" id="mbr_docs_${d.id}"> Клиенту сообщил новые реквизиты или исправлю документы</label>`:''}
+    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="manualBankReceiptRequest(${d.id})">Передать оператору на сверку</button>
+    <p class="fh">Заявка неподтверждена и не даёт продолжить сделку до сверки с выпиской.</p></div>`;
+}
+async function manualBankReceiptRequest(id){
+  const d=deal(id), issued=!!(d.docPack||d.docVersion), ex=expectOf(d), amount=Number(String(val('mbr_amount_'+id)||'').replace(/\s/g,'').replace(',','.'));
+  if(ex.acc!=='custom'||!ex.bank||String(ex.account||'').replace(/\D/g,'').length<8){toast('Выберите «Другой счёт» выше и заполните банк с полным номером');return;}
+  if(!Number.isFinite(amount)||amount<=0){toast('Введите фактическую сумму зачисления');return;}
+  if(issued&&!document.getElementById('mbr_docs_'+id)?.checked){toast('Подтвердите, что клиент получит верные реквизиты');return;}
+  await standAction('/api/stand/manual-bank-receipt',{version:standVer,dealId:id,bank:ex.bank,account:ex.account,actualAmount:amount,payer:val('mbr_payer_'+id),bankPurpose:val('mbr_purpose_'+id),statementDate:val('mbr_date_'+id),statementRef:val('mbr_ref_'+id),documentsAcknowledged:!issued||document.getElementById('mbr_docs_'+id)?.checked===true});
+}
+async function manualBankReceiptConfirm(id){
+  if(!document.getElementById('mbr_verify_'+id)?.checked){toast('Сначала сверьте зачисление с банковской выпиской');return;}
+  await standAction('/api/stand/manual-bank-receipt/'+id+'/confirm',{version:standVer,statementVerified:true});
+}
 
 /* Крипто-приход частями (Карим, 25.09). Клиент обычно шлёт сначала тестовый
    перевод, потом остаток. Кошелёк клиента можно указать заранее, а можно не знать:
@@ -7999,7 +8039,8 @@ function stepCard(d){
         <p class="fh">можно поправить: клиент перевёл чуть больше или меньше</p></div>
       <div class="fg"><label class="fl">Счёт зачисления</label>
         <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)">
-          ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк'].map(a=>`<option${ex.acc===a?' selected':''}>${a}</option>`).join('')}</select></div>
+          ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк'].map(a=>`<option value="${a}"${ex.acc===a?' selected':''}>${a}</option>`).join('')}<option value="custom"${ex.acc==='custom'?' selected':''}>Другой счёт</option></select>
+        ${ex.acc==='custom'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" style="margin-top:7px">`:''}</div>
       <div class="fg"><label class="fl">Допуск, ₽</label>
         <input class="fc num" id="w_tol" value="${ex.tol}" onchange="expectSet(${d.id},'tol',this.value)">
         <p class="fh">в пределах допуска приход сойдётся сам</p></div>
@@ -8010,8 +8051,9 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
-    <div class="sim"><div class="h">Вебхук банка · демо — приход рублей (в проде его присылает банк)</div>
-      <p>Кнопки создают помеченную тестовую запись в разделе «Поступления» и привязывают её к этой сделке. Фактический приход выберите в списке ниже.</p>
+    ${manualBankReceiptBlock(d)}
+    <div class="sim"><div class="h">Вебхук банка · DEMO</div>
+      <p>Это только учебная симуляция: запись помечается DEMO и не подтверждает реальный приход.</p>
       <button class="btn btn-success btn-sm" onclick="incomeExact(${d.id})">Создать тестовый приход ${money(Number(ex.amount),'₽')}</button>
       <button class="btn btn-secondary btn-sm" onclick="incomeOff(${d.id})">Создать тестовую недоплату</button></div>
     ${payinPool(d)}`;})()}</div>`,
@@ -8021,9 +8063,9 @@ function stepCard(d){
       ${(d.incomeReview||[]).length?`<br>${d.incomeReview.join('; ')}.`:'Проверьте причину несовпадения.'}</div></div>
     ${isCrypto(d)?'':`<div class="hashbox" style="margin-bottom:12px">
       ${(d.payinParts||[]).map((p,i)=>`<div class="hrow"><b>${money(p.amountRub,'₽')}</b>
-        <span class="fh" style="margin:0">${p.payer||'—'} · ${p.date||''}${p.acc?' · '+p.acc:''}${p.purpose?' · «'+String(p.purpose).replace(/[<>&]/g,'')+'»':''}</span>
-        <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="sberDrop(${d.id},${i})">Отвязать</button></div>`).join('')}</div>`}
-    <div class="row" style="margin:0 0 14px"><button class="btn btn-secondary" onclick="payinBack(${d.id})">Не тот платёж — вернуться и выбрать другой</button></div>
+        <span class="fh" style="margin:0">${htmlText(p.payer||'—')} · ${htmlText(p.date||'')}${p.acc?' · '+htmlText(p.acc):''}${p.purpose?' · «'+htmlText(p.purpose)+'»':''}</span>
+        ${p.manualReceiptId?'':`<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="sberDrop(${d.id},${i})">Отвязать</button>`}</div>`).join('')}</div>`}
+    ${d.manualBankReceipt?.status==='confirmed'?'':`<div class="row" style="margin:0 0 14px"><button class="btn btn-secondary" onclick="payinBack(${d.id})">Не тот платёж — вернуться и выбрать другой</button></div>`}
     <div class="fg"><label class="fl">Почему привязываем<span class="rq">*</span></label>
       <textarea class="fc" id="c" placeholder="Банк клиента удержал комиссию, клиент прислал чек"></textarea></div>
     <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s14m')">Привязать к сделке</button>
