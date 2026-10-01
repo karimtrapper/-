@@ -86,9 +86,45 @@ assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'
 assert.equal(vm.runInContext("rubReceivingBankLabel({rubReceivingAccount:{mode:'sber'}})",labelCtx),'Сбер');
 assert.match(html,/на счёт MF в \$\{rubReceivingBankLabel\(d\)\}/);
 assert.match(html,/рубли на счёт в \$\{htmlText\(rubReceivingBankLabel\(d\)\)\}/);
+assert.match(html,/счёт в \$\{rubReceivingBankLabel\(d\)\}/);
 assert.doesNotMatch(html,/счёт MF в Сбере/);
 assert.doesNotMatch(html,/рубли на счёт Сбера/);
 assert.match(html,/Назначение перевода — клиент впишет его в платёжное поручение/);
+
+const hostileBank='<img src=x onerror=window.__qaPwn=1> &#34; onclick=alert(1)';
+const safeCtx=vm.createContext({
+  htmlText:v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))
+});
+// Match the product helper: escape the JSON string as an HTML attribute only;
+// browser entity decoding then restores a literal JS string for copyAsk.
+const jsAttrStart=html.indexOf('function jsLiteralAttr(v){'), jsAttrEnd=html.indexOf('\n',jsAttrStart);
+assert.ok(jsAttrStart>=0&&jsAttrEnd>jsAttrStart);
+vm.runInContext(html.slice(jsAttrStart,jsAttrEnd),safeCtx);
+const goalStart=html.indexOf('function goalCard(d){'), goalEnd=html.indexOf('\n/* Адрес кошелька',goalStart);
+assert.ok(goalStart>=0&&goalEnd>goalStart);
+safeCtx.stepGoal=()=>({t:'Goal',rows:[['Куда платит клиент',hostileBank]]});
+safeCtx.FILLS={};
+vm.runInContext(html.slice(goalStart,goalEnd),safeCtx);
+const goalMarkup=vm.runInContext("goalCard({step:'s11'})",safeCtx);
+assert.doesNotMatch(goalMarkup,/<img\b/i);
+assert.match(goalMarkup,/&lt;img src=x onerror=window\.__qaPwn=1&gt;/);
+
+const tgStart=html.indexOf('function tgPayBlock(d,step){'), tgEnd=html.indexOf('\nfunction notificationDeliveryText',tgStart);
+assert.ok(tgStart>=0&&tgEnd>tgStart);
+safeCtx.docFields=()=>({purpose:'purpose',payTo:hostileBank});
+safeCtx.approx=()=>({pay:1,sign:'₽'});
+safeCtx.money=()=> '1 ₽';
+vm.runInContext(html.slice(tgStart,tgEnd),safeCtx);
+const tgMarkup=vm.runInContext("tgPayBlock({},'s12')",safeCtx);
+assert.doesNotMatch(tgMarkup,/<img\b/i);
+assert.match(tgMarkup,/&lt;img src=x onerror=window\.__qaPwn=1&gt;/);
+assert.match(tgMarkup,/copyAsk\(&quot;/);
+
+const jsonAttr=vm.runInContext('jsLiteralAttr(' + JSON.stringify(hostileBank) + ')',safeCtx);
+const decodeOnce=s=>s.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+let copied=''; safeCtx.copyAsk=value=>{copied=value;};
+vm.runInContext('copyAsk('+decodeOnce(jsonAttr)+')',safeCtx);
+assert.equal(copied,hostileBank);
 
 run('manualBankReceiptConfirm(77)');
 assert.match(calls.at(-1)[1], /Сначала сверьте/);
@@ -98,4 +134,21 @@ assert.equal(calls.at(-1)[0], '/api/stand/manual-bank-receipt/77/confirm');
 assert.equal(calls.at(-1)[1].version, 12);
 assert.equal(calls.at(-1)[1].statementVerified, true);
 
-console.log('manual bank receipt UI tests: PASS');
+(async()=>{
+  let chromium;
+  try{chromium=require('playwright').chromium;}catch(_){
+    console.log('manual bank receipt UI tests: PASS (Chromium check skipped: Playwright unavailable)');
+    return;
+  }
+  const browser=await chromium.launch({headless:true});
+  try{
+    const page=await browser.newPage();
+    await page.setContent(`<script>window.__qaPwn=0;window.copyAsk=v=>window.__copied=v;</script>${goalMarkup}${tgMarkup}`);
+    await page.waitForTimeout(100);
+    assert.equal(await page.locator('img').count(),0,'hostile bank markup must render as text');
+    assert.equal(await page.evaluate('window.__qaPwn'),0,'event handler must not execute');
+    await page.locator('.paybox .payrow button').last().click();
+    assert.equal(await page.evaluate('window.__copied'),hostileBank,'copy action must preserve exact requisites');
+  }finally{await browser.close();}
+  console.log('manual bank receipt UI tests: PASS');
+})().catch(e=>{console.error(e);process.exitCode=1;});

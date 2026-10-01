@@ -1817,6 +1817,7 @@ function sendDeclared(x){return Math.round(sendList(x).filter(t=>!['failed','mis
 function sendLeft(x){return Math.max(0,Math.round(((pcAmount(x)||0)-sendSum(x))*100)/100);}
 function sendDone(x){const need=pcAmount(x)||0;return need>0&&sendSum(x)>=need-0.005;}
 function htmlText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function jsLiteralAttr(v){return htmlText(JSON.stringify(String(v==null?'':v)));}
 function transferMode(id,mode){
   const d=deal(id), mem=cnvMembers(d);
   if(mem.some(x=>sendList(x).length)){toast('Режим нельзя менять после добавления переводов');return;}
@@ -3808,11 +3809,11 @@ function tgPayBlock(d,step){
     <div class="chtitle" style="margin-bottom:8px">Договор готов — можно отправлять
       <span>скопируйте и вставьте клиенту</span></div>
     ${rows.map(x=>`<div class="payrow">
-      <div><div class="k">${x[0]}</div><div class="v">${x[1]}</div></div>
-      <button class="btn btn-outline btn-sm" onclick="copyAsk(${JSON.stringify(x[1]).replace(/"/g,'&quot;')})">копировать</button>
+      <div><div class="k">${htmlText(x[0])}</div><div class="v">${htmlText(x[1])}</div></div>
+      <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(x[1])})">копировать</button>
     </div>`).join('')}
     <div class="row" style="margin-top:10px">
-      <button class="btn btn-secondary btn-sm" onclick="copyAsk(${JSON.stringify(all).replace(/"/g,'&quot;')})">Скопировать всё одним текстом</button>
+      <button class="btn btn-secondary btn-sm" onclick="copyAsk(${jsLiteralAttr(all)})">Скопировать всё одним текстом</button>
     </div></div>`;
 }
 function notificationDeliveryText(m){
@@ -7306,7 +7307,7 @@ function stepGoal(d){
             ['Получатель получит',money2(ap.thb,ap.thbSign||'฿')]],
       rows:[['Назначение платежа',F.purpose],['Куда платит клиент',F.payTo]]};
     case 's14': return {t:'Дождаться денег от клиента и опознать их',
-      nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':`счёт в ${htmlText(rubReceivingBankLabel(d))}`],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
+      nums:[['Ждём',money2(ap.pay,ap.sign)],['Куда',isCrypto(d)?'кошелёк TRC-20':`счёт в ${rubReceivingBankLabel(d)}`],['Допуск',isCrypto(d)?'± 5 USDT':'± 0,5 %']]};
     case 's15': {const pt=d.payTo||{};
       return {t:d.kind==='Фрихолд'?'Внести реквизиты для оплаты застройщику (IPPS SWIFT)':'Внести реквизиты для оплаты инвойса',
         nums:[['К оплате',money2(pt.amount||d.amountThb||ap.thb,ap.thbSign||'฿')],['Получатель',pt.dev||d.dev||'ещё не внесён'],
@@ -7396,19 +7397,19 @@ function goalCard(d){
   const fl=FILLS[d.step];
   return `<div class="card goal" style="margin-bottom:16px">
     <div class="goalh">Что должно получиться на этом шаге</div>
-    <div class="goalt">${g.t}</div>
-    ${fl?`<p class="goalfill">Эта задача заполняет в сделке: <b>${fl.b}</b> — ${
+    <div class="goalt">${htmlText(g.t)}</div>
+    ${fl?`<p class="goalfill">Эта задача заполняет в сделке: <b>${htmlText(fl.b)}</b> — ${htmlText(
       (d.step==='s5'&&d.kind==='Фрихолд'&&!isCrypto(d))?'курс RUB→USDT у брокера — батов и Coins в фрихолде нет'
       :(d.step==='s5'&&isCrypto(d))?'курс USDT→THB у Coins или Bitazza — рублей в сделке нет'
       :(d.step==='s22'&&d.kind==='Фрихолд')?'маршрут один — IPPS SWIFT в USD, без выбора'
       :(d.step==='s25'&&d.kind==='Фрихолд')?'заявка IPPS с суммой USD и подтверждённым хешем перевода'
-      :fl.w}</p>`:''}
+      :fl.w)}</p>`:''}
     ${(d.docComment&&(d.step==='s11'||d.step==='s11b'))?`<div class="alert a-info" style="margin:0 0 12px"><div><b>Комментарий менеджера:</b> ${htmlText(d.docComment)}</div></div>`:''}
-    <div class="goalnums">${(g.nums||[]).map((n,i)=>`<div><span class="k">${n[0]}</span><span class="v${i===0?' big':''}">${n[1]}</span></div>`).join('')}</div>
-    ${g.sub?`<p class="fh" style="margin-top:8px">${g.sub}</p>`:''}
+    <div class="goalnums">${(g.nums||[]).map((n,i)=>`<div><span class="k">${htmlText(n[0])}</span><span class="v${i===0?' big':''}">${htmlText(n[1])}</span></div>`).join('')}</div>
+    ${g.sub?`<p class="fh" style="margin-top:8px">${htmlText(g.sub)}</p>`:''}
     ${(g.rows||[]).filter(r=>r[1]).length?`<div class="goalrows">${g.rows.filter(r=>r[1]).map(r=>`<div class="payrow">
-      <div><div class="k">${r[0]}</div><div class="v">${r[1]}</div></div>
-      <button class="btn btn-outline btn-sm" onclick="copyAsk(${JSON.stringify(r[1]).replace(/"/g,'&quot;')})">копировать</button>
+      <div><div class="k">${htmlText(r[0])}</div><div class="v">${htmlText(r[1])}</div></div>
+      <button class="btn btn-outline btn-sm" onclick="copyAsk(${jsLiteralAttr(r[1])})">копировать</button>
     </div>`).join('')}</div>`:''}
   </div>`;
 }
