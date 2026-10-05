@@ -4813,6 +4813,7 @@ def get_rates():
         return jsonify({'error': 'Ошибка получения курсов', 'usdt_thb': None, 'rub_usdt': None, 'success': False})
 
 @app.route('/api/rates/precise', methods=['POST'])
+@limiter.limit('6 per minute; 30 per hour')
 def get_precise_rate():
     """
     ТОЧНЫЙ курс USDT-THB через Playwright парсинг Binance
@@ -4935,9 +4936,9 @@ def get_precise_rate():
             timeout=60
         )
 
-        if playwright_result.get('error') == 'queue_timeout':
-            print(f"⚠️ Playwright queue timeout (60s) — отказ клиенту", flush=True)
-            return jsonify({'success': False, 'error': 'queue_timeout'}), 503
+        if playwright_result.get('error') in ('queue_timeout', 'queue_full'):
+            print(f"⚠️ Playwright queue {playwright_result['error']} — отказ клиенту", flush=True)
+            return jsonify({'success': False, 'error': playwright_result['error']}), 503
 
         if 'error' in playwright_result:
             # Playwright не сработал — фоллбэк на CoinGecko API
@@ -14529,7 +14530,7 @@ def kyc_submit():
 
     session = get_session()
     try:
-        kyc = session.query(KycRequest).filter(KycRequest.token == token).first()
+        kyc = session.query(KycRequest).filter(KycRequest.token == token).with_for_update().first()
         if not kyc:
             return jsonify({'success': False, 'error': 'invalid_token'}), 404
 
@@ -14542,8 +14543,7 @@ def kyc_submit():
         if kyc.statement_required and (statement is None or not statement.filename):
             return jsonify({'success': False, 'error': 'statement_required'}), 400
 
-        # Пересабмит: чистим прежние файлы, иначе старые кадры остаются
-        # сиротами с PII и путаются с новыми в галерее менеджера.
+        # Пересабмит должен содержать новый документ; пустой запрос не меняет решение.
         new_files = []
 
         # Документ
@@ -14583,6 +14583,9 @@ def kyc_submit():
                 return jsonify({'success': False, 'error': f'statement_{err}'}), 400
             new_files.append(KycFile(kind='statement', idx=0, ext=ext,
                                      mime=KYC_EXT_MIME[ext], size=len(blob), data=blob))
+
+        if not any(f.kind == 'doc' for f in new_files):
+            return jsonify({'success': False, 'error': 'document_required'}), 400
 
         # Всё провалидировано — только теперь затираем прошлую попытку.
         # Порядок важен: при ошибке выше старые файлы остаются целы.
@@ -16402,7 +16405,7 @@ def partner_precise_rate(token):
                 timeout=60
             )
             # Если упал (не таймаут очереди) — ретрай с безопасной суммой
-            if 'error' in playwright_result and playwright_result.get('error') != 'queue_timeout':
+            if 'error' in playwright_result and playwright_result.get('error') not in ('queue_timeout', 'queue_full'):
                 print(f"⚠️ Playwright failed for {usdt_amount} USDT, retrying with {SAFE_USDT}", flush=True)
                 playwright_result = playwright_queue.submit(
                     lambda: ExchangeRateProvider.get_precise_binance_rate(
@@ -16421,7 +16424,7 @@ def partner_precise_rate(token):
                 priority=0,
                 timeout=60
             )
-            if 'error' in playwright_result and playwright_result.get('error') != 'queue_timeout':
+            if 'error' in playwright_result and playwright_result.get('error') not in ('queue_timeout', 'queue_full'):
                 print(f"⚠️ Playwright failed for {thb_amount} THB, retrying with {SAFE_THB}", flush=True)
                 playwright_result = playwright_queue.submit(
                     lambda: ExchangeRateProvider.get_precise_binance_rate(
@@ -16432,8 +16435,8 @@ def partner_precise_rate(token):
                     timeout=60
                 )
 
-        if playwright_result.get('error') == 'queue_timeout':
-            return jsonify({'success': False, 'error': 'queue_timeout'}), 503
+        if playwright_result.get('error') in ('queue_timeout', 'queue_full'):
+            return jsonify({'success': False, 'error': playwright_result['error']}), 503
 
         if 'error' in playwright_result:
             return jsonify({'success': False, 'error': 'Rate temporarily unavailable'}), 503

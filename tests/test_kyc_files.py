@@ -174,6 +174,60 @@ class TestFilesSurvive:
         assert tc.get(f'/api/kyc/photo/{token}/doc').status_code == 200
 
 
+    def test_empty_resubmit_preserves_rejection_and_document(self, tc, anon):
+        token = make_token(tc)
+        assert submit(anon, token).status_code == 200
+        assert tc.post(f'/api/kyc/reject/{token}', json={'manager': 'k', 'reason': 'мутно'}).status_code == 200
+        before = tc.get(f'/api/kyc/photo/{token}/doc').data
+        before_review = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        response = anon.post('/api/kyc/submit', data={'token': token})
+        assert response.status_code == 400
+        review = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        for key in ('status', 'rejection_reason', 'reviewed_at', 'reviewed_by'):
+            assert review[key] == before_review[key]
+        assert tc.get(f'/api/kyc/photo/{token}/doc').data == before
+
+    def test_invalid_resubmit_preserves_rejection_and_document(self, tc, anon):
+        token = make_token(tc)
+        assert submit(anon, token).status_code == 200
+        assert tc.post(f'/api/kyc/reject/{token}', json={'manager': 'k', 'reason': 'мутно'}).status_code == 200
+        before = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        document = tc.get(f'/api/kyc/photo/{token}/doc').data
+        response = submit(anon, token, doc=b'<svg onload="alert(1)">')
+        assert response.status_code == 400
+        after = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        for key in ('status', 'rejection_reason', 'reviewed_at', 'reviewed_by'):
+            assert after[key] == before[key]
+        assert tc.get(f'/api/kyc/photo/{token}/doc').data == document
+
+    def test_failed_commit_preserves_rejection_and_document(self, tc, anon, monkeypatch):
+        from sqlalchemy.orm import Session
+        token = make_token(tc)
+        assert submit(anon, token).status_code == 200
+        assert tc.post(f'/api/kyc/reject/{token}', json={'manager': 'k', 'reason': 'мутно'}).status_code == 200
+        before = tc.get(f'/api/kyc/photo/{token}/doc').data
+        original_commit = Session.commit
+        def fail_commit(self):
+            raise RuntimeError('synthetic database failure')
+        monkeypatch.setattr(Session, 'commit', fail_commit)
+        response = submit(anon, token, doc=PNG)
+        assert response.status_code == 500
+        monkeypatch.setattr(Session, 'commit', original_commit)
+        review = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        assert review['status'] == 'rejected'
+        assert review['rejection_reason'] == 'мутно'
+        assert tc.get(f'/api/kyc/photo/{token}/doc').data == before
+
+    def test_valid_resubmit_after_rejection_reopens_review(self, tc, anon):
+        token = make_token(tc)
+        assert submit(anon, token).status_code == 200
+        assert tc.post(f'/api/kyc/reject/{token}', json={'manager': 'k'}).status_code == 200
+        assert submit(anon, token, doc=PNG).status_code == 200
+        review = tc.get(f'/api/kyc/review/{token}').get_json()['kyc']
+        assert review['status'] == 'pending'
+        assert tc.get(f'/api/kyc/photo/{token}/doc').data == PNG
+
+
 class TestDownload:
     def test_photo_requires_auth(self, tc, anon):
         token = make_token(tc)

@@ -8,7 +8,7 @@ import asyncio
 import os
 import threading
 import time as _time
-from queue import PriorityQueue
+from queue import PriorityQueue, Full
 from typing import Dict, Tuple
 from dotenv import load_dotenv
 from decimal import Decimal, ROUND_HALF_UP
@@ -45,8 +45,9 @@ class _PlaywrightQueue:
     Приоритет: 0 = партнёр (важнее), 1 = CRM.
     """
 
-    def __init__(self):
-        self.queue = PriorityQueue()
+    def __init__(self, max_pending: int = 3):
+        self.queue = PriorityQueue(maxsize=max_pending + 1)
+        self._capacity = threading.BoundedSemaphore(max_pending + 1)
         self._seq = 0
         self._seq_lock = threading.Lock()
         self.worker = threading.Thread(target=self._worker, daemon=True)
@@ -59,13 +60,18 @@ class _PlaywrightQueue:
 
     def _worker(self):
         while True:
-            _prio, _seq, coro_factory, event, holder = self.queue.get()
+            _prio, _seq, deadline, cancelled, coro_factory, event, holder = self.queue.get()
             try:
+                if cancelled.is_set() or _time.monotonic() >= deadline:
+                    holder['error'] = 'queue_timeout'
+                    continue
                 holder['result'] = asyncio.run(coro_factory())
             except Exception as e:
                 holder['error'] = e
             finally:
                 event.set()
+                self._capacity.release()
+                self.queue.task_done()
 
     def submit(self, coro_factory, priority: int = 1, timeout: int = 60) -> dict:
         """Ставит задачу в очередь и ждёт результат.
@@ -80,13 +86,21 @@ class _PlaywrightQueue:
                    либо {'error': 'queue_timeout'},
                    либо {'error': '<exception>'}.
         """
+        if not self._capacity.acquire(blocking=False):
+            return {'error': 'queue_full'}
         event = threading.Event()
+        cancelled = threading.Event()
         holder: dict = {}
         seq = self._next_seq()
-        self.queue.put((priority, seq, coro_factory, event, holder))
+        deadline = _time.monotonic() + timeout
+        try:
+            self.queue.put_nowait((priority, seq, deadline, cancelled, coro_factory, event, holder))
+        except Full:
+            self._capacity.release()
+            return {'error': 'queue_full'}
 
         if not event.wait(timeout=timeout):
-            # Задача может быть ещё в очереди — worker её выполнит, но результат мы уже не ждём
+            cancelled.set()
             return {'error': 'queue_timeout'}
 
         if 'error' in holder:
