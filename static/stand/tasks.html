@@ -2254,7 +2254,8 @@ function quotesCard(d){
   if(S.role!=='operator'&&S.role!=='admin') return '';
   if(d.step==='s5') return '';                 /* на своём шаге он и так открыт */
   if(d.incomeAmount) return '';                /* деньги пришли — курс уже не поменять */
-  const dirs=isCrypto(d)?['thb']:['rub','thb'];
+  /* Фрихолд без крипты — батов и Coins там нет, курс USDT→THB операционисту не нужен (Карим, 06.10) */
+  const dirs=(d.kind==='Фрихолд'&&!isCrypto(d))?['rub']:(isCrypto(d)?['thb']:['rub','thb']);
   return `<div class="card"><div class="card-title">Курсы контрагентов
       <span class="sub">ответ пришёл позже — отправьте, менеджер увидит новый лучший</span></div>
     ${dirs.map(dir=>`<div class="chtitle" style="margin:4px 0 8px">${dir==='rub'?'RUB → USDT':'USDT → THB'}
