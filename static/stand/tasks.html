@@ -3120,7 +3120,8 @@ function newDeal(o){
     spread:(o.spread!==undefined?o.spread:(o.type==='Обмен валюты'?0.3:null)),
     readyAt:(o.step==='ready'?Date.now():null)};
   log(d,'Сделка создана · '+SOURCES[o.source]+(o.sourceRef?' · '+o.sourceRef:'')+' · клиент '+(o.isOld?'узнан по источнику':'новый'));
-  S.deals.unshift(d);save();return d;
+  /* noSave: создающий сам сохранит сделку вместе с логом и уведомлением одним PUT */
+  S.deals.unshift(d);if(!o.noSave)save();return d;
 }
 function deal(id){return S.deals.find(x=>x.id===id);}
 /* клиент узнаётся по источнику: та же карточка Битрикса или тот же чат */
@@ -4570,7 +4571,10 @@ function createGo(){
   /* Крипто-фрихолд: сумма клиента задана явно; внешнего курса нет.
      Путь начинается со сбора документов у менеджера. */
   const cryptoFreehold=D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта';
-  const d=newDeal({...D,step:cryptoFreehold?'s8':'s5',isTask:true,...draftAmounts(D)});
+  /* Одним сохранением: иначе первый PUT ставит сделку на шаг операциониста s5,
+     а второй (комментарий, лог, уведомление) сервер отклоняет как правку чужого
+     шага — и операционист не получал уведомления о новой задаче. */
+  const d=newDeal({...D,step:cryptoFreehold?'s8':'s5',isTask:true,...draftAmounts(D),noSave:true});
   d.comment=(D.note||'').trim();
   if(cryptoFreehold){
     log(d,'Крипто-фрихолд — курса не спрашиваем, сразу к сбору документов'+(d.comment?' · '+d.comment:''));
