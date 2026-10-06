@@ -8531,37 +8531,68 @@ def stand_egress_status():
 
 
 _THB_BANK_RATES_CACHE = {'data': None, 'ts': 0.0}
-_THB_BANK_RATES_TTL = 600  # 10 минут — курс TT Buying обновляется ботом раз в час
+_THB_BANK_RATES_TTL = 600  # 10 минут — курс TT Buying обновляется сервисом bank-rates раз в час
+_THB_BANK_RATES_STALE_AFTER = timedelta(hours=3)
 
 
 def _thb_bank_rates_cached():
-    """Курсы TT Buying банков-застройщиков с ExGreen API, кэш 10 минут в памяти.
+    """Курсы TT Buying банков-застройщиков из таблицы bank_rates, кэш 10 минут.
 
-    При сетевой ошибке отдаём последний удачный ответ с флагом stale=True.
-    Без кэша вообще (сервис только что стартовал, запросов ещё не было) —
-    ошибка наружу, создавать заявку нельзя без курса.
+    Таблицу раз в час пишет отдельный Railway-сервис bank-rates (BankRates/),
+    независимый от PropertyPaymentBot и VPS — решение Карима. Берём последнюю
+    валидную строку по каждому банку. Если самая свежая запись старше 3 часов —
+    отдаём с флагом stale=True (сервис мог упасть), но не ошибкой: последний
+    известный курс лучше, чем отказ создать заявку.
     """
     now = time.time()
     cached = _THB_BANK_RATES_CACHE['data']
     if cached and now - _THB_BANK_RATES_CACHE['ts'] < _THB_BANK_RATES_TTL:
         return cached
-    import stand_egress
-    status_code, data, err = stand_egress.read_get('exgreen_thb_bank_rates', {})
-    if err or status_code != 200 or not isinstance(data, dict) or not data.get('success'):
+    from sqlalchemy import text as _t
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(_t(
+                "SELECT bank, rate, source_updated_at, fetched_at FROM ("
+                "  SELECT bank, rate, source_updated_at, fetched_at,"
+                "         ROW_NUMBER() OVER (PARTITION BY bank ORDER BY fetched_at DESC) AS rn"
+                "  FROM bank_rates"
+                ") t WHERE rn = 1"
+            )).fetchall()
+    except Exception as exc:
         if cached:
             return {**cached, 'stale': True}
-        return {'success': False, 'error': err or 'rates_unavailable', 'stale': False}
-    fresh = {'success': True, 'rates': data.get('rates') or {},
-             'source_updated_at': data.get('source_updated_at') or {},
-             'updated_at': data.get('updated_at') or '', 'stale': False}
+        return {'success': False, 'error': f'rates_unavailable: {exc}', 'stale': False}
+    if not rows:
+        if cached:
+            return {**cached, 'stale': True}
+        return {'success': False, 'error': 'rates_unavailable', 'stale': False}
+    rates = {}
+    source_updated_at = {}
+    latest_fetched_at = None
+    for bank, rate, source_timestamp, fetched_at in rows:
+        rates[bank] = float(rate)
+        if source_timestamp:
+            source_updated_at[bank] = source_timestamp
+        if fetched_at is not None and (latest_fetched_at is None or fetched_at > latest_fetched_at):
+            latest_fetched_at = fetched_at
+    stale = bool(
+        latest_fetched_at is not None
+        and datetime.now(latest_fetched_at.tzinfo) - latest_fetched_at > _THB_BANK_RATES_STALE_AFTER
+    )
+    fresh = {'success': True, 'rates': rates, 'source_updated_at': source_updated_at,
+             'updated_at': latest_fetched_at.isoformat() if latest_fetched_at else '', 'stale': stale}
     _THB_BANK_RATES_CACHE.update(data=fresh, ts=now)
     return fresh
 
 
 @app.route('/api/stand/thb-bank-rates', methods=['GET'])
 def stand_thb_bank_rates():
-    """Проксирует GET /api/thb-bank-rates ExGreen — ориентир $ по инвойсу в ฿
-    для фрихолд-сделок (freehold, invoiceCurrency=thb). Только залогиненным."""
+    """Курсы банков-застройщиков из bank_rates — ориентир $ по инвойсу в ฿
+    для фрихолд-сделок (freehold, invoiceCurrency=thb). Только залогиненным.
+
+    Раньше проксировало api.exgreen.pro (данные бота на VPS) через egress-канал
+    exgreen_thb_bank_rates. С переездом на отдельный сервис bank-rates канал
+    убран — стенд больше не обращается к VPS за курсами."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     if not flask_session.get('user_id'):

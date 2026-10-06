@@ -933,14 +933,6 @@ _READ_CHANNELS = {
         'required': set(),
         'key_env': 'STAND_PROD_RO_KEY', 'key_header': 'X-Api-Key', 'key_optional': False,
     },
-    'exgreen_thb_bank_rates': {
-        # Публичные TT Buying курсы банков-застройщиков для фрихолд-сделок
-        # в батах — читает тот же сервис, что отдаёт /api/rates на лендинге.
-        'host': 'api.exgreen.pro',
-        'path': '/api/thb-bank-rates',
-        'params': {},
-        'required': set(),
-    },
 }
 
 _MAX_READ_RESPONSE_BYTES = 2 * 1024 * 1024
