@@ -1044,6 +1044,11 @@ function ippsApplicationText(d,pt){
 }
 /* S — сколько уходит в IPPS с комиссией провайдера сверху инвойса X.
    Формула из docs/specs/2026-08-06-mf-freehold.md: S = X·(1+p) + F. */
+/* Инвойс в ฿ без суммы в $ (Карим, 06.10): пока $ — ориентир по курсу банка
+   (invoiceUsdEstimate), всюду, где застройщику показывают сумму, это должно
+   быть видно — иначе операционист спросит у брокера объём по неподтверждённому
+   числу и застройщику отправится не то, что он ждал. */
+function usdMark(d,v){return (d&&d.invoiceUsdEstimate?'≈ ':'')+usd(v)+(d&&d.invoiceUsdEstimate?' (ориентир)':'');}
 function freeholdFee(X,t){return X?Math.round((X*t.percent/100+t.fixed)*100)/100:0;}
 function freeholdSend(X,t){return X?Math.round((X+freeholdFee(X,t))*100)/100:0;}
 function freeholdLossFingerprint(d){return [String(Number(d.invoiceUsd)),String(Number(d.amountUsdt)),String(Number(freeholdSend(d.invoiceUsd||0,ippsTariff(d)))),d.ippsTariff||'bank'].join('|');}
@@ -1061,8 +1066,9 @@ function freeholdInvoiceTariffBlock(d){
   const ack=loss&&d.freeholdLossAck?.fingerprint===fp;
   return `<div class="fr" style="margin-top:10px">
     <div class="fg"><label class="fl">Инвойс застройщику, $<span class="rq">*</span></label>
-      <input class="fc num" id="fh_inv_${d.id}" value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
-        oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)"></div>
+      <input class="fc num" id="fh_inv_${d.id}" ${d.invoiceUsdEstimate?'readonly':''} value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"
+        oninput="freeholdLivePreview(${d.id},'invoiceUsd',this.value)" onchange="freeholdInvoiceSet(${d.id},'invoiceUsd',this.value)">
+      ${d.invoiceUsdEstimate?'<p class="fh">Ориентир по курсу банка — не точная сумма, подтвердите ниже.</p>':''}</div>
     <div class="fg w2"><label class="fl">Тариф IPPS</label>
       <div class="chips">${Object.keys(IPPS_TARIFFS).map(k=>
         `<span class="chip ${(d.ippsTariff||'bank')===k?'on':''}" onclick="freeholdInvoiceSet(${d.id},'ippsTariff','${k}')">${IPPS_TARIFFS[k].label}</span>`).join('')}</div></div>
@@ -1078,6 +1084,16 @@ function freeholdInvoiceTariffBlock(d){
       <input class="fc num" id="fh_invthb_${d.id}" value="${d.invoiceThb||''}" placeholder="сумма инвойса, ฿"
         onchange="freeholdInvoiceSet(${d.id},'invoiceThb',this.value)"></div>`:''}
   </div>
+  ${d.invoiceUsdEstimate?`<div class="alert a-warn" style="margin-top:4px"><div>
+    <b>Сумма $ не подтверждена</b> — сейчас это ориентир${d.fxBank?' по курсу '+d.fxBank+(d.fxRate?' ('+d.fxRate+')':''):''}.
+    Договор и Payment Instruction нельзя отдать операционисту без точной суммы от банка/застройщика.</div></div>
+  <div class="fr">
+    <div class="fg"><label class="fl">Подтверждённая сумма $ от банка/застройщика<span class="rq">*</span></label>
+      <input class="fc num" id="fh_confirm_usd_${d.id}" placeholder="точная сумма, $" value="${X?Number(X).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}">
+    </div>
+    <div class="fg"><label class="fl">&nbsp;</label>
+      <button class="btn btn-primary" onclick="freeholdConfirmUsd(${d.id})">Подтвердить сумму</button></div>
+  </div>`:(d.fxBank?`<p class="fh">Сумма $ подтверждена вручную (ориентир был по курсу ${d.fxBank}).</p>`:'')}
   ${isCrypto(d)?`<div class="fr">
     <div class="fg"><label class="fl">Клиент отправит, USDT<span class="rq">*</span></label>
       <input class="fc num" id="fh_amt_${d.id}" value="${d.amountUsdt==null?'':d.amountUsdt}" placeholder="сумма клиента"
@@ -1101,6 +1117,19 @@ function freeholdLivePreview(id,field,raw){
   value('fh_pct',income==null?'—':(income/sent*100).toFixed(4));
   const warning=document.getElementById('fh_loss_'+id);
   if(warning)warning.innerHTML=income<0?'<div class="alert a-warn"><div><b>Сделка в минус</b> · перед договором подтвердите риск отдельно.</div></div>':'';
+}
+/* Инвойс в ฿ без суммы в $ (Карим, 06.10): ориентир по курсу банка нельзя
+   отправлять в IPPS как есть — перед договором менеджер вписывает точную
+   сумму, которую назвал банк/застройщик. До этого шаг s8 не отпускает (act()). */
+function freeholdConfirmUsd(id){
+  const d=deal(id);if(!d)return;
+  const raw=val('fh_confirm_usd_'+id);
+  const v=parseFlexibleAmount(raw);
+  if(!v){toast('Сумма должна быть больше нуля');return;}
+  const before=d.invoiceUsd||0;
+  d.invoiceUsd=v;d.invoiceUsdEstimate=false;
+  log(d,'Сумма $ подтверждена: '+usd(v)+' (ориентир был '+usd(before)+')');
+  save();render();toast('Сумма $ подтверждена');
 }
 async function freeholdLossAck(id){
   if(!STAND){toast('Подтверждение доступно на стенде');return;}
@@ -1130,8 +1159,11 @@ function freeholdInvoiceSet(id,field,raw){
     d.invoiceCurrency=raw;
     save();render();return;
   }else if(field==='invoiceThb'){
-    const v=String(raw).trim()===''?null:num(cleanNum(raw));
-    d.invoiceThb=v;
+    /* parseFlexibleAmount, не num(cleanNum()) — иначе «4,500,000» уедет в 4.5
+       (запятая-тысяч ломается заменой первой запятой на точку). */
+    const trimmed=String(raw).trim();
+    if(trimmed&&parseFlexibleAmount(trimmed)==null){toast('Сумма в ฿ не распознана — проверьте формат');render();return;}
+    d.invoiceThb=trimmed?parseFlexibleAmount(trimmed):null;
     save();render();return;
   }
   const after=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
@@ -1188,6 +1220,93 @@ function rateUnit(d){
    Валовая прибыль = остаток в крипте + комиссия компании. Фрихолд: карман один,
    комиссия банка — настоящий расход. */
 function num(v){return v==null||v===''?null:parseFloat(String(v).replace(',','.'));}
+/* Разбор суммы с разделителями тысяч — Number(v.replace(',','.')) ломает "4,500,000"
+   (даёт 4.5): запятая/точка может быть и разделителем тысяч, и десятичным. Правило:
+   разделитель, встретившийся больше одного раза, — точно тысячи (десятичный бывает
+   только один раз). Если встретился один раз — десятичный только если после него
+   ровно 2 цифры ("4500000,50"), иначе тоже тысячи ("4.500" → 4500, не 4.5). Если есть
+   оба разделителя — десятичный тот, что встретился последним ("1.234,56"). Пробелы
+   (и неразрывные) — только разделитель тысяч, десятичных с пробелом не бывает.
+   Возвращает null, если строка не похожа на число, или число ≤ 0. */
+function parseFlexibleAmount(raw){
+  let s=String(raw==null?'':raw).trim();
+  if(!s) return null;
+  s=s.replace(/[\s ]/g,'');
+  if(!/^[0-9.,]+$/.test(s)) return null;
+  const commaCount=(s.match(/,/g)||[]).length;
+  const dotCount=(s.match(/\./g)||[]).length;
+  let decimalSep=null;
+  if(commaCount&&dotCount){
+    decimalSep=s.lastIndexOf(',')>s.lastIndexOf('.')?',':'.';
+  }else if(commaCount===1||dotCount===1){
+    const sep=commaCount===1?',':'.';
+    if(s.length-s.lastIndexOf(sep)-1===2) decimalSep=sep;
+  }
+  let intPart=s, fracPart='';
+  if(decimalSep){
+    const idx=s.lastIndexOf(decimalSep);
+    intPart=s.slice(0,idx);fracPart=s.slice(idx+1);
+  }
+  intPart=intPart.replace(/[.,]/g,'');
+  if(!intPart||!/^\d+$/.test(intPart)) return null;
+  if(fracPart&&!/^\d+$/.test(fracPart)) return null;
+  const v=Number(intPart+(fracPart?'.'+fracPart:''));
+  return Number.isFinite(v)&&v>0?v:null;
+}
+/* Курс TT Buying выбранного банка застройщика — та же логика, что в квизе
+   PropertyPaymentBot (app/rates.py): «Другой банк» — среднее трёх, «Не знаю» —
+   минимум трёх (в $ выходит больше — ориентир не занижен). Любой из трёх банков
+   без курса → null, ничего не считаем на неполных данных. */
+const THB_REFERENCE_BANKS=['Kasikornbank','SCB','Bangkok Bank'];
+function thbBankRate(rates,bank){
+  if(!rates||!bank) return null;
+  if(bank==='Другой банк'||bank==='Не знаю'){
+    const vals=THB_REFERENCE_BANKS.map(b=>rates[b]).filter(v=>typeof v==='number'&&v>0);
+    if(vals.length<THB_REFERENCE_BANKS.length) return null;
+    return bank==='Не знаю'?Math.min(...vals):vals.reduce((a,b)=>a+b,0)/vals.length;
+  }
+  const v=rates[bank];
+  return (typeof v==='number'&&v>0)?v:null;
+}
+let _thbRatesPromise=null;
+/* Курсы живут в S.thbRates, но не часть сделки/черновика — не через save().
+   Серверный прокси сам кэширует на 10 минут, здесь — только чтобы не слать
+   запрос на каждый render() формы (он вызывается на каждое нажатие клавиши). */
+function ensureThbRates(){
+  if(S.thbRates&&Date.now()-(S.thbRatesAt||0)<120000) return;
+  if(_thbRatesPromise) return;
+  _thbRatesPromise=fetch('/api/stand/thb-bank-rates',{credentials:'same-origin'})
+    .then(r=>r.json()).catch(()=>({success:false,error:'network_error'}))
+    .then(j=>{S.thbRates=j;S.thbRatesAt=Date.now();_thbRatesPromise=null;render();})
+    .catch(()=>{_thbRatesPromise=null;});
+}
+/* Текст-ориентир под полями ฿/банк в черновике заявки — и ошибки, которые
+   блокируют создание (нет курсов / банк или сумма не выбраны/не распознаны). */
+function draftFhEstimateLine(D){
+  if(!S.thbRates) return 'Загружаем курсы банков…';
+  if(!S.thbRates.success) return 'Курсы банков недоступны — создать заявку нельзя, попробуйте позже.';
+  const thb=parseFlexibleAmount(D.invoiceThbAmount);
+  if(D.invoiceThbAmount&&thb==null) return 'Сумма в ฿ не распознана — проверьте формат.';
+  if(!D.fxBank) return 'Выберите банк застройщика.';
+  if(!thb) return 'Укажите сумму инвойса в ฿.';
+  const rate=thbBankRate(S.thbRates.rates,D.fxBank);
+  if(!rate) return 'Нет курса для этого банка — попробуйте «Другой банк» или «Не знаю».';
+  const usdEst=Math.round(thb/rate*100)/100;
+  const at=S.thbRates.updated_at?new Date(S.thbRates.updated_at).toLocaleString('ru-RU'):'—';
+  return `≈ ${usd(usdEst)} по TT Buying ${D.fxBank} (${rate}) на ${at} — ориентир, точные $ уточним по курсу банка при договоре.`;
+}
+/* Пересчёт ориентира $ в черновике заявки при смене суммы в ฿ или банка. */
+function recomputeDraftFhEstimate(){
+  const D=S.draft;if(!D)return;
+  const thb=parseFlexibleAmount(D.invoiceThbAmount);
+  const rate=(D.fxBank&&S.thbRates&&S.thbRates.success)?thbBankRate(S.thbRates.rates,D.fxBank):null;
+  if(thb&&rate){
+    D.sum=String(Math.round(thb/rate*100)/100);
+    D.fxRate=rate;D.fxAt=(S.thbRates&&S.thbRates.updated_at)||null;D.invoiceUsdEstimate=true;
+  }else{
+    D.sum='';D.fxRate=null;D.fxAt=null;D.invoiceUsdEstimate=false;
+  }
+}
 /* Приход целиком: основной канал плюс дополнительные. У каждого канала свой курс —
    усреднять нельзя, иначе прибыль и выплаты партнёрам поедут (спека multi-payin). */
 /* Сумма USDT по привязанным транзакциям. Это факт: хеш мы скидываем сами, в нём
@@ -3109,6 +3228,9 @@ function newDeal(o){
     /* Инвойс застройщика может быть в THB (Карим, 28.09) — сумма в ฿ только
        хранится/показывается, сделка считается от invoiceUsd (X) как обычно. */
     invoiceCurrency:o.invoiceCurrency||'usd',invoiceThb:o.invoiceThb||null,
+    /* Инвойс в ฿ без суммы в $ (Карим, 06.10): $ — ориентир по курсу TT Buying банка
+       застройщика, invoiceUsdEstimate держит это состояние до подтверждения на s8. */
+    invoiceUsdEstimate:!!o.invoiceUsdEstimate,fxBank:o.fxBank||null,fxRate:o.fxRate||null,fxAt:o.fxAt||null,
     isTask:!!o.isTask,
     isOld:!!o.isOld,docs:{},docMeta:{},conv:[],rates:{},pay:{},selfRate:false,self:false,
     agents:(o.agents||[]).map(a=>Object.assign({},a)),companyPct:(o.companyPct==null?null:o.companyPct),verified:false,
@@ -3694,7 +3816,7 @@ function tgLines(d,step){
       L.push({t:`Отправка подтверждена в сети`,b:true});
       L.push({t:d.kind==='Фрихолд'?`Отправьте заявку в IPPS`:`Известите Coins и загрузите чек конвертации`});break;
     case 's26':
-      if(d.kind==='Фрихолд'){L.push({t:`Ждём MT103 от IPPS`,b:true});L.push({t:`Застройщику должно дойти ${usd(d.invoiceUsd||0)}`});break;}
+      if(d.kind==='Фрихолд'){L.push({t:`Ждём MT103 от IPPS`,b:true});L.push({t:`Застройщику должно дойти ${usdMark(d,d.invoiceUsd||0)}`});break;}
       L.push({t:`Баты пришли — оплатите инвойс`,b:true});
       L.push({t:`${money(d.amountThb,'฿')} по реквизитам из инвойса`});break;
     case 's27':
@@ -4005,7 +4127,7 @@ function viewDeals(){
       <td>${d.refId?((refById(d.refId)||{}).name||'—'):'—'}</td>
       <td>${d.payType||'—'}</td>
       <td class="num">${e.payin!=null?usd(e.payin):'—'}</td>
-      <td class="num">${d.kind==='Фрихолд'?(d.invoiceUsd?usd(d.invoiceUsd):'—'):(d.amountThb?money(d.amountThb,'฿'):'—')}</td>
+      <td class="num">${d.kind==='Фрихолд'?(d.invoiceUsd?usdMark(d,d.invoiceUsd):'—'):(d.amountThb?money(d.amountThb,'฿'):'—')}</td>
       <td class="num" style="font-weight:600;color:${pr==null?'var(--amber)':(pr>0?'var(--green-dark)':'var(--red)')}">${pr==null?'⏳ ожид.':usd(pr)}</td>
       <td><span class="badge ${d.closed?(d.closeReason==='Успешно завершена'?'b-done':'b-lose'):'b-work'}">${dealStatusLabel(d)}</span></td>
       <td>${d.manual?'<span style="color:var(--text-muted)">без задач</span>'
@@ -4243,7 +4365,7 @@ function viewCreateBody(D,srcCard){
         <span class="chip ${(D.invoiceCurrency||'usd')==='usd'?'on':''}" onclick="draftSet('invoiceCurrency','usd')">В USD</span>
         <span class="chip ${D.invoiceCurrency==='thb'?'on':''}" onclick="draftSet('invoiceCurrency','thb')">В THB</span>
       </div>
-      <p class="fh">${D.invoiceCurrency==='thb'?'Сделка всё равно считается от суммы в USD, подтверждённой застройщиком — сумма в ฿ только хранится.':'Инвойс уже в USD — обычный случай.'}</p></div>`:''}
+      <p class="fh">${D.invoiceCurrency==='thb'?'Сумма в $ не нужна — посчитаем сами по курсу банка застройщика, точные $ подтвердите при договоре.':'Инвойс уже в USD — обычный случай.'}</p></div>`:''}
 
     <div class="fg"><label class="fl">Как клиент платит<span class="rq">*</span></label>
       <div class="chips">${payWays(D).map(x=>
@@ -4255,21 +4377,33 @@ function viewCreateBody(D,srcCard){
         `<span class="chip ${(D.mode||(D.cur==='thb'?'need':'have'))===m.k?'on':''}" onclick="draftMode('${m.k}')">${m.t}</span>`).join('')}</div>
       <p class="fh">${(askModes(D).find(m=>m.k===(D.mode||(D.cur==='thb'?'need':'have')))||{}).n||''}</p></div>
 
-    ${D.cur==='fhusd'&&D.invoiceCurrency==='thb'?`<div class="fg"><label class="fl">Сумма инвойса, ฿<span class="rq">*</span></label>
+    ${D.cur==='fhusd'&&D.invoiceCurrency==='thb'?(function(){
+      ensureThbRates();
+      return `<div class="fg"><label class="fl">Сумма инвойса, ฿<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
-        <input class="fc num" id="d_invthb" style="flex:1;min-width:200px" value="${D.invoiceThbAmount||''}" placeholder="сумма инвойса, ฿" oninput="draftSet('invoiceThbAmount',this.value,true)">
+        <input class="fc num" id="d_invthb" style="flex:1;min-width:200px" value="${D.invoiceThbAmount||''}" placeholder="сумма инвойса, ฿ (напр. 4,500,000)" oninput="draftSet('invoiceThbAmount',this.value,true)">
         <span class="chip on" style="min-height:46px;cursor:default">฿</span>
-      </div>
-      <p class="fh">Только хранится и показывается — в CRM не идёт. Сделка считается от подтверждённой суммы в USD ниже.</p></div>`:''}
+      </div></div>
+      <div class="fg"><label class="fl">Банк застройщика<span class="rq">*</span></label>
+      <div class="chips">${THB_REFERENCE_BANKS.concat(['Другой банк','Не знаю']).map(b=>
+        `<span class="chip ${D.fxBank===b?'on':''}" onclick="draftSet('fxBank','${b}')">${b}</span>`).join('')}</div>
+      <p class="fh" id="d_fx_preview">${draftFhEstimateLine(D)}</p></div>`;})():''}
 
-    <div class="fg"><label class="fl">${D.cur==='fhusd'?(D.invoiceCurrency==='thb'?'Сумма в USD, подтверждённая застройщиком':'Инвойс застройщику'):(D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента')}<span class="rq">*</span></label>
+    ${D.cur==='fhusd'&&D.invoiceCurrency!=='thb'?`<div class="fg"><label class="fl">Инвойс застройщику<span class="rq">*</span></label>
       <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
-        <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="${D.cur==='fhusd'?'сумма инвойса, $':(D.cur==='thb'?'сумма в батах':'сумма, которая есть у клиента')}" oninput="draftSet('sum',this.value,true)">
-        <span class="chip on" style="min-height:46px;cursor:default">${D.cur==='thb'?'฿':((D.cur==='usd'||D.cur==='fhusd')?'$':'₽')}</span>
+        <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="сумма инвойса, $" oninput="draftSet('sum',this.value,true)">
+        <span class="chip on" style="min-height:46px;cursor:default">$</span>
       </div>
-      ${D.cur==='fhusd'&&D.payType==='Крипта'?'':D.cur==='fhusd'?`<p class="fh">В IPPS уйдёт ${usd(freeholdSend(num(cleanNum(String(D.sum||'')))||0,IPPS_TARIFFS[D.ippsTariff||'bank']))}. Курс клиенту будет рассчитан на следующем шаге.</p>`:
-        `<p class="fh">${D.cur==='thb'?'Сколько отдаст клиент':'Сколько получится в батах'} — посчитаем после курса операциониста.</p>`}
-    </div>
+      ${D.payType==='Крипта'?'':`<p class="fh">В IPPS уйдёт ${usd(freeholdSend(num(cleanNum(String(D.sum||'')))||0,IPPS_TARIFFS[D.ippsTariff||'bank']))}. Курс клиенту будет рассчитан на следующем шаге.</p>`}
+    </div>`:''}
+
+    ${D.cur!=='fhusd'?`<div class="fg"><label class="fl">${D.cur==='thb'?'Сколько нужно оплатить':'Сколько есть у клиента'}<span class="rq">*</span></label>
+      <div style="display:flex;gap:8px;max-width:520px;flex-wrap:wrap;align-items:center">
+        <input class="fc num" id="d_sum" style="flex:1;min-width:200px" value="${D.sum||''}" placeholder="${D.cur==='thb'?'сумма в батах':'сумма, которая есть у клиента'}" oninput="draftSet('sum',this.value,true)">
+        <span class="chip on" style="min-height:46px;cursor:default">${D.cur==='thb'?'฿':((D.cur==='usd')?'$':'₽')}</span>
+      </div>
+      <p class="fh">${D.cur==='thb'?'Сколько отдаст клиент':'Сколько получится в батах'} — посчитаем после курса операциониста.</p>
+    </div>`:''}
 
     ${D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'?`<div class="fg"><label class="fl">Клиент отправит, USDT<span class="rq">*</span></label>
       <input class="fc num" style="max-width:200px" id="d_amount_usdt" value="${D.amountUsdt==null?'':D.amountUsdt}" placeholder="сумма клиента" oninput="draftSet('amountUsdt',this.value,true)">
@@ -4447,9 +4581,20 @@ function draftSet(k,v,silent){
     else if(S.draft.cur==='fhusd'){S.draft.cur='thb';S.draft.mode='need';}
   }
   S.draft[k]=v;
-  if(silent&&(k==='sum'||k==='amountUsdt')){
+  /* Инвойс в ฿ без суммы в $ (Карим, 06.10): $ считается сам из курса TT Buying
+     банка — не вводится руками. invoiceCurrency/invoiceThbAmount/fxBank меняются —
+     пересчитываем D.sum; переключение на USD — возвращаем обычный ручной ввод. */
+  if(S.draft.kind==='Фрихолд'&&k==='invoiceCurrency'){
+    if(v==='thb'){ensureThbRates();recomputeDraftFhEstimate();}
+    else{S.draft.sum='';S.draft.fxBank=null;S.draft.fxRate=null;S.draft.fxAt=null;S.draft.invoiceUsdEstimate=false;}
+  }else if(S.draft.kind==='Фрихолд'&&S.draft.invoiceCurrency==='thb'&&(k==='invoiceThbAmount'||k==='fxBank')){
+    recomputeDraftFhEstimate();
+  }
+  if(silent&&(k==='sum'||k==='amountUsdt'||k==='invoiceThbAmount'||k==='fxBank')){
     const preview=document.getElementById('d_fh_preview');
     if(preview)preview.innerHTML=draftFreeholdPreview(S.draft);
+    const fxPreview=document.getElementById('d_fx_preview');
+    if(fxPreview)fxPreview.innerHTML=draftFhEstimateLine(S.draft);
   }
   /* чат выбран — сразу узнаём клиента и реферала: отдельного шага «Дальше» больше нет */
   if(k==='sourceRef'&&v){
@@ -4541,25 +4686,36 @@ function draftValid(){
   if(!D.clientId&&!D.client){toast('Выберите клиента из справочника или создайте нового');return false;}
   if(D.type==='Оплата недвижимости'&&!D.kind){toast('Уточните тип сделки — лизхолд, фрихолд или аренда');return false;}
   if(!D.payType){toast('Уточните, как клиент платит');return false;}
+  /* Инвойс застройщика в THB (Карим, 06.10): $ руками не вводится — сумма в ฿ и
+     банк обязательны, $ считается сам по курсу TT Buying; без курсов/банка/
+     распознанной суммы заявку не создать (D.sum ниже остаётся пустым). */
+  if(D.cur==='fhusd'&&D.invoiceCurrency==='thb'){
+    if(!D.invoiceThbAmount||parseFlexibleAmount(D.invoiceThbAmount)==null){
+      toast('Укажите сумму инвойса в ฿ — формат не распознан');return false;}
+    if(!D.fxBank){toast('Выберите банк застройщика');return false;}
+    if(!S.thbRates||!S.thbRates.success){toast('Курсы банков недоступны — создать заявку нельзя, попробуйте позже');return false;}
+    if(!D.sum||!D.fxRate){toast('Не удалось посчитать ориентир в $ — проверьте банк и курсы');return false;}
+  }
   if(!D.sum){toast('Укажите сумму — с неё начинается задача');return false;}
   if(D.partial&&!D.invoiceTotal){toast('Укажите сумму инвойса целиком');return false;}
   if(D.type==='Оплата недвижимости'&&D.kind==='Фрихолд'&&D.payType==='Крипта'){
     const amount=num(cleanNum(String(D.amountUsdt??'')));
     if(!Number.isFinite(amount)||amount<=0){toast('Укажите положительную сумму «Клиент отправит, USDT»');return false;}
   }
-  /* Инвойс застройщика в THB (Карим, 28.09): сумма в ฿ обязательна, но сделка
-     всё равно считается от суммы в USD (D.sum) — она уже требуется выше. */
-  if(D.cur==='fhusd'&&D.invoiceCurrency==='thb'&&!D.invoiceThbAmount){
-    toast('Укажите сумму инвойса в ฿');return false;}
   return true;
 }
 function draftAmounts(D){
   const v=Number(String(D.sum).replace(/\s/g,'').replace(',','.'));
   const planned=D.amountUsdt==null||D.amountUsdt===''?null:num(cleanNum(String(D.amountUsdt)));
-  if(D.cur==='fhusd') return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:D.payType==='Крипта'?planned:null,curBase:'fhusd',
-    ippsTariff:D.ippsTariff||'bank',
-    invoiceCurrency:D.invoiceCurrency||'usd',
-    invoiceThb:D.invoiceCurrency==='thb'?num(cleanNum(String(D.invoiceThbAmount||''))):null};
+  if(D.cur==='fhusd'){
+    const thb=D.invoiceCurrency==='thb';
+    return {invoiceUsd:v,amountThb:null,amountRub:null,amountUsdt:D.payType==='Крипта'?planned:null,curBase:'fhusd',
+      ippsTariff:D.ippsTariff||'bank',
+      invoiceCurrency:D.invoiceCurrency||'usd',
+      invoiceThb:thb?parseFlexibleAmount(D.invoiceThbAmount):null,
+      invoiceUsdEstimate:thb?!!D.invoiceUsdEstimate:false,
+      fxBank:thb?(D.fxBank||null):null,fxRate:thb?(D.fxRate||null):null,fxAt:thb?(D.fxAt||null):null};
+  }
   if(D.cur==='thb') return {amountThb:v,amountRub:null,amountUsdt:null,curBase:'thb'};
   if(D.cur==='usd'||D.cur==='usdt')return {amountUsdt:v,amountThb:null,amountRub:null,curBase:'usdt'};
   return {amountRub:v,amountThb:null,amountUsdt:null,curBase:'rub'};
@@ -4859,10 +5015,10 @@ function overview(d,st,mine,p,wh){
         row('Объект',d.object||'—')}
       ${row('Назначение для банка застройщика',(d.payTo||{}).purpose||'')}
       ${d.kind==='Фрихолд'
-        ?row('Инвойс застройщику',usd(E.invoiceUsd)+(d.invoiceCurrency==='thb'&&d.invoiceThb?' (по инвойсу '+money(d.invoiceThb,'฿')+')':''))
+        ?row('Инвойс застройщику',usdMark(d,E.invoiceUsd)+(d.invoiceCurrency==='thb'&&d.invoiceThb?' (по инвойсу '+money(d.invoiceThb,'฿')+')':''))
           +row('Тариф IPPS',ippsTariff(d).label)
           +row('Отправлено в IPPS',usd(E.sentUsd),'комиссия '+E.feePercent+'% + '+E.feeFixed+' $ = '+usd(E.bankFee))
-          +row('Дойдёт застройщику',usd(E.invoiceUsd))
+          +row('Дойдёт застройщику',usdMark(d,E.invoiceUsd))
         :row('Инвойс застройщику',money(E.invoice,'฿'))
           +row('Отправлено в компанию',money(E.sentThb,'฿'),'комиссия '+E.companyPct.toFixed(2)+'% = '+money(E.feeThb,'฿')+' / '+usd(E.feeUsd))
           +row('Курс покупки',String(E.buy).replace('.',','),'฿ за 1 USDT'+(d.postConv==='coins'?' · Coins USDT→THB':''))}
@@ -7282,7 +7438,7 @@ function stepGoal(d){
       /* Объём для брокера — в USDT: это его валюта, не наша долларовая (аудит QA
          №3/№4, 28.09). Застройщику — по-прежнему $, это отдельная сумма (X, не S). */
       return {t:'Вернуть курс RUB → USDT — на объём '+moneyKop(S5,'USDT'),
-        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Объём',moneyKop(S5,'USDT')],['Застройщику',usd(d.invoiceUsd||0)]]};
+        nums:[['RUB → USDT',d.rates.rubUsdt||'ждём'],['Объём',moneyKop(S5,'USDT')],['Застройщику',usdMark(d,d.invoiceUsd||0)]]};
     }
     return isCrypto(d)
       ? {t:'Вернуть курс USDT → THB — рублей в сделке нет',
@@ -8690,6 +8846,7 @@ async function act(id,step){
     }
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
+    if(d.kind==='Фрихолд'&&d.invoiceUsdEstimate){toast('Подтвердите сумму $ от банка/застройщика перед передачей операционисту');return;}
     if(STAND){try{await standWaitSaved();}catch(e){toast('Дождитесь сохранения файлов и повторите');return;}}
     if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}
     if(!filesOf(d,'inv').length){toast('Нужен инвойс');return;}

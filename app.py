@@ -7850,8 +7850,12 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                  or before.get('serverTransferComplete') or
                  any(s.get('status') == 'confirmed' for s in
                      (before.get('transfer') or {}).get('sends') or []))):
+            # invoiceUsdEstimate/fxBank/fxRate/fxAt — ориентир $ по курсу банка
+            # (THB-инвойс без ручного ввода $, Карим 06.10): тот же денежный
+            # фундамент, что invoiceUsd, значит те же правила неприкасаемости.
             if any(before.get(key) != deal.get(key) for key in
-                   ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb')):
+                   ('invoiceUsd', 'ippsTariff', 'invoiceCurrency', 'invoiceThb',
+                    'invoiceUsdEstimate', 'fxBank', 'fxRate', 'fxAt')):
                 return 'Инвойс и тариф IPPS нельзя менять после начала подготовки договора'
             if before.get('amountUsdt') != deal.get('amountUsdt'):
                 editable = (before.get('step') == 's11' and deal.get('step') == 's11'
@@ -8524,6 +8528,45 @@ def stand_egress_status():
         return jsonify({'success': False, 'error': 'forbidden'}), 403
     import stand_egress
     return jsonify({'success': True, **stand_egress.status()})
+
+
+_THB_BANK_RATES_CACHE = {'data': None, 'ts': 0.0}
+_THB_BANK_RATES_TTL = 600  # 10 минут — курс TT Buying обновляется ботом раз в час
+
+
+def _thb_bank_rates_cached():
+    """Курсы TT Buying банков-застройщиков с ExGreen API, кэш 10 минут в памяти.
+
+    При сетевой ошибке отдаём последний удачный ответ с флагом stale=True.
+    Без кэша вообще (сервис только что стартовал, запросов ещё не было) —
+    ошибка наружу, создавать заявку нельзя без курса.
+    """
+    now = time.time()
+    cached = _THB_BANK_RATES_CACHE['data']
+    if cached and now - _THB_BANK_RATES_CACHE['ts'] < _THB_BANK_RATES_TTL:
+        return cached
+    import stand_egress
+    status_code, data, err = stand_egress.read_get('exgreen_thb_bank_rates', {})
+    if err or status_code != 200 or not isinstance(data, dict) or not data.get('success'):
+        if cached:
+            return {**cached, 'stale': True}
+        return {'success': False, 'error': err or 'rates_unavailable', 'stale': False}
+    fresh = {'success': True, 'rates': data.get('rates') or {},
+             'source_updated_at': data.get('source_updated_at') or {},
+             'updated_at': data.get('updated_at') or '', 'stale': False}
+    _THB_BANK_RATES_CACHE.update(data=fresh, ts=now)
+    return fresh
+
+
+@app.route('/api/stand/thb-bank-rates', methods=['GET'])
+def stand_thb_bank_rates():
+    """Проксирует GET /api/thb-bank-rates ExGreen — ориентир $ по инвойсу в ฿
+    для фрихолд-сделок (freehold, invoiceCurrency=thb). Только залогиненным."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not flask_session.get('user_id'):
+        return jsonify({'success': False, 'error': 'unauthorized'}), 401
+    return jsonify(_thb_bank_rates_cached())
 
 
 @app.route('/api/stand/incoming/unlink', methods=['POST'])
