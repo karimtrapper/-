@@ -2215,8 +2215,9 @@ function switchDealCategory(cat) {
         feeWrap.style.display = 'block';
         noteWrap.style.display = 'none';
         badge.textContent = '🏠 Фрихолд — доп-расход на перевод застройщику';
-        document.getElementById('propFeePercent').value = '0.8';
-        document.getElementById('propFeeFixed').value = '50';
+        // Тариф по умолчанию — банк; инвойс — в USD (обычный ввод суммы ниже)
+        setPropTariff('bank');
+        setPropInvoiceCur('usd');
     } else if (cat === 'other') {
         extra.style.display = 'block';
         feeWrap.style.display = 'none';
@@ -2246,6 +2247,251 @@ function setRateSource(src) {
         if (saved !== 'exchange') switchDealCategory(saved);
     });
 })();
+
+// ==========================================
+// ФРИХОЛД: ТАРИФ IPPS И ИНВОЙС В ฿
+// ==========================================
+// Расход на перевод — один из двух тарифов IPPS (как IPPS_TARIFFS в задачнике):
+// банк 0,8% + 50$ или софт-счёт 1,5% + 50$. Свободных полей нет: значения кладутся
+// в скрытые propFeePercent/propFeeFixed, откуда их читает applyPropertyFee().
+// Инвойс в ฿: $ к отправке = ฿ / курс, дальше расчёт идёт от этих $ как «хочу
+// получить X USDT» (в applyPropertyFee X — то, что должно дойти до застройщика).
+const PROP_TARIFFS = {
+    bank: { percent: '0.8', fixed: '50' },
+    soft: { percent: '1.5', fixed: '50' }
+};
+const PROP_REFERENCE_BANKS = ['Kasikornbank', 'SCB', 'Bangkok Bank'];
+const PROP_FX_BANKS = PROP_REFERENCE_BANKS.concat(['Другой банк', 'Не знаю']);
+const PROP_FX_CUSTOM = 'custom';
+const propInv = {
+    cur: 'usd',          // usd | thb
+    bank: null,          // название банка из PROP_FX_BANKS или 'custom'
+    status: 'idle',      // idle | loading | ok | auth (401) | none (эндпоинта нет — прод)
+    rates: null, updatedAt: null, stale: false, loadedAt: 0, loading: null,
+    wantBank: null, wantRate: null, dealRate: null   // что пришло в ссылке из сделки
+};
+
+function setPropTariff(key) {
+    const t = PROP_TARIFFS[key];
+    if (!t) return;
+    document.getElementById('propFeePercent').value = t.percent;
+    document.getElementById('propFeeFixed').value = t.fixed;
+    document.querySelectorAll('#propTariffChips .commission-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tariff === key);
+    });
+    hideResults();
+}
+
+// Разбор суммы с разделителями тысяч — как parseFlexibleAmount в задачнике:
+// «4,500,000», «4 500 000», «4.500.000» → 4500000. Разделитель, встретившийся
+// больше раза, — тысячи; один раз — десятичный, только если после него ровно
+// 2 цифры. Оба вида — десятичный тот, что последний. null, если не число или ≤ 0.
+function parseFlexibleAmount(raw) {
+    let str = String(raw == null ? '' : raw).trim();
+    if (!str) return null;
+    str = str.replace(/[\s ]/g, '');
+    if (!/^[0-9.,]+$/.test(str)) return null;
+    const commas = (str.match(/,/g) || []).length;
+    const dots = (str.match(/\./g) || []).length;
+    let decimalSep = null;
+    if (commas && dots) {
+        decimalSep = str.lastIndexOf(',') > str.lastIndexOf('.') ? ',' : '.';
+    } else if (commas === 1 || dots === 1) {
+        const sep = commas === 1 ? ',' : '.';
+        if (str.length - str.lastIndexOf(sep) - 1 === 2) decimalSep = sep;
+    }
+    let intPart = str, fracPart = '';
+    if (decimalSep) {
+        const idx = str.lastIndexOf(decimalSep);
+        intPart = str.slice(0, idx);
+        fracPart = str.slice(idx + 1);
+    }
+    intPart = intPart.replace(/[.,]/g, '');
+    if (!intPart || !/^\d+$/.test(intPart)) return null;
+    if (fracPart && !/^\d+$/.test(fracPart)) return null;
+    const v = Number(intPart + (fracPart ? '.' + fracPart : ''));
+    return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+// Курс TT Buying банка: «Другой банк» — среднее трёх, «Не знаю» — минимум
+// (в $ выходит больше — сумма не занижена). Любой из трёх без курса → null.
+function propBankRate(rates, bank) {
+    if (!rates || !bank) return null;
+    if (bank === 'Другой банк' || bank === 'Не знаю') {
+        const vals = PROP_REFERENCE_BANKS.map(b => rates[b]).filter(v => typeof v === 'number' && v > 0);
+        if (vals.length < PROP_REFERENCE_BANKS.length) return null;
+        return bank === 'Не знаю' ? Math.min(...vals) : vals.reduce((a, b) => a + b, 0) / vals.length;
+    }
+    const v = rates[bank];
+    return (typeof v === 'number' && v > 0) ? v : null;
+}
+
+function propFxRate() {
+    if (propInv.bank === PROP_FX_CUSTOM) {
+        const v = parseFloat(String(document.getElementById('propFxCustom').value).replace(',', '.'));
+        return v > 0 ? v : null;
+    }
+    if (!propInv.bank || propInv.status !== 'ok') return null;
+    return propBankRate(propInv.rates, propInv.bank);
+}
+
+function propInvoiceUsd() {
+    const thb = parseFlexibleAmount(document.getElementById('propInvoiceThb').value);
+    const rate = propFxRate();
+    return (thb && rate) ? Math.round(thb / rate * 100) / 100 : null;
+}
+
+function setPropInvoiceCur(cur, silent) {
+    propInv.cur = cur === 'thb' ? 'thb' : 'usd';
+    document.querySelectorAll('#propInvCurChips .commission-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.cur === propInv.cur);
+    });
+    const isThb = propInv.cur === 'thb';
+    document.getElementById('propInvThbBox').style.display = isThb ? 'block' : 'none';
+    document.getElementById('propInvUsdHint').style.display = isThb ? 'none' : 'block';
+    if (isThb) {
+        propLoadBankRates();
+        renderPropFx();
+        if (!silent) onPropInvoiceInput();
+    } else {
+        hideResults();
+    }
+}
+
+function setPropFxBank(bank) {
+    propInv.bank = bank;
+    renderPropFx();
+    onPropInvoiceInput();
+}
+
+// Курсы банков — тот же эндпоинт, что у задачника. На проде его нет (404): там
+// выбор банков скрыт, остаётся «Свой курс». Без логина на стенде — 401, то же самое.
+function propLoadBankRates() {
+    if (propInv.status === 'ok' && Date.now() - propInv.loadedAt < 120000) return propInv.loading;
+    if (propInv.loading) return propInv.loading;
+    propInv.status = 'loading';
+    renderPropFx();
+    propInv.loading = fetch('/api/stand/thb-bank-rates', { credentials: 'same-origin' })
+        .then(async r => {
+            if (r.status === 401) { propInv.status = 'auth'; return; }
+            if (!r.ok) { propInv.status = 'none'; return; }
+            const j = await r.json().catch(() => null);
+            if (j && j.success && j.rates) {
+                propInv.status = 'ok';
+                propInv.rates = j.rates;
+                propInv.updatedAt = j.updated_at || null;
+                propInv.stale = !!j.stale;
+                propInv.loadedAt = Date.now();
+            } else {
+                propInv.status = 'none';
+            }
+        })
+        .catch(() => { propInv.status = 'none'; })
+        .finally(() => {
+            propInv.loading = null;
+            propResolveWanted();
+            renderPropFx();
+            onPropInvoiceInput();
+        });
+    return propInv.loading;
+}
+
+// Банк/курс из ссылки сделки: есть курсы — выбираем банк, нет — «Свой курс» с курсом из сделки
+function propResolveWanted() {
+    if (!propInv.wantBank && !propInv.wantRate) return;
+    if (propInv.status === 'loading' || propInv.status === 'idle') return;
+    const bank = propInv.wantBank, rate = propInv.wantRate;
+    propInv.wantBank = null; propInv.wantRate = null;
+    if (bank && bank !== PROP_FX_CUSTOM && propInv.status === 'ok' && propBankRate(propInv.rates, bank)) {
+        propInv.bank = bank;
+        return;
+    }
+    if (rate) {
+        propInv.bank = PROP_FX_CUSTOM;
+        document.getElementById('propFxCustom').value = rate;
+    }
+}
+
+function renderPropFx() {
+    const chips = document.getElementById('propFxChips');
+    if (!chips) return;
+    const banks = propInv.status === 'ok' ? PROP_FX_BANKS : [];
+    chips.innerHTML = banks.concat([PROP_FX_CUSTOM]).map(b =>
+        `<button type="button" class="commission-btn${propInv.bank === b ? ' active' : ''}" data-fxbank="${b}">${b === PROP_FX_CUSTOM ? 'Свой курс' : b}</button>`
+    ).join('');
+    chips.querySelectorAll('[data-fxbank]').forEach(btn => {
+        btn.onclick = () => setPropFxBank(btn.dataset.fxbank);
+    });
+    document.getElementById('propFxCustomBox').style.display = propInv.bank === PROP_FX_CUSTOM ? 'block' : 'none';
+
+    let hint = '';
+    if (propInv.status === 'loading') {
+        hint = 'Загружаем курсы банков…';
+    } else if (propInv.status === 'auth') {
+        hint = 'Курсы банков доступны только после входа — введите «Свой курс» вручную.';
+    } else if (propInv.status === 'none') {
+        hint = 'Курсы банков здесь недоступны — введите «Свой курс» вручную.';
+    } else if (propInv.status === 'ok') {
+        const at = propInv.updatedAt ? new Date(propInv.updatedAt).toLocaleString('ru-RU') : '—';
+        hint = 'Курсы TT Buying на ' + at + (propInv.stale ? ' — данные устарели, сверьте с банком.' : '.');
+        if (propInv.bank && propInv.bank !== PROP_FX_CUSTOM) {
+            const r = propFxRate();
+            hint += r ? ` ${propInv.bank}: ${r.toFixed(4)} ฿/$.` : ' Для этого банка нет курса — выберите другой или «Свой курс».';
+        }
+    }
+    if (propInv.dealRate) hint += ` В сделке зафиксирован курс ${propInv.dealRate}.`;
+    document.getElementById('propFxHint').textContent = hint;
+}
+
+// Изменилась сумма ฿ / курс / банк: пересчитываем $ и подставляем в сумму расчёта
+function onPropInvoiceInput() {
+    if (propInv.cur !== 'thb') return;
+    const result = document.getElementById('propInvResult');
+    const thbRaw = document.getElementById('propInvoiceThb').value;
+    const thb = parseFlexibleAmount(thbRaw);
+    const rate = propFxRate();
+    renderPropFx();
+    if (thbRaw.trim() && !thb) {
+        result.textContent = 'Сумма в ฿ не распознана — проверьте формат.';
+        return;
+    }
+    if (!thb) { result.textContent = ''; return; }
+    if (!rate) { result.textContent = '฿ ' + thb.toLocaleString('ru-RU') + ' — выберите курс ฿/$.'; return; }
+    const usd = Math.round(thb / rate * 100) / 100;
+    result.textContent = '฿ ' + thb.toLocaleString('ru-RU') + ' / ' + rate.toFixed(4) + ' = $' +
+        usd.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' к отправке застройщику';
+    propApplyInvoiceToAmount(usd);
+}
+
+// «Хочу получить X USDT»: для СБП это «USDT ← RUB», для брокера/кастома — RUB → USDT, цель
+function propApplyInvoiceToAmount(usd) {
+    if (state.method === 'doverka') {
+        if (state.scenario !== 'usdt-from-rub') switchScenario('usdt-from-rub');
+    } else {
+        if (state.scenario !== 'rub-to-usdt') switchScenario('rub-to-usdt');
+        if (state.direction !== 'target') setDirection('target');
+    }
+    const amountEl = document.getElementById('amount');
+    amountEl.value = usd.toFixed(2);
+    formatInput(amountEl);
+    hideResults();
+}
+
+// Префилл фрихолда из ссылки задачника: tariff, inv_cur, inv_thb, fx_bank, fx_rate
+function applyPropPrefill(q) {
+    const tariff = q.get('tariff');
+    if (tariff) setPropTariff(tariff);
+    if (q.get('inv_cur') !== 'thb') return;
+    propInv.wantBank = q.get('fx_bank') || null;
+    propInv.wantRate = q.get('fx_rate') || null;
+    propInv.dealRate = q.get('fx_rate') || null;
+    const thb = q.get('inv_thb');
+    if (thb) document.getElementById('propInvoiceThb').value = thb;
+    setPropInvoiceCur('thb', true);
+    propResolveWanted();
+    renderPropFx();
+    onPropInvoiceInput();
+}
 
 // --- Префилл из ссылки -------------------------------------------------------
 // CRM открывает калькулятор в новой вкладке с уже проставленными курсами, суммой
@@ -2278,6 +2524,9 @@ function applyPrefill() {
     const amt = q.get('amount');
     const elAmt = document.getElementById('amount');
     if (amt && elAmt) elAmt.value = amt;
+
+    // Фрихолд: тариф IPPS, инвойс в ฿, банк и курс ฿/$ из сделки
+    if (cat === 'property_freehold') applyPropPrefill(q);
 
     const deal = q.get('deal');
     if (deal) {

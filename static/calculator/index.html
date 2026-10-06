@@ -208,25 +208,43 @@
                 </div>
             </div>
 
-            <!-- Только фрихолд: комиссия за перевод (USD) -->
+            <!-- Только фрихолд: инвойс застройщика (USD или ฿) и тариф IPPS -->
             <div id="propertyFeeWrapper">
-                <div class="fee-grid">
-                    <div class="fee-cell">
-                        <label class="input-label">Комиссия за перевод</label>
-                        <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeePercent" class="amount-input" value="0.8" oninput="hideResults()">
-                            <span class="input-currency">%</span>
-                        </div>
-                    </div>
-                    <div class="fee-cell">
-                        <label class="input-label">Фикс за перевод</label>
-                        <div class="input-wrapper small">
-                            <input type="text" inputmode="decimal" id="propFeeFixed" class="amount-input" value="50" oninput="hideResults()">
-                            <span class="input-currency">$</span>
-                        </div>
-                    </div>
+                <label class="input-label">Инвойс застройщика</label>
+                <div class="prop-chips" id="propInvCurChips">
+                    <button type="button" class="commission-btn active" data-cur="usd" onclick="setPropInvoiceCur('usd')">В USD</button>
+                    <button type="button" class="commission-btn" data-cur="thb" onclick="setPropInvoiceCur('thb')">В ฿</button>
                 </div>
-                <div class="fee-hint" id="propFeeHint">⚙️ Префилл фрихолда 0.8% + $50 — расход на перевод в USD, ляжет в расчёт ниже. Можно изменить под сделку.</div>
+
+                <!-- Инвойс в батах: сумма ฿ и курс ฿/$ → $ к отправке застройщику -->
+                <div id="propInvThbBox" style="display: none; margin-top: 12px;">
+                    <label class="input-label" for="propInvoiceThb">Сумма инвойса, ฿</label>
+                    <div class="input-wrapper">
+                        <input type="text" inputmode="decimal" id="propInvoiceThb" class="amount-input" placeholder="Например: 4,500,000" oninput="onPropInvoiceInput()">
+                        <span class="input-currency">฿</span>
+                    </div>
+                    <label class="input-label" style="margin-top: 12px;">Курс ฿/$ (TT Buying банка застройщика)</label>
+                    <div class="prop-chips" id="propFxChips"></div>
+                    <div id="propFxCustomBox" style="display: none; margin-top: 10px;">
+                        <div class="input-wrapper small">
+                            <input type="text" inputmode="decimal" id="propFxCustom" class="amount-input" placeholder="Например: 32.15" oninput="onPropInvoiceInput()">
+                            <span class="input-currency">฿/$</span>
+                        </div>
+                    </div>
+                    <div class="fee-hint" id="propFxHint"></div>
+                    <div class="fee-hint" id="propInvResult" style="font-weight: 600;"></div>
+                </div>
+                <div class="fee-hint" id="propInvUsdHint">Инвойс в USD: введите сумму в поле ниже — сценарий «Хочу получить» (USDT).</div>
+
+                <label class="input-label" style="margin-top: 14px;">Тариф IPPS</label>
+                <div class="prop-chips" id="propTariffChips">
+                    <button type="button" class="commission-btn active" data-tariff="bank" onclick="setPropTariff('bank')">Банк · 0,8% + 50$</button>
+                    <button type="button" class="commission-btn" data-tariff="soft" onclick="setPropTariff('soft')">Софт-счёт · 1,5% + 50$</button>
+                </div>
+                <!-- Значения тарифа читает applyPropertyFee(); выставляет setPropTariff() -->
+                <input type="hidden" id="propFeePercent" value="0.8">
+                <input type="hidden" id="propFeeFixed" value="50">
+                <div class="fee-hint" id="propFeeHint">⚙️ Тариф IPPS — расход на перевод в USD, ляжет в расчёт ниже. Банк: обычный FET-платёж от компании. Софт-счёт: платёж от имени клиента.</div>
             </div>
         </div>
 
