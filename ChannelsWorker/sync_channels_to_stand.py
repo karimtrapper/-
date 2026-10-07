@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Скрипт для синхронизации метаданных чатов (TG, WA, Bitrix) на тестовый стенд.
-Не передаёт текст сообщений, только ID, Имя и Время активности.
+Обычный sync не передаёт текст сообщений, только ID, Имя и Время активности.
+Исключение — одноразовый экспорт переписки Елизаветы (env TG_EXPORT_SINCE, см. ниже).
 
 Использование:
   export STAND_BASE_URL="https://grusha.up.railway.app"
@@ -30,7 +31,7 @@ import asyncio
 import tempfile
 import shutil
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 STAND_BASE_URL = os.environ.get("STAND_BASE_URL", "https://grusha-new.up.railway.app").rstrip('/')
 STAND_CHANNEL_SYNC_KEY = os.environ.get("STAND_CHANNEL_SYNC_KEY", "")
@@ -97,6 +98,215 @@ def _push_chunk(url, channel, account_name, chunk, sync_tag, is_last):
         print(f"[ERROR] Failed to push {channel} to stand for {account_name}: {e}")
         raise
 
+# ---------------------------------------------------------------------------
+# Одноразовый экспорт текста переписки (включается env TG_EXPORT_SINCE).
+# Выполняется ВНУТРИ sync_telegram тем же клиентом и тем же подключением,
+# что и обычный sync. Отдельный процесс / вторая копия сессии запрещены:
+# 25.09 так уже получили AuthKeyDuplicated и потеряли сессию.
+# В логи пишутся только счётчики: ни текстов, ни имён чатов.
+# ---------------------------------------------------------------------------
+
+EXPORT_ACCOUNT = "Елизавета"
+EXPORT_BATCH_SIZE = 500
+EXPORT_CHAT_PAUSE = 2.0
+EXPORT_MAX_FLOOD_RETRIES = 6
+# Служебные аккаунты Telegram: уведомления, Replies, Channel_Bot.
+EXPORT_SERVICE_IDS = {777000, 1271266957, 136817688}
+
+
+def parse_export_since(value):
+    """'2026-08-12' или полный ISO -> aware datetime в UTC; пусто/мусор -> None."""
+    value = (value or "").strip()
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def export_marker_path(session_file, since_raw):
+    """Маркер «экспорт выполнен» лежит рядом с сессией (на volume /data)."""
+    marker_dir = os.environ.get("TG_EXPORT_MARKER_DIR") or os.path.dirname(session_file)
+    safe = "".join(ch for ch in since_raw.strip() if ch.isalnum() or ch in "-_")
+    return os.path.join(marker_dir, f"tg_export_done_{safe}")
+
+
+def export_chat_kind(dialog):
+    """Тип чата для выгрузки или None, если диалог не нужен (бот, канал, служебный)."""
+    entity = dialog.entity
+    if dialog.id in EXPORT_SERVICE_IDS:
+        return None
+    if dialog.is_user:
+        if getattr(entity, "bot", False) or getattr(entity, "is_self", False) \
+                or getattr(entity, "deleted", False) or getattr(entity, "support", False):
+            return None
+        return "private"
+    if dialog.is_group:
+        return "supergroup" if getattr(entity, "megagroup", False) else "group"
+    return None  # broadcast-каналы
+
+
+def _display_name(entity):
+    if entity is None:
+        return ""
+    title = getattr(entity, "title", None)
+    if title:
+        return str(title)[:255]
+    parts = [getattr(entity, "first_name", None), getattr(entity, "last_name", None)]
+    name = " ".join(p for p in parts if p)
+    return (name or getattr(entity, "username", None) or "")[:255]
+
+
+def export_media(msg):
+    """(media_type, имя файла) без скачивания самих файлов."""
+    if getattr(msg, "action", None) is not None:
+        return "service:" + type(msg.action).__name__, None
+    if not getattr(msg, "media", None):
+        return None, None
+    name = None
+    try:
+        name = msg.file.name if msg.file else None
+    except Exception:
+        name = None
+    for attr, kind in (("photo", "photo"), ("voice", "voice"), ("video_note", "video_note"),
+                       ("sticker", "sticker"), ("gif", "gif"), ("video", "video"),
+                       ("audio", "audio"), ("document", "document"), ("contact", "contact"),
+                       ("geo", "geo"), ("poll", "poll"), ("web_preview", "webpage")):
+        if getattr(msg, attr, None):
+            return kind, (str(name)[:255] if name else None)
+    return "other", None
+
+
+def export_message_row(msg, chat_id, chat_name, chat_username, chat_kind, me_id, me_name):
+    media_type, media_name = export_media(msg)
+    if msg.out:
+        direction, sender_id, sender_name = "out", me_id, me_name
+    else:
+        direction = "in"
+        sender_id = msg.sender_id
+        sender_name = _display_name(getattr(msg, "sender", None))
+    reply_to = getattr(msg, "reply_to", None)
+    return {
+        "msg_id": msg.id,
+        "chat_id": str(chat_id),
+        "chat_name": chat_name,
+        "chat_username": chat_username,
+        "chat_type": chat_kind,
+        "direction": direction,
+        "sender_id": str(sender_id) if sender_id is not None else None,
+        "sender_name": sender_name,
+        "date": msg.date.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "text": msg.message or "",
+        "media_type": media_type,
+        "media_name": media_name,
+        "reply_to_id": getattr(reply_to, "reply_to_msg_id", None) if reply_to else None,
+    }
+
+
+def push_export_batch(account_name, messages):
+    """Одна порция сообщений на стенд; ретраи на случай рестарта стенда."""
+    url = f"{STAND_BASE_URL}/api/stand/channels/export"
+    body = json.dumps({"account": account_name, "messages": messages}).encode("utf-8")
+    last_error = None
+    for attempt in range(4):
+        req = urllib.request.Request(url, method="POST")
+        req.add_header("Authorization", f"Bearer {STAND_CHANNEL_SYNC_KEY}")
+        req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, data=body, timeout=120) as res:
+                json.loads(res.read().decode())
+            return
+        except Exception as e:
+            last_error = e
+            time.sleep(5 * (attempt + 1))
+    raise RuntimeError(f"export push failed: {type(last_error).__name__}")
+
+
+async def export_telegram_history(client, dialogs, account_name, since, sleep=asyncio.sleep):
+    """Выгружает сообщения личек и групп с даты since тем же клиентом. Возвращает счётчики."""
+    from telethon.errors import FloodWaitError
+
+    me = await client.get_me()
+    me_id = getattr(me, "id", None)
+    me_name = _display_name(me) or account_name
+    stats = {"chats": 0, "messages": 0, "in": 0, "out": 0, "skipped_chats": 0, "flood_waits": 0}
+
+    targets = [(d, export_chat_kind(d)) for d in dialogs]
+    targets = [(d, k) for d, k in targets if k]
+    stats["skipped_chats"] = len(dialogs) - len(targets)
+    print(f"[EXPORT] start since={since.date()} chats_to_scan={len(targets)} skipped={stats['skipped_chats']}")
+
+    for index, (dialog, kind) in enumerate(targets, 1):
+        entity = dialog.entity
+        chat_name = (dialog.name or str(dialog.id))[:255]
+        chat_username = getattr(entity, "username", None)
+        chat_count = {"in": 0, "out": 0}
+        flood_retries = 0
+        while True:
+            batch = []
+            chat_count = {"in": 0, "out": 0}
+            try:
+                async for msg in client.iter_messages(entity, wait_time=1):
+                    if msg.date < since:
+                        break
+                    row = export_message_row(msg, dialog.id, chat_name, chat_username,
+                                             kind, me_id, me_name)
+                    batch.append(row)
+                    chat_count[row["direction"]] += 1
+                    if len(batch) >= EXPORT_BATCH_SIZE:
+                        push_export_batch(account_name, batch)
+                        batch = []
+                if batch:
+                    push_export_batch(account_name, batch)
+                break
+            except FloodWaitError as e:
+                # Повторяем чат с начала: upsert на стенде идемпотентен.
+                flood_retries += 1
+                stats["flood_waits"] += 1
+                if flood_retries > EXPORT_MAX_FLOOD_RETRIES:
+                    raise
+                print(f"[EXPORT] flood wait {int(e.seconds)}s (retry {flood_retries})")
+                await sleep(int(e.seconds) + 1)
+        total = chat_count["in"] + chat_count["out"]
+        if total:
+            stats["chats"] += 1
+            stats["messages"] += total
+            stats["in"] += chat_count["in"]
+            stats["out"] += chat_count["out"]
+        print(f"[EXPORT] chat {index}/{len(targets)}: {total} messages")
+        await sleep(EXPORT_CHAT_PAUSE)
+    print("[EXPORT] done " + " ".join(f"{k}={v}" for k, v in stats.items()))
+    return stats
+
+
+async def maybe_export_telegram(client, dialogs, account_name, session_file):
+    """Запускает одноразовый экспорт, если задан TG_EXPORT_SINCE и маркера ещё нет."""
+    since_raw = os.environ.get("TG_EXPORT_SINCE", "")
+    if not since_raw.strip() or account_name != EXPORT_ACCOUNT:
+        return None
+    since = parse_export_since(since_raw)
+    if since is None:
+        print("[EXPORT] TG_EXPORT_SINCE is not a valid date, export skipped")
+        return None
+    marker = export_marker_path(session_file, since_raw)
+    if os.path.exists(marker):
+        return None
+    try:
+        stats = await export_telegram_history(client, dialogs, account_name, since)
+    except Exception as e:
+        # Обычный sync не должен ломаться; без маркера экспорт повторится в след. цикле.
+        print(f"[EXPORT] failed: {type(e).__name__}")
+        return None
+    with open(marker, "w") as f:
+        json.dump({"since": since_raw, "finished_at": datetime.now(timezone.utc).isoformat(),
+                   **stats}, f)
+    return stats
+
+
 async def sync_telegram(account_name, session_file, api_id, api_hash):
     if not session_file:
         raise ValueError(f"Telegram session file NOT CONFIGURED for {account_name}. This is a hard blocker. See script docs.")
@@ -129,14 +339,20 @@ async def sync_telegram(account_name, session_file, api_id, api_hash):
             raise ValueError(f"Telegram session is not authorized for {account_name}.")
         
         chats = []
+        dialogs = []
         async for dialog in client.iter_dialogs():
+            dialogs.append(dialog)
             chats.append({
                 "id": str(dialog.id),
                 "name": dialog.name or str(dialog.id),
                 "last_active": int(dialog.date.timestamp()) if dialog.date else 0
             })
-        await client.disconnect()
-        push_to_stand("tg", account_name, chats)
+        try:
+            # Сначала обычный sync метаданных, затем (однократно) экспорт тем же клиентом.
+            push_to_stand("tg", account_name, chats)
+            await maybe_export_telegram(client, dialogs, account_name, session_file)
+        finally:
+            await client.disconnect()
     finally:
         os.unlink(tmp_path)
 

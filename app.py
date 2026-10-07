@@ -221,6 +221,19 @@ def check_auth():
                 return jsonify({'success': False, 'error': 'unauthorized'}), 401
             return None
 
+        if path == '/api/stand/channels/export':
+            # POST — только по ключу воркера. GET — по тому же ключу ИЛИ админ по сессии
+            # (роль проверяет сам эндпоинт); остальным 401/403 от общей логики ниже.
+            key = os.environ.get('STAND_CHANNEL_SYNC_KEY', '')
+            auth = request.headers.get('Authorization', '')
+            bearer_ok = bool(key) and hmac.compare_digest(auth, f'Bearer {key}')
+            if request.method == 'POST':
+                if not bearer_ok:
+                    return jsonify({'success': False, 'error': 'unauthorized'}), 401
+                return None
+            if request.method == 'GET' and bearer_ok:
+                return None
+
         uid = flask_session.get('user_id')
         docparse_role = None
         if uid:
@@ -2379,6 +2392,29 @@ class StandChannel(Base):
     sync_tag = Column(String(50), nullable=True)
     __table_args__ = (UniqueConstraint('channel', 'account', 'chat_id', name='uq_stand_channel'),)
 
+class ChannelExportMessage(Base):
+    """Разовая выгрузка текста переписки менеджера (проверка качества работы).
+
+    Только стенд. Текст не попадает ни в stand_state, ни в общий GET каналов.
+    """
+    __tablename__ = 'channel_export_messages'
+    id = Column(Integer, primary_key=True)
+    account = Column(String(100), nullable=False)
+    chat_id = Column(String(100), nullable=False)
+    msg_id = Column(BigInteger().with_variant(Integer, 'sqlite'), nullable=False)
+    chat_name = Column(String(255))
+    chat_username = Column(String(100))
+    chat_type = Column(String(20))
+    direction = Column(String(3), nullable=False)
+    sender_id = Column(String(30))
+    sender_name = Column(String(255))
+    date = Column(String(20), nullable=False)
+    text = Column(Text)
+    media_type = Column(String(80))
+    media_name = Column(String(255))
+    reply_to_id = Column(BigInteger().with_variant(Integer, 'sqlite'))
+    __table_args__ = (UniqueConstraint('account', 'chat_id', 'msg_id', name='uq_channel_export_msg'),)
+
 class StandCrmLink(Base):
     """Permanent origin of a CRM row created by the stand close transaction."""
     __tablename__ = 'stand_crm_links'
@@ -2418,6 +2454,7 @@ class StandSberMirrorState(Base):
 STAND_ONLY_TABLES = frozenset({
     'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
     'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence', 'stand_channels',
+    'channel_export_messages',
 })
 
 Base.metadata.create_all(
@@ -5427,6 +5464,106 @@ def stand_channels_sync():
         return jsonify({'success': False, 'error': 'server_error'}), 500
     finally:
         db.close()
+
+@app.route('/api/stand/channels/export', methods=['POST'])
+def stand_channels_export_post():
+    """Приём порции сообщений разового экспорта; upsert по (account, chat_id, msg_id)."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'success': False, 'error': 'payload must be a JSON object'}), 400
+    account = str(payload.get('account') or '')[:100]
+    messages = payload.get('messages')
+    if not account or not isinstance(messages, list):
+        return jsonify({'success': False, 'error': 'invalid account or messages'}), 400
+    if len(messages) > 2000:
+        return jsonify({'success': False, 'error': 'too many records per chunk'}), 400
+
+    def _s(v, n):
+        return None if v is None else str(v)[:n]
+
+    def _i(v):
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    db = get_session()
+    try:
+        saved = 0
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            msg_id = _i(m.get('msg_id'))
+            chat_id = _s(m.get('chat_id'), 100)
+            direction = m.get('direction')
+            date = _s(m.get('date'), 20)
+            if msg_id is None or not chat_id or direction not in ('in', 'out') or not date:
+                continue
+            fields = dict(
+                chat_name=_s(m.get('chat_name'), 255), chat_username=_s(m.get('chat_username'), 100),
+                chat_type=_s(m.get('chat_type'), 20), direction=direction,
+                sender_id=_s(m.get('sender_id'), 30), sender_name=_s(m.get('sender_name'), 255),
+                date=date, text=_s(m.get('text'), 20000),
+                media_type=_s(m.get('media_type'), 80), media_name=_s(m.get('media_name'), 255),
+                reply_to_id=_i(m.get('reply_to_id')),
+            )
+            row = db.query(ChannelExportMessage).filter_by(
+                account=account, chat_id=chat_id, msg_id=msg_id).first()
+            if row:
+                for k, v in fields.items():
+                    setattr(row, k, v)
+            else:
+                db.add(ChannelExportMessage(account=account, chat_id=chat_id, msg_id=msg_id, **fields))
+            saved += 1
+        db.commit()
+        return jsonify({'success': True, 'count': saved})
+    except Exception as e:
+        db.rollback()
+        app.logger.error(f'stand_channels_export_post error: {type(e).__name__}')
+        return jsonify({'success': False, 'error': 'server_error'}), 500
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/channels/export', methods=['GET'])
+def stand_channels_export_get():
+    """Выдача выгрузки: ключ воркера (Bearer) или админ стенда по сессии. Без UI."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    key = os.environ.get('STAND_CHANNEL_SYNC_KEY', '')
+    auth = request.headers.get('Authorization', '')
+    if not (key and hmac.compare_digest(auth, f'Bearer {key}')) and current_role() != 'admin':
+        return jsonify({'success': False, 'error': 'only_admin'}), 403
+    account = request.args.get('account')
+    try:
+        limit = min(int(request.args.get('limit', 500000)), 500000)
+        after_id = int(request.args.get('after_id', 0))
+    except ValueError:
+        return jsonify({'success': False, 'error': 'bad_params'}), 400
+    db = get_session()
+    try:
+        q = db.query(ChannelExportMessage).filter(ChannelExportMessage.id > after_id)
+        if account:
+            q = q.filter(ChannelExportMessage.account == account)
+        rows = q.order_by(ChannelExportMessage.id).limit(limit).all()
+        messages = [{
+            'id': r.id, 'account': r.account, 'chat_id': r.chat_id, 'msg_id': r.msg_id,
+            'chat_name': r.chat_name, 'chat_username': r.chat_username, 'chat_type': r.chat_type,
+            'direction': r.direction, 'sender_id': r.sender_id, 'sender_name': r.sender_name,
+            'date': r.date, 'text': r.text, 'media_type': r.media_type,
+            'media_name': r.media_name, 'reply_to_id': r.reply_to_id,
+        } for r in rows]
+        messages.sort(key=lambda m: (m['chat_id'], m['date'], m['msg_id']))
+        resp = jsonify({'success': True, 'count': len(messages),
+                        'next_after_id': rows[-1].id if rows else after_id,
+                        'messages': messages})
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
+    finally:
+        db.close()
+
 
 @app.route('/api/stand/channels', methods=['GET'])
 def stand_channels_get():
