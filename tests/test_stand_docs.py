@@ -150,13 +150,21 @@ def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     pack = r.json['pack']
     assert pack['mode'] == 'agreement' and pack['version'] == 1
     assert pack['pair'] == 'RUB_THB' and pack['method'] == 'bank'
-    assert pack['purpose'] == PURPOSE
+    # Назначение платежа в выпущенном пакете называет настоящий номер
+    # АГЕНТСКОГО ДОГОВОРА (MF-<паспорт>-<ДДММ>-<N>), а не присланный с
+    # фронта шаблон с внутренним кодом задачи «СД-123» — сервер сам его
+    # подменяет, т.к. присланный PURPOSE похож на старый автошаблон.
+    real_number = docgen.make_number('75 1234567', None, 1)
+    expected_purpose = f'Оплата по агентскому договору № {real_number}, НДС не облагается'
+    assert pack['agreementNumber'] == real_number
+    assert pack['purpose'] == expected_purpose
     assert [e['kind'] for e in r.json['issued']] == ['dog', 'app', 'bill']
 
     saved = stand.get('/api/stand/state').json['data']['deals'][0]
     assert [e['kind'] for e in saved['docsIssued']] == ['dog', 'app', 'bill']
     assert saved['docVersion'] == 1 and saved['docPack']['agreementId'] == pack['agreementId']
     assert saved['issuedDocPayTo'] == _fields()['payTo']
+    assert saved['docFields']['purpose'] == expected_purpose
     assert 'Выпущен пакет документов' in saved['log'][-1]['text']
 
     by = {e['kind']: e['docId'] for e in saved['docsIssued']}
@@ -165,7 +173,7 @@ def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     addendum = _text(stand, by['app'])
     assert '914 795' in addendum and '350 000' in addendum and '2.6137' in addendum
     invoice = _text(stand, by['bill'])
-    assert PURPOSE in invoice and '40807810938720000286' in invoice and '914 795' in invoice
+    assert expected_purpose in invoice and '40807810938720000286' in invoice and '914 795' in invoice
 
     # «Поправить и пересоздать» — тот же договор, новая версия, без второго договора
     again = stand.post('/api/stand/docs/issue', json={'dealId': 1, 'docFields': _fields(amountPay='914 795')})
@@ -508,3 +516,111 @@ def test_crypto_freehold_payment_ignores_rate_inherited_from_agreement(stand):
                  payTo='USDT TRC-20, ' + GRUSHA, purpose='')
     r2 = stand.post('/api/stand/docs/issue', json={'dealId': 947, 'docFields': f2})
     assert r2.status_code == 200, r2.json
+
+
+# ────────────────── rubReceivingAccount: пресет Flow Sole и custom-получатель ──────────────────
+
+ROLE_AGENT = 'Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)'
+ROLE_PARTNER = ('Уполномоченный платёжный партнёр Агента (рублёвый счёт в РФ) / '
+                "Agent’s authorised payment partner (RUB account in Russia)")
+
+
+def test_flowsole_preset_sets_payto_and_authorised_partner_role(stand):
+    deal = _deal(950, rubReceivingAccount={'mode': 'flowsole'})
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 950, 'docFields': _fields()})
+    assert response.status_code == 200, response.json
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert 'ФЛОУ СОЛЕ' in saved['docFields']['payTo']
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert 'ФЛОУ СОЛЕ' in invoice and '40807810819000000261' in invoice and '044525094' in invoice
+    assert ROLE_PARTNER in invoice
+    assert ROLE_AGENT not in invoice
+
+
+def test_custom_rub_account_with_explicit_recipient_uses_it_and_partner_role(stand):
+    account = {'mode': 'custom', 'bank': 'Synthetic Bank',
+               'account': '40702810900000012345', 'correspondent': '30101810000000000000',
+               'bik': '044525225', 'recipientName': 'ООО «ДРУГОЙ ПОЛУЧАТЕЛЬ»',
+               'recipientInn': '7700000000', 'recipientKpp': '770101001'}
+    deal = _deal(951, rubReceivingAccount=account)
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 951, 'docFields': _fields()})
+    assert response.status_code == 200, response.json
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert 'ДРУГОЙ ПОЛУЧАТЕЛЬ' in saved['docFields']['payTo']
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert 'ДРУГОЙ ПОЛУЧАТЕЛЬ' in invoice and '7700000000' in invoice and '770101001' in invoice
+    assert ROLE_PARTNER in invoice
+    assert 'ЭМ ЭФ' not in invoice
+
+
+def test_custom_rub_account_without_recipient_fields_keeps_old_behaviour(stand):
+    account = {'mode': 'custom', 'bank': 'Synthetic Bank',
+               'account': '40702810900000012345', 'correspondent': '30101810000000000000',
+               'bik': '044525225'}
+    deal = _deal(952, rubReceivingAccount=account)
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 952, 'docFields': _fields()})
+    assert response.status_code == 200, response.json
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['payTo'].startswith('ООО «ЭМ ЭФ КОРПОРЕЙШН»')
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert ROLE_AGENT in invoice
+    assert ROLE_PARTNER not in invoice
+
+
+def test_custom_rub_account_with_partial_recipient_fields_is_400(stand):
+    account = {'mode': 'custom', 'bank': 'Synthetic Bank',
+               'account': '40702810900000012345', 'correspondent': '30101810000000000000',
+               'bik': '044525225', 'recipientInn': '7700000000'}
+    deal = _deal(953, rubReceivingAccount=account)
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 953, 'docFields': _fields()})
+    assert response.status_code == 400
+    assert response.json['error'] == 'incomplete_receiving_account'
+
+
+def test_sber_preset_unchanged(stand):
+    deal = _deal(954, rubReceivingAccount={'mode': 'sber'})
+    stand.put_board([deal])
+    response = stand.post('/api/stand/docs/issue', json={'dealId': 954, 'docFields': _fields()})
+    assert response.status_code == 200, response.json
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['payTo'] == RUB_PAY_TO
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert ROLE_AGENT in invoice
+    assert ROLE_PARTNER not in invoice
+
+
+# ────────────────── назначение платежа: номер агентского договора ──────────────────
+
+def test_known_client_addendum_purpose_keeps_original_agreement_number(stand):
+    first = _deal(955)
+    second = _deal(956, isOld=True)
+    stand.put_board([first, second])
+    r1 = stand.post('/api/stand/docs/issue', json={'dealId': 955, 'docFields': _fields()})
+    assert r1.status_code == 200, r1.json
+    original_number = r1.json['pack']['agreementNumber']
+    r2 = stand.post('/api/stand/docs/issue', json={'dealId': 956, 'docFields': _fields(
+        amountThb='100 000', rate='2,6', amountPay='260 000')})
+    assert r2.status_code == 200, r2.json
+    assert r2.json['pack']['mode'] == 'addendum'
+    assert r2.json['pack']['agreementNumber'] == original_number
+    expected_purpose = f'Оплата по агентскому договору № {original_number}, НДС не облагается'
+    assert r2.json['pack']['purpose'] == expected_purpose
+    invoice = _text(stand, r2.json['issued'][-1]['docId'])
+    assert expected_purpose in invoice
+
+
+def test_operator_manual_purpose_is_preserved(stand):
+    manual_purpose = 'ОПЛАТА ПО ИНВОЙСУ № ABC123 ОТ 01.09.2026, БЕЗ НДС'
+    stand.put_board([_deal(957)])
+    response = stand.post('/api/stand/docs/issue', json={
+        'dealId': 957, 'docFields': _fields(purpose=manual_purpose)})
+    assert response.status_code == 200, response.json
+    assert response.json['pack']['purpose'] == manual_purpose
+    saved = stand.get('/api/stand/state').json['data']['deals'][0]
+    assert saved['docFields']['purpose'] == manual_purpose
+    invoice = _text(stand, response.json['issued'][-1]['docId'])
+    assert manual_purpose in invoice
