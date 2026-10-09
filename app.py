@@ -9388,8 +9388,16 @@ def _stand_doc_request(state, deal, F):
         pay_to = str(F.get('payTo') or '').strip()
         if not pay_to:
             missing.append('payTo')
-        money.update(payin_recipient=pay_to.split(' · ')[0] if pay_to else '',
-                     payin_recipient_role='Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)',
+        recipient_name = pay_to.split(' · ')[0] if pay_to else ''
+        # Получатель рублёвого счёта может быть не самим Агентом (ЭМ ЭФ), а его
+        # уполномоченным платёжным партнёром (например, Flow Sole по счёту в
+        # СГБ) — тогда и роль в договоре должна называть его правильно.
+        role = ('Агент (рублёвый счёт MF в РФ) / Agent (MF RUB account in Russia)'
+                if not recipient_name or recipient_name == 'ООО «ЭМ ЭФ КОРПОРЕЙШН»'
+                else 'Уполномоченный платёжный партнёр Агента (рублёвый счёт в РФ) / '
+                     'Agent’s authorised payment partner (RUB account in Russia)')
+        money.update(payin_recipient=recipient_name,
+                     payin_recipient_role=role,
                      payin_details=pay_to.replace(' · ', '\n'),
                      payment_reference=str(F.get('purpose') or '').strip())
     fee = str(F.get('feeNote') or '').strip()
@@ -9485,10 +9493,12 @@ def stand_docs_issue():
         # именно этот снимок, даже если браузер пришлёт подменённый payTo при
         # повторном выпуске. Старые файлы при этом не переписываются.
         rub_account = deal.get('rubReceivingAccount') or {}
-        if not isinstance(rub_account, dict) or set(rub_account) - {'mode', 'bank', 'account', 'correspondent', 'bik'}:
+        rub_account_keys = {'mode', 'bank', 'account', 'correspondent', 'bik',
+                            'recipientName', 'recipientInn', 'recipientKpp'}
+        if not isinstance(rub_account, dict) or set(rub_account) - rub_account_keys:
             return jsonify({'success': False, 'error': 'invalid_receiving_account',
                             'detail': 'Некорректные реквизиты получателя'}), 400
-        if rub_account and rub_account.get('mode') not in ('sber', 'custom'):
+        if rub_account and rub_account.get('mode') not in ('sber', 'custom', 'flowsole'):
             return jsonify({'success': False, 'error': 'invalid_receiving_account',
                             'detail': 'Некорректный способ оплаты'}), 400
         if rub_account:
@@ -9499,13 +9509,35 @@ def stand_docs_issue():
                         or not re.fullmatch(r'\d{9}', str(rub_account.get('bik') or ''))):
                     return jsonify({'success': False, 'error': 'incomplete_receiving_account',
                                     'detail': 'Укажите банк, полный счёт, корреспондентский счёт и БИК'}), 400
-                F['payTo'] = (f"ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · {rub_account['bank'].strip()} · "
-                             f"р/с {rub_account['account']} · к/с {rub_account['correspondent']} · "
-                             f"БИК {rub_account['bik']}")
+                # Получатель custom-реквизитов может отличаться от ЭМ ЭФ (например,
+                # уполномоченный партнёр) — поля опциональны, но если заданы хоть
+                # частично, требуем все три целиком, иначе платёж уйдёт не туда.
+                recipient_name = str(rub_account.get('recipientName') or '').strip()
+                recipient_inn = str(rub_account.get('recipientInn') or '').strip()
+                recipient_kpp = str(rub_account.get('recipientKpp') or '').strip()
+                has_any_recipient = bool(recipient_name or recipient_inn or recipient_kpp)
+                recipient_valid = bool(recipient_name
+                                        and re.fullmatch(r'\d{10}', recipient_inn)
+                                        and re.fullmatch(r'\d{9}', recipient_kpp))
+                if has_any_recipient and not recipient_valid:
+                    return jsonify({'success': False, 'error': 'incomplete_receiving_account',
+                                    'detail': 'Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью'}), 400
+                if recipient_valid:
+                    F['payTo'] = (f"{recipient_name} · ИНН {recipient_inn} · КПП {recipient_kpp} · "
+                                 f"{rub_account['bank'].strip()} · р/с {rub_account['account']} · "
+                                 f"к/с {rub_account['correspondent']} · БИК {rub_account['bik']}")
+                else:
+                    F['payTo'] = (f"ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · {rub_account['bank'].strip()} · "
+                                 f"р/с {rub_account['account']} · к/с {rub_account['correspondent']} · "
+                                 f"БИК {rub_account['bik']}")
             elif rub_account.get('mode') == 'sber':
                 F['payTo'] = ("ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · "
                              "ПАО Сбербанк · р/с 40807810938720000286 · "
                              "к/с 30101810400000000225 · БИК 044525225")
+            elif rub_account.get('mode') == 'flowsole':
+                F['payTo'] = ('ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · '
+                             'Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · '
+                             'к/с 30101810245250000094 · БИК 044525094')
         # Новое/повторное приложение крипто-фрихолда выпускается только с
         # утверждённой двуязычной оговоркой; ранее выпущенные файлы не трогаем.
         if (deal.get('kind') == 'Фрихолд'
@@ -9556,6 +9588,27 @@ def stand_docs_issue():
         a = None
         if prior.get('agreementId'):
             a = db.query(Agreement).filter(Agreement.id == prior['agreementId']).first()
+        route_key = money['pair'] + ':' + money['payin_method']
+        existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
+        # Назначение платежа должно называть настоящий номер АГЕНТСКОГО
+        # ДОГОВОРА (MF-<паспорт>-<ДДММ>-<N>), а не внутренний код задачи
+        # (СД-123). Номер детерминирован и совпадёт с тем, что реально создаст
+        # _docs_new_agreement/_docs_payment ниже — вычисляем в той же
+        # заблокированной транзакции без промежуточных вставок.
+        if money.get('payin_method') == 'bank':
+            if a is not None and prior.get('agreementId'):
+                agreement_number = a.number
+            elif existing is not None:
+                agreement_number = existing.number
+            else:
+                agreement_number = _docs_predict_agreement_number(db, fields, deal_type, route_key)
+            old_purpose = str(F.get('purpose') or '').strip()
+            is_auto_template = bool(re.fullmatch(
+                r'Оплата по агентскому договору № \S+, НДС не облагается', old_purpose))
+            if agreement_number and (not old_purpose or is_auto_template):
+                new_purpose = f'Оплата по агентскому договору № {agreement_number}, НДС не облагается'
+                F['purpose'] = new_purpose
+                money['payment_reference'] = new_purpose
         if a is not None and prior.get('mode') == 'agreement':
             payload, code = _docs_new_agreement(db, deal_type, fields, money, reissue=a,
                                                 stand_thb_pending=stand_thb_pending,
@@ -9566,8 +9619,6 @@ def stand_docs_issue():
                                           stand_thb_pending=stand_thb_pending, commit=False)
             mode = 'addendum'
         else:
-            route_key = money['pair'] + ':' + money['payin_method']
-            existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key)
             if existing is not None:
                 payload, code = _docs_payment(db, existing, fields, money,
                                               stand_thb_pending=stand_thb_pending, commit=False)
@@ -22022,6 +22073,29 @@ def _docs_route_agreement(db, client_key, deal_type, route_key, exclude_id=None)
     return None
 
 
+def _docs_predict_agreement_number(db, fields, deal_type, route_key, exclude_id=None):
+    """Номер будущего (или уже существующего) договора клиента на этом маршруте.
+
+    Если у клиента уже есть действующий договор этого типа/маршрута —
+    допник пойдёт к нему, и назначение платежа должно называть ИСХОДНЫЙ
+    номер. Иначе предсказываем номер нового договора — та же логика, что
+    выполнит `_docs_new_agreement` при реальном создании (тот же seq-цикл,
+    без вставок между предсказанием и созданием внутри одной транзакции).
+    """
+    import docgen
+    existing = _docs_route_agreement(db, _docs_client_key(fields), deal_type, route_key,
+                                     exclude_id=exclude_id)
+    if existing is not None:
+        return existing.number
+    seq = 1
+    while db.query(Agreement.id).filter(
+            Agreement.number == docgen.make_number(
+                fields.get('client_passport_no', ''), None, seq)).first() or db.query(AgreementDoc.id).filter(
+            AgreementDoc.number == docgen.make_number(fields.get('client_passport_no', ''), None, seq)).first():
+        seq += 1
+    return docgen.make_number(fields.get('client_passport_no', ''), None, seq)
+
+
 def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=(), reissue=None,
                         stand_thb_pending=False, commit=True):
     """Ядро выпуска рамочного договора: договор + приложение 1 + инвойс.
@@ -22062,13 +22136,8 @@ def _docs_new_agreement(db, deal_type, fields, money, client_id=None, uploads=()
         # Номер = MF-<3 цифры паспорта>-<ДДММ>-<N>. У одного клиента в один день
         # может появиться договор второго типа — тогда хвост сдвигаем, иначе
         # два разных договора получат один номер.
-        seq = 1
-        while db.query(Agreement.id).filter(
-                Agreement.number == docgen.make_number(
-                    fields.get('client_passport_no', ''), None, seq)).first() or db.query(AgreementDoc.id).filter(
-                AgreementDoc.number == docgen.make_number(fields.get('client_passport_no', ''), None, seq)).first():
-            seq += 1
-        number = docgen.make_number(fields.get('client_passport_no', ''), None, seq)
+        number = _docs_predict_agreement_number(db, fields, deal_type, route_key,
+                                                exclude_id=reissue.id if reissue is not None else None)
     money['part'] = 1
     # Договор — рамочный, приложения в нём остаются бланками: клиент
     # подписывает его один раз и держит неизменным.

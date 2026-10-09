@@ -1005,7 +1005,9 @@ function mainKey(o){return o.payType==='Крипта'?'usdt':(o.payType==='На�
 function isCrypto(d){return payCur(d)==='usdt';}
 function rubReceivingBankLabel(d){
   const a=d&&d.rubReceivingAccount;
-  return a&&a.mode==='custom'?(String(a.bank||'').trim()||'другой банк'):'Сбер';
+  if(a&&a.mode==='custom') return String(a.bank||'').trim()||'другой банк';
+  if(a&&a.mode==='flowsole') return 'СГБ';
+  return 'Сбер';
 }
 /* Фрихолд без батов (спека 28.09-freehold-no-baht): инвойс застройщику X — в USD,
    тариф IPPS выбирает менеджер при заявке — банк 0,8% + 50$ (обычный FET-платёж) или
@@ -1738,9 +1740,10 @@ function payinS11Fields(d,fld){
     const a=d.rubReceivingAccount||{mode:'sber',bank:'',account:''};
     return `<div class="fr"><div class="fg w2"><label class="fl">Куда клиент переводит рубли</label>
       <select class="fc" onchange="rubReceivingAccountSave(${d.id},this.value)">
-        <option value="sber"${a.mode!=='custom'?' selected':''}>Сбер · реквизиты MF Corporation</option>
+        <option value="sber"${(!a.mode||a.mode==='sber')?' selected':''}>Сбер · реквизиты MF Corporation</option>
+        <option value="flowsole"${a.mode==='flowsole'?' selected':''}>Flow Sole · СГБ</option>
         <option value="custom"${a.mode==='custom'?' selected':''}>Другой счёт</option></select>
-      ${a.mode==='custom'?`<input class="fc" id="rub_bank_${d.id}" placeholder="Банк получателя" value="${htmlText(a.bank||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_account_${d.id}" inputmode="numeric" placeholder="Полный номер банковского счёта" value="${htmlText(a.account||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_corr_${d.id}" inputmode="numeric" placeholder="Корреспондентский счёт (20 цифр)" value="${htmlText(a.correspondent||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_bik_${d.id}" inputmode="numeric" placeholder="БИК банка (9 цифр)" value="${htmlText(a.bik||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px">`:''}
+      ${a.mode==='custom'?`<input class="fc" id="rub_bank_${d.id}" placeholder="Банк получателя" value="${htmlText(a.bank||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_account_${d.id}" inputmode="numeric" placeholder="Полный номер банковского счёта" value="${htmlText(a.account||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_corr_${d.id}" inputmode="numeric" placeholder="Корреспондентский счёт (20 цифр)" value="${htmlText(a.correspondent||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_bik_${d.id}" inputmode="numeric" placeholder="БИК банка (9 цифр)" value="${htmlText(a.bik||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_name_${d.id}" placeholder="Наименование получателя (если не ЭМ ЭФ)" value="${htmlText(a.recipientName||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_inn_${d.id}" inputmode="numeric" placeholder="ИНН получателя (10 цифр)" value="${htmlText(a.recipientInn||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px"><input class="fc" id="rub_recip_kpp_${d.id}" inputmode="numeric" placeholder="КПП получателя (9 цифр)" value="${htmlText(a.recipientKpp||'')}" onchange="rubReceivingAccountSave(${d.id},'custom')" style="margin-top:7px">`:''}
       <p class="fh">Эти данные попадут в документы клиента и станут ожидаемым счётом на s14. Проверьте банк и полный номер до выпуска.</p></div></div>
       <div style="display:none">${fld('payTo','Куда платит клиент',{area:1})}</div>`;
   }
@@ -1754,7 +1757,12 @@ function rubReceivingAccountSave(id,mode){
     const account=(document.getElementById('rub_account_'+id)?.value||d.rubReceivingAccount?.account||'').trim();
     const correspondent=(document.getElementById('rub_corr_'+id)?.value||d.rubReceivingAccount?.correspondent||'').trim();
     const bik=(document.getElementById('rub_bik_'+id)?.value||d.rubReceivingAccount?.bik||'').trim();
-    d.rubReceivingAccount={mode:'custom',bank,account,correspondent,bik};
+    const recipientName=(document.getElementById('rub_recip_name_'+id)?.value||d.rubReceivingAccount?.recipientName||'').trim();
+    const recipientInn=(document.getElementById('rub_recip_inn_'+id)?.value||d.rubReceivingAccount?.recipientInn||'').trim();
+    const recipientKpp=(document.getElementById('rub_recip_kpp_'+id)?.value||d.rubReceivingAccount?.recipientKpp||'').trim();
+    d.rubReceivingAccount={mode:'custom',bank,account,correspondent,bik,recipientName,recipientInn,recipientKpp};
+  }else if(mode==='flowsole'){
+    d.rubReceivingAccount={mode:'flowsole'};
   }else d.rubReceivingAccount={mode:'sber'};
   d.docFields=d.docFields||{}; d.docFields.payTo=docFields(d).payTo;
   save(); render();
@@ -3386,6 +3394,8 @@ const MF={name:'MF Corporation Company Limited',reg:'0835565024547',dir:'Miss Ka
   /* настоящие рублёвые реквизиты (выписка Сбера, счёт с 06.03.2026); раньше стоял выдуманный р/с */
   bank:'ПАО Сбербанк',acc:'40807810938720000286',inn:'9909726886',kpp:'770387001',
   ks:'30101810400000000225',bik:'044525225',rubName:'ООО «ЭМ ЭФ КОРПОРЕЙШН»'};
+/* Уполномоченный платёжный партнёр по рублёвым реквизитам в СГБ — сверено по 2 PDF от Лизы, 07.10.2026 */
+const FLOWSOLE={name:'ФЛОУ СОЛЕ КО., ЛТД',inn:'9909773251',kpp:'770387001',bank:'Московский филиал "БАНК СГБ" г. Москва',acc:'40807810819000000261',ks:'30101810245250000094',bik:'044525094'};
 /* Паспорт знакомого клиента уже лежит в его прошлой сделке — в новый допник берём
    оттуда, заново не просим (приёмка 25.09) */
 function prevPassport(d){
@@ -3422,14 +3432,17 @@ function docFields(d){
        в пакете и на шаге отправки клиенту стоял р/с в Сбере (прогон 25.09). */
     payTo:isCrypto(d)
       ? payToCrypto(payinWallet(d))
-      : (d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'
-          ? MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+String(d.rubReceivingAccount.bank||'').trim()+' · р/с '+String(d.rubReceivingAccount.account||'').trim()+' · к/с '+String(d.rubReceivingAccount.correspondent||'').trim()+' · БИК '+String(d.rubReceivingAccount.bik||'').trim()
+      : (d.rubReceivingAccount&&d.rubReceivingAccount.mode==='flowsole'
+          ? FLOWSOLE.name+' · ИНН '+FLOWSOLE.inn+' · КПП '+FLOWSOLE.kpp+' · '+FLOWSOLE.bank+' · р/с '+FLOWSOLE.acc+' · к/с '+FLOWSOLE.ks+' · БИК '+FLOWSOLE.bik
+      : d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'
+          ? (String(d.rubReceivingAccount.recipientName||'').trim()||MF.rubName)+' · ИНН '+(String(d.rubReceivingAccount.recipientInn||'').trim()||MF.inn)+' · КПП '+(String(d.rubReceivingAccount.recipientKpp||'').trim()||MF.kpp)+' · '+String(d.rubReceivingAccount.bank||'').trim()+' · р/с '+String(d.rubReceivingAccount.account||'').trim()+' · к/с '+String(d.rubReceivingAccount.correspondent||'').trim()+' · БИК '+String(d.rubReceivingAccount.bik||'').trim()
           : MF.rubName+' · ИНН '+MF.inn+' · КПП '+MF.kpp+' · '+MF.bank+' · р/с '+MF.acc+' · к/с '+MF.ks+' · БИК '+MF.bik),
     /* Назначение платежа — поле банковского перевода (рубли на счёт в Сбере). В переводе
        USDT такого поля нет, «НДС не облагается» там бессмысленно (Карим, 25.09). */
-    /* Назначение перевода клиента в Сбер пишет операционист в договоре — шаблон он правит,
-       менеджер потом копирует готовое. На сборе документов его ещё никто не знает (Карим, 27.09) */
-    purpose:isCrypto(d)?'':('Оплата по агентскому договору № '+d.code+', НДС не облагается'),
+    /* Настоящий номер агентского договора клиент узнает только при выпуске пакета
+       (сервер сам его подставит, см. _stand_doc_request/_docs_predict_agreement_number
+       в app.py) — здесь его заранее не угадать, поэтому поле пустое */
+    purpose:isCrypto(d)?'':'',
     feeNote:cryptoFreehold?cryptoFeeNote:oldFeeNote,
     validTill:''
   };
