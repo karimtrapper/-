@@ -86,11 +86,12 @@ def test_state_upload_show_download_delete(monkeypatch):
     monkeypatch.setattr(m, '_stand_deliver_notes', lambda: None)
     with m.get_session() as db:
         m._stand_migrate()
-        for uid, role in [(1, 'manager'), (2, 'operator'), (3, 'admin')]:
-            if not db.query(m.AdminUser).get(uid):
-                db.add(m.AdminUser(id=uid, username=f'receipt_{uid}', display_name='Елизавета' if uid == 1 else role,
-                                   role=role,
-                                   password_hash=''))
+        uid_base = max((user.id for user in db.query(m.AdminUser.id).all()), default=0) + 1000
+        manager_id, operator_id, admin_id = (uid_base + offset for offset in (1, 2, 3))
+        for uid, role in [(manager_id, 'manager'), (operator_id, 'operator'), (admin_id, 'admin')]:
+            db.add(m.AdminUser(id=uid, username=f'receipt_{uid}',
+                               display_name='Елизавета' if uid == manager_id else role,
+                               role=role, password_hash=''))
         db.query(m.StandState).delete()
         db.add(m.StandState(id=1, version=1, data=json.dumps({'deals': [deal()]})))
         db.commit()
@@ -101,9 +102,9 @@ def test_state_upload_show_download_delete(monkeypatch):
             session['user_id'] = uid
         return result
 
-    manager, operator, admin = client(1), client(2), client(3)
+    manager, operator, admin = client(manager_id), client(operator_id), client(admin_id)
     state = manager.get('/api/stand/state').json['data']
-    state['deals'][0]['files']['clientPayinReceipt'] = [receipt()]
+    state['deals'][0]['files']['clientPayinReceipt'] = [receipt(actor_id=manager_id)]
     no_log = manager.put('/api/stand/state', json={'version': 1, 'data': state})
     assert no_log.status_code == 409
     assert 'журнал' in no_log.json['error']
