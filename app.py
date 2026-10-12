@@ -22,6 +22,7 @@ import base64
 import binascii
 import stand_notify
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
+import stand_prepay
 from collections import Counter
 import bcrypt
 import logging
@@ -6323,6 +6324,9 @@ def stand_crm_close(stand_deal_id):
             funding_problem = _stand_check_batch_funding(state, conv, dispatch=True)
             if funding_problem:
                 return jsonify({'success': False, 'error': funding_problem}), 409
+        prepay_problem = stand_prepay.close_problem(state, stand_deal)
+        if prepay_problem:
+            return jsonify(success=False, error=prepay_problem), 409
         manual = stand_deal.get('originMode') == 'manual'
         if manual:
             if not stand_deal.get('manual') or stand_deal.get('step') != 'manual':
@@ -6644,6 +6648,9 @@ def _stand_members(state, deal_id):
     deal = deals.get(deal_id)
     if not deal:
         return []
+    if deal.get('prepay') or any(d.get('prepay') and d.get('cnvId') is not None
+                                 and d.get('cnvId') == deal.get('cnvId') for d in deals.values()):
+        return [deal]
     conv = next((c for c in state.get('convs', []) if c.get('id') == deal.get('cnvId')), None)
     ids = [s.get('dealId') for s in (conv or {}).get('sources', [])]
     if not ids:
@@ -6662,6 +6669,9 @@ def _stand_batch_main(state, deal_id):
     if len(selected) != 1:
         return None
     deal = selected[0]
+    if deal.get('prepay') or any(d.get('prepay') and d.get('cnvId') is not None
+                                 and d.get('cnvId') == deal.get('cnvId') for d in deals):
+        return deal
     conv_id = deal.get('cnvId')
     if conv_id is None:
         return deal if not (deal.get('conv') or []) else None
@@ -7326,6 +7336,8 @@ def _stand_current_step_role(state, deal):
         return 'manager'
     if step != 's23':
         return _STAND_STEP_ROLE.get(step)
+    if deal.get('prepay'):
+        return stand_prepay.wallet(state, deal)['role']
     conv = next((c for c in state.get('convs', [])
                  if c.get('id') == deal.get('cnvId')), None)
     if conv is None:
@@ -7448,6 +7460,10 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
         # карта STEPS[step].who, но s23 отправляет подписант привязанного
         # кошелька (не мультисиг) — Виталий/Теодор/…, а не всегда «findir».
         step = deal.get('step')
+        if step == 's22' and deal.get('kind') == 'Фрихолд':
+            return 'manager'
+        if step == 's23' and deal.get('prepay'):
+            return deal['prepay']['wallet']['role']
         if step == 's23' and state is not None:
             conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
             if conv is None:
@@ -7512,6 +7528,174 @@ def _stand_canonical_payout(payout):
     return payout
 
 
+def _stand_prepay_start_problem(state, deal):
+    """Разрешение использовать свои USDT появляется только после факта RUB."""
+    if (deal.get('type') != 'Оплата недвижимости' or deal.get('kind') != 'Фрихолд'
+            or deal.get('payType') == 'Крипта' or deal.get('closed') or deal.get('prepay')
+            or deal.get('step') not in ('s18', 's18w') or deal.get('ippsPayoutOrder')
+            or (deal.get('transfer') or {}).get('sends')):
+        return 'Оплата наперёд доступна рублёвому фрихолду на s18 или s18w'
+    conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
+    if any(t.get('status') == 'confirmed' for t in conv.get('txs') or []) or (deal.get('pay') or {}).get('usdt'):
+        return 'USDT брокера уже пришли'
+    # Проверяем настоящие банковские части тем же admission, что отправка брокеру.
+    clone = dict(deal, cnvId='prepay-check')
+    conv = {'id': 'prepay-check', 'sources': [{'dealId': deal['id'],
+            'rub': sum(_stand_number(p.get('amountRub')) for p in deal.get('payinParts') or [])}]}
+    issue = _stand_check_batch_funding(dict(state, deals=[clone]), conv)
+    if issue:
+        return issue
+    try:
+        if not math.isfinite(stand_prepay.amount(deal)) or _stand_number(deal.get('invoiceUsd')) <= 0:
+            return 'Нет суммы инвойса застройщика'
+    except (ValueError, TypeError, ArithmeticError, KeyError):
+        return 'Некорректная сумма или тариф IPPS'
+    return None
+
+
+@app.route('/api/stand/prepay', methods=['POST'])
+def stand_prepay_action():
+    """Запуск и отмена — атомарные действия; снимок источника пишет только сервер."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    if actor not in ('operator', 'admin'):
+        return jsonify(success=False, error='Оплату наперёд запускает операционист'), 403
+    payload = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == payload.get('dealId')), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        action = payload.get('action')
+        if action == 'start':
+            issue = _stand_prepay_start_problem(state, deal)
+            if issue:
+                return jsonify(success=False, error=issue), 409
+            chosen = next((w for w in state.get('wallets') or []
+                           if str(w.get('id')) == str(payload.get('walletId'))), {})
+            # Не доверяем редактируемому зеркалу доски: владелец и подписи из реестра CRM.
+            registered = db.query(Wallet).filter_by(address=chosen.get('addr'), active=True).first()
+            if (not registered or registered.blockchain not in ('TRON', 'TRC20', 'TRC-20')
+                    or not valid_address(registered.address, 'trc20')
+                    or (registered.is_multisig and registered.owner != 'компания')
+                    or (not registered.is_multisig and registered.owner not in ('Андрей', 'Теодор'))):
+                return jsonify(success=False, error='Выберите TRC-20 кошелёк фаундера или мультисиг компании из реестра'), 409
+            source = 'multisig' if registered.is_multisig else 'founder'
+            chosen = {'id': chosen['id'], 'addr': registered.address, 'owner': registered.owner,
+                      'multisig': bool(registered.is_multisig),
+                      'role': 'findir' if registered.is_multisig else 'teodor',
+                      'name': registered.label or registered.owner}
+            backup = {k: deal.get(k) for k in ('postConv', 'paySrc', 'transfer')}
+            deal['prepay'] = {'source': source, 'wallet': chosen, 'amount': stand_prepay.amount(deal),
+                             'brokerStep': deal['step'], 'startedAt': datetime.utcnow().isoformat() + 'Z',
+                             'startedBy': flask_session.get('user_id'),
+                             'startedByName': flask_session.get('display_name') or flask_session.get('username'),
+                             'backup': backup}
+            deal['step'] = 's22'
+            deal['postConv'] = 'ipps_swift'
+            deal['transfer'] = {}
+            deal['assigneeAdminId'] = None
+            if _stand_payto_problem(deal):
+                deal['reqTask'] = 'open'
+            text = f"Оплата наперёд: {chosen['owner']} · {chosen['name']} · {deal['prepay']['amount']:.2f} USDT в IPPS"
+            _stand_note(state, f"stand:prepay:{deal['id']}:{row.version}", 'manager', deal,
+                        'Реквизиты для оплаты и согласование заявки IPPS — параллельно с брокером')
+        elif action == 'cancel':
+            prepay = deal.get('prepay')
+            if (not prepay or deal.get('step') not in ('s22', 's23')
+                    or (deal.get('transfer') or {}).get('sends') or deal.get('serverTransferComplete')):
+                return jsonify(success=False, error='После регистрации отправки отмена недоступна'), 409
+            deal['step'] = prepay['brokerStep'] if prepay['brokerStep'] != 'done' else 's22'
+            for key, value in prepay['backup'].items():
+                if value is None:
+                    deal.pop(key, None)
+                else:
+                    deal[key] = value
+            deal.pop('ippsPayoutOrder', None)
+            deal.pop('prepay', None)
+            deal['assigneeAdminId'] = None
+            text = 'Оплата наперёд отменена до отправки с кошелька'
+        else:
+            return jsonify(success=False, error='Неизвестное действие'), 400
+        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'at': int(time.time() * 1000), 'role': actor,
+            'text': text, 'actorId': flask_session.get('user_id')})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        db.commit()
+        return jsonify(success=True, data=_stand_strip_files(state), version=row.version)
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/prepay/reimburse', methods=['POST'])
+def stand_prepay_reimburse():
+    """Возмещение — отдельный проверенный хеш, не второй расход сделки."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    data = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        state = json.loads(row.data or '{}')
+        version = row.version
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == data.get('dealId')), {})
+        p = deal.get('prepay') or {}
+        po = deal.get('payout') or {}
+        if (p.get('source') != 'founder' or p.get('brokerStep') != 'done'
+                or not deal.get('serverTransferComplete') or not stand_prepay.received(state, deal)):
+            return jsonify(success=False, error='Нужны отправка IPPS и приход USDT брокера'), 409
+        if po.get('reimbursement'):
+            return jsonify(success=True, data=_stand_strip_files(state), version=version)
+        conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
+        sender_wallet = next((w for w in state.get('wallets') or [] if w.get('id') == conv.get('walletId')), {})
+        required = 'findir' if sender_wallet.get('multisig') else sender_wallet.get('role', 'teodor')
+        if actor not in ('admin', required):
+            return jsonify(success=False, error='Хеш возмещения вносит подписант кошелька брокера'), 403
+        if _stand_number(po.get('usdt')) > _stand_number((deal.get('pay') or {}).get('usdt')) + .005:
+            return jsonify(success=False, error='Прихода брокера не хватает для полного возмещения'), 409
+        ref = normalize_ref(data.get('hash'), 'trc20')
+        if not ref or (ref.startswith('demo:') and (not deal.get('demoTransfers')
+                or not ref.startswith(f"demo:{deal['id']}:"))):
+            return jsonify(success=False, error='Нужен корректный хеш возмещения TRC-20'), 400
+        for other in state.get('deals') or []:
+            used = [s.get('ref') or s.get('hash') for s in (other.get('transfer') or {}).get('sends') or []]
+            used += [h.get('hash') for h in other.get('payinHashes') or []]
+            used += [((other.get('payout') or {}).get('reimbursement') or {}).get('hash')]
+            if ref in [normalize_ref(h, 'trc20') for h in used if h]:
+                return jsonify(success=False, error='Этот хеш уже учтён'), 409
+        sender, receiver, due = sender_wallet.get('addr'), p['wallet']['addr'], po['usdt']
+        demo = bool(deal.get('demoTransfers'))
+    finally:
+        db.close()
+    result = verify_transfer(ref, 'trc20', sender, receiver, due,
+                             demo=demo, demo_outcome='confirmed' if demo else None)
+    if result.get('status') != 'confirmed':
+        return jsonify(success=False, error=result.get('checkError') or 'Перевод ещё не подтверждён'), 409
+    db = get_session()
+    try:
+        row = _stand_row(db, lock=True)
+        if row.version != version:
+            return jsonify(success=False, error='Доска изменилась во время проверки — повторите'), 409
+        deal['payout']['reimbursement'] = {'id': 'R-' + str(deal['id']), 'kind': 'возмещение оплаты наперёд',
+            'hash': ref, 'usdt': due, 'at': datetime.utcnow().isoformat() + 'Z'}
+        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'at': int(time.time() * 1000), 'role': actor,
+            'text': f'Возмещено фаундеру {due:.2f} USDT · {ref}'})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        db.commit()
+        return jsonify(success=True, data=_stand_strip_files(state), version=row.version)
+    finally:
+        db.close()
+
+
 def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     """Require a manager-confirmed, server-stamped snapshot before freehold sends."""
     if not (deal.get('kind') == 'Фрихолд' or before.get('kind') == 'Фрихолд'):
@@ -7524,7 +7708,7 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     old_order = before.get('ippsPayoutOrder')
     if deal.get('ippsPayoutOrder') != old_order:
         return 'Поручение IPPS фиксирует только сервер'
-    if (before.get('step') == 's22'
+    if (before.get('step') == 's22' and not before.get('prepay')
             and (deal.get('demoTransfers') != before.get('demoTransfers')
                  or deal.get('payinHashes') != before.get('payinHashes'))):
         return 'Приход и demo-флаг нельзя менять на задаче поручения'
@@ -7586,6 +7770,10 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
             if source and confirmed > 0:
                 verified_in = max(verified_in, min(confirmed, _stand_number(
                     source.get('usdtFact') or source.get('usdt'))))
+        if before.get('prepay'):
+            # Отдельное разрешение операциониста тратить выбранный источник;
+            # не записываем его как приход и не подделываем подтверждение брокера.
+            verified_in = before['prepay']['amount']
         if verified_in <= 0 or amount > verified_in + 0.005:
             return 'Сумма поручения превышает подтверждённый приход или приход ещё не проверен'
         if new_sends:
@@ -7610,6 +7798,63 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
     old = {d.get('id'): d for d in previous.get('deals', [])}
+    broker_actions = set()
+    for deal in new_state.get('deals') or []:
+        before = old.get(deal.get('id')) or {}
+        old_p, new_p = before.get('prepay'), deal.get('prepay')
+        if not old_p:
+            if new_p:
+                return 'Оплату наперёд запускает сервер специальным действием'
+            continue
+        if not isinstance(new_p, dict) or {k: v for k, v in old_p.items() if k != 'brokerStep'} != {
+                k: v for k, v in new_p.items() if k != 'brokerStep'}:
+            return 'Источник и сумму оплаты наперёд нельзя менять'
+        bs, ns = old_p.get('brokerStep'), new_p.get('brokerStep')
+        broker_keys = {'prepay', 'pay', 'payinHashes', 'cnvId', 'walletId', 'conv', 'rates',
+                       'log', 'stepNotes', 'brokerProof', 'brokerDraft', 'brokerPick'}
+        changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)
+                   and not (k in ('files', 'docs', 'docMeta') and not before.get(k) and not deal.get(k))}
+        if bs == 'done' and (before.get('payinHashes') != deal.get('payinHashes')
+                or any((before.get('pay') or {}).get(k) != (deal.get('pay') or {}).get(k)
+                       for k in ('usdt', 'hash'))):
+            return 'Подтверждённый приход брокера нельзя менять'
+        if before.get('demoTransfers') != deal.get('demoTransfers'):
+            return 'Режим проверки предоплаты закреплён при запуске'
+        if bs != ns:
+            if actor not in ('operator', 'admin') or (bs, ns) not in (('s18', 's18w'), ('s18w', 'done')):
+                return 'Конвертацию наперёд ведёт операционист по шагам s18 → s18w'
+            if not changed <= broker_keys or before.get('step') != deal.get('step'):
+                return 'Конвертация и оплата сохраняются отдельными действиями'
+            old_pay, new_pay = before.get('pay') or {}, deal.get('pay') or {}
+            if any(old_pay.get(k) != new_pay.get(k) for k in set(old_pay) | set(new_pay)
+                   if k not in ('usdt', 'hash')):
+                return 'Конвертация не меняет оплату инвойса'
+            if bs == 's18':
+                issue = _stand_broker_handoff_problem(previous, new_state, before, deal)
+                if issue:
+                    return issue
+            else:
+                if not stand_prepay.received(previous, before):
+                    return 'Сначала подтвердите приход USDT брокера'
+                conv = next((c for c in new_state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
+                issue = _stand_check_batch_funding(new_state, conv)
+                if issue:
+                    return issue
+                source = next((s for s in conv.get('sources') or [] if s.get('dealId') == deal['id']), {})
+                if abs(_stand_number(new_pay.get('usdt')) - _stand_number(source.get('usdtFact'))) > .005:
+                    return 'Приход сделки должен совпасть с распределённым USDT брокера'
+            broker_actions.add(deal['id'])
+        elif actor == 'operator' and bs == 's18' and changed <= {'walletId', 'conv', 'log', 'stepNotes', 'brokerDraft', 'brokerPick'}:
+            broker_actions.add(deal['id'])
+        if (deal.get('transfer') or {}).get('sends'):
+            sends = [s for s in deal['transfer']['sends'] if s.get('status') not in ('failed', 'mismatch')]
+            if (any((_amount(s.get('amount')) or 0) <= 0 for s in sends)
+                    or sum((_amount(s.get('amount')) or 0) for s in sends) > _amount(old_p['amount'])):
+                return 'Отправки превышают разрешённую сумму оплаты наперёд'
+        if deal.get('closed') and not before.get('closed'):
+            issue = stand_prepay.close_problem(new_state, deal)
+            if issue:
+                return issue
     new_deals = {d.get('id'): d for d in new_state.get('deals', [])}
     committed_steps = ('s23', 's24', 's25', 's26', 's27', 'done')
     accepted_conv_ids = {d.get('cnvId') for d in previous.get('deals', [])
@@ -7724,7 +7969,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     return 'Кошелёк пачки меняют только на шаге отправки брокеру, отдельно от смены шага'
         accepted_main = next((d for d in previous.get('deals', [])
                               if d.get('cnvId') == old_conv.get('id')
-                              and d.get('postConv') in ('coins', 'ipps_swift')
+                              and not d.get('prepay') and d.get('postConv') in ('coins', 'ipps_swift')
                               and d.get('step') in committed_steps), None)
         assignment_locked = bool(accepted_main)
         incoming_confirmed = any(t.get('status') == 'confirmed' for t in old_conv.get('txs') or [])
@@ -7913,7 +8158,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     (before.get('reqTask') == 'done' and deal.get('reqTask') == 'open'
                      and before.get('payTo') and changed <= STAND_MANAGER_REQ_FIELDS) or
                     _stand_manager_docs_only(before, deal, changed)))
-                if not manager_parallel:
+                if not manager_parallel and deal['id'] not in broker_actions:
                     return f'Действие шага {before.get("step")} доступно роли {owner}'
             if before.get('step') != 'manual' and before.get('payTo') != deal.get('payTo'):
                 if actor != 'manager':
@@ -8032,6 +8277,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             elif before.get('step') in committed_steps and deal.get('step') != before.get('step'):
                 return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
             for key in ('cnvId', 'conv', 'postConv', 'walletId'):
+                if deal['id'] in broker_actions and key in ('cnvId', 'walletId'):
+                    continue
                 if before.get(key) != deal.get(key):
                     return 'Маршрут подтверждённой сделки нельзя изменить'
             old_transfer, new_transfer = before.get('transfer') or {}, deal.get('transfer') or {}
@@ -8058,6 +8305,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         old_main = next((d for d in previous.get('deals', [])
                          if d.get('cnvId') == before.get('cnvId')
                          and d.get('postConv') in ('coins', 'ipps_swift')), None)
+        if before.get('prepay') or before.get('cnvId') is None or any(
+                d.get('prepay') and d.get('cnvId') == before.get('cnvId')
+                for d in previous.get('deals', [])):
+            old_main = before
         assignment_locked = (old_main or {}).get('step') in committed_steps
         previous_target = _amount((before.get('transfer') or {}).get('amount'))
         new_target = _amount((deal.get('transfer') or {}).get('amount'))
@@ -8083,7 +8334,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                             (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
                              and changed <= STAND_MANAGER_REQ_FIELDS)
                             or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))))
-            if required and actor != required and not manager_reqs:
+            if required and actor != required and not manager_reqs and deal['id'] not in broker_actions:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
             if deal.get('closed') or deal.get('step') == 'done':
@@ -8204,8 +8455,8 @@ def _stand_settle_verified(state, members):
         main = None
     if main and not main.get('serverTransferComplete'):
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
-        wallet_id = (conv or {}).get('walletId') or main.get('walletId')
-        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+        wallet_id = stand_prepay.wallet_id(state, main)
+        wallet = stand_prepay.wallet(state, main)
         multisig = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
         def required_send(deal):
             kind = deal.get('postConv')
@@ -8254,6 +8505,10 @@ def _stand_settle_verified(state, members):
                                  + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
             main['step'] = 's26' if main.get('kind') == 'Фрихолд' else 's25'
             main['serverTransferComplete'] = True
+            if main.get('prepay'):
+                p = main['prepay']
+                main['paySrc'] = 'founder' if p['source'] == 'founder' else 'ipps_swift'
+                payout.update(source=p['wallet']['name'], founder=p['wallet']['owner'])
             # Мелкие сделки пачки с Coins и переводом клиенту: клиент получает деньги,
             # когда перевод подтверждён, — это закрытие сделки и хеши выдачи в Pay-Out.
             # Раньше их закрывал браузер на шаге подписи; после переноса подтверждения
@@ -8308,7 +8563,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
     finally:
         db.close()
     ids = ([deal_id] if deal_id is not None else
-           [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')])
+           [d.get('id') for d in snapshot.get('deals', []) if d.get('step') in ('s23', 's24', 'pack')
+            and (d.get('transfer') or {}).get('sends')])
     if deal_id is None:
         allowed = []
         for wanted in ids:
@@ -8348,7 +8604,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
     for selected in [c for c in snapshot.get('convs', [])
                      if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
                             for d in snapshot.get('deals', []))]:
-        problem = _stand_check_batch_funding(snapshot, selected, dispatch=True)
+        selected_ids = [d['id'] for d in snapshot['deals'] if d.get('cnvId') == selected['id'] and d['id'] in ids]
+        independent = selected_ids[0] if len(selected_ids) == 1 and next(d for d in snapshot['deals'] if d['id'] == selected_ids[0]).get('prepay') else None
+        problem = _stand_check_batch_funding(snapshot, selected, dispatch=True, independent_id=independent)
         if problem:
             if not poll:
                 return {'success': False, 'error': problem, 'httpStatus': 409}
@@ -8393,8 +8651,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         main = _stand_batch_main(snapshot, member_id)
         conv = next((c for c in snapshot.get('convs', [])
                      if c.get('id') == (main or {}).get('cnvId')), None)
-        wallet_id = (conv or {}).get('walletId') or (main or {}).get('walletId')
-        wallet = next((w for w in snapshot.get('wallets', []) if w.get('id') == wallet_id), None)
+        wallet_id = stand_prepay.wallet_id(snapshot, main or {})
+        wallet = stand_prepay.wallet(snapshot, main or {})
         demo_multisig_wait = bool(main and main.get('step') == 's23'
                                   and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
         if key[0] is None:
@@ -8422,7 +8680,9 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         for selected in [c for c in state.get('convs', [])
                          if any(d.get('cnvId') == c.get('id') and d.get('id') in ids
                                 for d in state.get('deals', []))]:
-            problem = _stand_check_batch_funding(state, selected, dispatch=True)
+            selected_ids = [d['id'] for d in state['deals'] if d.get('cnvId') == selected['id'] and d['id'] in ids]
+            independent = selected_ids[0] if len(selected_ids) == 1 and next(d for d in state['deals'] if d['id'] == selected_ids[0]).get('prepay') else None
+            problem = _stand_check_batch_funding(state, selected, dispatch=True, independent_id=independent)
             if problem:
                 if not poll:
                     return {'success': False, 'error': problem, 'httpStatus': 409}
@@ -8510,8 +8770,8 @@ def stand_transfers_demo():
                 return jsonify({'success': False,
                                 'error': 'Ждём поручения менеджера перед исходящим переводом'}), 409
         conv = next((c for c in state.get('convs', []) if c.get('id') == main.get('cnvId')), None)
-        wallet_id = (conv or {}).get('walletId') or main.get('walletId')
-        wallet = next((w for w in state.get('wallets', []) if w.get('id') == wallet_id), None)
+        wallet_id = stand_prepay.wallet_id(state, main)
+        wallet = stand_prepay.wallet(state, main)
         multi = (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey'))
         required = 'teodor' if multi and main.get('step') == 's24' else (
             'findir' if multi else (wallet or {}).get('role') or 'teodor')
@@ -8526,7 +8786,8 @@ def stand_transfers_demo():
         if not send:
             return jsonify({'success': False, 'error': 'Отправка не найдена'}), 404
         if conv:
-            problem = _stand_check_batch_funding(state, conv, dispatch=True)
+            problem = _stand_check_batch_funding(state, conv, dispatch=True,
+                independent_id=main['id'] if main.get('prepay') else None)
             if problem:
                 return jsonify({'success': False, 'error': problem}), 409
         if send.get('status') == 'confirmed':

@@ -1830,6 +1830,7 @@ async function walletAdd(id){
    уходят на s23 — «Указать кошелёк…» без «Запомнить» держит owner/multisig в
    payinCustom, а не в реестре, поэтому резолвим его тут же, как payinWallet(d). */
 function dealWallet(d){
+  if(d&&d.prepay&&!d._prepayBroker)return d.prepay.wallet;
   const c=convOf(d);
   const wid=(c&&c.walletId)||(d&&d.walletId);
   if(wid==='custom'){
@@ -1862,9 +1863,10 @@ const POST_CONV=[
    обмен возвращается клиенту на кошелёк, по третьей отправлять нечего — выдача идёт
    с баланса. Поэтому назначение выбирают по каждой сделке, а не одно на всю сумму. */
 function cnvMembers(d){
+  if(d.prepay)return [d];
   const c=convOf(d);
   const l=c?(c.sources||[]).map(x=>deal(x.dealId)).filter(Boolean):[];
-  return l.length?l:[d];
+  return l.some(x=>x.prepay)?[d]:(l.length?l:[d]);
 }
 /* Что по пачке ушло в Coins: сделка, баты, курс, отправленные USDT и хеши.
    sends — все зарегистрированные переводы с их статусом (не только подтверждённые):
@@ -3033,6 +3035,7 @@ const STEPS={
   done :{n:99,who:null,title:'Закрыта'}
 };
 function stepTitle(d){
+  if(d.prepay)return 'Параллельно: '+(d.prepay.brokerStep==='done'?'USDT получены':STEPS[d.prepay.brokerStep].title)+' · '+(d.step==='s22'?'Согласовать заявку IPPS':STEPS[d.step].title);
   return d.step==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103 по согласованной заявке':
     (STEPS[d.step]?STEPS[d.step].title:d.step);
 }
@@ -3049,6 +3052,7 @@ const FLOW_RUB =['s5','s6','s8','s11','s12','s14','s15','s18','s18w','s22','s23'
 const FLOW_USDT=['s5','s6','s8','s11','s12','s14','s15','s22','s23','s24','s25','s26','s27'];
 const FLOW_ALIAS={s11b:'s11',s14m:'s14'};
 function flowOf(d){
+  if(d.prepay)return d.prepay.flow||FLOW_RUB.filter(s=>s!=='s15'&&s!=='s25'&&(!d.selfRate||s!=='s5'));
   let F=isCrypto(d)?FLOW_USDT:FLOW_RUB;
   /* Реквизиты — параллельная задача менеджера, а не шаг пути: деньги пришли —
      операционист сразу конвертирует (Карим, 25.09). s15 остаётся только у сделок,
@@ -3084,6 +3088,7 @@ function rateKnown(d){
   return false;                                  // недвижимость: курс у Coins под объём
 }
 function progress(d){
+  if(d.prepay){const F=flowOf(d);return {i:Math.min(F.length,F.filter(s=>prepayStepDone(d,s)).length+1),n:F.length};}
   const F=flowOf(d), i=F.indexOf(FLOW_ALIAS[d.step]||d.step);
   return {i:i<0?0:i+1,n:F.length};
 }
@@ -3119,6 +3124,14 @@ function taskToDeal(d,step){
   log(d,'Задача стала сделкой — деньги пошли, карточка попала в реестр');
 }
 function go(d,step,text,persist=true){
+  if(d.prepay&&(step==='s18w'||step==='s22')){
+    d.prepay.brokerStep=step==='s18w'?'s18w':'done';
+    log(d,text);
+    if(step==='s22')log(d,d.prepay.source==='founder'
+      ?'USDT брокера получены — возместить фаундеру отправленную в IPPS сумму'
+      :'USDT брокера получены и остаются на мультисиге компании; возмещение не требуется');
+    if(persist)save();render();return;
+  }
   const prev=S.role;
   draftsClear(d.id);
   taskToDeal(d,step);
@@ -3145,6 +3158,62 @@ function go(d,step,text,persist=true){
 /* Деньги пришли — дальше две задачи сразу: операционист конвертирует (s18 у рублей,
    s22 у крипты), менеджер вносит реквизиты получателя. Реквизиты нужны только на
    оплате инвойса (s26) — там и ждём (Карим, 25.09: «параллельно, не последовательно»). */
+/* Оплата идёт штатными шагами, конвертация сохраняет независимый курсор.
+   Старые сделки без prepay продолжают линейный путь. */
+function prepayCanStart(d){
+  return !!d&&!d.prepay&&!d.closed&&d.type==='Оплата недвижимости'&&d.kind==='Фрихолд'
+    &&!isCrypto(d)&&['s18','s18w'].includes(d.step)
+    &&(d.payinParts||[]).some(p=>Number(p.amountRub)>0)
+    &&!(d.pay||{}).usdt&&!((convOf(d)||{}).txs||[]).some(t=>t.status==='confirmed');
+}
+function prepayStepDone(d,s){
+  if(d.closed)return true;
+  if(s==='s18')return d.prepay.brokerStep!=='s18';
+  if(s==='s18w')return d.prepay.brokerStep==='done';
+  const P=['s22','s23','s24','s26','s27'];
+  if(!P.includes(s))return true;
+  if(s==='s24'&&!d.prepay.wallet.multisig)return true;
+  return P.indexOf(s)<P.indexOf(d.step);
+}
+function prepayRefundRole(d){
+  if(!d.prepay||d.prepay.source!=='founder'||!d.serverTransferComplete
+      ||d.prepay.brokerStep!=='done'||d.payout?.reimbursement)return null;
+  const w=walletById(convOf(d)?.walletId);
+  return w?.multisig?'findir':(w?.role||'teodor');
+}
+async function prepayAction(id,action){
+  try{const saved=await standWaitSaved();if(!saved?.ok){toast('Сначала сохраните изменения');return;}}
+  catch(e){toast('Сначала сохраните изменения');return;}
+  const j=await standAction('/api/stand/prepay',{dealId:id,action,version:standVer,walletId:val('prepay_wallet')});
+  if(j){S.prepayForm=null;render();toast(action==='start'?'Оплата идёт параллельно с конвертацией':'Оплата наперёд отменена');}
+}
+async function prepayReimburse(id){
+  const j=await standAction('/api/stand/prepay/reimburse',{dealId:id,hash:val('prepay_refund_'+id)});
+  if(j)toast('Возмещение подтверждено');
+}
+function prepayPanel(d){
+  const p=d.prepay;
+  if(!p){
+    if(S.role!=='operator'||!prepayCanStart(d))return '';
+    if(S.prepayForm!==d.id)return `<div class="card"><button class="btn btn-secondary" onclick="S.prepayForm=${d.id};render()">Оплатить наперёд</button></div>`;
+    const choices=wallets().filter(w=>addrValid(w.addr,'TRC-20')&&
+      (w.multisig?w.owner==='компания':['Андрей','Теодор'].includes(w.owner)));
+    return `<div class="card"><div class="card-title">Оплатить наперёд</div>
+      <div class="fg"><label class="fl">Источник USDT</label><select class="fc" id="prepay_wallet"><option value="">— выбрать —</option>
+      ${choices.map(w=>`<option value="${htmlText(w.id)}">${htmlText(w.multisig?'Мультисиг компании':('Фаундер · '+w.owner))} · ${htmlText(w.name)}</option>`).join('')}</select></div>
+      <div class="fg"><label class="fl">В IPPS, USDT · ${htmlText(ippsTariff(d).label)}</label><input class="fc" readonly value="${freeholdSend(d.invoiceUsd||0,ippsTariff(d))}"></div>
+      <button class="btn btn-primary" onclick="prepayAction(${d.id},'start')">Запустить оплату наперёд</button></div>`;
+  }
+  const refund=prepayRefundRole(d), due=d.payout?.usdt;
+  return `<div class="card"><div class="card-title">Оплата наперёд · параллельные задачи</div>
+    <p>Конвертация: <b>${p.brokerStep==='done'?'USDT брокера получены':STEPS[p.brokerStep].title}</b></p>
+    <p>Оплата: <b>${d.pay?.invoicePaid?'MT103/чек получен':(d.step==='s22'?'Согласовать заявку IPPS':STEPS[d.step].title)}</b> · ${htmlText(p.wallet.name)} · ${usd(p.amount)}</p>
+    ${S.role==='operator'&&['s22','s23'].includes(d.step)&&!sendList(d).length?`<button class="btn btn-outline" onclick="prepayAction(${d.id},'cancel')">Отменить оплату наперёд</button>`:''}
+    ${p.source==='founder'?`<p>Возмещение: ${d.payout?.reimbursement?'закрыто':(due?usd(due)+' фаундеру '+htmlText(p.wallet.owner):'долг возникнет после отправки IPPS')}</p>`:'<p>USDT брокера остаются на мультисиге компании. Возмещение не требуется.</p>'}
+    ${refund===S.role?`<label class="fl">Хеш возврата ${usd(due)} фаундеру</label><input class="fc addr" id="prepay_refund_${d.id}" placeholder="TRC-20 хеш">
+      <button class="btn btn-primary" onclick="prepayReimburse(${d.id})">Проверить и закрыть возмещение</button>`:''}
+    </div>`;
+}
 function reqOpen(d){return !!d&&!d.closed&&d.reqTask==='open';}
 function afterPayin(d,text,persist=true){
   const F=flowOf(d), nxt=F[F.indexOf('s14')+1]||(isCrypto(d)?'s22':'s18');
@@ -3251,7 +3320,7 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom')))));}
+function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom')))));}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -4988,6 +5057,9 @@ function viewDeal(d){
     else body=(who?assigneeBlock(d,who):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
+  body=prepayPanel(d)+body;
+  if(view==='task'&&d.prepay&&S.role==='operator'&&d.prepay.brokerStep!=='done')
+    body=stepCard(Object.assign({},d,{step:d.prepay.brokerStep,_prepayBroker:true}))+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
   return `<div class="strip"><span class="id">${d.code}</span><span class="nm">${d.client}</span>
     <span class="sp"></span><span class="it">${d.type}${d.kind?' · '+d.kind:''}${d.pair?' · '+d.pair:''}${d.object?' · '+d.object:''}${d.partial?' · <b>часть '+(d.partNo||'')+'</b>':''}</span>
@@ -5256,9 +5328,9 @@ function pathCard(d){
     <table style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
     ${flowOf(d).map(k=>{const f=FILLS[k]; if(!f)return '';
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
-      const st=d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
-      return `<tr${idx===cur&&!d.closed?' style="background:var(--coral-light)"':''}>
-        <td>${k==='s25'&&d.kind==='Фрихолд'?'Отправить заявку в IPPS':STEPS[k].title}</td><td>${STEPS[k].who?ROLES[STEPS[k].who].t:'—'}</td>
+      const st=d.prepay?(prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
+      return `<tr${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
+        <td>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</td><td>${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</td>
         <td><b>${f.b}</b> — ${f.w}</td>
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':'<span class="badge b-wait">ещё нет</span>')}</td></tr>`;}).join('')}
     </tbody></table>
@@ -8392,7 +8464,7 @@ function stepCard(d){
       <div class="fr">
         <div class="fg w2"><label class="fl">Account Name (получатель)<span class="rq">*</span></label>
           <input class="fc" id="p_dev" value="${(pt.dev||d.dev||(d.docVersion?F2.dev:'')||parsed(d,'recipient_name')||'').replace(/"/g,'&quot;')}" placeholder="Account Name из инвойса"></div>
-        <div class="fg"><label class="fl">Сумма, $<span class="sub2"> из договора, только чтение</span></label>
+        <div class="fg"><label class="fl">Сумма, $<span class="sub2"> из заявки (инвойс застройщика), только чтение</span></label>
           <input class="fc num big" readonly value="${amount?Number(amount).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
       </div>
       <div class="fr">
@@ -8547,7 +8619,7 @@ function stepCard(d){
       /* Брокер прислал USDT не на тот кошелёк — пачку перенастраивают, пока подтверждённых
          приходов нет; подтверждённый сначала отвязывают (Карим, 25.09). */
       const confirmed=c&&(c.txs||[]).some(t=>t.status==='confirmed');
-      if(!c||confirmed) return '';
+      if(!c||confirmed||d.prepay) return '';
       return `<div class="hrow" style="margin-top:8px;flex-wrap:wrap"><span class="fh" style="margin:0">Брокер прислал на другой кошелёк?</span>
         <select class="fc" style="max-width:360px" onchange="if(this.value)cnvWalletFix(${d.id},this.value)">
           <option value="">— сменить кошелёк пачки —</option>
@@ -8590,7 +8662,7 @@ function stepCard(d){
 
     ${(gap!=null&&gap<-0.01)?`<div class="alert a-warn"><div><b>Пришло меньше, чем ждали.</b> Разница ${usd(Math.abs(gap))} — либо брокер недослал, либо ждём второй перевод. Добавьте его, когда придёт, или закройте шаг как есть: прибыль посчитается от фактической суммы.</div></div>`:''}
     <div class="alert a-info"><div>Сумму не вводим руками — она приходит вместе с транзакцией. Переводов может быть несколько, они суммируются. Дальше прибыль считается от этой суммы, а не от расчёта по курсу.</div></div>
-    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">USDT получены — решить, что с ними делать</button>
+    <div class="row"><button class="btn btn-success" onclick="act(${d.id},'s18w')">${d.prepay?'USDT получены — завершить конвертацию':'USDT получены — решить, что с ними делать'}</button>
     <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни это запрос брокеру')">Брокер задерживает</button></div></div>`;},
 
   s22:()=>{
@@ -8608,8 +8680,8 @@ function stepCard(d){
         <div class="alert a-warn"><div>Менеджер должен согласовать заявку в группе IPPS и зафиксировать сумму, сеть и адрес получателя. До этого финдир не увидит задачу, перевод не отправляется.</div></div></div>`;
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
         ${d.demoTransfers?`<div class="alert a-warn"><div><b>DEMO · тестовый приход</b><br>Это не подтверждение реальных денег. Не выполнять реальный исходящий перевод.</div></div>`:''}
-        <div class="alert a-info"><div>После прихода USDT менеджер сверяет в группе IPPS сумму, сеть и адрес. Фин дир получит зафиксированные данные. Автоматического перевода на постоянный адрес нет.</div></div>
-        <div class="derived">Пришло ${got!=null?usd(got):'—'} · расчёт по договору ${usd(expected)} USDT</div>
+        <div class="alert a-info"><div>Менеджер сверяет в группе IPPS сумму, сеть и адрес. Фин дир получит зафиксированные данные. Автоматического перевода на постоянный адрес нет.</div></div>
+        <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         <div class="card-title" style="font-size:14px;margin-top:14px">Реквизиты заявки SWIFT застройщику</div>
         <div class="fr">
           <div class="fg w2"><label class="fl">Account Name<span class="rq">*</span></label><input class="fc" id="p_dev" value="${htmlText((d.payTo||{}).dev||d.dev||'')}" placeholder="получатель из инвойса"></div>
@@ -8906,7 +8978,7 @@ function stepCard(d){
 /* ---------- действия ---------- */
 async function act(id,step){
   const d=deal(id);
-  if(!d||d.closed||d.step!==step){toast('Шаг уже изменился — откройте текущую задачу');return;}
+  if(!d||d.closed||(d.step!==step&&!(d.prepay&&d.prepay.brokerStep===step))){toast('Шаг уже изменился — откройте текущую задачу');return;}
   if(STAND&&step==='s22'&&d.kind==='Фрихолд'&&(standBusy||standPush||standSaveScheduled)){
     toast('Предыдущее сохранение ещё завершается — дождитесь ответа сервера');return;
   }
@@ -9066,7 +9138,7 @@ async function act(id,step){
     /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
        кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
        и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
-    d.demoTransfers=true; members.forEach(x=>x.demoTransfers=true);
+    if(!d.prepay){d.demoTransfers=true;members.forEach(x=>x.demoTransfers=true);}
     if(d.demoTransfers){
       const plan=Math.round(cn.sent/num(cn.rate)*100)/100;
       if(plan>0){
@@ -9127,7 +9199,7 @@ async function act(id,step){
       });
     }
     d.pay.usdt=d.pay.usdt||got;
-    (d.conv||[]).forEach(xid=>{const x=deal(xid);if(x){x.rates.broker=d.rates.broker;x.step='pack';
+    (d.conv||[]).forEach(xid=>{const x=deal(xid);if(x){x.rates.broker=d.rates.broker;x.step=d.prepay?'s22':'pack';
       /* курс USDT→THB пачки: по нему CRM оценивает стоимость батов, выданных с баланса
          IPPS или из кассы, — без него прибыль мелкой сделки не считалась */
       x.rates.usdtThb=x.rates.usdtThb||d.rates.usdtThb||String(avgUsdt()).replace('.',',');
@@ -9147,7 +9219,7 @@ async function act(id,step){
       if(['dev','bank','acc','purpose','swift'].some(k=>String(savedPayTo[k]||'').trim()!==String(enteredPayTo[k]||'').trim())){
         toast('Сначала сохраните последние изменения реквизитов заявки');return;
       }
-      const batch=convOf(d), funded=batch?hashSum(batch.txs):hashSum(d.payinHashes);
+      const batch=convOf(d), funded=d.prepay?d.prepay.amount:(batch?hashSum(batch.txs):hashSum(d.payinHashes));
       if(funded==null||Math.round(amount*100)>Math.round(funded*100)){toast('Сумма поручения превышает подтверждённый приход или приход ещё не зарегистрирован');return;}
       const expected=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
       if(Math.round(amount*100)!==Math.round(expected*100)){toast('Сумма IPPS должна совпасть с расчётом договора: '+usd(expected));return;}
@@ -9285,6 +9357,7 @@ async function act(id,step){
     go(d,'s27','Оплачено, чек у менеджера — отправить клиенту и закрыть');
     toast('Чек ушёл менеджеру');return;}
   if(step==='s27'){
+    if(d.prepay&&(d.prepay.brokerStep!=='done'||(d.prepay.source==='founder'&&!d.payout?.reimbursement))){toast('Ждём приход USDT брокера и возмещение фаундеру');return;}
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
     const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
     if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
@@ -9433,7 +9506,7 @@ function convForm(){
    не повесят хеш перевода. Автовозмещение — USDT от брокера пришли прямо на кошелёк
    этого фаундера, двигать деньги не пришлось. */
 function viewReimb(){
-  const l=S.deals.filter(d=>d.paySrc==='founder');
+  const l=S.deals.filter(d=>d.paySrc==='founder'&&(!d.prepay||d.serverTransferComplete));
   const open=l.filter(d=>!(d.payout&&d.payout.reimbursement)), done=l.filter(d=>d.payout&&d.payout.reimbursement);
   const due=Math.round(open.reduce((a,d)=>a+((d.payout&&d.payout.usdt)||0),0)*100)/100;
   const tr=d=>{const po=d.payout||{}, r=po.reimbursement;

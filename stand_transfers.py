@@ -92,6 +92,8 @@ def stand_wallet_address(state, wallet_id):
 
 
 def expected_addresses(state, deal):
+    if deal.get('prepay'):
+        return deal['prepay']['wallet']['addr'], (deal.get('transfer') or {}).get('addr')
     conv = next((c for c in state.get('convs', []) if c.get('id') == deal.get('cnvId')), None)
     wallet_id = (conv or {}).get('walletId') or deal.get('walletId')
     sender = stand_wallet_address(state, wallet_id)

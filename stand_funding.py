@@ -38,7 +38,7 @@ def _physical_send(deal, wallet_id):
     return route in ('coins', 'client', 'refund', 'ipps_swift', 'ipps')
 
 
-def check_batch(state, conv, *, dispatch=False):
+def check_batch(state, conv, *, dispatch=False, independent_id=None):
     """Return a user-facing error, before any state or transfer mutation."""
     sources = conv.get('sources') or []
     deals = {d.get('id'): d for d in state.get('deals') or []}
@@ -95,6 +95,17 @@ def check_batch(state, conv, *, dispatch=False):
             return 'Распределение USDT не совпадает с подтверждённым приходом и долями RUB'
     if not dispatch:
         return None
+    if independent_id is not None:
+        deal = deals.get(independent_id) or {}
+        prepay = deal.get('prepay') or {}
+        transfer = deal.get('transfer') or {}
+        limit = money(prepay.get('amount'), positive=True)
+        parts = [money(s.get('amount'), positive=True) for s in transfer.get('sends') or []
+                 if s.get('status') not in ('failed', 'mismatch')]
+        if (independent_id not in ids or limit is None or money(transfer.get('amount')) != limit
+                or any(p is None for p in parts) or sum(parts) > limit):
+            return 'Недостаточно разрешённых средств для оплаты наперёд'
+        return None
     incoming = Decimal(0)
     hashes = set()
     for tx in conv.get('txs') or []:
@@ -104,7 +115,10 @@ def check_batch(state, conv, *, dispatch=False):
             return 'Для отправки нужен уникальный подтверждённый приход USDT'
         hashes.add(key)
         incoming += amount
-    if incoming <= 0:
+    # Оплата наперёд финансируется отдельным разрешённым источником.
+    # RUB и разнос по пачке по-прежнему проверяются; USDT брокера не выдумываем.
+    independent = all(deals[s['dealId']].get('prepay') for s in sources)
+    if incoming <= 0 and not independent:
         return 'Нет подтверждённого прихода USDT по пачке'
     outgoing = Decimal(0)
     for source in sources:
@@ -112,6 +126,14 @@ def check_batch(state, conv, *, dispatch=False):
         transfer = deal.get('transfer') or {}
         sends = [s for s in transfer.get('sends') or []
                  if s.get('status') not in ('failed', 'mismatch')]
+        if deal.get('prepay'):
+            limit = money(deal['prepay'].get('amount'), positive=True)
+            assigned = money(transfer.get('amount'), positive=True)
+            parts = [money(s.get('amount'), positive=True) for s in sends]
+            if (limit is None or assigned != limit or any(p is None for p in parts)
+                    or sum(parts) > limit):
+                return 'Отправки IPPS должны укладываться в разрешённую сумму оплаты наперёд'
+            continue
         if not _physical_send(deal, conv.get('walletId')):
             if sends:
                 return 'По этому назначению перевод с кошелька не предусмотрен'
@@ -157,7 +179,7 @@ def check_state(previous, state):
             continue
         before = old_convs.get(conv.get('id'))
         members = [d for d in state.get('deals') or [] if d.get('cnvId') == conv.get('id')]
-        committed = any(d.get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
+        committed = any(not d.get('prepay') and d.get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
                         and d.get('postConv') in ('coins', 'ipps_swift') for d in members)
         newly_committed = any(d.get('step') in ('s23', 's24', 's25', 's26', 's27', 'done')
                               and (old_deals.get(d.get('id')) or {}).get('step') == 's22'
