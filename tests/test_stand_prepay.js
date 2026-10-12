@@ -113,15 +113,16 @@ for(const source of ['founder','multisig']){
   for(const name of ['personalSend','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
     vm.runInContext(fn(name),view);
   }
+  // Тип кошелька определяет подпись даже без source или при старом неверном source.
   const wallets=[...ctx.walletList,{...ctx.walletList[1],id:'teodor',owner:'Теодор'}];
-  for(const wallet of wallets) for(const step of ['s23','s24']) for(const status of ['no_batch','s18w','done']){
+  for(const wallet of wallets) for(const step of ['s23','s24']) for(const status of ['no_batch','s18w','done']) for(const source of [undefined,'founder','multisig']){
     const d={...old,step,rates:{},postConv:'ipps_swift',transfer:{amount:10130,addr:'ipps'},
-      prepay:{source:wallet.multisig?'multisig':'founder',wallet,amount:10130,
+      prepay:{source,wallet,amount:10130,
         brokerStep:status==='no_batch'?'s18':status}};
     if(status!=='no_batch') d.batch={sources:[{dealId:d.id,usdt:11000}],
       txs:status==='done'?[{amount:11000,status:'confirmed'}]:[],broker:'Брокер'};
     const card=view.stepCard(d);
-    assert.ok(card.includes(wallet.multisig?'с мультисига компании':'с кошелька фаундера '+wallet.owner));
+    assert.ok(card.includes(wallet.multisig?'с мультисига компании':'с кошелька '+wallet.owner));
     assert.match(card,/Источник оплаты/);
     assert.ok(card.includes(status==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.'));
     assert.doesNotMatch(card,/клиент платил криптой|конвертации не было|Пачки конвертации нет|проверьте, откуда берутся деньги|брокер Брокер выдал|из пришедших/);

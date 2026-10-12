@@ -8015,7 +8015,7 @@ function sendBlock(x,edit,multi){
 /* Источник предоплаты не зависит от готовности параллельной конвертации. */
 function prepayFundingText(d){
   const p=d.prepay, w=p.wallet||{};
-  return 'Платим наперёд '+(p.source==='founder'?'с кошелька фаундера '+(w.owner||w.name||''):'с мультисига компании')+
+  return 'Платим наперёд '+(w.multisig?'с мультисига компании':'с кошелька '+(w.owner||w.name||''))+
     '. '+(p.brokerStep==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.');
 }
 function taskFacts(d,x){
