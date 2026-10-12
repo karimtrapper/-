@@ -687,7 +687,11 @@ function standMerge(base,mine,theirs){
   return {data:out,conflicts};
 }
 
-function standSnapshot(){ const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; }); return o; }
+function standSnapshot(){
+  const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
+  if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
+  return o;
+}
 function standApply(data){
   if(!data||typeof data!=='object')return;
   /* Снимок применяем целиком, а не только присутствующие ключи. Иначе сброс
@@ -9504,12 +9508,16 @@ function incomesInit(){
   return out;
 }
 function incomes(){ if(!S.incomes)S.incomes=incomesInit(); return S.incomes; }
-function incSel(){ return incomes().filter(x=>x.sel&&!x.excluded&&!x.cnvId); }
-function incToggle(id){const x=incomes().find(i=>i.id===id);if(x){x.sel=!x.sel;save();render();}}
-function incAll(on){incomes().forEach(x=>{if(!x.excluded&&!x.cnvId)x.sel=on;});save();render();}
+const incomeSelected=new Set();
+function incSel(){ return incomes().filter(x=>incomeSelected.has(String(x.id))&&!x.excluded&&!x.cnvId); }
+function incToggle(id){const x=incomes().find(i=>i.id===id);if(x){
+  const key=String(id);if(incomeSelected.has(key))incomeSelected.delete(key);else incomeSelected.add(key);
+  render();}}
+function incAll(on){incomes().forEach(x=>{const key=String(x.id);
+  if(on&&!x.excluded&&!x.cnvId)incomeSelected.add(key);else incomeSelected.delete(key);});render();}
 function incExclude(){
   const n=incSel().length; if(!n){toast('Отметьте приходы');return;}
-  incSel().forEach(x=>{x.excluded=true;x.sel=false;});
+  incSel().forEach(x=>{x.excluded=true;incomeSelected.delete(String(x.id));});
   save();render();toast('Исключено: '+n);
 }
 function incCutoff(){
@@ -9538,7 +9546,7 @@ function convFormSave(){
       incomeId:x.id,usdt:r?Math.round(bs.sent*(x.rub/rubTotal)/r*100)/100:null})),
     txs:[]};
   S.convs.push(cn);
-  sel.forEach(x=>{x.cnvId=cn.id;x.sel=false;
+  sel.forEach(x=>{x.cnvId=cn.id;incomeSelected.delete(String(x.id));
     const d=x.dealId?deal(x.dealId):null; if(d){d.cnvId=cn.id;d.rates.broker=rate;log(d,'Рубли ушли в пачку '+cn.name+' · '+broker+' · курс '+rate);}});
   S.convForm=null;save();render();toast(cn.name+' создана — ждём USDT');
 }
@@ -9584,7 +9592,7 @@ function viewIncome(){
       <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th><th>Сделка</th><th>Конвертация</th>
     </tr></thead><tbody>
     ${list.map(x=>`<tr${x.excluded?' style="opacity:.5"':''}>
-      <td>${(x.excluded||x.cnvId||x.demo)?'':`<input type="checkbox" ${x.sel?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
+      <td>${(x.excluded||x.cnvId||x.demo)?'':`<input type="checkbox" ${incomeSelected.has(String(x.id))?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
       <td>${sberText(x.date)}${x.source==='sber'?`<div class="sub2">Сбер · ${sberText(x.arrivedAt)}</div>`:''}</td><td>${sberText(x.payer)}</td>
       <td class="num"><b>${money(x.rub,'₽')}</b></td>
       <td>${sberText(x.kind)}</td>

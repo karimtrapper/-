@@ -5967,6 +5967,9 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         clean = preserve_server_fields(previous, payload['data'])
+        for income in clean.get('incomes') or []:
+            # Галочка выбора прихода живёт только в браузере.
+            income.pop('sel', None)
         problem = _stand_check_funding_state(previous, clean)
         if problem:
             return jsonify({'success': False, 'error': problem,
@@ -8067,12 +8070,17 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 or old_income_by_id[str(income.get('id'))].get('source') != 'manual_confirmed')
            for income in new_state.get('incomes') or []):
         return 'Ручной приход подтверждается только оператором'
+    protected_income_keys = ('id', 'source', 'dealId', 'manualReceiptId',
+        'rub', 'grossRub', 'date', 'payer', 'kind', 'acc', 'purpose',
+        'statementDate', 'statementRef', 'confirmedBy', 'confirmedRole',
+        'confirmedAt', 'demo', 'excluded', 'status', 'files')
     for key, income in old_income_by_id.items():
         if income.get('source') != 'manual_confirmed':
             continue
         current = new_income_by_id.get(key)
-        if current is None or {k: v for k, v in current.items() if k != 'cnvId'} != {
-                k: v for k, v in income.items() if k != 'cnvId'}:
+        if current is None or any(
+                (field in current) != (field in income) or current.get(field) != income.get(field)
+                for field in protected_income_keys):
             return 'Подтверждённый ручной приход нельзя удалить или менять'
         if current.get('cnvId') != income.get('cnvId'):
             deal = new_deals.get(income.get('dealId')) or {}

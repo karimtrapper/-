@@ -443,6 +443,7 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
                        'sources': [{'dealId': 1485, 'rub': 9987.5, 'usdt': 99.18}],
                        'txs': [], 'sentTs': 1791880000000}]
     after['incomes'][0]['cnvId'] = 1
+    after['incomes'][0]['sel'] = False  # convFormSave() снимал UI-галочку в том же PUT.
     after['deals'][0].update(step='s18w', cnvId=1, walletId='qa-wallet')
     after['deals'][0].setdefault('rates', {})['broker'] = 100
     assert m._stand_guard_transition(before, after, actor='operator') is None
