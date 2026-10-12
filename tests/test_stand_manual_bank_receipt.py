@@ -3,6 +3,7 @@ import copy
 import base64
 import json
 import secrets
+import subprocess
 
 import pytest
 
@@ -433,6 +434,21 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     before['deals'][0]['step'] = 's18'
     before['wallets'] = [{'id': 'qa-wallet', 'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
                           'net': 'TRC-20', 'multisig': False, 'role': 'teodor'}]
+    # Реальные функции кнопок «Конвертировать выбранное» и «Создать пачку»
+    # формируют PUT без служебной галочки; сервер принимает эту пачку.
+    with m.get_session() as db:
+        row = m._stand_row(db)
+        row.data = json.dumps(before, ensure_ascii=False)
+        db.commit()
+    ui = subprocess.run(['node', 'tests/test_stand_income_conv_form.js', '--snapshot'],
+                        input=json.dumps(before, ensure_ascii=False), text=True,
+                        capture_output=True, check=True)
+    clicked = client.put('/api/stand/state', json={
+        'version': confirmed.json['version'], 'data': json.loads(ui.stdout)})
+    assert clicked.status_code == 200, clicked.json
+    assert clicked.json['data']['incomes'][0]['cnvId'] == 1
+    assert 'sel' not in clicked.json['data']['incomes'][0]
+    # Отправку брокеру проверяем отдельно от общей вкладки конвертаций.
     after = copy.deepcopy(before)
     sent, held, ctrl, ours = 9917.53, 69.97, 49.99, 19.98
     after['convs'] = [{'id': 1, 'name': 'CNV-0001', 'broker': 'QA Broker',
@@ -466,7 +482,7 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
         row.data = json.dumps(before, ensure_ascii=False)
         db.commit()
     broker = client.put('/api/stand/state', json={
-        'version': confirmed.json['version'], 'data': after})
+        'version': clicked.json['version'], 'data': after})
     assert broker.status_code == 200, broker.json
     assert broker.json['data']['deals'][0]['step'] == 's18w'
     assert broker.json['data']['incomes'][0]['cnvId'] == 1
