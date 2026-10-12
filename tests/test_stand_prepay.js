@@ -88,7 +88,14 @@ for(const source of ['founder','multisig']){
   assert.equal(ctx.econ(d).net,before.net);
   assert.equal(before.cost,10130);assert.equal(before.net,870);
   ctx.payinParts=()=>[{usdt:10000,fact:10000,calc:11000}];
-  assert.equal(ctx.econ(d).net,-130,'Убыток не прячется в возмещении');
+  delete d.payout.reimbursement;
+  const partial=ctx.econ(d);
+  assert.equal(partial.payin,10000);
+  assert.equal(partial.payinDiff,-1000,'Недобор брокера виден относительно расчёта');
+  assert.equal(partial.cost,10130);
+  assert.equal(partial.net,-130,'Убыток не прячется в возмещении');
+  d.payout.reimbursement={usdt:10130,hash:'refund'};
+  assert.deepEqual(ctx.econ(d),partial,'Полное возмещение не меняет экономику частичного прихода');
 }
 // Настоящие карточки отправки и подписи объясняют источник предоплаты.
 {

@@ -442,14 +442,19 @@ def test_prepayment_does_not_wait_for_another_deal_in_broker_batch(api):
 
 
 @pytest.mark.parametrize('source', ['founder', 'company'])
-def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source):
-    saved = receive(api, payout(api, source))
+@pytest.mark.parametrize('received_usdt', [10000, 11000], ids=['partial_loss', 'full_profit'])
+def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source, received_usdt):
+    saved = receive(api, payout(api, source), received_usdt)
     if source == 'founder':
         api[1][0] = 'findir'
         saved = api[0].post('/api/stand/prepay/reimburse', json={
             'dealId': 1484, 'hash': 'demo:1484:refund'}).json
     state = saved['data']
     d = state['deals'][0]
+    # Даже при недоборе брокера возвращается весь расход IPPS, а не сумма прихода.
+    assert d['payout']['usdt'] == 10130
+    assert d['payout']['reimbursement']['usdt'] == 10130
+    assert d['pay']['usdt'] == received_usdt
     d.update(step='s27', sentToClient=True)
     d['pay']['invoicePaid'] = True
     d['files'] = {'receipt': [{'file': 'receipt.pdf', 'mime': 'application/pdf',
@@ -471,11 +476,11 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source)
         db.close()
     crm = {'client_name': 'Synthetic prepay', 'deal_kind': 'mf_freehold',
            'payin_method': 'sber_reqs', 'payin_rate_rub_usdt': 80,
-           'payin_amount_rub': 900000, 'payin_amount_usdt': 11000,
+           'payin_amount_rub': 900000, 'payin_amount_usdt': received_usdt,
            'invoice_amount_usd': 10000, 'transfer_fee_percent': .8,
            'transfer_fee_fixed_usd': 50, 'transfer_sent_usd': 10130,
            'realty_purpose': 'Invoice',
-           'payin_tx_hashes': [{'hash': 'b' * 64, 'network': 'trc20', 'amount_usdt': 11000}],
+           'payin_tx_hashes': [{'hash': 'b' * 64, 'network': 'trc20', 'amount_usdt': received_usdt}],
            'payout_tx_hashes': [{'hash': 'demo:1484:out', 'network': 'trc20', 'amount_usdt': 10130}]}
     api[1][0] = 'manager'
     for missing in ('receipt', 'invoice', 'sent', 'refund'):
@@ -495,6 +500,6 @@ def test_actual_crm_close_requires_all_results_and_preserves_profit(api, source)
     seed(state)
     r = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
     assert r.status_code == 201, r.json
-    assert r.json['deal']['profit_usdt'] == 870
+    assert r.json['deal']['profit_usdt'] == received_usdt - 10130
     again = api[0].post('/api/stand/deals/1484/crm-close', json={'version': 1, 'crm': crm})
     assert again.status_code == 200 and again.json['duplicate']
