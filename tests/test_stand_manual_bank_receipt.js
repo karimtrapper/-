@@ -37,6 +37,8 @@ const values = {mbr_bank_77: 'Новый банк', mbr_account_77: '40702810900
 const calls = [];
 const ctx = vm.createContext({S: {role: 'operator'}, deal: id => id === 77 ? deal : null,
   sberText: String, money: n => String(n), docFields: d => d.docFields,
+  bankEvidenceBlock: () => '<div>Выписка / подтверждение зачисления</div>',
+  rubApiAccount: () => false, filesOf: () => [{file:'statement.pdf'}],
   val: id => values[id], document: {getElementById: id => elements[id]},
   standAction: async (...args) => { calls.push(args); return {success: true}; },
   standVer: 12, toast: msg => calls.push(['toast', msg]), Date});
@@ -53,8 +55,7 @@ assert.match(html, /БИК банка \(9 цифр\)/);
 assert.match(html, /display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px/);
 assert.match(html, /display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1\.45/);
 assert.match(html, /d\.manualBankReceipt\?\.status==='pending'/);
-assert.match(html, /d\.manualBankReceipt\?'':`<div class="sim"><div class="h">Вебхук банка · DEMO/);
-assert.match(html, /Вебхук банка · DEMO/);
+assert.doesNotMatch(html, /Вебхук банка · DEMO/);
 
 const fieldsStart = html.indexOf('function docFields(d){');
 const fieldsEnd = html.indexOf('/* ФИО по паспорту', fieldsStart);

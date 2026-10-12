@@ -1,4 +1,4 @@
-// Менеджер передаёт сверку, операционист выбирает фактический счёт.
+// Менеджер видит статус, операционист сверяет фактический счёт.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
@@ -26,6 +26,8 @@ const ctx = vm.createContext({S: {...state, role: 'manager'}, deal: () => d,
   FLOWSOLE: {bank: 'Московский филиал "БАНК СГБ" г. Москва', acc: '40807810819000000261',
     ks: '30101810245250000094', bik: '044525094'},
   approx: () => ({pay: 10000}), docFields: () => d.docFields,
+  rubApiAccount: () => true, bankEvidenceBlock: () => '<div>Выписка</div>',
+  filesOf: () => [{file: 'statement.pdf'}],
   sberText: value => String(value || ''), money: value => String(value),
   val: id => values[id] || '', document: {getElementById: id => elements[id] || null},
   standVer: 7, standAction: async (...args) => calls.push(args), toast: () => {}, Date});
@@ -36,7 +38,8 @@ vm.runInContext(['expectOf', 'manualBankActualAccount', 'manualBankActualFields'
 const run = source => vm.runInContext(source, ctx);
 
 assert.equal(run('expectOf(S.deals[0]).acc'), '…0286 · Сбер');
-assert.match(run('manualBankReceiptBlock(S.deals[0])'), /Передать оператору на сверку/);
+assert.match(run('manualBankReceiptBlock(S.deals[0])'), /API Сбера/);
+assert.doesNotMatch(run('manualBankReceiptBlock(S.deals[0])'), /manualBankReceiptRequest/);
 assert.doesNotMatch(run('manualBankReceiptBlock(S.deals[0])'), /Выпущенные документы содержат другие реквизиты/);
 assert.match(html, /Ожидаемый счёт зачисления/);
 assert.doesNotMatch(html, /id="w_acc"/);

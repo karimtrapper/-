@@ -6130,7 +6130,8 @@ def _stand_close_fact_source(state, deal, kind):
                 and abs(sum(_stand_number(p.get('amountRub')) for p in parts) -
                         _stand_number(manual_receipt.get('actualAmount'))) < .01):
             return 'manual_bank_confirmed', None
-        if (parts and all((incomes.get(p.get('incId')) or {}).get('source') == 'sber'
+        if (_stand_rub_api_account(deal) and parts
+                and all((incomes.get(p.get('incId')) or {}).get('source') == 'sber'
                           and _stand_number(p.get('amountRub')) > 0
                           and abs(_stand_number(p.get('amountRub')) -
                                   _stand_number((incomes.get(p.get('incId')) or {}).get('grossRub') or
@@ -7262,6 +7263,71 @@ STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
 # на s11 менеджер сохраняет прежнюю возможность исправить их до закрытия.
 STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'ipds'}
 STAND_CLIENT_PAYIN_KIND = 'clientPayinReceipt'
+STAND_BANK_CREDIT_KIND = 'bankCreditEvidence'
+
+
+def _stand_rub_api_account(deal):
+    """Сбер MF получает приход из API; остальные рублёвые счета сверяют по выписке."""
+    account = deal.get('rubReceivingAccount') or {}
+    return isinstance(account, dict) and account.get('mode', 'sber') == 'sber'
+
+
+def _stand_bank_credit_only(before, deal, changed):
+    if not changed <= {'files', 'log'} or 'files' not in changed:
+        return False
+    old, new = before.get('files') or {}, deal.get('files') or {}
+    return (isinstance(old, dict) and isinstance(new, dict)
+            and all(old.get(k) == new.get(k) for k in set(old) | set(new)
+                    if k != STAND_BANK_CREDIT_KIND))
+
+
+def _stand_bank_credit_problem(before, deal, actor, actor_id, db=None):
+    old_files, new_files = before.get('files') or {}, deal.get('files') or {}
+    if not isinstance(old_files, dict) or not isinstance(new_files, dict):
+        return 'Некорректная выписка о зачислении'
+    old = old_files.get(STAND_BANK_CREDIT_KIND) or []
+    new = new_files.get(STAND_BANK_CREDIT_KIND) or []
+    if old == new:
+        return None
+    if (not isinstance(old, list) or not isinstance(new, list) or len(new) > 30
+            or not all(isinstance(f, dict) and isinstance(f.get('id'), str) for f in old + new)
+            or sum(len(str(f.get('data') or '')) for f in new) > 8 * 1024 * 1024):
+        return 'Некорректная выписка о зачислении'
+    if (actor not in ('operator', 'admin') or before.get('step') != 's14'
+            or (before.get('manualBankReceipt') or {}).get('status') != 'pending'):
+        return 'Выписку прикладывает операционист при сверке прихода'
+    old_by_id = {f['id']: f for f in old}
+    new_by_id = {f['id']: f for f in new}
+    if len(old_by_id) != len(old) or len(new_by_id) != len(new):
+        return 'Некорректная выписка о зачислении'
+    added = []
+    allowed = {'id', 'file', 'size', 'at', 'mime', 'bytes', 'data', 'demo',
+               'uploadedById', 'uploadedBy'}
+    for file_id, item in new_by_id.items():
+        if (set(item) - allowed or not re.fullmatch(r'[a-zA-Z0-9_-]{12,80}', file_id)
+                or (file_id in old_by_id and old_by_id[file_id] != item)):
+            return 'Файл выписки нельзя менять'
+        if file_id not in old_by_id:
+            if (item.get('uploadedById') != actor_id or item.get('demo') is not False
+                    or not _stand_valid_receipt({'files': {'receipt': [item]}})):
+                return 'Некорректная выписка о зачислении'
+            added.append(item)
+    if db:
+        user = db.query(AdminUser).filter(AdminUser.id == actor_id).first()
+        if any(f.get('uploadedBy') != (user.display_name or user.username) for f in added):
+            return 'Некорректный автор выписки'
+        old_log, new_log = before.get('log') or [], deal.get('log') or []
+        if not isinstance(new_log, list) or new_log[:len(old_log)] != old_log:
+            return 'Журнал выписки нельзя менять'
+        entries = [entry.get('text') for entry in new_log[len(old_log):]
+                   if isinstance(entry, dict)]
+        if any('Выписка о зачислении прикреплена · '+f['file']+' · '+f['uploadedBy'] not in entries
+               for f in added):
+            return 'Прикрепление выписки нужно записать в журнал'
+        if any('Выписка о зачислении удалена · '+f['file']+' · '+f.get('uploadedBy', '') not in entries
+               for key, f in old_by_id.items() if key not in new_by_id):
+            return 'Удаление выписки нужно записать в журнал'
+    return None
 
 
 def _stand_client_payin_only(before, deal, changed):
@@ -7996,10 +8062,16 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             receipt_problem = _stand_client_payin_problem(before, deal, actor, actor_id, db)
             if receipt_problem:
                 return receipt_problem
+            evidence_problem = _stand_bank_credit_problem(before, deal, actor, actor_id, db)
+            if evidence_problem:
+                return evidence_problem
         if before is None and deal.get('manualBankReceipt'):
             return 'Заявку на ручной приход создаёт менеджер специальным действием'
         if before and before.get('manualBankReceipt') != deal.get('manualBankReceipt'):
             return 'Заявка и подтверждение ручного прихода меняются только специальными действиями'
+        if (before and before.get('step') == 's14' and not _stand_rub_api_account(before)
+                and before.get('payinParts') != deal.get('payinParts')):
+            return 'Для этого счёта приход сверяет операционист по выписке'
         receipt = (before or {}).get('manualBankReceipt') or {}
         if before and before.get('docVersion') and before.get('docFields') != deal.get('docFields'):
             return 'Поля выпущенных документов нельзя править через доску — используйте перевыпуск пакета'
@@ -8285,7 +8357,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                                 and not before.get(key) and not deal.get(key))}
             owner = _stand_current_step_role(previous, before)
             if changed and owner and actor != owner and not step_changed:
-                payin_receipts = _stand_client_payin_only(before, deal, changed)
+                payin_receipts = (_stand_client_payin_only(before, deal, changed)
+                                  or _stand_bank_credit_only(before, deal, changed))
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
                     changed <= {'payToConfirm', 'log'} or
@@ -8470,7 +8543,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                             (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
                              and changed <= STAND_MANAGER_REQ_FIELDS)
                             or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))
-                            or _stand_client_payin_only(before, deal, changed)))
+                            or _stand_client_payin_only(before, deal, changed)
+                            or _stand_bank_credit_only(before, deal, changed)))
             if required and actor != required and not manager_reqs and deal['id'] not in broker_actions:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):
@@ -9650,11 +9724,11 @@ def _stand_actual_rub_account(data):
 
 @app.route('/api/stand/manual-bank-receipt', methods=['POST'])
 def stand_manual_bank_receipt():
-    """Manager or operator records a pending receipt; only operator confirms it."""
+    """Операционист начинает сверку рублёвого прихода без банковского API."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     actor = current_role()
-    if actor not in ('manager', 'operator', 'admin'):
+    if actor not in ('operator', 'admin'):
         return jsonify({'success': False, 'error': 'forbidden'}), 403
     data = request.get_json(silent=True) or {}
     handoff = data.get('handoff') is True
@@ -9733,6 +9807,8 @@ def stand_manual_bank_receipt():
         receiving = deal.get('rubReceivingAccount') or {}
         if not isinstance(receiving, dict):
             return jsonify({'success': False, 'error': 'Некорректные реквизиты получателя'}), 409
+        if _stand_rub_api_account(deal):
+            return jsonify({'success': False, 'error': 'Для счёта Сбера приход берётся из API; при другом фактическом счёте начните сверку без ручной суммы'}), 409
         if receiving.get('mode') == 'custom':
             if (not re.fullmatch(r'\d{20}', str(receiving.get('correspondent') or ''))
                     or not re.fullmatch(r'\d{9}', str(receiving.get('bik') or ''))):
@@ -9783,7 +9859,7 @@ def stand_manual_bank_receipt():
         if docs_issued and deal.get('issuedDocPayTo') is None:
             deal['issuedDocPayTo'] = document_payto
         deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
-            'role': actor, 'text': 'Ручной RUB приход записан на подтверждение оператору'})
+            'role': actor, 'text': 'Операционист записал ручной RUB приход для сверки по выписке'})
         event_id = f"stand:manual-bank-receipt:{deal_id}:{deal['manualBankReceipt']['id']}"
         _stand_note(state, event_id, 'operator', deal,
                     f"Нужна сверка ручного RUB прихода по сделке {deal.get('code') or deal_id}: {bank}, {actual:.2f} ₽")
@@ -9812,7 +9888,7 @@ def stand_manual_bank_receipt():
 
 @app.route('/api/stand/manual-bank-receipt/<int:deal_id>/confirm', methods=['POST'])
 def stand_manual_bank_receipt_confirm(deal_id):
-    """Operator confirms the manager's pending entry against the bank statement."""
+    """Операционист подтверждает приход по выписке и приложенному файлу."""
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     actor = current_role()
@@ -9838,6 +9914,9 @@ def stand_manual_bank_receipt_confirm(deal_id):
         receipt = (deal or {}).get('manualBankReceipt') or {}
         if not deal or deal.get('step') != 's14' or receipt.get('status') != 'pending':
             return jsonify({'success': False, 'error': 'pending_receipt_not_found'}), 409
+        evidence = ((deal.get('files') or {}).get(STAND_BANK_CREDIT_KIND) or [])
+        if not evidence or not _stand_valid_receipt({'files': {'receipt': evidence}}):
+            return jsonify({'success': False, 'error': 'Приложите выписку или скрин подтверждения зачисления'}), 409
         expected = deal.get('expect') or {}
         receiving = deal.get('rubReceivingAccount') or {}
         if not isinstance(receiving, dict):
