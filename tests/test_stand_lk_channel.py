@@ -437,6 +437,42 @@ def test_assignee_release_only_by_admin_or_self(lk):
         assert res.status_code == 200
 
 
+def test_colleague_cannot_act_until_explicit_takeover(lk):
+    ids, board = lk
+    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
+                      'assigneeAdminId': ids['manager'], 'log': []}])
+    with appmod.app.test_client() as client:
+        _login(client, ids['manager2'])
+        state = _get_state(client)
+        changed = json.loads(json.dumps(state['data']))
+        changed['deals'][0]['log'].append({'text': 'Начал работу'})
+        denied = client.put('/api/stand/state', json={
+            'version': state['version'], 'data': changed})
+        assert denied.status_code == 409
+        assert denied.get_json()['error'] == 'Шаг у manager'
+
+        taken = client.post('/api/stand/assignee/take', json={
+            'version': state['version'], 'dealId': 7})
+        assert taken.status_code == 200, taken.get_json()
+        deal = taken.get_json()['data']['deals'][0]
+        assert deal['assigneeAdminId'] == ids['manager2']
+        assert 'manager2 забрал шаг у manager' in deal['log'][-1]['text']
+
+        changed = taken.get_json()['data']
+        changed['deals'][0]['log'].append({'text': 'Начал работу'})
+        allowed = client.put('/api/stand/state', json={
+            'version': taken.get_json()['version'], 'data': changed})
+        assert allowed.status_code == 200, allowed.get_json()
+
+    with appmod.app.test_client() as client:
+        _login(client, ids['karim'])
+        state = _get_state(client)
+        state['data']['deals'][0]['log'].append({'text': 'Администратор проверил'})
+        allowed = client.put('/api/stand/state', json={
+            'version': state['version'], 'data': state['data']})
+        assert allowed.status_code == 200, allowed.get_json()
+
+
 # ---------- админ: Telegram ID вручную ----------
 
 def test_admin_can_set_telegram_id_manager_cannot_reach_route(lk):

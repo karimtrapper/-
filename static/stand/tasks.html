@@ -5040,6 +5040,10 @@ function setAssignee(dealId,adminId){
   d.assigneeAdminId=adminId;
   save();render();
 }
+async function takeAssignee(dealId){
+  const result=await standAction('/api/stand/assignee/take',{dealId,version:standVer});
+  if(result)toast('Шаг назначен вам');
+}
 function assigneeBlock(d,who){
   const id=d.assigneeAdminId||null;
   const label=id?(employeeName(id)||('#'+id)):'не назначен';
@@ -5053,6 +5057,7 @@ function assigneeBlock(d,who){
   } else if(S.role===who){
     if(!id) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, standMeId)">Взять себе</button>`;
     else if(id===standMeId) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
+    else actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="takeAssignee(${d.id})">Забрать себе</button>`;
   }
   return `<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">Исполнитель шага: <b>${label}</b>${actions}</div>`;
 }

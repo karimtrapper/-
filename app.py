@@ -5869,6 +5869,56 @@ def stand_notify_test(admin_id):
         return jsonify({'success': True, 'status': 'failed'})
 
 
+@app.route('/api/stand/assignee/take', methods=['POST'])
+def stand_assignee_take():
+    """Сотрудник своей роли явно забирает назначенный коллеге шаг."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload = request.get_json(silent=True) or {}
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None or actor == 'admin':
+        return jsonify(success=False, error='Шаг может забрать сотрудник своей роли'), 403
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or []
+                     if d.get('id') == payload.get('dealId')), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if actor != _stand_current_step_role(state, deal):
+            return jsonify(success=False, error='Шаг принадлежит другой роли'), 403
+        taker = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not taker or taker.login_disabled or taker.role != actor:
+            return jsonify(success=False, error='Нет доступа к этому шагу'), 403
+        old_id = deal.get('assigneeAdminId')
+        if not old_id or old_id == actor_id:
+            return jsonify(success=False, error='Шаг уже свободен или назначен вам'), 409
+        owner = db.query(AdminUser).filter_by(id=old_id).first()
+        if not owner or owner.login_disabled or owner.role != actor:
+            return jsonify(success=False, error='Прежнее назначение устарело — обновите доску'), 409
+        old_name = owner.display_name or owner.username
+        new_name = taker.display_name or taker.username
+        deal['assigneeAdminId'] = actor_id
+        deal.setdefault('log', []).append({
+            'at': int(time.time() * 1000), 'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'role': actor, 'text': f'{new_name} забрал шаг у {old_name}'})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = new_name
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -7991,6 +8041,17 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
     old = {d.get('id'): d for d in previous.get('deals', [])}
+    if db is not None and actor_id is not None and actor != 'admin':
+        for deal in new_state.get('deals') or []:
+            before = old.get(deal.get('id'))
+            if not before or before == deal or not before.get('assigneeAdminId'):
+                continue
+            if actor != _stand_current_step_role(previous, before):
+                continue
+            owner = db.query(AdminUser).filter_by(id=before['assigneeAdminId']).first()
+            if (owner and not owner.login_disabled and owner.role == actor
+                    and owner.id != actor_id):
+                return f'Шаг у {owner.display_name or owner.username}'
     broker_actions = set()
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
