@@ -270,7 +270,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 {
   const logged = [];
   const d = { id: 1, kind: 'Фрихолд', invoiceUsd: 45000, ippsTariff: 'bank', rates: {} };
-  const ctx = run(['freeholdInvoiceSet', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
+  const ctx = run(['freeholdInvoiceSet', 'parseFlexibleAmount', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
     num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''), usd: x => `$${x}`,
     toast: () => {}, save: () => {}, render: () => {},
@@ -299,14 +299,14 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 // ── draftValid()/draftAmounts(): план обязателен до создания сделки ──
 {
   const toasts = [];
-  const ctx = run(['draftValid', 'draftAmounts'], [], {
+  const ctx = run(['draftValid', 'draftAmounts', 'parseFlexibleAmount'], [], {
     toast: t => toasts.push(t),
     num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
   });
   const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'Крипта',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', amountUsdt: null };
-  ctx.S = { draft: D };
+  ctx.S = { draft: D, thbRates: {success:true} };
   assert.equal(ctx.draftValid(), false, 'положительная сумма нужна перед созданием');
   assert.equal(ctx.draftAmounts(D).amountUsdt, null);
 
@@ -358,20 +358,21 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 // сумма в ฿ только хранится (не идёт в CRM — для неё там нет поля).
 {
   const toasts = [];
-  const ctx = run(['draftValid', 'draftAmounts'], [], {
+  const ctx = run(['draftValid', 'draftAmounts', 'parseFlexibleAmount'], [], {
     toast: t => toasts.push(t),
     num: x => (x == null || x === '' ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''),
   });
   const D = { clientId: 1, type: 'Оплата недвижимости', kind: 'Фрихолд', payType: 'По реквизитам',
     sum: '45000', cur: 'fhusd', ippsTariff: 'bank', invoiceCurrency: 'thb', invoiceThbAmount: '' };
-  ctx.S = { draft: D };
+  ctx.S = { draft: D, thbRates: {success:true} };
 
   toasts.length = 0;
   assert.equal(ctx.draftValid(), false, 'в режиме THB без суммы в ฿ заявку не создать');
   assert.ok(toasts.some(t => t.includes('฿')));
 
-  D.invoiceThbAmount = '1500000';
+  D.invoiceThbAmount = '1,500,000';
+  D.fxBank = 'custom'; D.fxRate = 1500000 / 45000;
   assert.equal(ctx.draftValid(), true);
   const amounts = ctx.draftAmounts(D);
   assert.equal(amounts.invoiceUsd, 45000, 'X = подтверждённая сумма в USD, а не в ฿');
@@ -391,7 +392,7 @@ const approxEq = (a, b, eps = 0.005) => assert.ok(Math.abs(a - b) < eps, `${a} !
 {
   const d = { id: 1, kind: 'Фрихолд', invoiceUsd: 45000, ippsTariff: 'bank', rates: {},
     invoiceCurrency: 'usd', invoiceThb: null };
-  const ctx = run(['freeholdInvoiceSet', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
+  const ctx = run(['freeholdInvoiceSet', 'parseFlexibleAmount', 'ippsTariff', 'freeholdFee', 'freeholdSend'], ['IPPS_TARIFFS'], {
     num: x => (x == null ? null : parseFloat(String(x).replace(',', '.'))),
     cleanNum: x => String(x).replace(/[^\d.,]/g, ''), usd: x => `$${x}`,
     toast: () => {}, save: () => {}, render: () => {}, log: () => {},
