@@ -373,3 +373,103 @@ def test_flowsole_receipt_uses_preset_despite_stale_sber_expect(monkeypatch):
         'version': saved.json['version'], 'statementVerified': True})
     assert confirmed.status_code == 200, confirmed.json
     assert confirmed.json['data']['deals'][0]['manualBankReceipt']['status'] == 'confirmed'
+
+
+def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monkeypatch):
+    initial = board()
+    deal = initial['deals'][0]
+    deal.update(id=1485, code='SYN-1485', docVersion=3, rubReceivingAccount=None,
+                issuedDocPayTo='ООО «ЭМ ЭФ КОРПОРЕЙШН» · ПАО Сбербанк · р/с 40807810938720000286')
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    handoff = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 1485, 'handoff': True})
+    assert handoff.status_code == 200, handoff.json
+    pending = handoff.json['data']['deals'][0]
+    assert pending['rubReceivingAccount'] is None
+    assert pending['docVersion'] == 3
+    assert pending['manualBankReceipt']['status'] == 'pending'
+    assert pending['manualBankReceipt'].get('bank') is None
+
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    actual = {'version': handoff.json['version'], 'statementVerified': True,
+              'actualMode': 'flowsole', 'actualAmount': '9987.50',
+              'payer': 'Иван Клиент', 'bankPurpose': 'Оплата по договору',
+              'statementDate': '2026-10-01', 'statementRef': 'строка 7788'}
+    without_ack = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=actual)
+    assert without_ack.status_code == 409
+    assert 'расхождение' in without_ack.json['error']
+    assert snapshot(client)['data']['incomes'] == []
+    actual['deviationAcknowledged'] = True
+    confirmed = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=actual)
+    assert confirmed.status_code == 200, confirmed.json
+    saved = confirmed.json['data']['deals'][0]
+    receipt = saved['manualBankReceipt']
+    assert saved['rubReceivingAccount'] is None
+    assert receipt['bank'] == 'Московский филиал "БАНК СГБ" г. Москва'
+    assert receipt['account'] == '40807810819000000261'
+    assert receipt['bankBik'] == '044525094'
+    assert receipt['correspondentAccount'] == '30101810245250000094'
+    assert receipt['accountMismatch'] is True
+    assert receipt['documentMismatch'] is True
+    assert receipt['documentsAcknowledged'] is True
+    assert 'расхождение' in saved['log'][-1]['text']
+    assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
+
+
+@pytest.mark.parametrize('mode,number', [
+    ('sber', '40807810938720000286'),
+    ('acquiring', '…2118'),
+    ('tbank', '…5510'),
+    ('flowsole', '40807810819000000261'),
+])
+def test_operator_actual_account_presets_are_server_selected(monkeypatch, mode, number):
+    initial = board()
+    initial['deals'][0].update(docVersion=None, docPack=None)
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    handoff = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 9301, 'handoff': True})
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    actual = {'version': handoff.json['version'], 'statementVerified': True,
+              'actualMode': mode, 'bank': 'Подменённый банк', 'account': '99999999999999999999',
+              'actualAmount': '9987.50', 'payer': 'Иван Клиент',
+              'bankPurpose': 'Оплата по договору', 'statementDate': '2026-10-01',
+              'statementRef': 'строка 7788', 'deviationAcknowledged': True}
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm', json=actual)
+    assert confirmed.status_code == 200, confirmed.json
+    receipt = confirmed.json['data']['deals'][0]['manualBankReceipt']
+    assert receipt['account'] == number
+    assert receipt['bank'] != 'Подменённый банк'
+
+
+def test_operator_custom_actual_account_needs_full_requisites(monkeypatch):
+    initial = board()
+    initial['deals'][0].update(docVersion=None, docPack=None)
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    handoff = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 9301, 'handoff': True})
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    actual = {'version': handoff.json['version'], 'statementVerified': True,
+              'actualMode': 'custom', 'bank': 'Test Bank',
+              'account': '40702810900000012345', 'correspondent': '30101810000000000000',
+              'bik': '123', 'actualAmount': '9987.50', 'payer': 'Иван Клиент',
+              'bankPurpose': 'Оплата по договору', 'statementDate': '2026-10-01',
+              'statementRef': 'строка 7788', 'deviationAcknowledged': True}
+    invalid = client.post('/api/stand/manual-bank-receipt/9301/confirm', json=actual)
+    assert invalid.status_code == 400
+    actual['bik'] = '044525225'
+    incomplete = client.post('/api/stand/manual-bank-receipt/9301/confirm', json=actual)
+    assert incomplete.status_code == 400
+    actual.update(recipientName='ООО ТЕСТ', recipientInn='7700000000', recipientKpp='770101001')
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm', json=actual)
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['data']['deals'][0]['manualBankReceipt']['bankBik'] == '044525225'
+
+
+def test_manager_cannot_rewrite_expected_account_at_s14():
+    prior = board()
+    changed = copy.deepcopy(prior)
+    changed['deals'][0]['expect']['acc'] = '…0261 · СГБ (Flow Sole)'
+    assert 'Ожидаемый счёт' in m._stand_guard_transition(prior, changed, actor='manager')

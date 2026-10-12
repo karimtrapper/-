@@ -7202,12 +7202,12 @@ function expectOf(d){
   const ap=approx(d), F=docFields(d);
   const e=d.expect||{};
   const receiving=d.rubReceivingAccount||{};
-  const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole';
+  const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole', sber=receiving.mode==='sber';
   return {
     amount:(e.amount!=null?e.amount:(ap.pay||'')),
-    acc:custom?'custom':flowsole?'…0261 · СГБ (Flow Sole)':(e.acc||'…0286 · Сбер'),
-    bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:(e.bank||''),
-    account:custom?receiving.account:flowsole?FLOWSOLE.acc:(e.account||''),
+    acc:custom?'custom':flowsole?'…0261 · СГБ (Flow Sole)':sber?'…0286 · Сбер':(e.acc||'…0286 · Сбер'),
+    bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:sber?MF.bank:(e.bank||''),
+    account:custom?receiving.account:flowsole?FLOWSOLE.acc:sber?MF.acc:(e.account||''),
     tol:(e.tol!=null?e.tol:1000),
     purpose:(e.purpose!=null?e.purpose:(F.purpose||'')),
     purposeEdited:e.purpose!=null&&e.purpose!==(F.purpose||'')
@@ -7420,38 +7420,72 @@ function incomeOff(id){
   sberTake(id,incId);
   payinDone(id);}
 
+function manualBankActualAccount(mode){
+  if(mode==='flowsole')return {bank:FLOWSOLE.bank,account:FLOWSOLE.acc,correspondent:FLOWSOLE.ks,bik:FLOWSOLE.bik};
+  if(mode==='sber')return {bank:MF.bank,account:MF.acc,correspondent:MF.ks,bik:MF.bik};
+  if(mode==='acquiring')return {bank:'ПАО Сбербанк',account:'…2118'};
+  if(mode==='tbank')return {bank:'Т-Банк',account:'…5510'};
+  return null;
+}
+function manualBankActualFields(id,mode){
+  const a=manualBankActualAccount(mode);
+  if(a)return `<p class="fh">${sberText(a.bank)} · ${sberText(a.account)}${a.correspondent?' · к/с '+sberText(a.correspondent):''}${a.bik?' · БИК '+sberText(a.bik):''}</p>`;
+  return `<div class="fr"><div class="fg"><label class="fl">Банк фактического прихода</label><input class="fc" id="mbr_actual_bank_${id}"></div>
+    <div class="fg"><label class="fl">Полный счёт (20 цифр)</label><input class="fc" id="mbr_actual_account_${id}" inputmode="numeric"></div>
+    <div class="fg"><label class="fl">Корреспондентский счёт (20 цифр)</label><input class="fc" id="mbr_actual_corr_${id}" inputmode="numeric"></div>
+    <div class="fg"><label class="fl">БИК (9 цифр)</label><input class="fc" id="mbr_actual_bik_${id}" inputmode="numeric"></div>
+    <div class="fg"><label class="fl">Наименование получателя</label><input class="fc" id="mbr_actual_name_${id}"></div>
+    <div class="fg"><label class="fl">ИНН получателя (10 цифр)</label><input class="fc" id="mbr_actual_inn_${id}" inputmode="numeric"></div>
+    <div class="fg"><label class="fl">КПП получателя (9 цифр)</label><input class="fc" id="mbr_actual_kpp_${id}" inputmode="numeric"></div></div>`;
+}
+function manualBankActualWarning(d,mode){
+  const a=manualBankActualAccount(mode);
+  const doc=String(d.issuedDocPayTo||d.manualBankReceipt?.documentPayToAtRequest||d.docFields?.payTo||'').toLowerCase();
+  if(!a||!(d.docPack||d.docVersion)||[a.bank,a.account,a.correspondent,a.bik].filter(Boolean).every(x=>doc.includes(x.toLowerCase())))return '';
+  return `<div class="alert a-warn"><div>Выпущенные документы содержат другие реквизиты: ${sberText(d.issuedDocPayTo||d.manualBankReceipt?.documentPayToAtRequest||'—')}. Сверьте с выпиской и подтвердите расхождение ниже.</div></div>`;
+}
+function manualBankActualChange(id,mode){
+  const d=deal(id);
+  document.getElementById('mbr_actual_fields_'+id).innerHTML=manualBankActualFields(id,mode);
+  document.getElementById('mbr_actual_warning_'+id).innerHTML=manualBankActualWarning(d,mode);
+}
+function manualBankOperatorForm(d){
+  const id=d.id, mode='sber';
+  return `<div class="fg"><label class="fl">Фактический счёт по выписке</label>
+    <select class="fc" id="mbr_actual_mode_${id}" onchange="manualBankActualChange(${id},this.value)">
+      <option value="sber">…0286 · Сбер</option><option value="acquiring">…2118 · Сбер · эквайринг</option>
+      <option value="tbank">…5510 · Т-Банк</option><option value="flowsole">…0261 · СГБ (Flow Sole)</option>
+      <option value="custom">Другой счёт</option></select></div>
+    <div id="mbr_actual_fields_${id}">${manualBankActualFields(id,mode)}</div>
+    <div id="mbr_actual_warning_${id}">${manualBankActualWarning(d,mode)}</div>
+    <div class="fr"><div class="fg"><label class="fl">Фактически зачислено, ₽</label><input class="fc num" id="mbr_amount_${id}" inputmode="decimal"></div>
+      <div class="fg"><label class="fl">Плательщик</label><input class="fc" id="mbr_payer_${id}"></div>
+      <div class="fg"><label class="fl">Назначение платежа из выписки</label><input class="fc" id="mbr_purpose_${id}"></div>
+      <div class="fg"><label class="fl">Дата зачисления</label><input class="fc" id="mbr_date_${id}" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+      <div class="fg"><label class="fl">Номер / ссылка строки выписки</label><input class="fc" id="mbr_ref_${id}"></div></div>
+    <label class="fh" style="display:flex;align-items:flex-start;gap:9px"><input type="checkbox" id="mbr_verify_${id}">Сверил фактическое зачисление и счёт в банковской выписке</label>
+    <label class="fh" style="display:flex;align-items:flex-start;gap:9px"><input type="checkbox" id="mbr_deviation_${id}">Если счёт отличается от ожидаемого или документов, подтверждаю расхождение и что клиент получил верные реквизиты</label>
+    <button class="btn btn-success btn-sm" onclick="manualBankReceiptConfirm(${id})">Подтвердить приход</button>`;
+}
 function manualBankReceiptBlock(d){
   const r=d.manualBankReceipt, issued=!!(d.docPack||d.docVersion);
   if(r){
     return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">Ручной банковский приход <span class="sub2">${r.status==='confirmed'?'✅ Подтверждён оператором':'⏳ Ожидает сверки оператором'}</span></div>
-      <p class="fh">${sberText(r.bank)} · счёт ${sberText(r.account)}${r.correspondentAccount?' · к/с '+sberText(r.correspondentAccount):''}${r.bankBik?' · БИК '+sberText(r.bankBik):''} · ${money(r.actualAmount,'₽')} · плательщик ${sberText(r.payer)} · назначение: ${sberText(r.bankPurpose)} · выписка ${sberText(r.statementDate)} · ${sberText(r.statementRef)}</p>
-      ${issued?`<p class="fh">Документы были выпущены с реквизитами: ${sberText(r.documentPayToAtRequest||'не сохранены')}. Менеджер отметил, что клиенту сообщены новые реквизиты/документы исправляются.</p>`:''}
-      ${r.status==='pending'&&S.role==='operator'?`<div style="display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px"><label class="fh" style="display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1.45"><input type="checkbox" id="mbr_verify_${d.id}" style="flex:0 0 auto;margin-top:2px"><span style="flex:1;min-width:0">Сверил фактическое зачисление и счёт в банковской выписке</span></label><div><button class="btn btn-success btn-sm" onclick="manualBankReceiptConfirm(${d.id})">Подтвердить приход</button></div></div>`:''}
+      ${r.bank?`<p class="fh">${sberText(r.bank)} · счёт ${sberText(r.account)}${r.correspondentAccount?' · к/с '+sberText(r.correspondentAccount):''}${r.bankBik?' · БИК '+sberText(r.bankBik):''} · ${money(r.actualAmount,'₽')} · плательщик ${sberText(r.payer)} · назначение: ${sberText(r.bankPurpose)} · выписка ${sberText(r.statementDate)} · ${sberText(r.statementRef)}</p>`:''}
+      ${r.handoff&&r.status==='pending'&&(S.role==='operator'||S.role==='admin')?manualBankOperatorForm(d):''}
+      ${!r.handoff&&issued&&S.role!=='manager'?`<p class="fh">Документы были выпущены с реквизитами: ${sberText(r.documentPayToAtRequest||'не сохранены')}.</p>`:''}
+      ${!r.handoff&&r.status==='pending'&&(S.role==='operator'||S.role==='admin')?`<div style="display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px"><label class="fh" style="display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1.45"><input type="checkbox" id="mbr_verify_${d.id}" style="flex:0 0 auto;margin-top:2px"><span style="flex:1;min-width:0">Сверил фактическое зачисление и счёт в банковской выписке</span></label><div><button class="btn btn-success btn-sm" onclick="manualBankReceiptConfirm(${d.id})">Подтвердить приход</button></div></div>`:''}
       ${r.status==='confirmed'&&S.role==='manager'?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="payinDone(${d.id})">Продолжить сделку</button>`:''}
       ${r.status==='confirmed'?`<p class="fh" style="color:#047857">Подтвердил пользователь #${r.confirmedBy} · ${sberText(r.confirmedAt)}</p>`:''}
       <p class="fh">Отдельный ручной источник; это не подтверждение Сбер API и не запись зеркала Сбера.</p></div>`;
   }
   if(S.role!=='manager'&&S.role!=='operator'&&S.role!=='admin')return '';
-  return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">По реквизитам · вручную <span class="sub2">${S.role==='operator'?'оператор записывает и сверяет по выписке':'запись менеджера → сверка оператором'}</span></div>
-    ${issued&&!manualBankDocsMismatch(d)?`<p class="fh">Сверьте фактический счёт в выписке с реквизитами выпущенных документов: ${sberText(d.issuedDocPayTo||docFields(d).payTo||'—')}.</p>`:''}
-    ${issued&&manualBankDocsMismatch(d)?`<div class="alert a-warn"><div>Выпущенные документы содержат другие реквизиты: <b>${sberText(d.issuedDocPayTo||docFields(d).payTo||'—')}</b>. До учёта прихода подтвердите, что клиенту сообщили верные данные или документы будут исправлены.</div></div>`:''}
-    <p class="fh">${d.rubReceivingAccount?.mode==='flowsole'?'Сверьте приход на счёт Flow Sole в СГБ по выписке.':'Для ручной заявки выберите «Другой счёт» выше и заполните банк и полный номер там. Здесь будет записан именно этот получатель.'}</p>
-    <div class="fr"><div class="fg"><label class="fl">Фактически зачислено, ₽</label><input class="fc num" id="mbr_amount_${d.id}" inputmode="decimal"></div>
-      <div class="fg"><label class="fl">Плательщик</label><input class="fc" id="mbr_payer_${d.id}"></div>
-      <div class="fg"><label class="fl">Назначение платежа из выписки</label><input class="fc" id="mbr_purpose_${d.id}" placeholder="Текст, указанный плательщиком"></div>
-      <div class="fg"><label class="fl">Дата зачисления</label><input class="fc" id="mbr_date_${d.id}" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-      <div class="fg"><label class="fl">Номер / ссылка строки выписки</label><input class="fc" id="mbr_ref_${d.id}"></div></div>
-    ${issued&&manualBankDocsMismatch(d)?`<label class="fh"><input type="checkbox" id="mbr_docs_${d.id}"> Клиенту сообщил новые реквизиты или исправлю документы</label>`:''}
-    <button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="manualBankReceiptRequest(${d.id})">${S.role==='operator'?'Записать приход и сверить выписку':'Передать оператору на сверку'}</button>
-    <p class="fh">Заявка неподтверждена и не даёт продолжить сделку до сверки с выпиской.</p></div>`;
+  return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">Сверка банковского прихода</div>
+    <p class="fh">Фактическое зачисление и счёт в выписке проверяет операционист.</p>
+    <button class="btn btn-primary btn-sm" onclick="manualBankReceiptRequest(${d.id})">${S.role==='operator'?'Начать сверку':'Передать оператору на сверку'}</button></div>`;
 }
 async function manualBankReceiptRequest(id){
-  const d=deal(id), issued=!!(d.docPack||d.docVersion), ex=expectOf(d), amount=Number(String(val('mbr_amount_'+id)||'').replace(/\s/g,'').replace(',','.'));
-  if((ex.acc!=='custom'&&d.rubReceivingAccount?.mode!=='flowsole')||!ex.bank||String(ex.account||'').replace(/\D/g,'').length<8){toast('Выберите счёт выше и проверьте банк с полным номером');return;}
-  if(!Number.isFinite(amount)||amount<=0){toast('Введите фактическую сумму зачисления');return;}
-  const mismatch=issued&&manualBankDocsMismatch(d);
-  if(mismatch&&!document.getElementById('mbr_docs_'+id)?.checked){toast('Подтвердите, что клиент получит верные реквизиты');return;}
-  await standAction('/api/stand/manual-bank-receipt',{version:standVer,dealId:id,bank:ex.bank,account:ex.account,actualAmount:amount,payer:val('mbr_payer_'+id),bankPurpose:val('mbr_purpose_'+id),statementDate:val('mbr_date_'+id),statementRef:val('mbr_ref_'+id),documentsAcknowledged:!mismatch||document.getElementById('mbr_docs_'+id)?.checked===true});
+  await standAction('/api/stand/manual-bank-receipt',{version:standVer,dealId:id,handoff:true});
 }
 function manualBankDocsMismatch(d){
   const issued=!!(d&&((d.docPack)||(d.docVersion)));
@@ -7464,7 +7498,19 @@ function manualBankDocsMismatch(d){
 }
 async function manualBankReceiptConfirm(id){
   if(!document.getElementById('mbr_verify_'+id)?.checked){toast('Сначала сверьте зачисление с банковской выпиской');return;}
-  await standAction('/api/stand/manual-bank-receipt/'+id+'/confirm',{version:standVer,statementVerified:true});
+  const d=deal(id), r=d.manualBankReceipt||{};
+  if(!r.handoff){await standAction('/api/stand/manual-bank-receipt/'+id+'/confirm',{version:standVer,statementVerified:true});return;}
+  const mode=val('mbr_actual_mode_'+id);
+  await standAction('/api/stand/manual-bank-receipt/'+id+'/confirm',{
+    version:standVer,statementVerified:true,actualMode:mode,
+    bank:val('mbr_actual_bank_'+id),account:val('mbr_actual_account_'+id),
+    correspondent:val('mbr_actual_corr_'+id),bik:val('mbr_actual_bik_'+id),
+    recipientName:val('mbr_actual_name_'+id),recipientInn:val('mbr_actual_inn_'+id),
+    recipientKpp:val('mbr_actual_kpp_'+id),
+    actualAmount:val('mbr_amount_'+id),payer:val('mbr_payer_'+id),
+    bankPurpose:val('mbr_purpose_'+id),statementDate:val('mbr_date_'+id),
+    statementRef:val('mbr_ref_'+id),
+    deviationAcknowledged:document.getElementById('mbr_deviation_'+id)?.checked===true});
 }
 
 /* Крипто-приход частями (Карим, 25.09). Клиент обычно шлёт сначала тестовый
@@ -8431,10 +8477,9 @@ function stepCard(d){
       <div class="fg"><label class="fl">Ждём сумму</label>
         <input class="fc num" id="w_amt" value="${ex.amount}" onchange="expectSet(${d.id},'amount',this.value)">
         <p class="fh">можно поправить: клиент перевёл чуть больше или меньше</p></div>
-      <div class="fg"><label class="fl">Счёт зачисления</label>
-        <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''}>
-          ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк','…0261 · СГБ (Flow Sole)'].map(a=>`<option value="${a}"${ex.acc===a?' selected':''}>${a}</option>`).join('')}<option value="custom"${ex.acc==='custom'?' selected':''}>Другой счёт</option></select>
-        ${ex.acc==='custom'||d.rubReceivingAccount?.mode==='flowsole'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''} style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''} style="margin-top:7px">`:''}</div>
+      <div class="fg"><label class="fl">Ожидаемый счёт зачисления</label>
+        <div class="fc" style="height:auto;min-height:42px">${sberText(ex.acc==='custom'?(ex.bank||'Другой счёт')+' · '+(ex.account||'счёт не указан'):ex.acc)}${ex.account&&ex.acc!=='custom'?' · '+sberText(ex.account):''}</div>
+        <p class="fh">Указан при подготовке договора. Фактический счёт по выписке проверит операционист.</p></div>
       <div class="fg"><label class="fl">Допуск, ₽</label>
         <input class="fc num" id="w_tol" value="${ex.tol}" onchange="expectSet(${d.id},'tol',this.value)">
         <p class="fh">в пределах допуска приход сойдётся сам</p></div>
