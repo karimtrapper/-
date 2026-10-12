@@ -99,9 +99,13 @@ def put(api, saved, role):
 
 def order(api, saved):
     d = saved['data']['deals'][0]
+    d['payToConfirm'] = {'payTo': copy.deepcopy(d['payTo']), 'at': 'confirmed'}
+    d['reqTask'] = 'done'
+    saved = put(api, saved, 'manager')
+    d = saved['data']['deals'][0]
     d.update(step='s23', reqTask='done', _ippsPayoutInstruction=True,
              transfer={'amount': 10130, 'to': 'IPPS', 'addr': IPPS, 'net': 'TRC-20', 'sends': []})
-    return put(api, saved, 'manager')
+    return put(api, saved, 'operator')
 
 
 @pytest.mark.parametrize('source', ['founder', 'company'])
@@ -297,9 +301,11 @@ def test_second_signature_and_payto_confirmation_are_not_bypassed(api):
     assert r.status_code == 409 and 'вторая подпись' in r.json['error']
     api[1][0] = 'operator'
     saved = payout(api, 'founder')
+    saved['data']['deals'][0].pop('payToConfirm', None)
     forged = copy.deepcopy(saved['data'])
     forged['deals'][0]['step'] = 's27'
     forged['deals'][0]['pay']['invoicePaid'] = True
+    forged['deals'][0].pop('payToConfirm', None)
     assert 'подтверждения реквизитов' in m._stand_guard_transition(saved['data'], forged, 'operator')
 
 

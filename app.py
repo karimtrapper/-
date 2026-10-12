@@ -5973,6 +5973,7 @@ def stand_state_put():
                     'network': transfer.get('net'),
                     'address': str(transfer.get('addr') or '').strip(),
                     'confirmedAt': datetime.utcnow().isoformat(timespec='seconds') + 'Z',
+                    'actor': actor, 'payTo': dict(deal.get('payTo') or {}),
                 }
             deal.pop('_ippsPayoutInstruction', None)
         if actor in ('manager', 'admin') and actor_id is not None:
@@ -7335,7 +7336,7 @@ def _stand_current_step_role(state, deal):
     списке state.wallets."""
     step = deal.get('step')
     if step == 's22' and deal.get('kind') == 'Фрихолд':
-        return 'manager'
+        return 'operator' if not _stand_payto_problem(deal) and _stand_payto_confirmed(deal) else 'manager'
     if step != 's23':
         return _STAND_STEP_ROLE.get(step)
     if deal.get('prepay'):
@@ -7715,14 +7716,14 @@ def stand_prepay_reimburse():
 
 
 def _stand_freehold_ipps_order_problem(state, before, deal, actor):
-    """Require a manager-confirmed, server-stamped snapshot before freehold sends."""
+    """Поручение операциониста после подтверждения реквизитов менеджером."""
     if not (deal.get('kind') == 'Фрихолд' or before.get('kind') == 'Фрихолд'):
         return None
     issuing = before.get('step') == 's22' and deal.get('step') == 's23'
     if before.get('step') == 's22' and deal.get('step') != 's22' and not issuing:
-        return 'С s22 фрихолда можно перейти только по сохранённому поручению менеджера на s23'
+        return 'С s22 фрихолда можно перейти только по сохранённому поручению операциониста на s23'
     if deal.get('_ippsPayoutInstruction') and not issuing:
-        return 'Подтверждение поручения действует только при переходе менеджера с s22 на s23'
+        return 'Подтверждение поручения действует только при переходе операциониста с s22 на s23'
     old_order = before.get('ippsPayoutOrder')
     if deal.get('ippsPayoutOrder') != old_order:
         return 'Поручение IPPS фиксирует только сервер'
@@ -7734,14 +7735,16 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     confirmed_legacy = bool(old_sends) and all(s.get('status') == 'confirmed' for s in old_sends)
     new_sends = (deal.get('transfer') or {}).get('sends') or []
     if new_sends != old_sends and not (old_order and old_order.get('confirmedAt')):
-        return 'Исходящий перевод можно добавить или изменить только после сохранённого поручения менеджера'
+        return 'Исходящий перевод можно добавить или изменить только после сохранённого поручения операциониста'
     if issuing:
-        if actor not in ('manager', 'admin'):
-            return 'Поручить исходящий перевод может только менеджер'
+        if actor not in ('operator', 'admin'):
+            return 'Поручить исходящий перевод может только операционист'
         if deal.get('_ippsPayoutInstruction') is not True:
-            return 'Для поручения IPPS используйте подтверждение менеджера'
+            return 'Для поручения IPPS используйте подтверждение операциониста'
         if before.get('reqTask') not in ('open', 'done') or deal.get('reqTask') != 'done':
             return 'Сначала менеджер должен сохранить реквизиты заявки, затем поручить перевод'
+        if not _stand_payto_confirmed(before) or not _stand_payto_confirmed(deal):
+            return 'Сначала менеджер должен подтвердить актуальные реквизиты застройщика'
         # Do not accept client edits to the evidence used for the funding limit.
         if _stand_payto_problem(before):
             return _stand_payto_problem(before)
@@ -7795,12 +7798,12 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
         if verified_in <= 0 or amount > verified_in + 0.005:
             return 'Сумма поручения превышает подтверждённый приход или приход ещё не проверен'
         if new_sends:
-            return 'Сначала сохраните поручение менеджера; исходящий перевод ещё не начат'
+            return 'Сначала сохраните поручение операциониста; исходящий перевод ещё не начат'
         return None
     if not old_order and not confirmed_legacy:
         if (before.get('step') in ('s23', 's24') and
                 (deal.get('step') != before.get('step') or new_sends != old_sends)):
-            return 'Ждём сохранённого поручения менеджера перед исходящим переводом'
+            return 'Ждём сохранённого поручения операциониста перед исходящим переводом'
     if old_order:
         transfer = deal.get('transfer') or {}
         if (abs(_stand_number(transfer.get('amount')) - _stand_number(old_order.get('amount'))) > 0.005
@@ -8358,7 +8361,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             required = {'s22': 'operator', 's24': 'teodor', 's25': 'operator',
                         's26': 'operator', 's27': 'manager'}.get(before.get('step'))
             if before.get('step') == 's22' and before.get('kind') == 'Фрихолд':
-                required = 'manager'
+                required = _stand_current_step_role(previous, before)
             if before.get('step') == 's23':
                 required = _stand_current_step_role(previous, before)
             # Реквизиты для оплаты — параллельная задача менеджера (Карим, 25.09): их

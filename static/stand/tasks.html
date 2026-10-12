@@ -3287,7 +3287,7 @@ function freeholdIpPsPayToSave(id){
 }
 function freeholdIpPsCopyGroup(id){
   const d=deal(id);if(!d||d.kind!=='Фрихолд'||d.step!=='s22')return;
-  const pt=payToFromForm(d), amount=num(cleanNum(val('fh_order_amount')));
+  const pt=d.payTo||{}, amount=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
   const network=val('fh_order_net')||'TRC-20', address=String(val('fh_order_addr')||'').trim();
   const text=ippsApplicationText(d,pt)+'\n\nUSDT для перевода: '+(amount?amount.toFixed(2):'сумма из подтверждения')+
     '\nNetwork: '+network+'\nIPPS wallet: '+(address||'адрес из подтверждения');
@@ -3332,7 +3332,7 @@ function reqReopen(id,why){
    личный отправляет его владелец. Остальные шаги закреплены за ролью жёстко. */
 function stepWho(d,step){
   step=step||(d&&d.step);
-  if(step==='s22'&&d&&d.kind==='Фрихолд')return 'manager';
+  if(step==='s22'&&d&&d.kind==='Фрихолд')return payToReady(d)&&payToConfirmed(d)?'operator':'manager';
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
@@ -3344,6 +3344,7 @@ function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&step
    с сохранённым в подтверждении, отдельного флага «сбросить» не заводим. */
 function payGateStep(d){
   if(!d||d.closed||d.type!=='Оплата недвижимости')return null;
+  if(d.kind==='Фрихолд'&&['s22','s23','s24'].includes(d.step))return 's22';
   if(d.step==='s26'&&!(d.pay||{}).invoicePaid)return 's26';
   return null;
 }
@@ -3364,13 +3365,13 @@ function payToConfirm(id){
   d.payToConfirm={payTo:Object.assign({},d.payTo),at:now()};
   log(d,'Менеджер подтвердил реквизиты перед оплатой: '+payToLogLine(d));
   const gate=payGateStep(d);
-  noteAdd('operator','Реквизиты подтверждены менеджером — можно '+(gate==='s25'?'отправить заявку в IPPS':'оплатить инвойс'),d.id);
+  noteAdd('operator','Реквизиты подтверждены менеджером — можно '+(gate==='s22'?'отправить заявку в IPPS':'оплатить инвойс'),d.id);
   save();render();toast('Подтверждено — операционист может платить');
 }
 function payToConfirmBlock(d){
   const pt=d.payTo||{}, gate=payGateStep(d);
   const line=(k,v)=>`<div class="payrow"><div style="min-width:0"><div class="k">${k}</div><div class="v">${htmlText(v||'—')}</div></div></div>`;
-  return `<div class="card"><div class="alert a-warn"><div>Подтвердите реквизиты перед оплатой — без этого операционист не сможет ${gate==='s25'?'отправить заявку в IPPS':'оплатить инвойс'}.</div></div>
+  return `<div class="card"><div class="alert a-warn"><div>Подтвердите реквизиты перед оплатой — без этого операционист не сможет ${gate==='s22'?'отправить заявку в IPPS':'оплатить инвойс'}.</div></div>
     <div class="card-title" style="margin-top:10px">Реквизиты для оплаты</div>
     <div class="paybox">
       ${line('Получатель',pt.dev)}
@@ -3381,7 +3382,7 @@ function payToConfirmBlock(d){
     </div>
     <div class="row" style="margin-top:12px">
       <button class="btn btn-primary" onclick="payToConfirm(${d.id})">Реквизиты верны — можно платить</button>
-      <button class="btn btn-outline" onclick="reqReopen(${d.id},'правка перед оплатой')">Исправить реквизиты</button>
+      <button class="btn btn-outline" onclick="reqReopen(${d.id},'правка перед оплатой')">Реквизиты изменились — поправить</button>
     </div></div>`;
 }
 function waitingOn(role){return S.deals.filter(d=>!d.closed&&STEPS[d.step]&&stepWho(d)&&stepWho(d)!==role);}
@@ -5053,7 +5054,7 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine){
       const status=`<div class="card" style="margin-bottom:12px">Сейчас: ${(who&&ROLES[who])?ROLES[who].t:'—'} — ${stepTitle(d)}</div>`+
-        (d.step==='s22'&&d.kind==='Фрихолд'&&S.role!=='manager'?`<div class="alert a-warn"><div>Ожидаем поручение менеджера: он согласует в группе сумму, сеть и адрес IPPS. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
+        (d.step==='s22'&&d.kind==='Фрихолд'?`<div class="alert a-warn"><div>Менеджер подтверждает реквизиты застройщика, затем операционист согласует с IPPS сеть и адрес перевода. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
       const confirmGate=managerSide&&needsPayConfirm(d);
       const canDraft=managerSide&&d.reqTask!=='done';
@@ -5347,7 +5348,7 @@ function pathCard(d){
       const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
       return `<tr${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
         <td>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</td><td>${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</td>
-        <td><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная менеджером заявка IPPS для параллельной оплаты':f.w}</td>
+        <td><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная операционистом заявка IPPS для параллельной оплаты':f.w}</td>
         <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
     </tbody></table>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
@@ -8744,30 +8745,14 @@ function stepCard(d){
     if(d.kind==='Фрихолд'){
       const order=d.ippsPayoutOrder||{};
       const expected=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
-      const soft=(d.ippsTariff||'bank')==='soft';
-      if(S.role!=='manager'&&order.confirmedAt)return `<div class="card"><div class="card-title">Поручение на исходящий перевод</div>
-        <div class="alert a-info"><div>Менеджер зафиксировал по подтверждению в группе: <b>${usd(order.amount)}</b> · ${htmlText(order.network||'')} · <span class="addr">${htmlText(order.address||'')}</span>. Фин дир проверяет этот снимок перед отправкой.</div></div></div>`;
-      if(S.role!=='manager')return `<div class="card"><div class="card-title">Ожидаем поручение менеджера</div>
-        <div class="alert a-warn"><div>Менеджер должен согласовать заявку в группе IPPS и зафиксировать сумму, сеть и адрес получателя. До этого подписант кошелька не увидит задачу, перевод не отправляется.</div></div></div>`;
+      if(!payToReady(d)||reqOpen(d))return S.role==='manager'?stepCard({...d,step:'s15',_side:true}):'<div class="card">Ждём реквизиты застройщика от менеджера.</div>';
+      if(!payToConfirmed(d))return S.role==='manager'?payToConfirmBlock(d):'<div class="card">Ждём подтверждение актуальных реквизитов менеджером.</div>';
+      if(!['operator','admin'].includes(S.role))return '<div class="card">Операционист согласует заявку с IPPS и поручит перевод.</div>';
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
-        ${d.demoTransfers?`<div class="alert a-warn"><div><b>DEMO · тестовый приход</b><br>Это не подтверждение реальных денег. Не выполнять реальный исходящий перевод.</div></div>`:''}
-        <div class="alert a-info"><div>Менеджер сверяет в группе IPPS сумму, сеть и адрес. ${d.prepay&&!d.prepay.wallet.multisig?'Владелец кошелька':'Фин дир'} получит зафиксированные данные. Автоматического перевода на постоянный адрес нет.</div></div>
+        <div class="alert a-info"><div>Реквизиты застройщика подтверждены менеджером. Получите от IPPS адрес и сеть для этой заявки, затем поручите перевод.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
-        <div class="card-title" style="font-size:14px;margin-top:14px">Реквизиты заявки SWIFT застройщику</div>
-        <div class="fr">
-          <div class="fg w2"><label class="fl">Account Name<span class="rq">*</span></label><input class="fc" id="p_dev" value="${htmlText((d.payTo||{}).dev||d.dev||'')}" placeholder="получатель из инвойса"></div>
-          <div class="fg"><label class="fl">Банк<span class="rq">*</span></label><input class="fc" id="p_bank" value="${htmlText((d.payTo||{}).bank||'')}" placeholder="банк получателя"></div>
-          <div class="fg"><label class="fl">SWIFT / BIC<span class="rq">*</span></label><input class="fc" id="p_swift" value="${htmlText((d.payTo||{}).swift||'')}" placeholder="SWIFT/BIC"></div>
-          <div class="fg"><label class="fl">Счёт<span class="rq">*</span></label><input class="fc addr" id="p_acc" value="${htmlText((d.payTo||{}).acc||'')}" placeholder="номер счёта"></div>
-          <div class="fg"><label class="fl">Назначение<span class="rq">*</span></label><input class="fc" id="p_purp" value="${htmlText((d.payTo||{}).purpose||'')}" placeholder="назначение для банка"></div>
-          <div class="fg"><label class="fl">Инвойс</label><input class="fc" id="p_inv" value="${htmlText((d.payTo||{}).inv||d.invNo||'')}" placeholder="номер инвойса"></div>
-          <div class="fg"><label class="fl">Отделение</label><input class="fc" id="p_branch" value="${htmlText((d.payTo||{}).branch||'')}" placeholder="отделение банка"></div>
-          <div class="fg w2"><label class="fl">Адрес банка</label><input class="fc" id="p_bankaddr" value="${htmlText((d.payTo||{}).bankAddr||'')}" placeholder="адрес банка"></div>
-          ${soft?`<div class="fg"><label class="fl">POBO · имя клиента латиницей<span class="rq">*</span></label><input class="fc" id="p_pobo" value="${htmlText((d.payTo||{}).pobo||'')}" placeholder="как в паспорте"></div>`:''}
-        </div>
-        <div class="row"><button class="btn btn-secondary" onclick="freeholdIpPsPayToSave(${d.id})">Сохранить реквизиты заявки</button></div>
         <div class="fr" style="margin-top:12px">
-          <div class="fg"><label class="fl">Подтверждённая сумма, USDT<span class="rq">*</span></label><input class="fc num" id="fh_order_amount" inputmode="decimal" placeholder="сумма из группы IPPS"></div>
+          <div class="fg"><label class="fl">Подтверждённая сумма, USDT<span class="rq">*</span></label><input class="fc num" id="fh_order_amount" readonly value="${expected}"></div>
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
           <div class="fg w2"><label class="fl">Адрес из подтверждения IPPS<span class="rq">*</span></label><input class="fc addr" id="fh_order_addr" value="${htmlText((d.transfer||{}).addr||IPPS_WALLET)}" placeholder="полный адрес получателя"><p class="fh">Предложен известный адрес IPPS; это не подтверждение. Сверьте в группе или замените по сообщению IPPS.</p></div>
         </div>
@@ -8822,7 +8807,7 @@ function stepCard(d){
     const cost=sObj.cur==='usdt'?need/rate:null;
     return `<div class="card"><div class="card-title">${htmlText(sendHead(d))}<span class="sub">${(dealWallet(d)||{}).name?'с кошелька '+htmlText(dealWallet(d).name):''}</span></div>
     ${d.demoTransfers?`<div class="alert a-warn"><div><b>DEMO · тестовый приход</b><br>Это не подтверждение реальных денег. Не выполнять реальный исходящий перевод.</div></div>`:''}
-    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<div class="alert a-info"><div><b>Поручение менеджера · IPPS</b><br>${usd(d.ippsPayoutOrder.amount)} · ${htmlText(d.ippsPayoutOrder.network)} · <span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><br>Используйте этот подтверждённый снимок при подготовке исходящего перевода.</div></div>`:''}
+    ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<div class="alert a-info"><div><b>Поручение операциониста · IPPS</b><br>${usd(d.ippsPayoutOrder.amount)} · ${htmlText(d.ippsPayoutOrder.network)} · <span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><br>Используйте этот подтверждённый снимок при подготовке исходящего перевода.</div></div>`:''}
 
     ${d.prepay?`<div class="alert a-info"><div>${htmlText(prepayFundingText(d))}</div></div>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
@@ -9285,15 +9270,12 @@ async function act(id,step){
     go(d,'s22','USDT на кошельке — решаем, что дальше');toast('Пришло '+usd(got));return;}
   if(step==='s22'){
     if(d.kind==='Фрихолд'){
-      const amount=num(cleanNum(val('fh_order_amount'))), network=val('fh_order_net'), address=String(val('fh_order_addr')||'').trim();
+      const amount=freeholdSend(d.invoiceUsd||0,ippsTariff(d)), network=val('fh_order_net'), address=String(val('fh_order_addr')||'').trim();
       if(!document.getElementById('fh_order_ack')?.checked){toast('Подтвердите, что заявка и реквизиты согласованы в группе IPPS');return;}
       if(!Number.isFinite(amount)||amount<=0){toast('Укажите подтверждённую сумму USDT');return;}
       if(!NETS.includes(network)||!addrValid(address,network)){toast('Проверьте адрес и сеть из подтверждения IPPS');return;}
       if(!payToReady(d)){toast('Сначала заполните и сохраните SWIFT, счёт и назначение заявки');return;}
-      const savedPayTo=d.payTo||{}, enteredPayTo=payToFromForm(d);
-      if(['dev','bank','acc','purpose','swift'].some(k=>String(savedPayTo[k]||'').trim()!==String(enteredPayTo[k]||'').trim())){
-        toast('Сначала сохраните последние изменения реквизитов заявки');return;
-      }
+      if(!payToConfirmed(d)){toast('Сначала менеджер должен подтвердить актуальные реквизиты');return;}
       const batch=convOf(d), funded=d.prepay?d.prepay.amount:(batch?hashSum(batch.txs):hashSum(d.payinHashes));
       if(funded==null||Math.round(amount*100)>Math.round(funded*100)){toast('Сумма поручения превышает подтверждённый приход или приход ещё не зарегистрирован');return;}
       const expected=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
@@ -9302,7 +9284,7 @@ async function act(id,step){
       d.transfer=Object.assign({},d.transfer||{},{amount,to:'IPPS',addr:address,net:network});
       d.reqTask='done';
       if(STAND)d._ippsPayoutInstruction=true;
-      go(d,'s23','Менеджер подтвердил сумму, сеть и адрес по заявке IPPS в группе и поручил исходящий перевод с выбранного кошелька');
+      go(d,'s23','Операционист подтвердил сумму, сеть и адрес по заявке IPPS в группе и поручил исходящий перевод с выбранного кошелька');
       if(STAND){
         let saved;
         try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
@@ -9372,7 +9354,7 @@ async function act(id,step){
     if(!cnvMembers(d).filter(pcSends).every(sendDone)){toast('Не все переводы подтверждены');return;}
     if(d.kind==='Фрихолд'){
       const legacyConfirmed=!d.ippsPayoutOrder&&d.serverTransferComplete&&sendList(d).length>0&&sendList(d).every(t=>t.status==='confirmed');
-      if(!(d.ippsPayoutOrder||{}).confirmedAt&&!legacyConfirmed){toast('Нет сохранённого поручения менеджера по IPPS');return;}
+      if(!(d.ippsPayoutOrder||{}).confirmedAt&&!legacyConfirmed){toast('Нет сохранённого поручения операциониста по IPPS');return;}
       go(d,'s26',legacyConfirmed
         ?'Старый подтверждённый перевод учтён — ждём MT103 (поручение до выпуска этого gate не сохранялось)'
         :'Перевод подтверждён — ждём MT103 по ранее согласованной заявке');

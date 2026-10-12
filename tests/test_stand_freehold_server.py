@@ -61,6 +61,7 @@ def manager_s22_deal(*, demo=False, req_task='open'):
                         if demo else
                         [{'hash': 'synthetic-verified-in', 'amount': 50000, 'verified': True}]),
     })
+    deal['payToConfirm'] = {'payTo': dict(deal['payTo']), 'at': 'confirmed'}
     return deal
 
 
@@ -79,6 +80,8 @@ def authorized_s23_state(*, demo=False, req_task='open'):
 def test_s22_freehold_is_manager_owned_but_other_s22_roles_are_unchanged():
     fh = manager_s22_deal()
     exchange = {'id': 2, 'kind': None, 'type': 'Обмен валюты', 'step': 's22'}
+    assert appmod._stand_current_step_role({'deals': [fh]}, fh) == 'operator'
+    fh.pop('payToConfirm')
     assert appmod._stand_current_step_role({'deals': [fh]}, fh) == 'manager'
     assert appmod._stand_current_step_role({'deals': [exchange]}, exchange) == 'operator'
 
@@ -96,23 +99,23 @@ def test_s22_manager_can_save_swift_details_before_instruction():
 def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_funding():
     before = {'wallets': [], 'convs': [], 'deals': [manager_s22_deal(demo=True)], 'notes': []}
     allowed = authorized_s23_state(demo=True)
-    assert appmod._stand_guard_transition(before, allowed, actor='manager') is None
+    assert appmod._stand_guard_transition(before, allowed, actor='operator') is None
     assert appmod._stand_guard_transition(before, allowed, actor='admin') is None
 
     bad_actor = json.loads(json.dumps(allowed))
-    assert 'только менеджер' in appmod._stand_guard_transition(before, bad_actor, actor='operator')
+    assert 'только операционист' in appmod._stand_guard_transition(before, bad_actor, actor='manager')
 
     bad_marker = json.loads(json.dumps(allowed))
     bad_marker['deals'][0].pop('_ippsPayoutInstruction')
-    assert 'подтверждение менеджера' in appmod._stand_guard_transition(before, bad_marker, actor='manager')
+    assert 'подтверждение операциониста' in appmod._stand_guard_transition(before, bad_marker, actor='operator')
 
     bad_contract = json.loads(json.dumps(allowed))
     bad_contract['deals'][0]['transfer']['amount'] = 10129
-    assert 'расчётом договора' in appmod._stand_guard_transition(before, bad_contract, actor='manager')
+    assert 'расчётом договора' in appmod._stand_guard_transition(before, bad_contract, actor='operator')
 
     bad_network = json.loads(json.dumps(allowed))
     bad_network['deals'][0]['transfer'].update(net='ERC-20', addr='0x' + 'a' * 40)
-    assert 'поддерживается только TRC-20' in appmod._stand_guard_transition(before, bad_network, actor='manager')
+    assert 'поддерживается только TRC-20' in appmod._stand_guard_transition(before, bad_network, actor='operator')
 
     insufficient = json.loads(json.dumps(before))
     insufficient['deals'][0]['payinHashes'] = [
@@ -123,7 +126,7 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
     insufficient_after['deals'][0]['payinHashes'] = json.loads(json.dumps(
         insufficient['deals'][0]['payinHashes']))
     assert 'превышает подтверждённый приход' in appmod._stand_guard_transition(
-        insufficient, insufficient_after, actor='manager')
+        insufficient, insufficient_after, actor='operator')
 
     spoofed = json.loads(json.dumps(before))
     spoofed['deals'][0]['step'] = 's23'
@@ -136,19 +139,19 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
     ]
     spoofed['deals'][0]['_ippsPayoutInstruction'] = True
     assert 'нельзя менять на задаче поручения' in appmod._stand_guard_transition(
-        before, spoofed, actor='manager')
+        before, spoofed, actor='operator')
 
     real_before = {'wallets': [], 'convs': [],
                    'deals': [manager_s22_deal(demo=False)], 'notes': []}
     spoofed_real = authorized_s23_state(demo=True)
     assert 'нельзя менять на задаче поручения' in appmod._stand_guard_transition(
-        real_before, spoofed_real, actor='manager')
+        real_before, spoofed_real, actor='operator')
 
     for destination in ('s24', 's26'):
         forged_jump = json.loads(json.dumps(allowed))
         forged_jump['deals'][0]['step'] = destination
         assert 'только по сохранённому поручению' in appmod._stand_guard_transition(
-            before, forged_jump, actor='manager')
+            before, forged_jump, actor='operator')
 
     before23_deal = dict(manager_s22_deal(demo=True), step='s23',
                          postConv='ipps_swift', reqTask='done')
@@ -156,7 +159,7 @@ def test_freehold_instruction_requires_manager_saved_payto_amount_contract_and_f
     s23_no_order = json.loads(json.dumps(before23))
     s23_no_order['deals'][0]['transfer']['sends'] = [
         {'ref': 'synthetic-send', 'amount': 10130, 'net': 'TRC-20', 'status': 'pending'}]
-    assert 'поручения менеджера' in appmod._stand_freehold_ipps_order_problem(
+    assert 'поручения операциониста' in appmod._stand_freehold_ipps_order_problem(
         s23_no_order, before23_deal, s23_no_order['deals'][0], 'findir')
 
 
@@ -874,3 +877,15 @@ def test_mixed_accepted_batch_protects_exchange_member_route():
         new = copy.deepcopy(old)
         change(new)
         assert appmod._stand_guard_transition(old, new, 'admin')
+
+
+def test_ipps_order_needs_current_manager_confirmation():
+    before = {'deals': [manager_s22_deal(demo=True)], 'convs': [], 'wallets': [], 'notes': []}
+    for mutation in ('missing', 'stale'):
+        old = json.loads(json.dumps(before))
+        if mutation == 'missing':
+            old['deals'][0].pop('payToConfirm')
+        else:
+            old['deals'][0]['payTo']['acc'] = 'CHANGED'
+        after = authorized_s23_state(demo=True)
+        assert 'актуальные реквизиты' in appmod._stand_guard_transition(old, after, actor='operator')
