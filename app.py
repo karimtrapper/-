@@ -6250,8 +6250,7 @@ def stand_close_evidence(stand_deal_id):
         provenance, problem = _stand_close_fact_source(state, deal, kind)
         if problem:
             return jsonify({'success': False, 'error': problem}), 409
-        required_role = ('operator' if provenance == 'operator_attestation' else
-                         'manager' if kind == 'sent' else None)
+        required_role = 'operator' if provenance == 'operator_attestation' else 'manager'
         if required_role and actor not in (required_role, 'admin'):
             return jsonify({'success': False, 'error': 'forbidden'}), 403
         _stand_upsert_close_evidence(db, row, deal, kind,
@@ -8022,7 +8021,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 if abs(_stand_number(new_pay.get('usdt')) - _stand_number(source.get('usdtFact'))) > .005:
                     return 'Приход сделки должен совпасть с распределённым USDT брокера'
             broker_actions.add(deal['id'])
-        elif actor == 'operator' and bs == 's18' and changed <= {'walletId', 'conv', 'log', 'stepNotes', 'brokerDraft', 'brokerPick'}:
+        elif actor in ('operator', 'admin') and bs == 's18' and changed <= {'walletId', 'conv', 'log', 'stepNotes', 'brokerDraft', 'brokerPick'}:
             broker_actions.add(deal['id'])
         if (deal.get('transfer') or {}).get('sends'):
             sends = [s for s in deal['transfer']['sends'] if s.get('status') not in ('failed', 'mismatch')]
@@ -8468,9 +8467,18 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                      or any(s.get('status') == 'confirmed'
                             for s in (before.get('transfer') or {}).get('sends') or []))
         if protected:
+            # s26 впервые записывает источник уже исполненного поручения IPPS.
+            initial_ipps_source = (
+                actor in ('operator', 'admin') and before.get('kind') == 'Фрихолд'
+                and before.get('step') == 's26' and deal.get('step') == 's27'
+                and before.get('postConv') == deal.get('postConv') == 'ipps_swift'
+                and not before.get('paySrc') and deal.get('paySrc') == 'ipps_swift'
+                and not (before.get('pay') or {}).get('invoicePaid')
+                and (deal.get('pay') or {}).get('invoicePaid')
+                and _stand_valid_receipt(deal) and _stand_payto_confirmed(deal))
             if before.get('serverTransferComplete') and (
                     deal.get('postConv') != before.get('postConv') or
-                    deal.get('paySrc') != before.get('paySrc')):
+                    (deal.get('paySrc') != before.get('paySrc') and not initial_ipps_source)):
                 return 'Маршрут подтверждённой выплаты нельзя изменить'
             if (before.get('closed') and not deal.get('closed')) or (
                     before.get('crmDealId') and before.get('crmDealId') != deal.get('crmDealId')):
@@ -8486,7 +8494,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             elif before.get('step') in committed_steps and deal.get('step') != before.get('step'):
                 return 'Подтверждённую сделку нельзя вернуть на предыдущий шаг'
             for key in ('cnvId', 'conv', 'postConv', 'walletId'):
-                if deal['id'] in broker_actions and key in ('cnvId', 'walletId'):
+                if deal['id'] in broker_actions and (key in ('cnvId', 'walletId')
+                        or (key == 'conv' and (before.get('prepay') or {}).get('brokerStep') == 's18')):
                     continue
                 if before.get(key) != deal.get(key):
                     return 'Маршрут подтверждённой сделки нельзя изменить'
@@ -8662,7 +8671,8 @@ def _stand_settle_verified(state, members):
                 continue
         elif not _stand_send_complete(deal):
             continue
-        po = deal.setdefault('payout', {})
+        po = deal.get('payout') or {}
+        deal['payout'] = po
         amount = (round(sum(float(s.get('verifiedAmount') or 0) for s in sends
                             if s.get('status') == 'confirmed'), 2)
                   if sends else _stand_number((deal.get('transfer') or {}).get('amount')))
@@ -8720,7 +8730,8 @@ def _stand_settle_verified(state, members):
                        'amount': s.get('verifiedAmount'),
                        'network': normalize_network(s.get('net') or 'TRC-20').upper()}
                       for s in sends]
-            payout = main.setdefault('payout', {})
+            payout = main.get('payout') or {}
+            main['payout'] = payout
             payout['hashes'] = hashes
             payout['hash'] = hashes[0]['hash'] if hashes else None
             payout['usdt'] = round(sum(float(h['amount'] or 0) for h in hashes), 2)
@@ -8774,7 +8785,8 @@ def _stand_settle_verified(state, members):
                        'amount': s.get('verifiedAmount'),
                        'network': normalize_network(s.get('net') or 'TRC-20').upper()}
                       for s in confirmed]
-                dpo = deal.setdefault('payout', {})
+                dpo = deal.get('payout') or {}
+                deal['payout'] = dpo
                 dpo['hashes'] = dh
                 dpo['hash'] = dh[0]['hash'] if dh else None
                 dpo['usdt'] = round(sum(float(h['amount'] or 0) for h in dh), 2)
@@ -9071,7 +9083,8 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 continue
             seen.add(deal.get('id'))
             for send in (deal.get('transfer') or {}).get('sends') or []:
-                if send.get('status') == 'confirmed' or (poll and send.get('status') not in (None, 'pending', 'error')):
+                if (send.get('status') == 'confirmed' and send.get('from') and send.get('to')
+                        or (poll and send.get('status') not in (None, 'pending', 'error', 'confirmed'))):
                     continue
                 key = send_fingerprint(snapshot, deal, send)
                 if poll and key[1] == 'erc20':
@@ -9101,7 +9114,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                                   and (wallet or {}).get('multisig', wallet_id not in ('teodor', 'andrey')))
         if key[0] is None:
             result = {'status': 'mismatch', 'checkError': 'Хеш и ссылка не совпадают или некорректны'}
-        elif deal.get('outgoingReview') and key[0] in (outgoing_review.claims(snapshot, member_id) | registry_claims):
+        elif deal.get('outgoingReview') and key[0] in (outgoing_review.claims(snapshot, member_id, exclude_own_payout=bool(deal.get('serverTransferComplete'))) | registry_claims):
             result = {'status': 'mismatch', 'checkError': 'Хеш уже учтён в другой операции'}
         elif key[0] and all_claims.get((key[0], key[1]), 0) > 1:
             result = {'status': 'mismatch', 'checkError': 'Хеш уже указан в другой отправке'}
@@ -9144,14 +9157,16 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             deal = next((d for d in state.get('deals', []) if d.get('id') == member_id), None)
             if not deal or deal.get('cnvId') in blocked_convs:
                 continue
-            if deal.get('outgoingReview') and key[0] in (outgoing_review.claims(state, member_id) | registry_claims):
+            if deal.get('outgoingReview') and key[0] in (outgoing_review.claims(state, member_id, exclude_own_payout=bool(deal.get('serverTransferComplete'))) | registry_claims):
                 result = {'status': 'mismatch', 'checkError': 'Хеш уже учтён в другой операции'}
             for send in (deal.get('transfer') or {}).get('sends') or []:
                 if (send_fingerprint(state, deal, send) != key
                         or send.get('demoOutcome') != demo_outcome
-                        or send.get('status') == 'confirmed'):
+                        or (send.get('status') == 'confirmed' and send.get('from') and send.get('to'))):
                     continue
-                if poll and send.get('status') == result['status'] and send.get('checkError') == result.get('checkError'):
+                if (poll and send.get('status') == result['status']
+                        and send.get('checkError') == result.get('checkError')
+                        and send.get('from') == result.get('from') and send.get('to') == result.get('to')):
                     break
                 for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo'):
                     send.pop(field, None)

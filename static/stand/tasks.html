@@ -3361,7 +3361,7 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))))));}
+function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s27'&&d.type==='Оплата недвижимости')||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&!rubApiAccount(d))))));}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -5068,7 +5068,7 @@ function viewDeal(d){
   if(!d)return '<div class="card">Сделка не найдена. <button class="btn btn-sm btn-outline" onclick="back()">Назад</button></div>';
   const st=STEPS[d.step]||{title:(d.manual?'внесена вручную':d.step),n:'',who:null};
   const who=stepWho(d);
-  const mine=!d.closed&&who===S.role;
+  const mine=!d.closed&&(who===S.role||(S.role==='admin'&&d.step==='s27'));
   const p=progress(d), view=S.view||'deal';
   let body='';
   if(view==='path') body=pathCard(d);
@@ -5088,6 +5088,7 @@ function viewDeal(d){
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
       body=status+(S.role==='operator'&&d.step==='s14'?clientPayinBlock(d):'')+manualReceiptSide+
+        (S.role==='operator'&&d.step==='s27'?crmEvidencePanel(d):'')+
         (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
@@ -5682,15 +5683,32 @@ function crmEditDiff(d){
   });
   return out;
 }
-function crmForm(d){
-  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d);
-  const esc=v=>htmlText(v==null?'':v);
+function crmEvidencePanel(d){
+  const id=d.id, esc=htmlText;
   const networkOut=['coins','ipps_swift'].includes(d.postConv)||['coins','client'].includes(d.paySrc);
   const networkPayin=d.payType==='Крипта'&&(!(d.payinHashes||[]).length||
     !(d.payinHashes||[]).every(h=>h.verified));
   const routeRecipient=(d.transfer||{}).addr||(d.payTo||{}).acc||
     (d.payout||{}).bankCardId||(d.payout||{}).founder||d.client||'не указан';
   const canRole=role=>S.role===role||S.role==='admin';
+  return `${!d.manual?`<div class="box box-blue" style="margin:10px 0">
+      <b>Подтверждения перед закрытием</b>
+      <p class="fh">Сотрудник подтверждает сохранённые суммы и получателя. Сетевой перевод должен быть проверен системой.</p>
+      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">
+        <button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Pay-In · ${esc(d.payType||'канал')} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>
+        <button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Pay-Out · ${esc(d.postConv||d.paySrc||'маршрут')} · ${esc(econ(d).cost||0)} USDT · ${esc(routeRecipient)} · ${networkOut?'менеджер':'оператор'}</button>
+        ${d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Оплата инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:''}
+        <button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Чек отправлен клиенту · менеджер</button>
+      </div>
+      ${networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':''}
+      ${networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':''}
+      ${networkOut&&canRole('operator')&&(d.transfer?.sends||[]).some(t=>t.status==='confirmed'&&(!t.from||!t.to))
+        ?`<button class="btn btn-outline btn-sm" onclick="checkSends(${id})">Повторно проверить перевод в сети</button>`:''}
+    </div>`:''}`;
+}
+function crmForm(d){
+  const p=crmPayloadFinal(d), id=d.id, ed=d.crmEdit||{}, locked=crmLockedKeys(d);
+  const esc=v=>htmlText(v==null?'':v);
   const mark=k=>ed[k]!==undefined?' <span class="src">поправлено</span>':'';
   const inp=(k,label,o)=>{o=o||{};const v=p[k];
     return `<div class="fg${o.w2?' w2':''}"><label class="fl">${label}${mark(k)}</label>
@@ -5716,18 +5734,7 @@ function crmForm(d){
       ${sel('manager_name','Менеджер',MGR)}
       ${ro('Тип сделки',kindT)}
     </div>
-    ${!d.manual?`<div class="box box-blue" style="margin:10px 0">
-      <b>Подтверждения перед закрытием</b>
-      <p class="fh">Сотрудник подтверждает сохранённые суммы и получателя. Сетевой перевод должен быть проверен системой.</p>
-      <div class="row" style="flex-wrap:wrap;gap:6px;margin-top:7px">
-        <button class="btn btn-outline btn-sm" ${networkPayin||!canRole(d.payType==='Наличные'?'operator':'manager')?'disabled':''} onclick="crmEvidence(${id},'payin')">Pay-In · ${esc(d.payType||'канал')} · ${esc(econ(d).payin||0)} USDT · ${d.payType==='Наличные'?'оператор':'менеджер'}</button>
-        <button class="btn btn-outline btn-sm" ${networkOut&&!d.serverTransferComplete||!canRole(networkOut?'manager':'operator')?'disabled':''} onclick="crmEvidence(${id},'payout')">Pay-Out · ${esc(d.postConv||d.paySrc||'маршрут')} · ${esc(econ(d).cost||0)} USDT · ${esc(routeRecipient)} · ${networkOut?'менеджер':'оператор'}</button>
-        ${d.type==='Оплата недвижимости'?`<button class="btn btn-outline btn-sm" ${!canRole('operator')?'disabled':''} onclick="crmEvidence(${id},'receipt')">Оплата инвойса · ${esc((d.payTo||{}).acc||'получатель на доске')} · оператор</button>`:''}
-        <button class="btn btn-outline btn-sm" ${!canRole('manager')?'disabled':''} onclick="crmEvidence(${id},'sent')">Чек отправлен клиенту · менеджер</button>
-      </div>
-      ${networkPayin?'<p class="fh">Сначала проверьте входящий перевод по сети.</p>':''}
-      ${networkOut&&!d.serverTransferComplete?'<p class="fh">Сначала дождитесь серверного подтверждения сетевого перевода.</p>':''}
-    </div>`:''}
+    ${crmEvidencePanel(d)}
     <details class="crmfin"${(Object.keys(ed).length||S.crmFinOpen)?' open':''} ontoggle="S.crmFinOpen=this.open">
       <summary>Деньги и переводы <span class="fh" style="margin:0">— собраны по дороге и сверены автоматически; править, только если знаете, что не так</span></summary>
       <div class="psec pin" style="margin-top:12px">Pay-In (Получение)</div>

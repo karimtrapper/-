@@ -243,7 +243,8 @@ def preserve_server_fields(old_state, new_state):
             if old_reimbursement:
                 payout['reimbursement'] = old_reimbursement
         if previous.get('serverTransferComplete'):
-            payout = deal.setdefault('payout', {})
+            payout = deal.get('payout') or {}
+            deal['payout'] = payout
             old_payout = previous.get('payout') or {}
             for field in ('hashes', 'hash', 'usdt'):
                 if field in old_payout:

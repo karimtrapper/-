@@ -42,11 +42,13 @@ def complete(deal):
     return abs(actual-required) <= TOLERANCE or accepted
 
 
-def claims(state, exclude_id=None):
+def claims(state, exclude_id=None, *, exclude_own_payout=False):
     """Хеш занят также приходом, возмещением и отправками других сделок."""
     hashes = set()
     for d in state.get('deals') or []:
-        groups = [d.get('payinHashes') or [], (d.get('payout') or {}).get('hashes') or []]
+        groups = [d.get('payinHashes') or []]
+        if not exclude_own_payout or d.get('id') != exclude_id:
+            groups.append((d.get('payout') or {}).get('hashes') or [])
         if d.get('id') != exclude_id:
             groups.append((d.get('transfer') or {}).get('sends') or [])
         groups.append([((d.get('payout') or {}).get('reimbursement') or {})])
