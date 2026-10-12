@@ -427,6 +427,49 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     assert 'расхождение' in saved['log'][-1]['text']
     assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
 
+    # Та же выписка становится источником новой пачки при отправке брокеру.
+    with m.get_session() as db:
+        before = json.loads(m._stand_row(db).data)
+    before['deals'][0]['step'] = 's18'
+    before['wallets'] = [{'id': 'qa-wallet', 'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                          'net': 'TRC-20', 'multisig': False, 'role': 'teodor'}]
+    after = copy.deepcopy(before)
+    sent, held, ctrl, ours = 9917.53, 69.97, 49.99, 19.98
+    after['convs'] = [{'id': 1, 'name': 'CNV-0001', 'broker': 'QA Broker',
+                       'requestNo': '41', 'rate': 100, 'status': 'sent', 'at': '13.10',
+                       'walletId': 'qa-wallet', 'rubTotal': 9987.5, 'sent': sent,
+                       'held': held, 'feeCtrl': ctrl, 'feeOurs': ours,
+                       'feePct': .3, 'feeFix': 40, 'feeCtrlPct': .1, 'feeOursPct': .2,
+                       'sources': [{'dealId': 1485, 'rub': 9987.5, 'usdt': 99.18}],
+                       'txs': [], 'sentTs': 1791880000000}]
+    after['incomes'][0]['cnvId'] = 1
+    after['deals'][0].update(step='s18w', cnvId=1, walletId='qa-wallet')
+    after['deals'][0].setdefault('rates', {})['broker'] = 100
+    assert m._stand_guard_transition(before, after, actor='operator') is None
+    wrong_batch = copy.deepcopy(after)
+    wrong_batch['incomes'][0]['cnvId'] = 2
+    assert 'только к пачке своей сделки' in m._stand_guard_transition(
+        before, wrong_batch, actor='operator')
+    for field, value in [('rub', 1), ('acc', '99999999999999999999')]:
+        changed = copy.deepcopy(after)
+        changed['incomes'][0][field] = value
+        assert 'нельзя удалить или менять' in m._stand_guard_transition(
+            before, changed, actor='operator')
+    changed = copy.deepcopy(after)
+    changed['deals'][0]['files']['bankCreditEvidence'] = []
+    assert 'Выписку прикладывает' in m._stand_guard_transition(
+        before, changed, actor='operator')
+
+    with m.get_session() as db:
+        row = m._stand_row(db)
+        row.data = json.dumps(before, ensure_ascii=False)
+        db.commit()
+    broker = client.put('/api/stand/state', json={
+        'version': confirmed.json['version'], 'data': after})
+    assert broker.status_code == 200, broker.json
+    assert broker.json['data']['deals'][0]['step'] == 's18w'
+    assert broker.json['data']['incomes'][0]['cnvId'] == 1
+
 
 @pytest.mark.parametrize('mode,number', [
     ('sber', '40807810938720000286'),

@@ -75,7 +75,7 @@ def lk(monkeypatch):
     for name, role, tg, disabled in [
         ('karim', 'admin', 201, False), ('manager', 'manager', 202, False),
         ('manager2', 'manager', 203, False), ('operator', 'operator', 204, False),
-        ('offduty', 'manager', 205, True),
+        ('offduty', 'manager', 205, True), ('teodor', 'teodor', 206, False),
     ]:
         uname = 'karim' if name == 'karim' else 'lk_test_' + name
         user = appmod.AdminUser(username=uname, display_name=name, role=role,
@@ -672,3 +672,57 @@ def test_disabled_assignee_preserved_on_put_not_cleared_to_role_fallback(lk, mon
         assert res.status_code == 200, body
         assert body['data']['deals'][0]['assigneeAdminId'] == ids['offduty']  # не обнулилось
     assert sent == [201]  # только копия админу; ни отключённый, ни роль-фолбэк
+
+
+@pytest.mark.parametrize('start,end,owner', [
+    ('s22', 's22', 'manager'), ('s24', 's26', 'teodor'),
+])
+@pytest.mark.parametrize('client_clears', [False, True])
+def test_assignee_cleared_when_step_owner_changes(lk, start, end, owner, client_clears):
+    ids, board = lk
+    deal = {'id': 7, 'code': 'FH-1485', 'client': 'Иван', 'kind': 'Фрихолд',
+            'step': start, 'assigneeAdminId': ids[owner]}
+    if start == 's22':
+        deal['payTo'] = {'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
+                         'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
+                         'purpose': 'Invoice', 'amount': 10000}
+        if client_clears:
+            deal['payToConfirm'] = {'payTo': deal['payTo'], 'at': 'confirmed'}
+    else:
+        address = 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso'
+        deal.update(type='Оплата недвижимости', postConv='ipps_swift',
+                    invoiceUsd=10000, ippsTariff='bank',
+                    payTo={'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
+                           'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
+                           'purpose': 'Invoice', 'amount': 10000},
+                    transfer={'amount': 10130, 'net': 'TRC-20', 'addr': address,
+                              'sends': [{'status': 'confirmed', 'amount': 10130,
+                                         'hash': 'qa-confirmed'}]},
+                    ippsPayoutOrder={'confirmedAt': '2026-10-13T10:00:00Z',
+                                     'amount': 10130, 'network': 'TRC-20',
+                                     'address': address})
+        deal['payToConfirm'] = {'payTo': dict(deal['payTo']), 'at': 'confirmed'}
+    board([], deals=[deal])
+    with appmod.app.test_client() as client:
+        _login(client, ids['operator'] if start == 's22' and client_clears else ids[owner])
+        state = client.get('/api/stand/state').get_json()
+        moved = state['data']
+        moved['deals'][0]['step'] = end
+        if start == 's22':
+            if client_clears:
+                moved['deals'][0]['log'] = [{'text': 'Операционист принял задачу'}]
+            else:
+                moved['deals'][0]['payToConfirm'] = {'payTo': deal['payTo'], 'at': 'confirmed'}
+        if client_clears:
+            moved['deals'][0]['assigneeAdminId'] = None
+        response = client.put('/api/stand/state', json={'version': state['version'], 'data': moved})
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()['data']['deals'][0]['assigneeAdminId'] is None
+        if start == 's22':
+            _login(client, ids['operator'])
+            saved = response.get_json()
+            saved['data']['deals'][0]['assigneeAdminId'] = ids['operator']
+            taken = client.put('/api/stand/state', json={
+                'version': saved['version'], 'data': saved['data']})
+            assert taken.status_code == 200, taken.get_json()
+            assert taken.get_json()['data']['deals'][0]['assigneeAdminId'] == ids['operator']

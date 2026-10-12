@@ -5940,13 +5940,23 @@ def stand_state_put():
             return jsonify({'success': False, 'error': 'missing_deals_forbidden',
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         actor_id = flask_session.get('user_id')
+        before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
+        for deal in payload['data'].get('deals', []):
+            before = before_by_id.get(deal.get('id'))
+            if not before or before.get('assigneeAdminId') is None:
+                continue
+            old_role = _stand_current_step_role(previous, before)
+            new_role = _stand_current_step_role(payload['data'], deal)
+            if (old_role != new_role and
+                    deal.get('assigneeAdminId') in (None, before.get('assigneeAdminId'))):
+                # При передаче задачи назначение старой роли заканчивается само.
+                deal['assigneeAdminId'] = None
         problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem == '__stale_assignee__':
             # Не запрос актёра — системная гигиена данных: шаг перешёл на роль,
             # которой прежний исполнитель уже не подходит, а поле никто не
             # трогал. Обнуляем прямо в payload['data'] (без права-на-снятие —
             # это не отзыв назначения актёром) и перепроверяем один раз.
-            before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
             for deal in payload['data'].get('deals', []):
                 before = before_by_id.get(deal.get('id'))
                 if _stand_check_assignee(db, before, deal, actor, actor_id,
@@ -7604,11 +7614,11 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     тихая перезапись. Проверка актуальности исполнителя выполняется и когда
     поле НЕ менялось явно: шаг мог перейти на другую роль в этом же PUT.
 
-    Функция самодостаточна (не зовёт другие функции модуля, кроме глобальной
-    карты _STAND_STEP_ROLE) — это позволяет её независимо перепроверить
-    (AST-экстракция + синтетическая модель) без импорта всего приложения.
+    При переходе роли прежнее назначение заканчивается автоматически.
     """
     def required_role():
+        if state is not None:
+            return _stand_current_step_role(state, deal)
         # Зеркало stepWho() из tasks.html: обычно роль решает статическая
         # карта STEPS[step].who, но s23 отправляет подписант привязанного
         # кошелька (не мультисиг) — Виталий/Теодор/…, а не всегда «findir».
@@ -7640,6 +7650,15 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     new_assignee = deal.get('assigneeAdminId')
     if new_assignee != old_assignee:
         if new_assignee is None:
+            if (before and state is not None and
+                    _stand_current_step_role(state, before) != required_role()):
+                return None
+            if old_assignee is not None and state is not None:
+                former = db.query(AdminUser).filter_by(id=old_assignee).first()
+                if (former and not former.login_disabled and
+                        former.role not in (required_role(), 'admin') and
+                        actor == required_role()):
+                    return None
             if actor == 'admin' or (actor_id is not None and actor_id == old_assignee):
                 return None
             return 'Снять назначение может админ или сам исполнитель'
@@ -8048,14 +8067,22 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 or old_income_by_id[str(income.get('id'))].get('source') != 'manual_confirmed')
            for income in new_state.get('incomes') or []):
         return 'Ручной приход подтверждается только оператором'
-    if any(income.get('source') == 'manual_confirmed'
-           and new_income_by_id.get(key) != income
-           for key, income in old_income_by_id.items()):
-        return 'Подтверждённый ручной приход нельзя удалить или менять'
-    for income in new_state.get('incomes') or []:
-        old_income = old_income_by_id.get(str(income.get('id')))
-        if old_income and old_income.get('source') == 'manual_confirmed' and income != old_income:
-            return 'Подтверждённый ручной приход нельзя менять'
+    for key, income in old_income_by_id.items():
+        if income.get('source') != 'manual_confirmed':
+            continue
+        current = new_income_by_id.get(key)
+        if current is None or {k: v for k, v in current.items() if k != 'cnvId'} != {
+                k: v for k, v in income.items() if k != 'cnvId'}:
+            return 'Подтверждённый ручной приход нельзя удалить или менять'
+        if current.get('cnvId') != income.get('cnvId'):
+            deal = new_deals.get(income.get('dealId')) or {}
+            conv_id = current.get('cnvId')
+            conv = new_convs.get(conv_id) if conv_id is not None else None
+            if (deal.get('cnvId') != conv_id or
+                    (conv_id is not None and (conv is None or not any(
+                        source.get('dealId') == income.get('dealId')
+                        for source in conv.get('sources') or [])))):
+                return 'Ручной приход можно привязать только к пачке своей сделки'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
         if before:
@@ -8744,7 +8771,10 @@ def _stand_settle_verified(state, members):
                         'text': (f'Перевод {verb} и подтверждён в сети · {ref} · '
                                  f'{float(s.get("verifiedAmount") or 0):,.2f}'.replace(',', ' ').replace('.', ',') + ' USDT'
                                  + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
+            previous_owner = _stand_current_step_role(state, main)
             main['step'] = ('s26' if main.get('kind') == 'Фрихолд' or main.get('postConv') == 'ipps' else 's25')
+            if _stand_current_step_role(state, main) != previous_owner:
+                main['assigneeAdminId'] = None
             if main.get('postConv') == 'client' and main.get('outgoingReview'):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
                             closedAt=datetime.now().strftime('%d.%m, %H:%M'), serverSettled=True)

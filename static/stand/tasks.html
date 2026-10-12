@@ -3142,6 +3142,17 @@ let BX_DEALS=[];
 
 /* ============ операции ============ */
 function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
+function logWhen(entry){
+  if(entry.ts)return entry.ts;
+  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||'');
+  return Number.isFinite(stamp)&&stamp>0
+    ?new Date(stamp).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+    :'время неизвестно';
+}
+function logMeta(entry){
+  const author=entry.role?(ROLES[entry.role]?.n||'Сотрудник'):'Система';
+  return (entry.role?'от ':'')+author+' · '+logWhen(entry)+' · '+(entry.text||'');
+}
 /* сколько прошло между событиями — «сколько простояли на этом статусе» */
 function dur(ms){
   if(ms==null||ms<0)return '';
@@ -4268,7 +4279,7 @@ function viewTasks(){
         <span class="av" title="этап ${p.i} из ${p.n}">${p.i}</span>
         <div><div class="t1">${stepTitle(d)} — ${d.client}</div>
         <div class="t2">${d.code} · ${d.type}${d.kind?' · '+d.kind:''} · ${apMoney(a,'thb')} / ${apMoney(a,'pay')}${d.object?' · '+d.object:''}</div>
-        <div class="t2">${last?'от '+(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts+' · '+last.text:SOURCES[d.source]}</div></div>
+        <div class="t2">${last?logMeta(last):SOURCES[d.source]}</div></div>
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openTask(${d.id})">Открыть задачу</button></div>`;
     }).join('')+`</div>`;
   }
@@ -5123,7 +5134,7 @@ function viewDeal(d){
   <div><div class="card side"><h4>Коротко о пути</h4>
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
   <ul class="tl">${d.log.slice().reverse().slice(0,6).map((l,i)=>
-    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${l.ts} · ${ROLES[l.role]?ROLES[l.role].t:''}</div></div></li>`).join('')}</ul>
+    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${logWhen(l)} · ${ROLES[l.role]?ROLES[l.role].t:'Система'}</div></div></li>`).join('')}</ul>
   ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
@@ -5382,7 +5393,7 @@ function pathCard(d){
     ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
       <td class="num">${i+1}</td><td>${r.l.text}</td>
       <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
-      <td style="white-space:nowrap">${r.l.ts}</td>
+      <td style="white-space:nowrap">${logWhen(r.l)}</td>
       <td class="num" style="white-space:nowrap">${r.ms!=null?dur(r.ms)+(r.open?' · идёт':''):'—'}</td></tr>`).join('')}
     </tbody></table>
     ${Object.keys(byRole).length>1?`<div class="card-title" style="font-size:14px;margin:20px 0 11px">Сколько времени сделка провела у каждой роли</div>
@@ -5949,7 +5960,7 @@ function ctxCard(d){
         ?(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'))
         :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
-    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts,last.text):''}
+    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),last.text):''}
   </div>
   ${d.reRequest?`<div class="alert a-warn" style="margin:16px 0 0"><div>Курс запрашивали заново ${d.reRequest} раз${d.reRequest>1?'а':''} — клиент возвращался. Прошлые цифры в истории справа.</div></div>`:''}
   </details>`;
