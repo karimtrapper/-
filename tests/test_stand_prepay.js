@@ -26,7 +26,7 @@ for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
 for(const name of ['prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
-  'stepTitle','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','act']){
+  'stepTitle','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act']){
   vm.runInContext(fn(name),ctx);
 }
 const old={id:1484,type:'Оплата недвижимости',kind:'Фрихолд',payType:'По реквизитам',
@@ -62,7 +62,7 @@ for(const source of ['founder','multisig']){
   assert.equal(ctx.dealWallet({...d,_prepayBroker:true}).id,'company','Карточка брокера показывает кошелёк приёма');
   ctx.go(d,'s22','USDT получены');
   assert.equal(d.step,'s23'); assert.equal(d.prepay.brokerStep,'done');
-  assert.match(d.log.at(-1).text,source==='founder'?/возместить фаундеру/:/остаются на мультисиге/);
+  assert.match(d.log.at(-1).text,/сервер сверит кошельки/);
   d.serverTransferComplete=true;d.payout={usdt:10130};
   assert.equal(ctx.prepayRefundRole(d),source==='founder'?'findir':null);
   if(source==='founder'){
@@ -70,6 +70,25 @@ for(const source of ['founder','multisig']){
     d.payout.reimbursement={hash:'abc',usdt:10130};
     assert.equal(ctx.prepayRefundRole(d),null);
   }
+}
+// Возмещение зависит от адресов, включая личный кошелёк → мультисиг.
+{
+  const d={...old,step:'s26',cnvId:1,serverTransferComplete:true,
+    prepay:{source:'multisig',brokerStep:'done',wallet:ctx.walletList[0],amount:10130},
+    payout:{usdt:10130},pay:{usdt:11000},rates:{}};
+  ctx.batch={walletId:'founder'};
+  assert.equal(ctx.prepayRefundRole(d),'teodor');
+  ctx.S.role='teodor';
+  assert.match(ctx.prepayPanel(d),/Хеш возмещения/);
+  ctx.payinParts=()=>[{usdt:11000,fact:11000,calc:11000}];
+  ctx.refAgents=()=>[];
+  const before=ctx.econ(d);
+  d.payout.reimbursement={usdt:10130,hash:'refund'};
+  assert.equal(ctx.prepayRefundRole(d),null);
+  assert.equal(ctx.econ(d).net,before.net);
+  assert.equal(before.cost,10130);assert.equal(before.net,870);
+  ctx.payinParts=()=>[{usdt:10000,fact:10000,calc:11000}];
+  assert.equal(ctx.econ(d).net,-130,'Убыток не прячется в возмещении');
 }
 // Реальное act(s18w): приход распределяется, а этап оплаты остаётся на месте.
 (async()=>{

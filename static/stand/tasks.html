@@ -2357,7 +2357,7 @@ function noteGo(id){
   n.read=true; S.notesOpen=false;
   if(n.dealId&&deal(n.dealId)){
     const d=deal(n.dealId);
-    S.open=n.dealId; S.view=(stepWho(d,d.step)===S.role)?'task':'deal';
+    S.open=n.dealId; S.view=myTasks(S.role).some(x=>x.id===d.id)?'task':'deal';
   }
   save();render();
 }
@@ -3127,9 +3127,7 @@ function go(d,step,text,persist=true){
   if(d.prepay&&(step==='s18w'||step==='s22')){
     d.prepay.brokerStep=step==='s18w'?'s18w':'done';
     log(d,text);
-    if(step==='s22')log(d,d.prepay.source==='founder'
-      ?'USDT брокера получены — возместить фаундеру отправленную в IPPS сумму'
-      :'USDT брокера получены и остаются на мультисиге компании; возмещение не требуется');
+    if(step==='s22')log(d,'USDT брокера получены — сервер сверит кошельки для возмещения оплаты IPPS');
     if(persist)save();render();return;
   }
   const prev=S.role;
@@ -3176,9 +3174,10 @@ function prepayStepDone(d,s){
   return P.indexOf(s)<P.indexOf(d.step);
 }
 function prepayRefundRole(d){
-  if(!d.prepay||d.prepay.source!=='founder'||!d.serverTransferComplete
+  if(!d.prepay||!d.serverTransferComplete
       ||d.prepay.brokerStep!=='done'||d.payout?.reimbursement)return null;
   const w=walletById(convOf(d)?.walletId);
+  if(w?.addr===d.prepay.wallet.addr)return null;
   return w?.multisig?'findir':(w?.role||'teodor');
 }
 async function prepayAction(id,action){
@@ -3209,8 +3208,8 @@ function prepayPanel(d){
     <p>Конвертация: <b>${p.brokerStep==='done'?'USDT брокера получены':STEPS[p.brokerStep].title}</b></p>
     <p>Оплата: <b>${d.pay?.invoicePaid?'MT103/чек получен':(d.step==='s22'?'Согласовать заявку IPPS':STEPS[d.step].title)}</b> · ${htmlText(p.wallet.name)} · ${usd(p.amount)}</p>
     ${S.role==='operator'&&['s22','s23'].includes(d.step)&&!sendList(d).length?`<button class="btn btn-outline" onclick="prepayAction(${d.id},'cancel')">Отменить оплату наперёд</button>`:''}
-    ${p.source==='founder'?`<p>Возмещение: ${d.payout?.reimbursement?'закрыто':(due?usd(due)+' фаундеру '+htmlText(p.wallet.owner):'долг возникнет после отправки IPPS')}</p>`:'<p>USDT брокера остаются на мультисиге компании. Возмещение не требуется.</p>'}
-    ${refund===S.role?`<label class="fl">Хеш возврата ${usd(due)} фаундеру</label><input class="fc addr" id="prepay_refund_${d.id}" placeholder="TRC-20 хеш">
+    <p>Возмещение на ${htmlText(p.wallet.name)}: ${d.payout?.reimbursement?htmlText(d.payout.reimbursement.kind):(due?usd(due)+' · ждём приход брокера или перевод':'после отправки IPPS')}</p>
+    ${refund===S.role?`<p>С кошелька ${htmlText(walletById(convOf(d)?.walletId)?.name||'получения USDT брокера')} на <span class="addr">${htmlText(p.wallet.addr)}</span></p><label class="fl">Хеш возмещения ${usd(due)}</label><input class="fc addr" id="prepay_refund_${d.id}" placeholder="TRC-20 хеш">
       <button class="btn btn-primary" onclick="prepayReimburse(${d.id})">Проверить и закрыть возмещение</button>`:''}
     </div>`;
 }
@@ -5037,7 +5036,7 @@ function viewDeal(d){
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine){
       const status=`<div class="card" style="margin-bottom:12px">Сейчас: ${(who&&ROLES[who])?ROLES[who].t:'—'} — ${stepTitle(d)}</div>`+
-        (d.step==='s22'&&d.kind==='Фрихолд'&&S.role!=='manager'?`<div class="alert a-warn"><div>Ожидаем поручение менеджера: он согласует в группе сумму, сеть и адрес IPPS. До сохранённого поручения финдир не получает задачу отправки.</div></div>`:'');
+        (d.step==='s22'&&d.kind==='Фрихолд'&&S.role!=='manager'?`<div class="alert a-warn"><div>Ожидаем поручение менеджера: он согласует в группе сумму, сеть и адрес IPPS. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
       const confirmGate=managerSide&&needsPayConfirm(d);
       const canDraft=managerSide&&d.reqTask!=='done';
@@ -5328,11 +5327,11 @@ function pathCard(d){
     <table style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
     ${flowOf(d).map(k=>{const f=FILLS[k]; if(!f)return '';
       const idx=flowOf(d).indexOf(k), cur=flowOf(d).indexOf(d.step);
-      const st=d.prepay?(prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
+      const st=d.prepay?(k==='s24'&&!d.prepay.wallet.multisig?'не требуется':prepayStepDone(d,k)?'внесено':([d.step,d.prepay.brokerStep].includes(k)?'сейчас':'ещё нет')):d.closed?'внесено':(cur<0?'—':(idx<cur?'внесено':(idx===cur?'сейчас':'ещё нет')));
       return `<tr${st==='сейчас'&&!d.closed?' style="background:var(--coral-light)"':''}>
         <td>${STEPS[k].n}. ${k==='s22'&&d.kind==='Фрихолд'?'Согласовать заявку IPPS':(k==='s25'&&d.kind==='Фрихолд'?'Ожидать MT103':STEPS[k].title)}</td><td>${stepWho(d,k)?ROLES[stepWho(d,k)].t:'—'}</td>
-        <td><b>${f.b}</b> — ${f.w}</td>
-        <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':'<span class="badge b-wait">ещё нет</span>')}</td></tr>`;}).join('')}
+        <td><b>${f.b}</b> — ${d.prepay&&k==='s22'?'согласованная менеджером заявка IPPS для параллельной оплаты':f.w}</td>
+        <td>${st==='внесено'?'<span class="badge b-done">внесено</span>':(st==='сейчас'?'<span class="badge b-new">сейчас</span>':`<span class="badge b-wait">${st}</span>`)}</td></tr>`;}).join('')}
     </tbody></table>
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <table><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
@@ -7680,7 +7679,8 @@ function stepGoal(d){
         nums:[['Ждём USDT',plan!=null?usd(plan):'—'],['Курс заявки',d.rates.broker||'—'],
               ['Ушло брокеру',(c&&c.sent?moneyKop(c.sent,'₽'):money2(rub,'₽'))+(n>1?' · '+n+' '+plural(n,'сделка','сделки','сделок'):'')]],
         sub:c&&c.sent?'пришло от клиента '+money2(rub,'₽')+' · удержано '+moneyKop(c.held,'₽'):''};})();
-    case 's22': return {t:'Решить, куда уходят пришедшие USDT',
+    case 's22': if(d.prepay)return {t:'Согласовать заявку IPPS',nums:[['В IPPS',usd(d.prepay.amount)],['Источник',d.prepay.wallet.name]],sub:'Оплата идёт параллельно с конвертацией у брокера'};
+      return {t:'Решить, куда уходят пришедшие USDT',
       nums:[['На кошельке',(function(){const c=convOf(d);const g=c?hashSum(c.txs):d.pay.usdt;return g?usd(g):'—';})()],
             ['Кошелёк',(dealWallet(d)||{}).name||'не выбран'],
             ['Подпись',dealWallet(d)?(needsSecondSign(d)?'нужна вторая':'одна, владелец'):'—']]};
@@ -8603,7 +8603,7 @@ function stepCard(d){
     const got=c?hashSum(c.txs):null, gap=(got!=null&&plan!=null)?Math.round((got-plan)*100)/100:null;
     return `<div class="card"><div class="card-title">Ждём USDT от брокера
       <span class="sub">${c?c.name+' · '+c.broker:'пачка не найдена'}</span></div>
-    <div class="alert a-warn"><div>Рубли ушли ${c?c.at:''} — ждём USDT. Пока не пришли, отправлять получателю нечего: на кошельке денег нет.</div></div>
+    <div class="alert a-warn"><div>Рубли ушли ${c?c.at:''} — ждём USDT. ${d.prepay?'Оплата IPPS идёт параллельно из выбранного источника.':'Пока не пришли, отправлять получателю нечего: на кошельке денег нет.'}</div></div>
     <div class="fr">
       <div class="fg"><label class="fl">Отправлено брокеру</label><input class="fc num" readonly value="${c?(c.sent?moneyKop(c.sent,'₽'):money(c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')):'—'}">
         ${c&&c.sent?`<p class="fh">пришло от клиента ${money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽')} · удержано ${moneyKop(c.held,'₽')}</p>`:''}</div>
@@ -8677,10 +8677,10 @@ function stepCard(d){
       if(S.role!=='manager'&&order.confirmedAt)return `<div class="card"><div class="card-title">Поручение на исходящий перевод</div>
         <div class="alert a-info"><div>Менеджер зафиксировал по подтверждению в группе: <b>${usd(order.amount)}</b> · ${htmlText(order.network||'')} · <span class="addr">${htmlText(order.address||'')}</span>. Фин дир проверяет этот снимок перед отправкой.</div></div></div>`;
       if(S.role!=='manager')return `<div class="card"><div class="card-title">Ожидаем поручение менеджера</div>
-        <div class="alert a-warn"><div>Менеджер должен согласовать заявку в группе IPPS и зафиксировать сумму, сеть и адрес получателя. До этого финдир не увидит задачу, перевод не отправляется.</div></div></div>`;
+        <div class="alert a-warn"><div>Менеджер должен согласовать заявку в группе IPPS и зафиксировать сумму, сеть и адрес получателя. До этого подписант кошелька не увидит задачу, перевод не отправляется.</div></div></div>`;
       return `<div class="card"><div class="card-title">Согласовать заявку IPPS и поручить перевод</div>
         ${d.demoTransfers?`<div class="alert a-warn"><div><b>DEMO · тестовый приход</b><br>Это не подтверждение реальных денег. Не выполнять реальный исходящий перевод.</div></div>`:''}
-        <div class="alert a-info"><div>Менеджер сверяет в группе IPPS сумму, сеть и адрес. Фин дир получит зафиксированные данные. Автоматического перевода на постоянный адрес нет.</div></div>
+        <div class="alert a-info"><div>Менеджер сверяет в группе IPPS сумму, сеть и адрес. ${d.prepay&&!d.prepay.wallet.multisig?'Владелец кошелька':'Фин дир'} получит зафиксированные данные. Автоматического перевода на постоянный адрес нет.</div></div>
         <div class="derived">${d.prepay?'Источник наперёд: '+htmlText(d.prepay.wallet.name):'Пришло '+(got!=null?usd(got):'—')} · расчёт по заявке ${usd(expected)} USDT</div>
         <div class="card-title" style="font-size:14px;margin-top:14px">Реквизиты заявки SWIFT застройщику</div>
         <div class="fr">
@@ -8700,12 +8700,12 @@ function stepCard(d){
           <div class="fg"><label class="fl">Сеть<span class="rq">*</span></label><select class="fc" id="fh_order_net"><option value="">— выбрать —</option><option>TRC-20</option></select><p class="fh">Сейчас поддерживается только TRC-20 для исходящего IPPS.</p></div>
           <div class="fg w2"><label class="fl">Адрес из подтверждения IPPS<span class="rq">*</span></label><input class="fc addr" id="fh_order_addr" value="${htmlText((d.transfer||{}).addr||IPPS_WALLET)}" placeholder="полный адрес получателя"><p class="fh">Предложен известный адрес IPPS; это не подтверждение. Сверьте в группе или замените по сообщению IPPS.</p></div>
         </div>
-        <label class="fh" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю финдиру исходящий перевод.</label>
+        <label class="fh" style="display:flex;gap:8px;align-items:flex-start"><input type="checkbox" id="fh_order_ack"> Подтверждаю: указал в группе IPPS сумму, сеть и адрес, получил подтверждение и поручаю ${d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод.</label>
         ${payToReady(d)?`<div class="derived" style="margin-top:12px"><b>Предпросмотр заявки для сверки в группе</b><pre style="white-space:pre-wrap;font-size:12px;margin:6px 0 0">${htmlText(ippsApplicationText(d,d.payTo||{}))}</pre>
           <button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="freeholdIpPsCopyGroup(${d.id})">Копировать текст для группы</button>
           <p class="fh">Копирование ничего не отправляет. Перед поручением отдельно подтвердите все детали.</p></div>`:''}
         ${order.confirmedAt?`<div class="alert a-ok"><div>Поручение сохранено ${htmlText(order.network||'')} · ${usd(order.amount)}. Для изменения реквизитов используйте возврат с вопросом.</div></div>`:''}
-        <div class="row"><button class="btn btn-primary" ${order.confirmedAt||!payToReady(d)?'disabled':''} onclick="act(${d.id},'s22')">Поручить финдиру исходящий перевод</button></div></div>`;
+        <div class="row"><button class="btn btn-primary" ${order.confirmedAt||!payToReady(d)?'disabled':''} onclick="act(${d.id},'s22')">Поручить ${d.prepay&&!d.prepay.wallet.multisig?'владельцу кошелька':'финдиру'} исходящий перевод</button></div></div>`;
     }
     return `<div class="card"><div class="card-title">Что делаем с USDT
       <span class="sub">${got?usd(got)+' на кошельке':'сумма не определена'}${c?' · '+c.name+' · '+mem.length+' '+plural(mem.length,'сделка','сделки','сделок'):''}</span></div>
@@ -9227,7 +9227,7 @@ async function act(id,step){
       d.transfer=Object.assign({},d.transfer||{},{amount,to:'IPPS',addr:address,net:network});
       d.reqTask='done';
       if(STAND)d._ippsPayoutInstruction=true;
-      go(d,'s23','Менеджер подтвердил сумму, сеть и адрес по заявке IPPS в группе и поручил финдиру исходящий перевод');
+      go(d,'s23','Менеджер подтвердил сумму, сеть и адрес по заявке IPPS в группе и поручил исходящий перевод с выбранного кошелька');
       if(STAND){
         let saved;
         try{saved=await standWaitSaved();}catch(e){saved={ok:false,error:'timeout'};}
@@ -9238,7 +9238,7 @@ async function act(id,step){
           return;
         }
       }
-      toast('Поручение сохранено — фин дир увидит подтверждённый снимок');return;
+      toast('Поручение сохранено — подписант кошелька увидит подтверждённые данные');return;
     }
     /* Решение принимается по каждой сделке пачки: одна уходит в Coins, другая клиенту,
        по третьей перевода нет. Пока хоть по одной не решили — отправлять нечего. */
@@ -9357,7 +9357,7 @@ async function act(id,step){
     go(d,'s27','Оплачено, чек у менеджера — отправить клиенту и закрыть');
     toast('Чек ушёл менеджеру');return;}
   if(step==='s27'){
-    if(d.prepay&&(d.prepay.brokerStep!=='done'||(d.prepay.source==='founder'&&!d.payout?.reimbursement))){toast('Ждём приход USDT брокера и возмещение фаундеру');return;}
+    if(d.prepay&&(d.prepay.brokerStep!=='done'||!d.payout?.reimbursement)){toast('Ждём приход USDT брокера и возмещение на кошелёк оплаты');return;}
     if(!d.sentToClient){toast('Отметьте, что чек отправлен клиенту');return;}
     const gaps=crmGaps(d);if(gaps.length){toast('До закрытия заполните: '+gaps[0].label);return;}
     if(!d.pay.invoicePaid||!d.docs.receipt){toast('Нужны оплата инвойса и чек');return;}
@@ -10074,7 +10074,7 @@ function standOpenFromLink(){
   if(!ref)return;
   const d=S.deals.find(x=>String(x.id)===String(ref)||x.code===ref);
   if(!d){toast('Сделка '+ref+' не найдена — возможно, доску сбросили');return;}
-  S.open=d.id; S.tab='tasks'; S.view=(stepWho(d,d.step)===S.role)?'task':'card';
+  S.open=d.id; S.tab='tasks'; S.view=myTasks(S.role).some(x=>x.id===d.id)?'task':'card';
   render();
   history.replaceState(null,'',location.pathname);
 }

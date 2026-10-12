@@ -7,11 +7,19 @@ def amount(deal):
     """Та же сумма IPPS, что freeholdSend: инвойс + округлённая комиссия."""
     invoice = Decimal(str(deal.get('invoiceUsd') or 0))
     tariff = {'bank': Decimal('.008'), 'soft': Decimal('.015')}[deal.get('ippsTariff') or 'bank']
-    return float(invoice + (invoice * tariff + 50).quantize(Decimal('.01'), rounding=ROUND_HALF_UP))
+    fee = (invoice * tariff + 50).quantize(Decimal('.01'), rounding=ROUND_HALF_UP)
+    return float((invoice + fee).quantize(Decimal('.01'), rounding=ROUND_HALF_UP))
 
 
-def broker_step(deal):
-    return (deal.get('prepay') or {}).get('brokerStep') or deal.get('step')
+def broker_wallet(state, deal):
+    conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
+    return next((w for w in state.get('wallets') or [] if w.get('id') == conv.get('walletId')), {})
+
+
+def same_wallet(state, deal):
+    """Сравниваем адреса: у старых сделок один кошелёк может иметь разные ID."""
+    incoming = broker_wallet(state, deal).get('addr')
+    return bool(incoming and incoming == wallet(state, deal).get('addr'))
 
 
 def wallet_id(state, deal):
@@ -40,6 +48,6 @@ def close_problem(state, deal):
         return None
     if prepay.get('brokerStep') != 'done' or not received(state, deal):
         return 'Ждём USDT брокера и завершения конвертации'
-    if prepay['source'] == 'founder' and not (deal.get('payout') or {}).get('reimbursement'):
-        return 'Сначала возместите фаундеру отправленную в IPPS сумму'
+    if not (deal.get('payout') or {}).get('reimbursement'):
+        return 'Сначала возместите отправленную в IPPS сумму на кошелёк оплаты'
     return None

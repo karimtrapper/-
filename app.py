@@ -5985,6 +5985,8 @@ def stand_state_put():
                         row.generation = secrets.token_hex(16)
                     _stand_upsert_close_evidence(db, row, deal, 'sent', actor_id,
                                                  'manager_attestation')
+        for deal in clean.get('deals') or []:
+            _stand_settle_prepay(clean, deal)
         _stand_completion_notes(previous, clean)
         row.data = json.dumps(clean, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -7564,6 +7566,9 @@ def stand_prepay_action():
     payload = request.get_json(silent=True) or {}
     db = get_session()
     try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         if payload.get('version') != row.version:
@@ -7627,7 +7632,10 @@ def stand_prepay_action():
             'text': text, 'actorId': flask_session.get('user_id')})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
         db.commit()
+        _stand_deliver_notes()
         return jsonify(success=True, data=_stand_strip_files(state), version=row.version)
     finally:
         db.close()
@@ -7648,18 +7656,16 @@ def stand_prepay_reimburse():
         deal = next((d for d in state.get('deals') or [] if d.get('id') == data.get('dealId')), {})
         p = deal.get('prepay') or {}
         po = deal.get('payout') or {}
-        if (p.get('source') != 'founder' or p.get('brokerStep') != 'done'
+        if (not p or p.get('brokerStep') != 'done'
                 or not deal.get('serverTransferComplete') or not stand_prepay.received(state, deal)):
             return jsonify(success=False, error='Нужны отправка IPPS и приход USDT брокера'), 409
         if po.get('reimbursement'):
             return jsonify(success=True, data=_stand_strip_files(state), version=version)
         conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), {})
-        sender_wallet = next((w for w in state.get('wallets') or [] if w.get('id') == conv.get('walletId')), {})
+        sender_wallet = stand_prepay.broker_wallet(state, deal)
         required = 'findir' if sender_wallet.get('multisig') else sender_wallet.get('role', 'teodor')
         if actor not in ('admin', required):
             return jsonify(success=False, error='Хеш возмещения вносит подписант кошелька брокера'), 403
-        if _stand_number(po.get('usdt')) > _stand_number((deal.get('pay') or {}).get('usdt')) + .005:
-            return jsonify(success=False, error='Прихода брокера не хватает для полного возмещения'), 409
         ref = normalize_ref(data.get('hash'), 'trc20')
         if not ref or (ref.startswith('demo:') and (not deal.get('demoTransfers')
                 or not ref.startswith(f"demo:{deal['id']}:"))):
@@ -7670,6 +7676,9 @@ def stand_prepay_reimburse():
             used += [((other.get('payout') or {}).get('reimbursement') or {}).get('hash')]
             if ref in [normalize_ref(h, 'trc20') for h in used if h]:
                 return jsonify(success=False, error='Этот хеш уже учтён'), 409
+        for incoming in state.get('convs') or []:
+            if ref in [normalize_ref(t.get('hash'), 'trc20') for t in incoming.get('txs') or []]:
+                return jsonify(success=False, error='Этот хеш уже учтён в приходе брокера'), 409
         sender, receiver, due = sender_wallet.get('addr'), p['wallet']['addr'], po['usdt']
         demo = bool(deal.get('demoTransfers'))
     finally:
@@ -7678,19 +7687,28 @@ def stand_prepay_reimburse():
                              demo=demo, demo_outcome='confirmed' if demo else None)
     if result.get('status') != 'confirmed':
         return jsonify(success=False, error=result.get('checkError') or 'Перевод ещё не подтверждён'), 409
+    started = datetime.fromisoformat(p['startedAt'].replace('Z', '+00:00')).timestamp() * 1000
+    if not demo and (result.get('timestampMs') or 0) < started:
+        return jsonify(success=False, error='Перевод возмещения должен быть после запуска оплаты наперёд'), 409
     db = get_session()
     try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         if row.version != version:
             return jsonify(success=False, error='Доска изменилась во время проверки — повторите'), 409
-        deal['payout']['reimbursement'] = {'id': 'R-' + str(deal['id']), 'kind': 'возмещение оплаты наперёд',
-            'hash': ref, 'usdt': due, 'at': datetime.utcnow().isoformat() + 'Z'}
+        deal['payout']['reimbursement'] = _stand_reimbursement_record(
+            deal, due, ref, 'возмещение оплаты наперёд')
         deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
             'at': int(time.time() * 1000), 'role': actor,
-            'text': f'Возмещено фаундеру {due:.2f} USDT · {ref}'})
+            'text': f'Возмещено на кошелёк {p["wallet"]["name"]} · {due:.2f} USDT · {ref}'})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username')
+        row.updated_at = datetime.utcnow()
         db.commit()
+        _stand_deliver_notes()
         return jsonify(success=True, data=_stand_strip_files(state), version=row.version)
     finally:
         db.close()
@@ -7810,6 +7828,13 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 k: v for k, v in new_p.items() if k != 'brokerStep'}:
             return 'Источник и сумму оплаты наперёд нельзя менять'
         bs, ns = old_p.get('brokerStep'), new_p.get('brokerStep')
+        if (before.get('payout') or {}).get('reimbursement') != (deal.get('payout') or {}).get('reimbursement'):
+            return 'Возмещение подтверждает только сервер'
+        if bs != 's18':
+            old_wallet = stand_prepay.broker_wallet(previous, before)
+            new_wallet = stand_prepay.broker_wallet(new_state, deal)
+            if any(old_wallet.get(k) != new_wallet.get(k) for k in ('addr', 'multisig', 'role')):
+                return 'Кошелёк получения USDT брокера закреплён при отправке рублей'
         broker_keys = {'prepay', 'pay', 'payinHashes', 'cnvId', 'walletId', 'conv', 'rates',
                        'log', 'stepNotes', 'brokerProof', 'brokerDraft', 'brokerPick'}
         changed = {k for k in set(before) | set(deal) if before.get(k) != deal.get(k)
@@ -8386,6 +8411,35 @@ def _stand_small_profit(deal):
     return round(gross - _stand_referral_payouts(deal, gross, float(payin)), 2)
 
 
+def _stand_reimbursement_record(deal, amount, ref, kind):
+    """Единый факт возмещения для обменов и оплаты наперёд; не второй расход."""
+    return {'id': 'R-' + str(deal['id']), 'kind': kind, 'hash': ref,
+            'usdt': amount, 'at': datetime.now().strftime('%d.%m, %H:%M')}
+
+
+def _stand_settle_prepay(state, deal):
+    """Как у обменов: при совпадении кошельков перевод не нужен."""
+    p = deal.get('prepay')
+    if (not p or not deal.get('serverTransferComplete') or p.get('brokerStep') != 'done'
+            or not stand_prepay.received(state, deal) or (deal.get('payout') or {}).get('reimbursement')):
+        return False
+    due = deal['payout']['usdt']
+    if stand_prepay.same_wallet(state, deal):
+        conv = next(c for c in state['convs'] if c['id'] == deal['cnvId'])
+        deal['payout']['reimbursement'] = _stand_reimbursement_record(
+            deal, due, ', '.join(t['hash'] for t in conv['txs']),
+            'автовозмещение — кошелёк совпал, перевод не потребовался')
+        deal.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'at': int(time.time() * 1000), 'role': 'system',
+            'text': f'Возмещение {due:.2f} USDT закрыто: кошелёк совпал, перевод не потребовался'})
+        return True
+    sender = stand_prepay.broker_wallet(state, deal)
+    role = 'findir' if sender.get('multisig') else sender.get('role', 'teodor')
+    _stand_note(state, f"stand:prepay-refund:{deal['id']}:{p['startedAt']}", role, deal,
+                f"Возместить {due:.2f} USDT на кошелёк оплаты IPPS: {p['wallet']['name']}")
+    return False
+
+
 def _stand_settle_verified(state, members):
     """Закрыть каждый возврат; задача Coins ждёт подтверждения всей пачки."""
     changed = False
@@ -8423,17 +8477,13 @@ def _stand_settle_verified(state, members):
                             if s.get('status') == 'confirmed'), 2)
                   if sends else _stand_number((deal.get('transfer') or {}).get('amount')))
         po['usdt'] = amount
-        po['reimbursement'] = {
-            'id': 'R-' + str(deal['id']),
-            'kind': ('автовозмещение — USDT пришли на кошелёк фаундера'
-                     if auto else 'перевод фаундеру'),
-            'hash': (', '.join(t.get('hash') or '' for t in incoming)
-                     if auto else ', '.join(normalize_ref(s.get('hash') or s.get('ref'),
-                                                         normalize_network(s.get('net') or 'TRC-20')) or ''
-                                            for s in sends if s.get('status') == 'confirmed')),
-            'usdt': amount,
-            'at': datetime.now().strftime('%d.%m, %H:%M'),
-        }
+        po['reimbursement'] = _stand_reimbursement_record(
+            deal, amount,
+            (', '.join(t.get('hash') or '' for t in incoming)
+             if auto else ', '.join(normalize_ref(s.get('hash') or s.get('ref'),
+                                                  normalize_network(s.get('net') or 'TRC-20')) or ''
+                                    for s in sends if s.get('status') == 'confirmed')),
+            'автовозмещение — USDT пришли на кошелёк фаундера' if auto else 'перевод фаундеру')
         deal['closed'] = True
         deal['step'] = 'done'
         deal['closeReason'] = 'Успешно завершена'
@@ -8509,6 +8559,7 @@ def _stand_settle_verified(state, members):
                 p = main['prepay']
                 main['paySrc'] = 'founder' if p['source'] == 'founder' else 'ipps_swift'
                 payout.update(source=p['wallet']['name'], founder=p['wallet']['owner'])
+                _stand_settle_prepay(state, main)
             # Мелкие сделки пачки с Coins и переводом клиенту: клиент получает деньги,
             # когда перевод подтверждён, — это закрытие сделки и хеши выдачи в Pay-Out.
             # Раньше их закрывал браузер на шаге подписи; после переноса подтверждения
