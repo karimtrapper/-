@@ -7261,6 +7261,83 @@ STAND_MANAGER_DRAFT_PAYTO_FIELDS = {'dev', 'bank', 'acc', 'inv', 'purpose',
 # До штатного s8 клиентские файлы живут в приватном черновике. После передачи
 # на s11 менеджер сохраняет прежнюю возможность исправить их до закрытия.
 STAND_MANAGER_DOC_KINDS = {'signed', 'pass', 'inv', 'spa', 'ipds'}
+STAND_CLIENT_PAYIN_KIND = 'clientPayinReceipt'
+
+
+def _stand_client_payin_only(before, deal, changed):
+    if not changed <= {'files', 'log'} or 'files' not in changed:
+        return False
+    old, new = before.get('files') or {}, deal.get('files') or {}
+    return (isinstance(old, dict) and isinstance(new, dict)
+            and all(old.get(k) == new.get(k) for k in set(old) | set(new)
+                    if k != STAND_CLIENT_PAYIN_KIND))
+
+
+def _stand_client_payin_problem(before, deal, actor, actor_id, db=None):
+    old_files, new_files = before.get('files') or {}, deal.get('files') or {}
+    if not isinstance(old_files, dict) or not isinstance(new_files, dict):
+        return 'Некорректные чеки клиента'
+    old = old_files.get(STAND_CLIENT_PAYIN_KIND) or []
+    new = new_files.get(STAND_CLIENT_PAYIN_KIND) or []
+    if old == new:
+        return None
+    if not isinstance(old, list) or not isinstance(new, list) or len(new) > 30:
+        return 'Некорректные чеки клиента'
+    if (not all(isinstance(item, dict) and isinstance(item.get('id'), str) for item in old + new)
+            or sum(len(str(item.get('data') or '')) for item in new) > 8 * 1024 * 1024):
+        return 'Некорректные чеки клиента'
+    manager = actor == 'manager' and (bool(before.get('docsSent'))
+                                     or before.get('step') in ('s14', 's14m'))
+    operator = (actor == 'operator' and before.get('step') == 's14'
+                and (before.get('manualBankReceipt') or {}).get('status') == 'pending')
+    old_by_id = {item.get('id'): item for item in old if isinstance(item, dict)}
+    if len(old_by_id) != len(old) or None in old_by_id:
+        return 'Некорректные чеки клиента'
+    new_by_id = {item.get('id'): item for item in new if isinstance(item, dict)}
+    if len(new_by_id) != len(new) or None in new_by_id:
+        return 'Некорректные чеки клиента'
+    for file_id, item in old_by_id.items():
+        updated = new_by_id.get(file_id)
+        if updated is None:
+            if actor != 'admin' and item.get('uploadedById') != actor_id:
+                return 'Удалить чек может загрузивший его сотрудник или админ'
+        elif item != updated:
+            if actor != 'admin' and item.get('uploadedById') != actor_id:
+                return 'Заметку к чеку меняет загрузивший его сотрудник или админ'
+            if {k: v for k, v in item.items() if k != 'note'} != {k: v for k, v in updated.items() if k != 'note'}:
+                return 'Файл чека и автора нельзя менять'
+    allowed = {'id', 'file', 'size', 'at', 'mime', 'bytes', 'data', 'demo',
+               'uploadedById', 'uploadedBy', 'note'}
+    actor_row = db.query(AdminUser).filter(AdminUser.id == actor_id).first() if db else None
+    added = []
+    for file_id, item in new_by_id.items():
+        if set(item) - allowed or not isinstance(file_id, str) or not re.fullmatch(r'[a-zA-Z0-9_-]{12,80}', file_id):
+            return 'Некорректные чеки клиента'
+        if not isinstance(item.get('note', ''), str) or len(item.get('note', '')) > 500:
+            return 'Заметка к чеку слишком длинная'
+        if file_id not in old_by_id:
+            if not (manager or operator or actor == 'admin'):
+                return 'Чеки клиента прикрепляют после отправки реквизитов или при сверке прихода'
+            if (item.get('uploadedById') != actor_id or item.get('demo') is not False
+                    or not _stand_valid_receipt({'files': {'receipt': [item]}})):
+                return 'Некорректные чеки клиента'
+            if actor_row and item.get('uploadedBy') != (actor_row.display_name or actor_row.username):
+                return 'Некорректный автор чека клиента'
+            added.append(item)
+    deleted = [item for file_id, item in old_by_id.items() if file_id not in new_by_id]
+    if db:
+        old_log, new_log = before.get('log') or [], deal.get('log') or []
+        if not isinstance(new_log, list) or new_log[:len(old_log)] != old_log:
+            return 'Журнал чеков клиента нельзя менять'
+        entries = [entry.get('text') for entry in new_log[len(old_log):]
+                   if isinstance(entry, dict)]
+        for item in added:
+            if 'Чек клиента прикреплён · '+item['file']+' · '+item['uploadedBy'] not in entries:
+                return 'Прикрепление чека нужно записать в журнал'
+        for item in deleted:
+            if 'Чек клиента удалён · '+item['file']+' · '+item.get('uploadedBy', 'сотрудник') not in entries:
+                return 'Удаление чека нужно записать в журнал'
+    return None
 
 
 def _stand_manager_docs_only(before, deal, changed):
@@ -7915,6 +7992,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             return 'Подтверждённый ручной приход нельзя менять'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
+        if before:
+            receipt_problem = _stand_client_payin_problem(before, deal, actor, actor_id, db)
+            if receipt_problem:
+                return receipt_problem
         if before is None and deal.get('manualBankReceipt'):
             return 'Заявку на ручной приход создаёт менеджер специальным действием'
         if before and before.get('manualBankReceipt') != deal.get('manualBankReceipt'):
@@ -8204,6 +8285,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                                 and not before.get(key) and not deal.get(key))}
             owner = _stand_current_step_role(previous, before)
             if changed and owner and actor != owner and not step_changed:
+                payin_receipts = _stand_client_payin_only(before, deal, changed)
                 manager_parallel = (actor == 'manager' and (
                     changed <= {'_managerDraft'} or
                     changed <= {'payToConfirm', 'log'} or
@@ -8212,7 +8294,7 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                     (before.get('reqTask') == 'done' and deal.get('reqTask') == 'open'
                      and before.get('payTo') and changed <= STAND_MANAGER_REQ_FIELDS) or
                     _stand_manager_docs_only(before, deal, changed)))
-                if not manager_parallel and deal['id'] not in broker_actions:
+                if not manager_parallel and not payin_receipts and deal['id'] not in broker_actions:
                     return f'Действие шага {before.get("step")} доступно роли {owner}'
             if before.get('step') != 'manual' and before.get('payTo') != deal.get('payTo'):
                 if actor != 'manager':
@@ -8387,7 +8469,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
             manager_reqs = (not step_changed and (
                             (actor == 'manager' and not (before.get('pay') or {}).get('invoicePaid')
                              and changed <= STAND_MANAGER_REQ_FIELDS)
-                            or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))))
+                            or (actor == 'manager' and _stand_manager_docs_only(before, deal, changed))
+                            or _stand_client_payin_only(before, deal, changed)))
             if required and actor != required and not manager_reqs and deal['id'] not in broker_actions:
                 return f'Действие шага {before.get("step")} доступно роли {required}'
         if before.get('postConv') == 'refund' and not before.get('serverSettled') and not before.get('closed'):

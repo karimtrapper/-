@@ -3468,7 +3468,8 @@ function knownBy(source,ref){
 
 const DOCT={pass:'Загранпаспорт',inv:'Инвойс застройщика',spa:'SPA с застройщиком',ipds:'Анкета ИПДС',
   dog:'Агентский договор',app:'Приложение с платежом',bill:'Счёт на оплату',
-  signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате'};
+  signed:'Подписанный пакет от клиента', receipt:'Чек банка об оплате',
+  clientPayinReceipt:'Чеки клиента об оплате'};
 /* У лизхолда договор с застройщиком — Lease Agreement, SPA бывает только у фрихолда
    (аудит 27.09, №27) */
 function doctOf(d,k){return (k==='spa'&&d&&d.kind==='Лизхолд')?'Lease Agreement':DOCT[k];}
@@ -5087,7 +5088,8 @@ function viewDeal(d){
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&
         (d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&['custom','flowsole'].includes(d.rubReceivingAccount?.mode)))?manualBankReceiptBlock(d):'';
-      body=status+manualReceiptSide+(S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+(confirmGate?payToConfirmBlock(d):'')+
+      body=status+(S.role==='operator'&&d.step==='s14'?clientPayinBlock(d):'')+manualReceiptSide+
+        (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
         (managerSide&&!confirmGate&&d.reqTask==='done'&&d.payTo&&d.payTo.acc
@@ -5979,6 +5981,11 @@ function docListRows(d,small){
       <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
         <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button></span></div>`));
   });
+  filesOf(d,'clientPayinReceipt').forEach((f,i)=>client.push(`<div class="li" style="cursor:default"><span class="av">Ч</span>
+    <div><div class="t1"${fs}>Чек клиента об оплате${i?' · '+(i+1):''}</div>
+      <div class="t2" style="word-break:break-all">${htmlText(f.file)} · ${htmlText(f.uploadedBy||'сотрудник')}${f.note?' · '+htmlText(f.note):''}</div></div>
+    <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'clientPayinReceipt',${i})">Открыть</button>
+      <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'clientPayinReceipt',${i})">Скачать</button></span></div>`));
   return {issued,client};
 }
 /* Подписанный договор менеджер загружает в любой момент после выпуска пакета — на
@@ -7117,6 +7124,7 @@ function filesOf(d,k){
 }
 function fileSync(d,k){
   const l=filesOf(d,k);
+  if(k==='clientPayinReceipt')return;
   const target=managerDraftDocTarget(d,k)||d;
   target.docs=target.docs||{};target.docs[k]=l.length>0;
   target.docMeta=target.docMeta||{};
@@ -7150,9 +7158,19 @@ async function fileAppend(id,k,f){
   if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
   if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
   if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+  if(k==='clientPayinReceipt'){
+    if(!clientPayinCanAdd(d)){toast('Чеки доступны после отправки реквизитов или при сверке прихода');return;}
+    if(l.length>=30){toast('Можно приложить не более 30 чеков');return;}
+    f.id='cpr_'+crypto.randomUUID().replace(/-/g,'');
+    f.uploadedById=standMeId;
+    const employee=STAND_EMPLOYEES.find(x=>x.id===standMeId)||{};
+    f.uploadedBy=employee.display_name||employee.username||ROLES[S.role]?.n||S.role;
+    f.note='';
+  }
   l.push(f);fileSync(d,k);
   if(!managerDraftDocTarget(d,k))
-    log(d,(f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
+    log(d,k==='clientPayinReceipt'?'Чек клиента прикреплён · '+f.file+' · '+f.uploadedBy:
+      (f.demo?'Добавлен тестовый файл: ':'Приложен файл: ')+(DOCT[k]||k)+' · '+f.file);
   save();render();
   if(STAND&&!SCREEN&&!SNAP){
     try{
@@ -7194,10 +7212,40 @@ function fileDrop(e,id,k){
 function fileDel(id,k,i){
   const d=deal(id), l=filesOf(d,k);
   if(i<0||i>=l.length)return;
+  if(k==='clientPayinReceipt'&&!clientPayinCanDelete(l[i])){toast('Удалить чек может загрузивший его сотрудник или админ');return;}
   const [x]=l.splice(i,1);
   fileSync(d,k);
-  if(!managerDraftDocTarget(d,k))log(d,'Файл убран: '+(DOCT[k]||k)+(x?' · '+x.file:''));
+  if(!managerDraftDocTarget(d,k))log(d,k==='clientPayinReceipt'?'Чек клиента удалён · '+x.file+' · '+(x.uploadedBy||'сотрудник'):
+    'Файл убран: '+(DOCT[k]||k)+(x?' · '+x.file:''));
   save();render();
+}
+function clientPayinCanAdd(d){
+  return !!d&&(standMe==='admin'||
+    (S.role==='manager'&&(!!d.docsSent||['s14','s14m'].includes(d.step)))||
+    (S.role==='operator'&&d.step==='s14'&&d.manualBankReceipt?.status==='pending'));
+}
+function clientPayinCanDelete(f){return standMe==='admin'||(standMeId&&f.uploadedById===standMeId);}
+function clientPayinNote(id,i,value){
+  const d=deal(id),f=filesOf(d,'clientPayinReceipt')[i];
+  if(!f||!clientPayinCanDelete(f))return;
+  f.note=String(value||'').slice(0,500);log(d,'Заметка к чеку клиента · '+f.file+' · '+(f.uploadedBy||'сотрудник'));
+  save();render();
+}
+function clientPayinBlock(d){
+  const k='clientPayinReceipt', l=filesOf(d,k), can=clientPayinCanAdd(d);
+  return `<div class="sberbox" style="margin-top:14px"><div class="chtitle">Чеки клиента об оплате <span class="sub2">${l.length} шт.</span></div>
+    <p class="fh">Чек сообщает об отправке денег клиентом. Приход подтверждает только операционист по банковской выписке.</p>
+    <div class="list" ${can?`ondragover="dzOver(event)" ondragleave="dzLeave(event)" ondrop="fileDrop(event,${d.id},'${k}')"`:''}>
+      ${l.map((f,i)=>`<div class="li on" style="cursor:default"><span class="av">✓</span><div style="flex:1;min-width:0">
+        <div class="t1">${htmlText(f.file)}</div><div class="t2">${htmlText(f.size)} · ${htmlText(f.at)} · ${htmlText(f.uploadedBy||'сотрудник')}</div>
+        ${clientPayinCanDelete(f)?`<input class="fc" style="margin-top:6px" maxlength="500" value="${htmlText(f.note||'')}" placeholder="Необязательно: сумма, дата, плательщик" onchange="clientPayinNote(${d.id},${i},this.value)">`:
+          f.note?`<div class="t2">${htmlText(f.note)}</div>`:''}</div>
+        <span class="t3" style="white-space:nowrap"><button class="btn btn-outline btn-sm" onclick="docOpen(${d.id},'${k}',${i})">Открыть</button>
+          <button class="btn btn-outline btn-sm" onclick="docDownload(${d.id},'${k}',${i})">Скачать</button>
+          ${clientPayinCanDelete(f)?`<button class="btn btn-outline btn-sm" onclick="fileDel(${d.id},'${k}',${i})">Убрать</button>`:''}</span></div>`).join('')}
+      ${can?`<div class="li" style="cursor:default"><span class="av">+</span><div><div class="t1">${l.length?'Ещё чек клиента':'Прикрепить чек клиента'}</div><div class="t2">PDF, PNG, JPG, WEBP · можно перетащить несколько файлов сюда</div></div>
+        <span class="t3"><button class="btn btn-secondary btn-sm" onclick="fileAdd(${d.id},'${k}')">Загрузить</button></span></div>`:''}
+    </div></div>`;
 }
 /* Блок «много файлов»: список с открытием и удалением плюс кнопка добавления */
 const FILE_TAIL={
@@ -8455,6 +8503,7 @@ function stepCard(d){
      подписанный скан и «курс поехал» — ниже (Карим, 27.09, аудит №1) */
   s12:()=>`<div class="card"><div class="card-title">Документы готовы — что дальше</div>
     <p class="fh" style="margin-top:-4px">Файлы для клиента — в самом верху страницы, блок «Отправить клиенту».</p>
+    ${d.docsSent||filesOf(d,'clientPayinReceipt').length?clientPayinBlock(d):''}
     ${isCrypto(d)?`<div class="chtitle" style="margin-top:18px">Как ждём приход
       <span>наблюдатель узнаёт перевод клиента по кошельку, а не по сумме — клиент часто сначала шлёт тест</span></div>
     <div class="fr">
@@ -8535,6 +8584,7 @@ function stepCard(d){
       ${ex.purposeEdited?`<p class="fh">Изменено вручную. В договоре осталось: «${docFields(d).purpose||'—'}»
         <a href="#" onclick="expectReset(${d.id});return false" style="color:var(--coral)">вернуть как в договоре</a></p>`
         :`<p class="fh">Подставлено из договора. Если клиент прислал чек с другим текстом — впишите его, по нему и будем искать платёж.</p>`}</div>
+    ${clientPayinBlock(d)}
     ${manualBankReceiptBlock(d)}
     ${d.manualBankReceipt?'':`<div class="sim"><div class="h">Вебхук банка · DEMO</div>
       <p>Это только учебная симуляция: запись помечается DEMO и не подтверждает реальный приход.</p>
