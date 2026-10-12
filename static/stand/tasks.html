@@ -1576,7 +1576,22 @@ function crmWalletNet(w){
   return (bc==='ETH'||bc.startsWith('ERC'))?'ERC-20':'TRC-20';
 }
 function crmWalletById(id){return CRM_WALLETS.find(w=>String(w.id)===String(id))||null;}
-function crmPayinChoices(net){return CRM_WALLETS.filter(w=>w.accepts_payin&&crmWalletNet(w)===net);}
+/* Склеиваем только варианты выбора; старые id в сделках и снимках остаются. */
+function uniqueWallets(list,selected){
+  const out=[], seen=new Map();
+  for(const w of list){
+    const addr=String(w.addr||w.address||'').trim(), key=addr.startsWith('0x')?addr.toLowerCase():addr;
+    if(!key)continue;
+    if(!seen.has(key)){seen.set(key,out.length);out.push(w);}
+    else if(String(w.id)===String(selected))out[seen.get(key)]=w;
+  }
+  return out;
+}
+function walletOptionText(w){
+  return htmlText(w.addr||w.address)+' · '+((w.addr||w.address||'').startsWith('0x')?'ERC-20':'TRC-20')+
+    ' · '+htmlText(w.owner||'владелец не указан')+((w.multisig||w.is_multisig)?' · мультисиг':' · личный');
+}
+function crmPayinChoices(net){return uniqueWallets(CRM_WALLETS.filter(w=>w.accepts_payin&&crmWalletNet(w)===net));}
 function payinWalletView(w){
   return {id:String(w.id),name:w.label||w.owner||w.address,owner:w.owner||'—',
     addr:w.address,net:crmWalletNet(w),multisig:!!w.is_multisig};
@@ -1670,6 +1685,7 @@ function payinWalletSelect(d,disabled){
         ${choices.map(x=>`<option value="${htmlText(x.id)}"${!customOn&&String(w.id)===String(x.id)?' selected':''}>${htmlText(x.address)} · ${htmlText(crmWalletNet(x))} · ${htmlText(x.owner||'владелец не указан')}${x.is_multisig?' · мультисиг':''}</option>`).join('')}
         <option value="custom"${customOn?' selected':''}>Указать кошелёк…</option>
       </select>
+      ${!locked?walletBlock(d):''}
       ${canForget?`<a href="#" onclick="event.preventDefault();payinWalletForget(${d.id})" style="white-space:nowrap;font-size:0.8em;color:#64748b">удалить из списка</a>`:''}
     </div>
     ${customOn?`<div class="wcard payin-card on" style="margin-top:8px">
@@ -1777,7 +1793,7 @@ function walletSends(w){return w.multisig?'мультисиг — подписы
    показываем: брокер или клиент прислали бы USDT в никуда. Когда выбор уже закреплён
    (деньги пришли), показываем только выбранный. */
 function walletCards(d,cur,fn,disabled,name,choices){
-  const source=choices||wallets();
+  const source=uniqueWallets(choices||wallets(),cur?.id);
   const pool=disabled?source.filter(w=>cur&&(w.id===cur.id||
     (choices&&w.addr===cur.addr))):source;
   let list=pool.filter(w=>addrValid(w.addr,'TRC-20'));
@@ -1786,8 +1802,8 @@ function walletCards(d,cur,fn,disabled,name,choices){
       onchange="${fn}(${d.id},this.value)">
     ${!cur?`<option value="">— выберите кошелёк —</option>`:''}
     ${list.map(w=>`<option value="${htmlText(w.id)}"${cur&&String(cur.id)===String(w.id)?' selected':''}>
-      ${htmlText(w.addr)} · TRC-20 · ${htmlText(w.owner||'владелец не указан')}${w.multisig?' · мультисиг':''}</option>`).join('')}
-  </select>
+      ${walletOptionText(w)}</option>`).join('')}
+  </select>${!disabled?walletBlock(d):''}
   ${cur?`<p class="fh" style="margin-top:6px">${walletSends(cur)}
     <button type="button" class="btn btn-outline btn-sm" style="white-space:nowrap;margin-left:8px"
       onclick="copyAsk(${htmlText(JSON.stringify(cur.addr))})">копировать</button></p>`:''}`;
@@ -1810,20 +1826,21 @@ function walletFormOn(v){S.walletNew=!!v;save();render();}
    (Карим, wallet-registry). Роли на запись реестра сервер проверяет сам
    (_wallet_edit_denied — operator/findir/admin). */
 async function walletAdd(id){
-  if(need({nw_name:'название кошелька',nw_own:'владелец',nw_addr:'адрес'}))return;
-  const multi=val('nw_type')==='multisig';
-  const addr=val('nw_addr'), name=val('nw_name'), owner=val('nw_own');
-  if(!addrValid(addr,'TRC-20')){const e=document.getElementById('nw_addr');if(e)e.classList.add('bad');
-    toast('Адрес не похож на кошелёк TRC-20 — T и ещё 33 символа');return;}
-  const j=await standAction('/api/wallets',{address:addr,blockchain:'TRON',label:name,
-    owner,is_multisig:multi,is_monitored:true});
-  if(!j)return; /* standAction уже показал toast об ошибке */
-  await loadCrmWallets();
+  if(need({nw_own:'чей кошелёк',nw_addr:'адрес'}))return;
+  const multi=val('nw_type')==='multisig', net=val('nw_net');
+  const addr=String(val('nw_addr')||'').trim(), owner=String(val('nw_own')||'').trim();
+  if(!addrValid(addr,net)){toast('Адрес не соответствует сети '+net);return;}
+  const existing=uniqueWallets(CRM_WALLETS).find(w=>net==='ERC-20'
+    ?w.address.toLowerCase()===addr.toLowerCase():w.address===addr);
+  if(existing){S.walletNew=false;render();toast('Этот адрес уже есть в реестре');return;}
+  const j=await standAction('/api/wallets',{address:addr,blockchain:net==='ERC-20'?'ETH':'TRON',
+    owner,is_multisig:multi,is_monitored:true,accepts_payin:true});
+  if(!j)return;
   S.walletNew=false;
-  const d=deal(id);
-  if(d){walletPick(id,String(j.wallet.id));log(d,'Добавлен кошелёк: '+name+' · '+addr+(multi?' · мультисиг':' · одна подпись'));}
-  save();render();toast('Кошелёк добавлен и выбран');
+  await loadCrmWallets();
+  render();toast('Кошелёк добавлен в реестр — выберите его в списке');
 }
+
 /* Кошелёк сделки — из её пачки конвертации (выбран при отправке рублей брокеру),
    либо walletId самой сделки. У крипты пачки нет: USDT клиента приходят прямо на
    walletId, выбранный на s11 (payinWalletSet/payinCustomSet), и с него же потом
@@ -3195,11 +3212,11 @@ function prepayPanel(d){
   if(!p){
     if(S.role!=='operator'||!prepayCanStart(d))return '';
     if(S.prepayForm!==d.id)return `<div class="card"><button class="btn btn-secondary" onclick="S.prepayForm=${d.id};render()">Оплатить наперёд</button></div>`;
-    const choices=wallets().filter(w=>addrValid(w.addr,'TRC-20')&&
-      (w.multisig?w.owner==='компания':['Андрей','Теодор'].includes(w.owner)));
+    const choices=uniqueWallets(wallets().filter(w=>addrValid(w.addr,'TRC-20')&&
+      (w.multisig?w.owner==='компания':['Андрей','Теодор'].includes(w.owner))));
     return `<div class="card"><div class="card-title">Оплатить наперёд</div>
       <div class="fg"><label class="fl">Источник USDT</label><select class="fc" id="prepay_wallet"><option value="">— выбрать —</option>
-      ${choices.map(w=>`<option value="${htmlText(w.id)}">${htmlText(w.multisig?'Мультисиг компании':('Фаундер · '+w.owner))} · ${htmlText(w.name)}</option>`).join('')}</select></div>
+      ${choices.map(w=>`<option value="${htmlText(w.id)}">${htmlText(w.multisig?'Мультисиг компании':('Фаундер · '+w.owner))} · ${walletOptionText(w)}</option>`).join('')}</select>${walletBlock(d)}</div>
       <div class="fg"><label class="fl">В IPPS, USDT · ${htmlText(ippsTariff(d).label)}</label><input class="fc" readonly value="${freeholdSend(d.invoiceUsd||0,ippsTariff(d))}"></div>
       <button class="btn btn-primary" onclick="prepayAction(${d.id},'start')">Запустить оплату наперёд</button></div>`;
   }
@@ -7815,12 +7832,12 @@ function walletLine(w){
 }
 /* Выбранный кошелёк уже виден в карточках выбора — строку с ним не дублируем (27.09) */
 function walletBlock(d){
+  if(!payinCanRemember())return '';
   return `${S.walletNew?`<div class="paybox" style="margin-top:12px">
-      <div class="chtitle" style="margin-bottom:10px">Новый кошелёк <span>появится в списке и встанет в эту сделку</span></div>
+      <div class="chtitle" style="margin-bottom:10px">Новый кошелёк <span>появится в общем реестре</span></div>
       <div class="fr">
-        <div class="fg"><label class="fl">Название<span class="rq">*</span></label>
-          <input class="fc" id="nw_name" placeholder="Кошелёк Андрея"></div>
-        <div class="fg"><label class="fl">Владелец<span class="rq">*</span></label>
+        <div class="fg"><label class="fl">Сеть</label><select class="fc" id="nw_net"><option>TRC-20</option><option>ERC-20</option></select></div>
+        <div class="fg"><label class="fl">Чей кошелёк<span class="rq">*</span></label>
           <input class="fc" id="nw_own" placeholder="Андрей"></div>
         <div class="fg"><label class="fl">Подписи</label>
           <select class="fc" id="nw_type">
@@ -7896,8 +7913,8 @@ function pcCard(d,x,share,w){
       <div class="fg"><label class="fl">На какой кошелёк<span class="rq">*</span></label>
         <select class="fc" id="cw_${x.id}" onchange="transferWallet(${x.id},this.value)">
           <option value="">— другой адрес, введу вручную —</option>
-          ${wallets().map(wl=>`<option value="${wl.id}"${tr.walletId===wl.id?' selected':''}>${wl.name} · ${wl.owner}</option>`).join('')}
-        </select>
+          ${uniqueWallets(wallets(),tr.walletId).map(wl=>`<option value="${wl.id}"${tr.walletId===wl.id?' selected':''}>${walletOptionText(wl)}</option>`).join('')}
+        </select>${walletBlock(x)}
         <p class="fh">деньги возвращаются внутрь компании — кошелёк берём из своего списка, адрес подставится сам</p></div>
       ${tr.walletId?`<div class="fg"><label class="fl">Адрес<span class="sub2"> из справочника кошельков</span></label>
         <input class="fc addr" readonly value="${tr.addr||''}"></div>`
@@ -8642,7 +8659,6 @@ function stepCard(d){
         ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}
         <p class="fh">от владельца зависит, кто отправляет дальше: мультисиг — фин дир и вторая подпись, личный — владелец сам</p></div>
     </div>
-    ${walletBlock(d)}
     ${transferModeBlock(d)}
     <div class="derived" style="margin-top:4px">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
@@ -8678,8 +8694,8 @@ function stepCard(d){
       return `<div class="hrow" style="margin-top:8px;flex-wrap:wrap"><span class="fh" style="margin:0">Брокер прислал на другой кошелёк?</span>
         <select class="fc" style="max-width:360px" onchange="if(this.value)cnvWalletFix(${d.id},this.value)">
           <option value="">— сменить кошелёк пачки —</option>
-          ${wallets().filter(w=>w.id!==c.walletId&&/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(w.addr||'')).map(w=>`<option value="${w.id}">${w.name} · ${w.multisig?'мультисиг':'личный'}</option>`).join('')}
-        </select></div>`;})()}
+          ${uniqueWallets(wallets()).filter(w=>w.addr!==walletById(c.walletId)?.addr&&addrValid(w.addr,'TRC-20')).map(w=>`<option value="${w.id}">${walletOptionText(w)}</option>`).join('')}
+        </select>${walletBlock(d)}</div>`;})()}
     <div class="chtitle" style="margin-top:14px">Переводы от брокера
       <span>сумма берётся из транзакции — руками её не пишем</span></div>
     <div class="fr">

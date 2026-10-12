@@ -15598,7 +15598,7 @@ def _wallet_network_mismatch(address, blockchain):
     a = str(address or '').strip()
     chain = str(blockchain or 'TRON').upper()
     is_eth = chain == 'ETH' or chain.startswith('ERC')
-    if a.startswith('0x') and len(a) >= 40:
+    if a.startswith('0x'):
         if not is_eth:
             return 'Адрес 0x… — это сеть ERC-20, выберите сеть ETH'
         if not re.fullmatch(r'0x[0-9a-fA-F]{40}', a):
@@ -15640,8 +15640,13 @@ def add_wallet():
         if mismatch:
             return jsonify({'success': False, 'error': mismatch}), 400
 
+        # ERC-20 не различает регистр: новые записи храним в едином виде.
+        if address.startswith('0x'):
+            address = address.lower()
         # Проверяем что кошелёк не дублируется
-        existing = session.query(Wallet).filter(Wallet.address == address).first()
+        existing = session.query(Wallet).filter(
+            Wallet.address.ilike(address) if address.startswith('0x')
+            else Wallet.address == address).first()
         if existing:
             # Если уже есть, просто включаем нужный флаг
             if data.get('is_monitored'): existing.is_monitored = True

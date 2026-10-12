@@ -29,11 +29,11 @@ function run(fnNames, constNames, context) {
 }
 
 const FNS = ['crmWalletToLegacy', 'syncWalletRegistry', 'wallets', 'walletById',
-             'walletCards', 'walletSends', 'addrValid', 'htmlText'];
+             'uniqueWallets', 'walletOptionText', 'walletCards', 'walletSends', 'addrValid', 'htmlText'];
 const CONSTS = ['WALLETS', 'LEGACY_PAYIN_ADDR', 'ADDR_RE'];
 
 const ctx = run(FNS, CONSTS, {
-  S: { wallets: [] },
+  S: { wallets: [] }, walletBlock:()=>'',
   CRM_WALLETS: [
     { id: 11, address: 'TAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA', blockchain: 'TRON',
       label: 'Кошелёк Иры', owner: 'Ира', is_multisig: false, accepts_payin: false, is_monitored: true, active: true },
@@ -52,3 +52,7 @@ assert.match(html_out, /TBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB · TRC-20 · комп
 assert.ok(!html_out.includes('invalid-address'), 'кошелёк без корректного TRC-20 адреса не предлагается');
 
 console.log('T34 wallet dropdown OK');
+
+const selected=vm.runInContext("walletCards({id:5},walletById('vitaly'),'walletPick',false,'wallet')",ctx);
+assert.equal([...selected.matchAll(/<option[^>]*>([\s\S]*?)<\/option>/g)].filter(m=>m[1].includes('TKkeEV')).length,1,'Один адрес — одна опция');
+assert.match(selected, /value="vitaly" selected/,'Сохранённый alias остаётся выбранным');

@@ -225,3 +225,19 @@ def test_wallet_address_must_match_network(tc):
     r = tc.post('/api/wallets', json={'address': '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9',
                                       'blockchain': 'ETH'})
     assert r.status_code == 200, r.get_json()
+
+
+@pytest.mark.parametrize('network,address', [('TRON', ADDR), ('ETH', '0x68aEA0F5386a57b48953F6fFF2f22D29D00D9ba9')])
+def test_repeated_address_is_one_registry_wallet(tc, network, address):
+    data = dict(address=address, blockchain=network, owner='Теодор', is_multisig=False)
+    first = tc.post('/api/wallets', json=data)
+    assert first.status_code == 200
+    if network == 'ETH':
+        data['address'] = address.lower()
+    second = tc.post('/api/wallets', json=data)
+    assert second.status_code == 200
+    assert first.json['wallet']['id'] == second.json['wallet']['id']
+
+
+def test_short_erc_address_rejected(tc):
+    assert tc.post('/api/wallets', json={'address': '0x123', 'blockchain': 'ETH'}).status_code == 400

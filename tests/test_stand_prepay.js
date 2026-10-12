@@ -8,7 +8,7 @@ function fn(name) {
   const one=html.match(new RegExp(`^(?:async )?function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`,'m'));
   return (one||html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`,'m')))[0];
 }
-const ctx={S:{role:'operator',deals:[]},STAND:false,
+const ctx={walletBlock:()=>'',S:{role:'operator',deals:[]},STAND:false,
   convOf:d=>d.cnvId?ctx.batch:null,isCrypto:d=>d.payType==='Крипта',
   walletById:id=>ctx.walletList.find(w=>w.id===id),wallets:()=>ctx.walletList,
   addrValid:()=>true,htmlText:String,usd:x=>'$'+x,
@@ -25,7 +25,7 @@ vm.createContext(ctx);
 for(const name of ['STEPS','FLOW_RUB','FLOW_USDT','FLOW_ALIAS','SOURCES_PAY']){
   vm.runInContext(html.match(new RegExp(`^const ${name}\\s*=[^]*?;`,'m'))[0].replace(/^const /,'var '),ctx);
 }
-for(const name of ['prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
+for(const name of ['uniqueWallets','walletOptionText','prepayCanStart','prepayStepDone','prepayRefundRole','prepayPanel','flowOf','progress',
   'stepTitle','myTasks','reqOpen','go','sendList','freeholdFee','freeholdSend','dealWallet','hashSum','econ','act']){
   vm.runInContext(fn(name),ctx);
 }
