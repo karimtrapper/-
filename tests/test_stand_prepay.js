@@ -90,6 +90,35 @@ for(const source of ['founder','multisig']){
   ctx.payinParts=()=>[{usdt:10000,fact:10000,calc:11000}];
   assert.equal(ctx.econ(d).net,-130,'Убыток не прячется в возмещении');
 }
+// Настоящие карточки отправки и подписи объясняют источник предоплаты.
+{
+  const view={...ctx,SOURCES:{},POST_CONV:[{k:'ipps_swift',t:'IPPS SWIFT'}],
+    convOf:d=>d.batch,approx:()=>({}),fake:()=>({}),econ:()=>({ready:false}),
+    cnvMembers:d=>[d],pcOut:d=>Number(d.transfer.amount),pcSends:()=>true,
+    sendDone:()=>false,sendTo:()=> 'IPPS',sendBlock:()=>'',pcNet:()=> 'TRC-20',
+    sendHead:()=> 'Отправка в IPPS',walletSigner:()=> 'Фин дир',
+    transferModeBlock:()=>'',stepNote:()=>'',
+  };
+  vm.createContext(view);
+  for(const name of ['prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
+    vm.runInContext(fn(name),view);
+  }
+  const wallets=[...ctx.walletList,{...ctx.walletList[1],id:'teodor',owner:'Теодор'}];
+  for(const wallet of wallets) for(const step of ['s23','s24']) for(const status of ['no_batch','s18w','done']){
+    const d={...old,step,rates:{},postConv:'ipps_swift',transfer:{amount:10130,addr:'ipps'},
+      prepay:{source:wallet.multisig?'multisig':'founder',wallet,amount:10130,
+        brokerStep:status==='no_batch'?'s18':status}};
+    if(status!=='no_batch') d.batch={sources:[{dealId:d.id,usdt:11000}],
+      txs:status==='done'?[{amount:11000,status:'confirmed'}]:[],broker:'Брокер'};
+    const card=view.stepCard(d);
+    assert.ok(card.includes(wallet.multisig?'с мультисига компании':'с кошелька фаундера '+wallet.owner));
+    assert.match(card,/Источник оплаты/);
+    assert.ok(card.includes(status==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.'));
+    assert.doesNotMatch(card,/клиент платил криптой|конвертации не было|Пачки конвертации нет|проверьте, откуда берутся деньги|брокер Брокер выдал|из пришедших/);
+  }
+  const crypto={...old,payType:'Крипта',step:'s23',rates:{},transfer:{},pay:{usdt:11000}};
+  assert.match(view.stepCard(crypto),/Клиент платил криптой — USDT пришли напрямую/);
+}
 // Реальное act(s18w): приход распределяется, а этап оплаты остаётся на месте.
 (async()=>{
   const d=structuredClone(old);

@@ -7917,6 +7917,12 @@ function sendBlock(x,edit,multi){
     <p class="fh">Подтверждено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${ok?' — вся сумма подтверждена':` · ждём ещё <b>${usd(left)}</b>`}.
     Зарегистрировано ${usd(sendDeclared(x))}.${sum>need+0.005?` <b class="neg">Переплата ${usd(sum-need)} — проверьте возврат излишка.</b>`:''}</p></div>`;
 }
+/* Источник предоплаты не зависит от готовности параллельной конвертации. */
+function prepayFundingText(d){
+  const p=d.prepay, w=p.wallet||{};
+  return 'Платим наперёд '+(p.source==='founder'?'с кошелька фаундера '+(w.owner||w.name||''):'с мультисига компании')+
+    '. '+(p.brokerStep==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.');
+}
 function taskFacts(d,x){
   const c=convOf(x)||convOf(d), ap2=approx(x), tr=x.transfer||{};
   const src=c?((c.sources||[]).find(y=>y.dealId===x.id)||null):null;
@@ -7929,7 +7935,7 @@ function taskFacts(d,x){
     ${f('Что за сделка',x.type+(x.kind?' · '+x.kind:''),x.object||x.pair||'')}
     ${f('Клиент',x.client,SOURCES[x.source]?('из '+SOURCES[x.source]+(x.sourceRef?' · '+x.sourceRef:'')):'')}
     ${f('Клиент заплатил',paid||'—',(x.payType||'')+(x.readyAt?' · без задачника':''))}
-    ${f('Стало USDT',fact!=null?usd(fact):'—',c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
+    ${x.prepay?f('Источник оплаты',usd(x.prepay.amount),htmlText(prepayFundingText(x))):f('Стало USDT',fact!=null?usd(fact):'—',c?(c.name+' · '+c.broker+' · курс '+c.rate):'клиент платил криптой — конвертации не было')}
     ${x.postConv==='coins'
       /* Банк застройщика здесь не показываем: подписант читал его рядом с адресом
          Coins и думал, что платит застройщику (аудит 27.09 №4, Карим, 27.09) */
@@ -7945,7 +7951,7 @@ function taskFacts(d,x){
    переводов несколько, и одного поля на всю пачку не хватает. */
 function packTasks(d,edit){
   const mem=cnvMembers(d), out=pcOut(d), c=convOf(d), w=dealWallet(d);
-  const got=c?hashSum(c.txs):(d.pay.usdt||null);
+  const got=d.prepay?null:(c?hashSum(c.txs):(d.pay.usdt||null));
   const multi=!w||w.multisig;
   const fld=multi?'tx':'hash';
   const done=mem.filter(x=>pcSends(x)&&sendDone(x)).length;
@@ -7999,7 +8005,7 @@ function signSummary(d){
     if(isCrypto(x)) bits.push('Получили '+usd(hashSum(x.payinHashes)||x.pay.usdt)+' от клиента на '+wl+' (хеши прихода: '+hs(x.payinHashes)+')');
     else{
       bits.push('Получили '+money(x.incomeAmount||x.amountRub,'₽')+' по реквизитам ('+htmlText(payers)+')');
-      bits.push(c?'брокер '+htmlText(c.broker)+' выдал '+usd(share)+' на '+wl+' (хеши прихода: '+hs(c.txs)+')':'конвертации не было');
+      bits.push(x.prepay?htmlText(prepayFundingText(x)):(c?'брокер '+htmlText(c.broker)+' выдал '+usd(share)+' на '+wl+' (хеши прихода: '+hs(c.txs)+')':'конвертации не было'));
     }
     const amt='<b>'+htmlText(tr.amount||'—')+' USDT</b>', to='<span class="addr">'+htmlText(tr.addr||'адрес не указан')+'</span>';
     if(k==='coins') bits.push('отправляем '+amt+' на кошелёк Coins '+to+' ('+pcNet(x)+') на конвертацию '+
@@ -8753,7 +8759,7 @@ function stepCard(d){
     ${d.demoTransfers?`<div class="alert a-warn"><div><b>DEMO · тестовый приход</b><br>Это не подтверждение реальных денег. Не выполнять реальный исходящий перевод.</div></div>`:''}
     ${d.kind==='Фрихолд'&&d.ippsPayoutOrder?`<div class="alert a-info"><div><b>Поручение менеджера · IPPS</b><br>${usd(d.ippsPayoutOrder.amount)} · ${htmlText(d.ippsPayoutOrder.network)} · <span class="addr">${htmlText(d.ippsPayoutOrder.address)}</span><br>Используйте этот подтверждённый снимок при подготовке исходящего перевода.</div></div>`:''}
 
-    ${c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
+    ${d.prepay?`<div class="alert a-info"><div>${htmlText(prepayFundingText(d))}</div></div>`:c?`<div class="card" style="background:var(--navy-50);box-shadow:none;margin-bottom:16px">
       <div class="sec snd" style="margin:0 0 10px">ОТКУДА ДЕНЬГИ · ${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
       <table class="tbl">
         ${trow('Пришло на счёт',money(c.rubTotal||c.sources.reduce((s,x)=>s+(x.rub||0),0),'₽'),c.sources.length>1?'пачка из '+c.sources.length+' приходов':'')}
