@@ -7944,8 +7944,9 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 return 'Реквизиты для документов меняют до выпуска пакета на шаге s11'
         raw_account = deal.get('rubReceivingAccount')
         if raw_account is not None and (not isinstance(raw_account, dict)
-                or set(raw_account) - {'mode', 'bank', 'account', 'correspondent', 'bik'}
-                or raw_account.get('mode') not in ('sber', 'custom')):
+                or set(raw_account) - {'mode', 'bank', 'account', 'correspondent', 'bik',
+                                       'recipientName', 'recipientInn', 'recipientKpp'}
+                or raw_account.get('mode') not in ('sber', 'custom', 'flowsole')):
             return 'Некорректные реквизиты для документов'
         account = raw_account or {}
         if (account.get('mode') == 'custom' and deal.get('step') != 's11' and (
@@ -7954,6 +7955,13 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 or not re.fullmatch(r'\d{20}', str(account.get('correspondent') or ''))
                 or not re.fullmatch(r'\d{9}', str(account.get('bik') or '')))):
             return 'Перед выходом с s11 укажите банк, полный счёт, корреспондентский счёт и БИК'
+        if account.get('mode') == 'custom' and deal.get('step') != 's11':
+            recipient = [str(account.get(key) or '').strip()
+                         for key in ('recipientName', 'recipientInn', 'recipientKpp')]
+            if any(recipient) and (not recipient[0]
+                    or not re.fullmatch(r'\d{10}', recipient[1])
+                    or not re.fullmatch(r'\d{9}', recipient[2])):
+                return 'Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью'
         if receipt.get('status') in ('pending', 'confirmed'):
             old_expect, new_expect = before.get('expect') or {}, deal.get('expect') or {}
             if any(old_expect.get(key) != new_expect.get(key)
@@ -9346,11 +9354,14 @@ def stand_manual_bank_receipt():
                     or not re.fullmatch(r'\d{9}', str(receiving.get('bik') or ''))):
                 return jsonify({'success': False, 'error': 'Для выбранных реквизитов нужны корреспондентский счёт и БИК'}), 409
             expected_bank, expected_account = receiving.get('bank'), receiving.get('account')
+        elif receiving.get('mode') == 'flowsole':
+            expected_bank = 'Московский филиал "БАНК СГБ" г. Москва'
+            expected_account = '40807810819000000261'
         else:
             expected_bank, expected_account = expected.get('bank'), expected.get('account')
-        if ((expected.get('acc') != 'custom' and receiving.get('mode') != 'custom') or expected_bank != bank
+        if ((expected.get('acc') != 'custom' and receiving.get('mode') not in ('custom', 'flowsole')) or expected_bank != bank
                 or expected_account != account):
-            return jsonify({'success': False, 'error': 'Ручной приход должен совпадать с выбранными реквизитами «Другой счёт»'}), 409
+            return jsonify({'success': False, 'error': 'Ручной приход должен совпадать с выбранным счётом'}), 409
         if deal.get('manualBankReceipt') or deal.get('payinParts') or deal.get('incomeAmount'):
             return jsonify({'success': False, 'error': 'По сделке уже есть ручная заявка'}), 409
         docs_issued = bool(deal.get('docPack') or deal.get('docVersion'))
@@ -9360,6 +9371,8 @@ def stand_manual_bank_receipt():
         if receiving.get('mode') == 'custom':
             doc_required = [receiving.get('bank'), receiving.get('account'),
                             receiving.get('correspondent'), receiving.get('bik')]
+        elif receiving.get('mode') == 'flowsole':
+            doc_required = [expected_bank, expected_account, '30101810245250000094', '044525094']
         else:
             doc_required = [expected_bank, expected_account]
         document_mismatch = bool(docs_issued) and (
@@ -9449,9 +9462,11 @@ def stand_manual_bank_receipt_confirm(deal_id):
                 receipt.get('bankBik') != receiving.get('bik')
                 or receipt.get('correspondentAccount') != receiving.get('correspondent')):
             return jsonify({'success': False, 'error': 'Реквизиты банка изменились — сверка остановлена'}), 409
-        expected_bank = receiving.get('bank') if receiving.get('mode') == 'custom' else expected.get('bank')
-        expected_account = receiving.get('account') if receiving.get('mode') == 'custom' else expected.get('account')
-        if ((expected.get('acc') != 'custom' and receiving.get('mode') != 'custom') or expected_bank != receipt.get('bank')
+        expected_bank = ('Московский филиал "БАНК СГБ" г. Москва' if receiving.get('mode') == 'flowsole'
+                         else receiving.get('bank') if receiving.get('mode') == 'custom' else expected.get('bank'))
+        expected_account = ('40807810819000000261' if receiving.get('mode') == 'flowsole'
+                            else receiving.get('account') if receiving.get('mode') == 'custom' else expected.get('account'))
+        if ((expected.get('acc') != 'custom' and receiving.get('mode') not in ('custom', 'flowsole')) or expected_bank != receipt.get('bank')
                 or expected_account != receipt.get('account')):
             return jsonify({'success': False, 'error': 'Реквизиты ожидания изменились — сверка остановлена'}), 409
         if deal.get('payinParts') or deal.get('incomeAmount') is not None or any(

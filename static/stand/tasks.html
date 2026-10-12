@@ -1753,13 +1753,13 @@ function payinS11Fields(d,fld){
 function rubReceivingAccountSave(id,mode){
   const d=deal(id); if(!d)return;
   if(mode==='custom'){
-    const bank=(document.getElementById('rub_bank_'+id)?.value||d.rubReceivingAccount?.bank||'').trim();
-    const account=(document.getElementById('rub_account_'+id)?.value||d.rubReceivingAccount?.account||'').trim();
-    const correspondent=(document.getElementById('rub_corr_'+id)?.value||d.rubReceivingAccount?.correspondent||'').trim();
-    const bik=(document.getElementById('rub_bik_'+id)?.value||d.rubReceivingAccount?.bik||'').trim();
-    const recipientName=(document.getElementById('rub_recip_name_'+id)?.value||d.rubReceivingAccount?.recipientName||'').trim();
-    const recipientInn=(document.getElementById('rub_recip_inn_'+id)?.value||d.rubReceivingAccount?.recipientInn||'').trim();
-    const recipientKpp=(document.getElementById('rub_recip_kpp_'+id)?.value||d.rubReceivingAccount?.recipientKpp||'').trim();
+    const bank=(document.getElementById('rub_bank_'+id)?.value??d.rubReceivingAccount?.bank??'').trim();
+    const account=(document.getElementById('rub_account_'+id)?.value??d.rubReceivingAccount?.account??'').trim();
+    const correspondent=(document.getElementById('rub_corr_'+id)?.value??d.rubReceivingAccount?.correspondent??'').trim();
+    const bik=(document.getElementById('rub_bik_'+id)?.value??d.rubReceivingAccount?.bik??'').trim();
+    const recipientName=(document.getElementById('rub_recip_name_'+id)?.value??d.rubReceivingAccount?.recipientName??'').trim();
+    const recipientInn=(document.getElementById('rub_recip_inn_'+id)?.value??d.rubReceivingAccount?.recipientInn??'').trim();
+    const recipientKpp=(document.getElementById('rub_recip_kpp_'+id)?.value??d.rubReceivingAccount?.recipientKpp??'').trim();
     d.rubReceivingAccount={mode:'custom',bank,account,correspondent,bik,recipientName,recipientInn,recipientKpp};
   }else if(mode==='flowsole'){
     d.rubReceivingAccount={mode:'flowsole'};
@@ -3319,7 +3319,7 @@ function stepWho(d,step){
   if(step==='s23'&&d){const w=dealWallet(d); if(w&&!w.multisig) return w.role||'teodor';}
   return STEPS[step]?STEPS[step].who:null;
 }
-function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom')))));}
+function myTasks(role){return S.deals.filter(d=>!d.closed&&((STEPS[d.step]&&stepWho(d)===role)||(d.prepay&&((role==='operator'&&d.prepay.brokerStep!=='done')||prepayRefundRole(d)===role))||(role==='manager'&&(reqOpen(d)||needsPayConfirm(d)))||(role==='operator'&&d.step==='s14'&&(d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&['custom','flowsole'].includes(d.rubReceivingAccount?.mode))))));}
 /* Подтверждение реквизитов перед оплатой (Карим, T34 п.3): прямо перед тем, как
    операционист заплатит (s26) или для фрихолда отправит заявку в IPPS (s25),
    менеджер жмёт «Реквизиты верны — можно платить» на актуальном снимке payTo.
@@ -5043,7 +5043,7 @@ function viewDeal(d){
       const own=(managerSide&&!confirmGate)?`<div class="card-title" style="margin:10px 0">Ваши задачи по этой сделке — можно заполнить заранее</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&
-        (d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&expectOf(d).acc==='custom'))?manualBankReceiptBlock(d):'';
+        (d.manualBankReceipt?.status==='pending'||(!d.manualBankReceipt&&['custom','flowsole'].includes(d.rubReceivingAccount?.mode)))?manualBankReceiptBlock(d):'';
       body=status+manualReceiptSide+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
         (managerSide?managerEarlyDocsBlock(d):'')+
@@ -7201,10 +7201,13 @@ function setSrc(id,k){const d=deal(id);d.paySrc=k;save();render();}
 function expectOf(d){
   const ap=approx(d), F=docFields(d);
   const e=d.expect||{};
+  const receiving=d.rubReceivingAccount||{};
+  const custom=receiving.mode==='custom', flowsole=receiving.mode==='flowsole';
   return {
     amount:(e.amount!=null?e.amount:(ap.pay||'')),
-    acc:(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?'custom':(e.acc||'…0286 · Сбер')),
-    bank:(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?d.rubReceivingAccount.bank:(e.bank||'')), account:(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom'?d.rubReceivingAccount.account:(e.account||'')),
+    acc:custom?'custom':flowsole?'…0261 · СГБ (Flow Sole)':(e.acc||'…0286 · Сбер'),
+    bank:custom?receiving.bank:flowsole?FLOWSOLE.bank:(e.bank||''),
+    account:custom?receiving.account:flowsole?FLOWSOLE.acc:(e.account||''),
     tol:(e.tol!=null?e.tol:1000),
     purpose:(e.purpose!=null?e.purpose:(F.purpose||'')),
     purposeEdited:e.purpose!=null&&e.purpose!==(F.purpose||'')
@@ -7432,7 +7435,7 @@ function manualBankReceiptBlock(d){
   return `<div class="sberbox" style="margin-top:14px;border:1px solid #f59e0b"><div class="chtitle">По реквизитам · вручную <span class="sub2">${S.role==='operator'?'оператор записывает и сверяет по выписке':'запись менеджера → сверка оператором'}</span></div>
     ${issued&&!manualBankDocsMismatch(d)?`<p class="fh">Сверьте фактический счёт в выписке с реквизитами выпущенных документов: ${sberText(d.issuedDocPayTo||docFields(d).payTo||'—')}.</p>`:''}
     ${issued&&manualBankDocsMismatch(d)?`<div class="alert a-warn"><div>Выпущенные документы содержат другие реквизиты: <b>${sberText(d.issuedDocPayTo||docFields(d).payTo||'—')}</b>. До учёта прихода подтвердите, что клиенту сообщили верные данные или документы будут исправлены.</div></div>`:''}
-    <p class="fh">Для ручной заявки выберите «Другой счёт» выше и заполните банк и полный номер там. Здесь будет записан именно этот получатель.</p>
+    <p class="fh">${d.rubReceivingAccount?.mode==='flowsole'?'Сверьте приход на счёт Flow Sole в СГБ по выписке.':'Для ручной заявки выберите «Другой счёт» выше и заполните банк и полный номер там. Здесь будет записан именно этот получатель.'}</p>
     <div class="fr"><div class="fg"><label class="fl">Фактически зачислено, ₽</label><input class="fc num" id="mbr_amount_${d.id}" inputmode="decimal"></div>
       <div class="fg"><label class="fl">Плательщик</label><input class="fc" id="mbr_payer_${d.id}"></div>
       <div class="fg"><label class="fl">Назначение платежа из выписки</label><input class="fc" id="mbr_purpose_${d.id}" placeholder="Текст, указанный плательщиком"></div>
@@ -7444,7 +7447,7 @@ function manualBankReceiptBlock(d){
 }
 async function manualBankReceiptRequest(id){
   const d=deal(id), issued=!!(d.docPack||d.docVersion), ex=expectOf(d), amount=Number(String(val('mbr_amount_'+id)||'').replace(/\s/g,'').replace(',','.'));
-  if(ex.acc!=='custom'||!ex.bank||String(ex.account||'').replace(/\D/g,'').length<8){toast('Выберите «Другой счёт» выше и заполните банк с полным номером');return;}
+  if((ex.acc!=='custom'&&d.rubReceivingAccount?.mode!=='flowsole')||!ex.bank||String(ex.account||'').replace(/\D/g,'').length<8){toast('Выберите счёт выше и проверьте банк с полным номером');return;}
   if(!Number.isFinite(amount)||amount<=0){toast('Введите фактическую сумму зачисления');return;}
   const mismatch=issued&&manualBankDocsMismatch(d);
   if(mismatch&&!document.getElementById('mbr_docs_'+id)?.checked){toast('Подтвердите, что клиент получит верные реквизиты');return;}
@@ -7455,7 +7458,8 @@ function manualBankDocsMismatch(d){
   if(!issued)return false;
   const doc=String(d.issuedDocPayTo||(d.docFields||{}).payTo||'').toLowerCase();
   const a=d.rubReceivingAccount||{}, ex=expectOf(d);
-  const required=a.mode==='custom'?[a.bank,a.account,a.correspondent,a.bik]:[ex.bank,ex.account];
+  const required=a.mode==='custom'?[a.bank,a.account,a.correspondent,a.bik]
+    :a.mode==='flowsole'?[FLOWSOLE.bank,FLOWSOLE.acc,FLOWSOLE.ks,FLOWSOLE.bik]:[ex.bank,ex.account];
   return required.some(x=>x&&!doc.includes(String(x).trim().toLowerCase()))||required.some(x=>!String(x||'').trim());
 }
 async function manualBankReceiptConfirm(id){
@@ -8274,7 +8278,7 @@ function stepCard(d){
         <div class="fg"><label class="fl">Наш доход, %</label><input class="fc" id="fh_doc_pct_${d.id}" readonly value="${d.amountUsdt>0?((d.amountUsdt/freeholdSend(d.invoiceUsd||0,ippsTariff(d))-1)*100).toFixed(4):'—'}"></div></div>
         <div id="fh_doc_loss_${d.id}">${d.amountUsdt>0&&d.amountUsdt<freeholdSend(d.invoiceUsd||0,ippsTariff(d))?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'риск подтверждён':'перед выпуском подтвердите риск отдельно'}</div></div>${d.freeholdLossAck?.fingerprint===freeholdLossFingerprint(d)?'':`<button class="btn btn-outline" onclick="freeholdLossAck(${d.id})">Подтвердить сделку в минус</button>`}`:''}:${d.amountUsdt>0?'':'<div class="alert a-warn"><div>Укажите сумму клиента, USDT, до выпуска документов.</div></div>'}</div>`:''}
       <p class="fh" style="margin-top:2px">В договор и счёт идёт введённая сумма клиента. Отправка в IPPS и доход показаны для внутренней сверки.</p>
-      ${isCrypto(d)?'':fld('purpose',d.rubReceivingAccount?.mode==='custom'?'Назначение перевода — клиент впишет его в платёжное поручение':'Назначение платежа в Сбер — клиент впишет его в перевод',{req:1,area:1})}
+      ${isCrypto(d)?'':fld('purpose','Назначение перевода — клиент впишет его в платёжное поручение',{req:1,area:1})}
     </div>
 
     <div class="sec pi" style="margin:18px 0 10px">ПРИНЦИПАЛ · ИЗ ПАСПОРТА</div>
@@ -8428,9 +8432,9 @@ function stepCard(d){
         <input class="fc num" id="w_amt" value="${ex.amount}" onchange="expectSet(${d.id},'amount',this.value)">
         <p class="fh">можно поправить: клиент перевёл чуть больше или меньше</p></div>
       <div class="fg"><label class="fl">Счёт зачисления</label>
-        <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''}>
-          ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк'].map(a=>`<option value="${a}"${ex.acc===a?' selected':''}>${a}</option>`).join('')}<option value="custom"${ex.acc==='custom'?' selected':''}>Другой счёт</option></select>
-        ${ex.acc==='custom'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''} style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" ${(d.rubReceivingAccount&&d.rubReceivingAccount.mode==='custom')?'disabled':''} style="margin-top:7px">`:''}</div>
+        <select class="fc" id="w_acc" onchange="expectSet(${d.id},'acc',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''}>
+          ${['…0286 · Сбер','…2118 · Сбер · эквайринг','…5510 · Т-Банк','…0261 · СГБ (Flow Sole)'].map(a=>`<option value="${a}"${ex.acc===a?' selected':''}>${a}</option>`).join('')}<option value="custom"${ex.acc==='custom'?' selected':''}>Другой счёт</option></select>
+        ${ex.acc==='custom'||d.rubReceivingAccount?.mode==='flowsole'?`<input class="fc" id="w_bank" placeholder="Банк" value="${sberText(ex.bank)}" onchange="expectSet(${d.id},'bank',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''} style="margin-top:7px"><input class="fc" id="w_account" inputmode="numeric" placeholder="Полный номер счёта / карты" value="${sberText(ex.account)}" onchange="expectSet(${d.id},'account',this.value)" ${['custom','flowsole'].includes(d.rubReceivingAccount?.mode)?'disabled':''} style="margin-top:7px">`:''}</div>
       <div class="fg"><label class="fl">Допуск, ₽</label>
         <input class="fc num" id="w_tol" value="${ex.tol}" onchange="expectSet(${d.id},'tol',this.value)">
         <p class="fh">в пределах допуска приход сойдётся сам</p></div>
@@ -9073,8 +9077,12 @@ async function act(id,step){
   if(step==='s11'){
     const ch=docFieldSave(d.id), F=d.docFields;
     const rubAccount=d.rubReceivingAccount||{};
-    if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||String(rubAccount.account||'').replace(/\D/g,'').length<8||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
+    if(!isCrypto(d)&&rubAccount.mode==='custom'&&(!String(rubAccount.bank||'').trim()||!/^\d{20}$/.test(String(rubAccount.account||''))||!/^\d{20}$/.test(String(rubAccount.correspondent||''))||!/^\d{9}$/.test(String(rubAccount.bik||'')))){
       toast('Укажите банк, номер счёта, корреспондентский счёт (20 цифр) и БИК (9 цифр) до выпуска документов');render();return;}
+    if(!isCrypto(d)&&rubAccount.mode==='custom'){
+      const name=String(rubAccount.recipientName||'').trim(), inn=String(rubAccount.recipientInn||'').trim(), kpp=String(rubAccount.recipientKpp||'').trim();
+      if((name||inn||kpp)&&(!name||!/^\d{10}$/.test(inn)||!/^\d{9}$/.test(kpp))){toast('Укажите наименование, ИНН (10 цифр) и КПП (9 цифр) получателя полностью');render();return;}
+    }
     const miss=docReq(d).filter(k=>!String(F[k]==null?'':F[k]).trim());
     if(miss.length){
       d.docMiss=miss;save();render();

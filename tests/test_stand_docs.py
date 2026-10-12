@@ -531,9 +531,20 @@ def test_flowsole_preset_sets_payto_and_authorised_partner_role(stand):
     response = stand.post('/api/stand/docs/issue', json={'dealId': 950, 'docFields': _fields()})
     assert response.status_code == 200, response.json
     saved = stand.get('/api/stand/state').json['data']['deals'][0]
-    assert 'ФЛОУ СОЛЕ' in saved['docFields']['payTo']
-    invoice = _text(stand, response.json['issued'][-1]['docId'])
-    assert 'ФЛОУ СОЛЕ' in invoice and '40807810819000000261' in invoice and '044525094' in invoice
+    payto = ('ФЛОУ СОЛЕ КО., ЛТД · ИНН 9909773251 · КПП 770387001 · '
+             'Московский филиал "БАНК СГБ" г. Москва · р/с 40807810819000000261 · '
+             'к/с 30101810245250000094 · БИК 044525094')
+    assert saved['docFields']['payTo'] == payto
+    assert saved['issuedDocPayTo'] == payto
+    texts = {entry['kind']: _text(stand, entry['docId']) for entry in response.json['issued']}
+    # Рамочный договор ссылается на Payment Instruction и Invoice; реквизиты
+    # конкретной сделки напечатаны в приложении и счёте.
+    for kind in ('app', 'bill'):
+        assert 'ФЛОУ СОЛЕ КО., ЛТД' in texts[kind]
+        assert '40807810819000000261' in texts[kind]
+    assert '40807810938720000286' not in texts['dog']
+    invoice = texts['bill']
+    assert '044525094' in invoice
     assert ROLE_PARTNER in invoice
     assert ROLE_AGENT not in invoice
 

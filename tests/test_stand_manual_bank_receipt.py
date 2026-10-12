@@ -314,3 +314,62 @@ def test_custom_account_form_can_save_each_field_progressively_only_on_s11(monke
     current = snapshot(client)['data']; current['deals'][0]['step'] = 's12'
     moved = client.put('/api/stand/state', json={'version': version, 'data': current})
     assert moved.status_code == 200, moved.json
+
+
+def test_flowsole_existing_state_switches_without_database_rewrite(monkeypatch):
+    initial = board()
+    deal = initial['deals'][0]
+    deal.update(step='s11', docVersion=None, docPack=None,
+                rubReceivingAccount={'mode': 'flowsole'})
+    original = copy.deepcopy(initial)
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    saved = snapshot(client)
+    assert saved['data'] == original
+    changed = saved['data']
+    changed['deals'][0]['rubReceivingAccount'] = {'mode': 'sber'}
+    response = client.put('/api/stand/state', json={'version': saved['version'], 'data': changed})
+    assert response.status_code == 200, response.json
+    changed = response.json['data']
+    changed['deals'][0]['rubReceivingAccount'] = {'mode': 'flowsole'}
+    response = client.put('/api/stand/state', json={'version': response.json['version'], 'data': changed})
+    assert response.status_code == 200, response.json
+
+
+def test_custom_recipient_fields_save_but_partial_recipient_cannot_leave_s11(monkeypatch):
+    initial = board()
+    initial['deals'][0].update(step='s11', docVersion=None, docPack=None)
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    changed = snapshot(client)
+    changed['data']['deals'][0]['rubReceivingAccount'].update(
+        recipientName='ООО ТЕСТ', recipientInn='7700000000', recipientKpp='770101001')
+    saved = client.put('/api/stand/state', json=changed)
+    assert saved.status_code == 200, saved.json
+    changed = saved.json
+    changed['data']['deals'][0]['rubReceivingAccount']['recipientInn'] = ''
+    changed['data']['deals'][0]['step'] = 's12'
+    rejected = client.put('/api/stand/state', json=changed)
+    assert rejected.status_code == 409
+    assert 'ИНН' in rejected.json['error']
+
+
+def test_flowsole_receipt_uses_preset_despite_stale_sber_expect(monkeypatch):
+    initial = board()
+    deal = initial['deals'][0]
+    deal['rubReceivingAccount'] = {'mode': 'flowsole'}
+    deal['docFields']['payTo'] = ('ФЛОУ СОЛЕ КО., ЛТД · Московский филиал "БАНК СГБ" г. Москва '
+                                  '· р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094')
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    request = payload()
+    request.update(bank='Московский филиал "БАНК СГБ" г. Москва',
+                   account='40807810819000000261', documentsAcknowledged=False)
+    saved = client.post('/api/stand/manual-bank-receipt', json=request)
+    assert saved.status_code == 200, saved.json
+    assert saved.json['receipt']['documentMismatch'] is False
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm', json={
+        'version': saved.json['version'], 'statementVerified': True})
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['data']['deals'][0]['manualBankReceipt']['status'] == 'confirmed'
