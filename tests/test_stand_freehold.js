@@ -664,7 +664,7 @@ console.log('test_stand_freehold.js: OK');
 // резолвится через тот же адрес и выбирает тот же <option> (wallet-registry).
 {
   const addr='TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ';
-  const ctx=run(['payinWalletSelect','crmPayinChoices','payinWallet','payinWalletView',
+  const ctx=run(['walletBlock','uniqueWallets','payinWalletSelect','crmPayinChoices','payinWallet','payinWalletView',
     'payinDefaultWallet','crmWalletNet','crmWalletById','payinNet','payinCanRemember','addrValid'],
     ['ADDR_RE','LEGACY_PAYIN_ADDR','PAYIN_OWNERS'],
     {S:{},CRM_WALLETS:[{id:1,address:addr,blockchain:'TRON',owner:'компания',
@@ -678,56 +678,35 @@ console.log('test_stand_freehold.js: OK');
   assert.doesNotMatch(rendered,/value="vitaly"/);
 }
 
-// Freehold s22 belongs to the manager, including live-like reqTask=open records;
-// other s22 routes remain operator-owned. The actual card treats the known address
-// as a suggestion and requires the manager's explicit confirmation.
+// Менеджер подтверждает текущий снимок, затем операционист получает форму IPPS.
 {
-  const ctx=run(['stepWho','myTasks','reqOpen','stepCard'],['STEPS','SOURCES_PAY'],{
+  const ctx=run(['stepWho','myTasks','reqOpen','stepCard','payToConfirmed','payToConfirmBlock'],['STEPS','SOURCES_PAY'],{
     S:{role:'manager',deals:[],notes:[]},NETS:['TRC-20'],IPPS_WALLET:'T'+'A'.repeat(33),
-    STEPS:{},STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:x=>String(x),
+    STAND:true,approx:()=>({}),fake:()=>({}),stepNote:()=>'',htmlText:String,
     freeholdSend:()=>10130,ippsTariff:()=>({}),usd:x=>'$'+x,convOf:()=>null,
     dealWallet:()=>null,hashSum:()=>11000,cnvMembers:d=>[d],pcOut:()=>10130,
-    payToReady:d=>!!d.payTo?.acc,needsPayConfirm:()=>false,sendHead:()=> 'Исходящий перевод',
-    num:x=>Number(x)||0,avgUsdt:()=>1,isCrypto:()=>true,
-    transferModeBlock:()=>'',packTasks:()=>'',needsSecondSign:()=>false,
-    SOURCES_PAY:{coins:{cur:'usdt'}},
+    payToReady:d=>!!d.payTo?.acc,needsPayConfirm:()=>false,payGateStep:()=> 's22',
+    ippsApplicationText:()=> 'Synthetic IPPS application',
   });
-  const liveLike={id:1473,kind:'Фрихолд',type:'Оплата недвижимости',step:'s22',
-    reqTask:'open',pay:{},payTo:{},transfer:{},invoiceUsd:10000,ippsTariff:'bank',
-    demoTransfers:true,payinHashes:[{amount:1,demo:true},{amount:10999,demo:true}]};
-  const newWithEarlyPayTo={...liveLike,id:1474,reqTask:'done',payTo:{acc:'synthetic'}};
-  const exchange={id:1475,kind:'',type:'Обмен валюты',step:'s22',reqTask:'done'};
-  ctx.S.deals=[liveLike,newWithEarlyPayTo,exchange];
-  assert.equal(ctx.stepWho(liveLike),'manager');
-  assert.deepEqual(Array.from(ctx.myTasks('operator')).map(d=>d.id),[1475]);
-  assert.deepEqual(Array.from(ctx.myTasks('manager')).map(d=>d.id),[1473,1474]);
-  const markup=ctx.stepCard(liveLike);
-  assert.match(markup,/Согласовать заявку IPPS и поручить перевод/);
-  assert.match(markup,/id="p_swift"/);
-  assert.match(markup,/id="p_acc"/);
-  assert.match(markup,/id="p_purp"/);
-  assert.match(markup,/id="fh_order_ack"/);
-  assert.match(markup,/это не подтверждение/);
-  assert.match(markup,/DEMO · тестовый приход/);
-  assert.match(markup,/Не выполнять реальный исходящий перевод/);
-  assert.match(markup,/Сохранить реквизиты заявки/);
-  assert.doesNotMatch(markup,/Операционисту на отправку|Передать фин диру на подпись/);
-
-  const finance=ctx.stepCard({...liveLike,id:1477,step:'s23',
-    rates:{usdtThb:1},ippsPayoutOrder:{amount:10130,network:'TRC-20',address:'T'+'A'.repeat(33),confirmedAt:'synthetic'}});
-  assert.match(finance,/DEMO · тестовый приход/);
-  assert.match(finance,/не подтверждение реальных денег/);
-  assert.match(finance,/Не выполнять реальный исходящий перевод/);
-
-  ctx.payToReady=()=>true;
-  ctx.ippsApplicationText=()=> 'Synthetic IPPS application';
-  const soft=ctx.stepCard({...liveLike,id:1476,ippsTariff:'soft',payTo:{
-    dev:'Synthetic Ltd',bank:'Synthetic Bank',acc:'SYNTH-ACCOUNT',swift:'SYNTHXX1',
-    purpose:'Synthetic purpose',pobo:'SYNTH CLIENT',amount:10000}});
-  assert.match(soft,/id="p_pobo"/);
-  assert.match(soft,/Synthetic IPPS application/);
-  assert.match(soft,/Копировать текст для группы/);
-  assert.match(soft,/Копирование ничего не отправляет/);
+  const d={id:1473,kind:'Фрихолд',type:'Оплата недвижимости',step:'s22',
+    reqTask:'done',pay:{},payTo:{acc:'synthetic'},transfer:{},invoiceUsd:10000};
+  assert.equal(ctx.stepWho(d),'manager');
+  const manager=ctx.stepCard(d);
+  assert.match(manager,/Реквизиты верны/);
+  assert.match(manager,/Реквизиты изменились — поправить/);
+  assert.doesNotMatch(manager,/fh_order_addr/);
+  d.payToConfirm={payTo:{...d.payTo}};
+  assert.equal(ctx.stepWho(d),'operator');
+  ctx.S.role='operator';
+  const operator=ctx.stepCard(d);
+  assert.match(operator,/id="fh_order_amount" readonly value="10130"/);
+  assert.match(operator,/id="fh_order_addr"/);
+  assert.match(operator,/это не подтверждение/);
+  assert.match(operator,/Копировать текст для группы/);
+  assert.doesNotMatch(operator,/id="p_acc"/);
+  d.payTo.acc='changed';
+  assert.equal(ctx.stepWho(d),'manager');
+  assert.doesNotMatch(ctx.stepCard(d),/fh_order_addr/);
 }
 
 // Saving SWIFT details is a separate, idempotent manager action; copying the group
@@ -746,7 +725,7 @@ console.log('test_stand_freehold.js: OK');
     payToReady:()=>true,log:(d,text)=>{calls.push(text);d.log.push({text});},
     save:()=>calls.push('save'),render:()=>calls.push('render'),toast:x=>calls.push(x),
     num:Number,cleanNum:x=>String(x),ippsApplicationText:()=> 'Synthetic application',
-    copyAsk:x=>calls.push('copy:'+x),
+    copyAsk:x=>calls.push('copy:'+x),freeholdSend:()=>10130,ippsTariff:()=>({}),
   });
   ctx.freeholdIpPsPayToSave(1473);
   assert.equal(deal.reqTask,'open');
@@ -778,7 +757,7 @@ console.log('test_stand_freehold.js: OK');
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
     num:Number,cleanNum:x=>String(x).replace(/[^\d.,]/g,''),NETS:['TRC-20'],
-    addrValid:()=>true,payToReady:()=>true,payToFromForm:()=>({...d.payTo}),
+    addrValid:()=>true,payToReady:()=>true,payToConfirmed:()=>true,payToFromForm:()=>({...d.payTo}),
     convOf:()=>null,hashSum:()=>11000,freeholdSend:()=>10130,ippsTariff:()=>({}),
     toast:m=>notices.push(m),go:(x,to)=>{x.step=to;events.push('go:'+to);},
     standWaitSaved:async()=>{events.push('wait');if(outcome.ok){d.ippsPayoutOrder={

@@ -33,6 +33,8 @@ def wallet_id(state, deal):
 def wallet(state, deal):
     if deal.get('prepay'):
         return deal['prepay']['wallet']
+    if wallet_id(state, deal) == 'custom' and (deal.get('payinCustom') or {}).get('multisig') is False:
+        return dict(deal['payinCustom'], id='custom')
     return next((w for w in state.get('wallets') or [] if w.get('id') == wallet_id(state, deal)), {})
 
 

@@ -296,6 +296,7 @@ async function crmDraftMount(id) {
     };
     active.core=createCrmDraftCore(shadow,{
       form:formFields,editingDealId:d.manualNew?null:id,
+      loadWallets:selected=>crmDraftLoadWallets(active,selected),
       fetch:crmDraftSafeFetch,toast:message=>toast(message),escapeHtml:crmDraftEsc,
       formatNumber:v=>Number(v||0).toLocaleString('ru-RU',{maximumFractionDigits:2}),
       loadCurrentRate:()=>crmDraftLoadRate(active),realtyPayinRecalc:()=>crmDraftPreview(active),
@@ -365,20 +366,41 @@ async function crmDraftLoadRate(active) {
     }
   }catch(e){/* The CRM calculation retains its explicit fallback warning. */}
 }
-async function crmDraftLoadWallets(active) {
+async function crmDraftLoadWallets(active,selectedId) {
   try{
     const response=await crmDraftSafeFetch('/api/wallets');
     const data=await response.json();
     if(crmDraftActive!==active)return;
-    const list=(data.wallets||[]).filter(w=>w.active!==false);
+    const wallets=(data.wallets||[]).filter(w=>w.active!==false);
     for(const id of ['payoutWalletSelect','noConvWallet']){
       const select=active.root.getElementById(id);if(!select)continue;
+      const selected=selectedId||select.value||select.dataset.want||deal(active.id).payout?.walletId||'';
+      const list=uniqueWallets(wallets,selected);
       select.replaceChildren(new Option('-- Выбрать кошелёк --',''),
-        ...list.map(w=>new Option(w.label||w.address||String(w.id),String(w.id))));
-      select.value=String(deal(active.id).payout?.walletId||'');
+        ...list.map(w=>new Option(`${w.address} · ${crmWalletNet(w)} · ${w.owner||'владелец не указан'}${w.is_multisig?' · мультисиг':''}`,String(w.id))));
+      select.value=String(selected);
+      crmDraftWalletAdd(active,select);
     }
   }catch(e){/* Local wallet list unavailable; no external fallback. */}
 }
+/* Добавление не закрывает черновик и не меняет уже выбранный кошелёк. */
+function crmDraftWalletAdd(active,select){
+  if(!payinCanRemember()||select.parentElement.querySelector('.registry-add'))return;
+  const box=window.document.createElement('details');box.className='registry-add';
+  box.innerHTML='<summary>Добавить кошелёк</summary><label>Сеть <select data-net><option>TRC-20</option><option>ERC-20</option></select></label>'+
+    '<label>Адрес целиком <input data-address></label><label>Чей кошелёк <input data-owner></label>'+
+    '<label><input type="checkbox" data-multi> Мультисиг</label><button type="button">Добавить в реестр</button>';
+  box.querySelector('button').addEventListener('click',async()=>{
+    const net=box.querySelector('[data-net]').value, address=box.querySelector('[data-address]').value.trim();
+    const owner=box.querySelector('[data-owner]').value.trim();
+    if(!addrValid(address,net)||!owner){toast('Проверьте адрес, сеть и укажите владельца');return;}
+    const result=await standAction('/api/wallets',{address,owner,blockchain:net==='ERC-20'?'ETH':'TRON',
+      is_multisig:box.querySelector('[data-multi]').checked,is_monitored:true,accepts_payin:true});
+    if(result){box.open=false;await crmDraftLoadWallets(active);toast('Кошелёк сохранён в реестре');}
+  });
+  select.after(box);
+}
+
 async function crmDraftLoadPayinTx(active) {
   const select=active.root.getElementById('payinTxSelect');if(!select)return;
   try{

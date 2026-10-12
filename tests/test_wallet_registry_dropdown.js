@@ -71,3 +71,30 @@ assert.equal(legacyOnly.addr, 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn');
 assert.equal(legacyOnly.multisig, false);
 
 console.log('wallet registry dropdown OK');
+
+// Встроенная форма CRM сохраняет выбранный alias при обновлении списка,
+// показывает полный адрес и предлагает добавление рядом с обоими списками.
+(async()=>{
+  const adapter=fs.readFileSync('static/stand/crm-draft-adapter.js','utf8');
+  const source=adapter.slice(adapter.indexOf('async function crmDraftLoadWallets('),
+    adapter.indexOf('/* Добавление не закрывает черновик'));
+  const picker=()=>({value:'6',dataset:{},replaceChildren(...options){this.options=options;this.value='';}});
+  const selects={payoutWalletSelect:picker(),noConvWallet:picker()};
+  const active={id:1,root:{getElementById:id=>selects[id]}};
+  Object.assign(context,{
+    crmDraftActive:active,
+    crmDraftSafeFetch:async()=>({json:async()=>({wallets:REGISTRY.concat([{...REGISTRY[1],id:6}])})}),
+    deal:()=>({payout:{walletId:1}}),
+    Option:class {constructor(text,value){this.text=text;this.value=value;}},
+    crmDraftWalletAdd:(_,select)=>{select.addAttached=true;},
+  });
+  vm.runInContext(source,context);
+  await context.crmDraftLoadWallets(active);
+  for(const select of Object.values(selects)){
+    assert.equal(select.value,'6');
+    assert.equal(select.options.filter(o=>o.text.includes(REGISTRY[1].address)).length,1);
+    assert.ok(select.options.some(o=>o.value==='6'&&o.text.includes(REGISTRY[1].address+' · TRC-20 · Теодор')));
+    assert.equal(select.addAttached,true);
+  }
+  console.log('CRM draft wallet selection OK');
+})().catch(error=>{console.error(error);process.exitCode=1;});

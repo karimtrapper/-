@@ -96,6 +96,9 @@ for(const source of ['founder','multisig']){
   assert.equal(partial.net,-130,'Убыток не прячется в возмещении');
   d.payout.reimbursement={usdt:10130,hash:'refund'};
   assert.deepEqual(ctx.econ(d),partial,'Полное возмещение не меняет экономику частичного прихода');
+  d.payout.usdt=10200;
+  assert.equal(ctx.econ(d).cost,10200,'Принятая переплата включается в себестоимость');
+  assert.equal(ctx.econ(d).net,-200);
 }
 // Настоящие карточки отправки и подписи объясняют источник предоплаты.
 {
@@ -107,7 +110,7 @@ for(const source of ['founder','multisig']){
     transferModeBlock:()=>'',stepNote:()=>'',
   };
   vm.createContext(view);
-  for(const name of ['prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
+  for(const name of ['personalSend','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
     vm.runInContext(fn(name),view);
   }
   const wallets=[...ctx.walletList,{...ctx.walletList[1],id:'teodor',owner:'Теодор'}];
@@ -123,6 +126,16 @@ for(const source of ['founder','multisig']){
     assert.ok(card.includes(status==='done'?'USDT брокера уже получены.':'Рубли конвертируются параллельно.'));
     assert.doesNotMatch(card,/клиент платил криптой|конвертации не было|Пачки конвертации нет|проверьте, откуда берутся деньги|брокер Брокер выдал|из пришедших/);
   }
+  const personal={...old,step:'s23',rates:{},walletId:'founder',postConv:'ipps_swift',
+    transfer:{amount:10130,addr:'ipps',sends:[]}};
+  view.S.role='teodor';
+  assert.match(view.stepCard(personal),/>Отправил<\/button>/);
+  assert.doesNotMatch(view.stepCard(personal),/id="sh_|id="sa_/);
+  personal.outgoingReview={requestedAt:'now',scanStatus:'complete',candidates:[]};
+  view.S.role='operator';
+  assert.match(view.stepCard(personal),/Проверить отправку/);
+  assert.match(view.stepCard(personal),/id="sh_/);
+  assert.match(view.stepCard(personal),/id="sa_/);
   const crypto={...old,payType:'Крипта',step:'s23',rates:{},transfer:{},pay:{usdt:11000}};
   assert.match(view.stepCard(crypto),/Клиент платил криптой — USDT пришли напрямую/);
 }

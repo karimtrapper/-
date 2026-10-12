@@ -91,7 +91,7 @@ def _result(status, candidates, reason=None):
 
 def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
                        after_ts, network='trc20', counterparty_addr=None,
-                       claimed_hashes=()):
+                       claimed_hashes=(), collect_outgoing=False):
     """Scan newest-first pages using only the fixed T9 read channel.
 
     `after_ts` is an inclusive Unix timestamp in milliseconds. Incomplete
@@ -104,6 +104,8 @@ def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
             or (direction == 'outgoing' and counterparty_addr is None)
             or not _timestamp(after_ts)):
         raise ValueError('invalid discovery query')
+    if collect_outgoing and direction != 'outgoing':
+        raise ValueError('collect_outgoing requires outgoing direction')
     _nonnegative_decimal(expected_amount)
     _nonnegative_decimal(tolerance)
     if not isinstance(claimed_hashes, (set, frozenset, list, tuple)):
@@ -161,6 +163,12 @@ def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
                     return _result('incomplete', candidates, 'conflicting_hash')
                 continue
             seen[transfer['hash']] = transfer
+            # Для проверки отправки собираем также части и переводы не тому получателю.
+            # Они только кандидаты; решение о зачёте остаётся у вызывающего кода.
+            if collect_outgoing:
+                if transfer['from'] == wallet_addr and transfer['hash'] not in claimed and transfer['amount'] > 0:
+                    candidates.append(transfer)
+                continue
             if match_transfer(transfer, direction=direction, wallet_addr=wallet_addr,
                               counterparty_addr=counterparty_addr,
                               expected_amount=expected_amount, tolerance=tolerance,

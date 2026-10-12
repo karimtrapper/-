@@ -2146,6 +2146,7 @@ window.createCrmDraftCore = function createCrmDraftCore(root, adapters) {
         }
 
         async function loadFounderWallets(selectedId) {
+            if (adapters.loadWallets) return adapters.loadWallets(selectedId);
             const sel = document.getElementById('noConvWallet');
             if (!sel) return;
             // Нужный кошелёк держим на самом селекте: редактор просит его до

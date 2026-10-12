@@ -137,6 +137,10 @@ def main():
             raise SystemExit(f"CRM draft safety substitution changed: {old}")
         extra = extra.replace(old, new)
     pieces[extra_index] = extra
+    # На стенде список и добавление кошельков принадлежат адаптеру общего реестра.
+    pieces = [piece.replace('async function loadFounderWallets(selectedId) {',
+        'async function loadFounderWallets(selectedId) {\n            if (adapters.loadWallets) return adapters.loadWallets(selectedId);')
+        for piece in pieces]
     # Text from local/chain datasets is still untrusted when inserted into a
     # CRM template literal. Escape the remaining draft-specific HTML slots.
     safety_slots = [

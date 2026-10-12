@@ -27,6 +27,18 @@ def money(value, *, positive=False):
     return amount
 
 
+def sent_money(value, reviewing=False):
+    # После «Отправил» это проверка факта, а не разрешение тратить больше заявки.
+    # USDT в сети имеет 6 знаков; переплату отдельно принимает операционист.
+    if not reviewing:
+        return money(value, positive=True)
+    try:
+        amount = Decimal(str(value))
+        return amount if amount.is_finite() and amount > 0 and amount == amount.quantize(Decimal('0.000001')) else None
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+
+
 def _physical_send(deal, wallet_id):
     route = deal.get('postConv')
     if route in (None, 'keep'):
@@ -100,10 +112,11 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
         prepay = deal.get('prepay') or {}
         transfer = deal.get('transfer') or {}
         limit = money(prepay.get('amount'), positive=True)
-        parts = [money(s.get('amount'), positive=True) for s in transfer.get('sends') or []
+        reviewing = bool((deal.get('outgoingReview') or {}).get('requestedAt'))
+        parts = [sent_money(s.get('amount'), reviewing) for s in transfer.get('sends') or []
                  if s.get('status') not in ('failed', 'mismatch')]
         if (independent_id not in ids or limit is None or money(transfer.get('amount')) != limit
-                or any(p is None for p in parts) or sum(parts) > limit):
+                or any(p is None for p in parts) or (not reviewing and sum(parts) > limit)):
             return 'Недостаточно разрешённых средств для оплаты наперёд'
         return None
     incoming = Decimal(0)
@@ -124,14 +137,15 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
     for source in sources:
         deal = deals[source['dealId']]
         transfer = deal.get('transfer') or {}
+        reviewing = bool((deal.get('outgoingReview') or {}).get('requestedAt'))
         sends = [s for s in transfer.get('sends') or []
                  if s.get('status') not in ('failed', 'mismatch')]
         if deal.get('prepay'):
             limit = money(deal['prepay'].get('amount'), positive=True)
             assigned = money(transfer.get('amount'), positive=True)
-            parts = [money(s.get('amount'), positive=True) for s in sends]
+            parts = [sent_money(s.get('amount'), reviewing) for s in sends]
             if (limit is None or assigned != limit or any(p is None for p in parts)
-                    or sum(parts) > limit):
+                    or (not reviewing and sum(parts) > limit)):
                 return 'Отправки IPPS должны укладываться в разрешённую сумму оплаты наперёд'
             continue
         if not _physical_send(deal, conv.get('walletId')):
@@ -143,8 +157,8 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
             return 'Сумма отправки USDT должна быть положительной с точностью до 0,01'
         outgoing += amount
         if sends:
-            parts = [money(s.get('amount'), positive=True) for s in sends]
-            if any(p is None for p in parts) or sum(parts) > amount:
+            parts = [sent_money(s.get('amount'), reviewing) for s in sends]
+            if any(p is None for p in parts) or (not reviewing and sum(parts) > amount):
                 return 'Зарегистрированные переводы превышают назначение или имеют неверную сумму'
     if outgoing > incoming:
         return f'По задачам {outgoing} USDT, подтверждено {incoming} USDT — не хватает {outgoing - incoming} USDT'
