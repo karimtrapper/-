@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 
 const html = fs.readFileSync('static/stand/tasks.html', 'utf8');
-const code = ['logWhen', 'logMeta'].map(name => {
+const code = ['htmlText', 'logWhen', 'logMeta'].map(name => {
   const match = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(match, `Нет ${name}`);
   return match[0];

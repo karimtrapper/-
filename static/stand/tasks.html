@@ -3227,7 +3227,7 @@ function logWhen(entry){
 }
 function logMeta(entry){
   const author=entry.role?(ROLES[entry.role]?.n||'Сотрудник'):'Система';
-  return (entry.role?'от ':'')+author+' · '+logWhen(entry)+' · '+(entry.text||'');
+  return htmlText((entry.role?'от ':'')+author+' · '+logWhen(entry)+' · '+(entry.text||''));
 }
 /* сколько прошло между событиями — «сколько простояли на этом статусе» */
 function dur(ms){
@@ -5275,7 +5275,7 @@ function viewDeal(d){
   <div><div class="card side"><h4>Коротко о пути</h4>
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
   <ul class="tl">${d.log.slice().reverse().slice(0,6).map((l,i)=>
-    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${logWhen(l)} · ${ROLES[l.role]?ROLES[l.role].t:'Система'}</div></div></li>`).join('')}</ul>
+    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${htmlText(l.text)}</div><div class="s">${logWhen(l)} · ${ROLES[l.role]?ROLES[l.role].t:'Система'}</div></div></li>`).join('')}</ul>
   ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
@@ -5518,7 +5518,7 @@ function pathCard(d){
       <div class="stat-card"><div class="stat-value num" style="font-size:18px">${L.length}</div><div class="stat-label">событий</div></div>
       <div class="stat-card ${longest&&longest.ms>3600000?'danger':''}"><div class="stat-value num" style="font-size:18px">${longest?dur(longest.ms):'—'}</div><div class="stat-label">дольше всего стояла</div></div>
     </div>
-    ${longest?`<div class="alert a-info"><div>Дольше всего сделка ждала на «<b>${longest.l.text}</b>» — ${dur(longest.ms)}, роль «${ROLES[longest.l.role]?ROLES[longest.l.role].t:'—'}». Вот такие строки и покажут узкое место, когда сделок станет много.</div></div>`:''}
+    ${longest?`<div class="alert a-info"><div>Дольше всего сделка ждала на «<b>${htmlText(longest.l.text)}</b>» — ${dur(longest.ms)}, роль «${ROLES[longest.l.role]?ROLES[longest.l.role].t:'—'}». Вот такие строки и покажут узкое место, когда сделок станет много.</div></div>`:''}
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Как задачи наполняют сделку
       <span class="sub">каждый шаг вносит свою часть — из них и собирается карточка</span></div>
     <table style="margin-bottom:20px"><thead><tr><th>Шаг</th><th>Кто</th><th>Что вносит в сделку</th><th>Статус</th></tr></thead><tbody>
@@ -5533,7 +5533,7 @@ function pathCard(d){
     <div class="card-title" style="font-size:14px;margin:18px 0 10px">Хронология</div>
     <table><thead><tr><th style="width:34px">№</th><th>Что произошло</th><th>Кто</th><th>Когда</th><th>Сколько держалось</th></tr></thead><tbody>
     ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
-      <td class="num">${i+1}</td><td>${r.l.text}</td>
+      <td class="num">${i+1}</td><td>${htmlText(r.l.text)}</td>
       <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
       <td style="white-space:nowrap">${logWhen(r.l)}</td>
       <td class="num" style="white-space:nowrap">${r.ms!=null?dur(r.ms)+(r.open?' · идёт':''):'—'}</td></tr>`).join('')}
@@ -6108,7 +6108,7 @@ function ctxCard(d){
         ?(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'))
         :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
-    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),last.text):''}
+    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),htmlText(last.text)):''}
   </div>
   ${d.reRequest?`<div class="alert a-warn" style="margin:16px 0 0"><div>Курс запрашивали заново ${d.reRequest} раз${d.reRequest>1?'а':''} — клиент возвращался. Прошлые цифры в истории справа.</div></div>`:''}
   </details>`;
