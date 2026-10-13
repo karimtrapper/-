@@ -32,8 +32,10 @@ def board_server(monkeypatch):
         db.commit()
     finally:
         db.close()
-    port = int(os.environ['CALCCRM_FENCE_PORT_START'])
-    server = make_server('127.0.0.1', port, m.app, threaded=True)
+    # Барьер выбирает свободный порт из разрешённого пула; первый мог занять
+    # HTTP-сервер предыдущего теста или ещё не освобождённое соединение.
+    server = make_server('127.0.0.1', 0, m.app, threaded=True)
+    port = server.server_port
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     serializer = m.app.session_interface.get_signing_serializer(m.app)
