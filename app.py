@@ -6071,6 +6071,150 @@ def stand_state_put():
         db.close()
 
 
+@app.route('/api/stand/quote', methods=['POST'])
+def stand_quote_save():
+    """Сохраняет ответ контрагента поверх актуальной доски, даже при позднем ответе."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    if actor not in ('operator', 'admin'):
+        return jsonify(success=False, error='Курс контрагента записывает операционист'), 403
+    payload = request.get_json(silent=True) or {}
+    if type(payload.get('version')) is not int or type(payload.get('dealId')) is not int:
+        return jsonify(success=False, error='Некорректная заявка курса'), 400
+    cp_id, direction = payload.get('cpId'), payload.get('dir')
+    rate = str(payload.get('rate') or '').strip()
+    parsed = _amount(rate.replace(',', '.'))
+    if (not isinstance(cp_id, str) or not cp_id or len(cp_id) > 100
+            or direction not in ('rub', 'thb') or parsed is None
+            or parsed <= 0 or parsed > 1000000):
+        return jsonify(success=False, error='Укажите контрагента, направление и положительный курс'), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or []
+                     if d.get('id') == payload['dealId']), None)
+        if not deal or deal.get('closed') or deal.get('step') not in ('s5', 's6', 's8'):
+            return jsonify(success=False, error='Этап курса уже закрыт — введённый курс остался в поле'), 409
+        if actor != 'admin' and deal.get('step') == 's5' and deal.get('assigneeAdminId'):
+            owner = db.query(AdminUser).filter_by(id=deal['assigneeAdminId']).first()
+            if owner and not owner.login_disabled and owner.role == 'operator' and owner.id != flask_session.get('user_id'):
+                return jsonify(success=False, error=f'Шаг у {owner.display_name or owner.username}'), 409
+        if direction == 'rub' and (deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'):
+            return jsonify(success=False, error='У этой сделки нет рублёвого курса'), 409
+        if direction == 'thb' and deal.get('kind') == 'Фрихолд':
+            return jsonify(success=False, error='Для фрихолда курс USDT→THB не нужен'), 409
+        cp = next((c for c in state.get('cps') or [] if c.get('id') == cp_id), None)
+        if not cp or direction not in (cp.get('dirs') or [cp.get('dir')]):
+            return jsonify(success=False, error='Контрагент для этого курса не найден'), 409
+        quotes = deal.setdefault('quotes', [])
+        previous = next((q for q in quotes if q.get('cpId') == cp_id
+                         and q.get('dir') == direction), None)
+        if (previous or {}).get('at') != payload.get('previousAt'):
+            return jsonify(success=False, error='Этот курс уже обновил коллега — введённое значение осталось в поле'), 409
+        stamp_ms = int(time.time() * 1000)
+        if previous:
+            previous.update(rate=rate, at=stamp_ms, name=cp.get('name'))
+        else:
+            quotes.append({'cpId': cp_id, 'name': cp.get('name'),
+                           'dir': direction, 'rate': rate, 'at': stamp_ms})
+        candidates = [q for q in quotes if q.get('dir') == direction
+                      and (_amount(str(q.get('rate') or '').replace(',', '.')) or 0) > 0]
+        selected = next((q for q in candidates if q.get('cpId') == (deal.get('ratePick') or {}).get(direction)), None)
+        if not selected and candidates:
+            selected = min(candidates, key=lambda q: _amount(str(q['rate']).replace(',', '.')))
+            if direction == 'thb':
+                selected = max(candidates, key=lambda q: _amount(str(q['rate']).replace(',', '.')))
+        if selected:
+            rates = deal.setdefault('rates', {})
+            rates['rubUsdt' if direction == 'rub' else 'usdtThb'] = selected['rate']
+            rates['at'] = stamp_ms
+        deal.setdefault('log', []).append({'at': stamp_ms,
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+            'text': ('Курс обновлён' if previous else 'Курс получен') +
+                    f' — {cp.get("name")} ({"RUB→USDT" if direction == "rub" else "USDT→THB"}): {rate.replace(".", ",")}'})
+        if deal.get('step') == 's5':
+            has_rub = any(q.get('dir') == 'rub' for q in quotes)
+            has_thb = any(q.get('dir') == 'thb' for q in quotes)
+            crypto = deal.get('payType') == 'Крипта' or deal.get('curBase') == 'usdt'
+            ready = has_thb if crypto else has_rub if deal.get('kind') == 'Фрихолд' else has_rub and has_thb
+            if ready:
+                deal['step'] = 's6'
+                deal['assigneeAdminId'] = None
+                deal['log'].append({'at': stamp_ms,
+                    'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+                    'text': 'Курсы отданы менеджеру'})
+        _stand_note(state, f'stand:quote:{deal["id"]}:{cp_id}:{direction}:{stamp_ms}',
+                    'manager', deal, f'Курс {cp.get("name")}: {rate}')
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
+@app.route('/api/stand/payto/reopen', methods=['POST'])
+def stand_payto_reopen():
+    """Менеджер останавливает неподписанную отправку перед правкой реквизитов."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    if actor not in ('manager', 'admin'):
+        return jsonify(success=False, error='Реквизиты меняет менеджер'), 403
+    payload = request.get_json(silent=True) or {}
+    if type(payload.get('version')) is not int or type(payload.get('dealId')) is not int:
+        return jsonify(success=False, error='Некорректная заявка'), 400
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload['version'] != (row.version or 0):
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or []
+                     if d.get('id') == payload['dealId']), None)
+        if not deal or deal.get('kind') != 'Фрихолд' or deal.get('step') != 's23':
+            return jsonify(success=False, error='На этом шаге нечего останавливать'), 409
+        if (deal.get('pay') or {}).get('invoicePaid') or deal.get('serverTransferComplete'):
+            return jsonify(success=False, error='Отправка уже завершена — реквизиты нельзя менять'), 409
+        if (deal.get('transfer') or {}).get('sends'):
+            return jsonify(success=False, error='Есть начатые переводы — сначала разберите их с операционистом'), 409
+        deal.pop('ippsPayoutOrder', None)
+        deal.pop('_ippsPayoutInstruction', None)
+        deal['payToConfirm'] = None
+        deal['reqTask'] = 'open'
+        deal['step'] = 's22'
+        deal['assigneeAdminId'] = None
+        transfer = deal.get('transfer') or {}
+        for key in ('addr', 'net', 'amount'):
+            transfer.pop(key, None)
+        deal['transfer'] = transfer
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': actor,
+            'text': 'Правка реквизитов: отправка остановлена, поручение IPPS сброшено; требуется повторное подтверждение менеджера и операциониста'})
+        _stand_note(state, f'stand:payto-reopen:{deal["id"]}:{row.version}', 'operator', deal,
+                    'Отправка остановлена: менеджер меняет реквизиты, потребуется новое поручение IPPS')
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 def _stand_close_fingerprint(deal, kind):
     """Hash only facts relevant to one signoff; notes and UI state are excluded."""
     pay = deal.get('pay') or {}
