@@ -328,6 +328,10 @@ a.hash:hover{background:#BAE6FD}
 .payrow:last-of-type{border-bottom:none}
 .payrow .k{font-size:12px;color:var(--text-muted)}
 .payrow .v{font-size:13.5px;line-height:1.5;word-break:break-word}
+.payto-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 20px;margin-top:12px}
+.payto-details .k{font-size:12px;color:var(--text-muted)}
+.payto-details .v{font-size:13.5px;word-break:break-word;white-space:pre-wrap}
+@media(max-width:650px){.payto-details{grid-template-columns:1fr}}
 .sberbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--r);padding:12px 14px;margin-top:14px}
 .crm-draft{margin-top:14px}
 .crm-draft .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:var(--text);font:inherit}
@@ -3192,7 +3196,11 @@ let WA_CHATS=[];
 let BX_DEALS=[];
 
 /* ============ операции ============ */
-function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
+function log(d,text){
+  const entry={ts:now(),at:Date.now(),role:S.role,text};
+  if(standMeId)entry.by=employeeName(standMeId)||undefined;
+  d.log.push(entry);
+}
 function logWhen(entry){
   if(typeof entry.ts==='string'&&/^\d{2}\.\d{2},? \d{2}:\d{2}$/.test(entry.ts))
     return entry.ts.replace(/^(\d{2}\.\d{2}) (\d{2}:\d{2})$/,'$1, $2');
@@ -3449,6 +3457,49 @@ function payToConfirmed(d){
   const keys=new Set(Object.keys(c).concat(Object.keys(pt)));
   for(const k of keys) if(String(c[k]==null?'':c[k])!==String(pt[k]==null?'':pt[k])) return false;
   return true;
+}
+/* Реквизиты в карточке читаются только из опубликованного payTo: приватный черновик
+   менеджера не должен показываться остальным ролям. */
+function payToCardStatus(d){
+  if(!payToReady(d))return 'Ещё не заполнены — задача у менеджера';
+  const confirmation=d.payToConfirm||{};
+  if(confirmation.payTo)return payToConfirmed(d)
+    ?'Подтверждены перед '+(d.kind==='Фрихолд'?'IPPS':'оплатой')+' · '+htmlText(confirmation.at||'время не сохранено')
+    :'Изменены после подтверждения — требуется повторная проверка';
+  const entry=(d.log||[]).slice().reverse().find(l=>/^(Реквизиты для оплаты заполнены|Менеджер сохранил реквизиты заявки IPPS)/.test(l.text||''));
+  return 'Заполнены'+(entry?' · '+htmlText(logWhen(entry))+' · '+htmlText(entry.by||ROLES[entry.role]?.t||'менеджер'):' · дата и автор не сохранены');
+}
+function payToCardFields(d){
+  const pt=d.payTo||{};
+  return [
+    ['Получатель',pt.dev],['Банк',pt.bank],['SWIFT / BIC',pt.swift],
+    ['Счёт получателя',pt.acc],['Отделение банка',pt.branch],['Адрес банка',pt.bankAddr],
+    ['Инвойс',pt.inv],['Сумма',pt.amount?(d.kind==='Фрихолд'?usd(pt.amount):money(pt.amount,'฿')):'—'],
+    ['Источник суммы',d.kind==='Фрихолд'?'Из заявки: инвойс застройщика, сумма только для чтения':'Указана менеджером'],
+    ['Назначение платежа',pt.purpose],['Комментарий менеджера',d.stepNotes?.s15],
+    ...(pt.pobo?[['POBO — плательщик',pt.pobo]]:[])
+  ];
+}
+function payToCard(d,compact=false){
+  if(d.type!=='Оплата недвижимости')return '';
+  const ready=payToReady(d), paid=!!d.pay?.invoicePaid;
+  const canEdit=!d.closed&&!d.manual&&!paid&&S.role==='manager';
+  const fill=canEdit&&!ready&&(reqOpen(d)||d.step==='s15');
+  const edit=canEdit&&ready;
+  const rows=ready?payToCardFields(d).map(([k,v])=>`<div><div class="k">${htmlText(k)}</div><div class="v">${htmlText(v||'—')}</div></div>`).join(''):'';
+  return `<div class="card payto-card${compact?' payto-compact':''}" style="margin-bottom:16px">
+    <div class="card-title">Реквизиты для оплаты застройщику</div>
+    <div class="fh" style="margin:2px 0 0">${payToCardStatus(d)}</div>
+    ${ready?(compact?`<div class="fh" style="margin-top:8px">${htmlText([d.payTo.dev,d.payTo.bank,d.payTo.acc].filter(Boolean).join(' · '))}</div>
+      <details style="margin-top:8px"><summary>Все реквизиты и комментарий</summary><div class="payto-details">${rows}</div></details>`
+      :`<div class="payto-details">${rows}</div>`):''}
+    ${compact?`<div class="row" style="margin-top:12px"><button class="btn btn-outline btn-sm" ${ready?'':'disabled'} onclick="payToCopy(${d.id})">Копировать реквизиты</button></div>`:
+      (fill||edit?`<div class="row" style="margin-top:12px"><button class="btn btn-secondary btn-sm" onclick="${fill?`openTask(${d.id})`:`reqReopen(${d.id},'правка реквизитов из карточки')`}">${fill?'Заполнить':'Изменить'}</button></div>`:'')}
+  </div>`;
+}
+function payToCopy(id){
+  const d=deal(id);if(!d||!payToReady(d))return;
+  copyAsk(payToCardFields(d).map(([k,v])=>k+': '+(v||'—')).join('\n'));
 }
 function needsPayConfirm(d){
   return !!payGateStep(d)&&payToReady(d)&&!payToConfirmed(d);
@@ -5183,7 +5234,7 @@ function viewDeal(d){
     else body=(who?assigneeBlock(d,who):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
-  body=prepayPanel(d)+body;
+  body=(view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)?payToCard(d,true):'')+prepayPanel(d)+body;
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   if(view==='task'&&d.prepay&&S.role==='operator'&&d.prepay.brokerStep!=='done')
     body=stepCard(Object.assign({},d,{step:d.prepay.brokerStep,_prepayBroker:true}))+body;
@@ -5203,6 +5254,7 @@ function viewDeal(d){
     return `<div class="vtabs">${tab('deal','Карточка<span class="lg"> сделки</span>')}${
       had?tab('task',d.closed?'<span class="lg">Последний </span>шаг':'<span class="lg">Текущая </span>задача'):''}${
       had?tab('path','<span class="lg">Задачник — </span>история'):''}</div>`;})()}
+  ${view==='deal'?payToCard(d):''}
   <div class="cols"><div>${body}</div>
   <div><div class="card side"><h4>Коротко о пути</h4>
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
