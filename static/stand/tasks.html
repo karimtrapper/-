@@ -2430,6 +2430,22 @@ function noteAdd(role,text,dealId){
   if(notes().length>40) S.notes=notes().slice(0,40);
   return note;
 }
+function s14PingBlock(d,canSend){
+  const p=d.s14Ping||{};
+  const last=p.at?`<p class="fh">Последний пинг: ${htmlText(p.by||'менеджер')} · ${new Date(p.at).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}${p.text?' · '+htmlText(p.text):''}</p>`:'';
+  return `<div class="card" style="margin-bottom:14px"><div class="card-title">Проверка прихода</div>
+    ${last||'<p class="fh">Пингов пока не было.</p>'}
+    ${canSend?`<div class="fg"><label class="fl">Сообщение операционисту <span class="sub2">необязательно, до 300 символов</span></label>
+      <textarea class="fc" id="s14_ping_${d.id}" maxlength="300" placeholder="Клиент говорит, что оплатил, проверь приход"></textarea></div>
+      <button class="btn btn-secondary" onclick="s14Ping(${d.id})">Пингануть операциониста</button>`:''}
+  </div>`;
+}
+async function s14Ping(id){
+  const d=deal(id);if(!d||d.step!=='s14'||!['manager','admin'].includes(S.role))return;
+  const field=document.getElementById('s14_ping_'+id);
+  const result=await standAction('/api/stand/s14/ping',{version:standVer,dealId:id,text:field?.value||''});
+  if(result)toast('Операционист получил напоминание');
+}
 function notesFor(role){ return notes().filter(n=>n.role===role); }
 function notesUnread(role){ return notesFor(role).filter(n=>!n.read).length; }
 function notesOpen(){ S.notesOpen=!S.notesOpen; save(); render(); }
@@ -5217,7 +5233,7 @@ function viewDeal(d){
       const own=(managerSide&&!confirmGate&&canDraft)?`<div class="card-title" style="margin:10px 0">Ваша параллельная задача — реквизиты для оплаты</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
-      body=status+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
+      body=status+((S.role==='manager'||S.role==='admin')&&d.step==='s14'?s14PingBlock(d,true):'')+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
         ?`Ожидаем ${money(approx(d).pay,'USDT')} на ${htmlText((payinWallet(d)||{}).addr||'кошелёк из договора')}.`
         :`Ожидаем ${money(expectOf(d).amount,'₽')} на ${htmlText(expectOf(d).acc||'счёт из договора')}.`} Прикреплённые клиентом чеки видны ниже; приход подтверждает операционист.</p></div>`:'')+
         (d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
@@ -5231,7 +5247,7 @@ function viewDeal(d){
     /* На s12 документы для клиента — первым делом, выше сводки сделки: менеджер не
        должен их искать (Карим, 25.09 — «в самом видном месте»). Дальше цель, сам шаг с
        полями и кнопкой, а сводка «Что это за сделка» — в самом низу свёрнутой (Карим, 27.09). */
-    else body=(who?assigneeBlock(d,who):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
+    else body=(who?assigneeBlock(d,who):'')+(S.role==='operator'&&d.step==='s14'?s14PingBlock(d,false):'')+(d.step==='s12'?`<div class="card" style="margin-bottom:16px">${docSendBlock(d)}</div>`:'')+goalCard(d)+stepCard(d)+ctxCard(d);
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
   body=(view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)?payToCard(d,true):'')+prepayPanel(d)+body;

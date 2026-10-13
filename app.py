@@ -7166,6 +7166,69 @@ def _stand_note(state, event_id, role, deal, text):
     del notes[40:]
 
 
+@app.route('/api/stand/s14/ping', methods=['POST'])
+def stand_s14_ping():
+    """Менеджер напоминает операционисту проверить приход на шаге s14."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor = current_role()
+    if actor not in ('manager', 'admin'):
+        return jsonify(success=False, error='Пингануть операциониста может менеджер'), 403
+    payload = request.get_json(silent=True) or {}
+    if type(payload.get('version')) is not int or type(payload.get('dealId')) is not int:
+        return jsonify(success=False, error='Некорректная заявка'), 400
+    raw_text = payload.get('text', '')
+    if not isinstance(raw_text, str) or len(raw_text) > 300:
+        return jsonify(success=False, error='Текст должен быть не длиннее 300 символов'), 400
+    message = raw_text.strip()
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == payload['dealId']), None)
+        if not deal or deal.get('step') != 's14' or deal.get('closed'):
+            return jsonify(success=False, error='Пинг доступен только на шаге «Ждём приход»'), 409
+        stamp_ms = int(time.time() * 1000)
+        last_at = (deal.get('s14Ping') or {}).get('at')
+        if isinstance(last_at, (int, float)) and stamp_ms - last_at < 15 * 60 * 1000:
+            at = datetime.fromtimestamp(last_at / 1000).strftime('%H:%M')
+            return jsonify(success=False, error=f'Уже пинговали в {at} — повторите через 15 минут'), 409
+        if payload['version'] != (row.version or 0):
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        user = db.query(AdminUser).filter_by(id=flask_session.get('user_id')).first()
+        by = ((user.display_name or user.username) if user else
+              flask_session.get('display_name') or STAND_ROLE_PEOPLE.get(actor, actor))
+        deal['s14Ping'] = {'at': stamp_ms, 'by': by, 'text': message}
+        deal.setdefault('log', []).append({'at': stamp_ms,
+            'ts': datetime.fromtimestamp(stamp_ms / 1000).strftime('%d.%m, %H:%M'),
+            'role': actor, 'text': ('Менеджер' if actor == 'manager' else 'Админ') +
+            ' пинганул операциониста · ' + (message or 'без комментария')})
+        expected = deal.get('expect') or {}
+        amount = expected.get('amount') or (deal.get('amountUsdt') if deal.get('payType') == 'Крипта' else deal.get('amountRub'))
+        unit = 'USDT' if deal.get('payType') == 'Крипта' else '₽'
+        amount_text = f'{amount} {unit}' if amount is not None else 'сумма не указана'
+        has_check = bool(((deal.get('files') or {}).get('clientPayinReceipt') or []))
+        note = (f"Проверьте приход · {deal.get('client') or 'клиент'} · {amount_text}" +
+                (' · чек клиента приложен' if has_check else '') +
+                (f' · {message}' if message else ''))
+        _stand_note(state, f"stand:s14-ping:{deal['id']}:{stamp_ms}", 'operator', deal, note)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = by
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        try:
+            _stand_deliver_notes()
+        except Exception:
+            app.logger.exception('s14 ping notification delivery failed')
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 def _stand_send_complete(deal):
     if deal.get('outgoingReview'):
         from stand_outgoing_review import complete
@@ -8437,6 +8500,10 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
     old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in new_state.get('deals') or []:
+        before = old.get(deal.get('id')) or {}
+        if before.get('s14Ping') != deal.get('s14Ping'):
+            return 'Пинг операционисту отправляет только сервер'
     if db is not None and actor_id is not None and actor != 'admin':
         for deal in new_state.get('deals') or []:
             before = old.get(deal.get('id'))
