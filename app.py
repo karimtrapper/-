@@ -9418,7 +9418,167 @@ def _stand_personal_send(state, deal):
     return bool(wallet and not wallet.get('multisig', True))
 
 
-def _stand_discover_outgoing(deal_id=None):
+def _stand_outgoing_claim_locations(db, state, deal_id):
+    """Подпись занятого хеша; право зачёта по-прежнему задаёт общий реестр."""
+    import stand_outgoing_review as review
+    used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
+    claimed = review.claims(state, deal_id) | used
+    locations = {h: 'Уже используется в реестре операций' for h in claimed}
+    def mark(ref, label):
+        key = str(ref or '').lower()
+        if key in claimed:
+            locations[key] = label
+    for d in db.query(Deal.id, Deal.payin_tx_hash, Deal.doverka_payout_hash,
+                      Deal.payin_tx_hashes, Deal.payout_tx_hashes).all():
+        for field in ('payin_tx_hash', 'doverka_payout_hash'):
+            mark(getattr(d, field, None), f'CRM #{d.id}')
+        for field in ('payin_tx_hashes', 'payout_tx_hashes'):
+            try:
+                for part in json.loads(getattr(d, field, None) or '[]'):
+                    mark(part.get('hash'), f'CRM #{d.id}')
+            except (ValueError, TypeError, AttributeError):
+                pass
+    for tx in db.query(Transaction).filter(Transaction.deal_id != None).all():
+        mark(tx.tx_hash, f'CRM #{tx.deal_id}')
+    for r in db.query(Reimbursement).filter(Reimbursement.tx_hash != None).all():
+        mark(r.tx_hash, f'Возмещение #{r.id}')
+    for op in db.query(WalletOperation).filter(WalletOperation.tx_hash != None).all():
+        mark(op.tx_hash, f'Операция кошелька #{op.id}')
+    for c in state.get('convs') or []:
+        ids = ', '.join('СД-'+str(s['dealId']) for s in c.get('sources') or [] if s.get('dealId'))
+        for tx in c.get('txs') or []:
+            mark(tx.get('hash'), f'Конвертация #{c.get("id")} · {ids}')
+    for d in state.get('deals') or []:
+        groups = [d.get('payinHashes') or [], (d.get('payout') or {}).get('hashes') or [],
+                  [(d.get('payout') or {}).get('reimbursement') or {}]]
+        if d.get('id') != deal_id:
+            groups.append((d.get('transfer') or {}).get('sends') or [])
+        for group in groups:
+            for tx in group:
+                mark(tx.get('hash') or tx.get('ref'), d.get('code') or f'СД-{d.get("id")}')
+    return locations
+
+
+def _stand_outgoing_pick(data, actor):
+    """Выбор из списка: проверка сети вне транзакции, повторная проверка под блокировкой."""
+    import stand_outgoing_review as review
+    from stand_transfers import normalize_ref
+    if actor not in ('operator', 'admin'):
+        return jsonify(success=False, error='Выбор переводов доступен операционисту и админу'), 403
+    db = get_session()
+    try:
+        row = _stand_row(db)
+        snapshot, version = json.loads(row.data or '{}'), row.version
+        deal = next((d for d in snapshot.get('deals') or [] if d.get('id') == data.get('dealId')), None)
+        if not deal or not _stand_personal_send(snapshot, deal) or not deal.get('outgoingReview'):
+            return jsonify(success=False, error='Нет активной проверки отправки'), 409
+        if data.get('version') != version:
+            return jsonify(success=False, error='Данные изменились — обновите список'), 409
+        main = _stand_batch_main(snapshot, deal['id'])
+        fh = main if main.get('kind') == 'Фрихолд' else deal
+        if fh.get('kind') == 'Фрихолд' and (not _stand_payto_confirmed(fh)
+                or not (fh.get('ippsPayoutOrder') or {}).get('confirmedAt')):
+            return jsonify(success=False, error='Ждём подтверждения реквизитов и поручения IPPS'), 409
+    finally:
+        db.close()
+    if data['action'] == 'list':
+        _stand_discover_outgoing(deal['id'], cache_ttl=20, auto_attach=False)
+        db = get_session()
+        try:
+            row = _stand_row(db)
+            return jsonify(success=True, version=row.version, data=_stand_strip_files(json.loads(row.data or '{}')))
+        finally:
+            db.close()
+    hashes = data.get('hashes')
+    if (not isinstance(hashes, list) or not 1 <= len(hashes) <= 100
+            or any(not isinstance(h, str) or normalize_ref(h, 'trc20') != h or h.startswith('demo:') for h in hashes)
+            or len(set(hashes)) != len(hashes)):
+        return jsonify(success=False, error='Выберите уникальные хеши из списка'), 400
+    tracking = deal['outgoingReview']
+    if normalize_network((deal.get('transfer') or {}).get('net')) != 'trc20':
+        return jsonify(success=False, error='Список исходящих доступен только для USDT TRC-20'), 409
+    sender = expected_addresses(snapshot, main)[0]
+    receiver = (deal.get('transfer') or {}).get('addr')
+    if receiver == 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird':
+        return jsonify(success=False, error='Комиссию сети нельзя засчитать в платёж'), 409
+    eligible = {t['hash'] for t in tracking.get('candidates') or []
+                if t.get('from') == sender and t.get('to') == receiver and not t.get('networkFee')}
+    eligible.update(s.get('hash') or s.get('ref') for s in (deal.get('transfer') or {}).get('sends') or [])
+    if not set(hashes) <= eligible:
+        return jsonify(success=False, error='Выберите перевод на адрес заявки из списка или добавьте хеш вручную'), 409
+    sends = []
+    for ref in hashes:
+        # Сумму читаем заново из transaction-info, только события нужного получателя.
+        proof = verify_transfer(ref, 'trc20', sender, receiver, None)
+        if proof.get('status') != 'confirmed':
+            return jsonify(success=False, error=proof.get('checkError') or 'Сеть не подтвердила выбранный перевод'), 409
+        if not proof.get('timestampMs'):
+            proof['timeUnverified'] = True
+        elif not tracking.get('legacyTime') and proof['timestampMs'] < tracking['afterTs']:
+            proof['beforeOrder'] = True
+        sends.append(dict(ref=ref, hash=ref, amount=proof['verifiedAmount'], net='TRC-20', **proof))
+    early = any(s.get('beforeOrder') for s in sends)
+    missing = any(s.get('timeUnverified') for s in sends)
+    if early and data.get('confirmBeforeOrder') is not True:
+        return jsonify(success=False, error='Перевод сделан до поручения — требуется явное подтверждение'), 409
+    if missing and data.get('confirmMissingTime') is not True:
+        return jsonify(success=False, error='Сеть не вернула время перевода — требуется явное подтверждение'), 409
+    actual = sum((_amount(s['verifiedAmount']) for s in sends), _amount(0))
+    required = _amount(deal['transfer']['amount'])
+    if actual > required + review.TOLERANCE and data.get('confirmOverpay') is not True:
+        return jsonify(success=False, error=f'Переплата {actual-required} USDT — требуется явное подтверждение'), 409
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if row.version != version:
+            return jsonify(success=False, error='Доска изменилась во время проверки — обновите список'), 409
+        state = json.loads(row.data or '{}')
+        locations = _stand_outgoing_claim_locations(db, state, deal['id'])
+        for ref in hashes:
+            if ref in locations:
+                return jsonify(success=False, error=f'Хеш уже используется: {locations[ref]} · {ref}'), 409
+        deal_id = deal['id']
+        deal = next(d for d in state['deals'] if d['id'] == deal_id)
+        tracking = deal['outgoingReview']
+        previous = [s.get('hash') or s.get('ref') for s in deal['transfer'].get('sends') or []]
+        deal['transfer']['sends'] = sends
+        tracking.update(selectionMode=True, acceptedBy=actor)
+        tracking.pop('accepted', None)
+        tracking['selectionFingerprint'] = review.fingerprint(deal)
+        if actual + review.TOLERANCE >= required:
+            tracking['accepted'] = review.fingerprint(deal)
+        conv = next((c for c in state.get('convs') or [] if c.get('id') == deal.get('cnvId')), None)
+        if conv:
+            issue = _stand_check_batch_funding(state, conv, dispatch=True,
+                independent_id=deal['id'] if deal.get('prepay') else None)
+            if issue:
+                return jsonify(success=False, error=issue), 409
+        details = '; перевод сделан до поручения — подтверждаю' if early else ''
+        if missing:
+            details += '; время перевода не получено — подтверждаю вручную'
+        if actual > required + review.TOLERANCE:
+            details += f'; переплата {actual-required} USDT — засчитана'
+        elif actual + review.TOLERANCE < required:
+            details += f'; недоплата {required-actual} USDT — ждём остальные части'
+        excluded = set(previous) - set(hashes)
+        if excluded:
+            details += '; исключены: '+', '.join(sorted(excluded))
+        deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
+            'text': f'Выбраны переводы: {", ".join(hashes)} · {actual} USDT'+details})
+        _stand_settle_verified(state, _stand_members(state, deal['id']))
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = actor
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
+def _stand_discover_outgoing(deal_id=None, *, cache_ttl=0, auto_attach=True):
     """Поиск вне блокировки; привязка после повторной проверки версии и занятости."""
     from decimal import Decimal
     from stand_transfer_discovery import discover_transfers
@@ -9427,7 +9587,6 @@ def _stand_discover_outgoing(deal_id=None):
     try:
         row = _stand_row(db)
         snapshot, version = json.loads(row.data or '{}'), row.version
-        used = {str(h).lower() for h in get_used_transaction_hashes(db) if h}
     finally:
         db.close()
     wanted = {d['id'] for d in _stand_members(snapshot, deal_id)} if deal_id is not None else None
@@ -9449,16 +9608,27 @@ def _stand_discover_outgoing(deal_id=None):
         try:
             found = discover_transfers(direction='outgoing', wallet_addr=sender,
                 counterparty_addr=receiver, expected_amount=Decimal(str(transfer.get('amount'))),
-                tolerance=review.TOLERANCE, after_ts=tracking['afterTs'], collect_outgoing=True)
+                tolerance=review.TOLERANCE, after_ts=max(0, tracking['afterTs'] - 7*24*60*60*1000),
+                collect_outgoing=True, cache_ttl=cache_ttl)
         except (ValueError, TypeError, KeyError):
             found = {'status': 'unavailable', 'reason': 'Нет корректного адреса или времени поручения', 'candidates': []}
-        claimed = review.claims(snapshot, deal['id']) | used
+        db = get_session()
+        try:
+            locations = _stand_outgoing_claim_locations(db, snapshot, deal['id'])
+        finally:
+            db.close()
         existing = {s.get('hash') or s.get('ref') for s in transfer.get('sends') or []}
         candidates, attach = [], []
         for tx in found['candidates']:
             item = dict(tx, amount=float(tx['amount']))
-            item['reason'] = ('другой адрес' if tx['to'] != receiver else
-                              'хеш уже занят' if tx['hash'] in claimed else
+            item['beforeOrder'] = bool(not tracking.get('legacyTime') and tx['timestamp_ms'] < tracking['afterTs'])
+            item['networkFee'] = tx['to'] == 'TLntW9Z59LYY5KEi9cmwk3PKjQga828ird'
+            item['claimedBy'] = locations.get(tx['hash'])
+            item['selectable'] = tx['to'] == receiver and not item['networkFee'] and not item['claimedBy']
+            item['reason'] = ('комиссия сети' if item['networkFee'] else
+                              'хеш уже занят: '+item['claimedBy'] if item['claimedBy'] else
+                              'другой адрес' if tx['to'] != receiver else
+                              'перевод сделан до поручения — требуется подтверждение' if item['beforeOrder'] else
                               'исключён операционистом' if tx['hash'] in tracking.get('ignored', []) else '')
             if not item['reason']:
                 for other in snapshot.get('deals') or []:
@@ -9475,7 +9645,8 @@ def _stand_discover_outgoing(deal_id=None):
                         item['reason'] = 'Подходит нескольким активным поручениям — выберите хеш вручную'
                         break
             candidates.append(item)
-            if found['status'] != 'complete' or item['reason'] or tx['hash'] in existing:
+            if (not auto_attach or tracking.get('selectionMode') or found['status'] != 'complete'
+                    or item['reason'] or tx['hash'] in existing):
                 continue
             # Список транзакций — поиск кандидата. Доказательство даёт общая проверка хеша.
             proof = verify_transfer(tx['hash'], 'trc20', sender, receiver, float(tx['amount']))
@@ -9489,12 +9660,15 @@ def _stand_discover_outgoing(deal_id=None):
             else:
                 item['reason'] = proof.get('checkError') or 'ожидает подтверждения сети'
                 found['status'] = 'incomplete'
-        found['candidates'] = candidates
+        found['candidates'] = sorted(candidates, key=lambda c: (c['to'] != receiver, -c['timestamp_ms']))
         results.append((deal['id'], found, attach))
     if not results:
         return
     db = get_session()
     try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         if row.version != version:
             return
@@ -9531,6 +9705,8 @@ def stand_outgoing_review_action():
     import stand_outgoing_review as review
     data = request.get_json(silent=True) or {}
     actor = current_role()
+    if data.get('action') in ('list', 'select'):
+        return _stand_outgoing_pick(data, actor)
     db = get_session()
     try:
         row = _stand_row(db, lock=True)
@@ -9585,13 +9761,18 @@ def stand_outgoing_review_action():
                 return jsonify(success=False, error='Недоплата — ждём следующие части'), 409
             if data.get('fingerprint') != review.fingerprint(deal):
                 return jsonify(success=False, error='Список переводов изменился — проверьте суммы'), 409
+            early = any(s.get('beforeOrder') and s.get('status') == 'confirmed'
+                        for s in (deal.get('transfer') or {}).get('sends') or [])
+            if early and data.get('confirmBeforeOrder') is not True:
+                return jsonify(success=False, error='Перевод сделан до поручения — требуется явное подтверждение'), 409
             missing_time = any(s.get('timeUnverified') and s.get('status') == 'confirmed'
                                for s in (deal.get('transfer') or {}).get('sends') or [])
             tracking['accepted'] = review.fingerprint(deal)
             tracking['acceptedBy'] = actor
             deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
                 'text': f'Операционист засчитал отправку {actual} USDT; переплата {max(actual-required, 0)} USDT'
-                        + ('; время перевода не получено от сети — принято вручную' if missing_time else '')})
+                        + ('; время перевода не получено от сети — принято вручную' if missing_time else '')
+                        + ('; перевод сделан до поручения — подтверждаю' if early else '')})
         else:
             return jsonify(success=False, error='Неизвестное действие'), 400
         row.data = json.dumps(state, ensure_ascii=False)
@@ -9741,7 +9922,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                 result.update(timeUnverified=True, checkError='Сеть не вернула время перевода — требуется решение операциониста')
             elif (not deal['outgoingReview'].get('legacyTime')
                   and result['timestampMs'] < deal['outgoingReview']['afterTs']):
-                result = {'status': 'mismatch', 'checkError': 'Перевод сделан до поручения'}
+                result.update(beforeOrder=True, checkError='Перевод сделан до поручения — требуется подтверждение операциониста')
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
         results.append((member_id, key, demo_outcome, result))
     db = get_session()
@@ -9778,7 +9959,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                         and send.get('checkError') == result.get('checkError')
                         and send.get('from') == result.get('from') and send.get('to') == result.get('to')):
                     break
-                for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo', 'timestampMs', 'timeUnverified'):
+                for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo', 'timestampMs', 'timeUnverified', 'beforeOrder'):
                     send.pop(field, None)
                 send.update(result)
                 changed = True

@@ -112,7 +112,7 @@ def test_demo_registration_time_is_stable_and_server_owned(api):
     assert result['data']['deals'][0]['step'] == 's26'
 
 
-def test_known_old_transfer_cannot_be_accepted(api, chain):
+def test_known_old_transfer_requires_explicit_acceptance(api, chain):
     setup_send(api)
     api[1][0] = 'teodor'
     assert action(api).status_code == 200
@@ -120,8 +120,11 @@ def test_known_old_transfer_cannot_be_accepted(api, chain):
     edit(api, 'operator', lambda s,d: d['transfer'].update(sends=[{
         'ref':chain.ref(994), 'amount':10130, 'net':'TRC-20'}]))
     d = post(api, 'operator', '/api/stand/transfers/check', dealId=1484)['data']['deals'][0]
-    assert d['transfer']['sends'][0]['checkError'] == 'Перевод сделан до поручения'
+    assert d['transfer']['sends'][0]['beforeOrder'] is True
+    assert d['step'] == 's23'
     assert action(api, 'accept', fingerprint=d['outgoingReview']['selectionFingerprint']).status_code == 409
+    assert action(api, 'accept', fingerprint=d['outgoingReview']['selectionFingerprint'],
+                  confirmBeforeOrder=True).json['data']['deals'][0]['step'] == 's26'
 
 
 def test_missing_time_in_discovery_proof_requires_manual_accept(api, chain, monkeypatch):

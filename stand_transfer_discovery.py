@@ -9,6 +9,29 @@ global uniqueness while holding its own lock.
 from decimal import Decimal
 import hashlib
 import re
+import copy
+import time
+import threading
+
+_PAGE_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+
+def _read_page(params, cache_ttl):
+    """Короткий кэш списка; доказательство выбранного хеша всегда проверяется отдельно."""
+    import stand_egress
+    key = (stand_egress.read_get, tuple(sorted(params.items())))
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        cached = _PAGE_CACHE.get(key)
+        if cache_ttl and cached and now - cached[0] < cache_ttl:
+            return copy.deepcopy(cached[1])
+    result = stand_egress.read_get('tron_trc20_transfers', params)
+    if cache_ttl and result[0] == 200 and not result[2]:
+        with _CACHE_LOCK:
+            if len(_PAGE_CACHE) >= 256:
+                _PAGE_CACHE.clear()
+            _PAGE_CACHE[key] = (now, copy.deepcopy(result))
+    return result
 
 
 USDT_TRC20 = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'
@@ -91,7 +114,7 @@ def _result(status, candidates, reason=None):
 
 def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
                        after_ts, network='trc20', counterparty_addr=None,
-                       claimed_hashes=(), collect_outgoing=False):
+                       claimed_hashes=(), collect_outgoing=False, cache_ttl=0):
     """Scan newest-first pages using only the fixed T9 read channel.
 
     `after_ts` is an inclusive Unix timestamp in milliseconds. Incomplete
@@ -127,7 +150,7 @@ def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
         params = {'relatedAddress': wallet_addr, 'contract_address': USDT_TRC20,
                   'limit': PAGE_SIZE, 'start': start}
         try:
-            status, payload, error = stand_egress.read_get('tron_trc20_transfers', params)
+            status, payload, error = _read_page(params, cache_ttl)
         except Exception:
             return _result('incomplete' if start else 'unavailable', candidates, 'fetch_error')
         if error or status != 200:
@@ -157,12 +180,14 @@ def discover_transfers(*, direction, wallet_addr, expected_amount, tolerance,
             transfer = parse_transfer(row)
             if transfer is None:
                 continue
-            old = seen.get(transfer['hash'])
+            # Один хеш содержит платёж и комиссию энергии разным получателям.
+            key = (transfer['hash'], transfer['from'], transfer['to']) if collect_outgoing else transfer['hash']
+            old = seen.get(key)
             if old is not None:
                 if old != transfer:
                     return _result('incomplete', candidates, 'conflicting_hash')
                 continue
-            seen[transfer['hash']] = transfer
+            seen[key] = transfer
             # Для проверки отправки собираем также части и переводы не тому получателю.
             # Они только кандидаты; решение о зачёте остаётся у вызывающего кода.
             if collect_outgoing:

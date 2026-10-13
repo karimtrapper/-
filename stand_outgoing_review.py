@@ -20,6 +20,7 @@ def fingerprint(deal):
     # Сохраняем отпечаток старых принятых отправок; исключение по времени требует нового решения.
     return json.dumps(sorted((s.get('hash') or s.get('ref'), str(s.get('verifiedAmount')))
                              + (('time_unverified',) if s.get('timeUnverified') else ())
+                             + (('before_order', s.get('timestampMs')) if s.get('beforeOrder') else ())
                             for s in sends if s.get('status') == 'confirmed'), ensure_ascii=False)
 
 
@@ -39,7 +40,7 @@ def complete(deal):
     if required <= 0 or actual + TOLERANCE < required:
         return False
     accepted = review.get('accepted') == fingerprint(deal)
-    if not accepted and any(s.get('timeUnverified') for s in
+    if not accepted and any(s.get('timeUnverified') or s.get('beforeOrder') for s in
                             (deal.get('transfer') or {}).get('sends') or []
                             if s.get('status') == 'confirmed'):
         return False

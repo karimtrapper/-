@@ -142,8 +142,10 @@ def test_wrong_destination_and_old_transfer_not_counted(api,network):
     r=action(api)
     d=r.json['data']['deals'][0]
     assert d['step']=='s23' and not d['transfer']['sends']
-    assert d['outgoingReview']['candidates'][0]['reason']=='другой адрес'
-    assert len(d['outgoingReview']['candidates'])==1
+    rows=d['outgoingReview']['candidates']
+    assert len(rows)==2
+    assert rows[0]['beforeOrder'] and rows[0]['selectable']
+    assert rows[1]['reason']=='другой адрес' and not rows[1]['selectable']
 
 
 def test_stale_network_result_cannot_attach(api,network,monkeypatch):
@@ -222,7 +224,7 @@ def test_claimed_hash_is_visible_but_not_counted(api,network):
     network.append(tx(1,10130))
     api[1][0]='teodor'
     d=action(api).json['data']['deals'][0]
-    assert d['outgoingReview']['candidates'][0]['reason']=='хеш уже занят'
+    assert d['outgoingReview']['candidates'][0]['reason']=='хеш уже занят: СД-99'
     assert not d['transfer']['sends']
 
 
