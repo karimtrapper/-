@@ -4959,6 +4959,24 @@ def list_admins():
         db.close()
 
 
+@app.route('/api/stand/employees', methods=['GET'])
+def stand_employee_directory():
+    """Имена сотрудников для задачника доступны всем ролям стенда."""
+    if not STAND_MODE:
+        return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if current_role() not in STAND_ROLES:
+        return jsonify({'success': False, 'error': 'forbidden'}), 403
+    db = get_session()
+    try:
+        employees = db.query(AdminUser).order_by(AdminUser.id).all()
+        return jsonify({'success': True, 'employees': [
+            {'id': user.id, 'display_name': user.display_name or user.username,
+             'role': user.role or 'admin', 'login_disabled': bool(user.login_disabled)}
+            for user in employees]})
+    finally:
+        db.close()
+
+
 @app.route('/api/admins', methods=['POST'])
 def create_admin():
     """Добавление нового админа в whitelist (пароль случайный — вход только через Telegram)"""

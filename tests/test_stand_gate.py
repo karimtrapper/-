@@ -242,3 +242,33 @@ with m.app.test_client() as c:
         assert c.get(path).status_code != 401, path
     assert 'Referrer-Policy' not in c.get('/api/health').headers
 ''', tmp_path, stand=False)
+
+
+def test_employee_names_available_to_teodor_and_findir(tmp_path):
+    _run('''
+import app as m
+
+db=m.get_session()
+people={}
+for username, role, name in [('owner_name_operator','operator','Настя'),
+                             ('owner_name_teodor','teodor','Теодор'),
+                             ('owner_name_findir','findir','Финдир')]:
+    user=m.AdminUser(username=username, role=role, display_name=name,
+                     password_hash='unused', telegram='@private_user')
+    db.add(user); db.flush(); people[role]=user.id
+db.commit(); db.close()
+
+with m.app.test_client() as client:
+    assert client.get('/api/stand/employees').status_code == 401
+    for role in ('teodor','findir'):
+        with client.session_transaction() as session:
+            session['user_id']=people[role]
+        assert client.get('/api/admins').status_code == 403
+        response=client.get('/api/stand/employees')
+        assert response.status_code == 200, (role, response.json)
+        staff={row['id']: row for row in response.json['employees']}
+        assert staff[people['operator']]['display_name'] == 'Настя'
+        assert set(staff[people['operator']]) == {
+            'id','display_name','role','login_disabled'}
+        assert '@private_user' not in response.get_data(as_text=True)
+''', tmp_path)

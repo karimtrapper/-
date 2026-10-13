@@ -10543,8 +10543,9 @@ async function standBoot(){
     if(standMe!=='admin')S.role=standMe;
     document.querySelector('.proto .lab').textContent='Тестовый стенд · '+(me.user.display_name||'');
     try{
-      const admins=await (await fetch('/api/admins',{credentials:'same-origin'})).json();
-      if(admins.success) STAND_EMPLOYEES=admins.admins||[];
+      const staff=await (await fetch(standMe==='admin'?'/api/admins':'/api/stand/employees',
+        {credentials:'same-origin'})).json();
+      if(staff.success) STAND_EMPLOYEES=staff.admins||staff.employees||[];
     }catch(e){}
   }catch(e){}
   await fetchChannels();

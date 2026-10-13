@@ -5,7 +5,7 @@ const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const names = ['brokerSend', 'freeholdFee', 'freeholdSend', 'freeholdEstimate', 'freeholdSummary6',
-  'ownerDate', 'ownerEstimate', 'ownerSummary'];
+  'ownerDate', 'ownerEstimate', 'employeeName', 'ownerSummary'];
 const source = 'const BROKER_FEE={ctrl:0.1,fix:40,ours:0.2};\n' + names.map(name => {
   const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
   assert.ok(found, name);
@@ -17,13 +17,13 @@ const wallets = [{id: 10, name: 'Кошелёк Теодора', owner: 'Тео�
   {id: 20, name: 'Кошелёк брокера', owner: 'компания'}];
 const ctx = {
   S: {incomes},
+  STAND_EMPLOYEES: [{id: 9, display_name: 'Операционист Мария'}],
   htmlText: value => String(value == null ? '' : value).replace(/[&<>"']/g,
     ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch])),
   moneyKop: (n, sign) => `${Number(n).toLocaleString('ru-RU', {minimumFractionDigits: 2})} ${sign}`,
   money: (n, sign) => `${n} ${sign}`, usd: n => `$${Number(n).toFixed(2)}`,
   usdMark: (d, n) => `${d.invoiceUsdEstimate ? '≈ ' : ''}$${Number(n).toFixed(2)}`,
   plural: (n, one, few, many) => n === 1 ? one : n < 5 ? few : many,
-  employeeName: id => id === 9 ? 'Операционист Мария' : null,
   expectOf: d => ({amount: d.expectedRub || 192666.3}),
   filesOf: (d, kind) => d.files?.[kind] || [],
   explorer: (hash, net) => `https://scan.example/${net}/${hash}`,
@@ -197,4 +197,43 @@ card = ctx.ownerSummary(noDoc);
 assert.match(card, /оценка по котировке · котировка Tradex 84,95/);
 assert.match(html, /view==='task'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)body=ownerSummary\(d\)\+body/);
 assert.match(html, /view==='deal'&&\['teodor','findir','admin'\]\.includes\(S\.role\)\?ownerSummary\(d\)/);
-console.log('owner summary: prepay Flow Sole, Sber API, broker, no receipt, roles and escaping OK');
+const bootSource = html.match(/^async function standBoot\([^]*?^}/m);
+assert.ok(bootSource, 'загрузка задачника найдена');
+vm.runInContext(bootSource[0], ctx);
+const owner1487 = {...deal1487, manualBankReceipt: {...deal1487.manualBankReceipt,
+  confirmedBy: 12, requestedBy: 10, confirmedAt: '2026-10-13T08:19:00Z'}};
+async function checkOwnerRole(role) {
+  const calls = [];
+  let rendered = '';
+  ctx.STAND_EMPLOYEES = [];
+  ctx.S.role = 'admin';
+  ctx.fetch = async url => {
+    calls.push(url);
+    if (url === '/api/auth/me') return {json: async () => ({success: true,
+      user: {id: role === 'teodor' ? 15 : 16, role, display_name: role}})};
+    if (url === '/api/stand/employees') return {json: async () => ({success: true,
+      employees: [{id: 12, display_name: 'Настя', role: 'operator'},
+        {id: 10, display_name: 'Другой сотрудник', role: 'operator'}]})};
+    throw new Error(`Неожиданный запрос ${url}`);
+  };
+  ctx.document = {querySelector: () => ({textContent: ''})};
+  ctx.fetchChannels = async () => {};
+  ctx.fetchCrmClients = async () => {};
+  ctx.standPull = async () => {};
+  ctx.checkDocParseCapability = async () => {};
+  ctx.fetchSberMirrorStatus = async () => {};
+  ctx.fetchMarket = async () => false;
+  ctx.loadCrmWallets = () => {};
+  ctx.refs = () => [{prod: true}];
+  ctx.setInterval = () => {};
+  ctx.render = () => { rendered = ctx.ownerSummary(owner1487); };
+  ctx.standOpenFromLink = () => {};
+  await ctx.standBoot();
+  assert.deepEqual(calls, ['/api/auth/me', '/api/stand/employees']);
+  assert.match(rendered, /сверка: Настя · 13\.10, 11:19/);
+  assert.doesNotMatch(rendered, /сверка: операционист/);
+  assert.equal(ctx.S.role, role);
+}
+Promise.resolve().then(() => checkOwnerRole('teodor')).then(() => checkOwnerRole('findir'))
+  .then(() => console.log('owner summary: prepay Flow Sole, Sber API, broker, owner roles and escaping OK'))
+  .catch(error => { console.error(error); process.exitCode = 1; });
