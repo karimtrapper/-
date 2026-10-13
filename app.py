@@ -5161,7 +5161,10 @@ def current_role():
     uid = flask_session.get('user_id')
     if not uid:
         return None
-    db = get_session()
+    # Вызывается и внутри транзакций записи. get_session() возвращает ту же
+    # scoped-сессию: её close() откатывает запись и отсоединяет ORM-объекты.
+    # Для чтения роли владеем отдельной сессией и закрываем только её.
+    db = SessionLocal()
     try:
         row = db.query(AdminUser.role).filter(AdminUser.id == uid).first()
     finally:
@@ -9930,7 +9933,7 @@ def _stand_payin_target(state, deal):
     # get_session() — общая scoped-сессия текущего запроса; её закрывает только
     # вызвавший роут (finally), а не эта функция (иначе она обрывает
     # транзакцию с ещё не закоммиченными изменениями в вызывающем коде —
-    # см. предупреждение у current_role()).
+    # вложенные помощники не должны закрывать сессию вызывающего кода).
     session = get_session()
     wallet = _stand_payin_wallet_row(session, wallet_id)
     if wallet:
@@ -9979,8 +9982,7 @@ def stand_payin_check():
     if not tx_hash or tx_hash.startswith('demo:'):
         return jsonify({'success': False, 'error': 'Хеш или ссылка не соответствует сети сделки'}), 400
     checked = verify_transfer(tx_hash, network, None, receiver, None)
-    # Роль берём до сессии записи: current_role() закрывает общую scoped-сессию,
-    # и изменения, сделанные до её вызова, молча теряются (приёмка 25.09)
+    # Роль фиксируем до записи; current_role() читает её в отдельной сессии.
 
     role = current_role() or 'система'
     if checked['status'] != 'confirmed':
@@ -10718,7 +10720,7 @@ def stand_docs_issue():
     submitted = data.get('docFields')
     if submitted is not None and not isinstance(submitted, dict):
         return jsonify({'success': False, 'error': 'docFields: ожидается объект'}), 400
-    # Роль — до сессий записи: current_role() закрывает общую scoped-сессию
+    # Роль фиксируем до сессий записи.
     role = current_role() or 'система'
     db = get_session()
     try:
