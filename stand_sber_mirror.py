@@ -88,6 +88,7 @@ def _bridge(appmod, db):
     incomes = data.setdefault('incomes', [])
     present = {i.get('id'): pos for pos, i in enumerate(incomes) if isinstance(i, dict)}
     added = 0
+    corrected = 0
     for row in rows:
         income_id = 'sber:' + row.uuid
         if income_id not in present:
@@ -99,7 +100,17 @@ def _bridge(appmod, db):
             # всегда побеждает такую подделку при следующем мосте.
             incomes[present[income_id]] = _board_income(row)
             added += 1
-    if added:
+        else:
+            existing = incomes[present[income_id]]
+            fresh = _board_income(row)
+            if (fresh['kind'] == 'эквайринг'
+                    and existing.get('accSource') == 'sber_notifier_single_account'
+                    and existing.get('acc') != fresh['acc']):
+                # Старые записи уже в доске: меняем только серверную подпись счёта.
+                existing['acc'] = fresh['acc']
+                existing['accSource'] = fresh['accSource']
+                corrected += 1
+    if added or corrected:
         board.data = json.dumps(data, ensure_ascii=False)
         board.version = (board.version or 0) + 1
         board.updated_by = 'зеркало Сбера'

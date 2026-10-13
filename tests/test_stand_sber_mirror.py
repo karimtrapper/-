@@ -27,6 +27,30 @@ def test_acquiring_mirror_uses_its_own_sber_label():
     assert income['grossRub'] == 100000
 
 
+def test_existing_acquiring_label_is_corrected_without_changing_human_links(stand):
+    db = appmod.get_session()
+    try:
+        item = appmod.SberIncome(uuid='mirror-test-old-acquiring',
+                                 operation_date=datetime.utcnow().date().isoformat(),
+                                 amount_rub=99300, payer='Сбер',
+                                 purpose='Эквайринг. Мерчант №781003872118. Комиссия 700.00.')
+        db.add(item)
+        board = appmod._stand_row(db)
+        board.data = json.dumps({'incomes': [{'id': 'sber:' + item.uuid, 'source': 'sber',
+                                               'uuid': item.uuid, 'rub': 99300,
+                                               'acc': '…0286 · Сбер',
+                                               'accSource': 'sber_notifier_single_account',
+                                               'dealId': 1485, 'cnvId': 9}]})
+        db.commit()
+        assert mirror._bridge(appmod, db) == 0
+        db.commit()
+        saved = json.loads(appmod._stand_row(db).data)['incomes'][0]
+        assert saved['acc'] == '…2118 · Сбер эквайринг'
+        assert (saved['dealId'], saved['cnvId']) == (1485, 9)
+    finally:
+        db.close()
+
+
 @pytest.fixture
 def stand(monkeypatch):
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
