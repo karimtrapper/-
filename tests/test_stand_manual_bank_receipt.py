@@ -623,7 +623,6 @@ def test_manual_receipt_amount_discrepancy_goes_to_manager_review(monkeypatch):
 
 
 @pytest.mark.parametrize('mode,number', [
-    ('tbank', '…5510'),
     ('flowsole', '40807810819000000261'),
 ])
 def test_operator_actual_account_presets_are_server_selected(monkeypatch, mode, number):
@@ -646,7 +645,7 @@ def test_operator_actual_account_presets_are_server_selected(monkeypatch, mode, 
     assert receipt['bank'] != 'Подменённый банк'
 
 
-@pytest.mark.parametrize('mode', ['sber', 'acquiring'])
+@pytest.mark.parametrize('mode', ['sber', 'acquiring', 'tbank'])
 def test_sber_api_account_cannot_be_confirmed_manually(monkeypatch, mode):
     initial = board()
     client = seed(monkeypatch, initial)

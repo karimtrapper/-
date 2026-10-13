@@ -20,7 +20,7 @@ const deal={id:1485,step:'s14',rubReceivingAccount:null,
   manualBankReceipt:{status:'pending',handoff:true}};
 const form=ctx.manualBankOperatorForm(deal);
 assert.match(form,/Flow Sole/);
-assert.match(form,/Т-Банк/);
+assert.doesNotMatch(form,/Т-Банк|tbank|5510/);
 assert.match(form,/Другой счёт/);
 assert.doesNotMatch(form,/<option value="sber"|<option value="acquiring"/);
 assert.match(ctx.manualBankReceiptBlock(deal),/mbr_actual_mode_1485/);

@@ -7966,7 +7966,6 @@ function manualBankActualAccount(mode){
   if(mode==='flowsole')return {bank:FLOWSOLE.bank,account:FLOWSOLE.acc,correspondent:FLOWSOLE.ks,bik:FLOWSOLE.bik};
   if(mode==='sber')return {bank:MF.bank,account:MF.acc,correspondent:MF.ks,bik:MF.bik};
   if(mode==='acquiring')return {bank:'ПАО Сбербанк',account:'…2118'};
-  if(mode==='tbank')return {bank:'Т-Банк',account:'…5510'};
   return null;
 }
 function manualBankActualFields(id,mode){
@@ -7995,7 +7994,7 @@ function manualBankOperatorForm(d){
   const id=d.id, mode=['flowsole','custom'].includes(d.rubReceivingAccount?.mode)?d.rubReceivingAccount.mode:'flowsole';
   return `<div class="fg"><label class="fl">Фактический счёт по выписке</label>
     <select class="fc" id="mbr_actual_mode_${id}" onchange="manualBankActualChange(${id},this.value)">
-      <option value="tbank">…5510 · Т-Банк</option><option value="flowsole" ${mode==='flowsole'?'selected':''}>…0261 · СГБ (Flow Sole)</option>
+      <option value="flowsole" ${mode==='flowsole'?'selected':''}>…0261 · СГБ (Flow Sole)</option>
       <option value="custom" ${mode==='custom'?'selected':''}>Другой счёт</option></select></div>
     <div id="mbr_actual_fields_${id}">${manualBankActualFields(id,mode)}</div>
     <div id="mbr_actual_warning_${id}">${manualBankActualWarning(d,mode)}</div>

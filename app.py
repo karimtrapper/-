@@ -10577,7 +10577,6 @@ def _stand_actual_rub_account(data):
     if not isinstance(mode, str):
         return None
     presets = {
-        'tbank': ('Т-Банк', '…5510', None, None),
         'flowsole': ('Московский филиал "БАНК СГБ" г. Москва',
                      '40807810819000000261', '30101810245250000094', '044525094'),
     }

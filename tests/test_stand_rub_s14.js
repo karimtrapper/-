@@ -48,8 +48,12 @@ d.manualBankReceipt = {status: 'pending', handoff: true,
   documentPayToAtRequest: d.issuedDocPayTo};
 ctx.S.role = 'operator';
 const operator = run('manualBankReceiptBlock(S.deals[0])');
-for(const label of ['…5510 · Т-Банк', '…0261 · СГБ (Flow Sole)', 'Другой счёт'])
+for(const label of ['…0261 · СГБ (Flow Sole)', 'Другой счёт'])
   assert.ok(operator.includes(label));
+assert.doesNotMatch(operator, /Т-Банк|tbank|5510/);
+const legacy = {...d, manualBankReceipt: {status: 'confirmed', bank: 'Т-Банк',
+  account: '…5510', actualAmount: 1000, confirmedBy: 1}};
+assert.match(run('manualBankReceiptBlock('+JSON.stringify(legacy)+')'), /Т-Банк · счёт …5510/);
 assert.doesNotMatch(operator, /<option value="sber"|<option value="acquiring"/);
 assert.match(run("manualBankActualWarning(S.deals[0], 'flowsole')"), /Выпущенные документы содержат другие реквизиты/);
 assert.equal(run("manualBankActualWarning(S.deals[0], 'sber')"), '');
