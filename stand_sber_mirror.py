@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import text
 
 import stand_egress
+from sber_acquiring import parse_sber_acquiring
 
 WINDOW_LIMIT = 300
 LOCK_KEY = 741098231
@@ -62,7 +63,6 @@ def _board_income(row):
     day = operation[:10]
     if len(day) == 10 and day[4] == '-' and day[7] == '-':
         day = day[8:10] + '.' + day[5:7]
-    from app import parse_sber_acquiring
     acquiring = parse_sber_acquiring(row.purpose)
     kind = 'эквайринг' if acquiring['kind'] == 'acquiring' else 'банк'
     return {'id': 'sber:' + row.uuid, 'uuid': row.uuid, 'source': 'sber',

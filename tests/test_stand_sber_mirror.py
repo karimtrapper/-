@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import builtins
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -25,6 +26,49 @@ def test_acquiring_mirror_uses_its_own_sber_label():
     assert income['acc'] == '…2118 · Сбер эквайринг'
     assert income['rub'] == 99300
     assert income['grossRub'] == 100000
+
+
+def test_board_income_does_not_import_app_inside_request(monkeypatch):
+    row = SimpleNamespace(uuid='acquiring-no-app-import', operation_date='2026-10-13',
+                          payer='Сбер', amount_rub=99300,
+                          purpose='Эквайринг. Мерчант №781003872118. Комиссия 700.00.',
+                          doc_number='1')
+    original_import = builtins.__import__
+
+    def reject_app_import(name, *args, **kwargs):
+        if name == 'app':
+            raise AssertionError('зеркало не должно повторно импортировать app.py')
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, '__import__', reject_app_import)
+    assert mirror._board_income(row)['grossRub'] == 100000
+
+
+def test_restore_crm_candidates_does_not_import_app_inside_put(stand, monkeypatch):
+    db = appmod.get_session()
+    try:
+        row = appmod.SberIncome(uuid='mirror-test-restore-no-app-import',
+                                operation_date='2026-10-13', amount_rub=99300,
+                                payer='Сбер', purpose='Эквайринг. Комиссия 700.00.')
+        db.add(row)
+        db.flush()
+        state = {'incomes': [], 'convs': [{'id': 17, 'sources': [
+            {'incomeId': 'sber:' + row.uuid, 'rub': 99300}]}]}
+        original_import = builtins.__import__
+
+        def reject_app_import(name, *args, **kwargs):
+            if name == 'app':
+                raise AssertionError('PUT доски не должен импортировать app.py повторно')
+            return original_import(name, *args, **kwargs)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(builtins, '__import__', reject_app_import)
+            appmod._stand_restore_crm_candidates(db, state)
+        assert state['incomes'][0]['acc'] == '…2118 · Сбер эквайринг'
+        assert state['incomes'][0]['cnvId'] == 17
+    finally:
+        db.rollback()
+        db.close()
 
 
 def test_existing_acquiring_label_is_corrected_without_changing_human_links(stand):
