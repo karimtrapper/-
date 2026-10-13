@@ -75,7 +75,7 @@ def lk(monkeypatch):
     for name, role, tg, disabled in [
         ('karim', 'admin', 201, False), ('manager', 'manager', 202, False),
         ('manager2', 'manager', 203, False), ('operator', 'operator', 204, False),
-        ('offduty', 'manager', 205, True),
+        ('offduty', 'manager', 205, True), ('teodor', 'teodor', 206, False),
     ]:
         uname = 'karim' if name == 'karim' else 'lk_test_' + name
         user = appmod.AdminUser(username=uname, display_name=name, role=role,
@@ -437,6 +437,42 @@ def test_assignee_release_only_by_admin_or_self(lk):
         assert res.status_code == 200
 
 
+def test_colleague_cannot_act_until_explicit_takeover(lk):
+    ids, board = lk
+    board([], deals=[{'id': 7, 'code': 'T7', 'client': 'Иван', 'step': 's4',
+                      'assigneeAdminId': ids['manager'], 'log': []}])
+    with appmod.app.test_client() as client:
+        _login(client, ids['manager2'])
+        state = _get_state(client)
+        changed = json.loads(json.dumps(state['data']))
+        changed['deals'][0]['log'].append({'text': 'Начал работу'})
+        denied = client.put('/api/stand/state', json={
+            'version': state['version'], 'data': changed})
+        assert denied.status_code == 409
+        assert denied.get_json()['error'] == 'Шаг у manager'
+
+        taken = client.post('/api/stand/assignee/take', json={
+            'version': state['version'], 'dealId': 7})
+        assert taken.status_code == 200, taken.get_json()
+        deal = taken.get_json()['data']['deals'][0]
+        assert deal['assigneeAdminId'] == ids['manager2']
+        assert 'manager2 забрал шаг у manager' in deal['log'][-1]['text']
+
+        changed = taken.get_json()['data']
+        changed['deals'][0]['log'].append({'text': 'Начал работу'})
+        allowed = client.put('/api/stand/state', json={
+            'version': taken.get_json()['version'], 'data': changed})
+        assert allowed.status_code == 200, allowed.get_json()
+
+    with appmod.app.test_client() as client:
+        _login(client, ids['karim'])
+        state = _get_state(client)
+        state['data']['deals'][0]['log'].append({'text': 'Администратор проверил'})
+        allowed = client.put('/api/stand/state', json={
+            'version': state['version'], 'data': state['data']})
+        assert allowed.status_code == 200, allowed.get_json()
+
+
 # ---------- админ: Telegram ID вручную ----------
 
 def test_admin_can_set_telegram_id_manager_cannot_reach_route(lk):
@@ -672,3 +708,57 @@ def test_disabled_assignee_preserved_on_put_not_cleared_to_role_fallback(lk, mon
         assert res.status_code == 200, body
         assert body['data']['deals'][0]['assigneeAdminId'] == ids['offduty']  # не обнулилось
     assert sent == [201]  # только копия админу; ни отключённый, ни роль-фолбэк
+
+
+@pytest.mark.parametrize('start,end,owner', [
+    ('s22', 's22', 'manager'), ('s24', 's26', 'teodor'),
+])
+@pytest.mark.parametrize('client_clears', [False, True])
+def test_assignee_cleared_when_step_owner_changes(lk, start, end, owner, client_clears):
+    ids, board = lk
+    deal = {'id': 7, 'code': 'FH-1485', 'client': 'Иван', 'kind': 'Фрихолд',
+            'step': start, 'assigneeAdminId': ids[owner]}
+    if start == 's22':
+        deal['payTo'] = {'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
+                         'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
+                         'purpose': 'Invoice', 'amount': 10000}
+        if client_clears:
+            deal['payToConfirm'] = {'payTo': deal['payTo'], 'at': 'confirmed'}
+    else:
+        address = 'TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso'
+        deal.update(type='Оплата недвижимости', postConv='ipps_swift',
+                    invoiceUsd=10000, ippsTariff='bank',
+                    payTo={'dev': 'Synthetic Ltd', 'bank': 'Synthetic Bank',
+                           'acc': 'SYNTHETIC-ACCOUNT', 'swift': 'SYNTHXX1',
+                           'purpose': 'Invoice', 'amount': 10000},
+                    transfer={'amount': 10130, 'net': 'TRC-20', 'addr': address,
+                              'sends': [{'status': 'confirmed', 'amount': 10130,
+                                         'hash': 'qa-confirmed'}]},
+                    ippsPayoutOrder={'confirmedAt': '2026-10-13T10:00:00Z',
+                                     'amount': 10130, 'network': 'TRC-20',
+                                     'address': address})
+        deal['payToConfirm'] = {'payTo': dict(deal['payTo']), 'at': 'confirmed'}
+    board([], deals=[deal])
+    with appmod.app.test_client() as client:
+        _login(client, ids['operator'] if start == 's22' and client_clears else ids[owner])
+        state = client.get('/api/stand/state').get_json()
+        moved = state['data']
+        moved['deals'][0]['step'] = end
+        if start == 's22':
+            if client_clears:
+                moved['deals'][0]['log'] = [{'text': 'Операционист принял задачу'}]
+            else:
+                moved['deals'][0]['payToConfirm'] = {'payTo': deal['payTo'], 'at': 'confirmed'}
+        if client_clears:
+            moved['deals'][0]['assigneeAdminId'] = None
+        response = client.put('/api/stand/state', json={'version': state['version'], 'data': moved})
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()['data']['deals'][0]['assigneeAdminId'] is None
+        if start == 's22':
+            _login(client, ids['operator'])
+            saved = response.get_json()
+            saved['data']['deals'][0]['assigneeAdminId'] = ids['operator']
+            taken = client.put('/api/stand/state', json={
+                'version': saved['version'], 'data': saved['data']})
+            assert taken.status_code == 200, taken.get_json()
+            assert taken.get_json()['data']['deals'][0]['assigneeAdminId'] == ids['operator']

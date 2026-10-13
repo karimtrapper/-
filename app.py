@@ -5869,6 +5869,56 @@ def stand_notify_test(admin_id):
         return jsonify({'success': True, 'status': 'failed'})
 
 
+@app.route('/api/stand/assignee/take', methods=['POST'])
+def stand_assignee_take():
+    """Сотрудник своей роли явно забирает назначенный коллеге шаг."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    payload = request.get_json(silent=True) or {}
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if actor_id is None or actor == 'admin':
+        return jsonify(success=False, error='Шаг может забрать сотрудник своей роли'), 403
+    db = get_session()
+    try:
+        if 'postgresql' not in DATABASE_URL:
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or []
+                     if d.get('id') == payload.get('dealId')), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if actor != _stand_current_step_role(state, deal):
+            return jsonify(success=False, error='Шаг принадлежит другой роли'), 403
+        taker = db.query(AdminUser).filter_by(id=actor_id).first()
+        if not taker or taker.login_disabled or taker.role != actor:
+            return jsonify(success=False, error='Нет доступа к этому шагу'), 403
+        old_id = deal.get('assigneeAdminId')
+        if not old_id or old_id == actor_id:
+            return jsonify(success=False, error='Шаг уже свободен или назначен вам'), 409
+        owner = db.query(AdminUser).filter_by(id=old_id).first()
+        if not owner or owner.login_disabled or owner.role != actor:
+            return jsonify(success=False, error='Прежнее назначение устарело — обновите доску'), 409
+        old_name = owner.display_name or owner.username
+        new_name = taker.display_name or taker.username
+        deal['assigneeAdminId'] = actor_id
+        deal.setdefault('log', []).append({
+            'at': int(time.time() * 1000), 'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'role': actor, 'text': f'{new_name} забрал шаг у {old_name}'})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = new_name
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        _stand_deliver_notes()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/state', methods=['PUT'])
 def stand_state_put():
     """Запись состояния с проверкой версии.
@@ -5940,13 +5990,23 @@ def stand_state_put():
             return jsonify({'success': False, 'error': 'missing_deals_forbidden',
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         actor_id = flask_session.get('user_id')
+        before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
+        for deal in payload['data'].get('deals', []):
+            before = before_by_id.get(deal.get('id'))
+            if not before or before.get('assigneeAdminId') is None:
+                continue
+            old_role = _stand_current_step_role(previous, before)
+            new_role = _stand_current_step_role(payload['data'], deal)
+            if (old_role != new_role and
+                    deal.get('assigneeAdminId') in (None, before.get('assigneeAdminId'))):
+                # При передаче задачи назначение старой роли заканчивается само.
+                deal['assigneeAdminId'] = None
         problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem == '__stale_assignee__':
             # Не запрос актёра — системная гигиена данных: шаг перешёл на роль,
             # которой прежний исполнитель уже не подходит, а поле никто не
             # трогал. Обнуляем прямо в payload['data'] (без права-на-снятие —
             # это не отзыв назначения актёром) и перепроверяем один раз.
-            before_by_id = {d.get('id'): d for d in previous.get('deals', [])}
             for deal in payload['data'].get('deals', []):
                 before = before_by_id.get(deal.get('id'))
                 if _stand_check_assignee(db, before, deal, actor, actor_id,
@@ -5957,6 +6017,9 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         clean = preserve_server_fields(previous, payload['data'])
+        for income in clean.get('incomes') or []:
+            # Галочка выбора прихода живёт только в браузере.
+            income.pop('sel', None)
         problem = _stand_check_funding_state(previous, clean)
         if problem:
             return jsonify({'success': False, 'error': problem,
@@ -7603,11 +7666,11 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     тихая перезапись. Проверка актуальности исполнителя выполняется и когда
     поле НЕ менялось явно: шаг мог перейти на другую роль в этом же PUT.
 
-    Функция самодостаточна (не зовёт другие функции модуля, кроме глобальной
-    карты _STAND_STEP_ROLE) — это позволяет её независимо перепроверить
-    (AST-экстракция + синтетическая модель) без импорта всего приложения.
+    При переходе роли прежнее назначение заканчивается автоматически.
     """
     def required_role():
+        if state is not None:
+            return _stand_current_step_role(state, deal)
         # Зеркало stepWho() из tasks.html: обычно роль решает статическая
         # карта STEPS[step].who, но s23 отправляет подписант привязанного
         # кошелька (не мультисиг) — Виталий/Теодор/…, а не всегда «findir».
@@ -7639,6 +7702,15 @@ def _stand_check_assignee(db, before, deal, actor, actor_id, state=None):
     new_assignee = deal.get('assigneeAdminId')
     if new_assignee != old_assignee:
         if new_assignee is None:
+            if (before and state is not None and
+                    _stand_current_step_role(state, before) != required_role()):
+                return None
+            if old_assignee is not None and state is not None:
+                former = db.query(AdminUser).filter_by(id=old_assignee).first()
+                if (former and not former.login_disabled and
+                        former.role not in (required_role(), 'admin') and
+                        actor == required_role()):
+                    return None
             if actor == 'admin' or (actor_id is not None and actor_id == old_assignee):
                 return None
             return 'Снять назначение может админ или сам исполнитель'
@@ -7968,6 +8040,17 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
     old = {d.get('id'): d for d in previous.get('deals', [])}
+    if db is not None and actor_id is not None and actor != 'admin':
+        for deal in new_state.get('deals') or []:
+            before = old.get(deal.get('id'))
+            if not before or before == deal or not before.get('assigneeAdminId'):
+                continue
+            if actor != _stand_current_step_role(previous, before):
+                continue
+            owner = db.query(AdminUser).filter_by(id=before['assigneeAdminId']).first()
+            if (owner and not owner.login_disabled and owner.role == actor
+                    and owner.id != actor_id):
+                return f'Шаг у {owner.display_name or owner.username}'
     broker_actions = set()
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id')) or {}
@@ -8047,14 +8130,27 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
                 or old_income_by_id[str(income.get('id'))].get('source') != 'manual_confirmed')
            for income in new_state.get('incomes') or []):
         return 'Ручной приход подтверждается только оператором'
-    if any(income.get('source') == 'manual_confirmed'
-           and new_income_by_id.get(key) != income
-           for key, income in old_income_by_id.items()):
-        return 'Подтверждённый ручной приход нельзя удалить или менять'
-    for income in new_state.get('incomes') or []:
-        old_income = old_income_by_id.get(str(income.get('id')))
-        if old_income and old_income.get('source') == 'manual_confirmed' and income != old_income:
-            return 'Подтверждённый ручной приход нельзя менять'
+    protected_income_keys = ('id', 'source', 'dealId', 'manualReceiptId',
+        'rub', 'grossRub', 'date', 'payer', 'kind', 'acc', 'purpose',
+        'statementDate', 'statementRef', 'confirmedBy', 'confirmedRole',
+        'confirmedAt', 'demo', 'excluded', 'status', 'files')
+    for key, income in old_income_by_id.items():
+        if income.get('source') != 'manual_confirmed':
+            continue
+        current = new_income_by_id.get(key)
+        if current is None or any(
+                (field in current) != (field in income) or current.get(field) != income.get(field)
+                for field in protected_income_keys):
+            return 'Подтверждённый ручной приход нельзя удалить или менять'
+        if current.get('cnvId') != income.get('cnvId'):
+            deal = new_deals.get(income.get('dealId')) or {}
+            conv_id = current.get('cnvId')
+            conv = new_convs.get(conv_id) if conv_id is not None else None
+            if (deal.get('cnvId') != conv_id or
+                    (conv_id is not None and (conv is None or not any(
+                        source.get('dealId') == income.get('dealId')
+                        for source in conv.get('sources') or [])))):
+                return 'Ручной приход можно привязать только к пачке своей сделки'
     for deal in new_state.get('deals') or []:
         before = old.get(deal.get('id'))
         if before:
@@ -8755,7 +8851,10 @@ def _stand_settle_verified(state, members):
                         'text': (f'Перевод {verb} и подтверждён в сети · {ref} · '
                                  f'{float(s.get("verifiedAmount") or 0):,.2f}'.replace(',', ' ').replace('.', ',') + ' USDT'
                                  + ('' if deal is main else f' · {deal.get("code") or deal.get("id")}'))})
+            previous_owner = _stand_current_step_role(state, main)
             main['step'] = ('s26' if main.get('kind') == 'Фрихолд' or main.get('postConv') == 'ipps' else 's25')
+            if _stand_current_step_role(state, main) != previous_owner:
+                main['assigneeAdminId'] = None
             if main.get('postConv') == 'client' and main.get('outgoingReview'):
                 main.update(step='done', closed=True, closeReason='Успешно завершена',
                             closedAt=datetime.now().strftime('%d.%m, %H:%M'), serverSettled=True)
@@ -9901,6 +10000,50 @@ def stand_manual_bank_receipt():
         db.close()
 
 
+def _stand_advance_manual_payin(state, deal, receipt):
+    """Серверный аналог afterPayin(): после сверки передаём следующий шаг роли."""
+    from decimal import Decimal
+    expected = deal.get('expect') or {}
+    amount = (_amount(expected.get('amount')) if expected.get('amount') is not None
+              else _amount(deal.get('amountRub')))
+    if amount is None and deal.get('kind') == 'Фрихолд':
+        invoice, rate = _amount(deal.get('invoiceUsd')), _amount((deal.get('rates') or {}).get('client'))
+        if invoice is not None and rate is not None:
+            amount = (invoice * rate).quantize(Decimal('0.01'))
+    tolerance = _amount(expected.get('tol')) if expected.get('tol') is not None else _amount(1000)
+    actual = _amount(receipt.get('actualAmount'))
+    issues = []
+    if amount is not None and actual is not None and tolerance is not None:
+        gap = amount - actual
+        if abs(gap) > tolerance:
+            issues.append(('Недоплата ' if gap > 0 else 'Переплата ') + f'{abs(gap):.2f} ₽')
+    purpose = str(expected.get('purpose') or (deal.get('docFields') or {}).get('purpose') or '').strip()
+    if purpose and purpose.lower() != str(receipt.get('bankPurpose') or '').strip().lower():
+        issues.append('Назначение отличается от ожидаемого')
+    deal['incomeReview'] = issues
+    deal['assigneeAdminId'] = None
+    if issues:
+        deal['step'] = 's14m'
+        _stand_note(state, f"stand:manual-pay-in-review:{deal['id']}:{receipt['id']}",
+                    'manager', deal, 'Разберите расхождение RUB прихода: ' + '; '.join(issues))
+        return 'Приход требует ручного разбора: ' + '; '.join(issues)
+    deal['step'] = 's18'
+    if deal.get('isTask'):
+        deal['isTask'] = False
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': 'system',
+            'text': 'Задача стала сделкой — деньги пошли, карточка попала в реестр'})
+    need_requisites = not (deal.get('payTo') or {}).get('acc')
+    deal['reqTask'] = 'open' if need_requisites else 'done'
+    if need_requisites:
+        _stand_note(state, f"stand:manual-pay-in-requisites:{deal['id']}:{receipt['id']}",
+                    'manager', deal, 'Реквизиты для оплаты — параллельно с конвертацией')
+    _stand_note(state, f"stand:manual-pay-in-conversion:{deal['id']}:{receipt['id']}",
+                'operator', deal, 'RUB приход подтверждён — конвертируйте и отправьте брокеру')
+    return 'Деньги у нас — отдать рубли брокеру у операциониста' + (
+        ', реквизиты для оплаты — у менеджера параллельно' if need_requisites else '')
+
+
 @app.route('/api/stand/manual-bank-receipt/<int:deal_id>/confirm', methods=['POST'])
 def stand_manual_bank_receipt_confirm(deal_id):
     """Операционист подтверждает приход по выписке и приложенному файлу."""
@@ -10034,11 +10177,19 @@ def stand_manual_bank_receipt_confirm(deal_id):
             + (f"; фактический счёт {receipt['bank']} · {receipt['account']}; "
                'расхождение с ожиданием/документами подтверждено'
                if receipt.get('deviationAcknowledged') else '')})
+        transition = _stand_advance_manual_payin(state, deal, receipt)
+        deal['log'].append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'role': 'system', 'text': transition})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
         row.updated_at = datetime.utcnow()
         db.commit()
+        try:
+            _stand_deliver_notes()
+        except Exception:
+            app.logger.exception('manual bank receipt step notification delivery failed')
         return jsonify({'success': True, 'version': row.version,
                         'data': _stand_strip_files(state), 'incomeId': income_id})
     except Exception:

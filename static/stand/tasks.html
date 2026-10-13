@@ -687,7 +687,11 @@ function standMerge(base,mine,theirs){
   return {data:out,conflicts};
 }
 
-function standSnapshot(){ const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; }); return o; }
+function standSnapshot(){
+  const o={}; STAND_SHARED.forEach(k=>{ if(S[k]!==undefined)o[k]=S[k]; });
+  if(Array.isArray(o.incomes))o.incomes=o.incomes.map(({sel,...income})=>income);
+  return o;
+}
 function standApply(data){
   if(!data||typeof data!=='object')return;
   /* Снимок применяем целиком, а не только присутствующие ключи. Иначе сброс
@@ -3142,6 +3146,17 @@ let BX_DEALS=[];
 
 /* ============ операции ============ */
 function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
+function logWhen(entry){
+  if(entry.ts)return entry.ts;
+  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||'');
+  return Number.isFinite(stamp)&&stamp>0
+    ?new Date(stamp).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
+    :'время неизвестно';
+}
+function logMeta(entry){
+  const author=entry.role?(ROLES[entry.role]?.n||'Сотрудник'):'Система';
+  return (entry.role?'от ':'')+author+' · '+logWhen(entry)+' · '+(entry.text||'');
+}
 /* сколько прошло между событиями — «сколько простояли на этом статусе» */
 function dur(ms){
   if(ms==null||ms<0)return '';
@@ -4268,7 +4283,7 @@ function viewTasks(){
         <span class="av" title="этап ${p.i} из ${p.n}">${p.i}</span>
         <div><div class="t1">${stepTitle(d)} — ${d.client}</div>
         <div class="t2">${d.code} · ${d.type}${d.kind?' · '+d.kind:''} · ${apMoney(a,'thb')} / ${apMoney(a,'pay')}${d.object?' · '+d.object:''}</div>
-        <div class="t2">${last?'от '+(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts+' · '+last.text:SOURCES[d.source]}</div></div>
+        <div class="t2">${last?logMeta(last):SOURCES[d.source]}</div></div>
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openTask(${d.id})">Открыть задачу</button></div>`;
     }).join('')+`</div>`;
   }
@@ -5025,6 +5040,10 @@ function setAssignee(dealId,adminId){
   d.assigneeAdminId=adminId;
   save();render();
 }
+async function takeAssignee(dealId){
+  const result=await standAction('/api/stand/assignee/take',{dealId,version:standVer});
+  if(result)toast('Шаг назначен вам');
+}
 function assigneeBlock(d,who){
   const id=d.assigneeAdminId||null;
   const label=id?(employeeName(id)||('#'+id)):'не назначен';
@@ -5038,6 +5057,7 @@ function assigneeBlock(d,who){
   } else if(S.role===who){
     if(!id) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, standMeId)">Взять себе</button>`;
     else if(id===standMeId) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
+    else actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="takeAssignee(${d.id})">Забрать себе</button>`;
   }
   return `<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">Исполнитель шага: <b>${label}</b>${actions}</div>`;
 }
@@ -5124,7 +5144,7 @@ function viewDeal(d){
   <div><div class="card side"><h4>Коротко о пути</h4>
   ${d.closed?'':`<p style="font-size:12px;color:var(--text-muted);margin:-4px 0 12px;line-height:1.5">Этап ${p.i} из ${p.n}. Номера шагов 4-27 — строки доски Section 8, они идут не подряд.</p>`}
   <ul class="tl">${d.log.slice().reverse().slice(0,6).map((l,i)=>
-    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${l.ts} · ${ROLES[l.role]?ROLES[l.role].t:''}</div></div></li>`).join('')}</ul>
+    `<li><span class="dot ${i===0?'now':'done'}"></span><div><div class="t">${l.text}</div><div class="s">${logWhen(l)} · ${ROLES[l.role]?ROLES[l.role].t:'Система'}</div></div></li>`).join('')}</ul>
   ${d.log.length>6?`<button class="btn btn-outline btn-sm" style="margin-top:10px" onclick="setView('path')">Весь путь — ${d.log.length} ${plural(d.log.length,'событие','события','событий')}</button>`:''}</div>
   ${view==='deal'?'':docSide(d)}
   <div style="margin-top:14px"><button class="btn btn-outline btn-sm" onclick="back()">К списку</button>
@@ -5383,7 +5403,7 @@ function pathCard(d){
     ${rows.map((r,i)=>`<tr${r.open?' style="background:var(--coral-light)"':''}>
       <td class="num">${i+1}</td><td>${r.l.text}</td>
       <td>${ROLES[r.l.role]?ROLES[r.l.role].t:'—'}</td>
-      <td style="white-space:nowrap">${r.l.ts}</td>
+      <td style="white-space:nowrap">${logWhen(r.l)}</td>
       <td class="num" style="white-space:nowrap">${r.ms!=null?dur(r.ms)+(r.open?' · идёт':''):'—'}</td></tr>`).join('')}
     </tbody></table>
     ${Object.keys(byRole).length>1?`<div class="card-title" style="font-size:14px;margin:20px 0 11px">Сколько времени сделка провела у каждой роли</div>
@@ -5956,7 +5976,7 @@ function ctxCard(d){
         ?(d.selfRate?'проставил менеджер сам':'брокер RUB→USDT: '+(d.rates.rubUsdt||'—'))
         :(d.selfRate?'проставил менеджер сам · ':'')+(isCrypto(d)?'USDT→THB: '+(d.rates.usdtThb||'—')+' · рублей в сделке нет':'контрагенты: '+(d.rates.rubUsdt||'—')+' / '+(d.rates.usdtThb||'—')))}
     ${fact('Документы',all.length?all.map(k=>doctOf(d,k)).join(', '):(d.type==='Оплата недвижимости'?'ещё не приложены':'по обмену не нужны'),all.length?all.length+' шт.':(d.type==='Оплата недвижимости'?'собирает менеджер на шаге 8':'договор и паспорт — только у недвижимости'))}
-    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'—')+' · '+last.ts,last.text):''}
+    ${last?fact('Последнее действие',(ROLES[last.role]?ROLES[last.role].n:'Система')+' · '+logWhen(last),last.text):''}
   </div>
   ${d.reRequest?`<div class="alert a-warn" style="margin:16px 0 0"><div>Курс запрашивали заново ${d.reRequest} раз${d.reRequest>1?'а':''} — клиент возвращался. Прошлые цифры в истории справа.</div></div>`:''}
   </details>`;
@@ -9500,12 +9520,16 @@ function incomesInit(){
   return out;
 }
 function incomes(){ if(!S.incomes)S.incomes=incomesInit(); return S.incomes; }
-function incSel(){ return incomes().filter(x=>x.sel&&!x.excluded&&!x.cnvId); }
-function incToggle(id){const x=incomes().find(i=>i.id===id);if(x){x.sel=!x.sel;save();render();}}
-function incAll(on){incomes().forEach(x=>{if(!x.excluded&&!x.cnvId)x.sel=on;});save();render();}
+const incomeSelected=new Set();
+function incSel(){ return incomes().filter(x=>incomeSelected.has(String(x.id))&&!x.excluded&&!x.cnvId); }
+function incToggle(id){const x=incomes().find(i=>i.id===id);if(x){
+  const key=String(id);if(incomeSelected.has(key))incomeSelected.delete(key);else incomeSelected.add(key);
+  render();}}
+function incAll(on){incomes().forEach(x=>{const key=String(x.id);
+  if(on&&!x.excluded&&!x.cnvId)incomeSelected.add(key);else incomeSelected.delete(key);});render();}
 function incExclude(){
   const n=incSel().length; if(!n){toast('Отметьте приходы');return;}
-  incSel().forEach(x=>{x.excluded=true;x.sel=false;});
+  incSel().forEach(x=>{x.excluded=true;incomeSelected.delete(String(x.id));});
   save();render();toast('Исключено: '+n);
 }
 function incCutoff(){
@@ -9534,7 +9558,7 @@ function convFormSave(){
       incomeId:x.id,usdt:r?Math.round(bs.sent*(x.rub/rubTotal)/r*100)/100:null})),
     txs:[]};
   S.convs.push(cn);
-  sel.forEach(x=>{x.cnvId=cn.id;x.sel=false;
+  sel.forEach(x=>{x.cnvId=cn.id;incomeSelected.delete(String(x.id));
     const d=x.dealId?deal(x.dealId):null; if(d){d.cnvId=cn.id;d.rates.broker=rate;log(d,'Рубли ушли в пачку '+cn.name+' · '+broker+' · курс '+rate);}});
   S.convForm=null;save();render();toast(cn.name+' создана — ждём USDT');
 }
@@ -9580,7 +9604,7 @@ function viewIncome(){
       <th>Дата</th><th>Плательщик</th><th>Сумма</th><th>Вид</th><th>Сделка</th><th>Конвертация</th>
     </tr></thead><tbody>
     ${list.map(x=>`<tr${x.excluded?' style="opacity:.5"':''}>
-      <td>${(x.excluded||x.cnvId||x.demo)?'':`<input type="checkbox" ${x.sel?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
+      <td>${(x.excluded||x.cnvId||x.demo)?'':`<input type="checkbox" ${incomeSelected.has(String(x.id))?'checked':''} onclick="incToggle(${sberText(JSON.stringify(x.id))})">`}</td>
       <td>${sberText(x.date)}${x.source==='sber'?`<div class="sub2">Сбер · ${sberText(x.arrivedAt)}</div>`:''}</td><td>${sberText(x.payer)}</td>
       <td class="num"><b>${money(x.rub,'₽')}</b></td>
       <td>${sberText(x.kind)}</td>

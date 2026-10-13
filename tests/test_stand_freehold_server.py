@@ -296,6 +296,7 @@ def test_s22_same_step_pending_send_is_rejected_atomically_but_manager_payto_sav
 def test_freehold_transfer_confirmation_advances_s24_to_s26():
     state = freehold_board()
     members = state['deals']
+    members[0]['assigneeAdminId'] = 99
 
     appmod._stand_settle_verified(state, members)
     assert members[0]['step'] == 's24', 'без подтверждения перевода шаг не двигается'
@@ -305,6 +306,7 @@ def test_freehold_transfer_confirmation_advances_s24_to_s26():
     appmod._stand_settle_verified(state, members)
 
     assert members[0]['step'] == 's26', 'подтверждённый IPPS-перевод ведёт к учёту MT103, без поздней отправки заявки'
+    assert members[0]['assigneeAdminId'] is None
     assert members[0]['serverTransferComplete'] is True
     assert members[0]['mfPayout'][0]['amount'] == 45410
     assert members[0]['mfPayout'][0]['hash'] == 'demo:1:1'
