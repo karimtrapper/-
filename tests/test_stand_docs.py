@@ -143,6 +143,40 @@ def test_freehold_invoice_currency_issues_real_pack(stand, currency, expected):
         assert 'Н/П' in texts[1]
 
 
+def test_freehold_document_version_keeps_owner_estimate_inputs(stand):
+    deal = _deal(1487, kind='Фрихолд', curBase='fhusd', invoiceUsd=2152.47,
+                 invoiceCurrency='usd', ippsTariff='bank', amountRub=192666.31,
+                 rates={'client': '89.5094', 'rubUsdt': '84.95'},
+                 quotes=[{'cpId': 'tradex', 'name': 'Tradex', 'rate': '84.95'}])
+    stand.put_board([deal])
+    fields = _fields(kind='Фрихолд', amountThb='2152.47', amountPay='192666.31',
+                     rate='89.5094')
+    first = stand.post('/api/stand/docs/issue', json={'dealId': 1487, 'docFields': fields})
+    assert first.status_code == 200, first.json
+    saved = first.json['data']['deals'][0]
+    snap = saved['ownerEconomyAtDoc']
+    assert snap['version'] == saved['docVersion'] == 1
+    assert snap['amountRub'] == 192666.31
+    assert snap['invoiceUsd'] == 2152.47
+    assert snap['brokerRate'] == 84.95
+    assert snap['brokerName'] == 'Tradex'
+    assert snap['ippsTariff'] == 'bank' and snap['at'] == saved['docPack']['at']
+
+    forged = json.loads(json.dumps(first.json['data']))
+    forged['deals'][0]['ownerEconomyAtDoc']['brokerRate'] = 1
+    assert 'только при выпуске' in appmod._stand_guard_transition(
+        first.json['data'], forged, actor='operator')
+
+    saved['rates']['rubUsdt'] = '90'
+    saved['quotes'] = [{'cpId': 'new', 'name': 'Новый брокер', 'rate': '90'}]
+    stand.put_board([saved])
+    second = stand.post('/api/stand/docs/issue', json={'dealId': 1487, 'docFields': fields})
+    assert second.status_code == 200, second.json
+    newer = second.json['data']['deals'][0]['ownerEconomyAtDoc']
+    assert newer['version'] == 2 and newer['brokerRate'] == 90
+    assert newer['brokerName'] == 'Новый брокер'
+
+
 def test_new_client_leasehold_rub_issues_agreement_addendum_invoice(stand):
     stand.put_board([_deal(1)])
     r = stand.post('/api/stand/docs/issue', json={'dealId': 1, 'docFields': _fields()})

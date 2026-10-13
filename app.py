@@ -8998,7 +8998,11 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if assignee_problem:
             return assignee_problem
         if not before:
+            if deal.get('ownerEconomyAtDoc'):
+                return 'Ориентир на момент договора создаётся только при выпуске пакета'
             continue
+        if before.get('ownerEconomyAtDoc') != deal.get('ownerEconomyAtDoc'):
+            return 'Ориентир на момент договора меняется только при выпуске новой версии'
         # X и тариф IPPS становятся денежной основой договора. После входа в
         # подготовку документов их нельзя менять обходом UI через stand_state PUT.
         # THB сумма инвойса хранится отдельно, но тоже является частью документа.
@@ -11224,6 +11228,32 @@ def stand_docs_issue():
         deal['docVersion'] = version
         deal['docFields'] = F
         deal['issuedDocPayTo'] = F.get('payTo')
+        # Снимок исходных чисел s6 фиксируем вместе с успешным выпуском версии.
+        # Прибыль показывает тот же расчёт freeholdEstimate на клиенте; после
+        # переиздания предыдущий ориентир больше не относится к договору.
+        if deal_type == 'freehold' and used.get('payin_method') == 'bank':
+            rates = deal.get('rates') or {}
+            quote_rate = _stand_num(rates.get('rubUsdt'))
+            def plain_number(value):
+                number = _stand_num(value)
+                return float(number) if number is not None else None
+            chosen = str((deal.get('ratePick') or {}).get('rub') or '')
+            matching = [q for q in deal.get('quotes') or []
+                        if isinstance(q, dict) and _stand_num(q.get('rate')) == quote_rate
+                        and q.get('dir') in (None, 'rub')]
+            quote = (next((q for q in matching if str(q.get('cpId')) == chosen), None)
+                     or (matching[0] if matching else {}))
+            deal['ownerEconomyAtDoc'] = {
+                'version': version, 'at': at,
+                'amountRub': plain_number(used.get('total_payin')),
+                'invoiceUsd': plain_number(used.get('transfer_amount')),
+                'clientRate': plain_number(used.get('rate')),
+                'ippsTariff': deal.get('ippsTariff') or 'bank',
+                'brokerRate': float(quote_rate) if quote_rate is not None else None,
+                'brokerName': str(quote.get('name') or quote.get('cpId') or '')[:100],
+            }
+        else:
+            deal.pop('ownerEconomyAtDoc', None)
         deal['docMiss'] = []
         # Договор выпущен — клиент теперь знакомый: следующая сделка пойдёт допником
         # и не будет заново просить паспорт (приёмка 25.09)

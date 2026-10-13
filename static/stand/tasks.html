@@ -1295,12 +1295,19 @@ function freeholdInvoiceInputs6(d){
 }
 /* Что видно менеджеру в итоге: в IPPS, рубли клиенту, прибыль. Прибыль — как в CRM
    (приход в USDT с удержанием брокера минус S), по курсу брокера с шага s5. */
+/* Тот же ориентир, что менеджер видит на s6. Параметры можно передать из
+   снимка договора: новые формулы для сводки владельца не нужны. */
+function freeholdEstimate(d,amountRub,brokerRate){
+  const sent=freeholdSend(d.invoiceUsd||0,ippsTariff(d));
+  const rub=num(amountRub), rate=num(brokerRate);
+  const incoming=rub&&rate?brokerSend(rub).sent/rate:null;
+  const profit=incoming!=null&&sent?Math.round((incoming-sent)*100)/100:null;
+  return {sent,incoming,profit,pct:profit!=null&&sent?profit/sent*100:null};
+}
 function freeholdSummary6(d){
-  const t=ippsTariff(d), X=d.invoiceUsd||0, sent=freeholdSend(X,t);
-  const k=num(d.rates.client), rub=(X&&k)?Math.round(X*k*100)/100:null;
-  const brk=num(d.rates.rubUsdt);
-  const profit=(rub&&brk&&sent)?Math.round((brokerSend(rub).sent/brk-sent)*100)/100:null;
-  const pct=profit!=null&&sent?profit/sent*100:null;
+  const X=d.invoiceUsd||0, k=num(d.rates.client);
+  const rub=(X&&k)?Math.round(X*k*100)/100:null;
+  const {sent,profit,pct}=freeholdEstimate(d,rub,d.rates.rubUsdt);
   return `<div class="fr">
     <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> USD: инвойс + комиссия тарифа</span></label>
       <input class="fc num" readonly value="${sent?usd(sent):'—'}"></div>
@@ -3528,6 +3535,52 @@ function payToCopy(id){
   const d=deal(id);if(!d||!payToReady(d))return;
   copyAsk(payToCardFields(d).map(([k,v])=>k+': '+(v||'—')).join('\n'));
 }
+function ownerDate(value,withTime=false){
+  if(!value)return '';
+  const raw=String(value);
+  const iso=raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(iso&&!withTime)return iso[3]+'.'+iso[2];
+  if(/^\d{2}\.\d{2}/.test(raw))return withTime?raw.slice(0,16):raw.slice(0,5);
+  const date=new Date(value);
+  if(Number.isNaN(date.getTime()))return '';
+  return date.toLocaleString('ru-RU',{timeZone:'Europe/Moscow',day:'2-digit',month:'2-digit',
+    ...(withTime?{hour:'2-digit',minute:'2-digit'}:{})});
+}
+/* До пачки используем снимок последнего выпущенного договора. У старых пакетов
+   снимка нет: восстанавливаем только из сохранившихся полей и явно это подписываем. */
+function ownerEstimate(d){
+  if(isCrypto(d)||convOf(d))return null;
+  if(d.kind!=='Фрихолд'){
+    const rate=num(d.rates?.rubUsdt);
+    if(!(rate>0))return null;
+    const result=econ({...d,rates:{...d.rates,broker:rate}});
+    if(!result.ready)return null;
+    const quote=(d.quotes||[]).find(q=>num(q.rate)===rate&&(!q.dir||q.dir==='rub'));
+    return {result:{profit:result.gross,pct:result.pct,incoming:result.payin,sent:result.cost},
+      rate,name:quote?.name||quote?.cpId||'контрагент не сохранён',source:'оценка по котировке'};
+  }
+  const pack=d.docPack||{}, version=Number(d.docVersion||pack.version||0);
+  const saved=d.ownerEconomyAtDoc;
+  const exact=saved&&Number(saved.version)===version;
+  const legacy=!exact&&pack.version&&Number(pack.version)===version;
+  const params=exact?saved:legacy?{
+    amountRub:pack.amount,invoiceUsd:pack.transfer||d.invoiceUsd,
+    ippsTariff:d.ippsTariff,brokerRate:d.rates?.rubUsdt,at:pack.at
+  }:{amountRub:d.incomeAmount||d.amountRub,invoiceUsd:d.invoiceUsd,
+    ippsTariff:d.ippsTariff,brokerRate:d.rates?.rubUsdt,at:null};
+  const rate=num(params.brokerRate);
+  if(!(rate>0))return null;
+  const quote=(d.quotes||[]).find(q=>num(q.rate)===rate&&(!q.dir||q.dir==='rub'));
+  const name=exact?(params.brokerName||'контрагент не сохранён'):
+    (quote?.name||quote?.cpId||'контрагент не сохранён');
+  const result=freeholdEstimate({...d,invoiceUsd:num(params.invoiceUsd),
+    ippsTariff:params.ippsTariff},params.amountRub,rate);
+  if(result.profit==null)return null;
+  const source=exact?'ориентир на момент договора от '+ownerDate(params.at):
+    legacy?'ориентир по доступным данным договора от '+ownerDate(params.at):
+      'оценка по котировке';
+  return {result,rate,name,source,exact,legacy};
+}
 /* Сводка владельца читает только сохранённые факты сделки и готовую экономику.
    Неизвестное значение не подменяем расчётом или данными другой сделки. */
 function ownerSummary(d){
@@ -3536,15 +3589,26 @@ function ownerSummary(d){
   const item=(label,value)=>`<div><b>${label}:</b> ${safe(value)}</div>`;
   const accountLabel=(account,bank)=>{
     const a=String(account||''), b=String(bank||'').toLowerCase();
-    if(a==='40807810819000000261')return 'Flow Sole …0261 · СГБ · '+a;
-    if(a==='40807810938720000286')return 'Сбер …0286 · '+a;
+    if(a.includes('40807810819000000261'))return 'Flow Sole …0261 · СГБ · '+a;
+    if(a.includes('40807810938720000286'))return 'Сбер …0286 · '+a;
     if(a.endsWith('2118')&&b.includes('сбер'))return 'Сбер эквайринг …2118 · '+a;
     if(a.endsWith('5510')&&b.includes('т-банк'))return 'Т-Банк …5510 · '+a;
     return account||null;
   };
+  const accountShort=account=>{
+    const a=String(account||'');
+    if(a.includes('40807810819000000261')||a.includes('…0261'))return 'Flow Sole (СГБ) …0261';
+    if(a.includes('40807810938720000286')||a.includes('…0286'))return 'Сбер …0286';
+    if(a.includes('…2118')||a.endsWith('2118'))return 'Сбер эквайринг …2118';
+    if(a.includes('…5510')||a.endsWith('5510'))return 'Т-Банк …5510';
+    const full=a.match(/\d{20}/);
+    if(full)return (a.split(' · ')[0]||'Другой счёт')+' …'+full[0].slice(-4);
+    return a?a:'счёт ещё нет';
+  };
   const link=(hash,network)=>hash&&String(hash).startsWith('demo:')?safe(hash):hash?`<a href="${htmlText(explorer(hash,network||'TRC20'))}" target="_blank" rel="noopener noreferrer">${safe(hash)}</a>`:'ещё нет';
   const file=(kind,f,i)=>`<button class="btn btn-outline btn-sm" onclick="docOpen(${Number(d.id)},'${kind}',${i})">${safe(f.file||f.name||'Файл')}</button>`;
-  const E=econ(d), crypto=isCrypto(d), parts=d.payinParts||[], manual=d.manualBankReceipt||{};
+  const c=convOf(d), E=c?econ({...d,rates:{...d.rates,broker:c.rate}}):econ(d);
+  const estimate=ownerEstimate(d), crypto=isCrypto(d), parts=d.payinParts||[], manual=d.manualBankReceipt||{};
   const proof=filesOf(d,'bankCreditEvidence'), checks=filesOf(d,'clientPayinReceipt');
   const receipts=crypto?(d.payinHashes||[]):parts;
   const received=crypto?receipts.filter(h=>h.verified).reduce((s,h)=>s+(Number(h.amount)||0),0):parts.reduce((s,p)=>{
@@ -3556,19 +3620,27 @@ function ownerSummary(d){
       const isManual=income.source==='manual_confirmed'||!!p.manualReceiptId;
       const account=income.acc||p.acc||(isManual&&manual.bank&&manual.account?manual.bank+' · '+manual.account:null);
       const review=(d.log||[]).slice().reverse().find(l=>String(l.text||'').startsWith('Приход собран из записей:'));
-      const who=isManual?(manual.status==='confirmed'?employeeName(manual.confirmedBy)||'имя не сохранено':null):(income.confirmedBy?employeeName(income.confirmedBy):review?.by);
+      const who=isManual?(manual.confirmedBy?employeeName(manual.confirmedBy)||
+        (manual.confirmedRole==='operator'?'операционист':'сотрудник')+' · имя недоступно':null):
+        (income.confirmedBy?employeeName(income.confirmedBy):review?.by);
       return `<div><b>Часть ${i+1} · ${moneyKop(p.amountRub,'₽')}</b></div>`+
         (p.demo||income.demo?'<div>DEMO запись · реальный приход не подтверждён</div>':'')+
         item('Счёт зачисления',accountLabel(account,income.bank||manual.bank))+item('Дата',isManual?manual.statementDate||p.date:p.date||income.date)+
         (p.kind==='acquiring'?item('На счёт после комиссии',p.net!=null?moneyKop(p.net,'₽'):income.rub!=null?moneyKop(income.rub,'₽'):null):'')+
         item('Плательщик',p.payer||income.payer)+item('Сверил',who)+
+        (isManual?item('Сверка подтверждена',ownerDate(manual.confirmedAt,true)):'' )+
         item('Подтверждение',isManual?`выписка${manual.statementRef?' · строка '+manual.statementRef:''}`:income.source==='sber'?'поступление из API Сбера'+(income.docNumber?' · '+income.docNumber:''):null);
     }).join('');
   const receiptProof=(parts.some(p=>p.manualReceiptId)||manual.status==='confirmed')&&proof.length?`<div><b>Выписка:</b> ${proof.map((f,i)=>file('bankCreditEvidence',f,i)).join(' ')}</div>`:'';
   const checksDetail=checks.length?`<div><b>Чеки клиента (не подтверждают приход):</b> ${checks.map((f,i)=>file('clientPayinReceipt',f,i)).join(' ')}</div>`:'';
   const expected=crypto?(d.amountUsdt?usd(d.amountUsdt):'ещё нет'):(expectOf(d).amount?moneyKop(expectOf(d).amount,'₽'):'ещё нет');
-  const receiptLine=line('Деньги клиента',received?(crypto?usd(received):moneyKop(received,'₽')):'не пришли',
-    received?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:`ждём ${expected}`,
+  const last=parts[parts.length-1]||{}, lastIncome=(S.incomes||[]).find(x=>String(x.id)===String(last.incId))||{};
+  const paidDate=ownerDate(crypto?null:last.manualReceiptId?manual.statementDate:last.date||lastIncome.date);
+  const paidAccount=accountShort(lastIncome.acc||last.acc||(manual.bank&&manual.account?manual.account:null));
+  const proofName=last.manualReceiptId||lastIncome.source==='manual_confirmed'?'выписка':lastIncome.source==='sber'?'API Сбера':'';
+  const receiptValue=received?`✓ пришли${paidDate?' '+paidDate:''} · ${crypto?moneyKop(received,'USDT'):moneyKop(received,'₽')}${crypto?'':' · '+paidAccount}${proofName?' · '+proofName:''}`:`✗ не пришли · ждём ${expected}`;
+  const receiptLine=line('Деньги клиента',receiptValue,
+    received&&receipts.length>1?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:'',
     (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
   const dealLine=line('Сделка',d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
@@ -3578,24 +3650,41 @@ function ownerSummary(d){
   const sendAmount=(route==='IPPS'&&d.ippsPayoutOrder?.amount)||d.transfer?.amount||d.prepay?.amount||E.sentUsd;
   const destination=(route==='IPPS'&&d.ippsPayoutOrder?.address)||d.transfer?.addr;
   const wallet=dealWallet(d);
-  const sendLine=line('Отправляем',sendAmount?usd(sendAmount):'ещё нет',route,
+  const sendValue=sendAmount?`${moneyKop(sendAmount,'USDT')} → ${route}`+
+    (d.kind==='Фрихолд'&&d.invoiceUsd?' · застройщику '+usdMark(d,d.invoiceUsd):''):'ещё нет';
+  const sendLine=line('Отправляем',sendValue,'',
     item('Куда',route+(destination?' · '+destination:''))+
     item('Получателю',d.kind==='Фрихолд'&&d.invoiceUsd?usdMark(d,d.invoiceUsd):d.pay?.coinsCredit?.thb?money(d.pay.coinsCredit.thb,'฿'):null)+
     item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+
     item('С кошелька',wallet?wallet.name+(wallet.owner?' · '+wallet.owner:''):null)+
     (d.prepay?item('Наперёд',convOf(d)?.receivedAt?'USDT брокера уже получены':'деньги клиента ещё в конвертации'):''));
-  const c=convOf(d), src=c?.sources?.find(x=>String(x.dealId)===String(d.id))||{};
+  const src=c?.sources?.find(x=>String(x.dealId)===String(d.id))||{};
   const brokerGot=src.usdtFact!=null||!!c?.receivedAt;
   const brokerLine=line('Конвертация',!c?'не отправлено':brokerGot?'USDT получены':'отправлено брокеру',
-    !c?'ждём курс и отправку':src.usdtFact!=null?usd(src.usdtFact):src.usdt!=null?'ждём '+usd(src.usdt):'сумма ещё нет',
+    !c?estimate?'котировка '+estimate.name+' '+String(estimate.rate).replace('.',',')+
+      ' · ждём USDT ≈ '+moneyKop(estimate.result.incoming,'USDT'):'ждём курс и отправку':
+      src.usdtFact!=null?moneyKop(src.usdtFact,'USDT'):src.usdt!=null?'ждём '+moneyKop(src.usdt,'USDT'):'сумма ещё нет',
     c?item('Брокер',c.broker)+item('Отправлено',c.sentTs||c.at)+item('Брокеру по пачке',c.sent!=null?moneyKop(c.sent,'₽'):null)+
       item('Рубли этой сделки',src.rub!=null?moneyKop(src.rub,'₽'):null)+
       item('Курс',c.rate)+item('Ждём USDT',src.usdt!=null?usd(src.usdt):null)+item('Получено USDT',src.usdtFact!=null?usd(src.usdtFact):null)+
       item('Кошелёк получения',walletById(c.walletId)?.name)+
       (c.txs||[]).map(t=>`<div><b>Хэш:</b> ${link(t.hash,t.net)}${t.amount!=null?' · '+usd(t.amount):''}</div>`).join(''):'Пачки конвертации ещё нет');
-  const profitLine=line('Доходность',E.ready?usd(E.gross):'нельзя посчитать: '+(!crypto&&!d.rates?.broker?'нет курса брокера':'ещё нет данных'),
-    E.ready?`${E.pct==null?'—':E.pct.toLocaleString('ru-RU',{maximumFractionDigits:2})+' %'} · ${E.byFact?'фактическая':'ожидаемая'}`:'',
-    E.ready?item('Приход USDT',E.payin!=null?usd(E.payin):null)+item('Себестоимость',E.cost!=null?usd(E.cost):null)+item('Комиссия IPPS',E.bankFee!=null?usd(E.bankFee):null):'Расчёт появится после получения нужных данных');
+  const profitFromE=E.ready&&(!!c||crypto);
+  const profitResult=profitFromE?{profit:E.gross,pct:E.pct,incoming:E.payin,sent:E.cost}:estimate?.result;
+  const profitReady=profitResult?.profit!=null;
+  const profitFact=profitFromE&&E.byFact;
+  const profitPct=profitReady&&profitResult.pct!=null?profitResult.pct.toLocaleString('ru-RU',
+    {minimumFractionDigits:2,maximumFractionDigits:2})+' %':'—';
+  const profitValue=profitReady?(profitFact?'':'≈ ')+usd(profitResult.profit)+' ('+profitPct+')':
+    'нельзя посчитать: '+(!crypto&&!d.rates?.broker&&!d.rates?.rubUsdt?'нет курса брокера':'ещё нет данных');
+  const profitSource=c?(profitFact?'факт по USDT брокера':'ориентир по курсу пачки '+String(c.rate||'').replace('.',',')):
+    crypto&&profitFromE?(profitFact?'факт по подтверждённым USDT клиента':'ориентир по сумме клиента'):
+      estimate?estimate.source+' · котировка '+estimate.name+' '+String(estimate.rate).replace('.',','):'';
+  const profitLine=line('Доходность',profitValue,profitSource,
+    profitReady?item('Ждём / получили USDT',profitResult.incoming!=null?moneyKop(profitResult.incoming,'USDT'):null)+
+      item('Себестоимость',profitResult.sent!=null?moneyKop(profitResult.sent,'USDT'):null)+
+      (estimate?.legacy&&!c?item('Источник','Снимок расчёта при выпуске старого пакета не сохранялся; использованы доступные поля договора и текущая сохранённая котировка'): ''):
+      'Расчёт появится после получения нужных данных');
   const reimbursement=d.payout?.reimbursement;
   const refundLine=d.prepay?line('Возмещение',reimbursement?reimbursement.usdt!=null?usd(reimbursement.usdt):'сумма ещё нет':d.prepay.amount?usd(d.prepay.amount):'ещё нет',
     reimbursement?'возмещено':brokerGot?'ждёт возмещения':'ждём USDT брокера',
