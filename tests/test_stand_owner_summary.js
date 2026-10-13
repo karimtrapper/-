@@ -1,0 +1,101 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+
+const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
+const source = html.match(/^function ownerSummary\([^]*?^}/m)?.[0];
+assert.ok(source, 'ownerSummary');
+const incomes = [];
+const conversions = [];
+const wallets = [{id: 10, name: 'Кошелёк Теодора', owner: 'Теодор'},
+  {id: 20, name: 'Кошелёк брокера', owner: 'компания'}];
+const ctx = {
+  S: {incomes},
+  htmlText: value => String(value == null ? '' : value).replace(/[&<>"']/g,
+    ch => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch])),
+  moneyKop: (n, sign) => `${Number(n).toLocaleString('ru-RU', {minimumFractionDigits: 2})} ${sign}`,
+  money: (n, sign) => `${n} ${sign}`, usd: n => `$${Number(n).toFixed(2)}`,
+  usdMark: (d, n) => `${d.invoiceUsdEstimate ? '≈ ' : ''}$${Number(n).toFixed(2)}`,
+  plural: (n, one, few, many) => n === 1 ? one : n < 5 ? few : many,
+  employeeName: id => id === 9 ? 'Операционист Мария' : null,
+  expectOf: d => ({amount: d.expectedRub || 192666.3}),
+  filesOf: (d, kind) => d.files?.[kind] || [],
+  explorer: (hash, net) => `https://scan.example/${net}/${hash}`,
+  isCrypto: d => d.payType === 'Крипта',
+  econ: d => d.economics,
+  rateUnit: () => '₽/$',
+  dealWallet: d => d.prepay?.wallet || wallets.find(w => w.id === d.walletId),
+  walletById: id => wallets.find(w => w.id === id),
+  convOf: d => conversions.find(c => c.id === d.cnvId),
+  ippsTariff: () => ({label: 'Банк · 0,8% + 50$'}),
+};
+vm.createContext(ctx);
+vm.runInContext(source, ctx);
+
+const base = {
+  type: 'Оплата недвижимости', kind: 'Фрихолд', object: 'Квартира 4A', dev: 'Застройщик',
+  payType: 'Рубли', payTo: {dev: 'Получатель', inv: 'INV-1487'},
+  invoiceUsd: 2152.47, rates: {client: 90, broker: 88},
+  economics: {ready: true, gross: 50, pct: 2.1, byFact: false, payin: 2284.76,
+    cost: 2234.76, bankFee: 82.22, sentUsd: 2234.76},
+  files: {}, payout: {}, transfer: {amount: 2234.76, addr: 'IPPS-ADDRESS'},
+};
+const deal1487 = {...base, id: 1487, step: 's23', cnvId: 1,
+  prepay: {wallet: wallets[0], amount: 2234.76},
+  payinParts: [{amountRub: 192666.3, incId: 101, manualReceiptId: 'm1'}],
+  manualBankReceipt: {bank: 'СГБ', account: '40807810819000000261',
+    statementDate: '13.10.2026', statementRef: 'строка 15', confirmedBy: 9, status: 'confirmed'},
+  files: {bankCreditEvidence: [{file: 'выписка.pdf'}],
+    clientPayinReceipt: [{file: 'чек клиента.png'}]},
+};
+incomes.push({id: 101, source: 'manual_confirmed', acc: 'Flow Sole …0261 · СГБ',
+  payer: 'Татьяна', date: '13.10.2026'});
+conversions.push({id: 1, broker: 'Tradex', rate: 88, sentTs: '13.10 12:00',
+  walletId: 20, sources: [{dealId: 1487, rub: 192666.3, usdt: 2189.39}], txs: []});
+let card = ctx.ownerSummary(deal1487);
+for (const text of ['192', 'Flow Sole …0261', 'Татьяна', 'строка 15', 'выписка.pdf',
+  'чек клиента.png', 'Операционист Мария', 'INV-1487', 'Квартира 4A',
+  '2234.76', 'IPPS', '2152.47', 'Кошелёк Теодора', 'Tradex', 'ждём $2189.39',
+  '$50.00', '2,1 %', 'ждём USDT брокера']) assert.ok(card.includes(text), text);
+assert.match(card, /Чеки клиента \(не подтверждают приход\)/);
+assert.equal((card.match(/class="owner-line"/g) || []).length, 6);
+
+const deal1484 = {...base, id: 1484, cnvId: 2, prepay: {wallet: wallets[0], amount: 2234.76},
+  payinParts: [{amountRub: 250000, incId: 102}], files: {},
+  economics: {...base.economics, byFact: true}};
+incomes.push({id: 102, source: 'sber', acc: '…0286 · Сбер', docNumber: 'PAY-102'});
+conversions.push({id: 2, broker: 'Tradex', receivedAt: '13.10', walletId: 20,
+  sources: [{dealId: 1484, rub: 250000, usdt: 2800, usdtFact: 2799}],
+  txs: [{hash: 'abc', net: 'TRC20', amount: 2799}]});
+card = ctx.ownerSummary(deal1484);
+for (const text of ['…0286 · Сбер', 'поступление из API Сбера', 'PAY-102',
+  'USDT получены', '2799.00', 'фактическая', 'scan.example/TRC20/abc']) assert.ok(card.includes(text), text);
+
+const ordinary = {...deal1484, id: 1490, prepay: null, cnvId: 3, payinParts: []};
+conversions.push({id: 3, broker: 'Tradex', receivedAt: '13.10', sources: [{dealId: 1490, usdtFact: 2500}], txs: []});
+card = ctx.ownerSummary(ordinary);
+assert.equal((card.match(/class="owner-line"/g) || []).length, 5);
+assert.doesNotMatch(card, /Возмещение/);
+
+const noReceipt = {...base, id: 1491, payinParts: [], rates: {},
+  files: {clientPayinReceipt: [{file: '<img src=x onerror=alert(1)>.png'}]},
+  economics: {ready: false}};
+card = ctx.ownerSummary(noReceipt);
+assert.match(card, /не пришли/);
+assert.match(card, /нельзя посчитать: нет курса брокера/);
+assert.match(card, /&lt;img src=x onerror=alert\(1\)&gt;/);
+assert.doesNotMatch(card, /<img src=x/);
+const saved1484 = JSON.parse(fs.readFileSync(path.join(__dirname,
+  'fixtures/stand_1484_s23_anonymized.json'), 'utf8'));
+const olderDeal = {...saved1484.deals[0], economics: {ready: false},
+  expectedRub: saved1484.deals[0].amountRub};
+const oldCard = ctx.ownerSummary(olderDeal);
+assert.match(oldCard, /DEMO запись · реальный приход не подтверждён/);
+assert.match(oldCard, /не пришли/);
+assert.doesNotMatch(oldCard, /поступление из API Сбера/);
+assert.match(oldCard, /Flow Sole …0261/);
+assert.match(oldCard, /Инвойс.*E2E inv/);
+assert.match(html, /view==='task'&&\['s23','s24'\]\.includes\(d\.step\)&&\['teodor','findir','admin'\]\.includes\(S\.role\)\)body=ownerSummary\(d\)\+body/);
+assert.match(html, /view==='deal'&&\['teodor','findir','admin'\]\.includes\(S\.role\)\?ownerSummary\(d\)/);
+console.log('owner summary: prepay Flow Sole, Sber API, broker, no receipt, roles and escaping OK');

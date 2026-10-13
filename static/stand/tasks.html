@@ -332,6 +332,17 @@ a.hash:hover{background:#BAE6FD}
 .payto-details .k{font-size:12px;color:var(--text-muted)}
 .payto-details .v{font-size:13.5px;word-break:break-word;white-space:pre-wrap}
 @media(max-width:650px){.payto-details{grid-template-columns:1fr}}
+.owner-summary{margin-bottom:16px}
+.owner-lines{display:grid;gap:8px;margin-top:12px}
+.owner-line{border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 14px;background:var(--bg)}
+.owner-line summary{display:flex;align-items:center;gap:12px;cursor:pointer;list-style:none}
+.owner-line summary::-webkit-details-marker{display:none}
+.owner-line .owner-label{font-size:12px;color:var(--text-muted);min-width:115px}
+.owner-line .owner-value{font-size:17px;font-weight:700;line-height:1.35;word-break:break-word}
+.owner-line .owner-hint{font-size:12px;color:var(--text-sec);margin-left:auto;text-align:right}
+.owner-detail{border-top:1px solid var(--border-light);margin-top:10px;padding-top:10px;font-size:12.5px;line-height:1.6;word-break:break-word}
+.owner-detail>div+div{margin-top:5px}
+@media(max-width:650px){.owner-line summary{flex-wrap:wrap}.owner-line .owner-label{width:100%}.owner-line .owner-hint{margin-left:0;text-align:left}}
 .sberbox{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:var(--r);padding:12px 14px;margin-top:14px}
 .crm-draft{margin-top:14px}
 .crm-draft .form-control{width:100%;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;color:var(--text);font:inherit}
@@ -3517,6 +3528,81 @@ function payToCopy(id){
   const d=deal(id);if(!d||!payToReady(d))return;
   copyAsk(payToCardFields(d).map(([k,v])=>k+': '+(v||'—')).join('\n'));
 }
+/* Сводка владельца читает только сохранённые факты сделки и готовую экономику.
+   Неизвестное значение не подменяем расчётом или данными другой сделки. */
+function ownerSummary(d){
+  const safe=v=>htmlText(v==null||v===''?'ещё нет':v);
+  const line=(label,value,hint,details)=>`<details class="owner-line"><summary><span class="owner-label">${label}</span><span class="owner-value">${safe(value)}</span><span class="owner-hint">${safe(hint)}</span></summary><div class="owner-detail">${details||'Подробностей ещё нет'}</div></details>`;
+  const item=(label,value)=>`<div><b>${label}:</b> ${safe(value)}</div>`;
+  const accountLabel=(account,bank)=>{
+    const a=String(account||''), b=String(bank||'').toLowerCase();
+    if(a==='40807810819000000261')return 'Flow Sole …0261 · СГБ · '+a;
+    if(a==='40807810938720000286')return 'Сбер …0286 · '+a;
+    if(a.endsWith('2118')&&b.includes('сбер'))return 'Сбер эквайринг …2118 · '+a;
+    if(a.endsWith('5510')&&b.includes('т-банк'))return 'Т-Банк …5510 · '+a;
+    return account||null;
+  };
+  const link=(hash,network)=>hash&&String(hash).startsWith('demo:')?safe(hash):hash?`<a href="${htmlText(explorer(hash,network||'TRC20'))}" target="_blank" rel="noopener noreferrer">${safe(hash)}</a>`:'ещё нет';
+  const file=(kind,f,i)=>`<button class="btn btn-outline btn-sm" onclick="docOpen(${Number(d.id)},'${kind}',${i})">${safe(f.file||f.name||'Файл')}</button>`;
+  const E=econ(d), crypto=isCrypto(d), parts=d.payinParts||[], manual=d.manualBankReceipt||{};
+  const proof=filesOf(d,'bankCreditEvidence'), checks=filesOf(d,'clientPayinReceipt');
+  const receipts=crypto?(d.payinHashes||[]):parts;
+  const received=crypto?receipts.filter(h=>h.verified).reduce((s,h)=>s+(Number(h.amount)||0),0):parts.reduce((s,p)=>{
+    const income=(S.incomes||[]).find(x=>String(x.id)===String(p.incId));
+    return s+(!p.demo&&!income?.demo?Number(p.amountRub)||0:0);
+  },0);
+  const receiptDetails=crypto?receipts.map(h=>item('Перевод',`${h.amount!=null?usd(h.amount)+' · ':''}${h.verified?'подтверждён':'ожидает подтверждения'}`)+`<div>${link(h.hash,h.network)}</div>`).join(''):
+    parts.map((p,i)=>{const income=(S.incomes||[]).find(x=>String(x.id)===String(p.incId))||{};
+      const isManual=income.source==='manual_confirmed'||!!p.manualReceiptId;
+      const account=income.acc||p.acc||(isManual&&manual.bank&&manual.account?manual.bank+' · '+manual.account:null);
+      const review=(d.log||[]).slice().reverse().find(l=>String(l.text||'').startsWith('Приход собран из записей:'));
+      const who=isManual?(manual.status==='confirmed'?employeeName(manual.confirmedBy)||'имя не сохранено':null):(income.confirmedBy?employeeName(income.confirmedBy):review?.by);
+      return `<div><b>Часть ${i+1} · ${moneyKop(p.amountRub,'₽')}</b></div>`+
+        (p.demo||income.demo?'<div>DEMO запись · реальный приход не подтверждён</div>':'')+
+        item('Счёт зачисления',accountLabel(account,income.bank||manual.bank))+item('Дата',isManual?manual.statementDate||p.date:p.date||income.date)+
+        (p.kind==='acquiring'?item('На счёт после комиссии',p.net!=null?moneyKop(p.net,'₽'):income.rub!=null?moneyKop(income.rub,'₽'):null):'')+
+        item('Плательщик',p.payer||income.payer)+item('Сверил',who)+
+        item('Подтверждение',isManual?`выписка${manual.statementRef?' · строка '+manual.statementRef:''}`:income.source==='sber'?'поступление из API Сбера'+(income.docNumber?' · '+income.docNumber:''):null);
+    }).join('');
+  const receiptProof=(parts.some(p=>p.manualReceiptId)||manual.status==='confirmed')&&proof.length?`<div><b>Выписка:</b> ${proof.map((f,i)=>file('bankCreditEvidence',f,i)).join(' ')}</div>`:'';
+  const checksDetail=checks.length?`<div><b>Чеки клиента (не подтверждают приход):</b> ${checks.map((f,i)=>file('clientPayinReceipt',f,i)).join(' ')}</div>`:'';
+  const expected=crypto?(d.amountUsdt?usd(d.amountUsdt):'ещё нет'):(expectOf(d).amount?moneyKop(expectOf(d).amount,'₽'):'ещё нет');
+  const receiptLine=line('Деньги клиента',received?(crypto?usd(received):moneyKop(received,'₽')):'не пришли',
+    received?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:`ждём ${expected}`,
+    (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
+  const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
+  const dealLine=line('Сделка',d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
+    item('Объект',d.object)+item('Застройщик',d.dev)+item('Получатель',d.payTo?.dev)+
+    item('Инвойс',[(d.payTo||{}).inv,invoice].filter(Boolean).join(' · '))+item('Курс клиенту',d.rates?.client?d.rates.client+' '+rateUnit(d):null));
+  const route=d.kind==='Фрихолд'||d.postConv==='ipps_swift'?'IPPS':d.postConv==='coins'?'Coins':d.postConv==='client'?'кошелёк клиента':'ещё нет';
+  const sendAmount=(route==='IPPS'&&d.ippsPayoutOrder?.amount)||d.transfer?.amount||d.prepay?.amount||E.sentUsd;
+  const destination=(route==='IPPS'&&d.ippsPayoutOrder?.address)||d.transfer?.addr;
+  const wallet=dealWallet(d);
+  const sendLine=line('Отправляем',sendAmount?usd(sendAmount):'ещё нет',route,
+    item('Куда',route+(destination?' · '+destination:''))+
+    item('Получателю',d.kind==='Фрихолд'&&d.invoiceUsd?usdMark(d,d.invoiceUsd):d.pay?.coinsCredit?.thb?money(d.pay.coinsCredit.thb,'฿'):null)+
+    item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+
+    item('С кошелька',wallet?wallet.name+(wallet.owner?' · '+wallet.owner:''):null)+
+    (d.prepay?item('Наперёд',convOf(d)?.receivedAt?'USDT брокера уже получены':'деньги клиента ещё в конвертации'):''));
+  const c=convOf(d), src=c?.sources?.find(x=>String(x.dealId)===String(d.id))||{};
+  const brokerGot=src.usdtFact!=null||!!c?.receivedAt;
+  const brokerLine=line('Конвертация',!c?'не отправлено':brokerGot?'USDT получены':'отправлено брокеру',
+    !c?'ждём курс и отправку':src.usdtFact!=null?usd(src.usdtFact):src.usdt!=null?'ждём '+usd(src.usdt):'сумма ещё нет',
+    c?item('Брокер',c.broker)+item('Отправлено',c.sentTs||c.at)+item('Брокеру по пачке',c.sent!=null?moneyKop(c.sent,'₽'):null)+
+      item('Рубли этой сделки',src.rub!=null?moneyKop(src.rub,'₽'):null)+
+      item('Курс',c.rate)+item('Ждём USDT',src.usdt!=null?usd(src.usdt):null)+item('Получено USDT',src.usdtFact!=null?usd(src.usdtFact):null)+
+      item('Кошелёк получения',walletById(c.walletId)?.name)+
+      (c.txs||[]).map(t=>`<div><b>Хэш:</b> ${link(t.hash,t.net)}${t.amount!=null?' · '+usd(t.amount):''}</div>`).join(''):'Пачки конвертации ещё нет');
+  const profitLine=line('Доходность',E.ready?usd(E.gross):'нельзя посчитать: '+(!crypto&&!d.rates?.broker?'нет курса брокера':'ещё нет данных'),
+    E.ready?`${E.pct==null?'—':E.pct.toLocaleString('ru-RU',{maximumFractionDigits:2})+' %'} · ${E.byFact?'фактическая':'ожидаемая'}`:'',
+    E.ready?item('Приход USDT',E.payin!=null?usd(E.payin):null)+item('Себестоимость',E.cost!=null?usd(E.cost):null)+item('Комиссия IPPS',E.bankFee!=null?usd(E.bankFee):null):'Расчёт появится после получения нужных данных');
+  const reimbursement=d.payout?.reimbursement;
+  const refundLine=d.prepay?line('Возмещение',reimbursement?reimbursement.usdt!=null?usd(reimbursement.usdt):'сумма ещё нет':d.prepay.amount?usd(d.prepay.amount):'ещё нет',
+    reimbursement?'возмещено':brokerGot?'ждёт возмещения':'ждём USDT брокера',
+    item('Кому',d.prepay.wallet?.name||d.prepay.wallet?.owner)+item('Статус',reimbursement?reimbursement.kind||'возмещено':'ещё не возмещено')+
+    (reimbursement?.hash?`<div><b>Хэш:</b> ${link(reimbursement.hash,reimbursement.net)}</div>`:'')):'';
+  return `<div class="card owner-summary"><div class="card-title">Сводка для владельца</div><div class="owner-lines">${receiptLine}${dealLine}${sendLine}${brokerLine}${profitLine}${refundLine}</div></div>`;
+}
 function needsPayConfirm(d){
   return !!payGateStep(d)&&payToReady(d)&&!payToConfirmed(d);
 }
@@ -5251,6 +5337,7 @@ function viewDeal(d){
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
   body=(view==='task'&&S.role==='operator'&&['s22','s23','s24','s25','s26'].includes(d.step)?payToCard(d,true):'')+prepayPanel(d)+body;
+  if(view==='task'&&['s23','s24'].includes(d.step)&&['teodor','findir','admin'].includes(S.role))body=ownerSummary(d)+body;
   if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   if(view==='task'&&d.prepay&&S.role==='operator'&&d.prepay.brokerStep!=='done')
     body=stepCard(Object.assign({},d,{step:d.prepay.brokerStep,_prepayBroker:true}))+body;
@@ -5270,6 +5357,7 @@ function viewDeal(d){
     return `<div class="vtabs">${tab('deal','Карточка<span class="lg"> сделки</span>')}${
       had?tab('task',d.closed?'<span class="lg">Последний </span>шаг':'<span class="lg">Текущая </span>задача'):''}${
       had?tab('path','<span class="lg">Задачник — </span>история'):''}</div>`;})()}
+  ${view==='deal'&&['teodor','findir','admin'].includes(S.role)?ownerSummary(d):''}
   ${view==='deal'?payToCard(d):''}
   <div class="cols"><div>${body}</div>
   <div><div class="card side"><h4>Коротко о пути</h4>
