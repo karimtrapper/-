@@ -23,6 +23,7 @@ import binascii
 import stand_notify
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
 import stand_prepay
+import stand_demo
 from collections import Counter
 import bcrypt
 import logging
@@ -5305,11 +5306,26 @@ def stand_state_get():
         return jsonify({'success': False, 'error': 'stand_only'}), 404
     db = get_session()
     try:
-        row = _stand_row(db)
-        return jsonify({'success': True, 'version': row.version or 0,
-                        'data': _stand_strip_files(json.loads(row.data or '{}')),
-                        'updated_by': row.updated_by,
-                        'role': current_role()})
+        # Миграция под тем же замком, что и PUT: параллельное сохранение не
+        # должно вернуть снятый флаг или затереть чужие изменения.
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        state = json.loads(row.data or '{}')
+        repaired, warnings = stand_demo.repair(state)
+        if repaired:
+            row.data = json.dumps(state, ensure_ascii=False)
+            row.version = (row.version or 0) + 1
+            row.updated_by = 'Система: исправление тестового режима'
+            row.updated_at = datetime.utcnow()
+        response = {'success': True, 'version': row.version or 0,
+                    'data': _stand_strip_files(state),
+                    'demoEnabled': stand_demo.enabled(), 'demoWarnings': warnings,
+                    'updated_by': row.updated_by, 'role': current_role()}
+        if repaired:
+            db.commit()
+        return jsonify(response)
     finally:
         db.close()
 
@@ -6168,6 +6184,8 @@ def _stand_upsert_close_evidence(db, row, deal, kind, actor_id, provenance):
 
 def _stand_close_fact_source(state, deal, kind):
     """Return verifiable provenance or a precise missing fact for a signoff."""
+    if not stand_demo.enabled() and deal.get('demoTransfers') and stand_demo.evidence(state, deal):
+        return None, 'demo_history_requires_review'
     if kind == 'payin':
         pay_type = deal.get('payType')
         hashes = deal.get('payinHashes') or []
@@ -7993,7 +8011,7 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
         # this same PUT change a real receipt into demo or edit its amount.
         funding_deal = before
         payin_hashes = [h for h in funding_deal.get('payinHashes') or [] if isinstance(h, dict)]
-        if (funding_deal.get('demoTransfers') is True and payin_hashes
+        if (stand_demo.enabled() and funding_deal.get('demoTransfers') is True and payin_hashes
                 and all(h.get('demo') is True and _stand_number(h.get('amount')) > 0
                         for h in payin_hashes)):
             # Isolated synthetic path for the explicitly marked stand demo flow.
@@ -8036,6 +8054,9 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
 
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
                             allow_crm_close=False):
+    demo_problem = stand_demo.guard(previous, new_state)
+    if demo_problem:
+        return demo_problem
     new_convs = {c.get('id'): c for c in new_state.get('convs', [])}
     if len(new_convs) != len(new_state.get('convs', [])):
         return 'Нельзя дублировать пачку на доске'
@@ -8733,6 +8754,8 @@ def _stand_settle_prepay(state, deal):
 
 def _stand_settle_verified(state, members):
     """Закрыть каждый возврат; задача Coins ждёт подтверждения всей пачки."""
+    if not stand_demo.enabled() and any(d.get('demoTransfers') and stand_demo.evidence(state, d) for d in members):
+        return False
     # Реквизиты могли измениться, пока проверка обращалась к сети.
     if any(d.get('outgoingReview') and d.get('kind') == 'Фрихолд'
            and not _stand_payto_confirmed(d) for d in members):
@@ -9221,7 +9244,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
             result = {'status': 'mismatch', 'checkError': 'Demo ref принадлежит другой сделке'}
         elif deal.get('demoTransfers') and not all(d.get('demoTransfers') for d in cohort):
             result = {'status': 'mismatch', 'checkError': 'Demo режим нужен всей пачке'}
-        elif deal.get('demoTransfers') and demo_multisig_wait and send.get('demoOutcome') == 'confirmed':
+        elif stand_demo.enabled() and deal.get('demoTransfers') and demo_multisig_wait and send.get('demoOutcome') == 'confirmed':
             result = {'status': 'pending', 'demo': True,
                       'checkError': 'Ждём вторую подпись на шаге s24'}
         else:
@@ -9314,6 +9337,8 @@ def stand_transfers_check():
 def stand_transfers_demo():
     if not STAND_MODE:
         return jsonify({'success': False, 'error': 'stand_only'}), 404
+    if not stand_demo.enabled():
+        return jsonify({'success': False, 'error': 'DEMO отключён в этом окружении'}), 403
     data = request.get_json(silent=True) or {}
     try:
         deal_id = int(data.get('dealId'))
@@ -9371,6 +9396,66 @@ def stand_transfers_demo():
         db.close()
     result = _stand_check_transfers(deal_id)
     return jsonify(result)
+
+
+@app.route('/api/stand/incoming/wallet', methods=['POST'])
+def stand_incoming_wallet():
+    """Фактический кошелёк брокера до проверки прихода; источник оплаты не меняем."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('operator', 'admin'):
+        return jsonify(success=False, error='Кошелёк прихода указывает операционист'), 403
+    payload = request.get_json(silent=True) or {}
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text as _t
+            db.execute(_t('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        if payload.get('version') != row.version:
+            return jsonify(success=False, error='Доска изменилась — обновите её'), 409
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals') or [] if d.get('id') == payload.get('dealId')), None)
+        conv = next((c for c in state.get('convs') or [] if c.get('id') == (deal or {}).get('cnvId')), None)
+        if not deal or not conv:
+            return jsonify(success=False, error='Пачка не найдена'), 404
+        ids = {p.get('dealId') for p in conv.get('sources') or []} | {deal['id']}
+        members = [d for d in state.get('deals') or [] if d.get('id') in ids or d.get('cnvId') == conv['id']]
+        # Кошелёк общий для пачки. Даже одна проверенная часть или отправка
+        # обычной сделки закрепляет маршрут; предоплата использует свой снимок.
+        if ((deal.get('prepay') or {}).get('brokerStep', deal.get('step')) != 's18w'
+                or conv.get('status') != 'sent' or any(t.get('status') == 'confirmed' for t in conv.get('txs') or [])
+                or any(d.get('closed') or ((d.get('prepay') or {}).get('brokerStep') != 's18w' if d.get('prepay')
+                           else d.get('step') not in ('s18w', 's18', 'ready'))
+                       or (not d.get('prepay') and ((d.get('transfer') or {}).get('sends')
+                           or d.get('serverTransferComplete'))) for d in members)):
+            return jsonify(success=False, error='Кошелёк можно изменить только до подтверждённого прихода брокера'), 409
+        chosen = next((w for w in state.get('wallets') or []
+                       if str(w.get('id')) == str(payload.get('walletId'))), {})
+        registered = db.query(Wallet).filter_by(address=chosen.get('addr'), active=True).first()
+        if (not registered or registered.blockchain not in ('TRON', 'TRC20', 'TRC-20')
+                or not valid_address(registered.address, 'trc20')):
+            return jsonify(success=False, error='Выберите активный TRC-20 кошелёк из реестра'), 409
+        old = stand_prepay.broker_wallet(state, deal).get('addr')
+        conv['walletId'] = chosen['id']
+        # Для возмещения роль/подписи берём из реестра, а не редактируемого зеркала.
+        chosen.update(addr=registered.address, owner=registered.owner, multisig=bool(registered.is_multisig),
+                      role='findir' if registered.is_multisig else 'teodor', name=registered.label or registered.owner)
+        for member in members:
+            member['walletId'] = chosen['id']
+            member.setdefault('log', []).append({'ts': datetime.now().strftime('%d.%m, %H:%M'),
+                'at': int(time.time()*1000), 'role': current_role(),
+                'by': flask_session.get('user_id'),
+                'text': f"Фактический кошелёк прихода брокера: {old} → {registered.address}. Приход ещё не проверен"})
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by = flask_session.get('username') or current_role()
+        row.updated_at = datetime.utcnow()
+        response = {'success': True, 'version': row.version, 'data': _stand_strip_files(state)}
+        db.commit()
+        return jsonify(response)
+    finally:
+        db.close()
 
 
 @app.route('/api/stand/incoming/check', methods=['POST'])

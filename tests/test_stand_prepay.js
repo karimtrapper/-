@@ -8,7 +8,7 @@ function fn(name) {
   const one=html.match(new RegExp(`^(?:async )?function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`,'m'));
   return (one||html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`,'m')))[0];
 }
-const ctx={walletBlock:()=>'',S:{role:'operator',deals:[]},STAND:false,
+const ctx={demoAllowed:()=>false,walletBlock:()=>'',S:{role:'operator',deals:[]},STAND:false,
   convOf:d=>d.cnvId?ctx.batch:null,isCrypto:d=>d.payType==='Крипта',
   walletById:id=>ctx.walletList.find(w=>w.id===id),wallets:()=>ctx.walletList,
   addrValid:()=>true,htmlText:String,usd:x=>'$'+x,
@@ -142,6 +142,7 @@ for(const source of ['founder','multisig']){
 }
 // Реальное act(s18w): приход распределяется, а этап оплаты остаётся на месте.
 (async()=>{
+  ctx.demoAllowed=()=>true; // Явный автотестовый режим для синтетического прихода.
   const d=structuredClone(old);
   d.step='s26';d.cnvId=1;d.conv=[];d.rates={};d.demoTransfers=true;
   d.prepay={source:'founder',brokerStep:'s18w',wallet:ctx.walletList[1],amount:10130};

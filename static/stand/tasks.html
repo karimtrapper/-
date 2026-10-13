@@ -619,6 +619,8 @@ const STAND_SHARED=['deals','convs','seq','cseq','notes','incomes','cps','cpChat
 let standVer=null, standPush=null, standBusy=false, standSaveScheduled=false,
     standClosing=false, standMe=null, standMeId=null, STAND_EMPLOYEES=[];
 let standLastSaveResult={ok:true};
+let standDemoEnabled=false;
+function demoAllowed(){return standDemoEnabled===true;}
 let sberMirrorStatus=null;
 async function fetchSberMirrorStatus(){
   try{
@@ -733,6 +735,7 @@ async function standPull(force){
     const r=await fetch('/api/stand/state',{credentials:'same-origin'});
     if(r.status===401){location.href='/login';return;}
     const j=await r.json(); if(!j.success)return;
+    standDemoEnabled=j.demoEnabled===true;
     if(standBusy||standPush||standSaveScheduled||standClosing)return;
     /* GET мог начаться до PUT, а вернуться уже после его завершения. Такой
        ответ не должен откатывать ни доску, ни базу последующего слияния. */
@@ -2069,15 +2072,15 @@ function sendDone(x){const need=pcAmount(x)||0;return need>0&&sendSum(x)>=need-0
 function htmlText(v){return String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function jsLiteralAttr(v){return htmlText(JSON.stringify(String(v==null?'':v)));}
 function transferMode(id,mode){
+  if(!demoAllowed()){toast('DEMO отключён в этом окружении');return;}
   const d=deal(id), mem=cnvMembers(d);
   if(mem.some(x=>sendList(x).length)){toast('Режим нельзя менять после добавления переводов');return;}
   if(convOf(d)&&(convOf(d).txs||[]).length){toast('Режим закреплён приходами этой пачки');return;}
   mem.forEach(x=>x.demoTransfers=mode==='demo');save();render();
 }
-/* Сети на стенде нет: подтверждение перевода приходит «вебхуком» — кнопкой с пометкой
-   демо. Переключатель режима убран, тестовый режим включён всегда (Карим, 25.09). */
+/* DEMO доступен только автотестам при явном разрешении сервера. */
 function transferModeBlock(d){return '';}
-function transferModeBlockOld(d){return `<div class="fg"><label class="fl">Проверка переводов</label>
+function transferModeBlockOld(d){if(!demoAllowed())return '';return `<div class="fg"><label class="fl">Проверка переводов</label>
   <select class="fc" onchange="transferMode(${d.id},this.value)" ${sendList(d).length?'disabled':''}>
   <option value="network" ${!d.demoTransfers?'selected':''}>Настоящие хеши — проверка в сети</option>
   <option value="demo" ${d.demoTransfers?'selected':''}>Тестовый сценарий — без движения денег</option></select>
@@ -2089,10 +2092,7 @@ async function standAction(path,payload){
     const r=await fetch(path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const j=await r.json();
     if(j.success){if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}return j;}
-    /* Проверка в сети (блокчейн-хеш) на стенде выключена сервером — вместо сырого
-       кода ошибки объясняем, что делать: подтверждать переводы через «Вебхук · демо»
-       или руками (Карим, 27.09). */
-    if(j.error==='stand_blocked'){toast('На стенде проверка в сети выключена — подтвердите через «Вебхук · демо» или вручную');return null;}
+    if(j.error==='stand_blocked'){toast('Канал проверки сети недоступен. Перевод остаётся неподтверждённым');return null;}
     toast(j.detail||j.error||'Не удалось проверить');return null;
   }catch(e){toast('Проверка недоступна — перевод остаётся неподтверждённым');return null;}
   finally{standBusy=false;if(standPush){standPush=false;setTimeout(standSave,120);}}
@@ -2120,10 +2120,11 @@ function outgoingReviewBlock(d){
   </div>`;
 }
 async function checkSends(id){const j=await standAction('/api/stand/transfers/check',{dealId:id});if(j)toast('Статусы переводов обновлены');}
-async function demoSend(id,i,outcome){const x=deal(id),t=sendList(x)[i];if(!t||!x.demoTransfers)return;
+async function demoSend(id,i,outcome){const x=deal(id),t=sendList(x)[i];if(!demoAllowed()||!t||!x.demoTransfers)return;
   const j=await standAction('/api/stand/transfers/demo',{dealId:id,ref:t.ref,outcome});if(j)toast('Тестовое событие: '+outcome);}
 function sendAdd(id,demo){
   const x=deal(id);
+  if(demo&&!demoAllowed()){toast('DEMO отключён в этом окружении');return;}
   const ref=demo&&x.demoTransfers?'demo:'+id+':'+Date.now():String(val('sh_'+id)||'').trim();
   if(!ref){toast('Вставьте полный хеш или ссылку на транзакцию');return;}
   if(!x.demoTransfers&&!/(?:0x)?[a-fA-F0-9]{64}/.test(ref)){toast('Нужен полный хеш транзакции из 64 символов, либо ссылка с ним');return;}
@@ -5146,6 +5147,7 @@ function viewDeal(d){
   }
   else body=overview(d,st,mine,p,who)+quotesCard(d);
   body=prepayPanel(d)+body;
+  if(d.demoTransfers&&!demoAllowed())body='<div class="alert a-warn">В истории есть DEMO-приходы или переводы. Автоматически снять флаг и продолжить нельзя: требуется сверка реальных платежей операционистом.</div>'+body;
   if(view==='task'&&d.prepay&&S.role==='operator'&&d.prepay.brokerStep!=='done')
     body=stepCard(Object.assign({},d,{step:d.prepay.brokerStep,_prepayBroker:true}))+body;
   const tab=(v,label)=>`<span class="vtab ${view===v?'on':''}" onclick="setView('${v}')">${label}</span>`;
@@ -6236,7 +6238,7 @@ function convMarginBlock(d,total){
 function cnvTxPick(id,txId){
   const d=deal(id),c=convOf(d),t=txPool().find(x=>x.id===Number(txId));
   if(!c||!t)return;
-  if(!d.demoTransfers||!t.demo||t.cnv!==c.id){toast('Для настоящего прихода введите полный хеш — сервер проверит сеть');return;}
+  if(!demoAllowed()||!d.demoTransfers||!t.demo||t.cnv!==c.id){toast('Для настоящего прихода введите полный хеш — сервер проверит сеть');return;}
   if(S.convs.some(v=>(v.txs||[]).some(x=>x.hash===t.hash))){toast('Перевод уже привязан к пачке');return;}
   c.txs=c.txs||[];c.txs.push(Object.assign({},t,cnvTo(c)));
   save();render();toast('DEMO: добавлен тестовый приход '+usd(t.amount));
@@ -6253,20 +6255,18 @@ async function cnvTxUnlink(id,i){
   const j=await standAction('/api/stand/incoming/unlink',{dealId:id,hash:t.hash,reason});
   if(j){S.txUnlink=null;render();toast('Приход отвязан');}
 }
-function cnvWalletFix(id,wid){
+async function cnvWalletFix(id,wid){
   const d=deal(id), c=convOf(d), w=walletById(wid); if(!c||!w)return;
   if((c.txs||[]).some(t=>t.status==='confirmed')){toast('Сначала отвяжите подтверждённый приход');return;}
-  const prev=walletById(c.walletId);
-  c.walletId=wid; cnvMembers(d).forEach(x=>{x.walletId=wid;});
-  log(d,'Кошелёк пачки: '+(prev?prev.name:'—')+' → '+w.name+' · '+w.addr+' — брокер прислал на другой кошелёк');
-  save();render();toast('Ждём USDT на '+w.name);
+  const j=await standAction('/api/stand/incoming/wallet',{dealId:id,walletId:wid,version:standVer});
+  if(j)toast('Ждём USDT на '+(w.owner||w.name)+' · '+w.addr);
 }
 function txFind(h){return txPool().find(t=>String(t.hash).toLowerCase()===String(h).trim().toLowerCase())||null;}
 async function cnvTxManual(id){
   const d=deal(id),c=convOf(d);if(!c)return;
   const hash=String(val('w2')||'').trim(),network=val('w_net')||'TRC-20';
   if(!hash){toast('Введите полный хеш перевода');return;}
-  if(d.demoTransfers){
+  if(demoAllowed()&&d.demoTransfers){
     const found=txFind(hash);if(found){cnvTxPick(id,found.id);return;}
     toast('В DEMO выберите тестовый приход из списка');return;
   }
@@ -7743,8 +7743,8 @@ function payinSettle(id,network=false){
     toast(foreign?'Пришёл перевод не с кошелька клиента — засчитайте или уберите':'Получено '+money(got,'USDT')+' — ждём ещё '+money(rnd2(exp-got),'USDT'));return;}
   const hs=(d.payinHashes||[]).filter(h=>!payinForeign(d,h));
   d.incomeAmount=got; d.amountUsdt=d.amountUsdt||exp;
-  /* Переводы дальше по сделке — тестовыми событиями, как у рублёвой пачки */
-  d.walletId=d.walletId||'grusha'; d.demoTransfers=true;
+  /* Получение крипты не меняет режим проверки дальнейших переводов. */
+  d.walletId=d.walletId||'grusha';
   d.pay.hash=(hs.slice().sort((x,y)=>(Number(y.amount)||0)-(Number(x.amount)||0))[0]||{}).hash||null;
   if(got>exp+PAYIN_TOL){
     d.incomeReview=['Переплата: пришло '+money(got,'USDT')+' вместо '+money(exp,'USDT')];
@@ -8067,7 +8067,7 @@ function pcCard(d,x,share,w){
 function sendBlock(x,edit,multi){
   const l=sendList(x),sum=sendSum(x),need=pcAmount(x)||0,left=sendLeft(x),ok=sendDone(x);
   const status={pending:'Ждём подтверждения',confirmed:'Подтверждено',failed:'Ошибка перевода',mismatch:'Не совпали реквизиты / сумма',error:'Сеть недоступна — повторим проверку'};
-  const canDemo=x.demoTransfers&&(canSwitchRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
+  const canDemo=demoAllowed()&&x.demoTransfers&&(canSwitchRole()||S.role==='teodor'||(!multi&&S.role===stepWho(x,'s23')));
   const rows=l.map((t,i)=>`<div class="hashbox" style="margin:8px 0">
       <div class="hrow"><b class="${t.status==='confirmed'?'pos':''}">${usd(t.status==='confirmed'?t.verifiedAmount:t.amount)}</b>
       <span class="net">${htmlText(t.net||'TRC-20')}</span><b>${htmlText(status[t.status]||status.pending)}</b>
@@ -8089,7 +8089,7 @@ function sendBlock(x,edit,multi){
         <input class="fc num" id="sa_${x.id}" placeholder="${Math.max(0,need-sendDeclared(x)).toFixed(2)}">
         <p class="fh">Пусто — зарегистрируем ещё не добавленный остаток. Проверка сверит его с сетью.</p></div></div>
       <div class="row"><button class="btn btn-outline btn-sm" onclick="sendAdd(${x.id})">Добавить хеш</button>
-        ${x.demoTransfers?`<button class="btn btn-secondary btn-sm" onclick="sendAdd(${x.id},true)">Зарегистрировать перевод (демо-хеш)</button>`:''}
+        ${demoAllowed()&&x.demoTransfers?`<button class="btn btn-secondary btn-sm" onclick="sendAdd(${x.id},true)">Зарегистрировать перевод (демо-хеш)</button>`:''}
         <button class="btn btn-outline btn-sm" onclick="checkSends(${x.id})">Проверить переводы</button></div>`:''}
     <p class="fh">Подтверждено <b>${usd(sum)}</b> из <b>${usd(need)}</b>${ok?' — вся сумма подтверждена':` · ждём ещё <b>${usd(left)}</b>`}.
     Зарегистрировано ${usd(sendDeclared(x))}.${sum>need+0.005?` <b class="neg">Переплата ${usd(sum-need)} — проверьте возврат излишка.</b>`:''}</p></div>`;
@@ -8785,7 +8785,7 @@ function stepCard(d){
       <div class="fg"><label class="fl">Ждём по курсу</label><input class="fc num" readonly value="${plan!=null?usd(plan):'—'}"></div>
     </div>
 
-    ${(function(){const w=dealWallet(d);
+    ${(function(){const w=c&&walletById(c.walletId);
       return w?`<div class="derived" style="margin-top:12px"><span>Ждём на <b>${w.name}</b> · ${w.owner} · <span class="addr">${w.addr}</span>${
         w.multisig?' — мультисиг: отправлять будет фин дир со второй подписью':' — личный кошелёк: владелец отправит сам, вторая подпись не нужна'}</span></div>`
       :`<div class="alert a-warn" style="margin-top:12px"><div>Кошелёк получения не выбран — непонятно, куда смотреть и кто будет отправлять дальше.</div></div>`;})()}
@@ -8793,7 +8793,7 @@ function stepCard(d){
       /* Брокер прислал USDT не на тот кошелёк — пачку перенастраивают, пока подтверждённых
          приходов нет; подтверждённый сначала отвязывают (Карим, 25.09). */
       const confirmed=c&&(c.txs||[]).some(t=>t.status==='confirmed');
-      if(!c||confirmed||d.prepay) return '';
+      if(!c||confirmed||!['operator','admin'].includes(S.role)) return '';
       return `<div class="hrow" style="margin-top:8px;flex-wrap:wrap"><span class="fh" style="margin:0">Брокер прислал на другой кошелёк?</span>
         <select class="fc" style="max-width:360px" onchange="if(this.value)cnvWalletFix(${d.id},this.value)">
           <option value="">— сменить кошелёк пачки —</option>
@@ -8807,7 +8807,7 @@ function stepCard(d){
           <option value="">— входящие переводы —</option>
           ${txPool().filter(t=>!txUsed(t.hash)&&!(c&&(c.txs||[]).some(x=>x.hash===t.hash))
             /* во входящих для пачки — только то, что пришло после отправки рублей */
-            &&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
+            &&demoAllowed()&&!!d.demoTransfers&&t.demo&&t.cnv===c.id).map(t=>
             `<option value="${t.id}">${usd(t.amount)} · ${t.net} · ${t.at} · ${t.hash}</option>`).join('')}
         </select></div>
       <div class="fg"><label class="fl">Или хеш вручную</label>
@@ -9297,11 +9297,8 @@ async function act(id,step){
       txs:[],sentTs:Date.now()};
     S.convs.push(cn);
     members.forEach(x=>{x.cnvId=cn.id;x.brokerDraft=null;x.brokerPick=null;});
-    /* Стенд: брокер «присылает» USDT двумя переводами уже после отправки рублей, в сеть
-       кошелька. Раньше во входящих лежали только переводы 21–22.09 — до отправки 24.09,
-       и один ERC20 на TRON-кошелёк: такого прихода не бывает (прогон 24.09). */
-    if(!d.prepay){d.demoTransfers=true;members.forEach(x=>x.demoTransfers=true);}
-    if(d.demoTransfers){
+    /* Синтетические приходы создаются только в явно включённом автотестовом режиме. */
+    if(demoAllowed()&&d.demoTransfers){
       const plan=Math.round(cn.sent/num(cn.rate)*100)/100;
       if(plan>0){
         const p1=Math.round(plan*0.6*100)/100, hx=()=>Math.random().toString(16).slice(2,10)+'…'+Math.random().toString(16).slice(2,6);
@@ -9332,7 +9329,7 @@ async function act(id,step){
     const c=convOf(d);
     const got=c?hashSum(c.txs):null;
     if(got==null||got<=0){toast('Добавьте подтверждённый приход');return;}
-    if(c.txs.some(t=>t.status!=='confirmed'||(!d.demoTransfers&&t.demo))){toast('Есть неподтверждённые приходы — проверьте хеши');return;}
+    if(c.txs.some(t=>t.status!=='confirmed'||((!demoAllowed()||!d.demoTransfers)&&t.demo))){toast('Есть неподтверждённые приходы — проверьте хеши');return;}
     if(c){
       c.status='received';
       c.receivedAt=now();
@@ -9861,6 +9858,7 @@ function seedCnv(o){
 /* Отдельный учебный вход в лизхолд: живую доску не сбрасываем и конвертацию
    не создаём заранее — её надо пройти из задачи вместе с мелким обменом. */
 function seedLeaseholdTest(){
+  if(!demoAllowed()){toast('Примеры доступны только в автотестовом окружении');return;}
   if(!canSwitchRole()){toast('Добавить тест может только админ');return;}
   S.role='manager';
   const main=newDeal({source:'none',client:'Тест · лизхолд Coins',type:'Оплата недвижимости',
@@ -9911,6 +9909,7 @@ function seedLeaseholdTest(){
   save();render();toast('Добавлен DEMO лизхолд '+main.code+' и обмен '+small.code);
 }
 function seedDemo(){
+  if(!demoAllowed()){toast('Примеры доступны только в автотестовом окружении');return;}
   const demoStart=S.deals.length;
   S.incomes=null;   /* поступления пересобираются из сделок */
   /* 1. Завершённый лизхолд по реквизитам — полный путь, вчера */

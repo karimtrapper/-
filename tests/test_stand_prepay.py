@@ -5,6 +5,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+
 import app as m
 import stand_prepay
 from stand_transfers import expected_addresses

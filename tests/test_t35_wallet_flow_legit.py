@@ -76,7 +76,7 @@ def _broker_state(install):
         'incomeAmount': 10000, 'payinParts': [{'incId': 1, 'amountRub': 10000}],
         'rates': {}, 'conv': [],
     }, {
-        'incomes': [{'id': 1, 'dealId': 1474, 'rub': 10000, 'demo': True}],
+        'incomes': [{'id': 1, 'dealId': 1474, 'rub': 10000, 'source': 'sber'}],
         'wallets': [{'id': 'grusha', 'role': 'findir', 'multisig': True,
                      'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'}],
     })
@@ -85,7 +85,7 @@ def _broker_state(install):
 def _broker_proposal(state, wallet_id='grusha'):
     proposed = _only_step(state, 's18w')
     deal = proposed['deals'][0]
-    deal.update(cnvId=1, walletId=wallet_id, demoTransfers=True)
+    deal.update(cnvId=1, walletId=wallet_id)
     deal['rates']['broker'] = '100'
     proposed['convs'] = [{
         'id': 1, 'broker': 'Tradex', 'requestNo': '41', 'rate': '100',

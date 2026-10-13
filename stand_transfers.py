@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from collections import defaultdict, deque
+import stand_demo
 import os
 import re
 from urllib.parse import urlparse, parse_qs
@@ -166,7 +167,7 @@ def preserve_server_fields(old_state, new_state):
             trusted[(tx.get('hash'), normalize_network(tx.get('net')))].append(tx)
         members = [d for d in new_state.get('deals', [])
                    if d.get('id') in {s.get('dealId') for s in conv.get('sources', []) or []}]
-        all_demo = bool(members) and all(d.get('demoTransfers') for d in members)
+        all_demo = stand_demo.enabled() and bool(members) and all(d.get('demoTransfers') for d in members)
         incoming = []
         for tx in conv.get('txs', []) or []:
             key = (tx.get('hash'), normalize_network(tx.get('net')))
@@ -352,6 +353,8 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
                     demo_outcome=None, get=requests.get, etherscan_key=None,
                     tronscan_key=None):
     """Сверить перевод по сети. Деньги эта функция не отправляет."""
+    if (demo or str(ref or '').startswith('demo:')) and not stand_demo.enabled():
+        return _result('mismatch', checkError='DEMO отключён в этом окружении')
     stand_mode = os.environ.get('STAND_MODE') == '1'
     network = normalize_network(network)
     tx_hash = normalize_ref(ref, network)

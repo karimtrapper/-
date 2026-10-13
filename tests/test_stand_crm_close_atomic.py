@@ -11,6 +11,8 @@ from concurrent.futures import ThreadPoolExecutor
 import app as m
 import requests
 import pytest
+
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 from werkzeug.serving import make_server
 
 
