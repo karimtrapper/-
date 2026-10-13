@@ -3609,6 +3609,12 @@ function ownerSummary(d){
   const file=(kind,f,i)=>`<button class="btn btn-outline btn-sm" onclick="docOpen(${Number(d.id)},'${kind}',${i})">${safe(f.file||f.name||'Файл')}</button>`;
   const c=convOf(d), E=c?econ({...d,rates:{...d.rates,broker:c.rate}}):econ(d);
   const estimate=ownerEstimate(d), crypto=isCrypto(d), parts=d.payinParts||[], manual=d.manualBankReceipt||{};
+  const confirmationLog=(d.log||[]).slice().reverse().find(l=>
+    String(l.text||'').startsWith('Оператор сверил ручной RUB приход')&&l.by);
+  const reviewerFromLog=confirmationLog?.by&&
+    !['operator','manager','admin','findir','teodor'].includes(String(confirmationLog.by))?
+    employeeName(confirmationLog.by)||confirmationLog.by:null;
+  const reviewer=employeeName(manual.confirmedBy)||reviewerFromLog||employeeName(manual.requestedBy);
   const proof=filesOf(d,'bankCreditEvidence'), checks=filesOf(d,'clientPayinReceipt');
   const receipts=crypto?(d.payinHashes||[]):parts;
   const received=crypto?receipts.filter(h=>h.verified).reduce((s,h)=>s+(Number(h.amount)||0),0):parts.reduce((s,p)=>{
@@ -3620,8 +3626,8 @@ function ownerSummary(d){
       const isManual=income.source==='manual_confirmed'||!!p.manualReceiptId;
       const account=income.acc||p.acc||(isManual&&manual.bank&&manual.account?manual.bank+' · '+manual.account:null);
       const review=(d.log||[]).slice().reverse().find(l=>String(l.text||'').startsWith('Приход собран из записей:'));
-      const who=isManual?(manual.confirmedBy?employeeName(manual.confirmedBy)||
-        (manual.confirmedRole==='operator'?'операционист':'сотрудник')+' · имя недоступно':null):
+      const who=isManual?(reviewer||
+        (manual.confirmedRole==='operator'?'операционист':'сотрудник')+' · имя недоступно'):
         (income.confirmedBy?employeeName(income.confirmedBy):review?.by);
       return `<div><b>Часть ${i+1} · ${moneyKop(p.amountRub,'₽')}</b></div>`+
         (p.demo||income.demo?'<div>DEMO запись · реальный приход не подтверждён</div>':'')+
@@ -3640,7 +3646,7 @@ function ownerSummary(d){
   const proofName=last.manualReceiptId||lastIncome.source==='manual_confirmed'?'выписка':lastIncome.source==='sber'?'API Сбера':'';
   const receiptValue=received?`✓ пришли${paidDate?' '+paidDate:''} · ${crypto?moneyKop(received,'USDT'):moneyKop(received,'₽')}${crypto?'':' · '+paidAccount}${proofName?' · '+proofName:''}`:`✗ не пришли · ждём ${expected}`;
   const receiptHint=received&&receipts.length>1?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:
-    received&&last.manualReceiptId&&manual.confirmedBy?`сверка: ${employeeName(manual.confirmedBy)||'операционист'}${manual.confirmedAt?' · '+ownerDate(manual.confirmedAt,true):''}`:'';
+    received&&last.manualReceiptId&&manual.confirmedBy?`сверка: ${reviewer||'операционист'}${manual.confirmedAt?' · '+ownerDate(manual.confirmedAt,true):''}`:'';
   const receiptLine=line('Деньги клиента',receiptValue,receiptHint,
     (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
@@ -3653,7 +3659,7 @@ function ownerSummary(d){
   const wallet=dealWallet(d);
   const sendValue=sendAmount?`${moneyKop(sendAmount,'USDT')} → ${route}`+
     (d.kind==='Фрихолд'&&d.invoiceUsd?' · застройщику '+usdMark(d,d.invoiceUsd):''):'ещё нет';
-  const sendLine=line('Отправляем',sendValue,wallet?.name?'с '+wallet.name.replace(/^Кошелёк /,'кошелька '):'',
+  const sendLine=line('Отправляем',sendValue,wallet?.name?'с кошелька: '+wallet.name:'',
     item('Куда',route+(destination?' · '+destination:''))+
     item('Получателю',d.kind==='Фрихолд'&&d.invoiceUsd?usdMark(d,d.invoiceUsd):d.pay?.coinsCredit?.thb?money(d.pay.coinsCredit.thb,'฿'):null)+
     item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+

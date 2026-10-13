@@ -137,8 +137,21 @@ for (const text of ['✓ пришли 13.10', '192 666,31 ₽', 'Flow Sole (С�
   `≈ $${expected.profit.toFixed(2)}`, 'ориентир по доступным данным договора от 13.10',
   'Операционист Мария', 'Сверка подтверждена', '13.10, 12:15']) assert.ok(card.includes(text), text);
 assert.match(card, /Деньги клиента<\/span><span class="owner-value">[^<]+<\/span><span class="owner-hint">сверка: Операционист Мария · 13\.10, 12:15<\/span>/);
-assert.match(card, /Отправляем<\/span><span class="owner-value">[^<]+<\/span><span class="owner-hint">с кошелька Теодора<\/span>/);
+assert.match(card, /Отправляем<\/span><span class="owner-value">[^<]+<\/span><span class="owner-hint">с кошелька: Кошелёк Теодора<\/span>/);
 assert.doesNotMatch(card, /class="owner-hint">ещё нет<\/span>/);
+
+const oldReviewer = {...live1487,
+  manualBankReceipt: {...live1487.manualBankReceipt, confirmedBy: 'operator', requestedBy: 9},
+  prepay: {...live1487.prepay, wallet: {name: 'Кошелек Теда', owner: 'Тед'}}};
+card = ctx.ownerSummary(oldReviewer);
+assert.match(card, /сверка: Операционист Мария · 13\.10, 12:15/);
+assert.match(card, /с кошелька: Кошелек Теда/);
+assert.doesNotMatch(card, /с кошелек Теда/);
+oldReviewer.manualBankReceipt = {...oldReviewer.manualBankReceipt, requestedBy: 'operator'};
+oldReviewer.log = [{text: 'Оператор сверил ручной RUB приход по банковской выписке',
+  by: 'Настя'}];
+card = ctx.ownerSummary(oldReviewer);
+assert.match(card, /сверка: Настя · 13\.10, 12:15/);
 
 live1487.ownerEconomyAtDoc = {version: 3, at: live1487.docPack.at,
   amountRub: 192666.31, invoiceUsd: 2152.47, ippsTariff: 'bank',
