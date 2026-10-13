@@ -19,6 +19,8 @@ import hashlib
 import hmac
 import secrets
 import base64
+import stand_file_storage
+import stand_object_store
 import binascii
 import stand_notify
 from stand_funding import check_batch as _stand_check_batch_funding, check_state as _stand_check_funding_state
@@ -2361,6 +2363,25 @@ class AgreementDoc(Base):
                 'created_at': self.created_at.isoformat() if self.created_at else None}
 
 
+class StandFile(Base):
+    """Вложения доски: в JSON остаются только ссылки и метаданные."""
+    __tablename__ = 'stand_files'
+    id = Column(String(32), primary_key=True)
+    deal_id = Column(Integer, nullable=False, index=True)
+    kind = Column(String(80), nullable=False)
+    filename = Column(String(255), nullable=False)
+    mime = Column(String(100), nullable=False)
+    size = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    object_key = Column(String(255), nullable=False, unique=True)
+    content_valid = Column(Boolean, nullable=False, default=False)
+    deleted_at = Column(DateTime)
+    uploaded_by = Column(String(100), nullable=False)
+    uploaded_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    legacy_at = Column(String(100))
+    __table_args__ = (UniqueConstraint('deal_id', 'kind', 'sha256', name='uq_stand_file_content'),)
+
+
 class StandState(Base):
     """Общее состояние задачника на тестовом стенде.
 
@@ -2454,7 +2475,7 @@ class StandSberMirrorState(Base):
 # их нельзя создавать. Здесь же держим имена таблиц модулей уведомлений T5
 # и курсора зеркала Сбера T10, чтобы при их подключении фильтр сохранился.
 STAND_ONLY_TABLES = frozenset({
-    'stand_state', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
+    'stand_state', 'stand_files', 'stand_notify_log', 'stand_tg_bind', 'stand_tg_offset',
     'stand_sber_mirror_state', 'stand_crm_links', 'stand_close_evidence', 'stand_channels',
     'channel_export_messages',
 })
@@ -5289,6 +5310,8 @@ def _stand_restore_files(previous, incoming):
                                 break
                     if match and match.get('data'):
                         f['data'] = match.get('data')
+                        if match.get('storageId'):
+                            f.update({k: match[k] for k in ('storageId', 'sha256', 'bytes', 'mime')})
                     else:
                         raise ValueError('invalid_file_marker')
 
@@ -5333,6 +5356,145 @@ def stand_state_get():
         db.close()
 
 
+
+def _stand_externalize_files(db, row, state, *, migration=False, actor=None, previous=None):
+    # Сам перенос байтов не отменяет уже данные подтверждения чека/отправки.
+    # Перепривязываем только подписи, совпадавшие ДО технического преобразования;
+    # новые файлы или изменённые денежные факты по-прежнему снимают подтверждение.
+    fingerprints = {(d['id'], kind): _stand_close_fingerprint(d, kind)
+                    for d in state.get('deals') or [] for kind in ('receipt', 'sent')}
+    changed = stand_file_storage.externalize(db, StandFile, state, migration=migration,
+                                             actor=actor, previous=previous)
+    if changed and row.generation:
+        db.flush()  # Подтверждение sent могло быть создано в этом же PUT.
+        for d in state.get('deals') or []:
+            for kind in ('receipt', 'sent'):
+                evidence = db.query(StandCloseEvidence).filter_by(generation=row.generation,
+                    stand_deal_id=d['id'], kind=kind).first()
+                if evidence and evidence.fingerprint == fingerprints[(d['id'], kind)]:
+                    evidence.fingerprint = _stand_close_fingerprint(d, kind)
+    return changed
+
+
+def _stand_migrate_files():
+    """Ссылки коммитятся после проверки объектов; сбой сохраняет исходный JSON."""
+    db = SessionLocal()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        rows = db.query(StandState).with_for_update().all()
+        count = 0
+        for row in rows:
+            state = json.loads(row.data or '{}')
+            if _stand_externalize_files(db, row, state, migration=True):
+                row.data = json.dumps(state, ensure_ascii=False)
+                row.version = (row.version or 0) + 1
+                row.updated_at = datetime.utcnow()
+                row.updated_by = 'Система: перенос вложений'
+                count += 1
+        db.commit()
+        return count
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+@app.errorhandler(413)
+def stand_file_request_too_large(error):
+    if STAND_MODE and request.path.startswith('/api/stand/'):
+        return jsonify(success=False, error='Запрос слишком большой. Файл — до 20 МБ; обновите страницу и загрузите его отдельно.'), 413
+    return error
+
+
+@app.route('/api/stand/files', methods=['POST'])
+def stand_file_upload():
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    actor, actor_id = current_role(), flask_session.get('user_id')
+    if not actor or not actor_id:
+        return jsonify(success=False, error='unauthorized'), 401
+    try:
+        deal_id = int(request.form.get('dealId'))
+        kind = request.form.get('kind')
+        if kind not in {'pass', 'inv', 'spa', 'ipds', 'signed', 'receipt',
+                        STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND}:
+            raise ValueError('Неизвестный тип вложения')
+        upload = request.files.get('file')
+        if not upload:
+            raise ValueError('Файл не приложен')
+        raw = upload.read(stand_file_storage.FILE_LIMIT + 1)
+        name = stand_file_storage.safe_name(upload.filename)
+        mime = upload.mimetype
+        stand_file_storage.validate(raw, mime, name)
+    except (TypeError, ValueError) as exc:
+        return jsonify(success=False, error=str(exc)), 400
+    db = get_session()
+    try:
+        if engine.dialect.name == 'sqlite':
+            from sqlalchemy import text
+            db.execute(text('BEGIN IMMEDIATE'))
+        row = _stand_row(db, lock=True)
+        previous = json.loads(row.data or '{}')
+        state = json.loads(row.data or '{}')
+        deal = next((d for d in state.get('deals', []) if d.get('id') == deal_id), None)
+        if not deal:
+            return jsonify(success=False, error='Сделка не найдена'), 404
+        if deal.get('closed'):
+            return jsonify(success=False, error='Сделка закрыта'), 409
+        use_draft = (actor in ('manager', 'admin') and kind in {'pass', 'inv', 'spa', 'ipds'}
+                     and deal.get('step') in ('s4', 's5', 's6', 's8')
+                     and not (deal.get('step') == 's8' and (deal.get('docs') or {}).get(kind)))
+        target = deal.setdefault('_managerDraft', {}) if use_draft else deal
+        files = target.setdefault('files', {}).setdefault(kind, [])
+        sha = stand_file_storage.digest(raw)
+        duplicate = next((f for f in files if f.get('sha256') == sha or (
+            str(f.get('data') or '').startswith('data:')
+            and stand_file_storage.digest(stand_file_storage.decode(f)) == sha)), None)
+        # Дубликат не добавляет байты, но не должен обходить проверку прав.
+        user = db.get(AdminUser, actor_id)
+        author = user.display_name or user.username
+        item = {'id': 'sf_' + secrets.token_hex(16), 'file': name,
+                'mime': mime, 'bytes': len(raw), 'size': f'{len(raw) / 1024:.0f} КБ',
+                'at': datetime.now().strftime('%d.%m, %H:%M'), 'demo': False,
+                'uploadedById': actor_id, 'uploadedBy': author,
+                'data': 'data:' + mime + ';base64,' + base64.b64encode(raw).decode()}
+        if kind == STAND_CLIENT_PAYIN_KIND:
+            item['note'] = ''
+        files.append(item)
+        if kind not in (STAND_CLIENT_PAYIN_KIND, STAND_BANK_CREDIT_KIND):
+            target.setdefault('docs', {})[kind] = True
+            first = files[0]
+            target.setdefault('docMeta', {})[kind] = {
+                'file': first['file'] + (f' и ещё {len(files)-1}' if len(files) > 1 else ''),
+                'size': first.get('size'), 'at': first.get('at')}
+        if not use_draft:
+            text = ('Чек клиента прикреплён · ' + name + ' · ' + author if kind == STAND_CLIENT_PAYIN_KIND
+                    else 'Выписка о зачислении прикреплена · ' + name + ' · ' + author if kind == STAND_BANK_CREDIT_KIND
+                    else 'Приложен файл: ' + kind + ' · ' + name)
+            deal.setdefault('log', []).append({'text': text, 'role': actor,
+                'at': int(time.time() * 1000), 'ts': datetime.now().strftime('%d.%m, %H:%M')})
+        problem = _stand_guard_transition(previous, state, actor, actor_id, db)
+        if problem:
+            return jsonify(success=False, error=problem), 403
+        if duplicate:
+            return jsonify(success=True, duplicate=True, message='Файл уже загружен',
+                           version=row.version, data=_stand_strip_files(previous))
+        _stand_externalize_files(db, row, state, actor=actor_id, previous=previous)
+        row.data = json.dumps(state, ensure_ascii=False)
+        row.version = (row.version or 0) + 1
+        row.updated_by, row.updated_at = author, datetime.utcnow()
+        db.commit()
+        return jsonify(success=True, version=row.version, data=_stand_strip_files(state))
+    except ValueError as exc:
+        db.rollback()
+        return jsonify(success=False, error=str(exc)), 400
+    finally:
+        db.close()
+
+
 @app.route('/api/stand/file/<int:deal_id>/<kind>/<int:index>', methods=['GET'])
 def stand_file_get(deal_id, kind, index):
     if not STAND_MODE:
@@ -5365,6 +5527,33 @@ def stand_file_get(deal_id, kind, index):
         if not isinstance(flist, list) or index < 0 or index >= len(flist):
             return "File not found", 404
         f = flist[index]
+        if isinstance(f, dict) and f.get('storageId'):
+            try:
+                stored = stand_file_storage.resolve(db, StandFile, f, deal_id, kind)
+            except ValueError:
+                return 'File not found', 404
+            if stored.mime not in stand_file_storage.MIMES:
+                return 'Invalid MIME type', 400
+            from urllib.parse import quote
+            disposition = 'attachment' if request.args.get('download') else 'inline'
+            try:
+                stream = stand_object_store.storage().open(stored.object_key)
+            except (ValueError, OSError):
+                return jsonify(success=False, error='Хранилище файлов недоступно'), 503
+            def chunks():
+                try:
+                    while True:
+                        chunk = stream.read(64 * 1024)
+                        if not chunk:
+                            break
+                        yield chunk
+                finally:
+                    stream.close()
+            response = app.response_class(chunks(), mimetype=stored.mime, headers={
+                'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'private, no-store',
+                'Content-Disposition': disposition + "; filename*=UTF-8''" + quote(f.get('file') or stored.filename)})
+            response.call_on_close(stream.close)
+            return response
         if not isinstance(f, dict) or not f.get('data'):
             return "File data missing", 404
         
@@ -5967,6 +6156,8 @@ def stand_state_put():
         previous = json.loads(row.data or '{}')
         previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
         try:
+            stand_file_storage.normalize_incoming(previous, payload['data'],
+                                                  modern=payload.get('fileStorageVersion') == 1)
             _stand_restore_files(previous, payload['data'])
         except ValueError:
             return jsonify({'success': False, 'error': 'invalid_file_marker', 'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
@@ -6073,6 +6264,12 @@ def stand_state_put():
         for deal in clean.get('deals') or []:
             _stand_settle_prepay(clean, deal)
         _stand_completion_notes(previous, clean)
+        try:
+            _stand_externalize_files(db, row, clean, actor=actor_id, previous=previous)
+            stand_file_storage.mark_deleted(db, StandFile, previous, clean)
+        except ValueError as exc:
+            db.rollback()
+            return jsonify(success=False, error=str(exc)), 400
         row.data = json.dumps(clean, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username')
@@ -6864,6 +7061,7 @@ def stand_state_reset():
             from sqlalchemy import text as _t
             db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
+        stand_file_storage.mark_deleted(db, StandFile, json.loads(row.data or '{}'), {})
         row.data = '{}'
         row.notified = '[]'
         row.generation = secrets.token_hex(16)
@@ -7458,26 +7656,23 @@ def _stand_main_profit(deal):
 
 def _stand_valid_receipt(deal):
     """Чек — реальный PDF/PNG/JPEG/WebP, а не отметка docs.receipt."""
-    allowed = {'application/pdf': b'%PDF-', 'image/png': b'\x89PNG\r\n\x1a\n',
-               'image/jpeg': b'\xff\xd8\xff', 'image/webp': b'RIFF'}
-    extensions = {'application/pdf': {'pdf'}, 'image/png': {'png'},
-                  'image/jpeg': {'jpg', 'jpeg'}, 'image/webp': {'webp'}}
     for item in (deal.get('files') or {}).get('receipt') or []:
-        mime = str(item.get('mime') or '').lower()
-        data = str(item.get('data') or '')
-        ext = str(item.get('file') or '').rsplit('.', 1)[-1].lower()
-        if (mime not in allowed or ext not in extensions[mime]
-                or not data.startswith(f'data:{mime};base64,')):
-            continue
         try:
-            raw = base64.b64decode(data.split(',', 1)[1], validate=True)
-        except (ValueError, binascii.Error):
+            if item.get('storageId'):
+                # Заимствуем сессию обработчика; здесь её нельзя закрывать.
+                row = stand_file_storage.resolve(get_session(), StandFile, item)
+                # Ссылку выдаёт сервер лишь после проверки байтов при загрузке.
+                if row.size > stand_file_storage.FILE_LIMIT:
+                    continue
+                if row.content_valid and row.mime in stand_file_storage.MIMES:
+                    return True
+                continue
+            else:
+                raw = stand_file_storage.decode(item)
+            stand_file_storage.validate(raw, item.get('mime'), item.get('file'))
+            return True
+        except (ValueError, AttributeError, TypeError):
             continue
-        if not raw or len(raw) > 2 * 1024 * 1024 or not raw.startswith(allowed[mime]):
-            continue
-        if mime == 'image/webp' and raw[8:12] != b'WEBP':
-            continue
-        return True
     return False
 
 
@@ -7517,8 +7712,7 @@ def _stand_bank_credit_problem(before, deal, actor, actor_id, db=None):
     if old == new:
         return None
     if (not isinstance(old, list) or not isinstance(new, list) or len(new) > 30
-            or not all(isinstance(f, dict) and isinstance(f.get('id'), str) for f in old + new)
-            or sum(len(str(f.get('data') or '')) for f in new) > 8 * 1024 * 1024):
+            or not all(isinstance(f, dict) and isinstance(f.get('id'), str) for f in old + new)):
         return 'Некорректная выписка о зачислении'
     if (actor not in ('operator', 'admin') or before.get('step') != 's14'
             or (before.get('manualBankReceipt') or {}).get('status') != 'pending'):
@@ -7529,7 +7723,7 @@ def _stand_bank_credit_problem(before, deal, actor, actor_id, db=None):
         return 'Некорректная выписка о зачислении'
     added = []
     allowed = {'id', 'file', 'size', 'at', 'mime', 'bytes', 'data', 'demo',
-               'uploadedById', 'uploadedBy'}
+               'uploadedById', 'uploadedBy', 'storageId', 'sha256'}
     for file_id, item in new_by_id.items():
         if (set(item) - allowed or not re.fullmatch(r'[a-zA-Z0-9_-]{12,80}', file_id)
                 or (file_id in old_by_id and old_by_id[file_id] != item)):
@@ -7576,8 +7770,7 @@ def _stand_client_payin_problem(before, deal, actor, actor_id, db=None):
         return None
     if not isinstance(old, list) or not isinstance(new, list) or len(new) > 30:
         return 'Некорректные чеки клиента'
-    if (not all(isinstance(item, dict) and isinstance(item.get('id'), str) for item in old + new)
-            or sum(len(str(item.get('data') or '')) for item in new) > 8 * 1024 * 1024):
+    if (not all(isinstance(item, dict) and isinstance(item.get('id'), str) for item in old + new)):
         return 'Некорректные чеки клиента'
     manager = actor == 'manager' and (bool(before.get('docsSent'))
                                      or before.get('step') in ('s14', 's14m'))
@@ -7600,7 +7793,7 @@ def _stand_client_payin_problem(before, deal, actor, actor_id, db=None):
             if {k: v for k, v in item.items() if k != 'note'} != {k: v for k, v in updated.items() if k != 'note'}:
                 return 'Файл чека и автора нельзя менять'
     allowed = {'id', 'file', 'size', 'at', 'mime', 'bytes', 'data', 'demo',
-               'uploadedById', 'uploadedBy', 'note'}
+               'uploadedById', 'uploadedBy', 'note', 'storageId', 'sha256'}
     actor_row = db.query(AdminUser).filter(AdminUser.id == actor_id).first() if db else None
     added = []
     for file_id, item in new_by_id.items():
@@ -23647,6 +23840,16 @@ def docs_delete_agreement(agreement_id):
     finally:
         db.close()
 
+
+
+# До приёма запросов и запуска фоновых потоков: атомарный перенос вложений.
+if STAND_MODE:
+    try:
+        stand_object_store.storage()
+    except stand_object_store.StorageUnavailable:
+        app.logger.warning('Хранилище файлов не настроено; перенос вложений отложен')
+    else:
+        _stand_migrate_files()
 
 
 def _stand_transfer_poll_loop():

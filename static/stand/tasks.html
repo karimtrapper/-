@@ -769,7 +769,7 @@ async function standSave(){
   try{
     const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({version:standVer,data:standSnapshot()})});
+      body:JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()})});
     if(r.status===409){
       const j=await r.json();
       if(j.error&&j.error!=='conflict'){
@@ -7028,8 +7028,8 @@ const FILE_NAMES={
 };
 function fileValid(f){
   if(!f||typeof f.data!=='string')return false;
-  if(f.data!=='__detached__' && f.data.length>3*1024*1024)return false;
-  if(f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>2*1024*1024))return false;
+  if(f.data!=='__detached__' && f.data.length>28*1024*1024)return false;
+  if(f.bytes!=null&&(!Number.isFinite(Number(f.bytes))||Number(f.bytes)>20*1024*1024))return false;
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
   const ext=String(f.file||'').split('.').pop().toLowerCase();
@@ -7206,30 +7206,74 @@ function fileSync(d,k){
 /* Проверка и добавление одного настоящего File — общий путь для выбора через диалог
    и для перетаскивания файла в зону (Карим, 25.09): раньше это жило только внутри
    input.onchange, и drop пришлось бы дублировать логику заново. */
+/* Уменьшаем только изображения; PDF остаётся байт в байт. Белый фон сохраняет
+   читаемость прозрачных скриншотов. Мелкие картинки не увеличиваем. */
+async function fileOptimizeImage(file){
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type))return file;
+  const bitmap=await createImageBitmap(file);
+  try{
+    const ratio=Math.min(1,2400/Math.max(bitmap.width,bitmap.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(bitmap.width*ratio));
+    canvas.height=Math.max(1,Math.round(bitmap.height*ratio));
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/webp',0.85));
+    if(!blob)throw new Error('Не удалось сжать изображение');
+    if(ratio===1&&blob.size>=file.size)return file;
+    const ext=blob.type==='image/webp'?'webp':'png';
+    return new File([blob],file.name.replace(/\.[^.]+$/,'')+'.'+ext,{type:blob.type});
+  }finally{bitmap.close();}
+}
+let fileUploadQueue=Promise.resolve();
+async function fileUploadServer(id,k,file){
+  const saved=await standWaitSaved();
+  if(!saved?.ok)throw new Error('Сначала сохраните изменения доски');
+  const base=standClone(standBase||{});
+  standBusy=true;
+  try{
+    const form=new FormData();form.append('dealId',id);form.append('kind',k);form.append('file',file);
+    const response=await fetch('/api/stand/files',{method:'POST',credentials:'same-origin',body:form});
+    const j=await response.json();
+    if(!response.ok||!j.success)throw new Error(j.error||'Файл не сохранён');
+    /* Во время загрузки могли печатать или менять другую карточку. */
+    const merged=standMerge(base,standSnapshot(),j.data);
+    standVer=j.version;standBase=standClone(j.data);standApply(merged.data);
+    if(!jeq(merged.data,j.data))standPush=true;
+    render();toast(j.duplicate?'Файл уже загружен':'Файл сохранён');
+  }finally{
+    standBusy=false;
+    if(standPush)standSave();
+  }
+}
 function fileAddReal(id,k,f){
   if(!f)return;
-  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.bytes?Math.ceil(ff.bytes*4/3):(ff.data||'').length),0),0);
   const ext=String(f.name||'').split('.').pop().toLowerCase();
   const allowed={'application/pdf':['pdf'],'image/png':['png'],
     'image/jpeg':['jpg','jpeg'],'image/webp':['webp']};
   if(!Object.prototype.hasOwnProperty.call(allowed,f.type)||!allowed[f.type].includes(ext)){
     toast('Разрешены только PDF, PNG, JPEG или WEBP');return;}
-  if(f.size>2*1024*1024){toast('Файл больше 2 МБ');return;}
-  if(total()+Math.ceil(f.size*4/3)+64>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+  if(f.size>20*1024*1024){toast('Файл больше 20 МБ');return;}
+  if(STAND&&!SCREEN&&!SNAP){
+    fileUploadQueue=fileUploadQueue.catch(()=>{}).then(async()=>{
+      const optimized=await fileOptimizeImage(f);
+      await fileUploadServer(id,k,optimized);
+    }).catch(e=>toast(e.message||'Файл не сохранён — проверьте связь'));
+    return fileUploadQueue;
+  }
   const reader=new FileReader();
   reader.onerror=()=>toast('Не удалось прочитать файл');
-  reader.onload=()=>fileAppend(id,k,{file:f.name.replace(/[<>\"'`&\x00-\x1f]/g,'_'),
+  reader.onload=()=>fileAppend(id,k,{file:f.name.replace(/[<>"'`&\x00-\x1f]/g,'_'),
     size:Math.max(1,Math.ceil(f.size/1024))+' КБ',at:now(),
     mime:f.type,bytes:f.size,data:String(reader.result||''),demo:false});
   reader.readAsDataURL(f);
 }
 async function fileAppend(id,k,f){
-  const total=()=>S.deals.reduce((n,x)=>n+Object.values(x.files||{}).flat().reduce((m,ff)=>m+(ff.bytes?Math.ceil(ff.bytes*4/3):(ff.data||'').length),0),0);
   const d=deal(id);if(!d){toast('Сделка уже недоступна');return;}
   const l=filesOf(d,k);
   if(!fileValid(f)){toast('Разрешены только настоящие PDF, PNG, JPEG или WEBP');return;}
-  if(f.bytes>2*1024*1024){toast('Файл больше 2 МБ');return;}
-  if(total()+f.data.length>8*1024*1024){toast('Общий лимит файлов стенда — 8 МБ');return;}
+  if(f.bytes>20*1024*1024){toast('Файл больше 20 МБ');return;}
   if(k==='clientPayinReceipt'){
     if(!clientPayinCanAdd(d)){toast('Чеки доступны после отправки реквизитов или при сверке прихода');return;}
     if(l.length>=30){toast('Можно приложить не более 30 чеков');return;}
@@ -7758,7 +7802,7 @@ async function standPayinCommit(message){
   try{
     const r=await fetch('/api/stand/state',{method:'PUT',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({version:standVer,data:standSnapshot()})});
+      body:JSON.stringify({version:standVer,fileStorageVersion:1,data:standSnapshot()})});
     const j=await r.json();
     if(j.data){standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();}
     if(!r.ok||!j.success){toast((j.error==='conflict'?'Доску изменил коллега — ':'')+

@@ -50,6 +50,7 @@ import ipaddress
 import json
 import os
 import re
+from contextlib import contextmanager
 import socket
 import threading
 import time
@@ -81,6 +82,7 @@ _test_allowed_pairs = set()  # {(канонический host, port)} — то�
 
 _tg_ctx = threading.local()
 _lk_ctx = threading.local()
+_storage_ctx = threading.local()
 
 _TG_HOST = 'api.telegram.org'
 _TG_ALLOWED_METHODS = {'getMe', 'getWebhookInfo', 'getUpdates', 'sendMessage'}
@@ -449,6 +451,26 @@ def _loopback_pair_allowed(host, port):
     return False
 
 
+@contextmanager
+def storage_connection(host):
+    """Точная цель приватного S3, только на время вызова SDK в текущем потоке."""
+    from urllib.parse import urlsplit
+    endpoint = urlsplit(os.environ.get('STAND_FILES_S3_ENDPOINT', ''))
+    bucket = os.environ.get('STAND_FILES_S3_BUCKET', '')
+    style = os.environ.get('STAND_FILES_S3_ADDRESSING', 'virtual-host').replace('virtual-host', 'virtual')
+    expected = (bucket + '.' + str(endpoint.hostname) if style == 'virtual'
+                else endpoint.hostname)
+    if endpoint.scheme != 'https' or host != expected or endpoint.port not in (None, 443):
+        raise ValueError('Недопустимая цель хранилища')
+    old = dict(vars(_storage_ctx))
+    try:
+        _storage_ctx.active, _storage_ctx.host, _storage_ctx.allowed_pairs = True, host, set()
+        yield
+    finally:
+        vars(_storage_ctx).clear()
+        vars(_storage_ctx).update(old)
+
+
 def _hostname_allowed(host, port=None):
     """Решение по запрошенному имени — до резолва. Хост сравнивается точно
     (не суффиксом/подстрокой), порт базы — тоже точно (иначе тот же хост на
@@ -458,6 +480,8 @@ def _hostname_allowed(host, port=None):
     if _loopback_pair_allowed(host, port):
         return True
     h = host.strip('[]').lower()
+    if getattr(_storage_ctx, 'active', False) and h == getattr(_storage_ctx, 'host', None):
+        return port is None or port == 443
     if _db_host and h == _db_host.lower():
         return port is None or port == _db_port
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
@@ -473,6 +497,8 @@ def _hostname_allowed(host, port=None):
 
 def _ip_allowed(ip, port=None):
     if _loopback_pair_allowed(ip, port):
+        return True
+    if getattr(_storage_ctx, 'active', False) and (ip, port) in getattr(_storage_ctx, 'allowed_pairs', ()):
         return True
     if port is not None and (ip, port) in _db_pairs:
         return True
@@ -493,6 +519,8 @@ def _patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
         raise socket.gaierror(-2, 'Имя или служба неизвестны (заблокировано egress-guard стенда)')
     infos = _orig_getaddrinfo(host, port, family, type, proto, flags)
     h = str(host).strip('[]').lower() if host else None
+    if getattr(_storage_ctx, 'active', False) and h == getattr(_storage_ctx, 'host', None):
+        _storage_ctx.allowed_pairs = {(info[4][0], info[4][1]) for info in infos}
     if h == _TG_HOST and getattr(_tg_ctx, 'active', False):
         pairs = {(info[4][0], info[4][1]) for info in infos}
         _tg_ctx.allowed_pairs = pairs | set(getattr(_tg_ctx, 'allowed_pairs', ()))

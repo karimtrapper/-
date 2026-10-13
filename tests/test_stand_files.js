@@ -70,10 +70,10 @@ function fixture() {
   assert.equal((d.files.receipt || []).length, 0);
   assert.ok(toasts.at(-1).includes('PDF'));
   ctx.fileAdd(1, 'receipt');
-  input.files = [{name: 'big.pdf', type: 'application/pdf', size: 2 * 1024 * 1024 + 1}];
+  input.files = [{name: 'big.pdf', type: 'application/pdf', size: 20 * 1024 * 1024 + 1}];
   input.onchange();
   assert.equal((d.files.receipt || []).length, 0);
-  assert.ok(toasts.at(-1).includes('2 МБ'));
+  assert.ok(toasts.at(-1).includes('20 МБ'));
   ctx.fileAdd(1, 'receipt');
   input.files = [{name: '<receipt>.pdf', type: 'application/pdf', size: 100}];
   ctx.readerResult = ctx.demoPdfData();
@@ -85,10 +85,11 @@ function fixture() {
   const {ctx, d, S, input, toasts} = fixture();
   S.deals.push({files: {receipt: [{data: 'x'.repeat(8 * 1024 * 1024)}]}});
   ctx.fileAdd(1, 'receipt');
+  ctx.readerResult = ctx.demoPdfData();
   input.files = [{name: 'receipt.pdf', type: 'application/pdf', size: 100}];
   input.onchange();
-  assert.equal((d.files.receipt || []).length, 0);
-  assert.ok(toasts.at(-1).includes('8 МБ'));
+  assert.equal(d.files.receipt.length, 1); // общего лимита доски больше нет
+
 }
 {
   const {ctx, d} = fixture();

@@ -35,6 +35,7 @@ os.environ.update({
     'STAND_TG_UPDATES_ENABLED': '0',
     'STAND_TRANSFER_POLL_ENABLED': '0',
     'METRIKA_TOKEN': '',
+    'STAND_FILES_LOCAL_DIR': str(Path(_database_dir.name) / 'objects'),
 })
 
 @pytest.fixture(autouse=True)

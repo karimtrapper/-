@@ -105,22 +105,22 @@ def test_state_upload_show_download_delete(monkeypatch):
     manager, operator, admin = client(manager_id), client(operator_id), client(admin_id)
     state = manager.get('/api/stand/state').json['data']
     state['deals'][0]['files']['clientPayinReceipt'] = [receipt(actor_id=manager_id)]
-    no_log = manager.put('/api/stand/state', json={'version': 1, 'data': state})
+    no_log = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 1, 'data': state})
     assert no_log.status_code == 409
     assert 'журнал' in no_log.json['error']
     state['deals'][0]['log'].append({'text': 'Чек клиента прикреплён · client.pdf · Елизавета'})
-    uploaded = manager.put('/api/stand/state', json={'version': 1, 'data': state})
+    uploaded = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 1, 'data': state})
     assert uploaded.status_code == 200, uploaded.json
     shown = operator.get('/api/stand/state').json['data']['deals'][0]
     assert shown['files']['clientPayinReceipt'][0]['data'] == '__detached__'
     assert shown['docs'] == {}
     assert operator.get('/api/stand/file/1485/clientPayinReceipt/0').data.startswith(b'%PDF-')
     shown['files']['clientPayinReceipt'] = []
-    denied = operator.put('/api/stand/state', json={'version': 2, 'data': {'deals': [shown]}})
+    denied = operator.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': {'deals': [shown]}})
     assert denied.status_code == 409
     admin_state = admin.get('/api/stand/state').json['data']
     admin_state['deals'][0]['files']['clientPayinReceipt'] = []
     admin_state['deals'][0]['log'].append({'text': 'Чек клиента удалён · client.pdf · Елизавета'})
-    removed = admin.put('/api/stand/state', json={'version': 2, 'data': admin_state})
+    removed = admin.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': admin_state})
     assert removed.status_code == 200, removed.json
     assert manager.get('/api/stand/state').json['data']['deals'][0]['files']['clientPayinReceipt'] == []

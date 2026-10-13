@@ -72,16 +72,17 @@ def test_stand_files_payload(monkeypatch):
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert len(db_state['deals'][0]['files']['receipt'][0]['data']) > 1000
+        assert db_state['deals'][0]['files']['receipt'][0]['storageId']
 
-    put_resp = manager.put('/api/stand/state', json={'version': 2, 'data': state})
+    state = manager.get('/api/stand/state').json['data']
+    put_resp = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': state})
     assert put_resp.status_code == 200
 
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert len(db_state['deals'][0]['files']['receipt'][0]['data']) > 1000
-        assert db_state['deals'][0]['_managerDraft']['files']['receipt'][0]['data'].startswith('data:application/pdf;base64,B')
+        assert db_state['deals'][0]['files']['receipt'][0]['storageId']
+        assert db_state['deals'][0]['_managerDraft']['files']['receipt'][0]['storageId']
 
     file_resp = manager.get('/api/stand/file/1472/receipt/0?draft=1')
     assert file_resp.status_code == 200
@@ -96,8 +97,8 @@ def test_stand_files_payload(monkeypatch):
     bad_put = manager.put('/api/stand/state', json={'version': 3, 'data': state})
     assert bad_put.status_code == 409
     
+    state = manager.get('/api/stand/state').json['data']
     del state['deals'][0]['_managerDraft']
-    state['deals'][0]['files']['receipt'][0]['bytes'] = 1000000
     manager.put('/api/stand/state', json={'version': 3, 'data': state})
     
     file_resp3 = manager.get('/api/stand/file/1472/receipt/0?draft=1')
@@ -155,8 +156,12 @@ def test_identical_files_identity(monkeypatch):
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert db_state['deals'][0]['files']['receipt'][0]['data'].endswith('A'*100)
-        assert db_state['deals'][0]['files']['receipt'][1]['data'].endswith('B'*100)
+        files = db_state['deals'][0]['files']['receipt']
+        assert files[0]['storageId'] != files[1]['storageId']
+        assert files[0]['data'] == files[1]['data'] == '__detached__'
+    import base64
+    assert manager.get('/api/stand/file/1472/receipt/0').data == base64.b64decode('A'*100)
+    assert manager.get('/api/stand/file/1472/receipt/1').data == base64.b64decode('B'*100)
 
     # Test XSS prevention
     xss_resp = manager.get('/api/stand/file/1472/receipt/2')
@@ -264,11 +269,11 @@ def test_put_erases_files_protection(monkeypatch):
     with get_session() as db:
         row = db.query(StandState).get(1)
         db_state = json.loads(row.data)
-        assert len(db_state['deals'][0]['files']['receipt'][0]['data']) > 100
+        assert db_state['deals'][0]['files']['receipt'][0]['storageId']
 
     # Send files explicitly empty (intentional deletion)
     state['deals'][0]['files'] = {'receipt': []}
-    put_resp = manager.put('/api/stand/state', json={'version': 2, 'data': state})
+    put_resp = manager.put('/api/stand/state', json={'fileStorageVersion': 1, 'version': 2, 'data': state})
     assert put_resp.status_code == 200
     with get_session() as db:
         row = db.query(StandState).get(1)
