@@ -19,6 +19,8 @@ import copy
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+
 import app as appmod
 from stand_transfers import preserve_server_fields, FREEHOLD_LOCKED_STEPS
 

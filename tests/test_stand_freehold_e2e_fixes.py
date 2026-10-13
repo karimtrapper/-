@@ -2,6 +2,8 @@
 import copy
 
 import pytest
+
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
 import app as m
 from tests.test_stand_outgoing_review import api as base_api, network, setup_send, action, tx
 from tests.test_stand_prepay import seed, start, payout, put, COMPANY, TEODOR
@@ -303,7 +305,8 @@ def close_via_roles(api):
 
 
 @pytest.mark.parametrize('prepay', [False, True], ids=['sequential_multisig', 'prepay_teodor_refund'])
-def test_full_freehold_s14_to_crm_via_api_only(api, chain, prepay):
+def test_full_freehold_s14_to_crm_via_api_only(api, chain, prepay, monkeypatch):
+    monkeypatch.delenv('STAND_ALLOW_DEMO', raising=False)
     from tests.test_stand_prepay import IPPS
     initial_board(api)
     saved = prepare_after_rub(api)
@@ -392,7 +395,8 @@ def test_four_close_evidence_roles(api, network, role):
         assert response.status_code == (200 if allowed else 403), (role, kind, response.json)
 
 
-def test_live_1484_snapshot_s23_to_close_via_api_only(api, chain):
+def test_live_1484_snapshot_s23_to_close_via_api_only(api, chain, monkeypatch):
+    monkeypatch.delenv('STAND_ALLOW_DEMO', raising=False)
     import json, time
     from pathlib import Path
     state = json.loads((Path(__file__).parent/'fixtures/stand_1484_s23_anonymized.json').read_text())

@@ -101,3 +101,9 @@ def pytest_unconfigure(config):
         module.engine.dispose()
     _database_dir.cleanup()
     # Keep the early fence and disabled pollers active until process exit.
+
+
+@pytest.fixture
+def stand_demo_environment(monkeypatch):
+    """Старые синтетические сценарии явно разрешают DEMO только внутри теста."""
+    monkeypatch.setenv('STAND_ALLOW_DEMO', '1')

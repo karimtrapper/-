@@ -3,6 +3,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+
 import app as appmod
 
 

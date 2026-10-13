@@ -4,6 +4,8 @@ import json
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures('stand_demo_environment')
+
 import app as appmod
 from stand_transfers import (TRON_USDT, normalize_ref, send_fingerprint, preserve_server_fields,
                              verify_transfer)

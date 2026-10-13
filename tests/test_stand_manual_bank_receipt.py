@@ -655,5 +655,6 @@ def test_sber_api_route_and_old_demo_state(monkeypatch):
     assert manual.status_code == 409
     assert 'API' in manual.json['error']
     shown = snapshot(client)
-    assert shown['data']['deals'][0]['demoTransfers'] is True
+    # Непривязанный тестовый приход не относится к сделке: ошибочный флаг снимается.
+    assert shown['data']['deals'][0]['demoTransfers'] is False
     assert shown['data']['incomes'][0]['demo'] is True

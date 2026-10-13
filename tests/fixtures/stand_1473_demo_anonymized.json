@@ -1,0 +1,42 @@
+{
+  "deals": [
+    {
+      "id": 1473,
+      "step": "s22",
+      "kind": "Фрихолд",
+      "type": "Оплата недвижимости",
+      "demoTransfers": true,
+      "payinHashes": [
+        {
+          "amount": 1,
+          "demo": true,
+          "hash": "demo:payin:1473:1790799534819",
+          "senderOk": true,
+          "unknownSender": true
+        },
+        {
+          "amount": 10999,
+          "demo": true,
+          "hash": "demo:payin:1473:1790799553388",
+          "senderOk": true,
+          "unknownSender": true
+        }
+      ],
+      "payinParts": [],
+      "pay": {
+        "hash": "demo:payin:1473:1790799553388",
+        "usdt": 11000
+      },
+      "cnvId": null,
+      "transfer": {
+        "addr": "TQgQCBXkewuW4RoieDKFP9Ko2SopBh8jso",
+        "amount": 10130,
+        "net": "TRC-20",
+        "to": "IPPS"
+      },
+      "payType": "Крипта"
+    }
+  ],
+  "convs": [],
+  "incomes": []
+}
