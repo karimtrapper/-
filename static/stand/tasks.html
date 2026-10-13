@@ -660,6 +660,26 @@ function standMerge(base,mine,theirs){
         const bx=bm.get(id), mx=mm.get(id), tx=tm.get(id);
         if(jeq(mx,bx)){if(tx!==undefined)arr.push(tx);return;}
         if(jeq(tx,bx)){if(mx!==undefined)arr.push(mx);return;}
+        if(jeq(mx,tx)){if(tx!==undefined)arr.push(tx);return;}
+        if(k==='deals'&&bx&&mx&&tx){
+          /* Независимые правки одной сделки сохраняем вместе. Денежные объекты
+             (quotes, rates, transfer и др.) остаются неделимыми: конфликт любого
+             поля отменяет всю локальную правку, включая переход шага. */
+          const merged={}, clashes=[];
+          new Set([...Object.keys(bx),...Object.keys(mx),...Object.keys(tx)]).forEach(field=>{
+            const bv=bx[field],mv=mx[field],tv=tx[field];
+            let value;
+            if(jeq(mv,bv)||jeq(mv,tv))value=tv;
+            else if(jeq(tv,bv))value=mv;
+            else if(field==='log'&&Array.isArray(bv)&&Array.isArray(mv)&&Array.isArray(tv)
+                &&jeq(mv.slice(0,bv.length),bv)&&jeq(tv.slice(0,bv.length),bv)){
+              /* Оба сотрудника только дописали журнал; старые записи не правим. */
+              value=tv.concat(mv.slice(bv.length).filter(entry=>!tv.slice(bv.length).some(x=>jeq(x,entry))));
+            }else{clashes.push(field);value=tv;}
+            if(value!==undefined)merged[field]=value;
+          });
+          if(!clashes.length){arr.push(merged);return;}
+        }
         if(tx!==undefined)arr.push(tx);
         /* две новые сделки с одним номером — свою не теряем, даём следующий номер */
         if(k==='deals'&&bx===undefined&&mx&&tx) extra.push(mx);
@@ -708,11 +728,15 @@ function standTyping(){
 }
 async function standPull(force){
   if(standBusy||standPush||standSaveScheduled||standClosing)return;
+  const requestedVersion=standVer;
   try{
     const r=await fetch('/api/stand/state',{credentials:'same-origin'});
     if(r.status===401){location.href='/login';return;}
     const j=await r.json(); if(!j.success)return;
     if(standBusy||standPush||standSaveScheduled||standClosing)return;
+    /* GET мог начаться до PUT, а вернуться уже после его завершения. Такой
+       ответ не должен откатывать ни доску, ни базу последующего слияния. */
+    if(standVer!==requestedVersion||(standVer!==null&&j.version<standVer))return;
     if(j.role&&j.role!==S.role&&j.role!=='admin'){S.role=j.role;}
     if(standVer===j.version&&!force)return;
     /* клик уже начался — перерисовка заменила бы кнопку под пальцем, и нажатие
