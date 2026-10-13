@@ -12870,7 +12870,11 @@ def stand_s18_sber_candidates():
             result.append({'id': inc.id, 'uuid': inc.uuid, 'date': inc.operation_date,
                            'payer': inc.payer or '', 'rub': free,
                            'dealId': inc.claimed_deal_id,
-                           'client': deal.client_name if deal else None})
+                           'client': deal.client_name if deal else None,
+                           # Себестоимость из CRM нужна только для оценки прибыли
+                           # по известным сделкам. У прихода без сделки её нет.
+                           'dealRub': deal.payin_amount_rub if deal else None,
+                           'payoutUsdt': deal.payout_amount_usdt if deal else None})
         return jsonify(success=True, incomes=result)
     finally:
         db.close()

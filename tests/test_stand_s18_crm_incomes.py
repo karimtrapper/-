@@ -41,6 +41,7 @@ def sber_board(monkeypatch):
             if claimed:
                 deal = db.query(m.Deal).get(claimed)
                 deal.payin_amount_rub = amount
+                deal.payout_amount_usdt = 150 if claimed == ids[0] else 225
                 deal.payin_parts = json.dumps([{'uuid': row.uuid, 'amount_rub': amount}])
         board = {'deals': [{'id': 999991, 'code': 'S18-CRM', 'client': 'Основная',
                             'type': 'Обмен валюты', 'step': 's18', 'log': [],
@@ -117,6 +118,10 @@ def test_sber_crm_and_unlinked_in_one_batch(sber_board):
     candidates = client.get('/api/stand/s18/sber-candidates').json['incomes']
     assert {r['id'] for r in candidates} >= {r['id'] for r in rows}
     assert [r['dealId'] for r in candidates if r['id'] in (rows[1]['id'], rows[2]['id'])] == [rows[2]['claimed'], rows[1]['claimed']]
+    by_id = {r['id']: r for r in candidates}
+    assert by_id[rows[1]['id']]['dealRub'] == 20000
+    assert by_id[rows[1]['id']]['payoutUsdt'] == 150
+    assert by_id[rows[3]['id']]['payoutUsdt'] is None
     proposal = _proposal(before['data'], rows)
     assert stand_funding.check_batch(proposal, proposal['convs'][0]) is None
     response = client.put('/api/stand/state', json={'version': before['version'],
