@@ -110,7 +110,7 @@ for(const source of ['founder','multisig']){
     transferModeBlock:()=>'',stepNote:()=>'',
   };
   vm.createContext(view);
-  for(const name of ['personalSend','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
+  for(const name of ['personalSend','outgoingPickState','outgoingPickList','outgoingReviewBlock','sendBlock','sendSum','sendDeclared','sendLeft','pcAmount','prepayFundingText','taskFacts','packTasks','signSummary','stepCard']){
     vm.runInContext(fn(name),view);
   }
   // Тип кошелька определяет подпись даже без source или при старом неверном source.

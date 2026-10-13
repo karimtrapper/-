@@ -7,7 +7,7 @@ function fn(name){return html.match(new RegExp(`^(?:async )?function ${name}\\([
   const ctx={toast:s=>notices.push(s),standWaitSaved:async()=>({ok:false,error:'Причина от сервера'}),
     S:{role:'operator'},sendList:d=>d.transfer.sends,htmlText:String,usd:String};
   vm.createContext(ctx);
-  for(const n of ['standSaveError','standRequireSaved','outgoingReviewBlock'])vm.runInContext(fn(n),ctx);
+  for(const n of ['standSaveError','standRequireSaved','outgoingPickState','outgoingPickList','outgoingReviewBlock'])vm.runInContext(fn(n),ctx);
   assert.equal(await ctx.standRequireSaved('Общая ошибка'),false);
   assert.equal(notices.pop(),'Причина от сервера');
   assert.equal(ctx.standSaveError({error:'code',detail:'Пояснение'},'Общая ошибка'),'Пояснение');

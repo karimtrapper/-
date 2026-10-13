@@ -2148,20 +2148,74 @@ function personalSend(d){const w=dealWallet(d);return !!w&&!w.multisig;}
 async function outgoingReviewAction(id,action,hash){
   const d=deal(id);
   const j=await standAction('/api/stand/transfers/review',{dealId:id,action,hash,version:standVer,
-    fingerprint:d.outgoingReview?.selectionFingerprint});
+    fingerprint:d.outgoingReview?.selectionFingerprint,
+    confirmBeforeOrder:document.getElementById('review_before_'+id)?.checked===true});
   if(j)toast(action==='sent'?'Отправка передана на проверку операционисту':'Проверка отправки обновлена');
+}
+function outgoingPickState(d){
+  S.outgoingPicks=S.outgoingPicks||{};
+  return S.outgoingPicks[d.id]||(S.outgoingPicks[d.id]={hashes:sendList(d).filter(t=>t.status==='confirmed').map(t=>t.hash||t.ref)});
+}
+function outgoingPickSet(id,hash,checked){
+  const p=outgoingPickState(deal(id));
+  p.hashes=checked?[...new Set(p.hashes.concat(hash))]:p.hashes.filter(h=>h!==hash);
+  render();
+}
+async function outgoingPickSubmit(id){
+  const p=outgoingPickState(deal(id));
+  const checked=name=>document.getElementById(name+'_'+id)?.checked===true;
+  const j=await standAction('/api/stand/transfers/review',{dealId:id,action:'select',version:standVer,
+    hashes:p.hashes,confirmBeforeOrder:checked('pick_before'),confirmOverpay:checked('pick_over'),confirmMissingTime:checked('pick_time')});
+  if(j){delete S.outgoingPicks[id];toast('Выбранные переводы проверены и сохранены');}
+}
+function outgoingPickList(d){
+  const r=d.outgoingReview, p=outgoingPickState(d), rows=r.candidates||[], target=Number(d.transfer?.amount||0);
+  const allowed=new Set(rows.filter(t=>t.selectable).map(t=>t.hash));
+  p.hashes=p.hashes.filter(h=>allowed.has(h));
+  const selected=rows.filter(t=>t.selectable&&p.hashes.includes(t.hash));
+  const total=selected.reduce((sum,t)=>sum+Number(t.amount||0),0), extra=total-target;
+  const time=t=>t.timestamp_ms?new Date(t.timestamp_ms).toLocaleString('ru-RU',{timeZone:'Europe/Moscow'}):'Время не получено';
+  const row=t=>`<div class="paybox" ${t.networkFee?'style="background:#f1f3f5;color:#737b86"':''}>
+    ${t.selectable?`<label><input type="checkbox" ${p.hashes.includes(t.hash)?'checked':''} onchange="outgoingPickSet(${d.id},'${htmlText(t.hash)}',this.checked)"> Выбрать</label>`:'<span>Не учитывается в платеже</span>'}
+    <div><a class="addr" href="https://tronscan.org/#/transaction/${encodeURIComponent(t.hash)}" target="_blank" rel="noopener noreferrer">${htmlText(t.hash)}</a></div>
+    <div>${htmlText(time(t))} МСК · <b>${Number(t.amount).toLocaleString('ru-RU',{maximumFractionDigits:6})} USDT</b></div>
+    <div>Получатель: <span class="addr">${htmlText(t.to)}</span></div>
+    ${t.networkFee?'<b>Комиссия сети</b>':t.claimedBy?'<b>Уже используется: '+htmlText(t.claimedBy)+'</b>':t.reason?htmlText(t.reason):''}
+  </div>`;
+  const matching=rows.filter(t=>t.to===d.transfer?.addr&&!t.networkFee), other=rows.filter(t=>t.to!==d.transfer?.addr||t.networkFee);
+  const errors={fetch_error:'TronScan недоступен. Повторите позже или добавьте хеш вручную.',
+    malformed_page:'TronScan вернул неполные данные. Можно проверить хеш вручную.',
+    truncated_page:'Список сети получен не полностью. Выбранные хеши будут проверены отдельно.',
+    unordered_page:'Порядок данных сети нарушен. Проверьте хеш вручную.',
+    conflicting_hash:'Сеть вернула противоречивые данные о переводе. Проверьте хеш вручную.',
+    page_limit:'Достигнут предел поиска. Можно добавить хеш вручную.'};
+  return `<div class="card"><div class="card-title">Выбрать исходящие переводы</div>
+    <p>Семь дней до поручения и более поздние переводы. Время московское; список обновляется с кэшем до 20 секунд.</p>
+    <button class="btn btn-outline" onclick="outgoingReviewAction(${d.id},'list')">Обновить список переводов</button>
+    ${r.error?`<div class="alert a-warn">${htmlText(errors[r.error]||r.error)}</div>`:''}
+    <h4>На адрес заявки</h4>${matching.length?matching.map(row).join(''):'<p>Переводов пока не найдено. Обновите список или добавьте хеш вручную.</p>'}
+    ${other.length?'<h4>Прочие исходящие</h4>'+other.map(row).join(''):''}
+    <p><b>Выбрано ${total.toLocaleString('ru-RU',{maximumFractionDigits:6})} USDT из ${target.toLocaleString('ru-RU')} USDT.</b></p>
+    ${selected.some(t=>t.beforeOrder)?`<label class="check"><input id="pick_before_${d.id}" type="checkbox"> Перевод сделан до поручения — подтверждаю</label>`:''}
+    ${selected.some(t=>!t.timestamp_ms)?`<label class="check"><input id="pick_time_${d.id}" type="checkbox"> Время перевода не получено — подтверждаю вручную</label>`:''}
+    ${extra>0.005?`<div class="alert a-warn"><label><input id="pick_over_${d.id}" type="checkbox"> Переплата ${extra.toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — засчитать</label><br>Переплата увеличит себестоимость сделки.</div>`:''}
+    ${selected.length&&extra<-.005?`<p>Недоплата ${(-extra).toFixed(6).replace(/0+$/,'').replace(/\.$/,'')} USDT — ждём остальные части.</p>`:''}
+    <button class="btn btn-primary" ${selected.length?'':'disabled'} onclick="outgoingPickSubmit(${d.id})">Засчитать выбранные</button>
+  </div>`;
 }
 function outgoingReviewBlock(d){
   const r=d.outgoingReview;if(!r||!['operator','admin'].includes(S.role))return '';
   const sends=sendList(d), actual=sends.filter(t=>t.status==='confirmed').reduce((sum,t)=>sum+Number(t.verifiedAmount||0),0);
   const target=Number(d.transfer?.amount||0), extra=actual-target;
   const missingTime=sends.some(t=>t.status==='confirmed'&&t.timeUnverified);
+  const early=sends.some(t=>t.status==='confirmed'&&t.beforeOrder);
   return `<div class="card"><div class="card-title">Проверить отправку · ${htmlText(d.code||'')}</div>
     <p>Найдено и подтверждено ${usd(actual)} из ${usd(target)}.</p>
     ${missingTime?'<div class="alert a-warn">Сеть подтвердила адреса и сумму, но не вернула время перевода. Проверьте, что он относится к этому поручению; автоматическое закрытие остановлено.</div>':''}
     ${r.legacyTime?'<p>У старого поручения нет точного времени. Автопоиск начат с «Отправил»; более ранний перевод добавьте хешем после проверки.</p>':''}
-    ${r.scanStatus!=='complete'?`<div class="alert a-warn">Поиск ещё не завершён: ${htmlText(r.error||'проверяем сеть')}. Можно добавить хеш вручную и проверить.</div>`:''}
-    ${(r.candidates||[]).map(t=>`<div class="paybox"><span class="addr">${htmlText(t.hash)}</span> · ${usd(t.amount)}<br>Получатель: <span class="addr">${htmlText(t.to)}</span>${t.reason?'<br>'+htmlText(t.reason):''}</div>`).join('')}
+    ${r.scanStatus!=='complete'&&!r.error?`<div class="alert a-warn">Поиск ещё не завершён: ${htmlText(r.error||'проверяем сеть')}. Можно добавить хеш вручную и проверить.</div>`:''}
+    ${!d.demoTransfers?outgoingPickList(d):''}
+    ${early?`<label><input type="checkbox" id="review_before_${d.id}"> Перевод сделан до поручения — подтверждаю</label>`:''}
     ${extra>0.005?`<div class="alert a-warn"><b>Переплата ${usd(extra)} — проверьте возврат излишка.</b> Засчитанная переплата увеличит себестоимость сделки.</div>`:''}
     ${extra<-.005?`<p>Недоплата ${usd(-extra)} — ждём следующие части или добавьте хеш.</p>`:''}
     <button class="btn btn-outline" onclick="checkSends(${d.id})">Проверить переводы сейчас</button>
