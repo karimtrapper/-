@@ -30,7 +30,8 @@ const ctx = {S: {deals: [main], incomes}, d: main, ap: {rub: 10000},
   brokerSend: rub => ({sent: rub - rub * .003 - 40, held: rub * .003 + 40,
     ctrl: rub * .001 + 40, ours: rub * .002, ctrlPct: .1, oursPct: .2, fix: 40}),
   walletById: () => null, walletCards: () => '', transferModeBlock: () => '',
-  money: String, moneyKop: String, usd: String,
+  money: String, moneyKop: (v,c) => Number(v).toLocaleString('ru-RU',
+    {minimumFractionDigits:2,maximumFractionDigits:2})+(c?' '+c:''), usd: String,
   htmlText: String, num: Number, pct: String,
   avgUsdt: () => 33, approx: () => ({thb: 0}), econ: () => ({sentUsd: 0})};
 vm.createContext(ctx);
@@ -48,6 +49,11 @@ assert.match(rendered, /35[\s\u00a0]*000/);
 assert.match(rendered, /Сделки CRM/);
 assert.match(rendered, /12\.10, 12:00/);
 assert.match(rendered, /Ориентировочная прибыль по сделкам с известными обязательствами/);
+assert.match(rendered, /Фикс 40 ₽ за поручение делится по долям/);
+assert.match(rendered, /Ждём USDT<\/div><div class="value num">≈ [^<]+ USDT<\/div>/);
+assert.match(rendered, /Ждём примерно[^]*?value="≈ [^"]+ USDT"/);
+assert.match(rendered, /Период с <span class="sub2">дд\.мм\.гггг<\/span>/);
+assert.match(html, /\.s18-batch-summary\{[^}]*background:#fff/);
 assert.match(rendered, /прибыль не считаем — сделки нет/);
 const withUnknown = vm.runInContext('convMargin(d,35000,100,s18Candidates)', ctx);
 const withoutUnknown = vm.runInContext('convMargin(d,30000,100,[s18Candidates[0]])', ctx);

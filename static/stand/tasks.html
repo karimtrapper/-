@@ -180,7 +180,7 @@ tr:last-child td{border-bottom:none}
 
 .list{border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
 .s18-batch-summary{position:sticky;top:96px;z-index:30;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;
-  padding:11px;margin:0 0 14px;background:rgba(255,255,255,.97);border:1px solid var(--navy-200);border-radius:var(--r-sm);
+  padding:11px;margin:0 0 14px;background:#fff;border:1px solid var(--navy-200);border-radius:var(--r-sm);
   box-shadow:0 5px 18px rgba(15,23,42,.1)}
 .s18-batch-summary .label{font-size:11px;color:var(--text-sec)}
 .s18-batch-summary .value{font-size:15px;font-weight:750;white-space:nowrap}
@@ -6703,13 +6703,14 @@ function convMarginBlock(d,total,crmRows=[]){
   const rate=num(brokerRate(d)||d.rates.broker);
   const unlinkedRub=crmRows.filter(x=>!x.dealId).reduce((s,x)=>s+x.rub,0);
   const unlinkedLine=unlinkedRub?`<div style="margin-top:6px">Поступления без сделки: конвертируем <b>${moneyKop(unlinkedRub,'₽')}</b> → ${
-    rate?'≈ <b>'+usd(brokerSend(total).sent*unlinkedRub/total/rate)+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
+    rate?'≈ <b>'+moneyKop(brokerSend(total).sent*unlinkedRub/total/rate,'USDT')+'</b>':'USDT посчитаем после курса'}; прибыль не считаем — сделки нет.</div>`:'';
   if(!rate) return `<div class="alert a-info"><div>Поставьте курс брокера — сразу посчитаем, в плюсе мы по этой пачке или нет.${unlinkedLine}</div></div>`;
   const m=convMargin(d,total,rate,crmRows);
   if(!m) return unlinkedLine?`<div class="alert a-info"><div>${unlinkedLine}</div></div>`:'';
   const ok=m.profit>0;
   return `<div class="alert ${ok?'a-ok':'a-warn'}" style="margin-top:12px"><div>
     <b>Ориентировочная прибыль по сделкам с известными обязательствами: ${ok?'':'−'}${usd(Math.abs(m.profit))}${m.pct!=null?' ('+m.pct.toFixed(2)+' %)':''}</b><br>
+    <span class="fh">Фикс 40 ₽ за поручение делится по долям: при добавлении поступлений прибыль по известным сделкам может сдвинуться на копейки.</span><br>
     По курсу ${String(rate).replace('.',',')} по этим сделкам получим <b>${usd(m.usdtIn)}</b> за ${moneyKop(m.sent,'₽')}.
     ${m.thb?'Должны выдать <b>'+money(m.thb,'฿')+'</b> — по курсу партнёра '+String(m.ut).replace('.',',')+' это <b>'+usd(m.thb/m.ut)+'</b>. ':''}
     ${m.freeholdCost?'В IPPS уйдёт <b>'+usd(m.freeholdCost)+'</b>. ':''}
@@ -9247,7 +9248,7 @@ function stepCard(d){
       <div><div class="label">Всего</div><div class="value num">${moneyKop(total,'₽')}</div></div>
       <div><div class="label">Удержание</div><div class="value num">${moneyKop(batch.held,'₽')}</div></div>
       <div><div class="label">К брокеру</div><div class="value num">${moneyKop(batch.sent,'₽')}</div></div>
-      <div><div class="label">Ждём USDT</div><div class="value num">${rate?usd(batch.sent/rate):'после курса'}</div></div>
+      <div><div class="label">Ждём USDT</div><div class="value num">${rate?'≈ '+moneyKop(batch.sent/rate,'USDT'):'после курса'}</div></div>
     </div>
     ${free.length?`<div class="alert a-warn"><div><b>${free.length} обмена на ${money(exSum(free),'₽')} ждут конвертации</b> — выбрать можно только сделки с положительным подтверждённым приходом RUB. Остальным сначала нужно зарегистрировать и привязать оплату. Наценка по готовым ≈ ${money(exMargin(free.filter(rubBatchReady)),'₽')}.</div>
       <button class="btn btn-outline btn-sm" style="margin-left:auto;align-self:center;white-space:nowrap" onclick="convAll(${d.id})">Взять все</button></div>`:''}
@@ -9257,8 +9258,8 @@ function stepCard(d){
       Ниже — обмены, которые уже ждут конвертации: отметьте те, что отправляем брокеру вместе с ней.</p>
     ${bankSber?`<div class="s18-filterbar">
       <div class="fg"><label class="fl" for="s18_q">Поиск</label><input class="fc" id="s18_q" placeholder="Клиент, плательщик или № сделки" value="${htmlText(s18Filters.query)}" oninput="s18FilterSet('query',this.value)"></div>
-      <div class="fg"><label class="fl" for="s18_from">Период с</label><input class="fc" type="date" id="s18_from" value="${htmlText(s18Filters.from)}" onchange="s18FilterSet('from',this.value)"></div>
-      <div class="fg"><label class="fl" for="s18_to">По</label><input class="fc" type="date" id="s18_to" value="${htmlText(s18Filters.to)}" onchange="s18FilterSet('to',this.value)"></div>
+      <div class="fg"><label class="fl" for="s18_from">Период с <span class="sub2">дд.мм.гггг</span></label><input class="fc" type="date" lang="ru" id="s18_from" value="${htmlText(s18Filters.from)}" onchange="s18FilterSet('from',this.value)"></div>
+      <div class="fg"><label class="fl" for="s18_to">По <span class="sub2">дд.мм.гггг</span></label><input class="fc" type="date" lang="ru" id="s18_to" value="${htmlText(s18Filters.to)}" onchange="s18FilterSet('to',this.value)"></div>
     </div><p class="fh" style="margin:0 0 8px">${s18Filters.query||s18Filters.from||s18Filters.to?'По фильтру':'Свободно'}: ${filtered.length} поступл. · ${moneyKop(filtered.reduce((s,x)=>s+x.rub,0),'₽')}. Отмеченные остаются в пачке, даже если скрыты фильтром.</p>`:''}
     <div class="list">
       ${(function(){const net=brokerSend(total);
@@ -9301,7 +9302,7 @@ function stepCard(d){
       <div class="fg"><label class="fl">Уйдёт брокеру<span style="color:var(--text-muted);font-weight:400"> за вычетом удержания</span></label>
         <input class="fc num" readonly value="${(function(){const b=brokerSend(total);return moneyKop(b.sent,'₽');})()}"></div>
       <div class="fg"><label class="fl">Ждём примерно<span style="color:var(--text-muted);font-weight:400"> по курсу брокера</span></label>
-        <input class="fc num" readonly value="${(function(){const r=num(d.rates.broker)||num(d.rates.rubUsdt);return r?usd(brokerSend(total).sent/r):'посчитаем после курса';})()}"></div>
+        <input class="fc num" readonly value="${(function(){const r=num(d.rates.broker)||num(d.rates.rubUsdt);return r?'≈ '+moneyKop(brokerSend(total).sent/r,'USDT'):'посчитаем после курса';})()}"></div>
       <div class="fg" style="grid-column:1/-1"><label class="fl">Куда брокер пришлёт USDT · сеть TRC-20<span class="rq">*</span></label>
         <input type="hidden" id="b2" value="${walletById(d.walletId)?d.walletId:''}">
         ${walletCards(d,walletById(d.walletId),'walletPick',false,'b2w_'+d.id)}
