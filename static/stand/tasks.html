@@ -3585,7 +3585,7 @@ function ownerEstimate(d){
    Неизвестное значение не подменяем расчётом или данными другой сделки. */
 function ownerSummary(d){
   const safe=v=>htmlText(v==null||v===''?'ещё нет':v);
-  const line=(label,value,hint,details)=>`<details class="owner-line"><summary><span class="owner-label">${label}</span><span class="owner-value">${safe(value)}</span><span class="owner-hint">${safe(hint)}</span></summary><div class="owner-detail">${details||'Подробностей ещё нет'}</div></details>`;
+  const line=(label,value,hint,details)=>`<details class="owner-line"><summary><span class="owner-label">${label}</span><span class="owner-value">${safe(value)}</span>${hint?`<span class="owner-hint">${safe(hint)}</span>`:''}</summary><div class="owner-detail">${details||'Подробностей ещё нет'}</div></details>`;
   const item=(label,value)=>`<div><b>${label}:</b> ${safe(value)}</div>`;
   const accountLabel=(account,bank)=>{
     const a=String(account||''), b=String(bank||'').toLowerCase();
@@ -3639,8 +3639,9 @@ function ownerSummary(d){
   const paidAccount=accountShort(lastIncome.acc||last.acc||(manual.bank&&manual.account?manual.account:null));
   const proofName=last.manualReceiptId||lastIncome.source==='manual_confirmed'?'выписка':lastIncome.source==='sber'?'API Сбера':'';
   const receiptValue=received?`✓ пришли${paidDate?' '+paidDate:''} · ${crypto?moneyKop(received,'USDT'):moneyKop(received,'₽')}${crypto?'':' · '+paidAccount}${proofName?' · '+proofName:''}`:`✗ не пришли · ждём ${expected}`;
-  const receiptLine=line('Деньги клиента',receiptValue,
-    received&&receipts.length>1?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:'',
+  const receiptHint=received&&receipts.length>1?`${receipts.length} ${plural(receipts.length,'часть','части','частей')}`:
+    received&&last.manualReceiptId&&manual.confirmedBy?`сверка: ${employeeName(manual.confirmedBy)||'операционист'}${manual.confirmedAt?' · '+ownerDate(manual.confirmedAt,true):''}`:'';
+  const receiptLine=line('Деньги клиента',receiptValue,receiptHint,
     (receiptDetails||item('Ожидаем',expected)+(!crypto?item('Ожидаемый счёт',expectOf(d).acc):''))+receiptProof+checksDetail);
   const invoice=d.kind==='Фрихолд'?(d.invoiceCurrency==='thb'&&d.invoiceThb?money(d.invoiceThb,'฿')+(d.invoiceUsd?' · '+usdMark(d,d.invoiceUsd):''):d.invoiceUsd?usd(d.invoiceUsd):null):d.amountThb?money(d.amountThb,'฿'):null;
   const dealLine=line('Сделка',d.kind||d.type||'ещё нет',d.object||'объект ещё нет',
@@ -3652,7 +3653,7 @@ function ownerSummary(d){
   const wallet=dealWallet(d);
   const sendValue=sendAmount?`${moneyKop(sendAmount,'USDT')} → ${route}`+
     (d.kind==='Фрихолд'&&d.invoiceUsd?' · застройщику '+usdMark(d,d.invoiceUsd):''):'ещё нет';
-  const sendLine=line('Отправляем',sendValue,'',
+  const sendLine=line('Отправляем',sendValue,wallet?.name?'с '+wallet.name.replace(/^Кошелёк /,'кошелька '):'',
     item('Куда',route+(destination?' · '+destination:''))+
     item('Получателю',d.kind==='Фрихолд'&&d.invoiceUsd?usdMark(d,d.invoiceUsd):d.pay?.coinsCredit?.thb?money(d.pay.coinsCredit.thb,'฿'):null)+
     item('Тариф / комиссия',d.kind==='Фрихолд'?ippsTariff(d).label+(E.bankFee!=null?' · '+usd(E.bankFee):''):d.companyPct!=null?d.companyPct+' %':null)+
@@ -3686,7 +3687,9 @@ function ownerSummary(d){
       (estimate?.legacy&&!c?item('Источник','Снимок расчёта при выпуске старого пакета не сохранялся; использованы доступные поля договора и текущая сохранённая котировка'): ''):
       'Расчёт появится после получения нужных данных');
   const reimbursement=d.payout?.reimbursement;
-  const refundLine=d.prepay?line('Возмещение',reimbursement?reimbursement.usdt!=null?usd(reimbursement.usdt):'сумма ещё нет':d.prepay.amount?usd(d.prepay.amount):'ещё нет',
+  const refundAmount=reimbursement?.usdt??d.prepay?.amount;
+  const refundWallet=d.prepay?.wallet?.name?.replace(/^Кошелёк /,'кошелёк ')||d.prepay?.wallet?.owner&&'кошелёк '+d.prepay.wallet.owner;
+  const refundLine=d.prepay?line('Возмещение',refundAmount!=null?moneyKop(refundAmount,'USDT')+(refundWallet?' → '+refundWallet:''):'ещё нет',
     reimbursement?'возмещено':brokerGot?'ждёт возмещения':'ждём USDT брокера',
     item('Кому',d.prepay.wallet?.name||d.prepay.wallet?.owner)+item('Статус',reimbursement?reimbursement.kind||'возмещено':'ещё не возмещено')+
     (reimbursement?.hash?`<div><b>Хэш:</b> ${link(reimbursement.hash,reimbursement.net)}</div>`:'')):'';

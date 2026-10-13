@@ -66,6 +66,8 @@ for (const text of ['192', 'Flow Sole …0261', 'Татьяна', 'строка 
   '$50.00', '2,10 %', 'ждём USDT брокера']) assert.ok(card.includes(text), text);
 assert.match(card, /Чеки клиента \(не подтверждают приход\)/);
 assert.equal((card.match(/class="owner-line"/g) || []).length, 6);
+assert.match(card, /Возмещение<\/span><span class="owner-value">2 234,76 USDT → кошелёк Теодора<\/span><span class="owner-hint">ждём USDT брокера/);
+assert.doesNotMatch(card, /Возмещение<\/span><span class="owner-value">\$/);
 
 const deal1484 = {...base, id: 1484, cnvId: 2, prepay: {wallet: wallets[0], amount: 2234.76},
   payinParts: [{amountRub: 250000, incId: 102}], files: {},
@@ -134,6 +136,9 @@ for (const text of ['✓ пришли 13.10', '192 666,31 ₽', 'Flow Sole (С�
   `ждём USDT ≈ ${ctx.moneyKop(expected.incoming, 'USDT')}`,
   `≈ $${expected.profit.toFixed(2)}`, 'ориентир по доступным данным договора от 13.10',
   'Операционист Мария', 'Сверка подтверждена', '13.10, 12:15']) assert.ok(card.includes(text), text);
+assert.match(card, /Деньги клиента<\/span><span class="owner-value">[^<]+<\/span><span class="owner-hint">сверка: Операционист Мария · 13\.10, 12:15<\/span>/);
+assert.match(card, /Отправляем<\/span><span class="owner-value">[^<]+<\/span><span class="owner-hint">с кошелька Теодора<\/span>/);
+assert.doesNotMatch(card, /class="owner-hint">ещё нет<\/span>/);
 
 live1487.ownerEconomyAtDoc = {version: 3, at: live1487.docPack.at,
   amountRub: 192666.31, invoiceUsd: 2152.47, ippsTariff: 'bank',
