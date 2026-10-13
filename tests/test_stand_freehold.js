@@ -11,9 +11,9 @@ function functions(names) {
   // Однострочные функции (закрывающая } на той же строке, не с новой) не ловятся
   // многострочным шаблоном ниже — пробуем сначала их, потом обычный вариант.
   return names.map(name => {
-    const oneLine = html.match(new RegExp(`^function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`, 'm'));
+    const oneLine = html.match(new RegExp(`^(?:async )?function ${name}\\([^\\n]*\\)\\{[^\\n]*\\}$`, 'm'));
     if (oneLine) return oneLine[0];
-    const found = html.match(new RegExp(`^function ${name}\\([^]*?^}`, 'm'));
+    const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
     assert.ok(found, `Функция ${name} отсутствует`);
     return found[0];
   }).join('\n');
@@ -748,12 +748,12 @@ console.log('test_stand_freehold.js: OK');
     invoiceUsd:10000,amountUsdt:11000,ippsTariff:'bank',pay:{},
     payinHashes:[{amount:1},{amount:10999}],transfer:{sends:[]}};
   const d=JSON.parse(JSON.stringify(original)), notices=[], events=[];
-  let outcome={ok:false,error:'save_rejected'};
+  let outcome={ok:false,error:'Распределение USDT не совпадает с подтверждённым приходом и долями RUB'};
   const values={fh_order_amount:'10130',fh_order_net:'TRC-20',
     fh_order_addr:'T'+'A'.repeat(33),p_dev:'Synthetic',p_bank:'Synthetic Bank',
     p_acc:'SYNTH-ACCOUNT',p_swift:'SYNTHXX1',p_purp:'Synthetic purpose',
     p_inv:'',p_branch:'',p_bankaddr:''};
-  const ctx=run([],[],{STAND:true,S:{role:'manager',modal:{id:1473}},standBusy:false,
+  const ctx=run(['standSaveError'],[],{STAND:true,S:{role:'operator',modal:{id:1473}},standBusy:false,
     standPush:false,standSaveScheduled:false,deal:()=>d,document:{getElementById:id=>
       id==='fh_order_ack'?{checked:true}:null},saveNote:()=>{},val:id=>values[id]||'',
     num:Number,cleanNum:x=>String(x).replace(/[^\d.,]/g,''),NETS:['TRC-20'],
@@ -773,7 +773,7 @@ console.log('test_stand_freehold.js: OK');
   assert.equal(d.step,'s22');
   assert.equal(ctx.S.modal,null);
   assert.ok(events.includes('wait')&&events.includes('rollback'));
-  assert.ok(notices.some(x=>/не подтверждено сервером/.test(x)));
+  assert.ok(notices.includes(outcome.error),'Показываем точную причину отказа сервера');
   assert.ok(!notices.some(x=>/Поручение сохранено/.test(x)));
 
   events.length=0;notices.length=0;ctx.S.modal={id:1473};outcome={ok:true};
@@ -788,10 +788,10 @@ console.log('test_stand_freehold.js: OK');
 (async()=>{
   const d={id:9101,kind:'Фрихолд',payType:'Крипта',amountUsdt:98800,rates:{},docVersion:0};
   const events=[];
-  const ctx=run([],[],{STAND:true,S:{docIssuing:null},standBusy:false,standPush:false,
+  const ctx=run(['standSaveError','standRequireSaved'],[],{STAND:true,standLastSaveResult:{ok:true},S:{docIssuing:null},standBusy:false,standPush:false,
     standVer:17,standBase:{deals:[{id:9101,amountUsdt:98800}]},
     deal:()=>d,isCrypto:()=>true,
-    standWaitSaved:async()=>events.push('wait'),
+    standWaitSaved:async()=>{events.push('wait');return {ok:true};},
     standSave:async()=>{events.push('put');ctx.standBase={deals:[{id:9101,amountUsdt:d.amountUsdt}]};ctx.standVer=18;},
     fetch:async()=>{events.push('docs');return {status:200,json:async()=>({success:true,version:19,data:{deals:[d]}})};},
     standApply:()=>{},render:()=>{},toast:()=>{},save:()=>{},log:()=>{},

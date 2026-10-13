@@ -788,9 +788,9 @@ async function standSave(){
     if(r.status===409){
       const j=await r.json();
       if(j.error&&j.error!=='conflict'){
-        standLastSaveResult={ok:false,error:j.error||'save_rejected'};
+        standLastSaveResult={ok:false,error:j.detail||j.error||'save_rejected'};
         if(S.modal&&S.modal.noteId)S.modal.delivery='save_failed';
-        standVer=j.version; standBase=standClone(j.data); standApply(j.data); render(); toast(j.error);
+        standVer=j.version; standBase=standClone(j.data); standApply(j.data); render(); toast(j.detail||j.error);
       }else{
         /* Доску поменял коллега: сливаем его правки с нашими и досылаем */
         const mine=standSnapshot(), m=standMerge(standBase||{},mine,j.data||{});
@@ -838,6 +838,21 @@ async function standWaitSaved(){
     await new Promise(resolve=>setTimeout(resolve,25));
   }
   return standLastSaveResult;
+}
+/* Сохраняем причину отказа: следующее действие не должно затирать её общим тостом. */
+function standSaveError(result,fallback){
+  const error=result?.detail||result?.error;
+  return ({network:'Нет связи с сервером — изменения не сохранены',
+    timeout:'Сервер не подтвердил сохранение за 15 секунд — обновите доску перед повтором',
+    save_rejected:'Сервер отклонил сохранение',
+    conflict:'Доска изменилась — обновите сделку и повторите'})[error]||error||fallback;
+}
+async function standRequireSaved(fallback){
+  let result;
+  try{result=await standWaitSaved();}catch(e){result={error:'timeout'};}
+  if(result?.ok)return true;
+  toast(standSaveError(result,fallback||'Изменения ещё не сохранены'));
+  return false;
 }
 function standRollbackHandoff(id){
   const saved=(standBase&&Array.isArray(standBase.deals)?standBase.deals:[])
@@ -1169,7 +1184,7 @@ function freeholdLivePreview(id,field,raw){
 }
 async function freeholdLossAck(id){
   if(!STAND){toast('Подтверждение доступно на стенде');return;}
-  await standWaitSaved();
+  if(!await standRequireSaved())return;
   const j=await standAction('/api/stand/deals/'+id+'/freehold-loss-ack',{version:standVer});
   if(j?.success)toast('Риск сделки в минус подтверждён');
 }
@@ -2140,15 +2155,17 @@ function outgoingReviewBlock(d){
   const r=d.outgoingReview;if(!r||!['operator','admin'].includes(S.role))return '';
   const sends=sendList(d), actual=sends.filter(t=>t.status==='confirmed').reduce((sum,t)=>sum+Number(t.verifiedAmount||0),0);
   const target=Number(d.transfer?.amount||0), extra=actual-target;
+  const missingTime=sends.some(t=>t.status==='confirmed'&&t.timeUnverified);
   return `<div class="card"><div class="card-title">Проверить отправку · ${htmlText(d.code||'')}</div>
     <p>Найдено и подтверждено ${usd(actual)} из ${usd(target)}.</p>
+    ${missingTime?'<div class="alert a-warn">Сеть подтвердила адреса и сумму, но не вернула время перевода. Проверьте, что он относится к этому поручению; автоматическое закрытие остановлено.</div>':''}
     ${r.legacyTime?'<p>У старого поручения нет точного времени. Автопоиск начат с «Отправил»; более ранний перевод добавьте хешем после проверки.</p>':''}
     ${r.scanStatus!=='complete'?`<div class="alert a-warn">Поиск ещё не завершён: ${htmlText(r.error||'проверяем сеть')}. Можно добавить хеш вручную и проверить.</div>`:''}
     ${(r.candidates||[]).map(t=>`<div class="paybox"><span class="addr">${htmlText(t.hash)}</span> · ${usd(t.amount)}<br>Получатель: <span class="addr">${htmlText(t.to)}</span>${t.reason?'<br>'+htmlText(t.reason):''}</div>`).join('')}
     ${extra>0.005?`<div class="alert a-warn"><b>Переплата ${usd(extra)} — проверьте возврат излишка.</b> Засчитанная переплата увеличит себестоимость сделки.</div>`:''}
     ${extra<-.005?`<p>Недоплата ${usd(-extra)} — ждём следующие части или добавьте хеш.</p>`:''}
     <button class="btn btn-outline" onclick="checkSends(${d.id})">Проверить переводы сейчас</button>
-    ${actual>0&&extra>=-.005?`<button class="btn btn-primary" onclick="outgoingReviewAction(${d.id},'accept')">${extra>0.005?'Переплата '+usd(extra)+' — засчитать':'Засчитать проверенные переводы'}</button>`:''}
+    ${actual>0&&extra>=-.005?`<button class="btn btn-primary" onclick="outgoingReviewAction(${d.id},'accept')">${extra>0.005?'Переплата '+usd(extra)+' — засчитать':(missingTime?'Время не получено — засчитать вручную':'Засчитать проверенные переводы')}</button>`:''}
   </div>`;
 }
 async function checkSends(id){const j=await standAction('/api/stand/transfers/check',{dealId:id});if(j)toast('Статусы переводов обновлены');}
@@ -3327,8 +3344,7 @@ function prepayRefundRole(d){
   return w?.multisig?'findir':(w?.role||'teodor');
 }
 async function prepayAction(id,action){
-  try{const saved=await standWaitSaved();if(!saved?.ok){toast('Сначала сохраните изменения');return;}}
-  catch(e){toast('Сначала сохраните изменения');return;}
+  if(!await standRequireSaved())return;
   const j=await standAction('/api/stand/prepay',{dealId:id,action,version:standVer,walletId:val('prepay_wallet')});
   if(j){S.prepayForm=null;render();toast(action==='start'?'Оплата идёт параллельно с конвертацией':'Оплата наперёд отменена');}
 }
@@ -4004,17 +4020,17 @@ function docDownloadAll(id){
 /* Выпуск пакета настоящим генератором (тем же, что в CRM). Сервер сам пишет
    в сделку список файлов и версию; сюда возвращается свежая доска. */
 async function docIssue(id,F,ch,comment){
-  try{await standWaitSaved();}catch(e){toast('Сохранение не завершилось — документы не выпущены');return;}
+  if(!await standRequireSaved('Сохранение не завершилось — документы не выпущены'))return;
   if(STAND&&isCrypto(deal(id))&&deal(id).kind==='Фрихолд'){
     const amount=num(cleanNum(String(F.amountPay||'')));
     if(!(amount>0)){toast('Введите положительную сумму клиента, USDT');return;}
     if(deal(id).amountUsdt!==amount){
       deal(id).amountUsdt=amount;
       await standSave();
-      try{await standWaitSaved();}catch(e){toast('Сумма клиента не сохранилась');return;}
+      if(!await standRequireSaved('Сумма клиента не сохранилась'))return;
     }
     const saved=(standBase?.deals||[]).find(x=>x.id===id);
-    if(!saved||Number(saved.amountUsdt)!==amount){toast('Сумма клиента не сохранилась — документы не выпущены');return;}
+    if(!saved||Number(saved.amountUsdt)!==amount){toast(standSaveError(standLastSaveResult,'Сумма клиента не сохранилась — документы не выпущены'));return;}
   }
   if(standBusy||standPush){toast('Дождитесь сохранения и повторите');return;}
   if(S.docIssuing)return;
@@ -6131,7 +6147,7 @@ async function crmEvidence(id,kind){
   if(standClosing)return;
   standClosing=true;
   try{
-    await standWaitSaved();
+    if(!await standRequireSaved())return;
     const r=await fetch('/api/stand/deals/'+id+'/close-evidence',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({version:standVer,kind})});
     const j=await r.json();
@@ -6142,7 +6158,7 @@ async function crmEvidence(id,kind){
         invoice_payment_or_receipt_missing:'Нужны отметка оплаты и чек',
         sent_receipt_missing:'Отметьте отправку чека клиенту',
         forbidden:'Подтверждение доступно сотруднику нужной роли'};
-      toast(errors[j.error]||('Подтверждение не сохранено: '+(j.error||r.status)));return;
+      toast(j.detail||errors[j.error]||('Подтверждение не сохранено: '+(j.error||r.status)));return;
     }
     standVer=j.version;standBase=standClone(j.data);standApply(j.data);render();
     toast('Подтверждение сохранено · '+kind);
@@ -6153,7 +6169,7 @@ async function crmPushClose(id){
   if(standClosing)return;
   standClosing=true;
   try{
-    if(STAND)await standWaitSaved();
+    if(STAND&&!await standRequireSaved())return;
     const d=deal(id);
     if(!d){toast('Сделка изменилась — обновите доску');return;}
     const manual=d.manual===true;
@@ -6220,7 +6236,7 @@ async function standCloseLose(id,reason){
   if(standClosing)return;
   standClosing=true;
   try{
-    await standWaitSaved();
+    if(!await standRequireSaved())return;
     const r=await fetch('/api/stand/deals/'+id+'/crm-close-lose',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({version:standVer,reason})});
     const j=await r.json();
@@ -7488,7 +7504,7 @@ async function fileOptimizeImage(file){
 let fileUploadQueue=Promise.resolve();
 async function fileUploadServer(id,k,file){
   const saved=await standWaitSaved();
-  if(!saved?.ok)throw new Error('Сначала сохраните изменения доски');
+  if(!saved?.ok)throw new Error(standSaveError(saved,'Сначала сохраните изменения доски'));
   const base=standClone(standBase||{});
   standBusy=true;
   try{
@@ -7564,10 +7580,10 @@ async function fileAppend(id,k,f){
       const confirmed=!!(saved.ok&&target&&Array.isArray((target.files||{})[k])&&
         target.files[k].some(x=>x&&x.file===f.file&&x.bytes===f.bytes));
       if(!confirmed){
-        await standPull(true);toast('Файл не сохранён — проверьте связь и повторите');return;
+        await standPull(true);toast(standSaveError(saved,'Файл не сохранён — проверьте связь и повторите'));return;
       }
     }catch(e){
-      await standPull(true);toast('Не удалось подтвердить файл — проверьте связь и повторите');return;
+      await standPull(true);toast(standSaveError({error:'timeout'},'Не удалось подтвердить файл'));return;
     }
   }
   toast(f.demo?'Тестовый PDF добавлен':'Файл сохранён');
@@ -9538,7 +9554,8 @@ async function act(id,step){
     }
     go(d,'s8','Клиент согласен с курсом '+r3);toast('Запросите документы');return;}
   if(step==='s8'){
-    if(STAND){try{await standWaitSaved();}catch(e){toast('Дождитесь сохранения файлов и повторите');return;}}
+    /* Повтор после отката заново сохраняет передачу; прежний отказ не блокирует кнопку. */
+    if(STAND){try{await standWaitSaved();}catch(e){toast(standSaveError({error:'timeout'}));return;}}
     if(!d.isOld&&!filesOf(d,'pass').length){toast('Нужен паспорт');return;}
     if(!filesOf(d,'inv').length){toast('Нужен инвойс');return;}
     managerDraftPublishDocs(d);
@@ -9551,7 +9568,7 @@ async function act(id,step){
         (current.isOld||filesOf(current,'pass').length>0);
       if(!saved.ok||!published){
         standRollbackHandoff(id);
-        toast('Передача не сохранена — файлы остались на шаге документов; повторите попытку.');return;
+        toast(standSaveError(saved,'Передача не сохранена — файлы остались на шаге документов; повторите попытку.'));return;
       }
       toast(notificationDeliveryText(S.modal)||
         'Документы сохранены и переданы операционисту на доске; доставка Telegram не подтверждена.');
@@ -9725,7 +9742,7 @@ async function act(id,step){
         const current=deal(id), order=(current||{}).ippsPayoutOrder||{};
         if(!saved||!saved.ok||!current||current.step!=='s23'||!order.confirmedAt){
           standRollbackHandoff(id);
-          toast('Поручение не подтверждено сервером. Сделка возвращена к s22; проверьте связь и повторите.');
+          toast(standSaveError(saved,'Сервер не подтвердил переход к отправке — обновите сделку и проверьте поручение.'));
           return;
         }
       }

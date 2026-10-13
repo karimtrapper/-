@@ -283,8 +283,9 @@ const foundWithCrm = clientFind(S.draft.cq, S.draft.searchCrm);
       throw new Error('Failed handoff discarded confirmed manager draft files');
     if(S.modal!==null||notificationDeliveryText(S.modal)!=='')
       throw new Error('Failed handoff left a delivery modal claiming it was sent');
-    if(!handoffToasts.some(x=>x.includes('файлы остались на шаге документов')))
-      throw new Error('Failed handoff did not explain that files remain on s8');
+    const expectedError=typeof response==='function'?'Нет связи с сервером — изменения не сохранены':response.error;
+    if(handoffToasts.at(-1)!==expectedError)
+      throw new Error('Failed handoff overwrote the server error: '+handoffToasts.at(-1));
     return restored;
   };
   const statePutCount=()=>fetchCalls.filter(url=>url==='/api/stand/state').length;

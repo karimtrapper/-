@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
-const names = ['docDownload', 'docOpen', 'fileValid', 'fileBlob', 'demoPdfData',
+const names = ['standSaveError','docDownload', 'docOpen', 'fileValid', 'fileBlob', 'demoPdfData',
   'filesOf', 'fileSync', 'fileAdd', 'fileAddReal', 'fileAppend', 'fileDel', 'docRow'];
 const source = names.map(name => {
   const found = html.match(new RegExp(`^(?:async )?function ${name}\\([^]*?^}`, 'm'));
@@ -110,7 +110,7 @@ function fixture() {
     ctx.standPull=async()=>{};
     await ctx.fileAppend(1,'receipt',{file:'timeout.pdf',size:'1 КБ',at:'30.09',
       mime:'application/pdf',bytes:12,data:'data:application/pdf;base64,JVBERi0xLjQK'});
-    assert.match(toasts.at(-1),/Не удалось подтвердить/);
+    assert.match(toasts.at(-1),/не подтвердил сохранение/);
     assert.doesNotMatch(toasts.at(-1),/Файл сохранён/);
   }
   {

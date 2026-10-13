@@ -10,7 +10,7 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '../static/stand/tasks.html'), 'utf8');
 const found = html.match(/^async function crmPushClose\([^]*?^}/m);
 assert.ok(found, 'нет функции crmPushClose');
-const source = found[0];
+const source = ['standSaveError','standRequireSaved'].map(n=>html.match(new RegExp(`^(?:async )?function ${n}\\([^]*?^}`,'m'))[0]).join('\n')+'\n'+found[0];
 
 function fixture(responses, confirmAnswer) {
   const d = {id: 1, code: 'СД-1', crmDealId: null, sentToClient: true,
@@ -21,7 +21,7 @@ function fixture(responses, confirmAnswer) {
   const ctx = {
     S,
     STAND: true, standClosing: false, standVer: 10,
-    standWaitSaved: async () => {},
+    standWaitSaved: async () => ({ok:true}),
     standClone: structuredClone,
     standApply: data => Object.assign(d, data.deals[0]),
     deal: () => d,

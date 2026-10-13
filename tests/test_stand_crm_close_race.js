@@ -56,6 +56,7 @@ async function main() {
   vm.runInContext([
     source('standSnapshot'), source('standApply'), source('standPull', true),
     source('standSave', true), source('standWaitSaved', true),
+    source('standSaveError'), source('standRequireSaved', true),
     source('sentToggle'), source('crmPushClose', true),
     `function save(){ standSave(); }`,
   ].join('\n'), ctx);
