@@ -4486,7 +4486,7 @@ function viewCnv(){
   const gap=Math.round((got-plan)*100)/100;
   return `<div class="ov" onclick="if(event.target===this)cnvClose()"><div class="modal big">
     <div class="modal-h" style="display:flex;align-items:flex-start;gap:12px">
-      <div style="flex:1"><div class="t">${htmlText(c.name)} · ${c.broker}${c.requestNo?' · заявка '+c.requestNo:''}</div>
+      <div style="flex:1"><div class="t">${htmlText(c.name)}${c.crmConversionId?' · CRM CNV-'+String(c.crmConversionId).padStart(4,'0'):''} · ${htmlText(c.broker)}${c.requestNo?' · заявка '+htmlText(c.requestNo):''}</div>
       <div class="s">Статус: <b>${c.status==='received'?'получено':(c.status==='sent'?'рубли ушли, ждём USDT':'собираем состав')}</b> · курс ${c.rate} ₽/USDT · ${c.at||''}</div></div>
       <button class="btn btn-outline btn-sm" style="white-space:nowrap" onclick="cnvClose()">Закрыть</button></div>
     <div class="modal-b">
