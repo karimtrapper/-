@@ -22,4 +22,10 @@ r=ctx.standMerge(b,mine,theirs);assert.equal(r.data.deals.length,2);assert.equal
 r=ctx.standMerge(b,mine,{deals:[],seq:1});assert.equal(r.data.deals.length,0);assert.equal(r.conflicts.length,1);
 // Локальное удаление одного поля не удаляет независимую серверную правку.
 r=merge(d=>delete d.quotes,d=>d.comment='server');assert.equal(r.data.deals[0].quotes,undefined);assert.equal(r.data.deals[0].comment,'server');
+r=merge(d=>{d.rates={rubUsdt:'82,45'};d.quotes=[{rate:'82,45'}];},
+  d=>{d.rates={client:'91'};d.step='s8';});
+assert.equal(r.data.deals[0].rates.rubUsdt,'82,45');
+assert.equal(r.data.deals[0].rates.client,'91');
+assert.equal(r.data.deals[0].step,'s8');
+assert.deepEqual(r.conflicts,[]);
 console.log('board merge: independent edits, append-only log, atomic conflicts PASS');

@@ -673,6 +673,16 @@ function standMerge(base,mine,theirs){
             let value;
             if(jeq(mv,bv)||jeq(mv,tv))value=tv;
             else if(jeq(tv,bv))value=mv;
+            else if(field==='rates'&&mv&&tv&&typeof mv==='object'&&typeof tv==='object'){
+              /* Курс клиенту менеджера и ответ брокера операциониста — разные поля. */
+              value={};
+              new Set([...Object.keys(bv||{}),...Object.keys(mv),...Object.keys(tv)]).forEach(rateKey=>{
+                const oldRate=(bv||{})[rateKey],mineRate=mv[rateKey],theirRate=tv[rateKey];
+                if(jeq(mineRate,oldRate)||jeq(mineRate,theirRate))value[rateKey]=theirRate;
+                else if(jeq(theirRate,oldRate))value[rateKey]=mineRate;
+                else{value[rateKey]=theirRate;clashes.push('rates.'+rateKey);}
+              });
+            }
             else if(field==='log'&&Array.isArray(bv)&&Array.isArray(mv)&&Array.isArray(tv)
                 &&jeq(mv.slice(0,bv.length),bv)&&jeq(tv.slice(0,bv.length),bv)){
               /* Оба сотрудника только дописали журнал; старые записи не правим. */
@@ -2443,10 +2453,22 @@ function bellHtml(){
         :`<div class="notei"><div class="s">Пока пусто — здесь появятся курсы и запросы по вашим сделкам</div></div>`}
     </div>`:''}`;
 }
-function quoteSet(id,cpId,dir){
+async function quoteSet(id,cpId,dir){
   const d=deal(id), c=cpById(cpId); if(!c)return;
   const v=cleanNum(val('q_'+cpId+'_'+dir));
   if(!v){toast('Впишите курс, который назвал контрагент');return;}
+  if(STAND&&!SCREEN&&!SNAP){
+    /* Ответ сохраняет сервер поверх актуальной сделки: поздний ответ не зависит
+       от того, успел ли менеджер нажать «Клиент согласен». При отказе поле остаётся. */
+    const old=(d.quotes||[]).find(q=>q.cpId===cpId&&q.dir===dir);
+    const result=await standAction('/api/stand/quote',{
+      version:standVer,dealId:id,cpId,dir,rate:v,previousAt:old?.at??null});
+    if(result){
+      delete DRAFTS[(S.open||S.tab||'')+'|q_'+cpId+'_'+dir];
+      S.qEdit=null;render();toast('Курс сохранён: '+c.name+' '+v);
+    }
+    return;
+  }
   d.quotes=d.quotes||[];
   const ex=d.quotes.find(q=>q.cpId===cpId&&q.dir===dir);
   /* снимок, а не ссылка: строку ниже правим на месте, и объект «прежнего лучшего»
@@ -3172,8 +3194,9 @@ let BX_DEALS=[];
 /* ============ операции ============ */
 function log(d,text){d.log.push({ts:now(),at:Date.now(),role:S.role,text});}
 function logWhen(entry){
-  if(entry.ts)return entry.ts;
-  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||'');
+  if(typeof entry.ts==='string'&&/^\d{2}\.\d{2},? \d{2}:\d{2}$/.test(entry.ts))
+    return entry.ts.replace(/^(\d{2}\.\d{2}) (\d{2}:\d{2})$/,'$1, $2');
+  const stamp=typeof entry.at==='number'?entry.at:Date.parse(entry.at||entry.ts||'');
   return Number.isFinite(stamp)&&stamp>0
     ?new Date(stamp).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})
     :'время неизвестно';
@@ -3384,9 +3407,15 @@ function reqSave(id){
   if(stepWho(d)==='operator') noteAdd('operator','Реквизиты для оплаты готовы · '+d.payTo.dev,d.id);
   S.open=null;save();render();toast('Реквизиты сохранены — операционист видит их на оплате');
 }
-function reqReopen(id,why){
+async function reqReopen(id,why){
   const d=deal(id); if(!d||d.closed)return;
   if((d.pay||{}).invoicePaid){toast('Инвойс уже оплачен — реквизиты не меняют');return;}
+  if(STAND&&!SCREEN&&!SNAP&&d.kind==='Фрихолд'&&d.step==='s23'){
+    if(!confirm('Отправка с кошелька остановится. Поручение IPPS будет сброшено; после правки менеджер снова подтвердит реквизиты, а операционист заново поручит перевод. Продолжить?'))return;
+    const result=await standAction('/api/stand/payto/reopen',{version:standVer,dealId:id});
+    if(result){S.open=id;S.view='task';render();toast('Отправка остановлена — поправьте реквизиты');}
+    return;
+  }
   d.reqTask='open'; log(d,'Реквизиты для оплаты открыты на правку'+(why?': '+why:''));
   noteAdd('manager','Задача на вас: Реквизиты для оплаты'+(why?' · '+why:''),d.id);
   if(S.role==='manager'){S.open=d.id;S.view='task';}
@@ -4304,9 +4333,13 @@ function viewTasks(){
   }else{
     h+=`<div class="card" style="padding:0;overflow:hidden">`+mine.map(d=>{
       const st=STEPS[d.step],p=progress(d),a=approx(d),last=d.log[d.log.length-1];
+      const side=S.role==='manager'&&stepWho(d)!=='manager';
+      const taskTitle=side?(needsPayConfirm(d)?'Ваша задача: подтвердить реквизиты перед оплатой':
+        reqOpen(d)?'Ваша параллельная задача: реквизиты для оплаты':stepTitle(d)):stepTitle(d);
       return `<div class="li" onclick="openTask(${d.id})">
         <span class="av" title="этап ${p.i} из ${p.n}">${p.i}</span>
-        <div><div class="t1">${stepTitle(d)} — ${d.client}</div>
+        <div><div class="t1">${taskTitle} — ${d.client}</div>
+        ${side?`<div class="t2">Основной шаг «${stepTitle(d)}» у роли «${(ROLES[stepWho(d)]||{}).t||'—'}»</div>`:''}
         <div class="t2">${d.code} · ${d.type}${d.kind?' · '+d.kind:''} · ${apMoney(a,'thb')} / ${apMoney(a,'pay')}${d.object?' · '+d.object:''}</div>
         <div class="t2">${last?logMeta(last):SOURCES[d.source]}</div></div>
         <button class="btn btn-primary btn-sm" onclick="event.stopPropagation();openTask(${d.id})">Открыть задачу</button></div>`;
@@ -5057,7 +5090,7 @@ function createClosed(){
    Сервер (app.py, _stand_check_assignee) перепроверяет то же самое при
    сохранении — эта разметка только UX, не источник доверия. */
 function employeeName(id){
-  const e=STAND_EMPLOYEES.find(x=>x.id===id);
+  const e=STAND_EMPLOYEES.find(x=>String(x.id)===String(id));
   return e?(e.display_name||e.username):null;
 }
 function setAssignee(dealId,adminId){
@@ -5071,7 +5104,7 @@ async function takeAssignee(dealId){
 }
 function assigneeBlock(d,who){
   const id=d.assigneeAdminId||null;
-  const label=id?(employeeName(id)||('#'+id)):'не назначен';
+  const label=id?(employeeName(id)||'сотрудник с ID '+id):'не назначен';
   let actions='';
   if(S.role==='admin'){
     const opts=STAND_EMPLOYEES.filter(e=>!e.login_disabled&&(e.role===who||e.role==='admin'));
@@ -5081,7 +5114,7 @@ function assigneeBlock(d,who){
     </select>`;
   } else if(S.role===who){
     if(!id) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, standMeId)">Взять себе</button>`;
-    else if(id===standMeId) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
+    else if(String(id)===String(standMeId)) actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="setAssignee(${d.id}, null)">Отказаться</button>`;
     else actions=`<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="takeAssignee(${d.id})">Забрать себе</button>`;
   }
   return `<div class="card" style="margin-bottom:12px;font-size:13px;color:var(--text-muted)">Исполнитель шага: <b>${label}</b>${actions}</div>`;
@@ -5124,12 +5157,13 @@ function viewDeal(d){
     else if(d.closed) body=`<div class="card"><div class="alert ${d.closeReason==='Успешно завершена'?'a-ok':'a-warn'}">Сделка закрыта ${d.closedAt} — <b>${d.closeReason}</b></div>
       <button class="btn btn-outline" onclick="setView('deal')">К карточке сделки</button></div>`;
     else if(!mine){
-      const status=`<div class="card" style="margin-bottom:12px">Сейчас: ${(who&&ROLES[who])?ROLES[who].t:'—'} — ${stepTitle(d)}</div>`+
+      const status=`<div class="card" style="margin-bottom:12px">Сейчас задача ${(who&&ROLES[who])?ROLES[who].t:'—'}${d.assigneeAdminId?' · исполнитель '+htmlText(employeeName(d.assigneeAdminId)||'ID '+d.assigneeAdminId):''}: ${stepTitle(d)}</div>`+
+        (S.role==='manager'&&d.step==='s23'&&d.reqTask==='done'&&!needsPayConfirm(d)?`<div class="alert a-info"><div><b>Сейчас отправка с кошелька — от вас ничего не нужно.</b> Правка реквизитов остановит отправку и потребует нового поручения IPPS.</div></div>`:'')+
         (d.step==='s22'&&d.kind==='Фрихолд'?`<div class="alert a-warn"><div>Менеджер подтверждает реквизиты застройщика, затем операционист согласует с IPPS сеть и адрес перевода. До сохранённого поручения подписант кошелька не получает задачу отправки.</div></div>`:'');
       const managerSide=S.role==='manager'&&d.type==='Оплата недвижимости'&&!(d.pay||{}).invoicePaid;
       const confirmGate=managerSide&&needsPayConfirm(d);
       const canDraft=managerSide&&d.reqTask!=='done';
-      const own=(managerSide&&!confirmGate)?`<div class="card-title" style="margin:10px 0">Ваши задачи по этой сделке — можно заполнить заранее</div>`:'';
+      const own=(managerSide&&!confirmGate&&canDraft)?`<div class="card-title" style="margin:10px 0">Ваша параллельная задача — реквизиты для оплаты</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
       body=status+(S.role==='operator'&&d.step==='s14'?clientPayinBlock(d):'')+manualReceiptSide+
@@ -5200,6 +5234,7 @@ function cnvRow(d){
 }
 function overview(d,st,mine,p,wh){
   const ap=approx(d), F=fake(d), E=econ(d);
+  const activeMine=mine&&(!d.assigneeAdminId||String(d.assigneeAdminId)===String(standMeId));
   const got=['pass','inv','spa','ipds'].filter(k=>d.docs[k]);
   const docRows=docListRows(d), docN=docRows.issued.length+docRows.client.length;
   const row=(k,v,s)=>v==null||v===''||v==='—'?'':`<tr><th>${k}</th><td>${v}${s?` <span style="color:var(--text-muted);font-size:12px">${s}</span>`:''}</td></tr>`;
@@ -5211,8 +5246,8 @@ function overview(d,st,mine,p,wh){
       <div class="li" style="cursor:default;border:1px solid var(--border);border-radius:var(--r-sm)">
         <span class="av">${p.i}</span>
         <div><div class="t1">${stepTitle(d)}</div>
-        <div class="t2">${mine?'на вас':'у роли «'+((wh&&ROLES[wh])?ROLES[wh].t:'—')+'»'}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
-        <button class="btn ${mine?'btn-primary':'btn-outline'} btn-sm" onclick="setView('task')">${mine?'Открыть задачу':'Посмотреть шаг'}</button>
+        <div class="t2">${d.assigneeAdminId?(String(d.assigneeAdminId)===String(standMeId)?'на вас':'у '+htmlText(employeeName(d.assigneeAdminId)||'сотрудника ID '+d.assigneeAdminId)):(mine?'на вас':'у роли «'+((wh&&ROLES[wh])?ROLES[wh].t:'—')+'»')}${last?' · '+dur(Date.now()-last)+' на этом шаге':''}</div></div>
+        <button class="btn ${activeMine?'btn-primary':'btn-outline'} btn-sm" onclick="setView('task')">${activeMine?'Открыть задачу':'Посмотреть шаг'}</button>
       </div></div>`}
 
   <div class="card" style="margin-bottom:16px"><div class="card-title">Клиент и запрос</div>
@@ -8626,8 +8661,7 @@ function stepCard(d){
     ${d.manualBankReceipt?.status==='confirmed'?'':`<div class="row" style="margin:0 0 14px"><button class="btn btn-secondary" onclick="payinBack(${d.id})">Не тот платёж — вернуться и выбрать другой</button></div>`}
     <div class="fg"><label class="fl">Почему привязываем<span class="rq">*</span></label>
       <textarea class="fc" id="c" placeholder="Банк клиента удержал комиссию, клиент прислал чек"></textarea></div>
-    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s14m')">Привязать к сделке</button>
-    <button class="btn btn-outline" onclick="toast('В прототипе не реализовано — в жизни уходит запрос клиенту')">Запросить доплату</button></div></div>`,
+    <div class="row"><button class="btn btn-primary" onclick="act(${d.id},'s14m')">Привязать к сделке</button></div></div>`,
 
   s15:()=>{
     const pt=managerPayTo(d);
