@@ -9,6 +9,8 @@ const ctx={S:{role:'operator',convs:[],deals:[]},STAND:true,standDemoEnabled:fal
   document:{getElementById:()=>null},saveNote:()=>{},toast:()=>{},save:()=>{},render:()=>{},
   deal:id=>ctx.S.deals.find(d=>d.id===id),need:()=>false,val:id=>({b0:'Broker',b1:'80',b2:'company'}[id]),
   cleanNum:String,num:Number,rubBatchReady:()=>true,now:()=> '13.10, 12:00',
+  s18Sber:()=>true,s18Rub:d=>d.incomeAmount||d.amountRub||0,
+  s18CrmRows:()=>[],s18Selected:new Set(),
   brokerSend:n=>({held:0,sent:n,ctrl:0,ours:0,pct:0,fix:0}),convMargin:()=>null,
   incomes:()=>[],walletById:id=>({id,name:'Wallet',owner:'Компания',addr:'FULL-ADDRESS-'+id}),
   moneyKop:String,money:String,log:()=>{},quoteUsed:()=>null,

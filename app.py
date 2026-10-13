@@ -6281,12 +6281,19 @@ def stand_state_put():
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), (
                                 403 if problem == 'Действие шага s14 доступно роли operator' else 409)
         clean = preserve_server_fields(previous, payload['data'])
+        _stand_restore_crm_candidates(db, clean)
         for income in clean.get('incomes') or []:
             # Галочка выбора прихода живёт только в браузере.
             income.pop('sel', None)
         problem = _stand_check_funding_state(previous, clean)
         if problem:
             return jsonify({'success': False, 'error': problem,
+                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
+        try:
+            _stand_sync_crm_conversions(db, previous, clean)
+        except ValueError as exc:
+            db.rollback()
+            return jsonify({'success': False, 'error': str(exc),
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
         previous_by_id = {d.get('id'): d for d in previous.get('deals') or []}
         for deal in clean.get('deals') or []:
@@ -8066,8 +8073,9 @@ def _stand_broker_handoff_problem(previous, state, before, deal):
             or deal.get('conv', []) != before.get('conv', [])):
         return 'Некорректный состав пачки'
     expected_ids = {deal.get('id'), *members}
-    if (not sources or {s.get('dealId') for s in sources} != expected_ids
-            or len(sources) != len(expected_ids)):
+    board_sources = [s for s in sources if s.get('dealId') is not None]
+    if (not board_sources or {s.get('dealId') for s in board_sources} != expected_ids
+            or len(board_sources) != len(expected_ids)):
         return 'Пачка не содержит все связанные сделки'
     funding = _stand_check_batch_funding(state, conv, dispatch=False)
     if funding:
@@ -8768,7 +8776,8 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         if not new_conv or (old_conv.get('walletId') != new_conv.get('walletId')
                             or immutable_sources(old_conv) != immutable_sources(new_conv)):
             return 'Полученную пачку нельзя перепривязать после подтверждения прихода'
-        if any(s.get('dealId') not in new_deals for s in old_conv.get('sources') or []):
+        if any(s.get('dealId') is not None and s.get('dealId') not in new_deals
+               for s in old_conv.get('sources') or []):
             return 'Сделку подтверждённой пачки нельзя удалить'
         old_txs = Counter((t.get('hash'), normalize_network(t.get('net')))
                           for t in old_conv.get('txs') or [] if t.get('status') == 'confirmed')
@@ -12804,6 +12813,7 @@ def _attach_sources(db, conv, sources_req, force=False):
     sources_req = _conversion_parts(sources_req, 'sber_income_id')
     db.query(ConversionSource).filter(ConversionSource.conversion_id == conv.id).delete()
     db.flush()
+
     for item in sources_req:
         sid = item['sber_income_id']
         inc = db.query(SberIncome).filter(SberIncome.id == sid).with_for_update().first()
@@ -12831,6 +12841,175 @@ def _attach_sources(db, conv, sources_req, force=False):
                 f'доступно {free:,.2f} ₽, запрошено {take:,.2f} ₽')
         db.add(ConversionSource(conversion_id=conv.id, sber_income_id=sid, amount_rub=take))
     db.flush()
+
+
+@app.route('/api/stand/s18/sber-candidates', methods=['GET'])
+def stand_s18_sber_candidates():
+    """Все свободные поступления Сбера для рублёвой пачки задачника."""
+    if not STAND_MODE:
+        return jsonify(success=False, error='stand_only'), 404
+    if current_role() not in ('operator', 'admin'):
+        return jsonify(success=False, error='Список поступлений доступен операционисту'), 403
+    db = get_session()
+    try:
+        board = json.loads(_stand_row(db).data or '{}')
+        busy = {str(i.get('id')) for i in board.get('incomes') or [] if i.get('cnvId')}
+        rows = db.query(SberIncome).filter(SberIncome.excluded.isnot(True)).order_by(
+            SberIncome.operation_date.desc(), SberIncome.id.desc()).all()
+        used = _converted_by_income(db, [i.id for i in rows])
+        linked = {d.id: d for d in db.query(Deal).filter(
+            Deal.id.in_({i.claimed_deal_id for i in rows if i.claimed_deal_id})).all()}
+        result = []
+        for inc in rows:
+            free = inc.free_rub(used)
+            deal = linked.get(inc.claimed_deal_id)
+            if (free <= .01 or 'sber:' + inc.uuid in busy
+                    or ((inc.operation_date or '') < CONVERSIONS_LAUNCH_DATE and not inc.keep_active)
+                    or (deal and deal.payin_amount_usdt)):
+                continue
+            result.append({'id': inc.id, 'uuid': inc.uuid, 'date': inc.operation_date,
+                           'payer': inc.payer or '', 'rub': free,
+                           'dealId': inc.claimed_deal_id,
+                           'client': deal.client_name if deal else None})
+        return jsonify(success=True, incomes=result)
+    finally:
+        db.close()
+
+
+def _stand_restore_crm_candidates(db, state):
+    """Сервер сам кладёт поступления CRM на доску; браузерные копии отсекаются."""
+    present = {str(i.get('id')) for i in state.get('incomes') or []}
+    for conv in state.get('convs') or []:
+        for source in conv.get('sources') or []:
+            if source.get('dealId') is not None:
+                continue
+            key = str(source.get('incomeId'))
+            if not key.startswith('sber:') or key in present:
+                continue
+            row = db.query(SberIncome).filter_by(uuid=key[5:]).first()
+            if not row:
+                continue
+            from stand_sber_mirror import _board_income
+            income = _board_income(row)
+            income['cnvId'] = conv.get('id')
+            income['batchRub'] = source.get('rub')
+            state.setdefault('incomes', []).append(income)
+            present.add(key)
+
+
+def _stand_sync_crm_conversions(db, previous, state):
+    """Связать выбранные поступления с реестром CRM в транзакции записи доски."""
+    old = {c.get('id'): c for c in previous.get('convs') or []}
+    board_incomes = {str(i.get('id')): i for i in state.get('incomes') or []}
+    previous_incomes = {str(i.get('id')): i for i in previous.get('incomes') or []}
+    for item in state.get('convs') or []:
+        before = old.get(item.get('id'))
+        if before:
+            if item.get('crmConversionId') != before.get('crmConversionId'):
+                raise ValueError('Связь с конвертацией CRM менять нельзя')
+            if before.get('crmConversionId'):
+                def fixed_sources(conv):
+                    return [{k: v for k, v in source.items() if k != 'usdtFact'}
+                            for source in conv.get('sources') or []]
+                if (fixed_sources(item) != fixed_sources(before)
+                        or item.get('rubTotal') != before.get('rubTotal')
+                        or item.get('sent') != before.get('sent')):
+                    raise ValueError('Состав отправленной пачки CRM менять нельзя')
+            if not before.get('crmConversionId') or before.get('status') == item.get('status'):
+                continue
+            if before.get('status') != 'sent' or item.get('status') != 'received':
+                raise ValueError('Некорректный статус конвертации CRM')
+            crm = db.query(Conversion).filter_by(id=before['crmConversionId']).with_for_update().first()
+            if not crm or crm.status != ConversionStatus.SENT:
+                raise ValueError('Пачка CRM уже изменена — обновите доску')
+            for tx in item.get('txs') or []:
+                if tx.get('status') != 'confirmed' or not tx.get('hash'):
+                    raise ValueError('Для разноса нужен подтверждённый приход USDT')
+                existing = db.query(PayinTx).filter_by(tx_hash=tx['hash']).with_for_update().first()
+                if existing and abs((existing.amount_usdt or 0) - float(tx.get('amount') or 0)) > .01:
+                    raise ValueError('Сумма хеша в CRM отличается от прихода задачника')
+                if not existing:
+                    existing = PayinTx(tx_hash=tx['hash'], amount_usdt=float(tx['amount']),
+                                       source='stand')
+                    db.add(existing)
+                    db.flush()
+                if db.query(ConversionTx).filter_by(payin_tx_id=existing.id).first():
+                    raise ValueError('Этот приход USDT уже в другой пачке CRM')
+                db.add(ConversionTx(conversion_id=crm.id, payin_tx_id=existing.id,
+                                    amount_usdt=float(tx['amount'])))
+            db.flush()
+            db.refresh(crm)
+            crm.status = ConversionStatus.RECEIVED
+            crm.received_at = datetime.utcnow()
+            _apply_conversion_shares(db, crm)
+            _close_deals_after_conversion(db)
+            continue
+        if item.get('crmConversionId'):
+            raise ValueError('Связь с конвертацией CRM задаёт сервер')
+        extras = [s for s in item.get('sources') or [] if s.get('dealId') is None]
+        board_deals = {d.get('id'): d for d in state.get('deals') or []}
+        parts = [part for source in item.get('sources') or [] if source.get('dealId') is not None
+                 for part in (board_deals.get(source['dealId']) or {}).get('payinParts') or []]
+        if not extras and (not parts or not all(str(p.get('incId')).startswith('sber:') for p in parts)):
+            continue
+        members = {s.get('dealId') for s in item['sources'] if s.get('dealId') is not None}
+        if not members or item.get('status') != 'sent':
+            raise ValueError('Сначала подтвердите отправку пачки брокеру')
+        ids_by_uuid = {}
+        for source in item['sources']:
+            if source.get('dealId') is None:
+                key = str(source.get('incomeId'))
+                if not key.startswith('sber:'):
+                    raise ValueError('В пачку можно добавить только поступление Сбера')
+                ids_by_uuid[key[5:]] = source
+                continue
+            deal = board_deals.get(source['dealId']) or {}
+            for part in deal.get('payinParts') or []:
+                key = str(part.get('incId'))
+                if not key.startswith('sber:'):
+                    raise ValueError('Поступления Сбера нельзя смешивать с другим счётом')
+                ids_by_uuid.setdefault(key[5:], None)
+        rows = db.query(SberIncome).filter(SberIncome.uuid.in_(sorted(ids_by_uuid))).order_by(
+            SberIncome.id).with_for_update().all()
+        if len(rows) != len(ids_by_uuid):
+            raise ValueError('Поступление Сбера не найдено в CRM')
+        used = _converted_by_income(db, [r.id for r in rows])
+        if abs(sum(r.free_rub(used) for r in rows) - float(item.get('rubTotal') or 0)) > .01:
+            raise ValueError('Сумма поступлений CRM не совпадает с отправленной пачкой')
+        crm = Conversion(broker=item.get('broker'), request_no=item.get('requestNo'),
+                         sent_at=datetime.utcnow(), rate_rub_usdt=float(item.get('rate')),
+                         held_percent=.3, held_fixed_rub=40,
+                         amount_rub_sent=float(item.get('sent')),
+                         status=ConversionStatus.SENT,
+                         created_by=flask_session.get('username'))
+        db.add(crm)
+        db.flush()
+        for row in rows:
+            free = row.free_rub(used)
+            if (row.excluded or free <= .01 or (row.operation_date or '') < CONVERSIONS_LAUNCH_DATE
+                    and not row.keep_active):
+                raise ValueError('Поступление Сбера уже сконвертировано или исключено')
+            key = 'sber:' + row.uuid
+            mirror = board_incomes.get(key) or {}
+            if mirror.get('source') != 'sber' or mirror.get('cnvId') != item.get('id'):
+                raise ValueError('Поступление Сбера не привязано к пачке на доске')
+            if ids_by_uuid[row.uuid] is not None:
+                source = ids_by_uuid[row.uuid]
+                formerly = previous_incomes.get(key) or {}
+                linked_deal = db.query(Deal).get(row.claimed_deal_id) if row.claimed_deal_id else None
+                if (formerly.get('dealId') is not None or formerly.get('cnvId') is not None
+                        or (linked_deal and linked_deal.payin_amount_usdt)
+                        or abs(float(source.get('rub') or 0) - free) > .01
+                        or (row.operation_date or '') < CONVERSIONS_LAUNCH_DATE and not row.keep_active):
+                    raise ValueError('Поступление Сбера уже занято или сумма изменилась')
+                source['crmDealId'] = row.claimed_deal_id
+                source['crmClient'] = linked_deal.client_name if linked_deal else None
+                source['payer'] = row.payer or ''
+                source['date'] = row.operation_date or ''
+            db.add(ConversionSource(conversion_id=crm.id, sber_income_id=row.id,
+                                    amount_rub=free))
+        db.flush()
+        item['crmConversionId'] = crm.id
 
 
 def _clear_conversion_payin_uses(db, conv):

@@ -220,6 +220,7 @@ async function checkOwnerRole(role) {
   ctx.fetchChannels = async () => {};
   ctx.fetchCrmClients = async () => {};
   ctx.standPull = async () => {};
+  ctx.s18FetchCandidates = async () => {};
   ctx.checkDocParseCapability = async () => {};
   ctx.fetchSberMirrorStatus = async () => {};
   ctx.fetchMarket = async () => false;

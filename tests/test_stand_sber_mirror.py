@@ -5,6 +5,7 @@ import logging
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
@@ -13,6 +14,17 @@ import pytest
 
 import app as appmod
 import stand_sber_mirror as mirror
+
+
+def test_acquiring_mirror_uses_its_own_sber_label():
+    row = SimpleNamespace(uuid='acquiring-2118', operation_date='2026-10-13',
+                          payer='Сбер', amount_rub=99300,
+                          purpose='Зачисление средств по операциям эквайринга. Мерчант №781003872118. Комиссия 700.00.',
+                          doc_number='1')
+    income = mirror._board_income(row)
+    assert income['acc'] == '…2118 · Сбер эквайринг'
+    assert income['rub'] == 99300
+    assert income['grossRub'] == 100000
 
 
 @pytest.fixture

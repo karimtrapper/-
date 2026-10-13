@@ -55,11 +55,23 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
     sources = conv.get('sources') or []
     deals = {d.get('id'): d for d in state.get('deals') or []}
     incomes = {str(i.get('id')): i for i in state.get('incomes') or []}
-    ids = [s.get('dealId') for s in sources]
+    ids = [s.get('dealId') for s in sources if s.get('dealId') is not None]
     if not ids or any(type(i) is not int for i in ids) or len(set(ids)) != len(ids):
         return 'В пачке дублируется или отсутствует источник'
     used_income = set()
     for source in sources:
+        if source.get('dealId') is None:
+            key = str(source.get('incomeId'))
+            income = incomes.get(key)
+            rub = money(source.get('rub'), positive=True)
+            if (not key.startswith('sber:') or not income or income.get('source') != 'sber'
+                    or income.get('dealId') is not None or income.get('excluded')
+                    or income.get('cnvId') != conv.get('id') or rub is None
+                    or money(income.get('batchRub') or income.get('rub'), positive=True) != rub
+                    or key in used_income):
+                return 'Поступление Сбера уже использовано или не совпадает с пачкой'
+            used_income.add(key)
+            continue
         deal = deals.get(source['dealId'])
         rub = money(source.get('rub'), positive=True)
         if not deal or deal.get('cnvId') != conv.get('id') or rub is None:
@@ -85,7 +97,13 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
                     or not (income.get('source') == 'sber' or income.get('demo') is True or manual_ok)):
                 return 'Приход RUB не подтверждён, повторно использован или не принадлежит сделке'
             used_income.add(key)
-            total += part_rub
+            if source.get('bankNet') and income.get('source') == 'sber':
+                net = money(income.get('rub'), positive=True)
+                if net is None:
+                    return 'Нет суммы зачисления Сбера'
+                total += (part_rub * net / income_rub).quantize(CENT)
+            else:
+                total += part_rub
         if total != rub:
             return 'Сумма RUB источника не совпадает с подтверждёнными приходами'
     if any('usdtFact' in source for source in sources):
@@ -130,11 +148,13 @@ def check_batch(state, conv, *, dispatch=False, independent_id=None):
         incoming += amount
     # Оплата наперёд финансируется отдельным разрешённым источником.
     # RUB и разнос по пачке по-прежнему проверяются; USDT брокера не выдумываем.
-    independent = all(deals[s['dealId']].get('prepay') for s in sources)
+    independent = all(deals[i].get('prepay') for i in ids)
     if incoming <= 0 and not independent:
         return 'Нет подтверждённого прихода USDT по пачке'
     outgoing = Decimal(0)
     for source in sources:
+        if source.get('dealId') is None:
+            continue
         deal = deals[source['dealId']]
         transfer = deal.get('transfer') or {}
         reviewing = bool((deal.get('outgoingReview') or {}).get('requestedAt'))
@@ -211,6 +231,8 @@ def check_state(previous, state):
             if issue:
                 return issue
             for source in conv.get('sources') or []:
+                if source.get('dealId') is None:
+                    continue
                 deal = next((d for d in members if d.get('id') == source.get('dealId')), {})
                 for part in deal.get('payinParts') or []:
                     old_income = old_incomes.get(str(part.get('incId')))
@@ -220,6 +242,12 @@ def check_state(previous, state):
                         return 'Источник RUB должен быть зарегистрирован до создания пачки'
         for source in conv.get('sources') or []:
             deal_id = source.get('dealId')
+            if deal_id is None:
+                income_id = str(source.get('incomeId'))
+                if income_id in used_incomes:
+                    return 'Один приход RUB нельзя использовать в двух пачках'
+                used_incomes.add(income_id)
+                continue
             if deal_id in used_deals:
                 return 'Одна сделка не может финансировать две пачки'
             used_deals.add(deal_id)

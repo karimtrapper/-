@@ -57,7 +57,7 @@ def _days():
 
 
 def _board_income(row):
-    """Счёт MF помечен как допущение об одном счёте SberNotifier."""
+    """Счёт MF берём из пресета; эквайринг узнаём по назначению выписки."""
     operation = row.operation_date or ''
     day = operation[:10]
     if len(day) == 10 and day[4] == '-' and day[7] == '-':
@@ -69,7 +69,8 @@ def _board_income(row):
             'date': day, 'arrivedAt': operation, 'payer': row.payer or '',
             'rub': row.amount_rub, 'grossRub': round(row.amount_rub + acquiring['fee_rub'], 2),
             'feeRub': round(acquiring['fee_rub'], 2), 'kind': kind,
-            'acc': _sber_account_label(), 'accSource': 'sber_notifier_single_account',
+            'acc': '…2118 · Сбер эквайринг' if kind == 'эквайринг' else _sber_account_label(),
+            'accSource': 'sber_notifier_purpose_acquiring' if kind == 'эквайринг' else 'sber_notifier_single_account',
             'purpose': row.purpose or '', 'docNumber': row.doc_number or '',
             'dealId': None, 'cnvId': None, 'excluded': False}
 
