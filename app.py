@@ -5209,6 +5209,38 @@ def _stand_row(db, lock=False):
     return row
 
 
+def _stand_move_legacy_s14_to_operator(db, state):
+    """Снимает старое назначение менеджера на s14 без правки денежных данных."""
+    changed = False
+    marker = 'Шаг s14 передан операционисту для сверки прихода'
+    for deal in state.get('deals') or []:
+        if deal.get('step') != 's14' or deal.get('closed'):
+            continue
+        assignee_id = deal.get('assigneeAdminId')
+        if assignee_id is None:
+            continue
+        assignee = db.query(AdminUser).filter_by(id=assignee_id).first()
+        if assignee and assignee.role in ('operator', 'admin'):
+            continue
+        deal['assigneeAdminId'] = None
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': 'system',
+            'text': marker})
+        changed = True
+    return changed
+
+
+def _stand_s14_assignee_problem(db, deal, actor_id):
+    """Сверку закреплённого шага ведёт назначенный операционист."""
+    assignee_id = deal.get('assigneeAdminId')
+    if assignee_id is None or str(assignee_id) == str(actor_id):
+        return None
+    assignee = db.query(AdminUser).filter_by(id=assignee_id).first()
+    if assignee and not assignee.login_disabled and assignee.role == 'operator':
+        return f'Шаг у {assignee.display_name or assignee.username}'
+    return None
+
+
 def _stand_public_state(state, role):
     """Keep unconfirmed manager inputs out of every other role's board view."""
     if role in ('manager', 'admin') or not isinstance(state, dict):
@@ -5340,10 +5372,13 @@ def stand_state_get():
         row = _stand_row(db, lock=True)
         state = json.loads(row.data or '{}')
         repaired, warnings = stand_demo.repair(state)
+        ownership_moved = _stand_move_legacy_s14_to_operator(db, state)
+        repaired = repaired or ownership_moved
         if repaired:
             row.data = json.dumps(state, ensure_ascii=False)
             row.version = (row.version or 0) + 1
-            row.updated_by = 'Система: исправление тестового режима'
+            row.updated_by = ('Система: передача s14 операционисту' if ownership_moved
+                              else 'Система: исправление тестового режима')
             row.updated_at = datetime.utcnow()
         response = {'success': True, 'version': row.version or 0,
                     'data': _stand_strip_files(state),
@@ -6225,7 +6260,8 @@ def stand_state_put():
             problem = _stand_guard_transition(previous, payload['data'], actor, actor_id, db)
         if problem:
             return jsonify({'success': False, 'error': problem,
-                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), 409
+                            'version': row.version or 0, 'data': _stand_strip_files(previous)}), (
+                                403 if problem == 'Действие шага s14 доступно роли operator' else 409)
         clean = preserve_server_fields(previous, payload['data'])
         for income in clean.get('incomes') or []:
             # Галочка выбора прихода живёт только в браузере.
@@ -7888,7 +7924,7 @@ def _stand_payto_confirmed(deal):
 # роли, без переноса всего клиентского флоу на сервер.
 _STAND_STEP_ROLE = {
     's4': 'manager', 's5': 'operator', 's6': 'manager', 's8': 'manager',
-    's11': 'operator', 's11b': 'operator', 's12': 'manager', 's14': 'manager',
+    's11': 'operator', 's11b': 'operator', 's12': 'manager', 's14': 'operator',
     's14m': 'manager', 's15': 'manager', 's18': 'operator', 's18w': 'operator',
     's22': 'operator', 's23': 'findir', 's24': 'teodor', 's25': 'operator',
     's26': 'operator', 's27': 'manager',
@@ -8486,6 +8522,14 @@ def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=N
         return 'Нельзя дублировать сделку на доске'
     old_income_by_id = {str(i.get('id')): i for i in previous.get('incomes') or []}
     new_income_by_id = {str(i.get('id')): i for i in new_state.get('incomes') or []}
+    if actor not in ('operator', 'admin'):
+        for key, income in new_income_by_id.items():
+            earlier = old_income_by_id.get(key) or {}
+            if income.get('source') != 'sber' or earlier.get('dealId') == income.get('dealId'):
+                continue
+            if any((old.get(deal_id) or new_deals.get(deal_id) or {}).get('step') == 's14'
+                   for deal_id in (earlier.get('dealId'), income.get('dealId')) if deal_id is not None):
+                return 'Действие шага s14 доступно роли operator'
     if any(income.get('source') == 'manual_confirmed'
            and (old_income_by_id.get(str(income.get('id'))) is None
                 or old_income_by_id[str(income.get('id'))].get('source') != 'manual_confirmed')
@@ -10239,8 +10283,6 @@ def _stand_actual_rub_account(data):
     if not isinstance(mode, str):
         return None
     presets = {
-        'sber': ('ПАО Сбербанк', '40807810938720000286', '30101810400000000225', '044525225'),
-        'acquiring': ('ПАО Сбербанк', '…2118', None, None),
         'tbank': ('Т-Банк', '…5510', None, None),
         'flowsole': ('Московский филиал "БАНК СГБ" г. Москва',
                      '40807810819000000261', '30101810245250000094', '044525094'),
@@ -10308,6 +10350,11 @@ def stand_manual_bank_receipt():
         deal = next((d for d in state.get('deals') or [] if d.get('id') == deal_id), None)
         if not deal or deal.get('step') != 's14' or deal.get('payType') == 'Крипта':
             return jsonify({'success': False, 'error': 'Сделка не ждёт RUB приход'}), 409
+        _stand_move_legacy_s14_to_operator(db, state)
+        assignee_problem = (_stand_s14_assignee_problem(db, deal, flask_session.get('user_id'))
+                            if actor != 'admin' else None)
+        if assignee_problem:
+            return jsonify({'success': False, 'error': assignee_problem}), 409
         if handoff:
             if deal.get('manualBankReceipt') or deal.get('payinParts') or deal.get('incomeAmount'):
                 return jsonify({'success': False, 'error': 'По сделке уже есть ручная заявка или приход'}), 409
@@ -10323,7 +10370,7 @@ def stand_manual_bank_receipt():
             if (deal.get('docPack') or deal.get('docVersion')) and deal.get('issuedDocPayTo') is None:
                 deal['issuedDocPayTo'] = document_payto
             deal.setdefault('log', []).append({'at': int(time.time() * 1000), 'ts': stamp,
-                'role': actor, 'text': 'Передал RUB приход оператору на сверку по выписке'})
+                'role': actor, 'text': 'Операционист начал ручную сверку RUB прихода по выписке'})
             event_id = f"stand:manual-bank-receipt:{deal_id}:{deal['manualBankReceipt']['id']}"
             _stand_note(state, event_id, 'operator', deal,
                         f"Нужна сверка RUB прихода по сделке {deal.get('code') or deal_id}")
@@ -10496,6 +10543,11 @@ def stand_manual_bank_receipt_confirm(deal_id):
         receipt = (deal or {}).get('manualBankReceipt') or {}
         if not deal or deal.get('step') != 's14' or receipt.get('status') != 'pending':
             return jsonify({'success': False, 'error': 'pending_receipt_not_found'}), 409
+        _stand_move_legacy_s14_to_operator(db, state)
+        assignee_problem = (_stand_s14_assignee_problem(db, deal, flask_session.get('user_id'))
+                            if actor != 'admin' else None)
+        if assignee_problem:
+            return jsonify({'success': False, 'error': assignee_problem}), 409
         evidence = ((deal.get('files') or {}).get(STAND_BANK_CREDIT_KIND) or [])
         if not evidence or not _stand_valid_receipt({'files': {'receipt': evidence}}):
             return jsonify({'success': False, 'error': 'Приложите выписку или скрин подтверждения зачисления'}), 409

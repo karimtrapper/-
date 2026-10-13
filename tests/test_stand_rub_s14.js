@@ -48,8 +48,9 @@ d.manualBankReceipt = {status: 'pending', handoff: true,
   documentPayToAtRequest: d.issuedDocPayTo};
 ctx.S.role = 'operator';
 const operator = run('manualBankReceiptBlock(S.deals[0])');
-for(const label of ['…0286 · Сбер', '…2118 · Сбер · эквайринг',
-  '…5510 · Т-Банк', '…0261 · СГБ (Flow Sole)', 'Другой счёт']) assert.ok(operator.includes(label));
+for(const label of ['…5510 · Т-Банк', '…0261 · СГБ (Flow Sole)', 'Другой счёт'])
+  assert.ok(operator.includes(label));
+assert.doesNotMatch(operator, /<option value="sber"|<option value="acquiring"/);
 assert.match(run("manualBankActualWarning(S.deals[0], 'flowsole')"), /Выпущенные документы содержат другие реквизиты/);
 assert.equal(run("manualBankActualWarning(S.deals[0], 'sber')"), '');
 assert.match(operator, /mbr_deviation_1485/);

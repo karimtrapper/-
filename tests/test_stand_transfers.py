@@ -531,7 +531,7 @@ def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch
     """Тестовый + основной перевод крипто-клиента: кошелёк клиента берётся из первого хеша,
     перевод с чужого кошелька помечается, дубль и перевод до сделки не принимаются."""
     monkeypatch.setattr(appmod, 'STAND_MODE', True)
-    monkeypatch.setattr(appmod, 'current_role', lambda: 'manager')
+    monkeypatch.setattr(appmod, 'current_role', lambda: 'operator')
     monkeypatch.setenv('LOCAL_NO_AUTH', '1')
     state = {'deals': [{'id': 7, 'payType': 'Крипта', 'step': 's14', 'walletId': 'grusha',
                         'payinHashes': [], 'log': [{'at': 1700000000000, 'text': 'заведена'}]}],
@@ -549,7 +549,7 @@ def test_crypto_payin_hash_fills_payer_wallet_and_flags_other_sender(monkeypatch
     def role_lookup():
         # как настоящая current_role: закрывает общую scoped-сессию
         appmod.get_session().close()
-        return 'manager'
+        return 'operator'
     monkeypatch.setattr(appmod, 'current_role', role_lookup)
     with appmod.app.test_client() as client:
         first = client.post('/api/stand/payin/check', json={'dealId': 7, 'hash': HASH})

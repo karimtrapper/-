@@ -16,7 +16,7 @@ def test_legacy_absent_manual_accepts_browser_false():
     before = board()
     after = copy.deepcopy(before)
     after['deals'][0].update(manual=False, step='s22')
-    assert A._stand_guard_transition(before, after, actor='manager') is None
+    assert A._stand_guard_transition(before, after, actor='operator') is None
 
 
 def test_manual_origin_spoof_still_rejected():

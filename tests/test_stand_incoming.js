@@ -17,7 +17,7 @@ function fixture(overrides = {}) {
     amountRub: 100000, payinParts: [], log: [], rubReceivingAccount: {mode: 'sber'},
     expect: {amount: 100000, tol: 1000, acc: '…0286 · Сбер',
       account: '40807810938720000286', purpose: 'Договор СД-1'}, ...overrides};
-  const S = {deals: [deal], incomes: [], role: 'manager'};
+  const S = {deals: [deal], incomes: [], role: 'operator'};
   const events = [];
   const ctx = {S, deal: () => deal, incomes: () => S.incomes,
     MF: {bank: 'ПАО Сбербанк', acc: '40807810938720000286'},
@@ -46,6 +46,14 @@ function income(id, rub, extra = {}) {
   assert.equal(deal.step, 's18');
   assert.equal(deal.incomeAmount, 100000);
   assert.equal(deal.payinParts.length, 2);
+}
+{
+  const {ctx, deal, S, events} = fixture();
+  S.role = 'manager'; S.incomes.push(income('sber:manager', 100000));
+  ctx.sberTake(1, 'sber:manager'); ctx.payinDone(1);
+  assert.equal(deal.payinParts.length, 0);
+  assert.equal(deal.step, 's14');
+  assert.match(events.at(-1), /операционист/);
 }
 {
   const {ctx, deal, S, events} = fixture();

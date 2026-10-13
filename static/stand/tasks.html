@@ -3109,7 +3109,7 @@ const STEPS={
   s11 :{n:11,who:'operator',title:'Подготовить договор'},
   s11b:{n:11,who:'operator',title:'Проверить и отправить'},
   s12 :{n:12,who:'manager' ,title:'Отправить клиенту'},
-  s14 :{n:14,who:'manager' ,title:'Ждём приход'},
+  s14 :{n:14,who:'operator',title:'Ждём приход'},
   s14m:{n:14,who:'manager' ,title:'Разобрать поступление'},
   s15 :{n:15,who:'manager' ,title:'Реквизиты для оплаты'},
   s18 :{n:18,who:'operator',title:'Отправка брокеру для конвертации'},
@@ -5166,7 +5166,10 @@ function viewDeal(d){
       const own=(managerSide&&!confirmGate&&canDraft)?`<div class="card-title" style="margin:10px 0">Ваша параллельная задача — реквизиты для оплаты</div>`:'';
       const side=Object.assign({},d,{step:'s15',_side:true});
       const manualReceiptSide=S.role==='operator'&&d.step==='s14'&&!isCrypto(d)?manualBankReceiptBlock(d):'';
-      body=status+(S.role==='operator'&&d.step==='s14'?clientPayinBlock(d):'')+manualReceiptSide+
+      body=status+(S.role==='manager'&&d.step==='s14'?`<div class="card"><div class="card-title">Ждём деньги — сверяет операционист</div><p>${isCrypto(d)
+        ?`Ожидаем ${money(approx(d).pay,'USDT')} на ${htmlText((payinWallet(d)||{}).addr||'кошелёк из договора')}.`
+        :`Ожидаем ${money(expectOf(d).amount,'₽')} на ${htmlText(expectOf(d).acc||'счёт из договора')}.`} Прикреплённые клиентом чеки видны ниже; приход подтверждает операционист.</p></div>`:'')+
+        (d.step==='s14'&&(S.role==='operator'||S.role==='manager')?clientPayinBlock(d):'')+manualReceiptSide+
         (S.role==='operator'&&d.step==='s27'?crmEvidencePanel(d):'')+
         (S.role==='admin'&&d.step==='s23'&&personalSend(d)?stepCard(d):'')+(confirmGate?payToConfirmBlock(d):'')+
         own+(canDraft?stepCard(side):'')+
@@ -6375,6 +6378,7 @@ function payinPool(d){
   </div>`;
 }
 function payinDone(id){
+  if(S.role!=='operator'&&S.role!=='admin'){toast('Приход сверяет операционист');return;}
   const d=deal(id), ex=expectOf(d);
   const want=Number(ex.amount), got=payinSum(d), tol=Number(ex.tol);
   if(!got){toast('Ничего не забрано — нечего закрывать');return;}
@@ -6395,6 +6399,7 @@ function payinDone(id){
   toast('Приход засчитан: '+money(got,'₽'));
 }
 function sberTake(id,incId){
+  if(S.role!=='operator'&&S.role!=='admin'){toast('Приход забирает операционист');return;}
   editApply(id); const d=deal(id), x=incomes().find(i=>i.id===incId); if(!x)return;
   if(!rubApiAccount(d)||x.source!=='sber'||x.demo){toast('Для этого счёта приход сверяет операционист по выписке');return;}
   if(x.excluded||x.cnvId||x.dealId||(d.payinParts||[]).some(p=>p.incId===x.id)){
@@ -7663,10 +7668,9 @@ function manualBankActualChange(id,mode){
   document.getElementById('mbr_actual_warning_'+id).innerHTML=manualBankActualWarning(d,mode);
 }
 function manualBankOperatorForm(d){
-  const id=d.id, mode=['flowsole','custom'].includes(d.rubReceivingAccount?.mode)?d.rubReceivingAccount.mode:'sber';
+  const id=d.id, mode=['flowsole','custom'].includes(d.rubReceivingAccount?.mode)?d.rubReceivingAccount.mode:'flowsole';
   return `<div class="fg"><label class="fl">Фактический счёт по выписке</label>
     <select class="fc" id="mbr_actual_mode_${id}" onchange="manualBankActualChange(${id},this.value)">
-      <option value="sber" ${mode==='sber'?'selected':''}>…0286 · Сбер</option><option value="acquiring">…2118 · Сбер · эквайринг</option>
       <option value="tbank">…5510 · Т-Банк</option><option value="flowsole" ${mode==='flowsole'?'selected':''}>…0261 · СГБ (Flow Sole)</option>
       <option value="custom" ${mode==='custom'?'selected':''}>Другой счёт</option></select></div>
     <div id="mbr_actual_fields_${id}">${manualBankActualFields(id,mode)}</div>
@@ -7689,7 +7693,6 @@ function manualBankReceiptBlock(d){
       ${r.handoff&&r.status==='pending'&&(S.role==='operator'||S.role==='admin')?manualBankOperatorForm(d):''}
       ${!r.handoff&&issued&&S.role!=='manager'?`<p class="fh">Документы были выпущены с реквизитами: ${sberText(r.documentPayToAtRequest||'не сохранены')}.</p>`:''}
       ${!r.handoff&&r.status==='pending'&&(S.role==='operator'||S.role==='admin')?`<div style="display:flex;flex-direction:column;align-items:stretch;gap:10px;margin-top:8px"><label class="fh" style="display:flex;align-items:flex-start;gap:9px;width:100%;line-height:1.45"><input type="checkbox" id="mbr_verify_${d.id}" style="flex:0 0 auto;margin-top:2px"><span style="flex:1;min-width:0">Сверил фактическое зачисление и счёт в банковской выписке</span></label><div><button class="btn btn-success btn-sm" onclick="manualBankReceiptConfirm(${d.id})">Подтвердить приход</button></div></div>`:''}
-      ${r.status==='confirmed'&&S.role==='manager'?`<button class="btn btn-success btn-sm" style="margin-top:8px" onclick="payinDone(${d.id})">Продолжить сделку</button>`:''}
       ${r.status==='confirmed'?`<p class="fh" style="color:#047857">Подтвердил пользователь #${r.confirmedBy} · ${sberText(r.confirmedAt)}</p>`:''}
       <p class="fh">Отдельный ручной источник; это не подтверждение Сбер API и не запись зеркала Сбера.</p></div>`;
   }

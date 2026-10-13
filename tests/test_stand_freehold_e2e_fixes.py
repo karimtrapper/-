@@ -198,7 +198,7 @@ def prepare_after_rub(api):
         rub = d['amountRub']
         d.update(step='s15', incomeAmount=rub, payinParts=[{'incId': 1, 'amountRub': rub}])
         s['incomes'][0]['dealId'] = d['id']
-    edit(api, 'manager', arrived)
+    edit(api, 'operator', arrived)
     def requisites(s, d):
         d.update(step='s18', reqTask='done', payToConfirm={'payTo': dict(d['payTo']), 'at': 'confirmed'})
     return edit(api, 'manager', requisites)

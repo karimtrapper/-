@@ -66,7 +66,9 @@ def test_manager_request_is_pending_operator_only_and_documents_ack_required(mon
     data = payload(); data['documentsAcknowledged'] = False
     denied = client.post('/api/stand/manual-bank-receipt', json=data)
     assert denied.status_code == 403
-    assert not snapshot(client)['data']['incomes']
+    current = snapshot(client)
+    assert not current['data']['incomes']
+    data['version'] = current['version']
 
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     denied = client.post('/api/stand/manual-bank-receipt', json=data)
@@ -106,6 +108,97 @@ def test_manager_request_is_pending_operator_only_and_documents_ack_required(mon
     assert snapshot(client)['data']['deals'][0]['step'] == 's14'
 
 
+def test_legacy_s14_1485_moves_to_operator_and_flowsole_confirms(monkeypatch):
+    state = board()
+    deal = state['deals'][0]
+    deal.update(id=1485, code='СД-1485', client='Татьяна', kind='Фрихолд',
+                amountRub=192666.30, rubReceivingAccount=None,
+                expect={'acc': '…0286 · Сбер', 'bank': 'ПАО Сбербанк',
+                        'account': '40807810938720000286', 'amount': 192666.30,
+                        'tol': 1000}, assigneeAdminId=None)
+    deal['docFields']['payTo'] = 'ООО «ЭМ ЭФ КОРПОРЕЙШН» · Сбер · р/с 40807810938720000286'
+    deal['files']['clientPayinReceipt'] = [{'id': 'client-check-1485', 'file': 'чек.pdf'}]
+    client = seed(monkeypatch, state)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    migrated = snapshot(client)
+    assert m._stand_current_step_role(migrated['data'], migrated['data']['deals'][0]) == 'operator'
+    assert migrated['data']['deals'][0]['files']['clientPayinReceipt'][0]['file'] == 'чек.pdf'
+    pending = client.post('/api/stand/manual-bank-receipt', json={
+        'version': migrated['version'], 'dealId': 1485, 'handoff': True})
+    assert pending.status_code == 200, pending.json
+    data = {'version': pending.json['version'], 'statementVerified': True,
+            'actualMode': 'flowsole', 'actualAmount': '192666.30',
+            'payer': 'Татьяна', 'bankPurpose': 'Оплата по договору',
+            'statementDate': '2026-10-13', 'statementRef': 'строка 1485'}
+    no_ack = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=data)
+    assert no_ack.status_code == 409
+    data['deviationAcknowledged'] = True
+    confirmed = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=data)
+    assert confirmed.status_code == 200, confirmed.json
+    result = confirmed.json['data']['deals'][0]
+    assert result['step'] == 's18'
+    assert result['manualBankReceipt']['accountMismatch'] is True
+    assert result['manualBankReceipt']['documentMismatch'] is True
+    assert result['manualBankReceipt']['deviationAcknowledged'] is True
+    assert result['files']['clientPayinReceipt'][0]['file'] == 'чек.pdf'
+    assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
+
+
+def test_s14_manager_cannot_take_api_income_or_start_manual_review(monkeypatch):
+    state = board()
+    deal = state['deals'][0]
+    deal['rubReceivingAccount'] = None
+    deal['expect'] = {'acc': '…0286 · Сбер', 'bank': 'ПАО Сбербанк',
+                      'account': '40807810938720000286', 'amount': 10000, 'tol': 1000}
+    state['incomes'] = [{'id': 51, 'source': 'sber', 'rub': 10000,
+                         'grossRub': 10000, 'acc': '…0286 · Сбер',
+                         'payer': 'Иван', 'purpose': 'Оплата'}]
+    client = seed(monkeypatch, state)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    current = snapshot(client)
+    assert client.post('/api/stand/manual-bank-receipt', json={
+        'version': current['version'], 'dealId': 9301, 'handoff': True}).status_code == 403
+    attempted = copy.deepcopy(current['data'])
+    attempted['incomes'][0]['dealId'] = 9301
+    attempted['deals'][0]['payinParts'] = [{'incId': 51, 'amountRub': 10000,
+                                           'payer': 'Иван', 'acc': '…0286 · Сбер',
+                                           'purpose': 'Оплата'}]
+    denied = client.put('/api/stand/state', json={'version': current['version'], 'data': attempted})
+    assert denied.status_code == 403, denied.json
+    income_only = copy.deepcopy(current['data'])
+    income_only['incomes'][0]['dealId'] = 9301
+    assert client.put('/api/stand/state', json={
+        'version': current['version'], 'data': income_only}).status_code == 403
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    accepted = client.put('/api/stand/state', json={'version': current['version'], 'data': attempted})
+    assert accepted.status_code == 200, accepted.json
+    assert accepted.json['data']['deals'][0]['payinParts'][0]['incId'] == 51
+
+
+def test_legacy_manager_assignment_is_cleared_once(monkeypatch):
+    client = seed(monkeypatch, board())
+    db = m.get_session()
+    try:
+        manager = m.AdminUser(username='s14-old-' + secrets.token_hex(4),
+                              role='manager', display_name='Старый менеджер',
+                              password_hash='unused')
+        db.add(manager); db.flush()
+        row = m._stand_row(db)
+        state = json.loads(row.data)
+        state['deals'][0]['assigneeAdminId'] = manager.id
+        row.data = json.dumps(state, ensure_ascii=False)
+        db.commit()
+    finally:
+        db.close()
+    first = snapshot(client)
+    deal = first['data']['deals'][0]
+    assert deal['assigneeAdminId'] is None
+    assert sum('Шаг s14 передан операционисту' in e['text'] for e in deal['log']) == 1
+    second = snapshot(client)
+    assert second['version'] == first['version']
+    assert second['data']['deals'][0]['log'] == deal['log']
+
+
 def test_matching_issued_document_account_does_not_need_acknowledgment(monkeypatch):
     state = board()
     issued_payto = (
@@ -127,7 +220,7 @@ def test_matching_issued_document_account_does_not_need_acknowledgment(monkeypat
     assert snapshot(client)['data']['deals'][0]['issuedDocPayTo'] == issued_payto
 
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
-    data = payload(); data['documentsAcknowledged'] = False
+    data = payload(current['version']); data['documentsAcknowledged'] = False
     response = client.post('/api/stand/manual-bank-receipt', json=data)
     assert response.status_code == 200, response.json
     assert response.json['receipt']['documentMismatch'] is False
@@ -530,8 +623,6 @@ def test_manual_receipt_amount_discrepancy_goes_to_manager_review(monkeypatch):
 
 
 @pytest.mark.parametrize('mode,number', [
-    ('sber', '40807810938720000286'),
-    ('acquiring', '…2118'),
     ('tbank', '…5510'),
     ('flowsole', '40807810819000000261'),
 ])
@@ -553,6 +644,22 @@ def test_operator_actual_account_presets_are_server_selected(monkeypatch, mode, 
     receipt = confirmed.json['data']['deals'][0]['manualBankReceipt']
     assert receipt['account'] == number
     assert receipt['bank'] != 'Подменённый банк'
+
+
+@pytest.mark.parametrize('mode', ['sber', 'acquiring'])
+def test_sber_api_account_cannot_be_confirmed_manually(monkeypatch, mode):
+    initial = board()
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    pending = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 9301, 'handoff': True})
+    refused = client.post('/api/stand/manual-bank-receipt/9301/confirm', json={
+        'version': pending.json['version'], 'statementVerified': True,
+        'actualMode': mode, 'actualAmount': '9987.50', 'payer': 'Иван',
+        'bankPurpose': 'Оплата', 'statementDate': '2026-10-13',
+        'statementRef': 'строка 1', 'deviationAcknowledged': True})
+    assert refused.status_code == 400
+    assert snapshot(client)['data']['deals'][0]['manualBankReceipt']['status'] == 'pending'
 
 
 def test_operator_custom_actual_account_needs_full_requisites(monkeypatch):
@@ -584,7 +691,7 @@ def test_manager_cannot_rewrite_expected_account_at_s14():
     prior = board()
     changed = copy.deepcopy(prior)
     changed['deals'][0]['expect']['acc'] = '…0261 · СГБ (Flow Sole)'
-    assert 'Ожидаемый счёт' in m._stand_guard_transition(prior, changed, actor='manager')
+    assert m._stand_guard_transition(prior, changed, actor='manager')
 
 
 @pytest.mark.parametrize('mode', ['flowsole', 'custom'])

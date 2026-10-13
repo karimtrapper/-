@@ -105,7 +105,7 @@ def test_operator_cannot_skip_broker_conversion_facts(board):
 @pytest.mark.parametrize('step,destination,wrong_role,owner', [
     ('s5', 's6', 'manager', 'operator'),
     ('s11', 's12', 'manager', 'operator'),
-    ('s14', 's15', 'operator', 'manager'),
+    ('s14', 's15', 'manager', 'operator'),
     ('s18', 's18w', 'manager', 'operator'),
     ('s18w', 's22', 'manager', 'operator'),
     ('s22', 's23', 'manager', 'operator'),
