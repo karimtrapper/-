@@ -9479,7 +9479,11 @@ def _stand_discover_outgoing(deal_id=None):
                 continue
             # Список транзакций — поиск кандидата. Доказательство даёт общая проверка хеша.
             proof = verify_transfer(tx['hash'], 'trc20', sender, receiver, float(tx['amount']))
-            if proof.get('status') == 'confirmed' and proof.get('timestampMs', 0) >= tracking['afterTs']:
+            if proof.get('status') == 'confirmed' and not proof.get('timestampMs'):
+                proof.update(timeUnverified=True, checkError='Сеть не вернула время перевода — требуется решение операциониста')
+                item['reason'] = proof['checkError']
+            if proof.get('status') == 'confirmed' and (proof.get('timeUnverified')
+                    or proof['timestampMs'] >= tracking['afterTs']):
                 attach.append(dict(ref=tx['hash'], hash=tx['hash'], net='TRC-20',
                                    amount=float(tx['amount']), **proof))
             else:
@@ -9508,6 +9512,8 @@ def _stand_discover_outgoing(deal_id=None):
             tracking['selectionFingerprint'] = review.fingerprint(deal)
             if any(c.get('reason') for c in found['candidates']) or review.total(deal) > _amount(deal['transfer']['amount']) + review.TOLERANCE:
                 _stand_note(state, f'stand:outgoing-review:{member_id}', 'operator', deal,
+                            'Проверить отправку: сеть не вернула время перевода'
+                            if any(s.get('timeUnverified') for s in sends) else
                             'Проверить отправку: найден перевод на другую сумму или адрес')
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
@@ -9579,10 +9585,13 @@ def stand_outgoing_review_action():
                 return jsonify(success=False, error='Недоплата — ждём следующие части'), 409
             if data.get('fingerprint') != review.fingerprint(deal):
                 return jsonify(success=False, error='Список переводов изменился — проверьте суммы'), 409
+            missing_time = any(s.get('timeUnverified') and s.get('status') == 'confirmed'
+                               for s in (deal.get('transfer') or {}).get('sends') or [])
             tracking['accepted'] = review.fingerprint(deal)
             tracking['acceptedBy'] = actor
             deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': actor,
-                'text': f'Операционист засчитал отправку {actual} USDT; переплата {max(actual-required, 0)} USDT'})
+                'text': f'Операционист засчитал отправку {actual} USDT; переплата {max(actual-required, 0)} USDT'
+                        + ('; время перевода не получено от сети — принято вручную' if missing_time else '')})
         else:
             return jsonify(success=False, error='Неизвестное действие'), 400
         row.data = json.dumps(state, ensure_ascii=False)
@@ -9723,10 +9732,16 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
         else:
             result = verify_transfer(send.get('hash') or send.get('ref'), key[1], sender, receiver,
                                      send.get('amount'), demo=bool(deal.get('demoTransfers')),
-                                     demo_outcome=send.get('demoOutcome'))
-        if (deal.get('outgoingReview') and not deal['outgoingReview'].get('legacyTime')
-                and result.get('status') == 'confirmed' and result.get('timestampMs', 0) < deal['outgoingReview']['afterTs']):
-            result = {'status': 'mismatch', 'checkError': 'Перевод сделан до поручения'}
+                                     demo_outcome=send.get('demoOutcome'),
+                                     demo_timestamp_ms=send.get('registeredAtMs'))
+        if deal.get('outgoingReview') and result.get('status') == 'confirmed':
+            # Нет времени в ответе сети — это не доказательство отправки до поручения.
+            # Адреса и сумма проверены, но автоматическое закрытие запрещено.
+            if not result.get('timestampMs'):
+                result.update(timeUnverified=True, checkError='Сеть не вернула время перевода — требуется решение операциониста')
+            elif (not deal['outgoingReview'].get('legacyTime')
+                  and result['timestampMs'] < deal['outgoingReview']['afterTs']):
+                result = {'status': 'mismatch', 'checkError': 'Перевод сделан до поручения'}
         result['lastCheckedAt'] = datetime.utcnow().isoformat() + 'Z'
         results.append((member_id, key, demo_outcome, result))
     db = get_session()
@@ -9763,7 +9778,7 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                         and send.get('checkError') == result.get('checkError')
                         and send.get('from') == result.get('from') and send.get('to') == result.get('to')):
                     break
-                for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo'):
+                for field in ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to', 'checkError', 'lastCheckedAt', 'demo', 'timestampMs', 'timeUnverified'):
                     send.pop(field, None)
                 send.update(result)
                 changed = True
@@ -9773,6 +9788,13 @@ def _stand_check_transfers(deal_id=None, *, poll=False):
                    for d in state.get('deals', [])):
                 continue
             members = _stand_members(state, wanted)
+            for member in members:
+                if member.get('outgoingReview'):
+                    # У демо нет сетевого поиска; все зарегистрированные части проверены выше.
+                    sends = (member.get('transfer') or {}).get('sends') or []
+                    if (stand_demo.enabled() and member.get('demoTransfers') and sends
+                            and all(s.get('demo') and s.get('status') == 'confirmed' for s in sends)):
+                        member['outgoingReview']['scanStatus'] = 'complete'
             if members:
                 changed = _stand_settle_verified(state, members) or changed
         if changed:
@@ -9860,6 +9882,8 @@ def stand_transfers_demo():
                 return jsonify({'success': False, 'error': problem}), 409
         if send.get('status') == 'confirmed':
             return jsonify({'success': False, 'error': 'Подтверждённый перевод нельзя изменить'}), 409
+        # Старые отправки без метки получают время первого демо-события один раз.
+        send.setdefault('registeredAtMs', int(time.time() * 1000))
         send['demoOutcome'] = outcome
         send['status'] = 'pending'
         row.data = json.dumps(state, ensure_ascii=False)

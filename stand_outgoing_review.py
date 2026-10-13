@@ -17,7 +17,9 @@ def timestamp(value):
 def fingerprint(deal):
     """Подтверждение переплаты привязано к каждому выбранному переводу."""
     sends = (deal.get('transfer') or {}).get('sends') or []
+    # Сохраняем отпечаток старых принятых отправок; исключение по времени требует нового решения.
     return json.dumps(sorted((s.get('hash') or s.get('ref'), str(s.get('verifiedAmount')))
+                             + (('time_unverified',) if s.get('timeUnverified') else ())
                             for s in sends if s.get('status') == 'confirmed'), ensure_ascii=False)
 
 
@@ -37,6 +39,10 @@ def complete(deal):
     if required <= 0 or actual + TOLERANCE < required:
         return False
     accepted = review.get('accepted') == fingerprint(deal)
+    if not accepted and any(s.get('timeUnverified') for s in
+                            (deal.get('transfer') or {}).get('sends') or []
+                            if s.get('status') == 'confirmed'):
+        return False
     if not accepted and review.get('scanStatus') != 'complete':
         return False
     return abs(actual-required) <= TOLERANCE or accepted

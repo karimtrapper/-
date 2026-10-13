@@ -25,7 +25,7 @@ DEFAULT_WALLETS = {
 LEGACY_GRUSHA_ADDRESS = 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn'
 TRONSCAN_USER_AGENT = 'Mozilla/5.0 (Apple) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 SERVER_FIELDS = ('status', 'verifiedAmount', 'verifiedAt', 'from', 'to',
-                 'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs')
+                 'lastCheckedAt', 'checkError', 'demoOutcome', 'demo', 'timestampMs', 'registeredAtMs', 'timeUnverified')
 # Инвойс и тариф фиксируются с s11; сумму клиента операционист ещё может
 # исправить на s11 до первого выпуска документов.
 FREEHOLD_LOCKED_STEPS = {'s11', 's11b', 's12', 's14', 's14m', 's15', 's18', 's18w',
@@ -265,6 +265,7 @@ def preserve_server_fields(old_state, new_state):
                 send.update({field: trusted[field] for field in SERVER_FIELDS if field in trusted})
             else:
                 send['status'] = 'pending'
+                send['registeredAtMs'] = int(datetime.now(timezone.utc).timestamp() * 1000)
         if previous and previous.get('postConv') in ('coins', 'ipps_swift'):
             # Перевести задачу дальше подписей (Coins/IPPS) может только серверная проверка.
             if not previous.get('serverTransferComplete') and deal.get('step') in ('s25', 's26', 's27', 'done') and previous.get('step') in ('s23', 's24'):
@@ -350,7 +351,7 @@ def _stand_get(url, params=None, headers=None, timeout=None):
 
 
 def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
-                    demo_outcome=None, get=requests.get, etherscan_key=None,
+                    demo_outcome=None, demo_timestamp_ms=None, get=requests.get, etherscan_key=None,
                     tronscan_key=None):
     """Сверить перевод по сети. Деньги эта функция не отправляет."""
     if (demo or str(ref or '').startswith('demo:')) and not stand_demo.enabled():
@@ -372,7 +373,9 @@ def verify_transfer(ref, network, sender, receiver, amount, *, demo=False,
         if demo_outcome == 'confirmed':
             if required is None:
                 return _result('mismatch', checkError='Demo требует сумму')
-            return _result('confirmed', verifiedAmount=float(required), **{'from': sender, 'to': receiver}, demo=True)
+            return _result('confirmed', verifiedAmount=float(required),
+                           timestampMs=demo_timestamp_ms or int(datetime.now(timezone.utc).timestamp() * 1000),
+                           **{'from': sender, 'to': receiver}, demo=True)
         return _result(demo_outcome if demo_outcome in ('failed', 'pending') else 'pending', demo=True)
     if not tx_hash or tx_hash.startswith('demo:'):
         return _result('mismatch', checkError='Некорректный хеш перевода')
