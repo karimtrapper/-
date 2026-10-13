@@ -1,0 +1,201 @@
+{
+  "snapshotVersion": 1101,
+  "deals": [
+    {
+      "id": 1484,
+      "code": "СД-1484",
+      "step": "s23",
+      "type": "Оплата недвижимости",
+      "kind": "Фрихолд",
+      "payType": "По реквизитам",
+      "amountRub": 500167.19,
+      "incomeAmount": 498590,
+      "amountThb": 5413.85,
+      "amountUsdt": null,
+      "curBase": "fhusd",
+      "rates": {
+        "at": 1791538176773,
+        "client": "92,3866",
+        "rubUsdt": "85.6"
+      },
+      "invoiceUsd": 5413.85,
+      "invoiceThb": 181039.21,
+      "invoiceTotal": null,
+      "invoiceCurrency": "thb",
+      "invoiceUsdEstimate": false,
+      "ippsTariff": "bank",
+      "fxBank": "Kasikornbank",
+      "fxRate": 33.44,
+      "fxAt": "2026-10-09T03:01:09.140496+00:00",
+      "cnvId": null,
+      "conv": [],
+      "pay": {},
+      "paySrc": null,
+      "payout": null,
+      "transfer": {
+        "addr": "TXFqZbXCqoq5QVxRpp9EGLSzkeLMz8iG5D",
+        "amount": 5507.16,
+        "net": "TRC-20",
+        "to": "IPPS"
+      },
+      "postConv": "ipps_swift",
+      "prepay": {
+        "amount": 5507.16,
+        "backup": {
+          "paySrc": null,
+          "postConv": null,
+          "transfer": null
+        },
+        "brokerStep": "s18",
+        "source": "founder",
+        "startedAt": "2026-10-12T12:16:11.590994Z",
+        "startedBy": null,
+        "startedByName": "E2E operator",
+        "wallet": {
+          "addr": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p",
+          "id": "teodor",
+          "multisig": false,
+          "name": "Кошелёк Теодора",
+          "owner": "Теодор",
+          "role": "teodor"
+        }
+      },
+      "reqTask": "done",
+      "payTo": {
+        "acc": "E2E acc",
+        "amount": 5413.85,
+        "bank": "E2E bank",
+        "bankAddr": "E2E bankAddr",
+        "branch": "E2E branch",
+        "dev": "E2E dev",
+        "inv": "E2E inv",
+        "purpose": "E2E purpose",
+        "swift": "E2E swift"
+      },
+      "payinParts": [
+        {
+          "acc": "40807810819000000261",
+          "amountRub": 498590,
+          "date": "12.10",
+          "demo": true,
+          "fee": null,
+          "incId": 1,
+          "kind": "bank",
+          "net": null,
+          "payer": "E2E payer",
+          "purpose": "E2E purpose"
+        }
+      ],
+      "payinHashes": [],
+      "payinExtra": [],
+      "mfPayout": [],
+      "docVersion": 3,
+      "docsSent": {
+        "at": "12.10, 09:52",
+        "version": 1
+      },
+      "docPack": {
+        "agreementId": 15,
+        "agreementNumber": "E2E agreementNumber",
+        "amount": "500167.19",
+        "at": 1791541721255,
+        "currency": "RUB",
+        "dealType": "freehold",
+        "method": "bank",
+        "mode": "agreement",
+        "network": "",
+        "note": "E2E note",
+        "number": "E2E number",
+        "pair": "RUB_USD",
+        "paymentNo": 1,
+        "purpose": "E2E purpose",
+        "rate": "92.3866",
+        "recipient": "ООО «ЭМ ЭФ КОРПОРЕЙШН»",
+        "transfer": "5413.85",
+        "version": 1,
+        "wallet": ""
+      },
+      "docs": {
+        "inv": true,
+        "ipds": true,
+        "pass": true,
+        "signed": false
+      },
+      "issuedDocPayTo": "ООО «ЭМ ЭФ КОРПОРЕЙШН» · ИНН 9909726886 · КПП 770387001 · Московский филиал \"БАНК СГБ\" г. Москва · р/с 40807810819000000261 · к/с 30101810245250000094 · БИК 044525094",
+      "rubReceivingAccount": {
+        "account": "40807810819000000261",
+        "bank": "Московский филиал \"БАНК СГБ\" г. Москва",
+        "bik": "044525094",
+        "correspondent": "30101810245250000094",
+        "mode": "custom"
+      },
+      "closed": false,
+      "manual": false,
+      "isOld": false,
+      "assigneeAdminId": null,
+      "brokerDraft": null,
+      "client": "E2E SD-1484",
+      "source": "none",
+      "log": [],
+      "files": {},
+      "agents": [],
+      "ippsPayoutOrder": {
+        "address": "TXFqZbXCqoq5QVxRpp9EGLSzkeLMz8iG5D",
+        "amount": 5507.16,
+        "confirmedAt": "2026-10-12T12:18:11Z",
+        "network": "TRC-20"
+      }
+    }
+  ],
+  "convs": [],
+  "wallets": [
+    {
+      "addr": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ",
+      "id": "grusha",
+      "multisig": true,
+      "name": "E2E grusha",
+      "owner": "компания",
+      "role": "findir"
+    },
+    {
+      "addr": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ",
+      "id": "vitaly",
+      "multisig": true,
+      "name": "E2E vitaly",
+      "owner": "компания",
+      "role": "findir"
+    },
+    {
+      "addr": "TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn",
+      "id": "andrey",
+      "multisig": false,
+      "name": "E2E andrey",
+      "owner": "Андрей",
+      "role": "teodor"
+    },
+    {
+      "addr": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p",
+      "id": "teodor",
+      "multisig": false,
+      "name": "E2E teodor",
+      "owner": "Теодор",
+      "role": "teodor"
+    }
+  ],
+  "incomes": [
+    {
+      "acc": "40807810819000000261",
+      "cnvId": null,
+      "date": "12.10",
+      "dealId": 1484,
+      "demo": true,
+      "excluded": false,
+      "id": 1,
+      "kind": "банк",
+      "payer": "E2E payer",
+      "purpose": "E2E purpose",
+      "rub": 498590
+    }
+  ],
+  "notes": []
+}

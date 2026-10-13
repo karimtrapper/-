@@ -1068,6 +1068,11 @@ def test_real_http_verified_property_route_cannot_be_downgraded(
             signoff = transport.post(base + '/deals/1474/close-evidence',
                 headers=operator_headers,
                 json={'version': saved['version'], 'kind': 'payout'}, timeout=10)
+            # Проверенную сетевую выплату подтверждает менеджер; оператор — инвойс.
+            assert signoff.status_code == 403, signoff.json()
+            signoff = transport.post(base + '/deals/1474/close-evidence',
+                headers=manager_headers,
+                json={'version': saved['version'], 'kind': 'payout'}, timeout=10)
             assert signoff.status_code == 200, signoff.json()
             assert signoff.json()['provenance'] == 'verified_network'
             attempt = transport.post(base + '/deals/1474/crm-close',
