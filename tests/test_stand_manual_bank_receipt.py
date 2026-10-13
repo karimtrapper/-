@@ -178,15 +178,13 @@ def test_operator_confirmation_creates_immutable_manual_provenance(monkeypatch):
 
     monkeypatch.setattr(m, 'current_role', lambda: 'manager')
     current = snapshot(client)
-    stage15 = copy.deepcopy(current['data'])
-    stage15['deals'][0].update(step='s15', reqTask='open')
-    moved = client.put('/api/stand/state', json={'version': current['version'], 'data': stage15})
-    assert moved.status_code == 200, moved.json
-    stage18 = copy.deepcopy(moved.json['data'])
-    stage18['deals'][0].update(step='s18', reqTask='done',
+    assert current['data']['deals'][0]['step'] == 's18'
+    assert current['data']['deals'][0]['reqTask'] == 'open'
+    stage18 = copy.deepcopy(current['data'])
+    stage18['deals'][0].update(reqTask='done',
         payTo={'dev': 'Client', 'bank': 'Client Bank', 'acc': '123456789',
                'purpose': 'Payout', 'amount': 9987.50})
-    dispatched = client.put('/api/stand/state', json={'version': moved.json['version'], 'data': stage18})
+    dispatched = client.put('/api/stand/state', json={'version': current['version'], 'data': stage18})
     assert dispatched.status_code == 200, dispatched.json
     assert dispatched.json['data']['deals'][0]['step'] == 's18'
     evidence = client.post('/api/stand/deals/9301/close-evidence',
@@ -392,6 +390,8 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     deal = initial['deals'][0]
     deal.update(id=1485, code='SYN-1485', docVersion=3, rubReceivingAccount=None,
                 issuedDocPayTo='ООО «ЭМ ЭФ КОРПОРЕЙШН» · ПАО Сбербанк · р/с 40807810938720000286')
+    initial['wallets'] = [{'id': 'qa-wallet', 'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
+                           'net': 'TRC-20', 'multisig': False, 'role': 'teodor'}]
     client = seed(monkeypatch, initial)
     monkeypatch.setattr(m, 'current_role', lambda: 'operator')
     handoff = client.post('/api/stand/manual-bank-receipt', json={
@@ -416,6 +416,8 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     confirmed = client.post('/api/stand/manual-bank-receipt/1485/confirm', json=actual)
     assert confirmed.status_code == 200, confirmed.json
     saved = confirmed.json['data']['deals'][0]
+    assert saved['step'] == 's18'
+    assert m._stand_current_step_role(confirmed.json['data'], saved) == 'operator'
     receipt = saved['manualBankReceipt']
     assert saved['rubReceivingAccount'] is None
     assert receipt['bank'] == 'Московский филиал "БАНК СГБ" г. Москва'
@@ -425,30 +427,11 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     assert receipt['accountMismatch'] is True
     assert receipt['documentMismatch'] is True
     assert receipt['documentsAcknowledged'] is True
-    assert 'расхождение' in saved['log'][-1]['text']
+    assert any('расхождение' in entry['text'] for entry in saved['log'])
     assert confirmed.json['data']['incomes'][0]['source'] == 'manual_confirmed'
 
-    # Та же выписка становится источником новой пачки при отправке брокеру.
-    with m.get_session() as db:
-        before = json.loads(m._stand_row(db).data)
-    before['deals'][0]['step'] = 's18'
-    before['wallets'] = [{'id': 'qa-wallet', 'addr': 'TWBgeUo74DehAPgw5cKTdYUTXtJELqwwqn',
-                          'net': 'TRC-20', 'multisig': False, 'role': 'teodor'}]
-    # Реальные функции кнопок «Конвертировать выбранное» и «Создать пачку»
-    # формируют PUT без служебной галочки; сервер принимает эту пачку.
-    with m.get_session() as db:
-        row = m._stand_row(db)
-        row.data = json.dumps(before, ensure_ascii=False)
-        db.commit()
-    ui = subprocess.run(['node', 'tests/test_stand_income_conv_form.js', '--snapshot'],
-                        input=json.dumps(before, ensure_ascii=False), text=True,
-                        capture_output=True, check=True)
-    clicked = client.put('/api/stand/state', json={
-        'version': confirmed.json['version'], 'data': json.loads(ui.stdout)})
-    assert clicked.status_code == 200, clicked.json
-    assert clicked.json['data']['incomes'][0]['cnvId'] == 1
-    assert 'sel' not in clicked.json['data']['incomes'][0]
-    # Отправку брокеру проверяем отдельно от общей вкладки конвертаций.
+    # От подтверждения до s18w идём только через действия ролей, без правки БД.
+    before = confirmed.json['data']
     after = copy.deepcopy(before)
     sent, held, ctrl, ours = 9917.53, 69.97, 49.99, 19.98
     after['convs'] = [{'id': 1, 'name': 'CNV-0001', 'broker': 'QA Broker',
@@ -477,15 +460,73 @@ def test_1485_handoff_operator_selects_flowsole_and_acknowledges_documents(monke
     assert 'Выписку прикладывает' in m._stand_guard_transition(
         before, changed, actor='operator')
 
-    with m.get_session() as db:
-        row = m._stand_row(db)
-        row.data = json.dumps(before, ensure_ascii=False)
-        db.commit()
     broker = client.put('/api/stand/state', json={
-        'version': clicked.json['version'], 'data': after})
+        'version': confirmed.json['version'], 'data': after})
     assert broker.status_code == 200, broker.json
     assert broker.json['data']['deals'][0]['step'] == 's18w'
     assert broker.json['data']['incomes'][0]['cnvId'] == 1
+
+
+def test_manual_flowsole_conversion_form_click_is_accepted(monkeypatch):
+    initial = board()
+    initial['deals'][0].update(docVersion=None, docPack=None,
+        rubReceivingAccount={'mode': 'flowsole'})
+    initial['deals'][0]['expect'].update(amount=9987.50, purpose='Оплата по договору')
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    handoff = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 9301, 'handoff': True})
+    assert handoff.status_code == 200, handoff.json
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm', json={
+        'version': handoff.json['version'], 'statementVerified': True,
+        'actualMode': 'flowsole', 'actualAmount': '9987.50',
+        'payer': 'Иван Клиент', 'bankPurpose': 'Оплата по договору',
+        'statementDate': '2026-10-01', 'statementRef': 'строка 7788'})
+    assert confirmed.status_code == 200, confirmed.json
+    assert confirmed.json['data']['deals'][0]['step'] == 's18'
+    # Код кнопок из настоящего tasks.html строит снимок для PUT.
+    ui = subprocess.run(['node', 'tests/test_stand_income_conv_form.js', '--snapshot'],
+                        input=json.dumps(confirmed.json['data'], ensure_ascii=False),
+                        text=True, capture_output=True, check=True)
+    clicked = client.put('/api/stand/state', json={
+        'version': confirmed.json['version'], 'data': json.loads(ui.stdout)})
+    assert clicked.status_code == 200, clicked.json
+    assert clicked.json['data']['incomes'][0]['cnvId'] == 1
+    assert 'sel' not in clicked.json['data']['incomes'][0]
+
+
+def test_manual_receipt_amount_discrepancy_goes_to_manager_review(monkeypatch):
+    initial = board()
+    initial['deals'][0].update(docVersion=None, docPack=None,
+        rubReceivingAccount={'mode': 'flowsole'})
+    initial['deals'][0]['expect'].update(amount=10000, tol=5,
+        purpose='Оплата по договору')
+    client = seed(monkeypatch, initial)
+    monkeypatch.setattr(m, 'current_role', lambda: 'operator')
+    handoff = client.post('/api/stand/manual-bank-receipt', json={
+        'version': 7, 'dealId': 9301, 'handoff': True})
+    confirmed = client.post('/api/stand/manual-bank-receipt/9301/confirm', json={
+        'version': handoff.json['version'], 'statementVerified': True,
+        'actualMode': 'flowsole', 'actualAmount': '9987.50',
+        'payer': 'Иван Клиент', 'bankPurpose': 'Оплата по договору',
+        'statementDate': '2026-10-01', 'statementRef': 'строка 7788',
+        'deviationAcknowledged': True})
+    assert confirmed.status_code == 200, confirmed.json
+    deal = confirmed.json['data']['deals'][0]
+    assert deal['step'] == 's14m'
+    assert deal['assigneeAdminId'] is None
+    assert 'Недоплата' in deal['incomeReview'][0]
+    assert any(n['role'] == 'manager' and n['dealId'] == 9301
+               for n in confirmed.json['data']['notes'])
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    reviewed = copy.deepcopy(confirmed.json['data'])
+    reviewed_deal = reviewed['deals'][0]
+    reviewed_deal.update(step='s18', reqTask='open')
+    reviewed_deal['log'].append({'text': 'Менеджер принял расхождение: клиент доплатит отдельно'})
+    accepted = client.put('/api/stand/state', json={
+        'version': confirmed.json['version'], 'data': reviewed})
+    assert accepted.status_code == 200, accepted.json
+    assert accepted.json['data']['deals'][0]['step'] == 's18'
 
 
 @pytest.mark.parametrize('mode,number', [

@@ -9985,6 +9985,50 @@ def stand_manual_bank_receipt():
         db.close()
 
 
+def _stand_advance_manual_payin(state, deal, receipt):
+    """Серверный аналог afterPayin(): после сверки передаём следующий шаг роли."""
+    from decimal import Decimal
+    expected = deal.get('expect') or {}
+    amount = (_amount(expected.get('amount')) if expected.get('amount') is not None
+              else _amount(deal.get('amountRub')))
+    if amount is None and deal.get('kind') == 'Фрихолд':
+        invoice, rate = _amount(deal.get('invoiceUsd')), _amount((deal.get('rates') or {}).get('client'))
+        if invoice is not None and rate is not None:
+            amount = (invoice * rate).quantize(Decimal('0.01'))
+    tolerance = _amount(expected.get('tol')) if expected.get('tol') is not None else _amount(1000)
+    actual = _amount(receipt.get('actualAmount'))
+    issues = []
+    if amount is not None and actual is not None and tolerance is not None:
+        gap = amount - actual
+        if abs(gap) > tolerance:
+            issues.append(('Недоплата ' if gap > 0 else 'Переплата ') + f'{abs(gap):.2f} ₽')
+    purpose = str(expected.get('purpose') or (deal.get('docFields') or {}).get('purpose') or '').strip()
+    if purpose and purpose.lower() != str(receipt.get('bankPurpose') or '').strip().lower():
+        issues.append('Назначение отличается от ожидаемого')
+    deal['incomeReview'] = issues
+    deal['assigneeAdminId'] = None
+    if issues:
+        deal['step'] = 's14m'
+        _stand_note(state, f"stand:manual-pay-in-review:{deal['id']}:{receipt['id']}",
+                    'manager', deal, 'Разберите расхождение RUB прихода: ' + '; '.join(issues))
+        return 'Приход требует ручного разбора: ' + '; '.join(issues)
+    deal['step'] = 's18'
+    if deal.get('isTask'):
+        deal['isTask'] = False
+        deal.setdefault('log', []).append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'), 'role': 'system',
+            'text': 'Задача стала сделкой — деньги пошли, карточка попала в реестр'})
+    need_requisites = not (deal.get('payTo') or {}).get('acc')
+    deal['reqTask'] = 'open' if need_requisites else 'done'
+    if need_requisites:
+        _stand_note(state, f"stand:manual-pay-in-requisites:{deal['id']}:{receipt['id']}",
+                    'manager', deal, 'Реквизиты для оплаты — параллельно с конвертацией')
+    _stand_note(state, f"stand:manual-pay-in-conversion:{deal['id']}:{receipt['id']}",
+                'operator', deal, 'RUB приход подтверждён — конвертируйте и отправьте брокеру')
+    return 'Деньги у нас — отдать рубли брокеру у операциониста' + (
+        ', реквизиты для оплаты — у менеджера параллельно' if need_requisites else '')
+
+
 @app.route('/api/stand/manual-bank-receipt/<int:deal_id>/confirm', methods=['POST'])
 def stand_manual_bank_receipt_confirm(deal_id):
     """Операционист подтверждает приход по выписке и приложенному файлу."""
@@ -10118,11 +10162,19 @@ def stand_manual_bank_receipt_confirm(deal_id):
             + (f"; фактический счёт {receipt['bank']} · {receipt['account']}; "
                'расхождение с ожиданием/документами подтверждено'
                if receipt.get('deviationAcknowledged') else '')})
+        transition = _stand_advance_manual_payin(state, deal, receipt)
+        deal['log'].append({'at': int(time.time() * 1000),
+            'ts': datetime.now().strftime('%d.%m, %H:%M'),
+            'role': 'system', 'text': transition})
         row.data = json.dumps(state, ensure_ascii=False)
         row.version = (row.version or 0) + 1
         row.updated_by = flask_session.get('display_name') or flask_session.get('username') or actor
         row.updated_at = datetime.utcnow()
         db.commit()
+        try:
+            _stand_deliver_notes()
+        except Exception:
+            app.logger.exception('manual bank receipt step notification delivery failed')
         return jsonify({'success': True, 'version': row.version,
                         'data': _stand_strip_files(state), 'incomeId': income_id})
     except Exception:
