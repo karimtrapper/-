@@ -8542,7 +8542,11 @@ def _stand_freehold_explicit_rub_problem(deal):
     rate = _stand_num((deal.get('rates') or {}).get('client'))
     if any(v is None or not v.is_finite() or v <= 0 for v in (amount, invoice, rate)):
         return 'freehold_client_amount_required'
-    if rate != (amount / invoice).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP):
+    quantum = Decimal('0.000001')
+    computed = (amount / invoice).quantize(quantum, rounding=ROUND_HALF_UP)
+    # JS division can land just below a decimal halfway point. Accept one
+    # last-place unit without ever deriving the RUB principal from this rate.
+    if abs(rate - computed) > quantum:
         return 'freehold_client_rate_mismatch'
     return None
 

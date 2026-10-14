@@ -32,3 +32,29 @@ NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/2026
 
 FULL JAVASCRIPT REGRESSION
 JS_FENCED_RESULT passed=56 failed=0 report=/tmp/calccrm-t19-fence-reports/20261014T112023-js-95193.json
+
+BUG-001 FULL PYTHON REGRESSION
+=========================== short test summary info ============================
+SKIPPED [17] tests/test_browser_crm.py:99: UI: включите --browser (требуется Chromium)
+SKIPPED [4] tests/test_browser_crm.py:109: UI: включите --browser (требуется Chromium)
+SKIPPED [1] tests/test_browser_crm.py:128: UI: включите --browser (требуется Chromium)
+SKIPPED [1] tests/test_browser_crm.py:139: UI: включите --browser (требуется Chromium)
+SKIPPED [2] tests/test_browser_crm.py: UI: включите --browser (требуется Chromium)
+SKIPPED [2] tests/test_browser_crm.py:227: UI: включите --browser (требуется Chromium)
+SKIPPED [1] tests/test_crash_audit.py:444: PostgreSQL concurrency: CALCCRM_TEST_POSTGRES=1
+SKIPPED [1] tests/test_crash_audit.py:459: PostgreSQL concurrency: CALCCRM_TEST_POSTGRES=1
+SKIPPED [1] tests/test_crash_audit.py:475: PostgreSQL concurrency: CALCCRM_TEST_POSTGRES=1
+SKIPPED [1] tests/test_docgen.py:577: LibreOffice недоступен внутри обязательного OS network sandbox
+SKIPPED [1] tests/test_docgen.py:584: LibreOffice недоступен внутри обязательного OS network sandbox
+SKIPPED [1] tests/test_docgen.py:590: LibreOffice недоступен внутри обязательного OS network sandbox
+SKIPPED [1] tests/test_docgen.py:599: LibreOffice недоступен внутри обязательного OS network sandbox
+SKIPPED [1] tests/test_stand_files_storage.py:248: Установите Chromium: PLAYWRIGHT_BROWSERS_PATH=.browser-cache uvx --from playwright playwright install chromium --only-shell
+SKIPPED [1] tests/test_t36_docker_startup_smoke.py:16: Docker is not running or not installed
+2637 passed, 36 skipped, 4735 warnings in 230.78s (0:03:50)
+NETWORK_FENCE attempts=8 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261014T113651-8657.json
+
+BUG-001 FOCUSED
+FENCED_RUN python=3.11.17 port_pool=48862-48925
+....................................................................     [100%]
+68 passed, 240 warnings in 11.94s
+NETWORK_FENCE attempts=0 unexpected=0 report=/tmp/calccrm-t19-fence-reports/20261014T113308-8615.json

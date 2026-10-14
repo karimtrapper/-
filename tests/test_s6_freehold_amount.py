@@ -1,5 +1,6 @@
 """Explicit RUB principal survives s6, document generation and legacy reads."""
 import copy
+import subprocess
 import pytest
 import app as m
 from tests.test_stand_freehold_amount import board, seed, snapshot
@@ -51,23 +52,29 @@ def test_old_completed_s6_read_is_unchanged(monkeypatch):
     assert 'freeholdClientInput' not in first['data']['deals'][0]
 
 
-def test_explicit_sum_in_all_generated_documents(stand):
+@pytest.mark.parametrize('invoice,amount,rate,stale', [
+    (97500, 8123456.78, '83,317505', '8123456.25'),
+    (88320, 933382.32, '10,568187', '933382.28'),
+])
+def test_explicit_sum_in_all_generated_documents(stand, invoice, amount, rate, stale):
     d = _deal(9908, **{k:v for k,v in rub_board('s11', True)['deals'][0].items() if k != 'id'})
+    d.update(invoiceUsd=invoice, amountRub=amount)
+    d['rates']['client'] = rate
     stand.put_board([d])
     # Stale form amounts must never replace the approved principal.
-    fields = _fields(amountThb='97500', amountPay='8123456.25', rate='83.3175')
+    fields = _fields(amountThb=str(invoice), amountPay=stale, rate=rate)
     response = stand.post('/api/stand/docs/issue', json={'dealId': d['id'], 'docFields': fields})
     assert response.status_code == 200, response.json
     assert [x['kind'] for x in response.json['issued']] == ['dog', 'app', 'bill']
     for entry in response.json['issued']:
         text = _text(stand, entry['docId']).replace('\xa0','').replace(' ','')
-        assert '8123456.25' not in text and '8123456,25' not in text
+        assert stale not in text and stale.replace('.', ',') not in text
         # Framework agreement delegates payment amounts to Payment Instruction.
         if entry['kind'] != 'dog':
-            assert '8123456.78' in text or '8123456,78' in text, (entry['kind'],text)
+            assert str(amount) in text or str(amount).replace('.', ',') in text, (entry['kind'],text)
     saved = stand.get('/api/stand/state').json['data']['deals'][0]
-    assert saved['amountRub'] == 8123456.78
-    assert saved['docFields']['amountPay'] == '8123456.78'
+    assert saved['amountRub'] == amount
+    assert saved['docFields']['amountPay'] == str(amount)
 
 
 @pytest.mark.parametrize('tamper', ['skip', 'journal'])
@@ -83,3 +90,24 @@ def test_explicit_sum_keeps_transition_and_journal_guards(monkeypatch, tamper):
     response = client.put('/api/stand/state', json={'version': before['version'], 'data': changed})
     assert response.status_code == 409, response.json
     assert snapshot(client) == before
+
+
+def test_ieee754_halfway_rate_accepts_s6_without_changing_principal(monkeypatch):
+    rate = subprocess.check_output(['node', '-e',
+        "process.stdout.write((Math.round(933382.32/88320*1e6)/1e6).toFixed(6))"], text=True)
+    assert rate == '10.568187'  # Decimal HALF_UP gives 10.568188.
+    state = rub_board()
+    state['deals'][0].update(invoiceUsd=88320, amountRub=933382.32)
+    client = seed(monkeypatch, state)
+    monkeypatch.setattr(m, 'current_role', lambda: 'manager')
+    before = snapshot(client)
+    changed = copy.deepcopy(before['data'])
+    deal = changed['deals'][0]
+    deal.update(step='s8', freeholdClientInput='sum')
+    deal['rates']['client'] = rate.replace('.', ',')
+    response = client.put('/api/stand/state', json={'version': before['version'], 'data': changed})
+    assert response.status_code == 200, response.json
+    assert response.json['data']['deals'][0]['amountRub'] == 933382.32
+    # Only one last-place unit is tolerated; a larger mismatch remains invalid.
+    deal['rates']['client'] = '10,568186'
+    assert m._stand_freehold_explicit_rub_problem(deal) == 'freehold_client_rate_mismatch'
