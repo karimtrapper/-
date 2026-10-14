@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=admins",
+ "url": "http://127.0.0.1:59109/crm?section=admins",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:41:13",
+ "generated": "2026-10-15T00:09:10",
  "widths_requested": [
   375,
   768,
@@ -381,7 +381,7 @@
      "sev": "WARN",
      "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
      "value": "Telegram ID",
-     "n": 5,
+     "n": 13,
      "ex": [
       {
        "sel": "div.admin-row > div > input.form-control",
@@ -392,10 +392,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 13,
+      "768": 13,
+      "1280": 13,
+      "1920": 13
      },
      "ex_by_width": {
       "375": [
@@ -1067,7 +1067,7 @@
      "sev": "WARN",
      "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
      "value": "Telegram ID",
-     "n": 5,
+     "n": 13,
      "ex": [
       {
        "sel": "div.admin-row > div > input.form-control",
@@ -1078,10 +1078,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 13,
+      "768": 13,
+      "1280": 13,
+      "1920": 13
      },
      "ex_by_width": {
       "375": [
@@ -1385,44 +1385,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 141,
-   "groups": 43,
-   "texts": 81,
-   "contrast_checked": 91,
+   "elements": 253,
+   "groups": 47,
+   "texts": 153,
+   "contrast_checked": 176,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 33
+   "controls": 73
   },
   "768": {
-   "elements": 139,
-   "groups": 43,
-   "texts": 76,
-   "contrast_checked": 86,
+   "elements": 251,
+   "groups": 46,
+   "texts": 148,
+   "contrast_checked": 171,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 33
+   "controls": 73
   },
   "1280": {
-   "elements": 144,
-   "groups": 46,
-   "texts": 81,
-   "contrast_checked": 91,
+   "elements": 256,
+   "groups": 50,
+   "texts": 153,
+   "contrast_checked": 176,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 33
+   "controls": 73
   },
   "1920": {
-   "elements": 144,
-   "groups": 46,
-   "texts": 81,
-   "contrast_checked": 91,
+   "elements": 256,
+   "groups": 50,
+   "texts": 153,
+   "contrast_checked": 176,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 33
+   "controls": 73
   }
  },
  "limits": [],
@@ -1742,7 +1742,7 @@
    "sev": "WARN",
    "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
    "value": "Telegram ID",
-   "n": 5,
+   "n": 13,
    "ex": [
     {
      "sel": "div.admin-row > div > input.form-control",
@@ -1753,10 +1753,10 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 5,
-    "768": 5,
-    "1280": 5,
-    "1920": 5
+    "375": 13,
+    "768": 13,
+    "1280": 13,
+    "1920": 13
    },
    "ex_by_width": {
     "375": [

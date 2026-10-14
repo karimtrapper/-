@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=referrers",
+ "url": "http://127.0.0.1:59109/crm?section=referrers",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:37:58",
+ "generated": "2026-10-15T00:22:28",
  "widths_requested": [
   375,
   768,
@@ -418,7 +418,756 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1240,54 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $1 240,54"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "430,38 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $430,38"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "810,16 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $810,16"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "55,69 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $55,69"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $55,69"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 29",
+     "n": 29,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 29,
+      "768": 29,
+      "1280": 29,
+      "1920": 29
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "49,12 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $49,12"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $49,12"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "48,45 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $48,45"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $48,45"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "17,23 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $17,23"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $17,23"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "30,95 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $30,95"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $30,95"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "2881,42 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $2 881,42"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $2 881,42"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "47,11 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $47,11"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $47,11"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "184,92 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $184,92"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $184,92"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -434,13 +1183,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png",
      "identical": false
     }
    },
@@ -643,7 +1392,756 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1240,54 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $1 240,54"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $1 240,54"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "430,38 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $430,38"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $430,38"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "810,16 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $810,16"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $810,16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "55,69 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $55,69"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $55,69"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $55,69"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $55,69"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 29",
+     "n": 29,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 29,
+      "768": 29,
+      "1280": 29,
+      "1920": 29
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "49,12 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $49,12"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $49,12"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $49,12"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $49,12"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "48,45 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $48,45"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $48,45"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $48,45"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $48,45"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "17,23 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $17,23"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "К выплате: $17,23"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $17,23"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "К выплате: $17,23"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "30,95 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $30,95"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $30,95"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $30,95"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $30,95"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "2881,42 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $2 881,42"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $2 881,42"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $2 881,42"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $2 881,42"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "47,11 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $47,11"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $47,11"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $47,11"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $47,11"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "184,92 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Заработал: $184,92"
+      },
+      {
+       "sel": "div.referrer-main > div.referrer-money > span",
+       "t": "Выплачено: $184,92"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Заработал: $184,92"
+       },
+       {
+        "sel": "div.referrer-main > div.referrer-money > span",
+        "t": "Выплачено: $184,92"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -894,44 +2392,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 61,
-   "groups": 31,
-   "texts": 32,
-   "contrast_checked": 35,
+   "elements": 537,
+   "groups": 49,
+   "texts": 258,
+   "contrast_checked": 361,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 6
+   "controls": 106
   },
   "768": {
-   "elements": 59,
-   "groups": 32,
-   "texts": 27,
-   "contrast_checked": 30,
+   "elements": 535,
+   "groups": 46,
+   "texts": 253,
+   "contrast_checked": 356,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 6
+   "controls": 106
   },
   "1280": {
-   "elements": 64,
-   "groups": 34,
-   "texts": 32,
-   "contrast_checked": 35,
+   "elements": 540,
+   "groups": 48,
+   "texts": 258,
+   "contrast_checked": 361,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 6
+   "controls": 106
   },
   "1920": {
-   "elements": 64,
-   "groups": 34,
-   "texts": 32,
-   "contrast_checked": 35,
+   "elements": 540,
+   "groups": 48,
+   "texts": 258,
+   "contrast_checked": 361,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 6
+   "controls": 106
   }
  },
  "limits": [],
@@ -1045,6 +2543,754 @@
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "1240,54 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $1 240,54"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $1 240,54"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $1 240,54"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $1 240,54"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $1 240,54"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "430,38 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "К выплате: $430,38"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $430,38"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $430,38"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $430,38"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $430,38"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "810,16 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $810,16"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $810,16"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $810,16"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $810,16"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $810,16"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "55,69 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $55,69"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "К выплате: $55,69"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $55,69"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $55,69"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $55,69"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $55,69"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $55,69"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $55,69"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $55,69"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $55,69"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 29",
+   "n": 29,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $0,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 29,
+    "768": 29,
+    "1280": 29,
+    "1920": 29
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $0,00"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $0,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $0,00"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $0,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "49,12 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $49,12"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "К выплате: $49,12"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $49,12"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $49,12"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $49,12"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $49,12"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $49,12"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $49,12"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $49,12"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $49,12"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "48,45 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $48,45"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "К выплате: $48,45"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $48,45"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $48,45"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $48,45"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $48,45"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $48,45"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $48,45"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $48,45"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $48,45"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "17,23 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $17,23"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "К выплате: $17,23"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $17,23"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $17,23"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $17,23"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $17,23"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $17,23"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $17,23"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $17,23"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "К выплате: $17,23"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "30,95 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $30,95"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $30,95"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $30,95"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $30,95"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $30,95"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $30,95"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $30,95"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $30,95"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $30,95"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $30,95"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "2881,42 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $2 881,42"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $2 881,42"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $2 881,42"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $2 881,42"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $2 881,42"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $2 881,42"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $2 881,42"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $2 881,42"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $2 881,42"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $2 881,42"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "47,11 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $47,11"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $47,11"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $47,11"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $47,11"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $47,11"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $47,11"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $47,11"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $47,11"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $47,11"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $47,11"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "184,92 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Заработал: $184,92"
+    },
+    {
+     "sel": "div.referrer-main > div.referrer-money > span",
+     "t": "Выплачено: $184,92"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $184,92"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $184,92"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $184,92"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $184,92"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $184,92"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $184,92"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Заработал: $184,92"
+     },
+     {
+      "sel": "div.referrer-main > div.referrer-money > span",
+      "t": "Выплачено: $184,92"
      }
     ]
    }

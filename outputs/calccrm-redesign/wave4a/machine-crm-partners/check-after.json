@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=partners",
+ "url": "http://127.0.0.1:59109/crm?section=partners",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:36:46",
+ "generated": "2026-10-15T00:13:44",
  "widths_requested": [
   375,
   768,
@@ -894,44 +894,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 53,
-   "groups": 26,
-   "texts": 30,
-   "contrast_checked": 30,
+   "elements": 115,
+   "groups": 36,
+   "texts": 57,
+   "contrast_checked": 64,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 24
   },
   "768": {
-   "elements": 51,
-   "groups": 27,
-   "texts": 25,
-   "contrast_checked": 25,
+   "elements": 113,
+   "groups": 36,
+   "texts": 52,
+   "contrast_checked": 59,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 24
   },
   "1280": {
-   "elements": 56,
-   "groups": 29,
-   "texts": 30,
-   "contrast_checked": 30,
+   "elements": 118,
+   "groups": 38,
+   "texts": 57,
+   "contrast_checked": 64,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 24
   },
   "1920": {
-   "elements": 56,
-   "groups": 29,
-   "texts": 30,
-   "contrast_checked": 30,
+   "elements": 118,
+   "groups": 38,
+   "texts": 57,
+   "contrast_checked": 64,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 24
   }
  },
  "limits": [],

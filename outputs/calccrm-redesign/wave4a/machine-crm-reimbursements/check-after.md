@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/crm?section=reimbursements`
+URL: `http://127.0.0.1:59109/crm?section=reimbursements`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -17,16 +17,23 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 54, контраст проверен у 31, главных кнопок 0, адресов 0
+- 375px: элементов 2070, контраст проверен у 1438, главных кнопок 0, адресов 0
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
 
 ### Гейт 2. Гардрейлы: 375px PASS
 _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — их находки там._
+- (warn) **эмодзи в тексте (если это не контент пользователя — заменить иконкой)** (2)
+  - `⏳` — 375px×192 — напр. `div.batch-card > div.batch-amount > div.rate` «⏳»
+  - `⚠` — 375px×2 — напр. `div.card > div.form-group > div.reimburse-wallet-warning` «⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов»
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
   - `‹` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
+- (warn) **у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?** (3)
+  - `Сколько USDT перевели` — 375px×2 — напр. `div.form-row > div.form-group > input.form-control.reimburse-amount` «Сколько USDT перевели»
+  - `THB/USDT` — 375px×2 — напр. `div.form-row > div.form-group > input.form-control.reimburse-rate` «THB/USDT»
+  - `TxHash #1` — 375px×2 — напр. `div.reimburse-tx-hashes > div > input.form-control.reimburse-tx-hash-input` «TxHash #1»
 - (warn) **outline:none — проверь кольцо фокуса** (4)
   - `.form-control:focus` — 375px×1 — напр. `.form-control:focus`
   - `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn` — 375px×1 — напр. `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn`
@@ -40,21 +47,33 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 375px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (171)
+  - `1820,00 $ × 4` — 375px×4 — напр. `div.batch-card > div.batch-info > div` «#357 Igor Pirogov — $1 820,00»
+  - `1200,00 $ × 4` — 375px×4 — напр. `div.batch-card > div.batch-info > div` «#429 Andrey Zaytsev - Grusha — $1 200,00»
+  - `155,00 $ × 4` — 375px×4 — напр. `div.batch-card > div.batch-info > div` «#346 Ivan - Grusha — $155,00»
+  - `247,00 $ × 4` — 375px×4 — напр. `div.batch-card > div.batch-info > div` «#345 Роман — $247,00»
+  - … и ещё 167 (полный список в JSON)
 
 ## Компьютер (>700px)
-- 768px: элементов 52, контраст проверен у 26, главных кнопок 0, адресов 0
-- 1280px: элементов 57, контраст проверен у 31, главных кнопок 0, адресов 0
-- 1920px: элементов 57, контраст проверен у 31, главных кнопок 0, адресов 0
+- 768px: элементов 2068, контраст проверен у 1433, главных кнопок 0, адресов 0
+- 1280px: элементов 2073, контраст проверен у 1438, главных кнопок 0, адресов 0
+- 1920px: элементов 2073, контраст проверен у 1438, главных кнопок 0, адресов 0
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
 
 ### Гейт 2. Гардрейлы: 768px PASS · 1280px PASS · 1920px PASS
 _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — их находки там._
+- (warn) **эмодзи в тексте (если это не контент пользователя — заменить иконкой)** (2)
+  - `⏳` — 768px×192, 1280px×192, 1920px×192 — напр. `div.batch-card > div.batch-amount > div.rate` «⏳»
+  - `⚠` — 768px×2, 1280px×2, 1920px×2 — напр. `div.card > div.form-group > div.reimburse-wallet-warning` «⚠️ TronScan не ответил по 2 кошельк(у/ам) — список переводов»
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
   - `‹` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
+- (warn) **у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?** (3)
+  - `Сколько USDT перевели` — 768px×2, 1280px×2, 1920px×2 — напр. `div.form-row > div.form-group > input.form-control.reimburse-amount` «Сколько USDT перевели»
+  - `THB/USDT` — 768px×2, 1280px×2, 1920px×2 — напр. `div.form-row > div.form-group > input.form-control.reimburse-rate` «THB/USDT»
+  - `TxHash #1` — 768px×2, 1280px×2, 1920px×2 — напр. `div.reimburse-tx-hashes > div > input.form-control.reimburse-tx-hash-input` «TxHash #1»
 - (warn) **outline:none — проверь кольцо фокуса** (4)
   - `.form-control:focus` — 768px×1, 1280px×1, 1920px×1 — напр. `.form-control:focus`
   - `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn` — 768px×1, 1280px×1, 1920px×1 — напр. `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn`
@@ -68,7 +87,12 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 768px PASS · 1280px PASS · 1920px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (171)
+  - `1820,00 $ × 4` — 768px×4, 1280px×4, 1920px×4 — напр. `div.batch-card > div.batch-info > div` «#357 Igor Pirogov — $1 820,00»
+  - `1200,00 $ × 4` — 768px×4, 1280px×4, 1920px×4 — напр. `div.batch-card > div.batch-info > div` «#429 Andrey Zaytsev - Grusha — $1 200,00»
+  - `155,00 $ × 4` — 768px×4, 1280px×4, 1920px×4 — напр. `div.batch-card > div.batch-info > div` «#346 Ivan - Grusha — $155,00»
+  - `247,00 $ × 4` — 768px×4, 1280px×4, 1920px×4 — напр. `div.batch-card > div.batch-info > div` «#345 Роман — $247,00»
+  - … и ещё 167 (полный список в JSON)
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_

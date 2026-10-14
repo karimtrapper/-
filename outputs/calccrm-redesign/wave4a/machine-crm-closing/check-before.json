@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=closing",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:08:49",
+ "generated": "2026-10-14T21:21:21",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -226,24 +194,39 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 1,
+     "n": 2,
      "ex": [
       {
        "sel": "div.container",
        "t": ""
+      },
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1
+      "375": 2,
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.container",
         "t": ""
+       },
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -266,9 +249,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -277,19 +258,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#closing > div.card",
         "t": ""
@@ -338,10 +307,6 @@
        "t": "↻ Обновить"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#closing > div.card",
        "t": ""
       }
@@ -351,9 +316,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -362,31 +325,7 @@
         "t": "↻ Обновить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#closing > div.card",
         "t": ""
@@ -416,18 +355,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
@@ -438,11 +369,110 @@
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#3B82F6 (ближайший navy-500 #64748B, ΔE 15.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -452,25 +482,32 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
+     "value": "gap 10px",
      "n": 1,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -492,17 +529,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -527,17 +557,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -554,9 +577,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -573,15 +596,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -602,18 +621,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
@@ -624,37 +635,77 @@
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #3B82F6",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-blue",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#EFF6FF",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
      }
     },
     {
@@ -675,9 +726,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -686,19 +735,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -726,9 +763,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -737,19 +772,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -775,9 +798,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -786,19 +807,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -824,9 +833,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -835,19 +842,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -873,9 +868,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -884,19 +877,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -922,9 +903,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -933,19 +912,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -971,9 +938,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -982,19 +947,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1011,11 +964,11 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто (расчёт по computed-цветам)"
@@ -1025,11 +978,11 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто"
@@ -1039,11 +992,11 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
@@ -1053,9 +1006,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -1106,9 +1059,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1121,27 +1072,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -1166,15 +1097,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -1208,9 +1135,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1219,19 +1144,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -1261,9 +1174,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1276,27 +1187,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -1342,24 +1233,39 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 1,
+     "n": 2,
      "ex": [
       {
        "sel": "div.container",
        "t": ""
+      },
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1
+      "375": 2,
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.container",
         "t": ""
+       },
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -1382,9 +1288,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1393,19 +1297,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#closing > div.card",
         "t": ""
@@ -1454,10 +1346,6 @@
        "t": "↻ Обновить"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#closing > div.card",
        "t": ""
       }
@@ -1467,9 +1355,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1478,31 +1364,7 @@
         "t": "↻ Обновить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#closing > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#closing > div.card",
         "t": ""
@@ -1532,18 +1394,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
@@ -1554,11 +1408,110 @@
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#3B82F6 (ближайший navy-500 #64748B, ΔE 15.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -1568,25 +1521,32 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
+     "value": "gap 10px",
      "n": 1,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
        }
       ]
      }
@@ -1608,17 +1568,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1643,17 +1596,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1688,9 +1634,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1699,19 +1643,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1747,9 +1679,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1758,19 +1688,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1796,9 +1714,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1807,19 +1723,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1841,8 +1745,79 @@
    "id": 6,
    "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #3B82F6",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-blue",
+     "sev": "FAIL",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#EFF6FF",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#bitrixDealsList > div.alert.alert-info",
+       "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#bitrixDealsList > div.alert.alert-info",
+        "t": "На стенде отключено: закрытие сделок в Bitrix недоступно. Сд"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": []
   },
   "7": {
@@ -1957,18 +1932,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
@@ -1979,37 +1946,7 @@
         "sel": "div.card > div.card-title > button.btn.btn-secondary",
         "t": "↻ Обновить"
        }
-      ],
-      "1920": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-secondary",
-        "t": "↻ Обновить"
-       }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -2032,9 +1969,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2043,19 +1978,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -2081,9 +2004,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2092,19 +2013,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -2130,9 +2039,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2141,19 +2048,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -2179,9 +2074,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2190,19 +2083,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -2216,38 +2097,18 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 53,
-   "groups": 28,
+   "elements": 54,
+   "groups": 29,
    "texts": 31,
    "contrast_checked": 31,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 3
-  },
-  "768": {
-   "elements": 51,
-   "groups": 29,
-   "texts": 26,
-   "contrast_checked": 26,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 3
   },
   "1280": {
-   "elements": 56,
-   "groups": 32,
-   "texts": 31,
-   "contrast_checked": 31,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 3
-  },
-  "1920": {
-   "elements": 56,
-   "groups": 32,
+   "elements": 57,
+   "groups": 33,
    "texts": 31,
    "contrast_checked": 31,
    "contrast_unknown": 0,
@@ -2291,9 +2152,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2302,19 +2161,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -2340,9 +2187,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2351,19 +2196,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -2389,9 +2222,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2400,19 +2231,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -2438,9 +2257,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2449,19 +2266,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -2487,9 +2292,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2498,19 +2301,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -2536,9 +2327,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -2547,19 +2336,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

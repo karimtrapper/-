@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=create",
+ "url": "http://127.0.0.1:59109/crm?section=create",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:43:29",
+ "generated": "2026-10-15T00:15:48",
  "widths_requested": [
   375,
   768,
@@ -1124,7 +1124,694 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "40000,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "40 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "35000,00 ₽ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "35 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "20000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "20 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "10,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "10,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "50000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "50 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "120,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "120,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1,00 ₽ × 8",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "1,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 8,
+      "768": 8,
+      "1280": 8,
+      "1920": 8
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "250000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "250 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "100000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "100 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "200000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "200 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "300000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "300 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "400000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "400 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "999 999,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,99 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "999 999,99 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -2057,7 +2744,694 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "40000,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "40 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "40 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "35000,00 ₽ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "35 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "35 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "20000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "20 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "20 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "10,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "10,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "10,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "50000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "50 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "50 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "120,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "120,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "120,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1,00 ₽ × 8",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "1,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 8,
+      "768": 8,
+      "1280": 8,
+      "1920": 8
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "1,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "250000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "250 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "250 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "100000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "100 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "100 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "200000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "200 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "200 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "300000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "300 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "300 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "400000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "400 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "400 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "999 999,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,99 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.sber-income-row > span > b",
+       "t": "999 999,99 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.sber-income-row > span > b",
+        "t": "999 999,99 ₽"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -2308,44 +3682,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 176,
-   "groups": 81,
-   "texts": 80,
-   "contrast_checked": 98,
+   "elements": 955,
+   "groups": 85,
+   "texts": 729,
+   "contrast_checked": 747,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 34
+   "controls": 164
   },
   "768": {
-   "elements": 174,
-   "groups": 76,
-   "texts": 75,
-   "contrast_checked": 93,
+   "elements": 953,
+   "groups": 84,
+   "texts": 724,
+   "contrast_checked": 742,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 34
+   "controls": 164
   },
   "1280": {
-   "elements": 179,
-   "groups": 77,
-   "texts": 80,
-   "contrast_checked": 98,
+   "elements": 960,
+   "groups": 85,
+   "texts": 730,
+   "contrast_checked": 748,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 34
+   "controls": 164
   },
   "1920": {
-   "elements": 179,
-   "groups": 77,
-   "texts": 80,
-   "contrast_checked": 98,
+   "elements": 960,
+   "groups": 85,
+   "texts": 730,
+   "contrast_checked": 748,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 34
+   "controls": 164
   }
  },
  "limits": [],
@@ -3165,6 +4539,692 @@
      {
       "sel": "div.form-row > div.form-group > textarea.form-control",
       "t": "Дополнительная информация..."
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "40000,00 ₽ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "40 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "768": 4,
+    "1280": 4,
+    "1920": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "40 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "35000,00 ₽ × 7",
+   "n": 7,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "35 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 7,
+    "768": 7,
+    "1280": 7,
+    "1920": 7
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "35 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "35 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "35 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "35 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "20000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "20 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "20 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "20 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "20 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "20 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "10,00 ₽ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "10,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "10,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "10,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "10,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "10,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "50000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "50 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "50 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "50 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "50 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "50 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "120,00 ₽ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "120,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "120,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "120,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "120,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "120,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "1,00 ₽ × 8",
+   "n": 8,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "1,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 8,
+    "768": 8,
+    "1280": 8,
+    "1920": 8
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "1,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "1,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "1,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "1,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "250000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "250 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "250 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "250 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "250 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "250 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "100000,00 ₽ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "100 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "100 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "100 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "100 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "100 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "200000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "200 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "200 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "200 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "200 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "200 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "300000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "300 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "300 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "300 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "300 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "300 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "400000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "400 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "400 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "400 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "400 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "400 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "999999,00 ₽ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "999 999,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "768": 4,
+    "1280": 4,
+    "1920": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "999999,99 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.sber-income-row > span > b",
+     "t": "999 999,99 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,99 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,99 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,99 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.sber-income-row > span > b",
+      "t": "999 999,99 ₽"
      }
     ]
    }

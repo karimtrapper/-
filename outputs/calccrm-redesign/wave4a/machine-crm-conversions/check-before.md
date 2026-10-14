@@ -1,28 +1,31 @@
 # design-gate · check — **FAIL**
 
-URL: `http://127.0.0.1:59104/crm`
+URL: `http://127.0.0.1:59110/crm?section=conversions`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
-Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
+Ширины: запрошено [375, 1280], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
 
 _Вердикт машинный: проверена автоматическая часть гейтов. Вкус, иерархия и пункты «MANUAL» ниже остаются человеку._
 
 **Причины вердикта:**
 - FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины
+- 768px: ширина не снята (не запрашивалась)
+- 1920px: ширина не снята (не запрашивалась)
+- проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.
 - 375px: снимок «после» не снят
 - 1280px: снимок «после» не снят
 
 | Гейт | Вердикт | 375 | 768 | 1280 | 1920 |
 |---|---|---|---|---|---|
-| 1. Токены | **FAIL** | FAIL | FAIL | FAIL | FAIL |
-| 2. Гардрейлы | **FAIL** | FAIL | FAIL | FAIL | FAIL |
-| 3. Контраст WCAG AA | **FAIL** | FAIL | FAIL | FAIL | FAIL |
-| 4. Ширины | **FAIL** | FAIL | PASS | PASS | PASS |
-| 5. Текст | **PASS** | PASS | PASS | PASS | PASS |
-| 6. Снимки | **BLOCKED** | PASS | PASS | PASS | PASS |
+| 1. Токены | **FAIL** | FAIL | BLOCKED | FAIL | BLOCKED |
+| 2. Гардрейлы | **FAIL** | FAIL | BLOCKED | FAIL | BLOCKED |
+| 3. Контраст WCAG AA | **FAIL** | FAIL | BLOCKED | FAIL | BLOCKED |
+| 4. Ширины | **FAIL** | FAIL | BLOCKED | PASS | BLOCKED |
+| 5. Текст | **BLOCKED** | PASS | BLOCKED | PASS | BLOCKED |
+| 6. Снимки | **BLOCKED** | PASS | BLOCKED | PASS | BLOCKED |
 
 ## Телефон (≤700px)
-- 375px: элементов 62, контраст проверен у 38, главных кнопок 0, адресов 0
+- 375px: элементов 213, контраст проверен у 173, главных кнопок 0, адресов 0
 
 ### Гейт 1. Токены: 375px FAIL
 - **отступ вне шкалы 4/8/12/16/24** (7)
@@ -48,16 +51,6 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
   - `all` — 375px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
 - **text-transform: uppercase (капслок)** (1)
   - `uppercase` — 375px×9 — напр. `thead > tr > th` «CNV»
-- **ошибка в консоли** (5)
-  - `Не удалось обновить счётчик заявок на выплату: {stack: "TypeError: Failed to fetch
-    at refreshPayoutAttention (http:/` — 375px×2
-  - `{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:` — 375px×1
-  - `{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\n    at loadConversions (http://127.0.0.1:59104/crm:11` — 375px×1
-  - `{stack: "TypeError: Failed to fetch
-    at rxLoad (http://1….0.0.1:59104/crm:3772:40)
-    at <anonymous>:1:55", message:` — 375px×1
-  - `Не удалось загрузить курс: {stack: "TypeError: Failed to fetch
-    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3` — 375px×1
 - **hover-зум** (1)
   - `.kyc-review-photo img:hover` — 375px×1 — напр. `.kyc-review-photo img:hover`
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
@@ -75,75 +68,64 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ### Гейт 4. Ширины: 375px FAIL
 - **горизонтальный скролл страницы** (1)
-  - `scrollWidth 676 > innerWidth 375` — 375px×1
+  - `scrollWidth 775 > innerWidth 375` — 375px×1
 - **элемент выходит за экран** (5)
-  - `right 676 > 375` — 375px×4 — напр. `section#conversions > div.card > table.table`
-  - `right 412 > 375` — 375px×1 — напр. `thead > tr > th` «Отправлено ₽»
-  - `right 471 > 375` — 375px×1 — напр. `thead > tr > th` «Курс»
-  - `right 569 > 375` — 375px×1 — напр. `thead > tr > th` «Получили»
-  - `right 602 > 375` — 375px×1 — напр. `thead > tr > th` «Δ»
+  - `right 775 > 375` — 375px×16 — напр. `section#conversions > div.card > table.table`
+  - `right 473 > 375` — 375px×6 — напр. `thead > tr > th` «Отправлено ₽»
+  - `right 535 > 375` — 375px×6 — напр. `thead > tr > th` «Курс»
+  - `right 633 > 375` — 375px×6 — напр. `thead > tr > th` «Получили»
+  - `right 694 > 375` — 375px×6 — напр. `thead > tr > th` «Δ»
 
 ### Гейт 5. Текст: 375px PASS
 находок нет
 
 ## Компьютер (>700px)
-- 768px: элементов 60, контраст проверен у 33, главных кнопок 0, адресов 0
-- 1280px: элементов 65, контраст проверен у 38, главных кнопок 0, адресов 0
-- 1920px: элементов 65, контраст проверен у 38, главных кнопок 0, адресов 0
+- 768px: **BLOCKED** — ширина не снята (не запрашивалась)
+- 1280px: элементов 216, контраст проверен у 173, главных кнопок 0, адресов 0
+- 1920px: **BLOCKED** — ширина не снята (не запрашивалась)
 
-### Гейт 1. Токены: 768px FAIL · 1280px FAIL · 1920px FAIL
-- **отступ вне шкалы 4/8/12/16/24** (7)
-  - `padding 10px` — 768px×9, 1280px×9, 1920px×9 — напр. `thead > tr > th` «CNV»
-  - `padding 20px` — 768px×3, 1280px×2, 1920px×2 — напр. `div.container`
-  - `padding 6px` — 768px×1, 1280px×1, 1920px×1 — напр. `div.site-shell-right > span.site-shell-bell > a`
-  - `gap 6px` — 768px×1, 1280px×1, 1920px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
-  - `padding 32px` — 1280px×1, 1920px×1 — напр. `div.container`
-  - `padding 60px` — 1280px×1, 1920px×1 — напр. `div.container`
-  - `padding 100px` — 768px×1 — напр. `div.container`
+### Гейт 1. Токены: 768px BLOCKED · 1280px FAIL · 1920px BLOCKED
+- **отступ вне шкалы 4/8/12/16/24** (6)
+  - `padding 10px` — 1280px×9 — напр. `thead > tr > th` «CNV»
+  - `padding 20px` — 1280px×2 — напр. `section#conversions > div.card`
+  - `padding 6px` — 1280px×1 — напр. `div.site-shell-right > span.site-shell-bell > a`
+  - `gap 6px` — 1280px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
+  - `padding 32px` — 1280px×1 — напр. `div.container`
+  - `padding 60px` — 1280px×1 — напр. `div.container`
 - **шрифт вне токенов** (1)
-  - `arial` — 768px×2, 1280px×2, 1920px×2 — напр. `nav.site-shell-sections > button.site-shell-scroll` «‹»
+  - `arial` — 1280px×2 — напр. `nav.site-shell-sections > button.site-shell-scroll` «‹»
 - **тень вне словаря** (1)
-  - `rgba(0, 0, 0, 0.04) 0px 1px 3px 0px` — 768px×1, 1280px×1, 1920px×1 — напр. `section#conversions > div.card`
+  - `rgba(0, 0, 0, 0.04) 0px 1px 3px 0px` — 1280px×1 — напр. `section#conversions > div.card`
 - **фон вне палитры** (1)
-  - `#F97316 (ближайший action-coral #C2410C, ΔE 18.0)` — 768px×1, 1280px×1, 1920px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
+  - `#F97316 (ближайший action-coral #C2410C, ΔE 18.0)` — 1280px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
 
-### Гейт 2. Гардрейлы: 768px FAIL · 1280px FAIL · 1920px FAIL
+### Гейт 2. Гардрейлы: 768px BLOCKED · 1280px FAIL · 1920px BLOCKED
 _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — их находки там._
 - **больше одного текстового шрифта** (1)
-  - `inter, arial` — 768px×1, 1280px×1, 1920px×1
+  - `inter, arial` — 1280px×1
 - **transition: all** (1)
-  - `all` — 768px×1, 1280px×1, 1920px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
+  - `all` — 1280px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
 - **text-transform: uppercase (капслок)** (1)
-  - `uppercase` — 768px×9, 1280px×9, 1920px×9 — напр. `thead > tr > th` «CNV»
-- **ошибка в консоли** (5)
-  - `Не удалось обновить счётчик заявок на выплату: {stack: "TypeError: Failed to fetch
-    at refreshPayoutAttention (http:/` — 768px×2, 1280px×2, 1920px×3
-  - `{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:` — 768px×1, 1280px×1, 1920px×1
-  - `{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\n    at loadConversions (http://127.0.0.1:59104/crm:11` — 768px×1, 1280px×1, 1920px×1
-  - `{stack: "TypeError: Failed to fetch
-    at rxLoad (http://1….0.0.1:59104/crm:3772:40)
-    at <anonymous>:1:55", message:` — 768px×1, 1280px×1, 1920px×1
-  - `Не удалось загрузить курс: {stack: "TypeError: Failed to fetch
-    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3` — 768px×1, 1280px×1, 1920px×1
+  - `uppercase` — 1280px×9 — напр. `thead > tr > th` «CNV»
 - **hover-зум** (1)
-  - `.kyc-review-photo img:hover` — 768px×1, 1280px×1, 1920px×1 — напр. `.kyc-review-photo img:hover`
+  - `.kyc-review-photo img:hover` — 1280px×1 — напр. `.kyc-review-photo img:hover`
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
-  - `‹` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
-  - `›` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
+  - `‹` — 1280px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
+  - `›` — 1280px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
 - (warn) **outline:none — проверь кольцо фокуса** (4)
-  - `.form-control:focus` — 768px×1, 1280px×1, 1920px×1 — напр. `.form-control:focus`
-  - `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn` — 768px×1, 1280px×1, 1920px×1 — напр. `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn`
-  - `.docs-amount input:focus` — 768px×1, 1280px×1, 1920px×1 — напр. `.docs-amount input:focus`
-  - `.docs-purpose textarea:focus` — 768px×1, 1280px×1, 1920px×1 — напр. `.docs-purpose textarea:focus`
+  - `.form-control:focus` — 1280px×1 — напр. `.form-control:focus`
+  - `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn` — 1280px×1 — напр. `.custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn`
+  - `.docs-amount input:focus` — 1280px×1 — напр. `.docs-amount input:focus`
+  - `.docs-purpose textarea:focus` — 1280px×1 — напр. `.docs-purpose textarea:focus`
 
-### Гейт 3. Контраст WCAG AA: 768px FAIL · 1280px FAIL · 1920px FAIL
+### Гейт 3. Контраст WCAG AA: 768px BLOCKED · 1280px FAIL · 1920px BLOCKED
 - **контраст ниже 4.5:1** (1)
-  - `#FFFFFF на #F97316 = 2.80:1 (14px/600)` — 768px×1, 1280px×1, 1920px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
+  - `#FFFFFF на #F97316 = 2.80:1 (14px/600)` — 1280px×1 — напр. `section#conversions > div.card > button.btn.btn-primary` «+ Новая пачка»
 
-### Гейт 4. Ширины: 768px PASS · 1280px PASS · 1920px PASS
+### Гейт 4. Ширины: 768px BLOCKED · 1280px PASS · 1920px BLOCKED
 находок нет
 
-### Гейт 5. Текст: 768px PASS · 1280px PASS · 1920px PASS
+### Гейт 5. Текст: 768px BLOCKED · 1280px PASS · 1920px BLOCKED
 находок нет
 
 ## Гейт 6. Снимки — BLOCKED
@@ -180,7 +162,7 @@ _авто: наличие и непустота пар «до/после»; ср
 
 ## Дополнительно (Don't из DESIGN.md)
 - **text-transform: uppercase (капслок)** (1)
-  - `uppercase` — 375px×9, 768px×9, 1280px×9, 1920px×9 — напр. `thead > tr > th` «CNV»
+  - `uppercase` — 375px×9, 1280px×9 — напр. `thead > tr > th` «CNV»
 
 ## Что остаётся человеку
 Вкус и иерархия; «глагол в заголовке», фразы из переписки; сравнение снимков «до/после»; гардрейлы 13, 14, 17 целиком и непроверенная часть пунктов 3, 4, 5, 6, 8, 9, 10, 12, 16, 18.

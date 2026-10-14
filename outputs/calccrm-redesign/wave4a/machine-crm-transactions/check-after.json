@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=transactions",
+ "url": "http://127.0.0.1:59109/crm?section=transactions",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:31:09",
+ "generated": "2026-10-15T00:04:03",
  "widths_requested": [
   375,
   768,
@@ -571,8 +571,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,00 USDT × 2",
-     "n": 2,
+     "value": "0,00 USDT × 6",
+     "n": 6,
      "ex": [
       {
        "sel": "div.wallet-card > div > strong",
@@ -583,18 +583,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "768": 6,
+      "1280": 6,
+      "1920": 6
      },
      "ex_by_width": {
-      "375": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
       "768": [
        {
         "sel": "div.wallet-card > div > strong",
@@ -994,8 +987,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,00 USDT × 2",
-     "n": 2,
+     "value": "0,00 USDT × 6",
+     "n": 6,
      "ex": [
       {
        "sel": "div.wallet-card > div > strong",
@@ -1006,18 +999,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "768": 6,
+      "1280": 6,
+      "1920": 6
      },
      "ex_by_width": {
-      "375": [
-       {
-        "sel": "div.wallet-card > div > strong",
-        "t": "0,00 USDT"
-       }
-      ],
       "768": [
        {
         "sel": "div.wallet-card > div > strong",
@@ -1289,44 +1275,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 160,
-   "groups": 63,
-   "texts": 74,
-   "contrast_checked": 93,
+   "elements": 90,
+   "groups": 48,
+   "texts": 42,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 4,
-   "controls": 23
+   "addresses": 0,
+   "controls": 11
   },
   "768": {
-   "elements": 158,
-   "groups": 61,
-   "texts": 69,
-   "contrast_checked": 88,
+   "elements": 233,
+   "groups": 66,
+   "texts": 104,
+   "contrast_checked": 135,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 4,
-   "controls": 23
+   "addresses": 9,
+   "controls": 38
   },
   "1280": {
-   "elements": 163,
-   "groups": 62,
-   "texts": 74,
-   "contrast_checked": 93,
+   "elements": 238,
+   "groups": 66,
+   "texts": 109,
+   "contrast_checked": 140,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 4,
-   "controls": 23
+   "addresses": 9,
+   "controls": 38
   },
   "1920": {
-   "elements": 163,
-   "groups": 62,
-   "texts": 74,
-   "contrast_checked": 93,
+   "elements": 238,
+   "groups": 66,
+   "texts": 109,
+   "contrast_checked": 140,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 4,
-   "controls": 23
+   "addresses": 9,
+   "controls": 38
   }
  },
  "limits": [],
@@ -1592,55 +1578,6 @@
    }
   },
   {
-   "gate": 5,
-   "rule": "G12-dup",
-   "sev": "WARN",
-   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "0,00 USDT × 2",
-   "n": 2,
-   "ex": [
-    {
-     "sel": "div.wallet-card > div > strong",
-     "t": "0,00 USDT"
-    }
-   ],
-   "gr": 12,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ],
-    "768": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "div.wallet-card > div > strong",
-      "t": "0,00 USDT"
-     }
-    ]
-   }
-  },
-  {
    "gate": 2,
    "rule": "G18-outline-none",
    "sev": "WARN",
@@ -1832,6 +1769,48 @@
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 USDT × 6",
+   "n": 6,
+   "ex": [
+    {
+     "sel": "div.wallet-card > div > strong",
+     "t": "0,00 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "768": 6,
+    "1280": 6,
+    "1920": 6
+   },
+   "ex_by_width": {
+    "768": [
+     {
+      "sel": "div.wallet-card > div > strong",
+      "t": "0,00 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.wallet-card > div > strong",
+      "t": "0,00 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.wallet-card > div > strong",
+      "t": "0,00 USDT"
      }
     ]
    }

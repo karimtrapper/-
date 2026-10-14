@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=deals",
+ "url": "http://127.0.0.1:59109/crm?section=deals",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:22:05",
+ "generated": "2026-10-15T00:12:47",
  "widths_requested": [
   375,
   768,
@@ -467,7 +467,449 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "18000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "18 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1000,00 USDT × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "1 000,00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "15,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "$15,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12500 ฿ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "12 500 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "32300 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "32 300 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "26000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "26 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "45000 ฿ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "45 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "43000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "43 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "402,36 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "402,36 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -742,7 +1184,449 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "18000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "18 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "18 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1000,00 USDT × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "1 000,00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "1 000,00 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "15,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "$15,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "$15,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12500 ฿ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "12 500 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "12 500 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "32300 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "32 300 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "32 300 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "26000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "26 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "26 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "45000 ฿ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "45 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "45 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "43000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "43 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "43 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "402,36 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td.number-cell",
+       "t": "402,36 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#dealsTable > tr > td.number-cell",
+        "t": "402,36 USDT"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -993,44 +1877,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 119,
-   "groups": 51,
-   "texts": 73,
-   "contrast_checked": 74,
+   "elements": 791,
+   "groups": 56,
+   "texts": 601,
+   "contrast_checked": 603,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 13
+   "controls": 61
   },
   "768": {
-   "elements": 117,
-   "groups": 52,
-   "texts": 68,
-   "contrast_checked": 69,
+   "elements": 789,
+   "groups": 59,
+   "texts": 596,
+   "contrast_checked": 598,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 13
+   "controls": 61
   },
   "1280": {
-   "elements": 122,
-   "groups": 50,
-   "texts": 73,
-   "contrast_checked": 74,
+   "elements": 794,
+   "groups": 59,
+   "texts": 601,
+   "contrast_checked": 603,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 13
+   "controls": 61
   },
   "1920": {
-   "elements": 122,
-   "groups": 50,
-   "texts": 73,
-   "contrast_checked": 74,
+   "elements": 794,
+   "groups": 59,
+   "texts": 601,
+   "contrast_checked": 603,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 13
+   "controls": 61
   }
  },
  "limits": [],
@@ -1193,6 +2077,447 @@
      {
       "sel": "input#filterManager",
       "t": "Имя менеджера"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "18000 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "18 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "18 000 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "18 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "18 000 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "18 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "1000,00 USDT × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "1 000,00 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "1 000,00 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "1 000,00 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "1 000,00 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "1 000,00 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "15,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "$15,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "$15,00"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "$15,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "$15,00"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "$15,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "12500 ฿ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "12 500 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "768": 4,
+    "1280": 4,
+    "1920": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "12 500 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "12 500 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "12 500 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "12 500 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "32300 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "32 300 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "32 300 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "32 300 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "32 300 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "32 300 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "26000 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "26 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "26 000 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "26 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "26 000 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "26 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "45000 ฿ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "45 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "45 000 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "45 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "45 000 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "45 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "43000 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "43 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "43 000 ฿"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "43 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "43 000 ฿"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "43 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "402,36 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td.number-cell",
+     "t": "402,36 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "402,36 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "402,36 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "402,36 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#dealsTable > tr > td.number-cell",
+      "t": "402,36 USDT"
      }
     ]
    }

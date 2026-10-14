@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/`
+URL: `http://127.0.0.1:59109/`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim

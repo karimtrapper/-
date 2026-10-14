@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=payoutRequests",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:13:49",
+ "generated": "2026-10-15T00:03:03",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
-  "FAIL в гейтах: 1. Токены, 2. Гардрейлы",
+  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -76,49 +80,67 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 6px",
-     "n": 1,
+     "n": 58,
      "ex": [
       {
        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
        "t": ""
       },
       {
-       "sel": "div.site-shell-right > span.site-shell-bell > a",
-       "t": ""
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 58,
+      "1280": 58
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
        }
       ],
       "1280": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
        }
       ]
      }
@@ -145,9 +167,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +180,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -226,7 +226,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 6,
+     "n": 41,
      "ex": [
       {
        "sel": "div.container",
@@ -249,10 +249,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 41,
+      "1280": 40
      },
      "ex_by_width": {
       "375": [
@@ -273,43 +271,7 @@
         "t": "В работе"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -347,9 +309,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -358,19 +318,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#payoutRequests > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#payoutRequests > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#payoutRequests > div.card",
         "t": ""
@@ -412,7 +360,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 6,
+     "n": 43,
      "ex": [
       {
        "sel": "div.card > div.card-title > div",
@@ -435,10 +383,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 43,
+      "1280": 43
      },
      "ex_by_width": {
       "375": [
@@ -459,43 +405,7 @@
         "t": "В работе"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > div",
-        "t": ""
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > div",
-        "t": ""
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > div",
         "t": ""
@@ -521,7 +431,7 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "13px",
-     "n": 5,
+     "n": 169,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -544,10 +454,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 169,
+      "1280": 169
      },
      "ex_by_width": {
       "375": [
@@ -568,43 +476,7 @@
         "t": "Выплачено"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -630,7 +502,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
-     "n": 5,
+     "n": 7,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -653,10 +525,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -677,43 +547,7 @@
         "t": "Выплачено"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -739,7 +573,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
-     "n": 5,
+     "n": 7,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -762,31 +596,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -821,23 +635,170 @@
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Выплачено"
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 10px",
+     "n": 65,
+     "ex": [
+      {
+       "sel": "div#payoutRequestsList > div",
+       "t": ""
+      },
+      {
+       "sel": "div#payoutRequestsList > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 65,
+      "1280": 65
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#payoutRequestsList > div",
+        "t": ""
+       },
+       {
+        "sel": "div#payoutRequestsList > div > div",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
+        "sel": "div#payoutRequestsList > div",
+        "t": ""
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
+        "sel": "div#payoutRequestsList > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "Руслан"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "Valera"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 65,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $30.95"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $31.17"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 65,
+      "1280": 65
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
         "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
        }
       ]
      }
@@ -847,12 +808,579 @@
      "rule": "T-color-text",
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
-     "value": "#DC2626 (ближайший action-coral #C2410C, ΔE 9.6)",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 82,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$163.12"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$67.70"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 82,
+      "1280": 82
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$163.12"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$67.70"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$163.12"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$67.70"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DCFCE7 (ближайший money-surface #F0FDF4, ΔE 7.7)",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 27,
+      "1280": 27
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 2px",
+     "n": 93,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 93,
+      "1280": 93
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#2563EB (ближайший navy-500 #64748B, ΔE 13.5)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 8,
+      "1280": 8
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "18px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 57,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "145-8-41534-6"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 57,
+      "1280": 57
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "4px",
+     "n": 57,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "145-8-41534-6"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 57,
+      "1280": 57
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
      "n": 1,
      "ex": [
       {
-       "sel": "div#payoutRequestsList > div",
-       "t": "Ошибка загрузки"
+       "sel": "div > div > span",
+       "t": "Новая"
       }
      ],
      "gr": 2,
@@ -860,47 +1388,33 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
+        "sel": "div > div > span",
+        "t": "Новая"
        }
       ],
       "1280": [
        {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
+        "sel": "div > div > span",
+        "t": "Новая"
        }
       ]
      }
     },
     {
      "gate": 1,
-     "rule": "T-spacing",
+     "rule": "T-radius",
      "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
      "n": 1,
      "ex": [
       {
-       "sel": "div.container",
+       "sel": "input#payout-tx-21",
        "t": ""
       }
      ],
@@ -908,12 +1422,19 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
+        "sel": "input#payout-tx-21",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ]
@@ -924,15 +1445,11 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 20px",
-     "n": 2,
+     "value": "padding 10px",
+     "n": 1,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
-       "sel": "section#payoutRequests > div.card",
+       "sel": "input#payout-tx-21",
        "t": ""
       }
      ],
@@ -940,31 +1457,90 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 1,
-      "1920": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ],
       "1280": [
        {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 7px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
         "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#22C55E (ближайший money-border #BBF7D0, ΔE 20.4)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
        }
       ]
      }
@@ -986,17 +1562,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1021,8 +1590,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
@@ -1030,10 +1598,32 @@
         "sel": "div.container",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#payoutRequests > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.container",
+        "sel": "section#payoutRequests > div.card",
         "t": ""
        }
       ]
@@ -1048,9 +1638,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1059,7 +1649,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "5: 12, 13, 14, 16, 22",
+     "value": "8: 11, 12, 13, 14, 15, 16, 18, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -1067,15 +1657,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -1091,15 +1697,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1108,7 +1710,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 5,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -1131,31 +1733,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -1190,265 +1772,141 @@
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Выплачено"
        }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-blue",
+     "sev": "FAIL",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#EFF6FF",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
        }
       ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G9-ph-cut",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
+     "title": "плейсхолдер не помещается в поле (обрезан)",
+     "value": "Хеш транзакции TRC-20 (для «Выплачено»)",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+      }
+     ],
+     "gr": 9,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G7-anywhere",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
+     "title": "у адреса overflow-wrap:anywhere / word-break:break-all",
+     "value": "overflow-wrap:normal; word-break:break-all",
+     "n": 45,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      }
+     ],
+     "gr": 7,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 45,
+      "1280": 45
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 6,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 3,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки партнёров: {stack: \"TypeError: Failed to fetch\n    at loadPartners (ht….0.0.1:59104/crm:3768:38)\n    at ",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки рефереров: {stack: \"TypeError: Failed to fetch\n    at loadReferrers (h….0.0.1:59104/crm:3769:39)\n    at ",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ]
      }
     },
     {
@@ -1469,18 +1927,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1491,17 +1941,186 @@
         "sel": ".kyc-review-photo img:hover",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
       ]
      }
     }
    ],
    "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "🏦",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💬",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "💬 WhatsApp:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "✈",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✈️ Telegram:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "1280": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "X-caps-typed",
+     "sev": "WARN",
+     "title": "текст набран капслоком руками",
+     "value": "VALERII KUTYRAEV",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "VALERII KUTYRAEV"
+      }
+     ],
+     "gr": null,
+     "extra": "Don't: капслок",
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ]
+     }
+    },
     {
      "gate": 2,
      "rule": "G4-icononly",
@@ -1520,9 +2139,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1531,19 +2148,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1569,18 +2174,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "768": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1591,11 +2188,182 @@
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Хеш транзакции TRC-20 (для «Выплачено»)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "12px",
+     "n": 24,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 24,
+      "1280": 24
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "11px",
+     "n": 21,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 21,
+      "1280": 21
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
        }
       ]
      }
@@ -1618,9 +2386,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1629,19 +2395,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1667,9 +2421,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1678,19 +2430,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1716,9 +2456,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1727,19 +2465,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1765,9 +2491,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1776,19 +2500,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1804,13 +2516,449 @@
    "id": 3,
    "name": "Контраст WCAG AA",
    "by_width": {
-    "375": "PASS",
-    "768": "PASS",
-    "1280": "PASS",
-    "1920": "PASS"
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (12px/400)",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "GR-F07253"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "GR-VALERA"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "GR-F07253"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "GR-VALERA"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "GR-F07253"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "GR-VALERA"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #DCFCE7 = 3.00:1 (11px/600)",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 27,
+      "1280": 27
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (11px/400)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "возместить $30.95"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $31.17"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $450.01"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $61.20"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $61.20"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $61.20"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (13px/400)",
+     "n": 106,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Курс клиенту:"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "(Bitazza VWAP)"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "Банк:"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "Имя:"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 106,
+      "1280": 106
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Курс клиенту:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "(Bitazza VWAP)"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Банк:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Имя:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Курс клиенту:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "(Bitazza VWAP)"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Банк:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Имя:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #FFFFFF = 3.30:1 (13px/600)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #F0FDF4 = 3.15:1 (11px/400)",
+     "n": 25,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 25,
+      "1280": 25
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#64748B на #F1F5F9 = 4.34:1 (11px/600)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Отменено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Отменено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Отменено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#F97316 на #FFF7ED = 2.64:1 (11px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Новая"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Новая"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Новая"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #22C55E = 2.28:1 (13px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": [],
    "scope": "авто (расчёт по computed-цветам)"
   },
@@ -1818,13 +2966,102 @@
    "id": 4,
    "name": "Ширины",
    "by_width": {
-    "375": "PASS",
-    "768": "PASS",
-    "1280": "PASS",
-    "1920": "PASS"
+    "375": "FAIL",
+    "768": "BLOCKED",
+    "1280": "FAIL",
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "G7-addr-wrap",
+     "sev": "FAIL",
+     "title": "адрес/хеш переносится на 2+ строк",
+     "value": "2 стр.",
+     "n": 45,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 45
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "30px и 36px (Δверха 3px)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": ""
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": ""
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": [
     {
      "gate": 4,
@@ -1832,7 +3069,7 @@
      "sev": "WARN",
      "title": "нажимаемая цель ниже 44px (Thumb Rule)",
      "value": "36px",
-     "n": 5,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -1855,31 +3092,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -1914,23 +3131,40 @@
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Выплачено"
        }
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "30px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": ""
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
+        "sel": "input#payout-tx-21",
+        "t": ""
        }
       ]
      }
@@ -1943,13 +3177,96 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "413,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "$413.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "$413.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "$413.00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "450,01 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "возместить $450.01"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$450.01"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$450.01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$450.01"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -1957,9 +3274,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -2010,22 +3327,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "768": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2044,16 +3349,6 @@
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "›"
        }
-      ],
-      "1920": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
       ]
      }
     },
@@ -2063,7 +3358,7 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "13px",
-     "n": 5,
+     "n": 169,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -2086,10 +3381,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 169,
+      "1280": 169
      },
      "ex_by_width": {
       "375": [
@@ -2110,43 +3403,7 @@
         "t": "Выплачено"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -2167,11 +3424,342 @@
      }
     },
     {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "Руслан"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "Valera"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
+       },
+       {
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 65,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $30.95"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $31.17"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 65,
+      "1280": 65
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "18px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 57,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "145-8-41534-6"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 57,
+      "1280": 57
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ]
+     }
+    },
+    {
      "gate": 2,
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "5: 12, 13, 14, 16, 22",
+     "value": "8: 11, 12, 13, 14, 15, 16, 18, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -2179,15 +3767,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -2203,15 +3807,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -2229,49 +3829,67 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 6px",
-     "n": 1,
+     "n": 58,
      "ex": [
       {
        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
        "t": ""
       },
       {
-       "sel": "div.site-shell-right > span.site-shell-bell > a",
-       "t": ""
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 58,
+      "1280": 58
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
        }
       ],
       "1280": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
        }
       ]
      }
@@ -2298,9 +3916,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2313,27 +3929,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2379,7 +3975,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 6,
+     "n": 41,
      "ex": [
       {
        "sel": "div.container",
@@ -2402,10 +3998,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 41,
+      "1280": 40
      },
      "ex_by_width": {
       "375": [
@@ -2426,43 +4020,7 @@
         "t": "В работе"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -2500,9 +4058,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2511,19 +4067,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#payoutRequests > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#payoutRequests > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#payoutRequests > div.card",
         "t": ""
@@ -2565,7 +4109,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 6,
+     "n": 43,
      "ex": [
       {
        "sel": "div.card > div.card-title > div",
@@ -2588,10 +4132,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 43,
+      "1280": 43
      },
      "ex_by_width": {
       "375": [
@@ -2612,43 +4154,7 @@
         "t": "В работе"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > div",
-        "t": ""
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > div",
-        "t": ""
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > div",
         "t": ""
@@ -2674,7 +4180,7 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "13px",
-     "n": 5,
+     "n": 169,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -2697,10 +4203,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 169,
+      "1280": 169
      },
      "ex_by_width": {
       "375": [
@@ -2721,43 +4225,7 @@
         "t": "Выплачено"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -2783,7 +4251,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
-     "n": 5,
+     "n": 7,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -2806,10 +4274,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -2830,43 +4296,7 @@
         "t": "Выплачено"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -2892,7 +4322,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
-     "n": 5,
+     "n": 7,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -2915,31 +4345,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -2974,23 +4384,170 @@
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Выплачено"
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 10px",
+     "n": 65,
+     "ex": [
+      {
+       "sel": "div#payoutRequestsList > div",
+       "t": ""
+      },
+      {
+       "sel": "div#payoutRequestsList > div > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 65,
+      "1280": 65
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#payoutRequestsList > div",
+        "t": ""
+       },
+       {
+        "sel": "div#payoutRequestsList > div > div",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
+        "sel": "div#payoutRequestsList > div",
+        "t": ""
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
+        "sel": "div#payoutRequestsList > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "15px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > strong",
+       "t": "Руслан"
+      },
+      {
+       "sel": "div > div > strong",
+       "t": "Valera"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > strong",
+        "t": "Руслан"
        },
        {
-        "sel": "div.card-title > div > button.btn.btn-sm",
+        "sel": "div > div > strong",
+        "t": "Valera"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11px",
+     "n": 65,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $30.95"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $31.17"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 65,
+      "1280": 65
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
         "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
        }
       ]
      }
@@ -3000,12 +4557,579 @@
      "rule": "T-color-text",
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
-     "value": "#DC2626 (ближайший action-coral #C2410C, ΔE 9.6)",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 82,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$163.12"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$67.70"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 82,
+      "1280": 82
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$163.12"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$67.70"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$163.12"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$67.70"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DCFCE7 (ближайший money-surface #F0FDF4, ΔE 7.7)",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 27,
+      "1280": 27
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 2px",
+     "n": 93,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 93,
+      "1280": 93
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#2563EB (ближайший navy-500 #64748B, ΔE 13.5)",
+     "n": 8,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 8,
+      "1280": 8
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "18px",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "1 003 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "1 012 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "14 820 ฿"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "2 003 ฿"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "1 003 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "1 012 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "14 820 ฿"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "2 003 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 57,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "145-8-41534-6"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 57,
+      "1280": 57
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "4px",
+     "n": 57,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "2208840021"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "9700239263"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "706-272791-7"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "145-8-41534-6"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 57,
+      "1280": 57
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "2208840021"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "9700239263"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "706-272791-7"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "145-8-41534-6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
      "n": 1,
      "ex": [
       {
-       "sel": "div#payoutRequestsList > div",
-       "t": "Ошибка загрузки"
+       "sel": "div > div > span",
+       "t": "Новая"
       }
      ],
      "gr": 2,
@@ -3013,47 +5137,33 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
+        "sel": "div > div > span",
+        "t": "Новая"
        }
       ],
       "1280": [
        {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#payoutRequestsList > div",
-        "t": "Ошибка загрузки"
+        "sel": "div > div > span",
+        "t": "Новая"
        }
       ]
      }
     },
     {
      "gate": 1,
-     "rule": "T-spacing",
+     "rule": "T-radius",
      "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
      "n": 1,
      "ex": [
       {
-       "sel": "div.container",
+       "sel": "input#payout-tx-21",
        "t": ""
       }
      ],
@@ -3061,12 +5171,19 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
+        "sel": "input#payout-tx-21",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ]
@@ -3077,15 +5194,11 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 20px",
-     "n": 2,
+     "value": "padding 10px",
+     "n": 1,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
-       "sel": "section#payoutRequests > div.card",
+       "sel": "input#payout-tx-21",
        "t": ""
       }
      ],
@@ -3093,31 +5206,90 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 1,
-      "1920": 1
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ],
       "1280": [
        {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 7px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
         "t": ""
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "section#payoutRequests > div.card",
+        "sel": "input#payout-tx-21",
         "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#22C55E (ближайший money-border #BBF7D0, ΔE 20.4)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
        }
       ]
      }
@@ -3139,17 +5311,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3174,8 +5339,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
@@ -3183,10 +5347,32 @@
         "sel": "div.container",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "section#payoutRequests > div.card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.container",
+        "sel": "section#payoutRequests > div.card",
         "t": ""
        }
       ]
@@ -3219,9 +5405,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3230,19 +5414,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -3278,9 +5450,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3289,19 +5459,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -3327,9 +5485,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3338,19 +5494,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -3366,23 +5510,467 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "🏦",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💬",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "💬 WhatsApp:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "✈",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✈️ Telegram:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "1280": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ]
+     }
+    }
+   ]
   },
   "6": {
    "id": 6,
    "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G6-blue",
+     "sev": "FAIL",
+     "title": "синий фон (синих плашек нет)",
+     "value": "#EFF6FF",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "🏦 Баты"
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "🏦 Баты"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": []
   },
   "7": {
    "id": 7,
    "title": "Адрес/хеш в одну строку; ничего шире экрана",
    "coverage": "auto",
-   "verdict": "PASS",
-   "findings": [],
-   "warnings": []
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "G7-addr-wrap",
+     "sev": "FAIL",
+     "title": "адрес/хеш переносится на 2+ строк",
+     "value": "2 стр.",
+     "n": 45,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 45
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-anywhere",
+     "sev": "FAIL",
+     "title": "у адреса overflow-wrap:anywhere / word-break:break-all",
+     "value": "overflow-wrap:normal; word-break:break-all",
+     "n": 45,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 45,
+      "1280": 45
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "12px",
+     "n": 24,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 24,
+      "1280": 24
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "11px",
+     "n": 21,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 21,
+      "1280": 21
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+       }
+      ]
+     }
+    }
+   ]
   },
   "8": {
    "id": 8,
@@ -3396,24 +5984,562 @@
    "id": 9,
    "title": "Плейсхолдер вместо подписи / обрезанный плейсхолдер",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
-   "warnings": []
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-cut",
+     "sev": "FAIL",
+     "title": "плейсхолдер не помещается в поле (обрезан)",
+     "value": "Хеш транзакции TRC-20 (для «Выплачено»)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G9-ph-nolabel",
+     "sev": "WARN",
+     "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+     "value": "Хеш транзакции TRC-20 (для «Выплачено»)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+      }
+     ],
+     "gr": 9,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+       }
+      ]
+     }
+    }
+   ]
   },
   "10": {
    "id": 10,
    "title": "Ряды «подпись — поле — кнопка» выровнены",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "30px и 36px (Δверха 3px)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "input#payout-tx-21",
+       "t": ""
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "input#payout-tx-21",
+        "t": ""
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": []
   },
   "11": {
    "id": 11,
    "title": "Контраст WCAG AA",
    "coverage": "auto",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (12px/400)",
+     "n": 32,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "GR-F07253"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "GR-VALERA"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 32,
+      "1280": 32
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "GR-F07253"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "GR-VALERA"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "GR-F07253"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "GR-VALERA"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #DCFCE7 = 3.00:1 (11px/600)",
+     "n": 27,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 27,
+      "1280": 27
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (11px/400)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "возместить $30.95"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $31.17"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $450.01"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "возместить $61.20"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $61.20"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $30.95"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $31.17"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "возместить $61.20"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#94A3B8 на #FFFFFF = 2.56:1 (13px/400)",
+     "n": 106,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Курс клиенту:"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "(Bitazza VWAP)"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "Банк:"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "Имя:"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 106,
+      "1280": 106
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Курс клиенту:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "(Bitazza VWAP)"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Банк:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Имя:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Курс клиенту:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "(Bitazza VWAP)"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Банк:"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "Имя:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #FFFFFF = 3.30:1 (13px/600)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #F0FDF4 = 3.15:1 (11px/400)",
+     "n": 25,
+     "ex": [
+      {
+       "sel": "div > div > code",
+       "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+      },
+      {
+       "sel": "div > div > code",
+       "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 25,
+      "1280": 25
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > code",
+        "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add"
+       },
+       {
+        "sel": "div > div > code",
+        "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#64748B на #F1F5F9 = 4.34:1 (11px/600)",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Отменено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Отменено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Отменено"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#F97316 на #FFF7ED = 2.64:1 (11px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "Новая"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "Новая"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "Новая"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #22C55E = 2.28:1 (13px/600)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Выплачено"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Выплачено"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": []
   },
   "12": {
@@ -3422,7 +6548,90 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "413,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "$413.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "$413.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "$413.00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "450,01 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "возместить $450.01"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "$450.01"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$450.01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "возместить $450.01"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "$450.01"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -3476,7 +6685,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 5,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card-title > div > button.btn.btn-sm",
@@ -3499,31 +6708,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Все"
@@ -3558,265 +6747,7 @@
         "sel": "div.card-title > div > button.btn.btn-sm",
         "t": "Выплачено"
        }
-      ],
-      "1920": [
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Все"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Новые"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "В работе"
-       },
-       {
-        "sel": "div.card-title > div > button.btn.btn-sm",
-        "t": "Выплачено"
-       }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 6,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 3,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки партнёров: {stack: \"TypeError: Failed to fetch\n    at loadPartners (ht….0.0.1:59104/crm:3768:38)\n    at ",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки рефереров: {stack: \"TypeError: Failed to fetch\n    at loadReferrers (h….0.0.1:59104/crm:3769:39)\n    at ",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -3839,9 +6770,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3850,19 +6779,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -3888,9 +6805,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3899,19 +6814,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -3937,9 +6840,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3948,19 +6849,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -3986,18 +6875,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -4008,59 +6889,69 @@
         "sel": ".docs-purpose textarea:focus",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
       ]
      }
     }
    ]
   }
  },
- "extras": [],
+ "extras": [
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "VALERII KUTYRAEV",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div > div > strong",
+     "t": "VALERII KUTYRAEV"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ]
+   }
+  }
+ ],
  "stats": {
   "375": {
-   "elements": 58,
-   "groups": 29,
-   "texts": 34,
-   "contrast_checked": 34,
+   "elements": 711,
+   "groups": 78,
+   "texts": 422,
+   "contrast_checked": 423,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
-  },
-  "768": {
-   "elements": 56,
-   "groups": 30,
-   "texts": 29,
-   "contrast_checked": 29,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   },
   "1280": {
-   "elements": 61,
-   "groups": 33,
-   "texts": 34,
-   "contrast_checked": 34,
+   "elements": 714,
+   "groups": 69,
+   "texts": 422,
+   "contrast_checked": 423,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
-  },
-  "1920": {
-   "elements": 61,
-   "groups": 33,
-   "texts": 34,
-   "contrast_checked": 34,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   }
  },
  "limits": [],
@@ -4082,6 +6973,181 @@
  "all_warnings": [
   {
    "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "🏦",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "div > div > span",
+     "t": "🏦 Баты"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "1280": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > span",
+      "t": "🏦 Баты"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > span",
+      "t": "🏦 Баты"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "💬",
+   "n": 6,
+   "ex": [
+    {
+     "sel": "div > div > span",
+     "t": "💬 WhatsApp:"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 6,
+    "1280": 6
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📄",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div > div > div",
+     "t": "📄 Чек отправлен"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > div",
+      "t": "📄 Чек отправлен"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > div",
+      "t": "📄 Чек отправлен"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "✈",
+   "n": 26,
+   "ex": [
+    {
+     "sel": "div > div > span",
+     "t": "✈️ Telegram:"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 26,
+    "1280": 26
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "VALERII KUTYRAEV",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div > div > strong",
+     "t": "VALERII KUTYRAEV"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
    "rule": "G4-icononly",
    "sev": "WARN",
    "title": "кнопка-иконка без видимой подписи (есть aria-label)",
@@ -4098,9 +7164,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4109,19 +7173,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -4147,18 +7199,10 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "768": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -4169,11 +7213,182 @@
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G9-ph-nolabel",
+   "sev": "WARN",
+   "title": "у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?",
+   "value": "Хеш транзакции TRC-20 (для «Выплачено»)",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#payout-tx-21",
+     "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+    }
+   ],
+   "gr": 9,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
      {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
+      "sel": "input#payout-tx-21",
+      "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "input#payout-tx-21",
+      "t": "Хеш транзакции TRC-20 (для «Выплачено»)"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-mono-size",
+   "sev": "WARN",
+   "title": "адрес/хеш не Mono 14px",
+   "value": "12px",
+   "n": 24,
+   "ex": [
+    {
+     "sel": "div > div > code",
+     "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 24,
+    "1280": 24
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > code",
+      "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > code",
+      "t": "TGVVngRG1jit9Yn3QASbDpE8wvKYPwdMua"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TUuand6syeHWtoQ558YRL1J83An6uvMAfr"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TJB31M77Lq4DZhdjXKRvb4sPfApifFYcd2"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "TFhEhDbgZYMNn559sjWzFUXtCz4dgm3QF7"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-mono-size",
+   "sev": "WARN",
+   "title": "адрес/хеш не Mono 14px",
+   "value": "11px",
+   "n": 21,
+   "ex": [
+    {
+     "sel": "div > div > code",
+     "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+    },
+    {
+     "sel": "div > div > code",
+     "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 21,
+    "1280": 21
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > code",
+      "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > code",
+      "t": "5ee68a96dafef16513f1c3b86485ff01f7dec68217da015b26a9f74ee17e3d45"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "760443f3005c7412b8282068f8b9528544ec39ea6fcf46aec60543887674210f"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "85a150a6915c538e920225152d4e5d391a17a1eefff471b868d4e49d5add1253"
+     },
+     {
+      "sel": "div > div > code",
+      "t": "6605f1e5b1279e6fd22269e44e1f5abc58b82db65d41ed18b055b0429b64391f"
      }
     ]
    }
@@ -4184,7 +7399,7 @@
    "sev": "WARN",
    "title": "нажимаемая цель ниже 44px (Thumb Rule)",
    "value": "36px",
-   "n": 5,
+   "n": 8,
    "ex": [
     {
      "sel": "div.card-title > div > button.btn.btn-sm",
@@ -4207,31 +7422,11 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 5,
-    "768": 5,
-    "1280": 5,
-    "1920": 5
+    "375": 8,
+    "1280": 8
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Все"
-     },
-     {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Новые"
-     },
-     {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "В работе"
-     },
-     {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Выплачено"
-     }
-    ],
-    "768": [
      {
       "sel": "div.card-title > div > button.btn.btn-sm",
       "t": "Все"
@@ -4266,23 +7461,122 @@
       "sel": "div.card-title > div > button.btn.btn-sm",
       "t": "Выплачено"
      }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "30px",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "input#payout-tx-21",
+     "t": ""
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "input#payout-tx-21",
+      "t": ""
+     }
     ],
-    "1920": [
+    "1280": [
      {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Все"
+      "sel": "input#payout-tx-21",
+      "t": ""
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "413,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div > div > div",
+     "t": "$413.00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > div",
+      "t": "$413.00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > div",
+      "t": "$413.00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "450,01 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div > div > div",
+     "t": "возместить $450.01"
+    },
+    {
+     "sel": "div > div > div",
+     "t": "$450.01"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > div",
+      "t": "возместить $450.01"
      },
      {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Новые"
+      "sel": "div > div > div",
+      "t": "$450.01"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > div",
+      "t": "возместить $450.01"
      },
      {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "В работе"
-     },
-     {
-      "sel": "div.card-title > div > button.btn.btn-sm",
-      "t": "Выплачено"
+      "sel": "div > div > div",
+      "t": "$450.01"
      }
     ]
    }
@@ -4305,9 +7599,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4316,19 +7608,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -4354,9 +7634,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4365,19 +7643,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -4403,9 +7669,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4414,19 +7678,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -4452,9 +7704,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4463,19 +7713,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

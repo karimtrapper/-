@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/crm?section=admins`
+URL: `http://127.0.0.1:59109/crm?section=admins`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -17,7 +17,7 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 141, контраст проверен у 91, главных кнопок 1, адресов 0
+- 375px: элементов 253, контраст проверен у 176, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
@@ -28,7 +28,7 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
   - `‹` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
 - (warn) **у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?** (5)
-  - `Telegram ID` — 375px×5 — напр. `div.admin-row > div > input.form-control` «Telegram ID»
+  - `Telegram ID` — 375px×13 — напр. `div.admin-row > div > input.form-control` «Telegram ID»
   - `Валера` — 375px×1 — напр. `input#adminName` «Валера»
   - `@username` — 375px×1 — напр. `input#adminTelegram` «@username»
   - `valera` — 375px×1 — напр. `input#adminLogin` «valera»
@@ -49,9 +49,9 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ## Компьютер (>700px)
-- 768px: элементов 139, контраст проверен у 86, главных кнопок 1, адресов 0
-- 1280px: элементов 144, контраст проверен у 91, главных кнопок 1, адресов 0
-- 1920px: элементов 144, контраст проверен у 91, главных кнопок 1, адресов 0
+- 768px: элементов 251, контраст проверен у 171, главных кнопок 1, адресов 0
+- 1280px: элементов 256, контраст проверен у 176, главных кнопок 1, адресов 0
+- 1920px: элементов 256, контраст проверен у 176, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
@@ -62,7 +62,7 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
   - `‹` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
 - (warn) **у поля нет подписи (label/aria-label) — плейсхолдер вместо подписи?** (5)
-  - `Telegram ID` — 768px×5, 1280px×5, 1920px×5 — напр. `div.admin-row > div > input.form-control` «Telegram ID»
+  - `Telegram ID` — 768px×13, 1280px×13, 1920px×13 — напр. `div.admin-row > div > input.form-control` «Telegram ID»
   - `Валера` — 768px×1, 1280px×1, 1920px×1 — напр. `input#adminName` «Валера»
   - `@username` — 768px×1, 1280px×1, 1920px×1 — напр. `input#adminTelegram` «@username»
   - `valera` — 768px×1, 1280px×1, 1920px×1 — напр. `input#adminLogin` «valera»

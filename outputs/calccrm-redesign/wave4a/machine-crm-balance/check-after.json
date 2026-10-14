@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=balance",
+ "url": "http://127.0.0.1:59109/crm?section=balance",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:26:33",
+ "generated": "2026-10-15T00:11:48",
  "widths_requested": [
   375,
   768,
@@ -175,6 +175,55 @@
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-not-mono",
+     "sev": "WARN",
+     "title": "адрес/хеш не моноширинным шрифтом",
+     "value": "inter",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
        }
       ]
      }
@@ -418,7 +467,57 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+       "t": "$0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -603,7 +702,57 @@
    "coverage": "auto",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G7-not-mono",
+     "sev": "WARN",
+     "title": "адрес/хеш не моноширинным шрифтом",
+     "value": "inter",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ]
+     }
+    }
+   ]
   },
   "8": {
    "id": 8,
@@ -643,7 +792,57 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+       "t": "$0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+        "t": "$0,00"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -894,44 +1093,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 56,
-   "groups": 27,
-   "texts": 32,
-   "contrast_checked": 32,
+   "elements": 75,
+   "groups": 34,
+   "texts": 47,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   },
   "768": {
-   "elements": 54,
-   "groups": 28,
-   "texts": 27,
-   "contrast_checked": 27,
+   "elements": 73,
+   "groups": 37,
+   "texts": 42,
+   "contrast_checked": 42,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   },
   "1280": {
-   "elements": 59,
-   "groups": 30,
-   "texts": 32,
-   "contrast_checked": 32,
+   "elements": 78,
+   "groups": 39,
+   "texts": 47,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   },
   "1920": {
-   "elements": 59,
-   "groups": 30,
-   "texts": 32,
-   "contrast_checked": 32,
+   "elements": 78,
+   "groups": 39,
+   "texts": 47,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 1,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   }
  },
  "limits": [],
@@ -1045,6 +1244,104 @@
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-not-mono",
+   "sev": "WARN",
+   "title": "адрес/хеш не моноширинным шрифтом",
+   "value": "inter",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+     "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+     "t": "$0,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+      "t": "$0,00"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+      "t": "$0,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+      "t": "$0,00"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card.wallet-summary-card > div.stat-value",
+      "t": "$0,00"
      }
     ]
    }

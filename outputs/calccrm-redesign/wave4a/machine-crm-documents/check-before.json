@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=documents",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:08:23",
+ "generated": "2026-10-15T00:08:07",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -76,11 +80,19 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 6px",
-     "n": 1,
+     "n": 27,
      "ex": [
       {
        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
        "t": ""
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       },
       {
        "sel": "div.site-shell-right > span.site-shell-bell > a",
@@ -91,34 +103,36 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 27,
+      "1280": 27
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
       "1280": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -145,9 +159,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +172,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -266,9 +258,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -277,19 +267,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#documents > div.card",
         "t": ""
@@ -343,9 +321,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -354,19 +330,7 @@
         "t": "Договор подписывается на клиента, тип сделки, валютную пару "
        }
       ],
-      "768": [
-       {
-        "sel": "div.docs-head > div > p.docs-lede",
-        "t": "Договор подписывается на клиента, тип сделки, валютную пару "
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.docs-head > div > p.docs-lede",
-        "t": "Договор подписывается на клиента, тип сделки, валютную пару "
-       }
-      ],
-      "1920": [
        {
         "sel": "div.docs-head > div > p.docs-lede",
         "t": "Договор подписывается на клиента, тип сделки, валютную пару "
@@ -392,9 +356,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -403,19 +365,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": ""
@@ -441,9 +391,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -452,19 +400,7 @@
         "t": "Новый договор"
        }
       ],
-      "768": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
@@ -478,45 +414,43 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
-     "n": 1,
+     "n": 14,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 14,
+      "1280": 14
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ]
      }
@@ -534,10 +468,6 @@
        "t": "Новый договор"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#documents > div.card",
        "t": ""
       }
@@ -547,9 +477,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -558,31 +486,7 @@
         "t": "Новый договор"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#documents > div.card",
         "t": ""
@@ -600,45 +504,67 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 1,
+     "n": 53,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-deal",
+       "t": ""
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+       "t": ""
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 53,
+      "1280": 40
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -661,18 +587,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div#docsList",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "div#docsList",
         "t": ""
@@ -683,10 +601,86 @@
         "sel": "div#docsList",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 18px",
+     "n": 24,
+     "ex": [
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-client-head",
+       "t": ""
+      },
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-deal",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 24,
+      "1280": 24
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div#docsList",
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       },
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       },
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 13px",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-client-head",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
         "t": ""
        }
       ]
@@ -697,46 +691,516 @@
      "rule": "T-size",
      "sev": "FAIL",
      "title": "кегль вне шкалы",
-     "value": "14.08px",
-     "n": 1,
+     "value": "15.2px",
+     "n": 11,
      "ex": [
       {
-       "sel": "div#docsList > div.docs-empty",
-       "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 11,
+      "1280": 11
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
-       }
-      ],
-      "768": [
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
       "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "650",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 22,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 76 7371427"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "1 договор"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 67N7582570"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "2 договора"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 22,
+      "1280": 22
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.92px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Фрихолд"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Лизхолд"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.76px",
+     "n": 39,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → USD"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → THB"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-427-1410-1"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-570-1210-1"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 39,
+      "1280": 39
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.4667px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-num > small",
+       "t": "По реквизитам"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.3333px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / USD"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / THB"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span > span.badge.badge-pending",
+       "t": "черновик"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
        }
       ]
      }
@@ -746,46 +1210,79 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 28px",
-     "n": 1,
+     "value": "padding 10px",
+     "n": 13,
      "ex": [
       {
-       "sel": "div#docsList > div.docs-empty",
-       "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+       "sel": "div.docs-deal > span > span.badge.badge-pending",
+       "t": "черновик"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 13,
+      "1280": 13
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
        }
       ],
       "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "1280": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -795,25 +1292,114 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "value": "padding 11px",
+     "n": 26,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 26,
+      "1280": 26
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -835,17 +1421,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -870,17 +1449,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -897,9 +1469,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -908,7 +1480,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "6: 12, 14, 14.08, 14.4, 16, 22",
+     "value": "12: 11.4667, 12, 12.48, 12.8, 13.3333, 13.76, 13.92, 14, 14.4, 15.2, 16, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -916,15 +1488,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 650, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -940,15 +1528,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -957,45 +1541,55 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 1,
+     "n": 27,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 27,
+      "1280": 27
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -1018,9 +1612,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1029,19 +1621,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1069,9 +1649,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1080,19 +1658,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1118,9 +1684,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1129,19 +1693,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1167,9 +1719,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1178,19 +1728,7 @@
         "t": "Клиент или номер"
        }
       ],
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": "Клиент или номер"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": "Клиент или номер"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": "Клиент или номер"
@@ -1216,9 +1754,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1227,19 +1763,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1265,9 +1789,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1276,19 +1798,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1314,9 +1824,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1325,19 +1833,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1363,9 +1859,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1374,19 +1868,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1403,9 +1885,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1427,18 +1909,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "768": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
@@ -1449,11 +1923,40 @@
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (12.48px/600)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ]
      }
@@ -1467,9 +1970,9 @@
    "name": "Ширины",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1514,42 +2017,6 @@
      "rule": "W-row-align",
      "sev": "FAIL",
      "title": "в ряду поля/кнопки разной высоты или смещены",
-     "value": "19px и 48px (Δверха 14px)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "input#docsSearch",
-       "t": ""
-      },
-      {
-       "sel": "div.docs-head > div > button.btn.btn-primary",
-       "t": "Новый договор"
-      }
-     ],
-     "gr": 10,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 4,
-     "rule": "W-row-align",
-     "sev": "FAIL",
-     "title": "в ряду поля/кнопки разной высоты или смещены",
      "value": "19px и 48px (Δверха 15px)",
      "n": 1,
      "ex": [
@@ -1566,21 +2033,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": ""
@@ -1612,9 +2068,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1623,19 +2077,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": ""
@@ -1651,13 +2093,154 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "11000,00 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "11 000,00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "11 000,00 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "11 000,00 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "10000,00 USD × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "10 000,00 USD"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "10 000,00 USD"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "10 000,00 USD"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "266000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "266 000,00 RUB"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "266 000,00 RUB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "266 000,00 RUB"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "100000,00 THB × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "100 000,00 THB"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "100 000,00 THB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "100 000,00 THB"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -1665,9 +2248,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -1718,9 +2301,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1733,27 +2314,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -1783,9 +2344,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1794,19 +2353,7 @@
         "t": "Новый договор"
        }
       ],
-      "768": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
@@ -1819,46 +2366,457 @@
      "rule": "T-size",
      "sev": "FAIL",
      "title": "кегль вне шкалы",
-     "value": "14.08px",
-     "n": 1,
+     "value": "15.2px",
+     "n": 11,
      "ex": [
       {
-       "sel": "div#docsList > div.docs-empty",
-       "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 11,
+      "1280": 11
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
-       }
-      ],
-      "768": [
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
       "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "650",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 22,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 76 7371427"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "1 договор"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 67N7582570"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "2 договора"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 22,
+      "1280": 22
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.92px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Фрихолд"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Лизхолд"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.76px",
+     "n": 39,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → USD"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → THB"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-427-1410-1"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-570-1210-1"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 39,
+      "1280": 39
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.4667px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-num > small",
+       "t": "По реквизитам"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.3333px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / USD"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / THB"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "1280": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -1868,7 +2826,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "6: 12, 14, 14.08, 14.4, 16, 22",
+     "value": "12: 11.4667, 12, 12.48, 12.8, 13.3333, 13.76, 13.92, 14, 14.4, 15.2, 16, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -1876,15 +2834,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 650, 700",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -1900,15 +2874,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -1926,11 +2896,19 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 6px",
-     "n": 1,
+     "n": 27,
      "ex": [
       {
        "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
        "t": ""
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       },
       {
        "sel": "div.site-shell-right > span.site-shell-bell > a",
@@ -1941,34 +2919,36 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 27,
+      "1280": 27
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.site-shell.site-shell-mobile-head > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
       "1280": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -1995,9 +2975,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2010,27 +2988,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2116,9 +3074,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2127,19 +3083,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#documents > div.card",
         "t": ""
@@ -2193,9 +3137,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2204,19 +3146,7 @@
         "t": "Договор подписывается на клиента, тип сделки, валютную пару "
        }
       ],
-      "768": [
-       {
-        "sel": "div.docs-head > div > p.docs-lede",
-        "t": "Договор подписывается на клиента, тип сделки, валютную пару "
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.docs-head > div > p.docs-lede",
-        "t": "Договор подписывается на клиента, тип сделки, валютную пару "
-       }
-      ],
-      "1920": [
        {
         "sel": "div.docs-head > div > p.docs-lede",
         "t": "Договор подписывается на клиента, тип сделки, валютную пару "
@@ -2242,9 +3172,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -2253,19 +3181,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": ""
@@ -2291,9 +3207,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2302,19 +3216,7 @@
         "t": "Новый договор"
        }
       ],
-      "768": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
@@ -2328,45 +3230,43 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#F97316 (ближайший action-coral #C2410C, ΔE 18.0)",
-     "n": 1,
+     "n": 14,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 14,
+      "1280": 14
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ]
      }
@@ -2384,10 +3284,6 @@
        "t": "Новый договор"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#documents > div.card",
        "t": ""
       }
@@ -2397,9 +3293,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2408,31 +3302,7 @@
         "t": "Новый договор"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#documents > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#documents > div.card",
         "t": ""
@@ -2450,45 +3320,67 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 1,
+     "n": 53,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-deal",
+       "t": ""
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+       "t": ""
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 53,
+      "1280": 40
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-client > div.docs-deal > span.docs-deal-actions",
+        "t": ""
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -2511,18 +3403,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div#docsList",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "div#docsList",
         "t": ""
@@ -2533,10 +3417,86 @@
         "sel": "div#docsList",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 18px",
+     "n": 24,
+     "ex": [
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-client-head",
+       "t": ""
+      },
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-deal",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 24,
+      "1280": 24
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div#docsList",
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       },
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       },
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-deal",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 13px",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div#docsList > div.docs-client > div.docs-client-head",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#docsList > div.docs-client > div.docs-client-head",
         "t": ""
        }
       ]
@@ -2547,46 +3507,516 @@
      "rule": "T-size",
      "sev": "FAIL",
      "title": "кегль вне шкалы",
-     "value": "14.08px",
-     "n": 1,
+     "value": "15.2px",
+     "n": 11,
      "ex": [
       {
-       "sel": "div#docsList > div.docs-empty",
-       "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 11,
+      "1280": 11
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
-       }
-      ],
-      "768": [
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
       "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "650",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Шпакова Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Иванова Татьяна Сергеевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Имайкина Елена Николаевна"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+       "t": "Амиров карим"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Шпакова Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Иванова Татьяна Сергеевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Имайкина Елена Николаевна"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-name",
+        "t": "Амиров карим"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 22,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 76 7371427"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "1 договор"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "паспорт 67N7582570"
+      },
+      {
+       "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+       "t": "2 договора"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 22,
+      "1280": 22
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 76 7371427"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "1 договор"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "паспорт 67N7582570"
+       },
+       {
+        "sel": "div.docs-client > div.docs-client-head > span.docs-client-meta",
+        "t": "2 договора"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.92px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Фрихолд"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span",
+       "t": "Лизхолд"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Фрихолд"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span",
+        "t": "Лизхолд"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.76px",
+     "n": 39,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → USD"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "RUB → THB"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-427-1410-1"
+      },
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-num",
+       "t": "MF-570-1210-1"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 39,
+      "1280": 39
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → USD"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "RUB → THB"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-427-1410-1"
+       },
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-num",
+        "t": "MF-570-1210-1"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.4667px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-num > small",
+       "t": "По реквизитам"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-num > small",
+        "t": "По реквизитам"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13.3333px",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / USD"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-money-cell > small",
+       "t": "RUB / THB"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / USD"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-money-cell > small",
+        "t": "RUB / THB"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span > span.badge.badge-pending",
+       "t": "черновик"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
        }
       ]
      }
@@ -2596,46 +4026,79 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 28px",
-     "n": 1,
+     "value": "padding 10px",
+     "n": 13,
      "ex": [
       {
-       "sel": "div#docsList > div.docs-empty",
-       "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+       "sel": "div.docs-deal > span > span.badge.badge-pending",
+       "t": "черновик"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 13,
+      "1280": 13
      },
      "ex_by_width": {
       "375": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
        }
       ],
       "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span > span.badge.badge-pending",
+        "t": "черновик"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "1280": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#docsList > div.docs-empty",
-        "t": "Договоров пока нет. Первый создаётся кнопкой «Новый договор»"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -2645,25 +4108,114 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "value": "padding 11px",
+     "n": 26,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 26,
+      "1280": 26
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -2685,17 +4237,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -2720,17 +4265,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -2765,9 +4303,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2776,19 +4312,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -2824,9 +4348,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2835,19 +4357,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -2873,9 +4383,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2884,19 +4392,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -2963,9 +4459,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2974,19 +4468,7 @@
         "t": "Клиент или номер"
        }
       ],
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": "Клиент или номер"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": "Клиент или номер"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": "Клиент или номер"
@@ -3043,42 +4525,6 @@
      "rule": "W-row-align",
      "sev": "FAIL",
      "title": "в ряду поля/кнопки разной высоты или смещены",
-     "value": "19px и 48px (Δверха 14px)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "input#docsSearch",
-       "t": ""
-      },
-      {
-       "sel": "div.docs-head > div > button.btn.btn-primary",
-       "t": "Новый договор"
-      }
-     ],
-     "gr": 10,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 4,
-     "rule": "W-row-align",
-     "sev": "FAIL",
-     "title": "в ряду поля/кнопки разной высоты или смещены",
      "value": "19px и 48px (Δверха 15px)",
      "n": 1,
      "ex": [
@@ -3095,21 +4541,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "input#docsSearch",
-        "t": ""
-       },
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#docsSearch",
         "t": ""
@@ -3148,18 +4583,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
-       }
-      ],
-      "768": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
@@ -3170,11 +4597,40 @@
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#FFFFFF на #F97316 = 2.80:1 (12.48px/600)",
+     "n": 13,
+     "ex": [
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 13,
+      "1280": 13
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
        }
       ]
      }
@@ -3188,7 +4644,148 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "11000,00 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "11 000,00 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "11 000,00 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "11 000,00 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "10000,00 USD × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "10 000,00 USD"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "10 000,00 USD"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "10 000,00 USD"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "266000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "266 000,00 RUB"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "266 000,00 RUB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "266 000,00 RUB"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "100000,00 THB × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+       "t": "100 000,00 THB"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "100 000,00 THB"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+        "t": "100 000,00 THB"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -3242,45 +4839,55 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 1,
+     "n": 27,
      "ex": [
       {
        "sel": "div.docs-head > div > button.btn.btn-primary",
        "t": "Новый договор"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+       "t": "+ Платёж"
+      },
+      {
+       "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+       "t": "Открыть"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 27,
+      "1280": 27
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ],
       "1280": [
        {
         "sel": "div.docs-head > div > button.btn.btn-primary",
         "t": "Новый договор"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.docs-head > div > button.btn.btn-primary",
-        "t": "Новый договор"
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.btn-primary",
+        "t": "+ Платёж"
+       },
+       {
+        "sel": "div.docs-deal > span.docs-deal-actions > button.btn.docs-btn-sm",
+        "t": "Открыть"
        }
       ]
      }
@@ -3305,9 +4912,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3316,19 +4921,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -3354,9 +4947,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3365,19 +4956,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -3403,9 +4982,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3414,19 +4991,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -3452,9 +5017,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3463,19 +5026,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -3489,44 +5040,24 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 57,
-   "groups": 32,
-   "texts": 31,
-   "contrast_checked": 32,
+   "elements": 306,
+   "groups": 56,
+   "texts": 219,
+   "contrast_checked": 220,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 4
-  },
-  "768": {
-   "elements": 55,
-   "groups": 33,
-   "texts": 26,
-   "contrast_checked": 27,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 4
+   "controls": 30
   },
   "1280": {
-   "elements": 60,
-   "groups": 36,
-   "texts": 31,
-   "contrast_checked": 32,
+   "elements": 309,
+   "groups": 56,
+   "texts": 219,
+   "contrast_checked": 220,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 4
-  },
-  "1920": {
-   "elements": 60,
-   "groups": 36,
-   "texts": 31,
-   "contrast_checked": 32,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 4
+   "controls": 30
   }
  },
  "limits": [],
@@ -3564,9 +5095,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3575,19 +5104,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -3613,9 +5130,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3624,19 +5139,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -3662,9 +5165,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3673,19 +5174,7 @@
       "t": "Клиент или номер"
      }
     ],
-    "768": [
-     {
-      "sel": "input#docsSearch",
-      "t": "Клиент или номер"
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#docsSearch",
-      "t": "Клиент или номер"
-     }
-    ],
-    "1920": [
      {
       "sel": "input#docsSearch",
       "t": "Клиент или номер"
@@ -3711,18 +5200,10 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "input#docsSearch",
-      "t": ""
-     }
-    ],
-    "768": [
      {
       "sel": "input#docsSearch",
       "t": ""
@@ -3733,11 +5214,145 @@
       "sel": "input#docsSearch",
       "t": ""
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "11000,00 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+     "t": "11 000,00 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
      {
-      "sel": "input#docsSearch",
-      "t": ""
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "11 000,00 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "11 000,00 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "10000,00 USD × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+     "t": "10 000,00 USD"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "10 000,00 USD"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "10 000,00 USD"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "266000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+     "t": "266 000,00 RUB"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "266 000,00 RUB"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "266 000,00 RUB"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "100000,00 THB × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+     "t": "100 000,00 THB"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "100 000,00 THB"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.docs-client > div.docs-deal > span.docs-money-cell",
+      "t": "100 000,00 THB"
      }
     ]
    }
@@ -3760,9 +5375,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3771,19 +5384,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -3809,9 +5410,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3820,19 +5419,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -3858,9 +5445,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3869,19 +5454,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -3907,9 +5480,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3918,19 +5489,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

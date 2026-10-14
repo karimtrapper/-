@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=closing",
+ "url": "http://127.0.0.1:59109/crm?section=closing",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:24:35",
+ "generated": "2026-10-14T21:22:58",
  "widths_requested": [
   375,
   768,
@@ -905,7 +905,7 @@
   },
   "768": {
    "elements": 52,
-   "groups": 28,
+   "groups": 30,
    "texts": 26,
    "contrast_checked": 26,
    "contrast_unknown": 0,
@@ -915,7 +915,7 @@
   },
   "1280": {
    "elements": 57,
-   "groups": 30,
+   "groups": 32,
    "texts": 31,
    "contrast_checked": 31,
    "contrast_unknown": 0,
@@ -925,7 +925,7 @@
   },
   "1920": {
    "elements": 57,
-   "groups": 30,
+   "groups": 32,
    "texts": 31,
    "contrast_checked": 31,
    "contrast_unknown": 0,

@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/`
+URL: `http://127.0.0.1:59109/`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -38,10 +38,10 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ### Гейт 5. Текст: 375px PASS
 - (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (5)
-  - `87,2500 ₽ × 3` — 375px×3 — напр. `div#rubUsdtRate` «87,2500 ₽»
-  - `36655,70 ฿ × 3` — 375px×3 — напр. `div#resultValue` «36 655,70 ฿»
-  - `54,58 USDT × 2` — 375px×2 — напр. `div#resultProfit` «Прибыль: 5.00% (54,58 USDT)»
-  - `100000,00 ₽ × 2` — 375px×2 — напр. `div#clientCopyText` «Отдаёте: 100 000,00 ₽ Получаете: 36 655,70 ฿ Курс: 2,728089 ₽/฿»
+  - `87,3300 ₽ × 3` — 375px×3 — напр. `div#rubUsdtRate` «87,3300 ₽»
+  - `36578,55 ฿ × 3` — 375px×3 — напр. `div#resultValue` «36 578,55 ฿»
+  - `54,53 USDT × 2` — 375px×2 — напр. `div#resultProfit` «Прибыль: 5.00% (54,53 USDT)»
+  - `100000,00 ₽ × 2` — 375px×2 — напр. `div#clientCopyText` «Отдаёте: 100 000,00 ₽ Получаете: 36 578,55 ฿ Курс: 2,733843 ₽/฿»
   - … и ещё 1 (полный список в JSON)
 
 ## Компьютер (>700px)
@@ -68,16 +68,16 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ### Гейт 5. Текст: 768px PASS · 1280px PASS · 1920px PASS
 - (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (5)
-  - `87,2500 ₽ × 3` — 768px×3, 1280px×3, 1920px×3 — напр. `div#rubUsdtRate` «87,2500 ₽»
-  - `36655,70 ฿ × 3` — 768px×3, 1280px×3, 1920px×3 — напр. `div#resultValue` «36 655,70 ฿»
-  - `54,58 USDT × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div#resultProfit` «Прибыль: 5.00% (54,58 USDT)»
-  - `100000,00 ₽ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div#clientCopyText` «Отдаёте: 100 000,00 ₽ Получаете: 36 655,70 ฿ Курс: 2,728089 ₽/฿»
+  - `87,3300 ₽ × 3` — 768px×3, 1280px×3, 1920px×3 — напр. `div#rubUsdtRate` «87,3300 ₽»
+  - `36578,55 ฿ × 3` — 768px×3, 1280px×3, 1920px×3 — напр. `div#resultValue` «36 578,55 ฿»
+  - `54,53 USDT × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div#resultProfit` «Прибыль: 5.00% (54,53 USDT)»
+  - `100000,00 ₽ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div#clientCopyText` «Отдаёте: 100 000,00 ₽ Получаете: 36 578,55 ฿ Курс: 2,733843 ₽/฿»
   - … и ещё 1 (полный список в JSON)
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `outputs/calccrm-redesign/wave4a/machine-calculator-result/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-calculator-result/before-karim-375.png`
-- 1280px: после `outputs/calccrm-redesign/wave4a/machine-calculator-result/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-calculator-result/before-karim-1280.png`
+- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator-result/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator-result/before-karim-375.png`
+- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator-result/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-calculator-result/before-karim-1280.png`
 
 ## Гардрейлы (18)
 

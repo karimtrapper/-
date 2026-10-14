@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=kyc",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:12:38",
+ "generated": "2026-10-14T21:25:55",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -266,9 +234,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -277,19 +243,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#kyc > div.card",
         "t": ""
@@ -343,9 +297,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -354,19 +306,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -392,9 +332,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -403,19 +341,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -436,10 +362,6 @@
        "t": "+ Запросить KYC"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#kyc > div.card",
        "t": ""
       }
@@ -449,9 +371,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -460,31 +380,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#kyc > div.card",
         "t": ""
@@ -502,45 +398,43 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 1,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card > div.card-title > button.btn.btn-primary",
        "t": "+ Запросить KYC"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
      }
@@ -567,9 +461,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -582,27 +474,7 @@
         "t": "Верифицированные клиенты"
        }
       ],
-      "768": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#kycPendingSection > h4",
         "t": "Ожидают проверки"
@@ -636,9 +508,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -651,27 +521,7 @@
         "t": "Верифицированные клиенты"
        }
       ],
-      "768": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#kycPendingSection > h4",
         "t": "Ожидают проверки"
@@ -689,25 +539,31 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#999999 (ближайший navy-400 #94A3B8, ΔE 10.2)",
-     "n": 2,
+     "n": 8,
      "ex": [
       {
        "sel": "div#kycPendingList > div",
        "t": "Нет ожидающих проверок"
       },
       {
-       "sel": "div#kycVerifiedList > div",
-       "t": "Пока нет верифицированных клиентов"
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -716,18 +572,16 @@
         "t": "Нет ожидающих проверок"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
        }
       ],
       "1280": [
@@ -736,18 +590,192 @@
         "t": "Нет ожидающих проверок"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 28,
+     "ex": [
+      {
+       "sel": "div#kycVerifiedList > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 28,
+      "1280": 28
+     },
+     "ex_by_width": {
+      "375": [
+       {
         "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#kycVerifiedList > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✓"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 14,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 14,
+      "1280": 14
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#4D7C0F (ближайший money-ink #065F46, ΔE 20.9)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
        }
       ]
      }
@@ -757,11 +785,58 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "value": "margin-вертикаль 2px",
+     "n": 7,
      "ex": [
       {
-       "sel": "div.container",
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div#kycVerifiedList > div > div",
        "t": ""
       }
      ],
@@ -769,13 +844,266 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
+        "sel": "div#kycVerifiedList > div > div",
         "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#kycVerifiedList > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "11.08.2026"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#15803D (ближайший money-ink #065F46, ΔE 14.5)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DCFCE7 (ближайший money-surface #F0FDF4, ΔE 7.7)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#86EFAC (ближайший money-border #BBF7D0, ΔE 8.4)",
+     "n": 28,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 28,
+      "1280": 28
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
      }
@@ -797,17 +1125,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -832,17 +1153,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -859,9 +1173,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -870,7 +1184,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "6: 12, 14, 14.4, 15.2, 16, 22",
+     "value": "8: 12, 12.48, 12.8, 14, 14.4, 15.2, 16, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -878,15 +1192,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -902,15 +1212,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -919,239 +1225,45 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 1,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card > div.card-title > button.btn.btn-primary",
        "t": "+ Запросить KYC"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 4,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 5,
-      "1920": 5
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 2,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
      }
     },
     {
@@ -1172,18 +1284,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1194,17 +1298,46 @@
         "sel": ".kyc-review-photo img:hover",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
       ]
      }
     }
    ],
    "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄🤳🎥🎬",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ]
+     }
+    },
     {
      "gate": 2,
      "rule": "G4-icononly",
@@ -1223,9 +1356,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1234,19 +1365,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1272,9 +1391,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1283,19 +1400,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1321,9 +1426,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1332,19 +1435,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1370,9 +1461,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1381,19 +1470,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1419,9 +1496,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1430,19 +1505,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1468,9 +1531,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1479,19 +1540,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1508,9 +1557,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1532,9 +1581,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1543,19 +1590,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -1569,65 +1604,137 @@
      "sev": "FAIL",
      "title": "контраст ниже 4.5:1",
      "value": "#999999 на #FFFFFF = 2.85:1 (16px/400)",
-     "n": 2,
+     "n": 1,
      "ex": [
       {
        "sel": "div#kycPendingList > div",
        "t": "Нет ожидающих проверок"
-      },
-      {
-       "sel": "div#kycVerifiedList > div",
-       "t": "Пока нет верифицированных клиентов"
       }
      ],
      "gr": 11,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#kycPendingList > div",
         "t": "Нет ожидающих проверок"
-       },
-       {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
-       },
-       {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
        }
       ],
       "1280": [
        {
         "sel": "div#kycPendingList > div",
         "t": "Нет ожидающих проверок"
-       },
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #F0FDF4 = 3.15:1 (16px/400)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✓"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "✓"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#999999 на #F0FDF4 = 2.72:1 (12.8px/400)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "11.08.2026"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
        }
       ]
      }
@@ -1641,13 +1748,49 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 4,
+     "rule": "W-thumb",
+     "sev": "WARN",
+     "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+     "value": "36px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": null,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто"
   },
   "5": {
@@ -1655,11 +1798,11 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
@@ -1669,9 +1812,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -1722,9 +1865,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1737,27 +1878,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -1787,9 +1908,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1798,19 +1917,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -1840,22 +1947,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
-      "768": [
        {
         "sel": "div#kycPendingSection > h4",
         "t": "Ожидают проверки"
@@ -1874,15 +1969,135 @@
         "sel": "div.card > div > h4",
         "t": "Верифицированные клиенты"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 14,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 14,
+      "1280": 14
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
        },
        {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "11.08.2026"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
        }
       ]
      }
@@ -1892,7 +2107,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "6: 12, 14, 14.4, 15.2, 16, 22",
+     "value": "8: 12, 12.48, 12.8, 14, 14.4, 15.2, 16, 22",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -1900,15 +2115,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1924,15 +2135,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -1966,9 +2173,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1977,19 +2182,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -2019,9 +2212,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2034,27 +2225,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2140,9 +2311,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2151,19 +2320,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#kyc > div.card",
         "t": ""
@@ -2217,9 +2374,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2228,19 +2383,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -2266,9 +2409,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2277,19 +2418,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -2310,10 +2439,6 @@
        "t": "+ Запросить KYC"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#kyc > div.card",
        "t": ""
       }
@@ -2323,9 +2448,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2334,31 +2457,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#kyc > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#kyc > div.card",
         "t": ""
@@ -2376,45 +2475,43 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 1,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card > div.card-title > button.btn.btn-primary",
        "t": "+ Запросить KYC"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
      }
@@ -2441,9 +2538,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2456,27 +2551,7 @@
         "t": "Верифицированные клиенты"
        }
       ],
-      "768": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#kycPendingSection > h4",
         "t": "Ожидают проверки"
@@ -2510,9 +2585,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2525,27 +2598,7 @@
         "t": "Верифицированные клиенты"
        }
       ],
-      "768": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#kycPendingSection > h4",
-        "t": "Ожидают проверки"
-       },
-       {
-        "sel": "div.card > div > h4",
-        "t": "Верифицированные клиенты"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#kycPendingSection > h4",
         "t": "Ожидают проверки"
@@ -2563,25 +2616,31 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#999999 (ближайший navy-400 #94A3B8, ΔE 10.2)",
-     "n": 2,
+     "n": 8,
      "ex": [
       {
        "sel": "div#kycPendingList > div",
        "t": "Нет ожидающих проверок"
       },
       {
-       "sel": "div#kycVerifiedList > div",
-       "t": "Пока нет верифицированных клиентов"
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -2590,18 +2649,16 @@
         "t": "Нет ожидающих проверок"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
        }
       ],
       "1280": [
@@ -2610,18 +2667,192 @@
         "t": "Нет ожидающих проверок"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 28,
+     "ex": [
+      {
+       "sel": "div#kycVerifiedList > div",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 28,
+      "1280": 28
+     },
+     "ex_by_width": {
+      "375": [
+       {
         "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#kycVerifiedList > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✓"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.48px",
+     "n": 14,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 14,
+      "1280": 14
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       },
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#4D7C0F (ближайший money-ink #065F46, ΔE 20.9)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
        }
       ]
      }
@@ -2631,11 +2862,58 @@
      "rule": "T-spacing",
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "value": "margin-вертикаль 2px",
+     "n": 7,
      "ex": [
       {
-       "sel": "div.container",
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      },
+      {
+       "sel": "div > div > div",
+       "t": "документы сохранены"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       },
+       {
+        "sel": "div > div > div",
+        "t": "документы сохранены"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div#kycVerifiedList > div > div",
        "t": ""
       }
      ],
@@ -2643,13 +2921,266 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
+        "sel": "div#kycVerifiedList > div > div",
         "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#kycVerifiedList > div > div",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "11.08.2026"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#15803D (ближайший money-ink #065F46, ΔE 14.5)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#DCFCE7 (ближайший money-surface #F0FDF4, ΔE 7.7)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#86EFAC (ближайший money-border #BBF7D0, ΔE 8.4)",
+     "n": 28,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 28,
+      "1280": 28
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
      }
@@ -2671,17 +3202,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -2706,17 +3230,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -2751,9 +3268,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2762,19 +3277,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -2810,9 +3313,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2821,19 +3322,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -2859,9 +3348,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2870,19 +3357,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -2898,7 +3373,43 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄🤳🎥🎬",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ]
+     }
+    }
+   ]
   },
   "6": {
    "id": 6,
@@ -2964,9 +3475,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2975,19 +3484,7 @@
         "t": "+ Запросить KYC"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
@@ -3001,65 +3498,137 @@
      "sev": "FAIL",
      "title": "контраст ниже 4.5:1",
      "value": "#999999 на #FFFFFF = 2.85:1 (16px/400)",
-     "n": 2,
+     "n": 1,
      "ex": [
       {
        "sel": "div#kycPendingList > div",
        "t": "Нет ожидающих проверок"
-      },
-      {
-       "sel": "div#kycVerifiedList > div",
-       "t": "Пока нет верифицированных клиентов"
       }
      ],
      "gr": 11,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 1,
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#kycPendingList > div",
         "t": "Нет ожидающих проверок"
-       },
-       {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
-       },
-       {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
        }
       ],
       "1280": [
        {
         "sel": "div#kycPendingList > div",
         "t": "Нет ожидающих проверок"
-       },
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#16A34A на #F0FDF4 = 3.15:1 (16px/400)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "✓"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "✓"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div#kycPendingList > div",
-        "t": "Нет ожидающих проверок"
+        "sel": "div > div > span",
+        "t": "✓"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#999999 на #F0FDF4 = 2.72:1 (12.8px/400)",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "div > div > span",
+       "t": "18.09.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "25.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "24.08.2026"
+      },
+      {
+       "sel": "div > div > span",
+       "t": "11.08.2026"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
        },
        {
-        "sel": "div#kycVerifiedList > div",
-        "t": "Пока нет верифицированных клиентов"
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > span",
+        "t": "18.09.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "25.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "24.08.2026"
+       },
+       {
+        "sel": "div > div > span",
+        "t": "11.08.2026"
        }
       ]
      }
@@ -3127,239 +3696,45 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 1,
+     "n": 8,
      "ex": [
       {
        "sel": "div.card > div.card-title > button.btn.btn-primary",
        "t": "+ Запросить KYC"
+      },
+      {
+       "sel": "div > div > button.btn.btn-sm",
+       "t": "Документы"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ],
       "1280": [
        {
         "sel": "div.card > div.card-title > button.btn.btn-primary",
         "t": "+ Запросить KYC"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "div.card > div.card-title > button.btn.btn-primary",
-        "t": "+ Запросить KYC"
+        "sel": "div > div > button.btn.btn-sm",
+        "t": "Документы"
        }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 4,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 5,
-      "1920": 5
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 2,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Ошибка загрузки KYC: {stack: \"TypeError: Failed to fetch\n    at loadKYCSection (….0.0.1:59104/crm:3766:33)\n    at <anony",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -3382,9 +3757,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3393,19 +3766,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -3431,9 +3792,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3442,19 +3801,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -3480,9 +3827,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3491,19 +3836,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -3529,9 +3862,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3540,19 +3871,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -3566,44 +3885,24 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 59,
-   "groups": 33,
-   "texts": 33,
-   "contrast_checked": 33,
+   "elements": 114,
+   "groups": 48,
+   "texts": 67,
+   "contrast_checked": 67,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 3
-  },
-  "768": {
-   "elements": 57,
-   "groups": 32,
-   "texts": 28,
-   "contrast_checked": 28,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 3
+   "controls": 10
   },
   "1280": {
-   "elements": 62,
-   "groups": 35,
-   "texts": 33,
-   "contrast_checked": 33,
+   "elements": 117,
+   "groups": 44,
+   "texts": 67,
+   "contrast_checked": 67,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
-   "controls": 3
-  },
-  "1920": {
-   "elements": 62,
-   "groups": 35,
-   "texts": 33,
-   "contrast_checked": 33,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 3
+   "controls": 10
   }
  },
  "limits": [],
@@ -3625,6 +3924,41 @@
  "all_warnings": [
   {
    "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📄🤳🎥🎬",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div > div > div",
+     "t": "📄🤳🎥🎬 документы сохранены"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
    "rule": "G4-icononly",
    "sev": "WARN",
    "title": "кнопка-иконка без видимой подписи (есть aria-label)",
@@ -3641,9 +3975,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3652,19 +3984,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -3690,18 +4010,10 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "768": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -3712,11 +4024,40 @@
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "36px",
+   "n": 7,
+   "ex": [
+    {
+     "sel": "div > div > button.btn.btn-sm",
+     "t": "Документы"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 7,
+    "1280": 7
+   },
+   "ex_by_width": {
+    "375": [
      {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
+      "sel": "div > div > button.btn.btn-sm",
+      "t": "Документы"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > button.btn.btn-sm",
+      "t": "Документы"
      }
     ]
    }
@@ -3739,9 +4080,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3750,19 +4089,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -3788,9 +4115,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3799,19 +4124,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -3837,9 +4150,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3848,19 +4159,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -3886,9 +4185,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3897,19 +4194,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

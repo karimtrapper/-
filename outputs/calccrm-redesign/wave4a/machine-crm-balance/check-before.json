@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=balance",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:09:38",
+ "generated": "2026-10-14T21:22:25",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
-  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -226,7 +194,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 4,
+     "n": 7,
      "ex": [
       {
        "sel": "div.container",
@@ -249,10 +217,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 7,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -273,35 +239,7 @@
         "t": "Карты (THB)"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -323,10 +261,14 @@
      "sev": "FAIL",
      "title": "тень вне словаря",
      "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
-     "n": 1,
+     "n": 4,
      "ex": [
       {
        "sel": "section#balance > div.card",
+       "t": ""
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card",
        "t": ""
       }
      ],
@@ -334,21 +276,17 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 4,
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "section#balance > div.card",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "section#balance > div.card",
+        "sel": "div#walletsSummaryGrid > div.stat-card",
         "t": ""
        }
       ],
@@ -356,11 +294,9 @@
        {
         "sel": "section#balance > div.card",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "section#balance > div.card",
+        "sel": "div#walletsSummaryGrid > div.stat-card",
         "t": ""
        }
       ]
@@ -412,9 +348,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -423,19 +357,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#balance > div.card > div",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#balance > div.card > div",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#balance > div.card > div",
         "t": ""
@@ -469,9 +391,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -488,35 +408,7 @@
         "t": "Карты (THB)"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -554,9 +446,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -569,27 +459,7 @@
         "t": "+ Добавить кошелек"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -607,7 +477,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 4,
+     "n": 10,
      "ex": [
       {
        "sel": "button#btnSubBinance",
@@ -622,18 +492,16 @@
        "t": "Карты (THB)"
       },
       {
-       "sel": "div#subtabBinance > div > button.btn.btn-primary",
-       "t": "+ Добавить кошелек"
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 10,
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -650,26 +518,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -686,26 +536,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ]
      }
@@ -716,7 +548,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
-     "n": 2,
+     "n": 8,
      "ex": [
       {
        "sel": "button#btnSubCash",
@@ -725,16 +557,22 @@
       {
        "sel": "button#btnSubCards",
        "t": "Карты (THB)"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "⟳ Сверить с сетью"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -745,16 +583,14 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ],
       "1280": [
@@ -765,16 +601,14 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ]
      }
@@ -785,7 +619,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
-     "n": 2,
+     "n": 5,
      "ex": [
       {
        "sel": "button#btnSubCash",
@@ -794,16 +628,18 @@
       {
        "sel": "button#btnSubCards",
        "t": "Карты (THB)"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 5,
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -814,16 +650,10 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -834,16 +664,528 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек виталия с мультисингом"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#666666 (ближайший navy-500 #64748B, ΔE 12.0)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек виталия с мультисингом"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#999999 (ближайший navy-400 #94A3B8, ΔE 10.2)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "⟳ Сверить с сетью"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ]
      }
@@ -861,10 +1203,6 @@
        "t": "+ Добавить кошелек"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#balance > div.card",
        "t": ""
       }
@@ -874,26 +1212,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#balance > div.card",
-        "t": ""
-       },
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
@@ -907,44 +1229,6 @@
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "section#balance > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
        }
       ]
      }
@@ -966,17 +1250,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1001,17 +1278,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1028,9 +1298,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1039,7 +1309,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "5: 12, 13, 14, 16, 22",
+     "value": "8: 11.2, 12, 12.8, 13, 14, 16, 22, 24",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -1047,15 +1317,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -1071,15 +1357,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1088,7 +1370,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 4,
+     "n": 10,
      "ex": [
       {
        "sel": "button#btnSubBinance",
@@ -1103,18 +1385,16 @@
        "t": "Карты (THB)"
       },
       {
-       "sel": "div#subtabBinance > div > button.btn.btn-primary",
-       "t": "+ Добавить кошелек"
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 10,
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -1131,26 +1411,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -1167,76 +1429,45 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G4-icononly",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
+     "title": "кнопка-иконка без видимой подписи",
+     "value": "×",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 4,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 2,
-      "1920": 2
+      "375": 3,
+      "1280": 3
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
      }
     },
     {
@@ -1257,18 +1488,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1279,33 +1502,7 @@
         "sel": ".kyc-review-photo img:hover",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -1328,9 +1525,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1339,19 +1534,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1377,18 +1560,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "768": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1399,11 +1574,99 @@
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-not-mono",
+     "sev": "WARN",
+     "title": "адрес/хеш не моноширинным шрифтом",
+     "value": "inter",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "11.2px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
        }
       ]
      }
@@ -1426,9 +1689,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1437,19 +1698,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1475,9 +1724,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1486,19 +1733,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1524,9 +1759,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1535,19 +1768,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1573,9 +1794,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1584,19 +1803,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1613,9 +1820,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1637,18 +1844,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       }
-      ],
-      "768": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -1659,11 +1858,111 @@
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (24px/800)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#999999 на #FFFFFF = 2.85:1 (11.2px/400)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
        }
       ]
      }
@@ -1686,9 +1985,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1697,19 +1994,7 @@
         "t": "+ Добавить кошелек"
        }
       ],
-      "768": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
@@ -1725,13 +2010,60 @@
    "id": 4,
    "name": "Ширины",
    "by_width": {
-    "375": "PASS",
-    "768": "PASS",
+    "375": "FAIL",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-hscroll",
+     "sev": "FAIL",
+     "title": "горизонтальный скролл страницы",
+     "value": "scrollWidth 524 > innerWidth 375",
+     "n": 1,
+     "ex": [],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": []
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-wide",
+     "sev": "FAIL",
+     "title": "элемент выходит за экран",
+     "value": "right 524 > 375",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#subtabBinance > div > button.btn.btn-primary",
+       "t": "+ Добавить кошелек"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#subtabBinance > div > button.btn.btn-primary",
+        "t": "+ Добавить кошелек"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": [
     {
      "gate": 4,
@@ -1739,8 +2071,16 @@
      "sev": "WARN",
      "title": "нажимаемая цель ниже 44px (Thumb Rule)",
      "value": "36px",
-     "n": 3,
+     "n": 6,
      "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "⟳ Сверить с сетью"
+      },
       {
        "sel": "button#btnSubBinance",
        "t": "Binance (USDT)"
@@ -1748,33 +2088,24 @@
       {
        "sel": "button#btnSubCash",
        "t": "Наличные (THB)"
-      },
-      {
-       "sel": "button#btnSubCards",
-       "t": "Карты (THB)"
       }
      ],
      "gr": null,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 6,
+      "1280": 9
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        },
        {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ],
       "1280": [
@@ -1789,20 +2120,10 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
        },
        {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ]
      }
@@ -1815,13 +2136,49 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -1829,9 +2186,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -1882,9 +2239,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1897,27 +2252,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -1955,26 +2290,10 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
-      "768": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -2001,19 +2320,288 @@
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        },
        {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек виталия с мультисингом"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
        }
       ]
      }
@@ -2023,7 +2611,7 @@
      "rule": "G1-кеглей",
      "sev": "FAIL",
      "title": "кеглей на экране больше 4",
-     "value": "5: 12, 13, 14, 16, 22",
+     "value": "8: 11.2, 12, 12.8, 13, 14, 16, 22, 24",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -2031,15 +2619,31 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-весов",
+     "sev": "FAIL",
+     "title": "весов на экране больше 3",
+     "value": "4: 400, 600, 700, 800",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [],
+      "1280": []
      }
     },
     {
@@ -2055,15 +2659,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -2097,9 +2697,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2108,19 +2706,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -2150,9 +2736,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2165,27 +2749,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2231,7 +2795,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 4,
+     "n": 7,
      "ex": [
       {
        "sel": "div.container",
@@ -2254,10 +2818,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 7,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -2278,35 +2840,7 @@
         "t": "Карты (THB)"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -2328,10 +2862,14 @@
      "sev": "FAIL",
      "title": "тень вне словаря",
      "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
-     "n": 1,
+     "n": 4,
      "ex": [
       {
        "sel": "section#balance > div.card",
+       "t": ""
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card",
        "t": ""
       }
      ],
@@ -2339,21 +2877,17 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 4,
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "section#balance > div.card",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "section#balance > div.card",
+        "sel": "div#walletsSummaryGrid > div.stat-card",
         "t": ""
        }
       ],
@@ -2361,11 +2895,9 @@
        {
         "sel": "section#balance > div.card",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "section#balance > div.card",
+        "sel": "div#walletsSummaryGrid > div.stat-card",
         "t": ""
        }
       ]
@@ -2417,9 +2949,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2428,19 +2958,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#balance > div.card > div",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#balance > div.card > div",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#balance > div.card > div",
         "t": ""
@@ -2474,9 +2992,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -2493,35 +3009,7 @@
         "t": "Карты (THB)"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -2559,9 +3047,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2574,27 +3060,7 @@
         "t": "+ Добавить кошелек"
        }
       ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -2612,7 +3078,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 4,
+     "n": 10,
      "ex": [
       {
        "sel": "button#btnSubBinance",
@@ -2627,18 +3093,16 @@
        "t": "Карты (THB)"
       },
       {
-       "sel": "div#subtabBinance > div > button.btn.btn-primary",
-       "t": "+ Добавить кошелек"
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 10,
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -2655,26 +3119,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -2691,26 +3137,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ]
      }
@@ -2721,7 +3149,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#000000 (ближайший ink-navy #0F172A, ΔE 12.1)",
-     "n": 2,
+     "n": 8,
      "ex": [
       {
        "sel": "button#btnSubCash",
@@ -2730,16 +3158,22 @@
       {
        "sel": "button#btnSubCards",
        "t": "Карты (THB)"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "⟳ Сверить с сетью"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -2750,16 +3184,14 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ],
       "1280": [
@@ -2770,16 +3202,14 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ]
      }
@@ -2790,7 +3220,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#EFEFEF (ближайший page-mist #F8FAFC, ΔE 2.5)",
-     "n": 2,
+     "n": 5,
      "ex": [
       {
        "sel": "button#btnSubCash",
@@ -2799,16 +3229,18 @@
       {
        "sel": "button#btnSubCards",
        "t": "Карты (THB)"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 5,
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -2819,16 +3251,10 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -2839,16 +3265,528 @@
        {
         "sel": "button#btnSubCards",
         "t": "Карты (THB)"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
        },
        {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "11.2px",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "1280": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 5px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "12.8px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек виталия с мультисингом"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#666666 (ближайший navy-500 #64748B, ΔE 12.0)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек виталия с мультисингом"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "кошелек Теда сделок от Екатерины"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек виталия с мультисингом"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "кошелек Теда сделок от Екатерины"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-family",
+     "sev": "FAIL",
+     "title": "шрифт вне токенов",
+     "value": "monospace",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#999999 (ближайший navy-400 #94A3B8, ΔE 10.2)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-radius",
+     "sev": "FAIL",
+     "title": "радиус вне шкалы 8/12/999",
+     "value": "6px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "⟳ Сверить с сетью"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "⟳ Сверить с сетью"
        }
       ]
      }
@@ -2866,10 +3804,6 @@
        "t": "+ Добавить кошелек"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#balance > div.card",
        "t": ""
       }
@@ -2879,26 +3813,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 3,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#balance > div.card",
-        "t": ""
-       },
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
@@ -2912,44 +3830,6 @@
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "section#balance > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
        }
       ]
      }
@@ -2971,17 +3851,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3006,17 +3879,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3051,9 +3917,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3062,19 +3926,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -3089,8 +3941,44 @@
    "id": 4,
    "title": "Кнопки без глагола, две главные, иконка без подписи",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G4-icononly",
+     "sev": "FAIL",
+     "title": "кнопка-иконка без видимой подписи",
+     "value": "×",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
+      }
+     ],
+     "gr": 4,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
+       }
+      ]
+     }
+    }
+   ],
    "warnings": [
     {
      "gate": 2,
@@ -3110,9 +3998,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3121,19 +4007,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -3159,9 +4033,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3170,19 +4042,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -3212,9 +4072,151 @@
    "id": 7,
    "title": "Адрес/хеш в одну строку; ничего шире экрана",
    "coverage": "auto",
-   "verdict": "PASS",
-   "findings": [],
-   "warnings": []
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 4,
+     "rule": "W-hscroll",
+     "sev": "FAIL",
+     "title": "горизонтальный скролл страницы",
+     "value": "scrollWidth 524 > innerWidth 375",
+     "n": 1,
+     "ex": [],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": []
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-wide",
+     "sev": "FAIL",
+     "title": "элемент выходит за экран",
+     "value": "right 524 > 375",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#subtabBinance > div > button.btn.btn-primary",
+       "t": "+ Добавить кошелек"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#subtabBinance > div > button.btn.btn-primary",
+        "t": "+ Добавить кошелек"
+       }
+      ]
+     }
+    }
+   ],
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G7-not-mono",
+     "sev": "WARN",
+     "title": "адрес/хеш не моноширинным шрифтом",
+     "value": "inter",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G7-mono-size",
+     "sev": "WARN",
+     "title": "адрес/хеш не Mono 14px",
+     "value": "11.2px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 7,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ]
+     }
+    }
+   ]
   },
   "8": {
    "id": 8,
@@ -3264,18 +4266,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       }
-      ],
-      "768": [
        {
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
@@ -3286,11 +4280,111 @@
         "sel": "button#btnSubBinance",
         "t": "Binance (USDT)"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (24px/800)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$632.16"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$632.16"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#999999 на #FFFFFF = 2.85:1 (11.2px/400)",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+      },
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div",
+       "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+       },
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div",
+        "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
        }
       ]
      }
@@ -3313,9 +4407,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3324,19 +4416,7 @@
         "t": "+ Добавить кошелек"
        }
       ],
-      "768": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#subtabBinance > div > button.btn.btn-primary",
         "t": "+ Добавить кошелек"
@@ -3353,7 +4433,43 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+       "t": "$0.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+        "t": "$0.00"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -3407,7 +4523,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 4,
+     "n": 10,
      "ex": [
       {
        "sel": "button#btnSubBinance",
@@ -3422,18 +4538,16 @@
        "t": "Карты (THB)"
       },
       {
-       "sel": "div#subtabBinance > div > button.btn.btn-primary",
-       "t": "+ Добавить кошелек"
+       "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+       "t": "×"
       }
      ],
      "gr": 18,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 10,
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -3450,26 +4564,8 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "768": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ],
       "1280": [
@@ -3486,96 +4582,10 @@
         "t": "Карты (THB)"
        },
        {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "button#btnSubBinance",
-        "t": "Binance (USDT)"
-       },
-       {
-        "sel": "button#btnSubCash",
-        "t": "Наличные (THB)"
-       },
-       {
-        "sel": "button#btnSubCards",
-        "t": "Карты (THB)"
-       },
-       {
-        "sel": "div#subtabBinance > div > button.btn.btn-primary",
-        "t": "+ Добавить кошелек"
+        "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+        "t": "×"
        }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -3598,9 +4608,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3609,19 +4617,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -3647,9 +4643,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3658,19 +4652,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -3696,9 +4678,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3707,19 +4687,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -3745,9 +4713,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3756,19 +4722,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -3782,44 +4736,24 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 56,
-   "groups": 30,
-   "texts": 32,
-   "contrast_checked": 32,
+   "elements": 75,
+   "groups": 37,
+   "texts": 47,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 6
-  },
-  "768": {
-   "elements": 54,
-   "groups": 31,
-   "texts": 27,
-   "contrast_checked": 27,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   },
   "1280": {
-   "elements": 59,
-   "groups": 34,
-   "texts": 32,
-   "contrast_checked": 32,
+   "elements": 78,
+   "groups": 41,
+   "texts": 47,
+   "contrast_checked": 47,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 6
-  },
-  "1920": {
-   "elements": 59,
-   "groups": 34,
-   "texts": 32,
-   "contrast_checked": 32,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 6
+   "addresses": 4,
+   "controls": 12
   }
  },
  "limits": [],
@@ -3857,9 +4791,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3868,19 +4800,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -3906,18 +4826,10 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "768": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -3928,11 +4840,197 @@
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-not-mono",
+   "sev": "WARN",
+   "title": "адрес/хеш не моноширинным шрифтом",
+   "value": "inter",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > div",
+     "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "1280": 1
+   },
+   "ex_by_width": {
+    "375": [
      {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G7-mono-size",
+   "sev": "WARN",
+   "title": "адрес/хеш не Mono 14px",
+   "value": "11.2px",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > div",
+     "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+    },
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > div",
+     "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+    },
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > div",
+     "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+    }
+   ],
+   "gr": 7,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TRgnccUBQo8yZXtra8gqBngBqeTV5aQz74"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TKkeEVf2zySaWTLyX2qPwvi6kcdHRuPxkJ"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div",
+      "t": "TVmgzMQ2zwV2DVPscBf98WRRdhrcpf5x5p"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 4,
+   "rule": "W-thumb",
+   "sev": "WARN",
+   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
+   "value": "36px",
+   "n": 6,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+     "t": "×"
+    },
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+     "t": "⟳ Сверить с сетью"
+    },
+    {
+     "sel": "button#btnSubBinance",
+     "t": "Binance (USDT)"
+    },
+    {
+     "sel": "button#btnSubCash",
+     "t": "Наличные (THB)"
+    }
+   ],
+   "gr": null,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 6,
+    "1280": 9
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+      "t": "×"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+      "t": "⟳ Сверить с сетью"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "button#btnSubBinance",
+      "t": "Binance (USDT)"
+     },
+     {
+      "sel": "button#btnSubCash",
+      "t": "Наличные (THB)"
+     },
+     {
+      "sel": "button#btnSubCards",
+      "t": "Карты (THB)"
+     },
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > button.btn.btn-sm",
+      "t": "×"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+     "t": "$0.00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+      "t": "$0.00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div#walletsSummaryGrid > div.stat-card > div.stat-value",
+      "t": "$0.00"
      }
     ]
    }
@@ -3955,9 +5053,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -3966,19 +5062,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -4004,9 +5088,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4015,19 +5097,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -4053,9 +5123,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4064,19 +5132,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -4102,9 +5158,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4113,96 +5167,10 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""
-     }
-    ],
-    "1920": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ]
-   }
-  },
-  {
-   "gate": 4,
-   "rule": "W-thumb",
-   "sev": "WARN",
-   "title": "нажимаемая цель ниже 44px (Thumb Rule)",
-   "value": "36px",
-   "n": 3,
-   "ex": [
-    {
-     "sel": "button#btnSubBinance",
-     "t": "Binance (USDT)"
-    },
-    {
-     "sel": "button#btnSubCash",
-     "t": "Наличные (THB)"
-    },
-    {
-     "sel": "button#btnSubCards",
-     "t": "Карты (THB)"
-    }
-   ],
-   "gr": null,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "768": 3,
-    "1280": 3,
-    "1920": 3
-   },
-   "ex_by_width": {
-    "768": [
-     {
-      "sel": "button#btnSubBinance",
-      "t": "Binance (USDT)"
-     },
-     {
-      "sel": "button#btnSubCash",
-      "t": "Наличные (THB)"
-     },
-     {
-      "sel": "button#btnSubCards",
-      "t": "Карты (THB)"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "button#btnSubBinance",
-      "t": "Binance (USDT)"
-     },
-     {
-      "sel": "button#btnSubCash",
-      "t": "Наличные (THB)"
-     },
-     {
-      "sel": "button#btnSubCards",
-      "t": "Карты (THB)"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "button#btnSubBinance",
-      "t": "Binance (USDT)"
-     },
-     {
-      "sel": "button#btnSubCash",
-      "t": "Наличные (THB)"
-     },
-     {
-      "sel": "button#btnSubCards",
-      "t": "Карты (THB)"
      }
     ]
    }

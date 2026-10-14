@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=payoutRequests",
+ "url": "http://127.0.0.1:59109/crm?section=payoutRequests",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:39:17",
+ "generated": "2026-10-15T00:17:06",
  "widths_requested": [
   375,
   768,
@@ -81,6 +81,202 @@
    "verdict": "PASS",
    "findings": [],
    "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💬",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div.payout-request-details > div > span",
+       "t": "💬 WhatsApp:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-card > div.payout-request-details > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "✈",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div.payout-request-details > div > span",
+       "t": "✈️ Telegram:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "768": 26,
+      "1280": 26,
+      "1920": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "X-caps-typed",
+     "sev": "WARN",
+     "title": "текст набран капслоком руками",
+     "value": "VALERII KUTYRAEV",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.payout-request-details > div > strong",
+       "t": "VALERII KUTYRAEV"
+      }
+     ],
+     "gr": null,
+     "extra": "Don't: капслок",
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "768": 1,
+      "1280": 1,
+      "1920": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-details > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-details > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-details > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-details > div > strong",
+        "t": "VALERII KUTYRAEV"
+       }
+      ]
+     }
+    },
     {
      "gate": 2,
      "rule": "G4-icononly",
@@ -418,7 +614,126 @@
    },
    "verdict": "PASS",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "413,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+       "t": "$413,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "450,01 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-head > div.payout-request-amount > div",
+       "t": "возместить $450,01"
+      },
+      {
+       "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+       "t": "$450,01"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -434,13 +749,13 @@
    "notes": [],
    "shots": {
     "375": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png",
      "identical": false
     },
     "1280": {
-     "after": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png",
-     "before": "/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png",
+     "after": "outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png",
+     "before": "outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png",
      "identical": false
     }
    },
@@ -587,7 +902,155 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "💬",
+     "n": 6,
+     "ex": [
+      {
+       "sel": "div.payout-request-details > div > span",
+       "t": "💬 WhatsApp:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 6,
+      "768": 6,
+      "1280": 6,
+      "1920": 6
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "💬 WhatsApp:"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-card > div.payout-request-details > div",
+       "t": "📄 Чек отправлен"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-details > div",
+        "t": "📄 Чек отправлен"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "✈",
+     "n": 26,
+     "ex": [
+      {
+       "sel": "div.payout-request-details > div > span",
+       "t": "✈️ Telegram:"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 26,
+      "768": 26,
+      "1280": 26,
+      "1920": 26
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-details > div > span",
+        "t": "✈️ Telegram:"
+       }
+      ]
+     }
+    }
+   ]
   },
   "6": {
    "id": 6,
@@ -643,7 +1106,126 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "413,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+       "t": "$413,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$413,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "450,01 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "div.payout-request-head > div.payout-request-amount > div",
+       "t": "возместить $450,01"
+      },
+      {
+       "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+       "t": "$450,01"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div.payout-request-head > div.payout-request-amount > div",
+        "t": "возместить $450,01"
+       },
+       {
+        "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+        "t": "$450,01"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -891,47 +1473,97 @@
    ]
   }
  },
- "extras": [],
+ "extras": [
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "VALERII KUTYRAEV",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.payout-request-details > div > strong",
+     "t": "VALERII KUTYRAEV"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ]
+   }
+  }
+ ],
  "stats": {
   "375": {
-   "elements": 58,
-   "groups": 27,
-   "texts": 34,
-   "contrast_checked": 34,
+   "elements": 711,
+   "groups": 70,
+   "texts": 422,
+   "contrast_checked": 423,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   },
   "768": {
-   "elements": 56,
-   "groups": 28,
-   "texts": 29,
-   "contrast_checked": 29,
+   "elements": 709,
+   "groups": 59,
+   "texts": 417,
+   "contrast_checked": 418,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   },
   "1280": {
-   "elements": 61,
-   "groups": 30,
-   "texts": 34,
-   "contrast_checked": 34,
+   "elements": 714,
+   "groups": 61,
+   "texts": 422,
+   "contrast_checked": 423,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   },
   "1920": {
-   "elements": 61,
-   "groups": 30,
-   "texts": 34,
-   "contrast_checked": 34,
+   "elements": 714,
+   "groups": 61,
+   "texts": 422,
+   "contrast_checked": 423,
    "contrast_unknown": 0,
    "primaries": 0,
-   "addresses": 0,
-   "controls": 7
+   "addresses": 45,
+   "controls": 11
   }
  },
  "limits": [],
@@ -951,6 +1583,202 @@
   "п.18 Состояния, анимации transform/opacity, ошибки консоли"
  ],
  "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "💬",
+   "n": 6,
+   "ex": [
+    {
+     "sel": "div.payout-request-details > div > span",
+     "t": "💬 WhatsApp:"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 6,
+    "768": 6,
+    "1280": 6,
+    "1920": 6
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "💬 WhatsApp:"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📄",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.payout-request-card > div.payout-request-details > div",
+     "t": "📄 Чек отправлен"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-details > div",
+      "t": "📄 Чек отправлен"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-details > div",
+      "t": "📄 Чек отправлен"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-details > div",
+      "t": "📄 Чек отправлен"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-details > div",
+      "t": "📄 Чек отправлен"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "✈",
+   "n": 26,
+   "ex": [
+    {
+     "sel": "div.payout-request-details > div > span",
+     "t": "✈️ Telegram:"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 26,
+    "768": 26,
+    "1280": 26,
+    "1920": 26
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-details > div > span",
+      "t": "✈️ Telegram:"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "X-caps-typed",
+   "sev": "WARN",
+   "title": "текст набран капслоком руками",
+   "value": "VALERII KUTYRAEV",
+   "n": 1,
+   "ex": [
+    {
+     "sel": "div.payout-request-details > div > strong",
+     "t": "VALERII KUTYRAEV"
+    }
+   ],
+   "gr": null,
+   "extra": "Don't: капслок",
+   "note": null,
+   "by_width": {
+    "375": 1,
+    "768": 1,
+    "1280": 1,
+    "1920": 1
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-details > div > strong",
+      "t": "VALERII KUTYRAEV"
+     }
+    ]
+   }
+  },
   {
    "gate": 2,
    "rule": "G4-icononly",
@@ -1045,6 +1873,124 @@
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "413,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+     "t": "$413,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$413,00"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$413,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$413,00"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$413,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "450,01 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "div.payout-request-head > div.payout-request-amount > div",
+     "t": "возместить $450,01"
+    },
+    {
+     "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+     "t": "$450,01"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div.payout-request-head > div.payout-request-amount > div",
+      "t": "возместить $450,01"
+     },
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$450,01"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div.payout-request-head > div.payout-request-amount > div",
+      "t": "возместить $450,01"
+     },
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$450,01"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div.payout-request-head > div.payout-request-amount > div",
+      "t": "возместить $450,01"
+     },
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$450,01"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div.payout-request-head > div.payout-request-amount > div",
+      "t": "возместить $450,01"
+     },
+     {
+      "sel": "div.payout-request-card > div.payout-request-head > div.payout-request-amount",
+      "t": "$450,01"
      }
     ]
    }

@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm",
+ "url": "http://127.0.0.1:59110/crm?section=verification",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:12:12",
+ "generated": "2026-10-14T21:25:33",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -226,7 +194,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 4,
+     "n": 11,
      "ex": [
       {
        "sel": "div.container",
@@ -241,7 +209,7 @@
        "t": ""
       },
       {
-       "sel": "input#webhookUrl",
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
        "t": ""
       }
      ],
@@ -249,10 +217,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 11,
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -269,21 +235,7 @@
         "t": ""
        },
        {
-        "sel": "input#webhookUrl",
-        "t": ""
-       }
-      ],
-      "768": [
-       {
-        "sel": "input#verifyDateFrom",
-        "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "input#webhookUrl",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
         "t": ""
        }
       ],
@@ -297,21 +249,11 @@
         "t": ""
        },
        {
-        "sel": "input#webhookUrl",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#verifyDateFrom",
+        "sel": "div#verificationSummary > div.alert.alert-warning",
         "t": ""
        },
        {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "input#webhookUrl",
+        "sel": "div#verificationSummary > div.alert.alert-error",
         "t": ""
        }
       ]
@@ -323,10 +265,18 @@
      "sev": "FAIL",
      "title": "тень вне словаря",
      "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
-     "n": 2,
+     "n": 7,
      "ex": [
       {
        "sel": "section#verification > div.card",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
        "t": ""
       }
      ],
@@ -334,21 +284,21 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "section#verification > div.card",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "section#verification > div.card",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
         "t": ""
        }
       ],
@@ -356,11 +306,13 @@
        {
         "sel": "section#verification > div.card",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "section#verification > div.card",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
         "t": ""
        }
       ]
@@ -388,9 +340,7 @@
      "note": null,
      "by_width": {
       "375": 7,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -403,19 +353,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.form-row > div.form-group",
         "t": ""
@@ -449,9 +387,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -468,35 +404,7 @@
         "t": "Webhook URL"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Дата от"
@@ -518,7 +426,7 @@
      "sev": "FAIL",
      "title": "вес вне шкалы",
      "value": "500",
-     "n": 3,
+     "n": 8,
      "ex": [
       {
        "sel": "div.form-row > div.form-group > label.form-label",
@@ -531,16 +439,18 @@
       {
        "sel": "div.form-row > div.form-group > label.form-label",
        "t": "Webhook URL"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-label",
+       "t": "Всего сделок"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -555,20 +465,10 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
        }
       ],
       "1280": [
@@ -583,20 +483,10 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
        }
       ]
      }
@@ -627,9 +517,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -646,35 +534,7 @@
         "t": "Webhook URL"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Дата от"
@@ -712,9 +572,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -727,27 +585,7 @@
         "t": "Сохранить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -780,7 +618,7 @@
        "t": "Тест"
       },
       {
-       "sel": "div.container",
+       "sel": "section#verification > div.card",
        "t": ""
       }
      ],
@@ -789,9 +627,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 6,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -808,43 +644,7 @@
         "t": "Тест"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#verification > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#verification > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#verification > div.card",
         "t": ""
@@ -890,26 +690,10 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
-       }
-      ],
-      "768": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -936,19 +720,586 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
         "t": "Тест"
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
        },
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
        },
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#DBEAFE (ближайший navy-200 #E2E8F0, ΔE 5.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#3B82F6 (ближайший navy-500 #64748B, ΔE 15.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#22C55E (ближайший money-border #BBF7D0, ΔE 20.4)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+       "t": "$97040.27"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+        "t": "$97040.27"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+        "t": "$97040.27"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#EF4444 (ближайший action-coral #C2410C, ΔE 14.7)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
        }
       ]
      }
@@ -971,9 +1322,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -982,19 +1331,7 @@
         "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
        }
       ],
-      "768": [
-       {
-        "sel": "section#verification > div.card > p",
-        "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#verification > div.card > p",
-        "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#verification > div.card > p",
         "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
@@ -1012,7 +1349,7 @@
      "ex": [
       {
        "sel": "div#webhookStatus",
-       "t": "Не удалось проверить webhook"
+       "t": "На стенде отключено: отправка уведомлений через webhook недо"
       }
      ],
      "gr": 1,
@@ -1020,61 +1357,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ],
       "1280": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ]
      }
@@ -1096,17 +1391,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1131,8 +1419,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
@@ -1140,11 +1427,57 @@
         "sel": "div.container",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
        }
       ]
      }
@@ -1158,9 +1491,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1176,16 +1509,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": []
      }
     },
     {
@@ -1193,7 +1520,7 @@
      "rule": "G1-весов",
      "sev": "FAIL",
      "title": "весов на экране больше 3",
-     "value": "4: 400, 500, 600, 700",
+     "value": "5: 400, 500, 600, 700, 800",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -1201,15 +1528,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1225,15 +1548,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1266,30 +1585,10 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "input#verifyDateFrom",
-        "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "768": [
        {
         "sel": "input#verifyDateFrom",
         "t": ""
@@ -1324,193 +1623,217 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Сохранить"
        }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #FEF3C7",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "input#verifyDateFrom",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
         "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
        }
       ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-stripe",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #D1FAE5",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-stripe",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #DBEAFE",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-stripe",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 4,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #22C55E",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+       "t": ""
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-stripe",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 2,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #F59E0B",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
      }
     },
     {
      "gate": 2,
-     "rule": "G18-console",
+     "rule": "G6-stripe",
      "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #EF4444",
      "n": 1,
-     "ex": [],
-     "gr": 18,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 6,
      "extra": null,
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ]
      }
     },
     {
@@ -1531,18 +1854,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1553,13 +1868,25 @@
         "sel": ".kyc-review-photo img:hover",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
       ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "7: 12, 13, 14, 14.4, 16, 22, 24",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": []
      }
     }
    ],
@@ -1582,9 +1909,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1593,19 +1918,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1631,9 +1944,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1642,19 +1953,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1680,9 +1979,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1691,19 +1988,7 @@
         "t": "https://your-n8n.com/webhook/xxx"
        }
       ],
-      "768": [
-       {
-        "sel": "input#webhookUrl",
-        "t": "https://your-n8n.com/webhook/xxx"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#webhookUrl",
-        "t": "https://your-n8n.com/webhook/xxx"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#webhookUrl",
         "t": "https://your-n8n.com/webhook/xxx"
@@ -1729,9 +2014,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1740,19 +2023,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1778,9 +2049,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1789,19 +2058,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1827,9 +2084,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1838,19 +2093,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1876,9 +2119,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1887,19 +2128,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1916,9 +2145,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1944,22 +2173,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -1978,15 +2195,117 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Сохранить"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (22px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (22px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (24px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (24px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
        }
       ]
      }
@@ -2000,11 +2319,11 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто"
@@ -2014,11 +2333,11 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
@@ -2028,9 +2347,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -2081,9 +2400,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2096,27 +2413,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2154,9 +2451,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -2173,35 +2468,7 @@
         "t": "Webhook URL"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Дата от"
@@ -2223,7 +2490,7 @@
      "sev": "FAIL",
      "title": "вес вне шкалы",
      "value": "500",
-     "n": 3,
+     "n": 8,
      "ex": [
       {
        "sel": "div.form-row > div.form-group > label.form-label",
@@ -2236,16 +2503,18 @@
       {
        "sel": "div.form-row > div.form-group > label.form-label",
        "t": "Webhook URL"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-label",
+       "t": "Всего сделок"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -2260,20 +2529,10 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
        }
       ],
       "1280": [
@@ -2288,20 +2547,81 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
        }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
        }
       ]
      }
@@ -2316,7 +2636,7 @@
      "ex": [
       {
        "sel": "div#webhookStatus",
-       "t": "Не удалось проверить webhook"
+       "t": "На стенде отключено: отправка уведомлений через webhook недо"
       }
      ],
      "gr": 1,
@@ -2324,33 +2644,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ],
       "1280": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ]
      }
@@ -2367,16 +2673,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 1
      },
      "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "375": []
      }
     },
     {
@@ -2384,7 +2684,7 @@
      "rule": "G1-весов",
      "sev": "FAIL",
      "title": "весов на экране больше 3",
-     "value": "4: 400, 500, 600, 700",
+     "value": "5: 400, 500, 600, 700, 800",
      "n": 1,
      "ex": [],
      "gr": 1,
@@ -2392,15 +2692,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -2416,15 +2712,81 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G1-кеглей",
+     "sev": "FAIL",
+     "title": "кеглей на экране больше 4",
+     "value": "7: 12, 13, 14, 14.4, 16, 22, 24",
+     "n": 1,
+     "ex": [],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": []
      }
     }
    ],
@@ -2458,9 +2820,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2469,19 +2829,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -2511,9 +2859,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2526,27 +2872,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2592,7 +2918,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 4,
+     "n": 11,
      "ex": [
       {
        "sel": "div.container",
@@ -2607,7 +2933,7 @@
        "t": ""
       },
       {
-       "sel": "input#webhookUrl",
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
        "t": ""
       }
      ],
@@ -2615,10 +2941,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 11,
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -2635,21 +2959,7 @@
         "t": ""
        },
        {
-        "sel": "input#webhookUrl",
-        "t": ""
-       }
-      ],
-      "768": [
-       {
-        "sel": "input#verifyDateFrom",
-        "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "input#webhookUrl",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
         "t": ""
        }
       ],
@@ -2663,21 +2973,11 @@
         "t": ""
        },
        {
-        "sel": "input#webhookUrl",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#verifyDateFrom",
+        "sel": "div#verificationSummary > div.alert.alert-warning",
         "t": ""
        },
        {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "input#webhookUrl",
+        "sel": "div#verificationSummary > div.alert.alert-error",
         "t": ""
        }
       ]
@@ -2689,10 +2989,18 @@
      "sev": "FAIL",
      "title": "тень вне словаря",
      "value": "rgba(0, 0, 0, 0.04) 0px 1px 3px 0px",
-     "n": 2,
+     "n": 7,
      "ex": [
       {
        "sel": "section#verification > div.card",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
        "t": ""
       }
      ],
@@ -2700,21 +3008,21 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 7,
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "section#verification > div.card",
         "t": ""
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "section#verification > div.card",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
         "t": ""
        }
       ],
@@ -2722,11 +3030,13 @@
        {
         "sel": "section#verification > div.card",
         "t": ""
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "section#verification > div.card",
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
         "t": ""
        }
       ]
@@ -2754,9 +3064,7 @@
      "note": null,
      "by_width": {
       "375": 7,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -2769,19 +3077,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.form-row > div.form-group",
         "t": ""
@@ -2815,9 +3111,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -2834,35 +3128,7 @@
         "t": "Webhook URL"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Дата от"
@@ -2884,7 +3150,7 @@
      "sev": "FAIL",
      "title": "вес вне шкалы",
      "value": "500",
-     "n": 3,
+     "n": 8,
      "ex": [
       {
        "sel": "div.form-row > div.form-group > label.form-label",
@@ -2897,16 +3163,18 @@
       {
        "sel": "div.form-row > div.form-group > label.form-label",
        "t": "Webhook URL"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-label",
+       "t": "Всего сделок"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "375": 8,
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -2921,20 +3189,10 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
        }
       ],
       "1280": [
@@ -2949,20 +3207,10 @@
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Webhook URL"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
        },
        {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
+        "sel": "div.stats-grid > div.stat-card > div.stat-label",
+        "t": "Всего сделок"
        }
       ]
      }
@@ -2993,9 +3241,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -3012,35 +3258,7 @@
         "t": "Webhook URL"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата от"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Дата до"
-       },
-       {
-        "sel": "div.form-row > div.form-group > label.form-label",
-        "t": "Webhook URL"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > label.form-label",
         "t": "Дата от"
@@ -3078,9 +3296,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -3093,27 +3309,7 @@
         "t": "Сохранить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -3146,7 +3342,7 @@
        "t": "Тест"
       },
       {
-       "sel": "div.container",
+       "sel": "section#verification > div.card",
        "t": ""
       }
      ],
@@ -3155,9 +3351,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 6,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -3174,43 +3368,7 @@
         "t": "Тест"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#verification > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#verification > div.card",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#verification > div.card",
         "t": ""
@@ -3256,26 +3414,10 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
-       }
-      ],
-      "768": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -3302,19 +3444,586 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
         "t": "Тест"
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "margin-вертикаль 20px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "gap 10px",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      },
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid",
+        "t": ""
        },
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
        },
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-secondary",
-        "t": "Тест"
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       },
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-weight",
+     "sev": "FAIL",
+     "title": "вес вне шкалы",
+     "value": "800",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 5,
+      "1280": 5
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#1E293B (ближайший ink-navy #0F172A, ΔE 6.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#DBEAFE (ближайший navy-200 #E2E8F0, ΔE 5.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#3B82F6 (ближайший navy-500 #64748B, ΔE 15.0)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#22C55E (ближайший money-border #BBF7D0, ΔE 20.4)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+       "t": "$97040.27"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+        "t": "$97040.27"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card.success > div.stat-value",
+        "t": "$97040.27"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#F59E0B (ближайший decision-border #FDE68A, ΔE 21.6)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-border",
+     "sev": "FAIL",
+     "title": "цвет рамки вне палитры",
+     "value": "#EF4444 (ближайший action-coral #C2410C, ΔE 14.7)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
        }
       ]
      }
@@ -3337,9 +4046,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3348,19 +4055,7 @@
         "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
        }
       ],
-      "768": [
-       {
-        "sel": "section#verification > div.card > p",
-        "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#verification > div.card > p",
-        "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#verification > div.card > p",
         "t": "При завершении сделки (статус \"Завершена\") данные автоматиче"
@@ -3378,7 +4073,7 @@
      "ex": [
       {
        "sel": "div#webhookStatus",
-       "t": "Не удалось проверить webhook"
+       "t": "На стенде отключено: отправка уведомлений через webhook недо"
       }
      ],
      "gr": 1,
@@ -3386,61 +4081,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ],
       "1280": [
        {
         "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#webhookStatus",
-        "t": "Не удалось проверить webhook"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
+        "t": "На стенде отключено: отправка уведомлений через webhook недо"
        }
       ]
      }
@@ -3462,17 +4115,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3497,8 +4143,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
@@ -3506,11 +4151,57 @@
         "sel": "div.container",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "24px",
+     "n": 5,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "363"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      },
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "39"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 5
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "363"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       },
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "39"
        }
       ]
      }
@@ -3542,9 +4233,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3553,19 +4242,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -3601,9 +4278,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3612,19 +4287,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -3650,9 +4313,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3661,19 +4322,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -3695,8 +4344,219 @@
    "id": 6,
    "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
    "coverage": "partial",
-   "verdict": "PASS",
-   "findings": [],
+   "verdict": "FAIL",
+   "findings": [
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #FEF3C7",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #D1FAE5",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "4px #DBEAFE",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #22C55E",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.stats-grid > div.stat-card.success",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #F59E0B",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-warning",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-warning",
+        "t": ""
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G6-stripe",
+     "sev": "FAIL",
+     "title": "цветная полоса слева (border-left)",
+     "value": "3px #EF4444",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div#verificationSummary > div.alert.alert-error",
+       "t": ""
+      }
+     ],
+     "gr": 6,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div#verificationSummary > div.alert.alert-error",
+        "t": ""
+       }
+      ]
+     }
+    }
+   ],
    "warnings": []
   },
   "7": {
@@ -3740,9 +4600,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3751,19 +4609,7 @@
         "t": "https://your-n8n.com/webhook/xxx"
        }
       ],
-      "768": [
-       {
-        "sel": "input#webhookUrl",
-        "t": "https://your-n8n.com/webhook/xxx"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#webhookUrl",
-        "t": "https://your-n8n.com/webhook/xxx"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#webhookUrl",
         "t": "https://your-n8n.com/webhook/xxx"
@@ -3809,22 +4655,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "768": [
        {
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Загрузить сверку"
@@ -3843,15 +4677,117 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Сохранить"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (22px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (22px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#F59E0B на #FFFFFF = 2.15:1 (24px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "6"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "6"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 3:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (24px/800)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.stats-grid > div.stat-card > div.stat-value",
+       "t": "318"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
+       {
+        "sel": "div.stats-grid > div.stat-card > div.stat-value",
+        "t": "318"
        }
       ]
      }
@@ -3943,30 +4879,10 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "input#verifyDateFrom",
-        "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
-      ],
-      "768": [
        {
         "sel": "input#verifyDateFrom",
         "t": ""
@@ -4001,193 +4917,7 @@
         "sel": "div.form-row > div.form-group > button.btn.btn-primary",
         "t": "Сохранить"
        }
-      ],
-      "1920": [
-       {
-        "sel": "input#verifyDateFrom",
-        "t": ""
-       },
-       {
-        "sel": "input#verifyDateTo",
-        "t": ""
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Загрузить сверку"
-       },
-       {
-        "sel": "div.form-row > div.form-group > button.btn.btn-primary",
-        "t": "Сохранить"
-       }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11225, 'text': 'TypeError: Failed to fetch\\n    at loadIncomes (http://127.0.0.1:59104/crm:11226:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{'column': 35, 'line': 11452, 'text': 'TypeError: Failed to fetch\\n    at loadConversions (http://127.0.0.1:59104/crm:11",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось обновить счётчик заявок на выплату: {stack: \"TypeError: Failed to fetch\n    at refreshPayoutAttention (http:/",
-     "n": 4,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "{stack: \"TypeError: Failed to fetch\n    at rxLoad (http://1….0.0.1:59104/crm:3772:40)\n    at <anonymous>:1:55\", message:",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Не удалось загрузить курс: {stack: \"TypeError: Failed to fetch\n    at loadCurrentRate (http://127.0.0.1:59104/crm:3720:3",
-     "n": 2,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading transactions: {stack: \"TypeError: Failed to fetch\n    at loadTransactions….0.0.1:59104/crm:3764:42)\n    at",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G18-console",
-     "sev": "FAIL",
-     "title": "ошибка в консоли",
-     "value": "Error loading managers: {stack: \"TypeError: Failed to fetch\n    at loadManagers (ht….0.0.1:59104/crm:3765:38)\n    at <an",
-     "n": 1,
-     "ex": [],
-     "gr": 18,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
      }
     }
    ],
@@ -4210,9 +4940,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4221,19 +4949,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -4259,9 +4975,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4270,19 +4984,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -4308,9 +5010,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4319,19 +5019,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -4357,9 +5045,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4368,19 +5054,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -4394,40 +5068,20 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 69,
-   "groups": 38,
-   "texts": 37,
-   "contrast_checked": 38,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 8
-  },
-  "768": {
-   "elements": 67,
-   "groups": 37,
-   "texts": 32,
-   "contrast_checked": 33,
+   "elements": 99,
+   "groups": 60,
+   "texts": 56,
+   "contrast_checked": 57,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 8
   },
   "1280": {
-   "elements": 72,
-   "groups": 40,
-   "texts": 37,
-   "contrast_checked": 38,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 8
-  },
-  "1920": {
-   "elements": 72,
-   "groups": 40,
-   "texts": 37,
-   "contrast_checked": 38,
+   "elements": 102,
+   "groups": 61,
+   "texts": 56,
+   "contrast_checked": 57,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
@@ -4469,9 +5123,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4480,19 +5132,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -4518,9 +5158,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4529,19 +5167,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -4567,9 +5193,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4578,19 +5202,7 @@
       "t": "https://your-n8n.com/webhook/xxx"
      }
     ],
-    "768": [
-     {
-      "sel": "input#webhookUrl",
-      "t": "https://your-n8n.com/webhook/xxx"
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#webhookUrl",
-      "t": "https://your-n8n.com/webhook/xxx"
-     }
-    ],
-    "1920": [
      {
       "sel": "input#webhookUrl",
       "t": "https://your-n8n.com/webhook/xxx"
@@ -4616,9 +5228,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4627,19 +5237,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -4665,9 +5263,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4676,19 +5272,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -4714,9 +5298,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4725,19 +5307,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -4763,9 +5333,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4774,19 +5342,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

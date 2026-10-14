@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=exchangers",
+ "url": "http://127.0.0.1:59109/crm?section=exchangers",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:25:33",
+ "generated": "2026-10-15T00:11:49",
  "widths_requested": [
   375,
   768,
@@ -424,106 +424,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "350000,00 ₽ × 2",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "350 000,00 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "260000,00 ₽ × 2",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "260 000,00 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "100000,00 ₽ × 7",
-     "n": 7,
+     "value": "100000,00 ₽ × 10",
+     "n": 10,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -534,10 +436,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 7,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "375": 10,
+      "768": 10,
+      "1280": 10,
+      "1920": 10
      },
      "ex_by_width": {
       "375": [
@@ -571,12 +473,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "70000,00 ₽ × 4",
+     "value": "200000,00 ₽ × 4",
      "n": 4,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "70 000,00 ₽"
+       "t": "200 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -592,25 +494,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ]
      }
@@ -620,12 +522,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "150000,00 ₽ × 2",
+     "value": "35000,00 ₽ × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "150 000,00 ₽"
+       "t": "35 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -641,25 +543,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ]
      }
@@ -669,46 +571,46 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "50000,00 ₽ × 11",
-     "n": 11,
+     "value": "300000,00 ₽ × 3",
+     "n": 3,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "50 000,00 ₽"
+       "t": "300 000,00 ₽"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ]
      }
@@ -718,12 +620,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "50600,00 ₽ × 2",
+     "value": "400000,00 ₽ × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "50 600,00 ₽"
+       "t": "400 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -739,25 +641,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ]
      }
@@ -767,8 +669,498 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1,00 ₽ × 5",
-     "n": 5,
+     "value": "350000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "350 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12094,63 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 094,63 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "999 999,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12085,68 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 085,68 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12006,27 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 006,27 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1,00 ₽ × 7",
+     "n": 7,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -779,10 +1171,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
      },
      "ex_by_width": {
       "375": [
@@ -816,8 +1208,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,01 USDT × 5",
-     "n": 5,
+     "value": "0,01 USDT × 7",
+     "n": 7,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -828,10 +1220,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
      },
      "ex_by_width": {
       "375": [
@@ -856,6 +1248,153 @@
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
         "t": "0,01 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "40000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "40 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "30000,00 ₽ × 9",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "30 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 9,
+      "768": 9,
+      "1280": 9,
+      "1920": 9
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
        }
       ]
      }
@@ -914,46 +1453,389 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "30000,00 ₽ × 7",
-     "n": 7,
+     "value": "50000,00 ₽ × 11",
+     "n": 11,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "30 000,00 ₽"
+       "t": "50 000,00 ₽"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 7,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "375": 11,
+      "768": 11,
+      "1280": 11,
+      "1920": 11
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 USDT × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "679,81 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "412,24 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "70000,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "70 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "950000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "950 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "50600,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "50 600,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "813,08 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "677,56 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
        }
       ]
      }
@@ -1012,12 +1894,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "950000,00 ₽ × 2",
+     "value": "676,64 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "950 000,00 ₽"
+       "t": "676,64 USDT"
       }
      ],
      "gr": 12,
@@ -1033,25 +1915,123 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "260000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "260 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "150000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "150 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
        }
       ]
      }
@@ -1287,106 +2267,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "350000,00 ₽ × 2",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "350 000,00 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "350 000,00 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "260000,00 ₽ × 2",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "260 000,00 ₽"
-      }
-     ],
-     "gr": 12,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "260 000,00 ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 5,
-     "rule": "G12-dup",
-     "sev": "WARN",
-     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "100000,00 ₽ × 7",
-     "n": 7,
+     "value": "100000,00 ₽ × 10",
+     "n": 10,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -1397,10 +2279,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 7,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "375": 10,
+      "768": 10,
+      "1280": 10,
+      "1920": 10
      },
      "ex_by_width": {
       "375": [
@@ -1434,12 +2316,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "70000,00 ₽ × 4",
+     "value": "200000,00 ₽ × 4",
      "n": 4,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "70 000,00 ₽"
+       "t": "200 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -1455,25 +2337,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "70 000,00 ₽"
+        "t": "200 000,00 ₽"
        }
       ]
      }
@@ -1483,12 +2365,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "150000,00 ₽ × 2",
+     "value": "35000,00 ₽ × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "150 000,00 ₽"
+       "t": "35 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -1504,25 +2386,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "150 000,00 ₽"
+        "t": "35 000,00 ₽"
        }
       ]
      }
@@ -1532,46 +2414,46 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "50000,00 ₽ × 11",
-     "n": 11,
+     "value": "300000,00 ₽ × 3",
+     "n": 3,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "50 000,00 ₽"
+       "t": "300 000,00 ₽"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 000,00 ₽"
+        "t": "300 000,00 ₽"
        }
       ]
      }
@@ -1581,12 +2463,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "50600,00 ₽ × 2",
+     "value": "400000,00 ₽ × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "50 600,00 ₽"
+       "t": "400 000,00 ₽"
       }
      ],
      "gr": 12,
@@ -1602,25 +2484,25 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "50 600,00 ₽"
+        "t": "400 000,00 ₽"
        }
       ]
      }
@@ -1630,8 +2512,498 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1,00 ₽ × 5",
-     "n": 5,
+     "value": "350000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "350 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "350 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12094,63 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 094,63 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 094,63 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "999999,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "999 999,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "999 999,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12085,68 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 085,68 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 085,68 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12006,27 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "12 006,27 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "12 006,27 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1,00 ₽ × 7",
+     "n": 7,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -1642,10 +3014,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
      },
      "ex_by_width": {
       "375": [
@@ -1679,8 +3051,8 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "0,01 USDT × 5",
-     "n": 5,
+     "value": "0,01 USDT × 7",
+     "n": 7,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -1691,10 +3063,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
      },
      "ex_by_width": {
       "375": [
@@ -1719,6 +3091,153 @@
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
         "t": "0,01 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "768": 7,
+      "1280": 7,
+      "1920": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "40000,00 ₽ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "40 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "40 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "30000,00 ₽ × 9",
+     "n": 9,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "30 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 9,
+      "768": 9,
+      "1280": 9,
+      "1920": 9
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "30 000,00 ₽"
        }
       ]
      }
@@ -1777,46 +3296,389 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "30000,00 ₽ × 7",
-     "n": 7,
+     "value": "50000,00 ₽ × 11",
+     "n": 11,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "30 000,00 ₽"
+       "t": "50 000,00 ₽"
       }
      ],
      "gr": 12,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 7,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "375": 11,
+      "768": 11,
+      "1280": 11,
+      "1920": 11
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "30 000,00 ₽"
+        "t": "50 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 USDT × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "679,81 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "679,81 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "412,24 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "412,24 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "70000,00 ₽ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "70 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "768": 4,
+      "1280": 4,
+      "1920": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "70 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "950000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "950 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "950 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "50600,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "50 600,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "50 600,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "813,08 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "813,08 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 USDT × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "677,56 USDT"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "677,56 USDT"
        }
       ]
      }
@@ -1875,12 +3737,12 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "950000,00 ₽ × 2",
+     "value": "676,64 USDT × 2",
      "n": 2,
      "ex": [
       {
        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-       "t": "950 000,00 ₽"
+       "t": "676,64 USDT"
       }
      ],
      "gr": 12,
@@ -1896,25 +3758,123 @@
       "375": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "768": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "1280": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
        }
       ],
       "1920": [
        {
         "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-        "t": "950 000,00 ₽"
+        "t": "676,64 USDT"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "260000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "260 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "260 000,00 ₽"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "150000,00 ₽ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+       "t": "150 000,00 ₽"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "768": 2,
+      "1280": 2,
+      "1920": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "768": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+        "t": "150 000,00 ₽"
        }
       ]
      }
@@ -2170,40 +4130,40 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 1756,
-   "groups": 50,
-   "texts": 1152,
-   "contrast_checked": 1157,
+   "elements": 3309,
+   "groups": 56,
+   "texts": 2297,
+   "contrast_checked": 2302,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 14
   },
   "768": {
-   "elements": 1754,
-   "groups": 51,
-   "texts": 1147,
-   "contrast_checked": 1152,
+   "elements": 3307,
+   "groups": 59,
+   "texts": 2292,
+   "contrast_checked": 2297,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 14
   },
   "1280": {
-   "elements": 1759,
-   "groups": 49,
-   "texts": 1152,
-   "contrast_checked": 1157,
+   "elements": 3312,
+   "groups": 60,
+   "texts": 2297,
+   "contrast_checked": 2302,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 14
   },
   "1920": {
-   "elements": 1759,
-   "groups": 49,
-   "texts": 1152,
-   "contrast_checked": 1157,
+   "elements": 3312,
+   "groups": 60,
+   "texts": 2297,
+   "contrast_checked": 2302,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
@@ -2330,106 +4290,8 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "350000,00 ₽ × 2",
-   "n": 2,
-   "ex": [
-    {
-     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "350 000,00 ₽"
-    }
-   ],
-   "gr": 12,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "350 000,00 ₽"
-     }
-    ],
-    "768": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "350 000,00 ₽"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "350 000,00 ₽"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "350 000,00 ₽"
-     }
-    ]
-   }
-  },
-  {
-   "gate": 5,
-   "rule": "G12-dup",
-   "sev": "WARN",
-   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "260000,00 ₽ × 2",
-   "n": 2,
-   "ex": [
-    {
-     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "260 000,00 ₽"
-    }
-   ],
-   "gr": 12,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "260 000,00 ₽"
-     }
-    ],
-    "768": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "260 000,00 ₽"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "260 000,00 ₽"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "260 000,00 ₽"
-     }
-    ]
-   }
-  },
-  {
-   "gate": 5,
-   "rule": "G12-dup",
-   "sev": "WARN",
-   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "100000,00 ₽ × 7",
-   "n": 7,
+   "value": "100000,00 ₽ × 10",
+   "n": 10,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -2440,10 +4302,10 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 7,
-    "768": 7,
-    "1280": 7,
-    "1920": 7
+    "375": 10,
+    "768": 10,
+    "1280": 10,
+    "1920": 10
    },
    "ex_by_width": {
     "375": [
@@ -2477,12 +4339,12 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "70000,00 ₽ × 4",
+   "value": "200000,00 ₽ × 4",
    "n": 4,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "70 000,00 ₽"
+     "t": "200 000,00 ₽"
     }
    ],
    "gr": 12,
@@ -2498,25 +4360,25 @@
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "70 000,00 ₽"
+      "t": "200 000,00 ₽"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "70 000,00 ₽"
+      "t": "200 000,00 ₽"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "70 000,00 ₽"
+      "t": "200 000,00 ₽"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "70 000,00 ₽"
+      "t": "200 000,00 ₽"
      }
     ]
    }
@@ -2526,12 +4388,12 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "150000,00 ₽ × 2",
+   "value": "35000,00 ₽ × 2",
    "n": 2,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "150 000,00 ₽"
+     "t": "35 000,00 ₽"
     }
    ],
    "gr": 12,
@@ -2547,25 +4409,25 @@
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "150 000,00 ₽"
+      "t": "35 000,00 ₽"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "150 000,00 ₽"
+      "t": "35 000,00 ₽"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "150 000,00 ₽"
+      "t": "35 000,00 ₽"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "150 000,00 ₽"
+      "t": "35 000,00 ₽"
      }
     ]
    }
@@ -2575,46 +4437,46 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "50000,00 ₽ × 11",
-   "n": 11,
+   "value": "300000,00 ₽ × 3",
+   "n": 3,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "50 000,00 ₽"
+     "t": "300 000,00 ₽"
     }
    ],
    "gr": 12,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 11,
-    "768": 11,
-    "1280": 11,
-    "1920": 11
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 000,00 ₽"
+      "t": "300 000,00 ₽"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 000,00 ₽"
+      "t": "300 000,00 ₽"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 000,00 ₽"
+      "t": "300 000,00 ₽"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 000,00 ₽"
+      "t": "300 000,00 ₽"
      }
     ]
    }
@@ -2624,12 +4486,12 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "50600,00 ₽ × 2",
+   "value": "400000,00 ₽ × 2",
    "n": 2,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "50 600,00 ₽"
+     "t": "400 000,00 ₽"
     }
    ],
    "gr": 12,
@@ -2645,25 +4507,25 @@
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 600,00 ₽"
+      "t": "400 000,00 ₽"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 600,00 ₽"
+      "t": "400 000,00 ₽"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 600,00 ₽"
+      "t": "400 000,00 ₽"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "50 600,00 ₽"
+      "t": "400 000,00 ₽"
      }
     ]
    }
@@ -2673,8 +4535,498 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "1,00 ₽ × 5",
-   "n": 5,
+   "value": "350000,00 ₽ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "350 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "350 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "350 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "350 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "350 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "12094,63 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "12 094,63 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 094,63 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 094,63 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 094,63 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 094,63 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,89 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$241,89"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,89"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,89"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,89"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,89"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "999999,00 ₽ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "999 999,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "768": 4,
+    "1280": 4,
+    "1920": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "999 999,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "999 999,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,71 $ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$241,71"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,71"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,71"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,71"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,71"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "12085,68 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "12 085,68 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 085,68 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 085,68 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 085,68 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 085,68 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,56 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$241,56"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,56"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,56"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,56"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$241,56"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "12006,27 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "12 006,27 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 006,27 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 006,27 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 006,27 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "12 006,27 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "240,13 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$240,13"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$240,13"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$240,13"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$240,13"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$240,13"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "243,94 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$243,94"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$243,94"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$243,94"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$243,94"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$243,94"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "1,00 ₽ × 7",
+   "n": 7,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -2685,10 +5037,10 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 5,
-    "768": 5,
-    "1280": 5,
-    "1920": 5
+    "375": 7,
+    "768": 7,
+    "1280": 7,
+    "1920": 7
    },
    "ex_by_width": {
     "375": [
@@ -2722,8 +5074,8 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "0,01 USDT × 5",
-   "n": 5,
+   "value": "0,01 USDT × 7",
+   "n": 7,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
@@ -2734,10 +5086,10 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 5,
-    "768": 5,
-    "1280": 5,
-    "1920": 5
+    "375": 7,
+    "768": 7,
+    "1280": 7,
+    "1920": 7
    },
    "ex_by_width": {
     "375": [
@@ -2762,6 +5114,153 @@
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
       "t": "0,01 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 7",
+   "n": 7,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$0,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 7,
+    "768": 7,
+    "1280": 7,
+    "1920": 7
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$0,00"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$0,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$0,00"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$0,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "40000,00 ₽ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "40 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "40 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "40 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "30000,00 ₽ × 9",
+   "n": 9,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "30 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 9,
+    "768": 9,
+    "1280": 9,
+    "1920": 9
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "30 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "30 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "30 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "30 000,00 ₽"
      }
     ]
    }
@@ -2820,46 +5319,389 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "30000,00 ₽ × 7",
-   "n": 7,
+   "value": "50000,00 ₽ × 11",
+   "n": 11,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "30 000,00 ₽"
+     "t": "50 000,00 ₽"
     }
    ],
    "gr": 12,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 7,
-    "768": 7,
-    "1280": 7,
-    "1920": 7
+    "375": 11,
+    "768": 11,
+    "1280": 11,
+    "1920": 11
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "30 000,00 ₽"
+      "t": "50 000,00 ₽"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "30 000,00 ₽"
+      "t": "50 000,00 ₽"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "30 000,00 ₽"
+      "t": "50 000,00 ₽"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "30 000,00 ₽"
+      "t": "50 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "679,81 USDT × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "679,81 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "679,81 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "679,81 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "679,81 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "679,81 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "412,24 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "412,24 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "412,24 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "412,24 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "412,24 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "412,24 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "70000,00 ₽ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "70 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "768": 4,
+    "1280": 4,
+    "1920": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "70 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "70 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "70 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "70 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "950000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "950 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "950 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "950 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "950 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "950 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "50600,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "50 600,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "50 600,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "50 600,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "50 600,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "50 600,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "813,08 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "813,08 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "813,08 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "813,08 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "813,08 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "813,08 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "677,56 USDT × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "677,56 USDT"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "677,56 USDT"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "677,56 USDT"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "677,56 USDT"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "677,56 USDT"
      }
     ]
    }
@@ -2918,12 +5760,12 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "950000,00 ₽ × 2",
+   "value": "676,64 USDT × 2",
    "n": 2,
    "ex": [
     {
      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-     "t": "950 000,00 ₽"
+     "t": "676,64 USDT"
     }
    ],
    "gr": 12,
@@ -2939,25 +5781,123 @@
     "375": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "950 000,00 ₽"
+      "t": "676,64 USDT"
      }
     ],
     "768": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "950 000,00 ₽"
+      "t": "676,64 USDT"
      }
     ],
     "1280": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "950 000,00 ₽"
+      "t": "676,64 USDT"
      }
     ],
     "1920": [
      {
       "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
-      "t": "950 000,00 ₽"
+      "t": "676,64 USDT"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "260000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "260 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "260 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "260 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "260 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "260 000,00 ₽"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "150000,00 ₽ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+     "t": "150 000,00 ₽"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "768": 2,
+    "1280": 2,
+    "1920": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "150 000,00 ₽"
+     }
+    ],
+    "768": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "150 000,00 ₽"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "150 000,00 ₽"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num.number-cell",
+      "t": "150 000,00 ₽"
      }
     ]
    }

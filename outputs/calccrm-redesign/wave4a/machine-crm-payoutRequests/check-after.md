@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/crm?section=payoutRequests`
+URL: `http://127.0.0.1:59109/crm?section=payoutRequests`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -17,13 +17,19 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 58, контраст проверен у 34, главных кнопок 0, адресов 0
+- 375px: элементов 711, контраст проверен у 423, главных кнопок 0, адресов 45
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
 
 ### Гейт 2. Гардрейлы: 375px PASS
 _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — их находки там._
+- (warn) **эмодзи в тексте (если это не контент пользователя — заменить иконкой)** (3)
+  - `✈` — 375px×26 — напр. `div.payout-request-details > div > span` «✈️ Telegram:»
+  - `💬` — 375px×6 — напр. `div.payout-request-details > div > span` «💬 WhatsApp:»
+  - `📄` — 375px×2 — напр. `div.payout-request-card > div.payout-request-details > div` «📄 Чек отправлен»
+- (warn) **текст набран капслоком руками** (1)
+  - `VALERII KUTYRAEV` — 375px×1 — напр. `div.payout-request-details > div > strong` «VALERII KUTYRAEV»
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
   - `‹` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 375px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
@@ -40,18 +46,26 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 375px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (2)
+  - `413,00 $ × 2` — 375px×2 — напр. `div.payout-request-card > div.payout-request-head > div.payout-request-amount` «$413,00»
+  - `450,01 $ × 2` — 375px×2 — напр. `div.payout-request-head > div.payout-request-amount > div` «возместить $450,01»
 
 ## Компьютер (>700px)
-- 768px: элементов 56, контраст проверен у 29, главных кнопок 0, адресов 0
-- 1280px: элементов 61, контраст проверен у 34, главных кнопок 0, адресов 0
-- 1920px: элементов 61, контраст проверен у 34, главных кнопок 0, адресов 0
+- 768px: элементов 709, контраст проверен у 418, главных кнопок 0, адресов 45
+- 1280px: элементов 714, контраст проверен у 423, главных кнопок 0, адресов 45
+- 1920px: элементов 714, контраст проверен у 423, главных кнопок 0, адресов 45
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
 
 ### Гейт 2. Гардрейлы: 768px PASS · 1280px PASS · 1920px PASS
 _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 — их находки там._
+- (warn) **эмодзи в тексте (если это не контент пользователя — заменить иконкой)** (3)
+  - `✈` — 768px×26, 1280px×26, 1920px×26 — напр. `div.payout-request-details > div > span` «✈️ Telegram:»
+  - `💬` — 768px×6, 1280px×6, 1920px×6 — напр. `div.payout-request-details > div > span` «💬 WhatsApp:»
+  - `📄` — 768px×2, 1280px×2, 1920px×2 — напр. `div.payout-request-card > div.payout-request-details > div` «📄 Чек отправлен»
+- (warn) **текст набран капслоком руками** (1)
+  - `VALERII KUTYRAEV` — 768px×1, 1280px×1, 1920px×1 — напр. `div.payout-request-details > div > strong` «VALERII KUTYRAEV»
 - (warn) **кнопка-иконка без видимой подписи (есть aria-label)** (2)
   - `‹` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Предыдущие разделы»
   - `›` — 768px×1, 1280px×1, 1920px×1 — напр. `nav.site-shell-sections > button.site-shell-scroll` «Следующие разделы»
@@ -68,12 +82,14 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 768px PASS · 1280px PASS · 1920px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (2)
+  - `413,00 $ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div.payout-request-card > div.payout-request-head > div.payout-request-amount` «$413,00»
+  - `450,01 $ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div.payout-request-head > div.payout-request-amount > div` «возместить $450,01»
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png`
-- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png`
+- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-375.png`
+- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-payoutRequests/before-karim-1280.png`
 
 ## Гардрейлы (18)
 
@@ -99,6 +115,10 @@ _авто: наличие и непустота пар «до/после»; ср
 | 18 | Состояния, анимации transform/opacity, ошибки консоли | partial | PASS* |
 
 `PASS*` — автоматическая часть чистая; остальное смотрит человек.
+
+## Дополнительно (Don't из DESIGN.md)
+- **текст набран капслоком руками** (1)
+  - `VALERII KUTYRAEV` — 375px×1, 768px×1, 1280px×1, 1920px×1 — напр. `div.payout-request-details > div > strong` «VALERII KUTYRAEV»
 
 ## Что остаётся человеку
 Вкус и иерархия; «глагол в заголовке», фразы из переписки; сравнение снимков «до/после»; гардрейлы 13, 14, 17 целиком и непроверенная часть пунктов 3, 4, 5, 6, 8, 9, 10, 12, 16, 18.

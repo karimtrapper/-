@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/crm?section=referrers`
+URL: `http://127.0.0.1:59109/crm?section=referrers`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -17,7 +17,7 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 61, контраст проверен у 35, главных кнопок 1, адресов 0
+- 375px: элементов 537, контраст проверен у 361, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
@@ -40,12 +40,17 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 375px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (12)
+  - `0,00 $ × 29` — 375px×29 — напр. `div.referrer-main > div.referrer-money > span` «Выплачено: $0,00»
+  - `1240,54 $ × 2` — 375px×2 — напр. `div.referrer-main > div.referrer-money > span` «Заработал: $1 240,54»
+  - `430,38 $ × 2` — 375px×2 — напр. `div.referrer-main > div.referrer-money > span` «К выплате: $430,38»
+  - `810,16 $ × 2` — 375px×2 — напр. `div.referrer-main > div.referrer-money > span` «Выплачено: $810,16»
+  - … и ещё 8 (полный список в JSON)
 
 ## Компьютер (>700px)
-- 768px: элементов 59, контраст проверен у 30, главных кнопок 1, адресов 0
-- 1280px: элементов 64, контраст проверен у 35, главных кнопок 1, адресов 0
-- 1920px: элементов 64, контраст проверен у 35, главных кнопок 1, адресов 0
+- 768px: элементов 535, контраст проверен у 356, главных кнопок 1, адресов 0
+- 1280px: элементов 540, контраст проверен у 361, главных кнопок 1, адресов 0
+- 1920px: элементов 540, контраст проверен у 361, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
@@ -68,12 +73,17 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ### Гейт 5. Текст: 768px PASS · 1280px PASS · 1920px PASS
-находок нет
+- (warn) **одна и та же сумма встречается на экране несколько раз (эвристика)** (12)
+  - `0,00 $ × 29` — 768px×29, 1280px×29, 1920px×29 — напр. `div.referrer-main > div.referrer-money > span` «Выплачено: $0,00»
+  - `1240,54 $ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div.referrer-main > div.referrer-money > span` «Заработал: $1 240,54»
+  - `430,38 $ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div.referrer-main > div.referrer-money > span` «К выплате: $430,38»
+  - `810,16 $ × 2` — 768px×2, 1280px×2, 1920px×2 — напр. `div.referrer-main > div.referrer-money > span` «Выплачено: $810,16»
+  - … и ещё 8 (полный список в JSON)
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png`
-- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png`
+- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-375.png`
+- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-referrers/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-referrers/before-karim-1280.png`
 
 ## Гардрейлы (18)
 

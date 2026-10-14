@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59105/crm?section=exchangers",
+ "url": "http://127.0.0.1:59110/crm?section=exchangers",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:54:28",
+ "generated": "2026-10-14T21:21:53",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA, 4. Ширины",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -153,9 +143,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 10,
-      "1280": 10,
-      "1920": 10
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -176,43 +164,7 @@
         "t": "Конвертация от брокеров"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -290,9 +242,7 @@
      "note": null,
      "by_width": {
       "375": 13,
-      "768": 12,
-      "1280": 12,
-      "1920": 12
+      "1280": 12
      },
      "ex_by_width": {
       "375": [
@@ -313,43 +263,7 @@
         "t": "Конвертация от брокеров"
        }
       ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rxSummary > div.rx-card",
         "t": ""
@@ -391,9 +305,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -406,27 +318,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "div#rx-postup > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "div#rx-postup > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rxSummary > div.rx-card",
         "t": ""
@@ -448,7 +340,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -456,11 +348,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -468,15 +360,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -484,35 +374,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -520,29 +392,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -557,7 +411,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -565,11 +419,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -577,15 +431,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -593,35 +445,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -629,29 +463,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -662,11 +478,11 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "11px",
-     "n": 117,
+     "n": 229,
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -685,34 +501,14 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 117,
-      "768": 117,
-      "1280": 117,
-      "1920": 117
+      "375": 229,
+      "1280": 229
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -730,25 +526,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -775,7 +553,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -795,33 +573,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -839,25 +597,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -880,7 +620,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
-     "n": 81,
+     "n": 226,
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -888,25 +628,23 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 131,02"
+       "t": "$ 25,11"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 160,12"
+       "t": "$ 6,37"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 81,
-      "768": 81,
-      "1280": 81,
-      "1920": 81
+      "375": 226,
+      "1280": 226
      },
      "ex_by_width": {
       "375": [
@@ -916,33 +654,15 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        }
       ],
       "1280": [
@@ -952,33 +672,15 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        }
       ]
      }
@@ -993,7 +695,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       }
      ],
      "gr": 2,
@@ -1001,33 +703,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ]
      }
@@ -1054,9 +742,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1069,19 +755,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#exchangers > div.rx-subtabs",
         "t": ""
@@ -1107,9 +781,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1118,19 +790,7 @@
         "t": "Поступления"
        }
       ],
-      "768": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
         "t": "Поступления"
@@ -1168,9 +828,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -1191,43 +849,7 @@
         "t": "↓ новые"
        }
       ],
-      "768": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -1269,22 +891,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
-      "768": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -1303,16 +913,6 @@
         "sel": "div.card > div > button.btn.btn-secondary",
         "t": "Сброс"
        }
-      ],
-      "1920": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
       ]
      }
     },
@@ -1322,7 +922,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 10px",
-     "n": 127,
+     "n": 238,
      "ex": [
       {
        "sel": "select#rxFltMer",
@@ -1345,31 +945,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 127,
-      "768": 127,
-      "1280": 127,
-      "1920": 127
+      "375": 238,
+      "1280": 238
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       },
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "select#rxFltMer",
         "t": "Все мерчанты"
@@ -1404,23 +984,75 @@
         "sel": "input#rxFltSf",
         "t": ""
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#0000EE (ближайший navy-700 #334155, ΔE 19.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 139,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 139,
+      "1280": 139
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
        {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       },
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
        }
       ]
      }
@@ -1431,239 +1063,55 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 3px",
-     "n": 113,
+     "n": 224,
      "ex": [
       {
        "sel": "tr > td > span.rx-pill",
-       "t": "⚠️ Аванс"
-      },
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
+       "t": "✅ Закрыто"
       },
       {
        "sel": "tr > td > span.rx-pill",
        "t": "💰 Оплачено"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 113,
-      "768": 113,
-      "1280": 113,
-      "1920": 113
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-text",
-     "sev": "FAIL",
-     "title": "цвет текста вне палитры",
-     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
-     "n": 11,
-     "ex": [
+      },
       {
        "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
+       "t": "⚠️ Аванс"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
+      "375": 224,
+      "1280": 224
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
+        "t": "✅ Закрыто"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
+        "t": "💰 Оплачено"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-bg",
-     "sev": "FAIL",
-     "title": "фон вне палитры",
-     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
+        "t": "⚠️ Аванс"
        }
       ],
       "1280": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
+        "t": "✅ Закрыто"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
+        "t": "💰 Оплачено"
+       },
        {
-        "sel": "div.container",
-        "t": ""
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 20px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
        }
       ]
      }
@@ -1685,17 +1133,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1720,17 +1161,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1747,9 +1181,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1766,13 +1200,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1788,15 +1220,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1812,15 +1240,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1845,9 +1269,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1860,27 +1282,7 @@
         "t": "Сброс"
        }
       ],
-      "768": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -1922,30 +1324,10 @@
      "note": null,
      "by_width": {
       "375": 9,
-      "768": 9,
-      "1280": 9,
-      "1920": 9
+      "1280": 9
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "thead > tr > th",
-        "t": "WL"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Мерчант"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Сумма ₽"
-       }
-      ],
-      "768": [
        {
         "sel": "thead > tr > th",
         "t": "WL"
@@ -1979,73 +1361,6 @@
        {
         "sel": "thead > tr > th",
         "t": "Сумма ₽"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "thead > tr > th",
-        "t": "WL"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Мерчант"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Сумма ₽"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G6-blue",
-     "sev": "FAIL",
-     "title": "синий фон (синих плашек нет)",
-     "value": "#EFF6FF",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 6,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
        }
       ]
      }
@@ -2068,18 +1383,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       }
-      ],
-      "768": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -2090,11 +1397,52 @@
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "✅",
+     "n": 129,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 129,
+      "1280": 129
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
        }
       ]
      }
@@ -2117,18 +1465,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -2139,31 +1479,7 @@
         "sel": ".kyc-review-photo img:hover",
         "t": ""
        }
-      ],
-      "1920": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
       ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G1-кеглей",
-     "sev": "FAIL",
-     "title": "кеглей на экране больше 4",
-     "value": "6: 11, 12, 13, 14, 20, 22",
-     "n": 1,
-     "ex": [],
-     "gr": 1,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": []
      }
     }
    ],
@@ -2173,106 +1489,8 @@
      "rule": "G5-emoji",
      "sev": "WARN",
      "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-     "value": "⚠",
-     "n": 87,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "⚠️ Аванс"
-      }
-     ],
-     "gr": 5,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 87,
-      "768": 87,
-      "1280": 87,
-      "1920": 87
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G5-emoji",
-     "sev": "WARN",
-     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-     "value": "📤",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 5,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G5-emoji",
-     "sev": "WARN",
-     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
      "value": "💰",
-     "n": 15,
+     "n": 81,
      "ex": [
       {
        "sel": "tr > td > span.rx-pill",
@@ -2283,19 +1501,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 15,
-      "768": 15,
-      "1280": 15,
-      "1920": 15
+      "375": 81,
+      "1280": 81
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "tr > td > span.rx-pill",
         "t": "💰 Оплачено"
@@ -2306,11 +1516,75 @@
         "sel": "tr > td > span.rx-pill",
         "t": "💰 Оплачено"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⚠",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📥",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "📥 Обеспечено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
        }
       ]
      }
@@ -2333,9 +1607,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2344,19 +1616,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -2382,9 +1642,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2393,19 +1651,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -2431,9 +1677,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2442,19 +1686,7 @@
         "t": "USDT от"
        }
       ],
-      "768": [
-       {
-        "sel": "input#rxFltSf",
-        "t": "USDT от"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#rxFltSf",
-        "t": "USDT от"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#rxFltSf",
         "t": "USDT от"
@@ -2480,9 +1712,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2491,19 +1721,7 @@
         "t": "USDT до"
        }
       ],
-      "768": [
-       {
-        "sel": "input#rxFltSt",
-        "t": "USDT до"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#rxFltSt",
-        "t": "USDT до"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#rxFltSt",
         "t": "USDT до"
@@ -2529,9 +1747,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2540,19 +1756,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -2578,9 +1782,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2589,19 +1791,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -2627,9 +1817,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2638,19 +1826,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -2676,9 +1852,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2687,19 +1861,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -2716,9 +1878,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -2732,7 +1894,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -2752,33 +1914,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -2796,25 +1938,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -2841,7 +1965,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       }
      ],
      "gr": 11,
@@ -2849,33 +1973,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ]
      }
@@ -2886,105 +1996,67 @@
      "sev": "FAIL",
      "title": "контраст ниже 4.5:1",
      "value": "#16A34A на #FFFFFF = 3.30:1 (14px/400)",
-     "n": 79,
+     "n": 224,
      "ex": [
       {
        "sel": "tr > td.num > span",
-       "t": "$ 131,02"
+       "t": "$ 25,11"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 160,12"
+       "t": "$ 6,37"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 144,04"
+       "t": "$ 44,76"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 116,34"
+       "t": "$ 3,20"
       }
      ],
      "gr": 11,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 79,
-      "768": 79,
-      "1280": 79,
-      "1920": 79
+      "375": 224,
+      "1280": 224
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 144,04"
+        "t": "$ 44,76"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 116,34"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 144,04"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 116,34"
+        "t": "$ 3,20"
        }
       ],
       "1280": [
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 144,04"
+        "t": "$ 44,76"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 116,34"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 144,04"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 116,34"
+        "t": "$ 3,20"
        }
       ]
      }
@@ -2998,86 +2070,12 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
-    {
-     "gate": 4,
-     "rule": "W-row-align",
-     "sev": "FAIL",
-     "title": "в ряду поля/кнопки разной высоты или смещены",
-     "value": "33px и 36px (Δверха 1px)",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "input#rxFltSf",
-       "t": ""
-      },
-      {
-       "sel": "div.card > div > button.btn.btn-secondary",
-       "t": "Сброс"
-      },
-      {
-       "sel": "input#rxFltSt",
-       "t": ""
-      }
-     ],
-     "gr": 10,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
-      "1280": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ]
-     }
-    },
     {
      "gate": 4,
      "rule": "W-row-align",
@@ -3107,8 +2105,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "1280": [
@@ -3128,23 +2125,49 @@
         "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
         "t": "Запросы"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "33px и 36px (Δверха 1px)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      },
+      {
+       "sel": "input#rxFltSt",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 2
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
+        "sel": "input#rxFltSf",
+        "t": ""
        },
        {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
        },
        {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
+        "sel": "input#rxFltSt",
+        "t": ""
        }
       ]
      }
@@ -3181,9 +2204,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -3204,43 +2225,7 @@
         "t": "Мерчанты"
        }
       ],
-      "768": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Мерчанты"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Мерчанты"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
         "t": "Поступления"
@@ -3278,9 +2263,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3289,19 +2272,7 @@
         "t": "🔄 Обновить из бота"
        }
       ],
-      "768": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -3335,9 +2306,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -3354,35 +2323,7 @@
         "t": "↓ новые\n↑ старые"
        }
       ],
-      "768": [
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые\n↑ старые"
-       }
-      ],
       "1280": [
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые\n↑ старые"
-       }
-      ],
-      "1920": [
        {
         "sel": "select#rxFltMer",
         "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
@@ -3420,9 +2361,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -3435,27 +2374,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "input#rxFltSf",
         "t": ""
@@ -3485,9 +2404,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3496,19 +2413,7 @@
         "t": "Сброс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div > button.btn.btn-secondary",
         "t": "Сброс"
@@ -3524,13 +2429,399 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
-   "warnings": [],
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 679,81"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 412,24"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 813,08"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 677,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "676,64 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 676,64"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ]
+     }
+    }
+   ],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
   },
   "6": {
@@ -3538,9 +2829,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -3599,9 +2890,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 10,
-      "1280": 10,
-      "1920": 10
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -3622,43 +2911,7 @@
         "t": "Конвертация от брокеров"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -3688,7 +2941,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3696,11 +2949,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -3708,15 +2961,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3724,35 +2975,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3760,29 +2993,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -3797,7 +3012,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3805,11 +3020,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -3817,15 +3032,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3833,35 +3046,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -3869,29 +3064,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -3902,11 +3079,11 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "11px",
-     "n": 117,
+     "n": 229,
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -3925,34 +3102,14 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 117,
-      "768": 117,
-      "1280": 117,
-      "1920": 117
+      "375": 229,
+      "1280": 229
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -3970,25 +3127,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4035,30 +3174,10 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
-      ],
-      "768": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -4093,24 +3212,6 @@
         "sel": "select#rxFltSort",
         "t": "↓ новые"
        }
-      ],
-      "1920": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
       ]
      }
     },
@@ -4127,13 +3228,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -4149,15 +3248,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -4173,33 +3268,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G1-кеглей",
-     "sev": "FAIL",
-     "title": "кеглей на экране больше 4",
-     "value": "6: 11, 12, 13, 14, 20, 22",
-     "n": 1,
-     "ex": [],
-     "gr": 1,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": []
+      "1280": []
      }
     }
    ],
@@ -4233,9 +3306,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4244,19 +3315,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -4294,9 +3353,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 10,
-      "1280": 10,
-      "1920": 10
+      "1280": 10
      },
      "ex_by_width": {
       "375": [
@@ -4317,43 +3374,7 @@
         "t": "Конвертация от брокеров"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -4431,9 +3452,7 @@
      "note": null,
      "by_width": {
       "375": 13,
-      "768": 12,
-      "1280": 12,
-      "1920": 12
+      "1280": 12
      },
      "ex_by_width": {
       "375": [
@@ -4454,43 +3473,7 @@
         "t": "Конвертация от брокеров"
        }
       ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rxSummary > div.rx-card",
         "t": ""
@@ -4532,9 +3515,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -4547,27 +3528,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "div#rx-postup > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rxSummary > div.rx-card",
-        "t": ""
-       },
-       {
-        "sel": "div#rx-postup > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rxSummary > div.rx-card",
         "t": ""
@@ -4589,7 +3550,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4597,11 +3558,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -4609,15 +3570,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4625,35 +3584,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4661,29 +3602,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -4698,7 +3621,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "174 709,57"
+       "t": "836 255,61"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4706,11 +3629,11 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       }
      ],
      "gr": 1,
@@ -4718,15 +3641,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4734,35 +3655,17 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
+        "t": "836 255,61"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val",
@@ -4770,29 +3673,11 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "174 709,57"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        }
       ]
      }
@@ -4803,11 +3688,11 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "11px",
-     "n": 117,
+     "n": 229,
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4826,34 +3711,14 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 117,
-      "768": 117,
-      "1280": 117,
-      "1920": 117
+      "375": 229,
+      "1280": 229
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4871,25 +3736,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4916,7 +3763,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4936,33 +3783,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -4980,25 +3807,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -5021,7 +3830,7 @@
      "sev": "FAIL",
      "title": "цвет текста вне палитры",
      "value": "#16A34A (ближайший money-ink #065F46, ΔE 26.5)",
-     "n": 81,
+     "n": 226,
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val",
@@ -5029,25 +3838,23 @@
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "+ 5 342,64"
+       "t": "+ 23 506,24"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 131,02"
+       "t": "$ 25,11"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 160,12"
+       "t": "$ 6,37"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 81,
-      "768": 81,
-      "1280": 81,
-      "1920": 81
+      "375": 226,
+      "1280": 226
      },
      "ex_by_width": {
       "375": [
@@ -5057,33 +3864,15 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        }
       ],
       "1280": [
@@ -5093,33 +3882,15 @@
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
+        "t": "+ 23 506,24"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val",
-        "t": "8"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "+ 5 342,64"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        }
       ]
      }
@@ -5134,7 +3905,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       }
      ],
      "gr": 2,
@@ -5142,33 +3913,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ]
      }
@@ -5195,9 +3952,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5210,19 +3965,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#exchangers > div.rx-subtabs",
         "t": ""
@@ -5248,9 +3991,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5259,19 +4000,7 @@
         "t": "Поступления"
        }
       ],
-      "768": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
         "t": "Поступления"
@@ -5309,9 +4038,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -5332,43 +4059,7 @@
         "t": "↓ новые"
        }
       ],
-      "768": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -5410,22 +4101,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
-      "768": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -5444,16 +4123,6 @@
         "sel": "div.card > div > button.btn.btn-secondary",
         "t": "Сброс"
        }
-      ],
-      "1920": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
       ]
      }
     },
@@ -5463,7 +4132,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 10px",
-     "n": 127,
+     "n": 238,
      "ex": [
       {
        "sel": "select#rxFltMer",
@@ -5486,31 +4155,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 127,
-      "768": 127,
-      "1280": 127,
-      "1920": 127
+      "375": 238,
+      "1280": 238
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
-       {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
-       {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       },
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "select#rxFltMer",
         "t": "Все мерчанты"
@@ -5545,23 +4194,75 @@
         "sel": "input#rxFltSf",
         "t": ""
        }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-text",
+     "sev": "FAIL",
+     "title": "цвет текста вне палитры",
+     "value": "#0000EE (ближайший navy-700 #334155, ΔE 19.3)",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 1,
+      "1280": 1
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
       ],
-      "1920": [
+      "1280": [
        {
-        "sel": "select#rxFltMer",
-        "t": "Все мерчанты"
-       },
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 139,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 139,
+      "1280": 139
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "select#rxFltStt",
-        "t": "Все статусы"
-       },
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
        {
-        "sel": "select#rxFltSort",
-        "t": "↓ новые"
-       },
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
        }
       ]
      }
@@ -5572,239 +4273,55 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 3px",
-     "n": 113,
+     "n": 224,
      "ex": [
       {
        "sel": "tr > td > span.rx-pill",
-       "t": "⚠️ Аванс"
-      },
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
+       "t": "✅ Закрыто"
       },
       {
        "sel": "tr > td > span.rx-pill",
        "t": "💰 Оплачено"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 113,
-      "768": 113,
-      "1280": 113,
-      "1920": 113
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       },
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-text",
-     "sev": "FAIL",
-     "title": "цвет текста вне палитры",
-     "value": "#1E40AF (ближайший navy-600 #475569, ΔE 12.9)",
-     "n": 11,
-     "ex": [
+      },
       {
        "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
+       "t": "⚠️ Аванс"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
+      "375": 224,
+      "1280": 224
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
+        "t": "✅ Закрыто"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
+        "t": "💰 Оплачено"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-bg",
-     "sev": "FAIL",
-     "title": "фон вне палитры",
-     "value": "#EFF6FF (ближайший navy-100 #F1F5F9, ΔE 2.3)",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
+        "t": "⚠️ Аванс"
        }
       ],
       "1280": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
+        "t": "✅ Закрыто"
+       },
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
+        "t": "💰 Оплачено"
+       },
        {
-        "sel": "div.container",
-        "t": ""
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 20px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
        }
       ]
      }
@@ -5826,17 +4343,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -5861,17 +4371,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -5906,9 +4409,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5917,19 +4418,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -5965,9 +4454,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5976,19 +4463,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -6014,9 +4489,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -6025,19 +4498,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -6071,18 +4532,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       }
-      ],
-      "768": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -6093,11 +4546,52 @@
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "FAIL",
+     "title": "эмодзи в кнопке/ссылке/табе/заголовке",
+     "value": "✅",
+     "n": 129,
+     "ex": [
+      {
+       "sel": "tr > td > a.num",
+       "t": "✅ CNV-0001"
+      },
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "✅ Закрыто"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 129,
+      "1280": 129
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > a.num",
+        "t": "✅ CNV-0001"
+       },
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "✅ Закрыто"
        }
       ]
      }
@@ -6109,106 +4603,8 @@
      "rule": "G5-emoji",
      "sev": "WARN",
      "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-     "value": "⚠",
-     "n": 87,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "⚠️ Аванс"
-      }
-     ],
-     "gr": 5,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 87,
-      "768": 87,
-      "1280": 87,
-      "1920": 87
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "⚠️ Аванс"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G5-emoji",
-     "sev": "WARN",
-     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-     "value": "📤",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 5,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 2,
-     "rule": "G5-emoji",
-     "sev": "WARN",
-     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
      "value": "💰",
-     "n": 15,
+     "n": 81,
      "ex": [
       {
        "sel": "tr > td > span.rx-pill",
@@ -6219,19 +4615,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 15,
-      "768": 15,
-      "1280": 15,
-      "1920": 15
+      "375": 81,
+      "1280": 81
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
-       }
-      ],
-      "768": [
        {
         "sel": "tr > td > span.rx-pill",
         "t": "💰 Оплачено"
@@ -6242,11 +4630,75 @@
         "sel": "tr > td > span.rx-pill",
         "t": "💰 Оплачено"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "⚠",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "⚠️ Аванс"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tr > td > span.rx-pill",
-        "t": "💰 Оплачено"
+        "t": "⚠️ Аванс"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "⚠️ Аванс"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📥",
+     "n": 11,
+     "ex": [
+      {
+       "sel": "tr > td > span.rx-pill",
+       "t": "📥 Обеспечено"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 11,
+      "1280": 11
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.rx-pill",
+        "t": "📥 Обеспечено"
        }
       ]
      }
@@ -6257,58 +4709,8 @@
    "id": 6,
    "title": "Цветные полосы слева, синие подсказки, оранжевый вне кнопки",
    "coverage": "partial",
-   "verdict": "FAIL",
-   "findings": [
-    {
-     "gate": 2,
-     "rule": "G6-blue",
-     "sev": "FAIL",
-     "title": "синий фон (синих плашек нет)",
-     "value": "#EFF6FF",
-     "n": 11,
-     "ex": [
-      {
-       "sel": "tr > td > span.rx-pill",
-       "t": "📤 В заявке"
-      }
-     ],
-     "gr": 6,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.rx-pill",
-        "t": "📤 В заявке"
-       }
-      ]
-     }
-    }
-   ],
+   "verdict": "PASS",
+   "findings": [],
    "warnings": []
   },
   "7": {
@@ -6352,9 +4754,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -6363,19 +4763,7 @@
         "t": "USDT от"
        }
       ],
-      "768": [
-       {
-        "sel": "input#rxFltSf",
-        "t": "USDT от"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#rxFltSf",
-        "t": "USDT от"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#rxFltSf",
         "t": "USDT от"
@@ -6401,9 +4789,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -6412,19 +4798,7 @@
         "t": "USDT до"
        }
       ],
-      "768": [
-       {
-        "sel": "input#rxFltSt",
-        "t": "USDT до"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#rxFltSt",
-        "t": "USDT до"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#rxFltSt",
         "t": "USDT до"
@@ -6440,80 +4814,6 @@
    "coverage": "partial",
    "verdict": "FAIL",
    "findings": [
-    {
-     "gate": 4,
-     "rule": "W-row-align",
-     "sev": "FAIL",
-     "title": "в ряду поля/кнопки разной высоты или смещены",
-     "value": "33px и 36px (Δверха 1px)",
-     "n": 2,
-     "ex": [
-      {
-       "sel": "input#rxFltSf",
-       "t": ""
-      },
-      {
-       "sel": "div.card > div > button.btn.btn-secondary",
-       "t": "Сброс"
-      },
-      {
-       "sel": "input#rxFltSt",
-       "t": ""
-      }
-     ],
-     "gr": 10,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
-      "1280": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#rxFltSf",
-        "t": ""
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       },
-       {
-        "sel": "input#rxFltSt",
-        "t": ""
-       }
-      ]
-     }
-    },
     {
      "gate": 4,
      "rule": "W-row-align",
@@ -6543,8 +4843,7 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "1280": [
@@ -6564,23 +4863,49 @@
         "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
         "t": "Запросы"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 4,
+     "rule": "W-row-align",
+     "sev": "FAIL",
+     "title": "в ряду поля/кнопки разной высоты или смещены",
+     "value": "33px и 36px (Δверха 1px)",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "input#rxFltSf",
+       "t": ""
+      },
+      {
+       "sel": "div.card > div > button.btn.btn-secondary",
+       "t": "Сброс"
+      },
+      {
+       "sel": "input#rxFltSt",
+       "t": ""
+      }
+     ],
+     "gr": 10,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 2
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-        "t": "Поступления"
+        "sel": "input#rxFltSf",
+        "t": ""
        },
        {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
+        "sel": "div.card > div > button.btn.btn-secondary",
+        "t": "Сброс"
        },
        {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Конвертация от брокеров"
-       },
-       {
-        "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-        "t": "Запросы"
+        "sel": "input#rxFltSt",
+        "t": ""
        }
       ]
      }
@@ -6604,7 +4929,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
-       "t": "113 сделок"
+       "t": "224 сделок"
       },
       {
        "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -6624,33 +4949,13 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -6668,25 +4973,7 @@
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "из TRON"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "в заявках + накоплено"
-       },
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "по известным"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.sub",
-        "t": "113 сделок"
+        "t": "224 сделок"
        },
        {
         "sel": "div#rxSummary > div.rx-card > div.sub",
@@ -6713,7 +5000,7 @@
      "ex": [
       {
        "sel": "div#rxSummary > div.rx-card > div.val.num",
-       "t": "35 249,91"
+       "t": "607 599,11"
       }
      ],
      "gr": 11,
@@ -6721,33 +5008,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ],
       "1280": [
        {
         "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#rxSummary > div.rx-card > div.val.num",
-        "t": "35 249,91"
+        "t": "607 599,11"
        }
       ]
      }
@@ -6758,105 +5031,67 @@
      "sev": "FAIL",
      "title": "контраст ниже 4.5:1",
      "value": "#16A34A на #FFFFFF = 3.30:1 (14px/400)",
-     "n": 79,
+     "n": 224,
      "ex": [
       {
        "sel": "tr > td.num > span",
-       "t": "$ 131,02"
+       "t": "$ 25,11"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 160,12"
+       "t": "$ 6,37"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 144,04"
+       "t": "$ 44,76"
       },
       {
        "sel": "tr > td.num > span",
-       "t": "$ 116,34"
+       "t": "$ 3,20"
       }
      ],
      "gr": 11,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 79,
-      "768": 79,
-      "1280": 79,
-      "1920": 79
+      "375": 224,
+      "1280": 224
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 144,04"
+        "t": "$ 44,76"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 116,34"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 144,04"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 116,34"
+        "t": "$ 3,20"
        }
       ],
       "1280": [
        {
         "sel": "tr > td.num > span",
-        "t": "$ 131,02"
+        "t": "$ 25,11"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 160,12"
+        "t": "$ 6,37"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 144,04"
+        "t": "$ 44,76"
        },
        {
         "sel": "tr > td.num > span",
-        "t": "$ 116,34"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 131,02"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 160,12"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 144,04"
-       },
-       {
-        "sel": "tr > td.num > span",
-        "t": "$ 116,34"
+        "t": "$ 3,20"
        }
       ]
      }
@@ -6870,7 +5105,393 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,89 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,89"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,89"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,71 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,71"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,71"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "241,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 241,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 241,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "240,13 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 240,13"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 240,13"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "243,94 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 243,94"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 243,94"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "0,00 $ × 7",
+     "n": 7,
+     "ex": [
+      {
+       "sel": "tr > td.num > span",
+       "t": "$ 0,00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 7,
+      "1280": 7
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td.num > span",
+        "t": "$ 0,00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "679,81 $ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 679,81"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 679,81"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "412,24 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 412,24"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 412,24"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "813,08 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 813,08"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 813,08"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "677,56 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 677,56"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 677,56"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "676,64 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#rx-deals-body > tr > td.num",
+       "t": "$ 676,64"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#rx-deals-body > tr > td.num",
+        "t": "$ 676,64"
+       }
+      ]
+     }
+    }
+   ]
   },
   "13": {
    "id": 13,
@@ -6940,9 +5561,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -6955,27 +5574,7 @@
         "t": "Сброс"
        }
       ],
-      "768": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#rxSyncBtn",
-        "t": "🔄 Обновить из бота"
-       },
-       {
-        "sel": "div.card > div > button.btn.btn-secondary",
-        "t": "Сброс"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#rxSyncBtn",
         "t": "🔄 Обновить из бота"
@@ -7007,9 +5606,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7018,19 +5615,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -7056,9 +5641,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7067,19 +5650,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -7105,9 +5676,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7116,19 +5685,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -7154,9 +5711,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7165,19 +5720,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -7219,30 +5762,10 @@
    "note": null,
    "by_width": {
     "375": 9,
-    "768": 9,
-    "1280": 9,
-    "1920": 9
+    "1280": 9
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "thead > tr > th",
-      "t": "WL"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Дата"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Мерчант"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Сумма ₽"
-     }
-    ],
-    "768": [
      {
       "sel": "thead > tr > th",
       "t": "WL"
@@ -7277,64 +5800,26 @@
       "sel": "thead > tr > th",
       "t": "Сумма ₽"
      }
-    ],
-    "1920": [
-     {
-      "sel": "thead > tr > th",
-      "t": "WL"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Дата"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Мерчант"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Сумма ₽"
-     }
     ]
    }
   }
  ],
  "stats": {
   "375": {
-   "elements": 1756,
-   "groups": 67,
-   "texts": 1152,
-   "contrast_checked": 1157,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 14
-  },
-  "768": {
-   "elements": 1754,
-   "groups": 68,
-   "texts": 1147,
-   "contrast_checked": 1152,
+   "elements": 3309,
+   "groups": 69,
+   "texts": 2297,
+   "contrast_checked": 2302,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
    "controls": 14
   },
   "1280": {
-   "elements": 1759,
-   "groups": 64,
-   "texts": 1152,
-   "contrast_checked": 1157,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 14
-  },
-  "1920": {
-   "elements": 1759,
-   "groups": 64,
-   "texts": 1152,
-   "contrast_checked": 1157,
+   "elements": 3312,
+   "groups": 73,
+   "texts": 2297,
+   "contrast_checked": 2302,
    "contrast_unknown": 0,
    "primaries": 0,
    "addresses": 0,
@@ -7363,106 +5848,8 @@
    "rule": "G5-emoji",
    "sev": "WARN",
    "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-   "value": "⚠",
-   "n": 87,
-   "ex": [
-    {
-     "sel": "tr > td > span.rx-pill",
-     "t": "⚠️ Аванс"
-    }
-   ],
-   "gr": 5,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 87,
-    "768": 87,
-    "1280": 87,
-    "1920": 87
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "⚠️ Аванс"
-     }
-    ],
-    "768": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "⚠️ Аванс"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "⚠️ Аванс"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "⚠️ Аванс"
-     }
-    ]
-   }
-  },
-  {
-   "gate": 2,
-   "rule": "G5-emoji",
-   "sev": "WARN",
-   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
-   "value": "📤",
-   "n": 11,
-   "ex": [
-    {
-     "sel": "tr > td > span.rx-pill",
-     "t": "📤 В заявке"
-    }
-   ],
-   "gr": 5,
-   "extra": null,
-   "note": null,
-   "by_width": {
-    "375": 11,
-    "768": 11,
-    "1280": 11,
-    "1920": 11
-   },
-   "ex_by_width": {
-    "375": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "📤 В заявке"
-     }
-    ],
-    "768": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "📤 В заявке"
-     }
-    ],
-    "1280": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "📤 В заявке"
-     }
-    ],
-    "1920": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "📤 В заявке"
-     }
-    ]
-   }
-  },
-  {
-   "gate": 2,
-   "rule": "G5-emoji",
-   "sev": "WARN",
-   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
    "value": "💰",
-   "n": 15,
+   "n": 81,
    "ex": [
     {
      "sel": "tr > td > span.rx-pill",
@@ -7473,19 +5860,11 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 15,
-    "768": 15,
-    "1280": 15,
-    "1920": 15
+    "375": 81,
+    "1280": 81
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "tr > td > span.rx-pill",
-      "t": "💰 Оплачено"
-     }
-    ],
-    "768": [
      {
       "sel": "tr > td > span.rx-pill",
       "t": "💰 Оплачено"
@@ -7496,11 +5875,75 @@
       "sel": "tr > td > span.rx-pill",
       "t": "💰 Оплачено"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "⚠",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tr > td > span.rx-pill",
+     "t": "⚠️ Аванс"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "1280": 4
+   },
+   "ex_by_width": {
+    "375": [
      {
       "sel": "tr > td > span.rx-pill",
-      "t": "💰 Оплачено"
+      "t": "⚠️ Аванс"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "⚠️ Аванс"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📥",
+   "n": 11,
+   "ex": [
+    {
+     "sel": "tr > td > span.rx-pill",
+     "t": "📥 Обеспечено"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 11,
+    "1280": 11
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "📥 Обеспечено"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td > span.rx-pill",
+      "t": "📥 Обеспечено"
      }
     ]
    }
@@ -7523,9 +5966,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -7534,19 +5975,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -7572,9 +6001,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -7583,19 +6010,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -7621,9 +6036,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -7632,19 +6045,7 @@
       "t": "USDT от"
      }
     ],
-    "768": [
-     {
-      "sel": "input#rxFltSf",
-      "t": "USDT от"
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#rxFltSf",
-      "t": "USDT от"
-     }
-    ],
-    "1920": [
      {
       "sel": "input#rxFltSf",
       "t": "USDT от"
@@ -7670,9 +6071,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -7681,19 +6080,7 @@
       "t": "USDT до"
      }
     ],
-    "768": [
-     {
-      "sel": "input#rxFltSt",
-      "t": "USDT до"
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#rxFltSt",
-      "t": "USDT до"
-     }
-    ],
-    "1920": [
      {
       "sel": "input#rxFltSt",
       "t": "USDT до"
@@ -7731,9 +6118,7 @@
    "note": null,
    "by_width": {
     "375": 5,
-    "768": 5,
-    "1280": 5,
-    "1920": 5
+    "1280": 5
    },
    "ex_by_width": {
     "375": [
@@ -7754,43 +6139,7 @@
       "t": "Мерчанты"
      }
     ],
-    "768": [
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-      "t": "Поступления"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Конвертация от брокеров"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Запросы"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Мерчанты"
-     }
-    ],
     "1280": [
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
-      "t": "Поступления"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Конвертация от брокеров"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Запросы"
-     },
-     {
-      "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab",
-      "t": "Мерчанты"
-     }
-    ],
-    "1920": [
      {
       "sel": "section#exchangers > div.rx-subtabs > button.rx-subtab.active",
       "t": "Поступления"
@@ -7828,9 +6177,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -7839,19 +6186,7 @@
       "t": "🔄 Обновить из бота"
      }
     ],
-    "768": [
-     {
-      "sel": "button#rxSyncBtn",
-      "t": "🔄 Обновить из бота"
-     }
-    ],
     "1280": [
-     {
-      "sel": "button#rxSyncBtn",
-      "t": "🔄 Обновить из бота"
-     }
-    ],
-    "1920": [
      {
       "sel": "button#rxSyncBtn",
       "t": "🔄 Обновить из бота"
@@ -7885,9 +6220,7 @@
    "note": null,
    "by_width": {
     "375": 3,
-    "768": 3,
-    "1280": 3,
-    "1920": 3
+    "1280": 3
    },
    "ex_by_width": {
     "375": [
@@ -7904,35 +6237,7 @@
       "t": "↓ новые\n↑ старые"
      }
     ],
-    "768": [
-     {
-      "sel": "select#rxFltMer",
-      "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
-     },
-     {
-      "sel": "select#rxFltStt",
-      "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
-     },
-     {
-      "sel": "select#rxFltSort",
-      "t": "↓ новые\n↑ старые"
-     }
-    ],
     "1280": [
-     {
-      "sel": "select#rxFltMer",
-      "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
-     },
-     {
-      "sel": "select#rxFltStt",
-      "t": "Все статусы\n💰 Оплачено\n📤 В заявке\n✅ Закрыто\n⚠️ Аванс"
-     },
-     {
-      "sel": "select#rxFltSort",
-      "t": "↓ новые\n↑ старые"
-     }
-    ],
-    "1920": [
      {
       "sel": "select#rxFltMer",
       "t": "Все мерчанты\n1000\nFiatEX\nFour exchange\nRUBLEV\ngrusha\nМихаил "
@@ -7970,9 +6275,7 @@
    "note": null,
    "by_width": {
     "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "1280": 2
    },
    "ex_by_width": {
     "375": [
@@ -7985,27 +6288,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": "input#rxFltSf",
-      "t": ""
-     },
-     {
-      "sel": "input#rxFltSt",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#rxFltSf",
-      "t": ""
-     },
-     {
-      "sel": "input#rxFltSt",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": "input#rxFltSf",
       "t": ""
@@ -8035,18 +6318,10 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "div.card > div > button.btn.btn-secondary",
-      "t": "Сброс"
-     }
-    ],
-    "768": [
      {
       "sel": "div.card > div > button.btn.btn-secondary",
       "t": "Сброс"
@@ -8057,11 +6332,390 @@
       "sel": "div.card > div > button.btn.btn-secondary",
       "t": "Сброс"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,89 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,89"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
      {
-      "sel": "div.card > div > button.btn.btn-secondary",
-      "t": "Сброс"
+      "sel": "tr > td.num > span",
+      "t": "$ 241,89"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,89"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,71 $ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,71"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,71"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,71"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "241,56 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 241,56"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,56"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 241,56"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "240,13 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 240,13"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 240,13"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 240,13"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "243,94 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 243,94"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 243,94"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 243,94"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "0,00 $ × 7",
+   "n": 7,
+   "ex": [
+    {
+     "sel": "tr > td.num > span",
+     "t": "$ 0,00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 7,
+    "1280": 7
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 0,00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tr > td.num > span",
+      "t": "$ 0,00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "679,81 $ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 679,81"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 679,81"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 679,81"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "412,24 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 412,24"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 412,24"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 412,24"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "813,08 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 813,08"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 813,08"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 813,08"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "677,56 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 677,56"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 677,56"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 677,56"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "676,64 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#rx-deals-body > tr > td.num",
+     "t": "$ 676,64"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 676,64"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#rx-deals-body > tr > td.num",
+      "t": "$ 676,64"
      }
     ]
    }
@@ -8084,9 +6738,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -8095,19 +6747,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -8133,9 +6773,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -8144,19 +6782,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -8182,9 +6808,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -8193,19 +6817,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -8231,9 +6843,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -8242,19 +6852,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

@@ -1,9 +1,9 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/crm?section=kyc",
+ "url": "http://127.0.0.1:59109/crm?section=kyc",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T20:34:42",
+ "generated": "2026-10-15T00:13:06",
  "widths_requested": [
   375,
   768,
@@ -81,6 +81,55 @@
    "verdict": "PASS",
    "findings": [],
    "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄🤳🎥🎬",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ]
+     }
+    },
     {
      "gate": 2,
      "rule": "G4-icononly",
@@ -587,7 +636,57 @@
    "coverage": "partial",
    "verdict": "PASS",
    "findings": [],
-   "warnings": []
+   "warnings": [
+    {
+     "gate": 2,
+     "rule": "G5-emoji",
+     "sev": "WARN",
+     "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+     "value": "📄🤳🎥🎬",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "div > div > div",
+       "t": "📄🤳🎥🎬 документы сохранены"
+      }
+     ],
+     "gr": 5,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "768": 3,
+      "1280": 3,
+      "1920": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "768": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ],
+      "1920": [
+       {
+        "sel": "div > div > div",
+        "t": "📄🤳🎥🎬 документы сохранены"
+       }
+      ]
+     }
+    }
+   ]
   },
   "6": {
    "id": 6,
@@ -894,44 +993,44 @@
  "extras": [],
  "stats": {
   "375": {
-   "elements": 59,
-   "groups": 29,
-   "texts": 33,
-   "contrast_checked": 33,
+   "elements": 114,
+   "groups": 47,
+   "texts": 67,
+   "contrast_checked": 67,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 10
   },
   "768": {
-   "elements": 57,
-   "groups": 30,
-   "texts": 28,
-   "contrast_checked": 28,
+   "elements": 112,
+   "groups": 41,
+   "texts": 62,
+   "contrast_checked": 62,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 10
   },
   "1280": {
-   "elements": 62,
-   "groups": 32,
-   "texts": 33,
-   "contrast_checked": 33,
+   "elements": 117,
+   "groups": 43,
+   "texts": 67,
+   "contrast_checked": 67,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 10
   },
   "1920": {
-   "elements": 62,
-   "groups": 32,
-   "texts": 33,
-   "contrast_checked": 33,
+   "elements": 117,
+   "groups": 43,
+   "texts": 67,
+   "contrast_checked": 67,
    "contrast_unknown": 0,
    "primaries": 1,
    "addresses": 0,
-   "controls": 3
+   "controls": 10
   }
  },
  "limits": [],
@@ -951,6 +1050,55 @@
   "п.18 Состояния, анимации transform/opacity, ошибки консоли"
  ],
  "all_warnings": [
+  {
+   "gate": 2,
+   "rule": "G5-emoji",
+   "sev": "WARN",
+   "title": "эмодзи в тексте (если это не контент пользователя — заменить иконкой)",
+   "value": "📄🤳🎥🎬",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "div > div > div",
+     "t": "📄🤳🎥🎬 документы сохранены"
+    }
+   ],
+   "gr": 5,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "768": 3,
+    "1280": 3,
+    "1920": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ],
+    "768": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ],
+    "1920": [
+     {
+      "sel": "div > div > div",
+      "t": "📄🤳🎥🎬 документы сохранены"
+     }
+    ]
+   }
+  },
   {
    "gate": 2,
    "rule": "G4-icononly",

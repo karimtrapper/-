@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59104/",
+ "url": "http://127.0.0.1:59110/",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:07:13",
+ "generated": "2026-10-14T21:19:43",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -218,9 +186,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -237,35 +203,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.logo",
-        "t": ""
-       },
-       {
-        "sel": "div#commissionLevelSection > div.discount-header > label.checkbox-label",
-        "t": ""
-       },
-       {
-        "sel": "div.calculator-settings > div.partner-section > label.checkbox-label",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.logo",
-        "t": ""
-       },
-       {
-        "sel": "div#commissionLevelSection > div.discount-header > label.checkbox-label",
-        "t": ""
-       },
-       {
-        "sel": "div.calculator-settings > div.partner-section > label.checkbox-label",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.logo",
         "t": ""
@@ -299,9 +237,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -310,19 +246,7 @@
         "t": "🧮"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > span.logo-icon",
         "t": "🧮"
@@ -384,9 +308,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -395,19 +317,7 @@
         "t": "Калькулятор обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -433,9 +343,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -444,19 +352,7 @@
         "t": "Калькулятор обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -494,9 +390,7 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -517,43 +411,7 @@
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.subtitle",
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -595,7 +453,7 @@
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:35"
+       "t": "21:19:25"
       }
      ],
      "gr": 1,
@@ -603,9 +461,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -623,25 +479,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:35"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:06:44"
+        "t": "21:19:25"
        }
       ],
       "1280": [
@@ -659,25 +497,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:54"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:07:08"
+        "t": "21:19:36"
        }
       ]
      }
@@ -704,9 +524,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -719,27 +537,7 @@
         "t": "Метод обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.switcher-caption",
         "t": "Тип сделки"
@@ -781,9 +579,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -804,43 +600,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
         "t": "RUB → THB"
@@ -882,9 +642,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -897,27 +655,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -947,9 +685,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -958,19 +694,7 @@
         "t": "💱 Обмен"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -1008,9 +732,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -1031,43 +753,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#refreshBtn",
-        "t": "Обновить"
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#refreshBtn",
-        "t": "Обновить"
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -1109,9 +795,7 @@
      "note": null,
      "by_width": {
       "375": 8,
-      "768": 8,
-      "1280": 8,
-      "1920": 8
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -1124,27 +808,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -1182,9 +846,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -1201,35 +863,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -1271,9 +905,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -1290,35 +922,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -1364,9 +968,7 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -1387,43 +989,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       },
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       },
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -1461,9 +1027,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1472,19 +1036,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rateSourceToggle",
         "t": ""
@@ -1510,9 +1062,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1521,19 +1071,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rateSourceToggle",
         "t": ""
@@ -1563,9 +1101,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -1578,27 +1114,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBitazza",
         "t": "Bitazza"
@@ -1632,9 +1148,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1647,19 +1161,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.scenarios-grid",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.scenarios-grid",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.scenarios-grid",
         "t": ""
@@ -1685,7 +1187,7 @@
       },
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       },
       {
        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
@@ -1697,9 +1199,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1713,29 +1213,17 @@
        },
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        },
        {
         "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -1750,7 +1238,7 @@
      "ex": [
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       }
      ],
      "gr": 2,
@@ -1758,33 +1246,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -1807,9 +1281,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1818,19 +1290,7 @@
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
         "t": "Примерный курс"
@@ -1868,9 +1328,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -1883,43 +1341,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item",
-        "t": ""
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item",
-        "t": ""
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard > div.rates-grid > div.rate-item",
         "t": ""
@@ -1985,9 +1407,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1996,19 +1416,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -2034,9 +1442,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2045,19 +1451,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
         "t": ""
@@ -2083,9 +1477,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2094,19 +1486,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
         "t": ""
@@ -2132,18 +1512,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.input-section > div.calculator-settings > div.partner-section",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "div.input-section > div.calculator-settings > div.partner-section",
         "t": ""
@@ -2154,10 +1526,32 @@
         "sel": "div.input-section > div.calculator-settings > div.partner-section",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.input-section > div.calculator-settings > div.partner-section",
+        "sel": "div.container",
         "t": ""
        }
       ]
@@ -2184,32 +1578,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -2246,40 +1618,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#usdtThbLabel",
         "t": "USDT-THB (Bitazza)"
@@ -2305,7 +1647,7 @@
      "ex": [
       {
        "sel": "div#usdtThbRate",
-       "t": "33.60 ฿"
+       "t": "33.59 ฿"
       },
       {
        "sel": "div#rubUsdtRate",
@@ -2320,43 +1662,13 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
+        "t": "33.59 ฿"
        },
        {
         "sel": "div#rubUsdtRate",
@@ -2386,61 +1698,12 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1280": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 32px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
        {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.container",
+        "sel": "input#amount",
         "t": ""
        }
       ]
@@ -2455,9 +1718,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -2492,15 +1755,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -2516,15 +1775,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -2549,9 +1804,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2564,27 +1817,7 @@
         "t": "Метод обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.switcher-caption",
         "t": "Тип сделки"
@@ -2626,9 +1859,7 @@
      "note": null,
      "by_width": {
       "375": 16,
-      "768": 16,
-      "1280": 16,
-      "1920": 16
+      "1280": 16
      },
      "ex_by_width": {
       "375": [
@@ -2649,43 +1880,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -2727,9 +1922,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2742,27 +1935,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBitazza",
         "t": "Bitazza"
@@ -2792,9 +1965,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2803,19 +1974,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.info-card > div.info-header",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.info-card > div.info-header",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.info-card > div.info-header",
         "t": ""
@@ -2841,9 +2000,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2852,19 +2009,7 @@
         "t": "💱 Обмен"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -2890,9 +2035,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2901,19 +2044,7 @@
         "t": "🏠 Фрихолд"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "🏠 Фрихолд"
@@ -2939,9 +2070,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2950,19 +2079,7 @@
         "t": "📜 Лизхолд"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "📜 Лизхолд"
@@ -2988,9 +2105,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2999,19 +2114,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "✏️ Другое"
@@ -3037,9 +2140,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3048,19 +2149,7 @@
         "t": "🏦 СБП"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -3086,9 +2175,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3097,19 +2184,7 @@
         "t": "💼 Брокер"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "💼 Брокер"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "💼 Брокер"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn",
         "t": "💼 Брокер"
@@ -3135,9 +2210,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3146,19 +2219,7 @@
         "t": "🎨 Кастом"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "🎨 Кастом"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "🎨 Кастом"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn",
         "t": "🎨 Кастом"
@@ -3184,9 +2245,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3195,19 +2254,7 @@
         "t": "💰"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
-        "t": "💰"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
-        "t": "💰"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
         "t": "💰"
@@ -3233,9 +2280,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3244,19 +2289,7 @@
         "t": "💸"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💸"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💸"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💸"
@@ -3282,9 +2315,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3293,19 +2324,7 @@
         "t": "💵"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💵"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💵"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💵"
@@ -3331,9 +2350,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3342,19 +2359,7 @@
         "t": "💎"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💎"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💎"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💎"
@@ -3380,9 +2385,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3391,19 +2394,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -3429,9 +2420,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3440,19 +2429,7 @@
         "t": "ℹ️ Информация"
        }
       ],
-      "768": [
-       {
-        "sel": "div.info-card > div.info-header > span",
-        "t": "ℹ️ Информация"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.info-card > div.info-header > span",
-        "t": "ℹ️ Информация"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.info-card > div.info-header > span",
         "t": "ℹ️ Информация"
@@ -3472,14 +2449,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -3502,9 +2475,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3513,19 +2484,7 @@
         "t": "🧮"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > span.logo-icon",
         "t": "🧮"
@@ -3551,9 +2510,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3562,19 +2519,7 @@
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.subtitle",
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -3600,9 +2545,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3611,19 +2554,7 @@
         "t": "📊 Актуальные курсы"
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard > div.rates-header > span.rates-title",
-        "t": "📊 Актуальные курсы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard > div.rates-header > span.rates-title",
-        "t": "📊 Актуальные курсы"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard > div.rates-header > span.rates-title",
         "t": "📊 Актуальные курсы"
@@ -3649,9 +2580,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3660,19 +2589,7 @@
         "t": "🎁 Сделать скидку (изменить прибыль)"
        }
       ],
-      "768": [
-       {
-        "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-        "t": "🎁 Сделать скидку (изменить прибыль)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-        "t": "🎁 Сделать скидку (изменить прибыль)"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
         "t": "🎁 Сделать скидку (изменить прибыль)"
@@ -3698,9 +2615,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3709,19 +2624,7 @@
         "t": "👥 Есть партнер?"
        }
       ],
-      "768": [
-       {
-        "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-        "t": "👥 Есть партнер?"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-        "t": "👥 Есть партнер?"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
         "t": "👥 Есть партнер?"
@@ -3747,9 +2650,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3758,19 +2659,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -3796,9 +2685,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3807,19 +2694,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -3845,9 +2720,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3856,19 +2729,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".amount-input",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".amount-input",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".amount-input",
         "t": ""
@@ -3885,9 +2746,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -3913,9 +2774,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -3928,27 +2787,7 @@
         "t": "Метод обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.switcher-caption",
         "t": "Тип сделки"
@@ -4006,9 +2845,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4017,19 +2854,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBinance",
         "t": "Binance"
@@ -4083,7 +2908,7 @@
      "ex": [
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       }
      ],
      "gr": 11,
@@ -4091,33 +2916,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -4136,15 +2947,11 @@
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:35"
+       "t": "21:19:25"
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:44"
-      },
-      {
-       "sel": "span#updateTime",
-       "t": "19:06:54"
+       "t": "21:19:36"
       }
      ],
      "gr": 11,
@@ -4152,9 +2959,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -4164,17 +2969,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:35"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:06:44"
+        "t": "21:19:25"
        }
       ],
       "1280": [
@@ -4184,17 +2979,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:54"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:07:08"
+        "t": "21:19:36"
        }
       ]
      }
@@ -4245,9 +3030,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4256,19 +3039,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -4293,24 +3064,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -4339,32 +3096,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#usdtThbLabel",
         "t": "USDT-THB (Bitazza)"
@@ -4393,24 +3128,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
       "1280": [
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
-      "1920": [
        {
         "sel": "span#inputCurrency",
         "t": "₽"
@@ -4427,11 +3148,11 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [
     {
@@ -4456,9 +3177,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -4471,27 +3190,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBitazza",
         "t": "Bitazza"
@@ -4521,9 +3220,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4532,19 +3229,7 @@
         "t": "↻\nОбновить"
        }
       ],
-      "768": [
-       {
-        "sel": "button#refreshBtn",
-        "t": "↻\nОбновить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#refreshBtn",
-        "t": "↻\nОбновить"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#refreshBtn",
         "t": "↻\nОбновить"
@@ -4560,11 +3245,11 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [],
    "scope": "авто: внутренние слова, повтор сумм; глагол/фразы из переписки — глазами"
@@ -4574,9 +3259,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -4627,9 +3312,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -4642,27 +3325,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -4692,9 +3355,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4703,19 +3364,7 @@
         "t": "🧮"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > span.logo-icon",
         "t": "🧮"
@@ -4777,9 +3426,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4788,19 +3435,7 @@
         "t": "Калькулятор обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -4838,9 +3473,7 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -4861,43 +3494,7 @@
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.subtitle",
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -4939,7 +3536,7 @@
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:35"
+       "t": "21:19:25"
       }
      ],
      "gr": 1,
@@ -4947,9 +3544,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -4967,25 +3562,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:35"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:06:44"
+        "t": "21:19:25"
        }
       ],
       "1280": [
@@ -5003,25 +3580,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:54"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:07:08"
+        "t": "21:19:36"
        }
       ]
      }
@@ -5056,9 +3615,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -5079,43 +3636,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
         "t": "RUB → THB"
@@ -5153,7 +3674,7 @@
       },
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       },
       {
        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
@@ -5165,9 +3686,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5181,29 +3700,17 @@
        },
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        },
        {
         "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -5239,15 +3746,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -5263,15 +3766,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -5295,32 +3794,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -5357,40 +3834,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#usdtThbLabel",
         "t": "USDT-THB (Bitazza)"
@@ -5416,7 +3863,7 @@
      "ex": [
       {
        "sel": "div#usdtThbRate",
-       "t": "33.60 ฿"
+       "t": "33.59 ฿"
       },
       {
        "sel": "div#rubUsdtRate",
@@ -5431,43 +3878,13 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
+        "t": "33.59 ฿"
        },
        {
         "sel": "div#rubUsdtRate",
@@ -5492,14 +3909,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -5533,9 +3946,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5544,19 +3955,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -5586,9 +3985,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -5601,27 +3998,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -5659,9 +4036,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -5678,35 +4053,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.logo",
-        "t": ""
-       },
-       {
-        "sel": "div#commissionLevelSection > div.discount-header > label.checkbox-label",
-        "t": ""
-       },
-       {
-        "sel": "div.calculator-settings > div.partner-section > label.checkbox-label",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.logo",
-        "t": ""
-       },
-       {
-        "sel": "div#commissionLevelSection > div.discount-header > label.checkbox-label",
-        "t": ""
-       },
-       {
-        "sel": "div.calculator-settings > div.partner-section > label.checkbox-label",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.logo",
         "t": ""
@@ -5740,9 +4087,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5751,19 +4096,7 @@
         "t": "🧮"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > span.logo-icon",
         "t": "🧮"
@@ -5825,9 +4158,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5836,19 +4167,7 @@
         "t": "Калькулятор обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -5874,9 +4193,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -5885,19 +4202,7 @@
         "t": "Калькулятор обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -5935,9 +4240,7 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -5958,43 +4261,7 @@
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       },
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.subtitle",
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -6036,7 +4303,7 @@
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:35"
+       "t": "21:19:25"
       }
      ],
      "gr": 1,
@@ -6044,9 +4311,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -6064,25 +4329,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:35"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:06:44"
+        "t": "21:19:25"
        }
       ],
       "1280": [
@@ -6100,25 +4347,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:54"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       },
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:07:08"
+        "t": "21:19:36"
        }
       ]
      }
@@ -6145,9 +4374,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -6160,27 +4387,7 @@
         "t": "Метод обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.switcher-caption",
         "t": "Тип сделки"
@@ -6222,9 +4429,7 @@
      "note": null,
      "by_width": {
       "375": 10,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "1280": 6
      },
      "ex_by_width": {
       "375": [
@@ -6245,43 +4450,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
-        "t": "RUB → THB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "THB ← RUB"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "RUB → USDT"
-       },
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > div.scenario-title",
-        "t": "USDT ← RUB"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn.active > div.scenario-title",
         "t": "RUB → THB"
@@ -6323,9 +4492,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -6338,27 +4505,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -6388,9 +4535,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -6399,19 +4544,7 @@
         "t": "💱 Обмен"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -6449,9 +4582,7 @@
      "note": null,
      "by_width": {
       "375": 5,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -6472,43 +4603,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#refreshBtn",
-        "t": "Обновить"
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#refreshBtn",
-        "t": "Обновить"
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -6550,9 +4645,7 @@
      "note": null,
      "by_width": {
       "375": 8,
-      "768": 8,
-      "1280": 8,
-      "1920": 8
+      "1280": 8
      },
      "ex_by_width": {
       "375": [
@@ -6565,27 +4658,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -6623,9 +4696,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -6642,35 +4713,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -6712,9 +4755,7 @@
      "note": null,
      "by_width": {
       "375": 3,
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
@@ -6731,35 +4772,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard",
-        "t": ""
-       },
-       {
-        "sel": "div#exchangeCard > div.info-card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -6805,9 +4818,7 @@
      "note": null,
      "by_width": {
       "375": 6,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -6828,43 +4839,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       },
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard",
-        "t": ""
-       },
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       },
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard",
         "t": ""
@@ -6902,9 +4877,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -6913,19 +4886,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rateSourceToggle",
         "t": ""
@@ -6951,9 +4912,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -6962,19 +4921,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#rateSourceToggle",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#rateSourceToggle",
         "t": ""
@@ -7004,9 +4951,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -7019,27 +4964,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBitazza",
         "t": "Bitazza"
@@ -7073,9 +4998,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7088,19 +5011,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.scenarios-grid",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.scenarios-grid",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.scenarios-grid",
         "t": ""
@@ -7126,7 +5037,7 @@
       },
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       },
       {
        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
@@ -7138,9 +5049,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7154,29 +5063,17 @@
        },
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        },
        {
         "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -7191,7 +5088,7 @@
      "ex": [
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       }
      ],
      "gr": 2,
@@ -7199,33 +5096,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -7248,9 +5131,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7259,19 +5140,7 @@
         "t": "Примерный курс"
        }
       ],
-      "768": [
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
         "t": "Примерный курс"
@@ -7309,9 +5178,7 @@
      "note": null,
      "by_width": {
       "375": 4,
-      "768": 7,
-      "1280": 7,
-      "1920": 7
+      "1280": 7
      },
      "ex_by_width": {
       "375": [
@@ -7324,43 +5191,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item",
-        "t": ""
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item",
-        "t": ""
-       },
-       {
-        "sel": "div#ratesCard > div.rates-grid > div.rate-item.highlight",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn.active",
-        "t": ""
-       },
-       {
-        "sel": "div.container > div.scenarios-grid > button.scenario-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard > div.rates-grid > div.rate-item",
         "t": ""
@@ -7426,9 +5257,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7437,19 +5266,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -7475,9 +5292,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7486,19 +5301,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
         "t": ""
@@ -7524,9 +5327,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -7535,19 +5336,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.input-section > div.calculator-settings",
         "t": ""
@@ -7573,18 +5362,10 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "div.input-section > div.calculator-settings > div.partner-section",
-        "t": ""
-       }
-      ],
-      "768": [
        {
         "sel": "div.input-section > div.calculator-settings > div.partner-section",
         "t": ""
@@ -7595,10 +5376,32 @@
         "sel": "div.input-section > div.calculator-settings > div.partner-section",
         "t": ""
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-spacing",
+     "sev": "FAIL",
+     "title": "отступ вне шкалы 4/8/12/16/24",
+     "value": "padding 32px",
+     "n": 1,
+     "ex": [
+      {
+       "sel": "div.container",
+       "t": ""
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "1280": 1
+     },
+     "ex_by_width": {
+      "1280": [
        {
-        "sel": "div.input-section > div.calculator-settings > div.partner-section",
+        "sel": "div.container",
         "t": ""
        }
       ]
@@ -7625,32 +5428,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > h1",
-        "t": "Калькулятор обмена"
-       },
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > h1",
         "t": "Калькулятор обмена"
@@ -7687,40 +5468,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       },
-       {
-        "sel": "div.rates-grid > div.rate-item.highlight > div.rate-label",
-        "t": "Примерный курс"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#usdtThbLabel",
         "t": "USDT-THB (Bitazza)"
@@ -7746,7 +5497,7 @@
      "ex": [
       {
        "sel": "div#usdtThbRate",
-       "t": "33.60 ฿"
+       "t": "33.59 ฿"
       },
       {
        "sel": "div#rubUsdtRate",
@@ -7761,43 +5512,13 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 3,
-      "1280": 3,
-      "1920": 3
+      "1280": 3
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
       "1280": [
        {
         "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
-       },
-       {
-        "sel": "div#rubUsdtRate",
-        "t": "87.2500 ₽"
-       },
-       {
-        "sel": "div#estimatedRate",
-        "t": "~2.59 ₽/฿"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbRate",
-        "t": "33.60 ฿"
+        "t": "33.59 ฿"
        },
        {
         "sel": "div#rubUsdtRate",
@@ -7827,61 +5548,12 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "768": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1280": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "input#amount",
-        "t": ""
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-spacing",
-     "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 32px",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "div.container",
-       "t": ""
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
        {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div.container",
+        "sel": "input#amount",
         "t": ""
        }
       ]
@@ -7918,9 +5590,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -7933,27 +5603,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBitazza",
-        "t": "Bitazza"
-       },
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBitazza",
         "t": "Bitazza"
@@ -7993,9 +5643,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8004,19 +5652,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -8042,9 +5678,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8053,19 +5687,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -8099,9 +5721,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8110,19 +5730,7 @@
         "t": "💱 Обмен"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -8148,9 +5756,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8159,19 +5765,7 @@
         "t": "🏠 Фрихолд"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "🏠 Фрихолд"
@@ -8197,9 +5791,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8208,19 +5800,7 @@
         "t": "📜 Лизхолд"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "📜 Лизхолд"
@@ -8246,9 +5826,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8257,19 +5835,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
         "t": "✏️ Другое"
@@ -8295,9 +5861,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8306,19 +5870,7 @@
         "t": "🏦 СБП"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn.active",
-        "t": "🏦 СБП"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn.active",
         "t": "🏦 СБП"
@@ -8344,9 +5896,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8355,19 +5905,7 @@
         "t": "💼 Брокер"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "💼 Брокер"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "💼 Брокер"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn",
         "t": "💼 Брокер"
@@ -8393,9 +5931,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8404,19 +5940,7 @@
         "t": "🎨 Кастом"
        }
       ],
-      "768": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "🎨 Кастом"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#methodSwitcher > button.method-btn",
-        "t": "🎨 Кастом"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#methodSwitcher > button.method-btn",
         "t": "🎨 Кастом"
@@ -8442,9 +5966,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8453,19 +5975,7 @@
         "t": "💰"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
-        "t": "💰"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
-        "t": "💰"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn.active > span.scenario-icon",
         "t": "💰"
@@ -8491,9 +6001,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8502,19 +6010,7 @@
         "t": "💸"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💸"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💸"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💸"
@@ -8540,9 +6036,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8551,19 +6045,7 @@
         "t": "💵"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💵"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💵"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💵"
@@ -8589,9 +6071,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8600,19 +6080,7 @@
         "t": "💎"
        }
       ],
-      "768": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💎"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
-        "t": "💎"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.scenarios-grid > button.scenario-btn > span.scenario-icon",
         "t": "💎"
@@ -8638,9 +6106,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8649,19 +6115,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -8687,9 +6141,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8698,19 +6150,7 @@
         "t": "ℹ️ Информация"
        }
       ],
-      "768": [
-       {
-        "sel": "div.info-card > div.info-header > span",
-        "t": "ℹ️ Информация"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.info-card > div.info-header > span",
-        "t": "ℹ️ Информация"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.info-card > div.info-header > span",
         "t": "ℹ️ Информация"
@@ -8738,9 +6178,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8749,19 +6187,7 @@
         "t": "🧮"
        }
       ],
-      "768": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
       "1280": [
-       {
-        "sel": "header.header > div.logo > span.logo-icon",
-        "t": "🧮"
-       }
-      ],
-      "1920": [
        {
         "sel": "header.header > div.logo > span.logo-icon",
         "t": "🧮"
@@ -8787,9 +6213,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8798,19 +6222,7 @@
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > header.header > div.subtitle",
-        "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > header.header > div.subtitle",
         "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -8836,9 +6248,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8847,19 +6257,7 @@
         "t": "📊 Актуальные курсы"
        }
       ],
-      "768": [
-       {
-        "sel": "div#ratesCard > div.rates-header > span.rates-title",
-        "t": "📊 Актуальные курсы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#ratesCard > div.rates-header > span.rates-title",
-        "t": "📊 Актуальные курсы"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#ratesCard > div.rates-header > span.rates-title",
         "t": "📊 Актуальные курсы"
@@ -8885,9 +6283,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8896,19 +6292,7 @@
         "t": "🎁 Сделать скидку (изменить прибыль)"
        }
       ],
-      "768": [
-       {
-        "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-        "t": "🎁 Сделать скидку (изменить прибыль)"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-        "t": "🎁 Сделать скидку (изменить прибыль)"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
         "t": "🎁 Сделать скидку (изменить прибыль)"
@@ -8934,9 +6318,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -8945,19 +6327,7 @@
         "t": "👥 Есть партнер?"
        }
       ],
-      "768": [
-       {
-        "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-        "t": "👥 Есть партнер?"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-        "t": "👥 Есть партнер?"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
         "t": "👥 Есть партнер?"
@@ -9035,9 +6405,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -9050,27 +6418,7 @@
         "t": "Метод обмена"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.switcher-caption",
-        "t": "Тип сделки"
-       },
-       {
-        "sel": "div#methodCaption",
-        "t": "Метод обмена"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.switcher-caption",
         "t": "Тип сделки"
@@ -9128,9 +6476,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -9139,19 +6485,7 @@
         "t": "Binance"
        }
       ],
-      "768": [
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#srcBinance",
-        "t": "Binance"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#srcBinance",
         "t": "Binance"
@@ -9205,7 +6539,7 @@
      "ex": [
       {
        "sel": "div#usdtThbSub",
-       "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+       "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
       }
      ],
      "gr": 11,
@@ -9213,33 +6547,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ],
       "1280": [
        {
         "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#usdtThbSub",
-        "t": "VWAP 33.65 · −0.15% · −20฿/сделку"
+        "t": "VWAP 33.64 · −0.15% · −20฿/сделку"
        }
       ]
      }
@@ -9258,15 +6578,11 @@
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:35"
+       "t": "21:19:25"
       },
       {
        "sel": "span#updateTime",
-       "t": "19:06:44"
-      },
-      {
-       "sel": "span#updateTime",
-       "t": "19:06:54"
+       "t": "21:19:36"
       }
      ],
      "gr": 11,
@@ -9274,9 +6590,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -9286,17 +6600,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:35"
-       }
-      ],
-      "768": [
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:06:44"
+        "t": "21:19:25"
        }
       ],
       "1280": [
@@ -9306,17 +6610,7 @@
        },
        {
         "sel": "span#updateTime",
-        "t": "19:06:54"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "div#ratesUpdated",
-        "t": "Обновлено:"
-       },
-       {
-        "sel": "span#updateTime",
-        "t": "19:07:08"
+        "t": "21:19:36"
        }
       ]
      }
@@ -9367,9 +6661,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -9378,19 +6670,7 @@
         "t": "🚀 РАССЧИТАТЬ"
        }
       ],
-      "768": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
       "1280": [
-       {
-        "sel": "button#calculateBtn",
-        "t": "🚀 РАССЧИТАТЬ"
-       }
-      ],
-      "1920": [
        {
         "sel": "button#calculateBtn",
         "t": "🚀 РАССЧИТАТЬ"
@@ -9415,24 +6695,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -9461,32 +6727,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#usdtThbLabel",
-        "t": "USDT-THB (Bitazza)"
-       },
-       {
-        "sel": "div#rubUsdtLabel",
-        "t": "RUB-USDT"
-       }
-      ],
-      "1920": [
        {
         "sel": "div#usdtThbLabel",
         "t": "USDT-THB (Bitazza)"
@@ -9515,24 +6759,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
-      "768": [
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
       "1280": [
-       {
-        "sel": "span#inputCurrency",
-        "t": "₽"
-       }
-      ],
-      "1920": [
        {
         "sel": "span#inputCurrency",
         "t": "₽"
@@ -9627,9 +6857,7 @@
      "note": null,
      "by_width": {
       "375": 16,
-      "768": 16,
-      "1280": 16,
-      "1920": 16
+      "1280": 16
      },
      "ex_by_width": {
       "375": [
@@ -9650,43 +6878,7 @@
         "t": "✏️ Другое"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
-        "t": "💱 Обмен"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "🏠 Фрихолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "📜 Лизхолд"
-       },
-       {
-        "sel": "div.container > div.dealtype-switcher > button.dealtype-btn",
-        "t": "✏️ Другое"
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container > div.dealtype-switcher > button.dealtype-btn.active",
         "t": "💱 Обмен"
@@ -9724,9 +6916,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -9735,19 +6925,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div#exchangeCard > div.info-card > div.info-header",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div#exchangeCard > div.info-card > div.info-header",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div#exchangeCard > div.info-card > div.info-header",
         "t": ""
@@ -9775,9 +6953,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -9786,19 +6962,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".amount-input",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".amount-input",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".amount-input",
         "t": ""
@@ -9832,9 +6996,7 @@
    "note": null,
    "by_width": {
     "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "1280": 2
    },
    "ex_by_width": {
     "375": [
@@ -9847,27 +7009,7 @@
       "t": "Метод обмена"
      }
     ],
-    "768": [
-     {
-      "sel": "div.container > div.switcher-caption",
-      "t": "Тип сделки"
-     },
-     {
-      "sel": "div#methodCaption",
-      "t": "Метод обмена"
-     }
-    ],
     "1280": [
-     {
-      "sel": "div.container > div.switcher-caption",
-      "t": "Тип сделки"
-     },
-     {
-      "sel": "div#methodCaption",
-      "t": "Метод обмена"
-     }
-    ],
-    "1920": [
      {
       "sel": "div.container > div.switcher-caption",
       "t": "Тип сделки"
@@ -9891,27 +7033,7 @@
    "addresses": 0,
    "controls": 18
   },
-  "768": {
-   "elements": 119,
-   "groups": 80,
-   "texts": 65,
-   "contrast_checked": 66,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 18
-  },
   "1280": {
-   "elements": 124,
-   "groups": 83,
-   "texts": 70,
-   "contrast_checked": 71,
-   "contrast_unknown": 0,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 18
-  },
-  "1920": {
    "elements": 124,
    "groups": 83,
    "texts": 70,
@@ -9957,9 +7079,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -9968,19 +7088,7 @@
       "t": "🧮"
      }
     ],
-    "768": [
-     {
-      "sel": "header.header > div.logo > span.logo-icon",
-      "t": "🧮"
-     }
-    ],
     "1280": [
-     {
-      "sel": "header.header > div.logo > span.logo-icon",
-      "t": "🧮"
-     }
-    ],
-    "1920": [
      {
       "sel": "header.header > div.logo > span.logo-icon",
       "t": "🧮"
@@ -10006,9 +7114,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10017,19 +7123,7 @@
       "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
      }
     ],
-    "768": [
-     {
-      "sel": "div.container > header.header > div.subtitle",
-      "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-     }
-    ],
     "1280": [
-     {
-      "sel": "div.container > header.header > div.subtitle",
-      "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
-     }
-    ],
-    "1920": [
      {
       "sel": "div.container > header.header > div.subtitle",
       "t": "RUB ↔ THB ↔ USDT | v5 ТОЧНЫЕ КУРСЫ"
@@ -10055,9 +7149,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10066,19 +7158,7 @@
       "t": "📊 Актуальные курсы"
      }
     ],
-    "768": [
-     {
-      "sel": "div#ratesCard > div.rates-header > span.rates-title",
-      "t": "📊 Актуальные курсы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "div#ratesCard > div.rates-header > span.rates-title",
-      "t": "📊 Актуальные курсы"
-     }
-    ],
-    "1920": [
      {
       "sel": "div#ratesCard > div.rates-header > span.rates-title",
       "t": "📊 Актуальные курсы"
@@ -10104,9 +7184,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10115,19 +7193,7 @@
       "t": "🎁 Сделать скидку (изменить прибыль)"
      }
     ],
-    "768": [
-     {
-      "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-      "t": "🎁 Сделать скидку (изменить прибыль)"
-     }
-    ],
     "1280": [
-     {
-      "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
-      "t": "🎁 Сделать скидку (изменить прибыль)"
-     }
-    ],
-    "1920": [
      {
       "sel": "div.discount-header > label.checkbox-label > span.checkbox-text",
       "t": "🎁 Сделать скидку (изменить прибыль)"
@@ -10153,9 +7219,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10164,19 +7228,7 @@
       "t": "👥 Есть партнер?"
      }
     ],
-    "768": [
-     {
-      "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-      "t": "👥 Есть партнер?"
-     }
-    ],
     "1280": [
-     {
-      "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
-      "t": "👥 Есть партнер?"
-     }
-    ],
-    "1920": [
      {
       "sel": "div.partner-section > label.checkbox-label > span.checkbox-text",
       "t": "👥 Есть партнер?"
@@ -10202,9 +7254,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10213,19 +7263,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -10251,9 +7289,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10262,19 +7298,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -10304,9 +7328,7 @@
    "note": null,
    "by_width": {
     "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "1280": 2
    },
    "ex_by_width": {
     "375": [
@@ -10319,27 +7341,7 @@
       "t": "Binance"
      }
     ],
-    "768": [
-     {
-      "sel": "button#srcBitazza",
-      "t": "Bitazza"
-     },
-     {
-      "sel": "button#srcBinance",
-      "t": "Binance"
-     }
-    ],
     "1280": [
-     {
-      "sel": "button#srcBitazza",
-      "t": "Bitazza"
-     },
-     {
-      "sel": "button#srcBinance",
-      "t": "Binance"
-     }
-    ],
-    "1920": [
      {
       "sel": "button#srcBitazza",
       "t": "Bitazza"
@@ -10369,9 +7371,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10380,19 +7380,7 @@
       "t": "↻\nОбновить"
      }
     ],
-    "768": [
-     {
-      "sel": "button#refreshBtn",
-      "t": "↻\nОбновить"
-     }
-    ],
     "1280": [
-     {
-      "sel": "button#refreshBtn",
-      "t": "↻\nОбновить"
-     }
-    ],
-    "1920": [
      {
       "sel": "button#refreshBtn",
       "t": "↻\nОбновить"
@@ -10418,9 +7406,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -10429,19 +7415,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".amount-input",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".amount-input",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".amount-input",
       "t": ""

@@ -1,6 +1,6 @@
 # design-gate · check — **PASS**
 
-URL: `http://127.0.0.1:59104/crm?section=managers`
+URL: `http://127.0.0.1:59109/crm?section=managers`
 DESIGN: `/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md`
 Ширины: запрошено [375, 768, 1280, 1920], обязательны для PASS [375, 768, 1280, 1920]
 Роль: karim
@@ -17,7 +17,7 @@ _Вердикт машинный: проверена автоматическа�
 | 6. Снимки | **PASS** | PASS | PASS | PASS | PASS |
 
 ## Телефон (≤700px)
-- 375px: элементов 58, контраст проверен у 32, главных кнопок 1, адресов 0
+- 375px: элементов 85, контраст проверен у 47, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 375px PASS
 находок нет
@@ -45,9 +45,9 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 находок нет
 
 ## Компьютер (>700px)
-- 768px: элементов 56, контраст проверен у 27, главных кнопок 1, адресов 0
-- 1280px: элементов 61, контраст проверен у 32, главных кнопок 1, адресов 0
-- 1920px: элементов 61, контраст проверен у 32, главных кнопок 1, адресов 0
+- 768px: элементов 83, контраст проверен у 42, главных кнопок 1, адресов 0
+- 1280px: элементов 88, контраст проверен у 47, главных кнопок 1, адресов 0
+- 1920px: элементов 88, контраст проверен у 47, главных кнопок 1, адресов 0
 
 ### Гейт 1. Токены: 768px PASS · 1280px PASS · 1920px PASS
 находок нет
@@ -76,8 +76,8 @@ _Гардрейлы 1–2, 7, 8, 11 дублируют гейты 1, 3, 4, 5 —
 
 ## Гейт 6. Снимки — PASS
 _авто: наличие и непустота пар «до/после»; сравнение — глазами_
-- 375px: после `outputs/calccrm-redesign/wave4a/machine-crm-managers/after-karim-375.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-managers/before-karim-375.png`
-- 1280px: после `outputs/calccrm-redesign/wave4a/machine-crm-managers/after-karim-1280.png`, до `outputs/calccrm-redesign/wave4a/machine-crm-managers/before-karim-1280.png`
+- 375px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-managers/after-karim-375.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-managers/before-karim-375.png`
+- 1280px: после `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-managers/after-karim-1280.png`, до `/private/tmp/calccrm-wave4a/outputs/calccrm-redesign/wave4a/machine-crm-managers/before-karim-1280.png`
 
 ## Гардрейлы (18)
 

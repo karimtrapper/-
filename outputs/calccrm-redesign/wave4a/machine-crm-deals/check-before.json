@@ -1,14 +1,12 @@
 {
  "tool": "design-gate",
  "mode": "check",
- "url": "http://127.0.0.1:59105/crm?section=deals",
+ "url": "http://127.0.0.1:59110/crm?section=deals",
  "design": "/Users/karimamirov/Desktop/untitled folder/outputs/calccrm-redesign/DESIGN.md",
- "generated": "2026-10-14T19:53:03",
+ "generated": "2026-10-14T21:20:13",
  "widths_requested": [
   375,
-  768,
-  1280,
-  1920
+  1280
  ],
  "widths_required": [
   375,
@@ -16,10 +14,16 @@
   1280,
   1920
  ],
- "widths_blocked": {},
+ "widths_blocked": {
+  "768": "ширина не снята (не запрашивалась)",
+  "1920": "ширина не снята (не запрашивалась)"
+ },
  "verdict": "FAIL",
  "reasons": [
   "FAIL в гейтах: 1. Токены, 2. Гардрейлы, 3. Контраст WCAG AA",
+  "768px: ширина не снята (не запрашивалась)",
+  "1920px: ширина не снята (не запрашивалась)",
+  "проверены не все ширины: запрошено [375, 1280], для вердикта PASS нужны [375, 768, 1280, 1920]. Проверка одной ширины не считается проверкой экрана.",
   "375px: снимок «после» не снят",
   "1280px: снимок «после» не снят"
  ],
@@ -64,9 +68,9 @@
    "name": "Токены",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -92,9 +96,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -103,19 +105,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -145,9 +135,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -160,27 +148,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -226,7 +194,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 5,
+     "n": 53,
      "ex": [
       {
        "sel": "div.container",
@@ -239,20 +207,14 @@
       {
        "sel": "button#prevPage",
        "t": "← Назад"
-      },
-      {
-       "sel": "button#nextPage",
-       "t": "Вперёд →"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 53,
+      "1280": 52
      },
      "ex_by_width": {
       "375": [
@@ -267,24 +229,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ],
       "1280": [
@@ -295,24 +239,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ]
      }
@@ -335,9 +261,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -346,19 +270,7 @@
         "t": "Сделки"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > h1",
-        "t": "Сделки"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > h1",
-        "t": "Сделки"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > h1",
         "t": "Сделки"
@@ -388,9 +300,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -403,27 +313,7 @@
         "t": "Применить"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -452,10 +342,6 @@
        "t": "Применить"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#deals > div.card",
        "t": ""
       }
@@ -465,9 +351,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 5,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -480,39 +364,7 @@
         "t": "Применить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -534,7 +386,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 6,
+     "n": 54,
      "ex": [
       {
        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
@@ -557,10 +409,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 54,
+      "1280": 54
      },
      "ex_by_width": {
       "375": [
@@ -581,43 +431,7 @@
         "t": "← Назад"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -655,9 +469,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -666,19 +478,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.card",
         "t": ""
@@ -708,9 +508,7 @@
      "note": null,
      "by_width": {
       "375": 7,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -723,19 +521,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.form-row > div.form-group",
         "t": ""
@@ -765,22 +551,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
-      ],
-      "768": [
        {
         "sel": "select#filterStatus",
         "t": "Все"
@@ -799,16 +573,6 @@
         "sel": "select#filterReferrer",
         "t": "Все"
        }
-      ],
-      "1920": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
       ]
      }
     },
@@ -818,7 +582,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 10px",
-     "n": 13,
+     "n": 61,
      "ex": [
       {
        "sel": "thead > tr > th",
@@ -841,31 +605,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 13,
-      "768": 13,
-      "1280": 13,
-      "1920": 13
+      "375": 61,
+      "1280": 61
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ],
-      "768": [
        {
         "sel": "thead > tr > th",
         "t": "ID"
@@ -899,211 +643,6 @@
        {
         "sel": "thead > tr > th",
         "t": "Клиент"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-text",
-     "sev": "FAIL",
-     "title": "цвет текста вне палитры",
-     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tbody#dealsTable > tr > td",
-       "t": "$1000.00"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-bg",
-     "sev": "FAIL",
-     "title": "фон вне палитры",
-     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tr > td > span.badge.badge-completed",
-       "t": "Завершена"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-size",
-     "sev": "FAIL",
-     "title": "кегль вне шкалы",
-     "value": "13px",
-     "n": 4,
-     "ex": [
-      {
-       "sel": "tr > td > button.btn.btn-sm",
-       "t": "Детали"
-      },
-      {
-       "sel": "button#prevPage",
-       "t": "← Назад"
-      },
-      {
-       "sel": "button#nextPage",
-       "t": "Вперёд →"
-      }
-     ],
-     "gr": 1,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ]
      }
@@ -1118,7 +657,7 @@
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
-       "t": "$0.00"
+       "t": "-"
       }
      ],
      "gr": 2,
@@ -1126,33 +665,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ],
       "1280": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ]
      }
@@ -1163,7 +688,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
-     "n": 1,
+     "n": 3,
      "ex": [
       {
        "sel": "tr > td > span.badge.badge-pending",
@@ -1174,19 +699,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 3,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tr > td > span.badge.badge-pending",
-        "t": "Ожидает"
-       }
-      ],
-      "768": [
        {
         "sel": "tr > td > span.badge.badge-pending",
         "t": "Ожидает"
@@ -1197,39 +714,158 @@
         "sel": "tr > td > span.badge.badge-pending",
         "t": "Ожидает"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 52,
+     "ex": [
+      {
+       "sel": "tr > td > button.btn.btn-sm",
+       "t": "Детали"
+      },
+      {
+       "sel": "button#prevPage",
+       "t": "← Назад"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 52,
+      "1280": 52
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "tr > td > span.badge.badge-pending",
-        "t": "Ожидает"
+        "sel": "tr > td > button.btn.btn-sm",
+        "t": "Детали"
+       },
+       {
+        "sel": "button#prevPage",
+        "t": "← Назад"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > button.btn.btn-sm",
+        "t": "Детали"
+       },
+       {
+        "sel": "button#prevPage",
+        "t": "← Назад"
        }
       ]
      }
     },
     {
      "gate": 1,
-     "rule": "T-spacing",
+     "rule": "T-color-text",
      "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 49,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$24.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$26.86"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$52.80"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 49,
+      "1280": 49
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$24.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$26.86"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$52.80"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$23.14"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$40.62"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$659.79"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 47,
+     "ex": [
+      {
+       "sel": "tr > td > span.badge.badge-completed",
+       "t": "Завершена"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 47,
+      "1280": 47
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.badge.badge-completed",
+        "t": "Завершена"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.badge.badge-completed",
+        "t": "Завершена"
        }
       ]
      }
@@ -1251,17 +887,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1286,17 +915,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -1313,9 +935,9 @@
    "name": "Гардрейлы",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -1332,15 +954,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1356,15 +974,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -1373,7 +987,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 6,
+     "n": 54,
      "ex": [
       {
        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
@@ -1396,10 +1010,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 54,
+      "1280": 54
      },
      "ex_by_width": {
       "375": [
@@ -1420,43 +1032,7 @@
         "t": "← Назад"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -1506,9 +1082,7 @@
      "note": null,
      "by_width": {
       "375": 11,
-      "768": 11,
-      "1280": 11,
-      "1920": 11
+      "1280": 11
      },
      "ex_by_width": {
       "375": [
@@ -1529,43 +1103,7 @@
         "t": "Клиент"
        }
       ],
-      "768": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ],
       "1280": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ],
-      "1920": [
        {
         "sel": "thead > tr > th",
         "t": "ID"
@@ -1603,9 +1141,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1614,19 +1150,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -1654,9 +1178,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1665,19 +1187,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -1703,9 +1213,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1714,19 +1222,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -1752,9 +1248,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1763,19 +1257,7 @@
         "t": "Имя менеджера"
        }
       ],
-      "768": [
-       {
-        "sel": "input#filterManager",
-        "t": "Имя менеджера"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#filterManager",
-        "t": "Имя менеджера"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#filterManager",
         "t": "Имя менеджера"
@@ -1801,9 +1283,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1812,19 +1292,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -1850,9 +1318,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1861,19 +1327,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -1899,9 +1353,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1910,19 +1362,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -1948,9 +1388,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -1959,19 +1397,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -1988,9 +1414,9 @@
    "name": "Контраст WCAG AA",
    "by_width": {
     "375": "FAIL",
-    "768": "FAIL",
+    "768": "BLOCKED",
     "1280": "FAIL",
-    "1920": "FAIL"
+    "1920": "BLOCKED"
    },
    "verdict": "FAIL",
    "findings": [
@@ -2016,9 +1442,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2031,27 +1455,7 @@
         "t": "Применить"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -2085,22 +1489,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
-      ],
-      "768": [
        {
         "sel": "select#filterStatus",
         "t": "Все"
@@ -2118,65 +1510,6 @@
        {
         "sel": "select#filterReferrer",
         "t": "Все"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 3,
-     "rule": "C-low",
-     "sev": "FAIL",
-     "title": "контраст ниже 4.5:1",
-     "value": "#10B981 на #FFFFFF = 2.54:1 (14px/600)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tbody#dealsTable > tr > td",
-       "t": "$1000.00"
-      }
-     ],
-     "gr": 11,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
        }
       ]
      }
@@ -2191,7 +1524,7 @@
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
-       "t": "$0.00"
+       "t": "-"
       }
      ],
      "gr": 11,
@@ -2199,33 +1532,90 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ],
       "1280": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (14px/600)",
+     "n": 49,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$24.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$26.86"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$52.80"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 49,
+      "1280": 49
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$24.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$26.86"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$52.80"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$23.14"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$40.62"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$659.79"
        }
       ]
      }
@@ -2239,11 +1629,11 @@
    "name": "Ширины",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [
     {
@@ -2252,45 +1642,43 @@
      "sev": "WARN",
      "title": "нажимаемая цель ниже 44px (Thumb Rule)",
      "value": "36px",
-     "n": 2,
+     "n": 51,
      "ex": [
       {
        "sel": "tr > td > button.btn.btn-sm",
        "t": "Детали"
+      },
+      {
+       "sel": "button#nextPage",
+       "t": "Вперёд →"
       }
      ],
      "gr": null,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 51,
+      "1280": 51
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tr > td > button.btn.btn-sm",
         "t": "Детали"
-       }
-      ],
-      "768": [
+       },
        {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
+        "sel": "button#nextPage",
+        "t": "Вперёд →"
        }
       ],
       "1280": [
        {
         "sel": "tr > td > button.btn.btn-sm",
         "t": "Детали"
-       }
-      ],
-      "1920": [
+       },
        {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
+        "sel": "button#nextPage",
+        "t": "Вперёд →"
        }
       ]
      }
@@ -2303,11 +1691,11 @@
    "name": "Текст",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
-   "verdict": "PASS",
+   "verdict": "BLOCKED",
    "findings": [],
    "warnings": [
     {
@@ -2315,8 +1703,43 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1000,00 $ × 2",
+     "value": "18000 ฿ × 2",
      "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "18 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "18 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1000,00 $ × 3",
+     "n": 3,
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
@@ -2327,19 +1750,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 3,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
        {
         "sel": "tbody#dealsTable > tr > td",
         "t": "$1000.00"
@@ -2350,11 +1765,250 @@
         "sel": "tbody#dealsTable > tr > td",
         "t": "$1000.00"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "15,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
+        "t": "$15.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12500 ฿ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "12 500 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "12 500 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "32300 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "32 300 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "32 300 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "26000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "26 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "26 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "45000 ฿ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "45 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "45 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "43000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "43 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "43 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "402,36 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$402.36"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$402.36"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$402.36"
        }
       ]
      }
@@ -2367,9 +2021,9 @@
    "name": "Снимки",
    "by_width": {
     "375": "PASS",
-    "768": "PASS",
+    "768": "BLOCKED",
     "1280": "PASS",
-    "1920": "PASS"
+    "1920": "BLOCKED"
    },
    "verdict": "BLOCKED",
    "notes": [
@@ -2420,9 +2074,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2435,27 +2087,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2473,7 +2105,7 @@
      "sev": "FAIL",
      "title": "кегль вне шкалы",
      "value": "13px",
-     "n": 4,
+     "n": 52,
      "ex": [
       {
        "sel": "tr > td > button.btn.btn-sm",
@@ -2482,20 +2114,14 @@
       {
        "sel": "button#prevPage",
        "t": "← Назад"
-      },
-      {
-       "sel": "button#nextPage",
-       "t": "Вперёд →"
       }
      ],
      "gr": 1,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 52,
+      "1280": 52
      },
      "ex_by_width": {
       "375": [
@@ -2506,24 +2132,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ],
       "1280": [
@@ -2534,24 +2142,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ]
      }
@@ -2569,15 +2159,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     },
     {
@@ -2593,15 +2179,11 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [],
-      "768": [],
-      "1280": [],
-      "1920": []
+      "1280": []
      }
     }
    ],
@@ -2635,9 +2217,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2646,19 +2226,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.site-shell-right > span.site-shell-bell > a",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.site-shell-right > span.site-shell-bell > a",
         "t": ""
@@ -2688,9 +2256,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2703,27 +2269,7 @@
         "t": "›"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "‹"
-       },
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "›"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "‹"
@@ -2769,7 +2315,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 14px",
-     "n": 5,
+     "n": 53,
      "ex": [
       {
        "sel": "div.container",
@@ -2782,20 +2328,14 @@
       {
        "sel": "button#prevPage",
        "t": "← Назад"
-      },
-      {
-       "sel": "button#nextPage",
-       "t": "Вперёд →"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 5,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
+      "375": 53,
+      "1280": 52
      },
      "ex_by_width": {
       "375": [
@@ -2810,24 +2350,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ],
       "1280": [
@@ -2838,24 +2360,6 @@
        {
         "sel": "button#prevPage",
         "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ]
      }
@@ -2878,9 +2382,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -2889,19 +2391,7 @@
         "t": "Сделки"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > h1",
-        "t": "Сделки"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > h1",
-        "t": "Сделки"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > h1",
         "t": "Сделки"
@@ -2931,9 +2421,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -2946,27 +2434,7 @@
         "t": "Применить"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -2995,10 +2463,6 @@
        "t": "Применить"
       },
       {
-       "sel": "div.container",
-       "t": ""
-      },
-      {
        "sel": "section#deals > div.card",
        "t": ""
       }
@@ -3008,9 +2472,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 5,
-      "1280": 4,
-      "1920": 4
+      "1280": 4
      },
      "ex_by_width": {
       "375": [
@@ -3023,39 +2485,7 @@
         "t": "Применить"
        }
       ],
-      "768": [
-       {
-        "sel": "div.container",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -3077,7 +2507,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "gap 6px",
-     "n": 6,
+     "n": 54,
      "ex": [
       {
        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
@@ -3100,10 +2530,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 54,
+      "1280": 54
      },
      "ex_by_width": {
       "375": [
@@ -3124,43 +2552,7 @@
         "t": "← Назад"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -3198,9 +2590,7 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
@@ -3209,19 +2599,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.card",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.card",
         "t": ""
@@ -3251,9 +2629,7 @@
      "note": null,
      "by_width": {
       "375": 7,
-      "768": 5,
-      "1280": 5,
-      "1920": 5
+      "1280": 5
      },
      "ex_by_width": {
       "375": [
@@ -3266,19 +2642,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": "div.card > div.form-row > div.form-group",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.card > div.form-row > div.form-group",
         "t": ""
@@ -3308,22 +2672,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
-      ],
-      "768": [
        {
         "sel": "select#filterStatus",
         "t": "Все"
@@ -3342,16 +2694,6 @@
         "sel": "select#filterReferrer",
         "t": "Все"
        }
-      ],
-      "1920": [
-       {
-        "sel": "select#filterStatus",
-        "t": "Все"
-       },
-       {
-        "sel": "select#filterReferrer",
-        "t": "Все"
-       }
       ]
      }
     },
@@ -3361,7 +2703,7 @@
      "sev": "FAIL",
      "title": "отступ вне шкалы 4/8/12/16/24",
      "value": "padding 10px",
-     "n": 13,
+     "n": 61,
      "ex": [
       {
        "sel": "thead > tr > th",
@@ -3384,31 +2726,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 13,
-      "768": 13,
-      "1280": 13,
-      "1920": 13
+      "375": 61,
+      "1280": 61
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ],
-      "768": [
        {
         "sel": "thead > tr > th",
         "t": "ID"
@@ -3442,211 +2764,6 @@
        {
         "sel": "thead > tr > th",
         "t": "Клиент"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "thead > tr > th",
-        "t": "ID"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Дата"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Менеджер"
-       },
-       {
-        "sel": "thead > tr > th",
-        "t": "Клиент"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-text",
-     "sev": "FAIL",
-     "title": "цвет текста вне палитры",
-     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tbody#dealsTable > tr > td",
-       "t": "$1000.00"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-color-bg",
-     "sev": "FAIL",
-     "title": "фон вне палитры",
-     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tr > td > span.badge.badge-completed",
-       "t": "Завершена"
-      }
-     ],
-     "gr": 2,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > span.badge.badge-completed",
-        "t": "Завершена"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 1,
-     "rule": "T-size",
-     "sev": "FAIL",
-     "title": "кегль вне шкалы",
-     "value": "13px",
-     "n": 4,
-     "ex": [
-      {
-       "sel": "tr > td > button.btn.btn-sm",
-       "t": "Детали"
-      },
-      {
-       "sel": "button#prevPage",
-       "t": "← Назад"
-      },
-      {
-       "sel": "button#nextPage",
-       "t": "Вперёд →"
-      }
-     ],
-     "gr": 1,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 4,
-      "768": 4,
-      "1280": 4,
-      "1920": 4
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       },
-       {
-        "sel": "button#nextPage",
-        "t": "Вперёд →"
        }
       ]
      }
@@ -3661,7 +2778,7 @@
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
-       "t": "$0.00"
+       "t": "-"
       }
      ],
      "gr": 2,
@@ -3669,33 +2786,19 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ],
       "1280": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ]
      }
@@ -3706,7 +2809,7 @@
      "sev": "FAIL",
      "title": "фон вне палитры",
      "value": "#FEF3C7 (ближайший decision-surface #FFFBEB, ΔE 8.8)",
-     "n": 1,
+     "n": 3,
      "ex": [
       {
        "sel": "tr > td > span.badge.badge-pending",
@@ -3717,19 +2820,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "375": 3,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tr > td > span.badge.badge-pending",
-        "t": "Ожидает"
-       }
-      ],
-      "768": [
        {
         "sel": "tr > td > span.badge.badge-pending",
         "t": "Ожидает"
@@ -3740,39 +2835,158 @@
         "sel": "tr > td > span.badge.badge-pending",
         "t": "Ожидает"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-size",
+     "sev": "FAIL",
+     "title": "кегль вне шкалы",
+     "value": "13px",
+     "n": 52,
+     "ex": [
+      {
+       "sel": "tr > td > button.btn.btn-sm",
+       "t": "Детали"
+      },
+      {
+       "sel": "button#prevPage",
+       "t": "← Назад"
+      }
+     ],
+     "gr": 1,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 52,
+      "1280": 52
+     },
+     "ex_by_width": {
+      "375": [
        {
-        "sel": "tr > td > span.badge.badge-pending",
-        "t": "Ожидает"
+        "sel": "tr > td > button.btn.btn-sm",
+        "t": "Детали"
+       },
+       {
+        "sel": "button#prevPage",
+        "t": "← Назад"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > button.btn.btn-sm",
+        "t": "Детали"
+       },
+       {
+        "sel": "button#prevPage",
+        "t": "← Назад"
        }
       ]
      }
     },
     {
      "gate": 1,
-     "rule": "T-spacing",
+     "rule": "T-color-text",
      "sev": "FAIL",
-     "title": "отступ вне шкалы 4/8/12/16/24",
-     "value": "padding 100px",
-     "n": 1,
+     "title": "цвет текста вне палитры",
+     "value": "#10B981 (ближайший money-border #BBF7D0, ΔE 20.1)",
+     "n": 49,
      "ex": [
       {
-       "sel": "div.container",
-       "t": ""
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$24.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$26.86"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$52.80"
       }
      ],
      "gr": 2,
      "extra": null,
      "note": null,
      "by_width": {
-      "768": 1
+      "375": 49,
+      "1280": 49
      },
      "ex_by_width": {
-      "768": [
+      "375": [
        {
-        "sel": "div.container",
-        "t": ""
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$24.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$26.86"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$52.80"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$23.14"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$40.62"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$659.79"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 1,
+     "rule": "T-color-bg",
+     "sev": "FAIL",
+     "title": "фон вне палитры",
+     "value": "#D1FAE5 (ближайший money-border #BBF7D0, ΔE 6.2)",
+     "n": 47,
+     "ex": [
+      {
+       "sel": "tr > td > span.badge.badge-completed",
+       "t": "Завершена"
+      }
+     ],
+     "gr": 2,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 47,
+      "1280": 47
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tr > td > span.badge.badge-completed",
+        "t": "Завершена"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tr > td > span.badge.badge-completed",
+        "t": "Завершена"
        }
       ]
      }
@@ -3794,17 +3008,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3829,17 +3036,10 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "1280": [
-       {
-        "sel": "div.container",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": "div.container",
         "t": ""
@@ -3874,9 +3074,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3885,19 +3083,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".kyc-review-photo img:hover",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".kyc-review-photo img:hover",
         "t": ""
@@ -3933,9 +3119,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3944,19 +3128,7 @@
         "t": "Предыдущие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Предыдущие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Предыдущие разделы"
@@ -3982,9 +3154,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -3993,19 +3163,7 @@
         "t": "Следующие разделы"
        }
       ],
-      "768": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
       "1280": [
-       {
-        "sel": "nav.site-shell-sections > button.site-shell-scroll",
-        "t": "Следующие разделы"
-       }
-      ],
-      "1920": [
        {
         "sel": "nav.site-shell-sections > button.site-shell-scroll",
         "t": "Следующие разделы"
@@ -4072,9 +3230,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4083,19 +3239,7 @@
         "t": "Имя менеджера"
        }
       ],
-      "768": [
-       {
-        "sel": "input#filterManager",
-        "t": "Имя менеджера"
-       }
-      ],
       "1280": [
-       {
-        "sel": "input#filterManager",
-        "t": "Имя менеджера"
-       }
-      ],
-      "1920": [
        {
         "sel": "input#filterManager",
         "t": "Имя менеджера"
@@ -4141,22 +3285,10 @@
      "note": null,
      "by_width": {
       "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "1280": 2
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ],
-      "768": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -4174,65 +3306,6 @@
        {
         "sel": "section#deals > div.card > button.btn.btn-primary",
         "t": "Применить"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       }
-      ]
-     }
-    },
-    {
-     "gate": 3,
-     "rule": "C-low",
-     "sev": "FAIL",
-     "title": "контраст ниже 4.5:1",
-     "value": "#10B981 на #FFFFFF = 2.54:1 (14px/600)",
-     "n": 1,
-     "ex": [
-      {
-       "sel": "tbody#dealsTable > tr > td",
-       "t": "$1000.00"
-      }
-     ],
-     "gr": 11,
-     "extra": null,
-     "note": null,
-     "by_width": {
-      "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
-     },
-     "ex_by_width": {
-      "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1280": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "1920": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
        }
       ]
      }
@@ -4247,7 +3320,7 @@
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
-       "t": "$0.00"
+       "t": "-"
       }
      ],
      "gr": 11,
@@ -4255,33 +3328,90 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
-       }
-      ],
-      "768": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
       ],
       "1280": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "-"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 3,
+     "rule": "C-low",
+     "sev": "FAIL",
+     "title": "контраст ниже 4.5:1",
+     "value": "#10B981 на #FFFFFF = 2.54:1 (14px/600)",
+     "n": 49,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$24.00"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$26.86"
+      },
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$52.80"
+      }
+     ],
+     "gr": 11,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 49,
+      "1280": 49
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$0.00"
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$24.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$26.86"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$52.80"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$23.14"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$40.62"
+       },
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$659.79"
        }
       ]
      }
@@ -4301,8 +3431,43 @@
      "rule": "G12-dup",
      "sev": "WARN",
      "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-     "value": "1000,00 $ × 2",
+     "value": "18000 ฿ × 2",
      "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "18 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "18 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "18 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "1000,00 $ × 3",
+     "n": 3,
      "ex": [
       {
        "sel": "tbody#dealsTable > tr > td",
@@ -4313,19 +3478,11 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 2,
-      "768": 2,
-      "1280": 2,
-      "1920": 2
+      "375": 3,
+      "1280": 3
      },
      "ex_by_width": {
       "375": [
-       {
-        "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
-       }
-      ],
-      "768": [
        {
         "sel": "tbody#dealsTable > tr > td",
         "t": "$1000.00"
@@ -4336,11 +3493,250 @@
         "sel": "tbody#dealsTable > tr > td",
         "t": "$1000.00"
        }
-      ],
-      "1920": [
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "15,00 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$15.00"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
        {
         "sel": "tbody#dealsTable > tr > td",
-        "t": "$1000.00"
+        "t": "$15.00"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$15.00"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "12500 ฿ × 4",
+     "n": 4,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "12 500 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 4,
+      "1280": 4
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "12 500 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "12 500 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "32300 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "32 300 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "32 300 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "32 300 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "26000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "26 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "26 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "26 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "45000 ฿ × 3",
+     "n": 3,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "45 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 3,
+      "1280": 3
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "45 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "45 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "43000 ฿ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "43 000 ฿"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "43 000 ฿"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "43 000 ฿"
+       }
+      ]
+     }
+    },
+    {
+     "gate": 5,
+     "rule": "G12-dup",
+     "sev": "WARN",
+     "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+     "value": "402,36 $ × 2",
+     "n": 2,
+     "ex": [
+      {
+       "sel": "tbody#dealsTable > tr > td",
+       "t": "$402.36"
+      }
+     ],
+     "gr": 12,
+     "extra": null,
+     "note": null,
+     "by_width": {
+      "375": 2,
+      "1280": 2
+     },
+     "ex_by_width": {
+      "375": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$402.36"
+       }
+      ],
+      "1280": [
+       {
+        "sel": "tbody#dealsTable > tr > td",
+        "t": "$402.36"
        }
       ]
      }
@@ -4399,7 +3795,7 @@
      "sev": "FAIL",
      "title": "transition: all",
      "value": "all",
-     "n": 6,
+     "n": 54,
      "ex": [
       {
        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
@@ -4422,10 +3818,8 @@
      "extra": null,
      "note": null,
      "by_width": {
-      "375": 6,
-      "768": 6,
-      "1280": 6,
-      "1920": 6
+      "375": 54,
+      "1280": 54
      },
      "ex_by_width": {
       "375": [
@@ -4446,43 +3840,7 @@
         "t": "← Назад"
        }
       ],
-      "768": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
       "1280": [
-       {
-        "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
-        "t": "+ Создать сделку"
-       },
-       {
-        "sel": "section#deals > div.card > button.btn.btn-primary",
-        "t": "Применить"
-       },
-       {
-        "sel": "tr > td > button.btn.btn-sm",
-        "t": "Детали"
-       },
-       {
-        "sel": "button#prevPage",
-        "t": "← Назад"
-       }
-      ],
-      "1920": [
        {
         "sel": "section#deals > div.crm-section-head > button.btn.btn-primary",
         "t": "+ Создать сделку"
@@ -4522,9 +3880,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4533,19 +3889,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".form-control:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".form-control:focus",
         "t": ""
@@ -4571,9 +3915,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4582,19 +3924,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
         "t": ""
@@ -4620,9 +3950,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4631,19 +3959,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-amount input:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-amount input:focus",
         "t": ""
@@ -4669,9 +3985,7 @@
      "note": null,
      "by_width": {
       "375": 1,
-      "768": 1,
-      "1280": 1,
-      "1920": 1
+      "1280": 1
      },
      "ex_by_width": {
       "375": [
@@ -4680,19 +3994,7 @@
         "t": ""
        }
       ],
-      "768": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
       "1280": [
-       {
-        "sel": ".docs-purpose textarea:focus",
-        "t": ""
-       }
-      ],
-      "1920": [
        {
         "sel": ".docs-purpose textarea:focus",
         "t": ""
@@ -4734,30 +4036,10 @@
    "note": null,
    "by_width": {
     "375": 11,
-    "768": 11,
-    "1280": 11,
-    "1920": 11
+    "1280": 11
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "thead > tr > th",
-      "t": "ID"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Дата"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Менеджер"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Клиент"
-     }
-    ],
-    "768": [
      {
       "sel": "thead > tr > th",
       "t": "ID"
@@ -4792,68 +4074,30 @@
       "sel": "thead > tr > th",
       "t": "Клиент"
      }
-    ],
-    "1920": [
-     {
-      "sel": "thead > tr > th",
-      "t": "ID"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Дата"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Менеджер"
-     },
-     {
-      "sel": "thead > tr > th",
-      "t": "Клиент"
-     }
     ]
    }
   }
  ],
  "stats": {
   "375": {
-   "elements": 119,
-   "groups": 55,
-   "texts": 73,
-   "contrast_checked": 72,
+   "elements": 791,
+   "groups": 67,
+   "texts": 601,
+   "contrast_checked": 601,
    "contrast_unknown": 2,
    "primaries": 0,
    "addresses": 0,
-   "controls": 13
-  },
-  "768": {
-   "elements": 117,
-   "groups": 56,
-   "texts": 68,
-   "contrast_checked": 67,
-   "contrast_unknown": 2,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 13
+   "controls": 61
   },
   "1280": {
-   "elements": 122,
-   "groups": 59,
-   "texts": 73,
-   "contrast_checked": 72,
+   "elements": 794,
+   "groups": 63,
+   "texts": 601,
+   "contrast_checked": 601,
    "contrast_unknown": 2,
    "primaries": 0,
    "addresses": 0,
-   "controls": 13
-  },
-  "1920": {
-   "elements": 122,
-   "groups": 59,
-   "texts": 73,
-   "contrast_checked": 72,
-   "contrast_unknown": 2,
-   "primaries": 0,
-   "addresses": 0,
-   "controls": 13
+   "controls": 61
   }
  },
  "limits": [],
@@ -4891,9 +4135,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4902,19 +4144,7 @@
       "t": "Предыдущие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Предыдущие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Предыдущие разделы"
@@ -4940,9 +4170,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -4951,19 +4179,7 @@
       "t": "Следующие разделы"
      }
     ],
-    "768": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
     "1280": [
-     {
-      "sel": "nav.site-shell-sections > button.site-shell-scroll",
-      "t": "Следующие разделы"
-     }
-    ],
-    "1920": [
      {
       "sel": "nav.site-shell-sections > button.site-shell-scroll",
       "t": "Следующие разделы"
@@ -4989,9 +4205,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -5000,19 +4214,7 @@
       "t": "Имя менеджера"
      }
     ],
-    "768": [
-     {
-      "sel": "input#filterManager",
-      "t": "Имя менеджера"
-     }
-    ],
     "1280": [
-     {
-      "sel": "input#filterManager",
-      "t": "Имя менеджера"
-     }
-    ],
-    "1920": [
      {
       "sel": "input#filterManager",
       "t": "Имя менеджера"
@@ -5026,45 +4228,43 @@
    "sev": "WARN",
    "title": "нажимаемая цель ниже 44px (Thumb Rule)",
    "value": "36px",
-   "n": 2,
+   "n": 51,
    "ex": [
     {
      "sel": "tr > td > button.btn.btn-sm",
      "t": "Детали"
+    },
+    {
+     "sel": "button#nextPage",
+     "t": "Вперёд →"
     }
    ],
    "gr": null,
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "375": 51,
+    "1280": 51
    },
    "ex_by_width": {
     "375": [
      {
       "sel": "tr > td > button.btn.btn-sm",
       "t": "Детали"
-     }
-    ],
-    "768": [
+     },
      {
-      "sel": "tr > td > button.btn.btn-sm",
-      "t": "Детали"
+      "sel": "button#nextPage",
+      "t": "Вперёд →"
      }
     ],
     "1280": [
      {
       "sel": "tr > td > button.btn.btn-sm",
       "t": "Детали"
-     }
-    ],
-    "1920": [
+     },
      {
-      "sel": "tr > td > button.btn.btn-sm",
-      "t": "Детали"
+      "sel": "button#nextPage",
+      "t": "Вперёд →"
      }
     ]
    }
@@ -5074,8 +4274,43 @@
    "rule": "G12-dup",
    "sev": "WARN",
    "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
-   "value": "1000,00 $ × 2",
+   "value": "18000 ฿ × 2",
    "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "18 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "18 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "18 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "1000,00 $ × 3",
+   "n": 3,
    "ex": [
     {
      "sel": "tbody#dealsTable > tr > td",
@@ -5086,19 +4321,11 @@
    "extra": null,
    "note": null,
    "by_width": {
-    "375": 2,
-    "768": 2,
-    "1280": 2,
-    "1920": 2
+    "375": 3,
+    "1280": 3
    },
    "ex_by_width": {
     "375": [
-     {
-      "sel": "tbody#dealsTable > tr > td",
-      "t": "$1000.00"
-     }
-    ],
-    "768": [
      {
       "sel": "tbody#dealsTable > tr > td",
       "t": "$1000.00"
@@ -5109,11 +4336,250 @@
       "sel": "tbody#dealsTable > tr > td",
       "t": "$1000.00"
      }
-    ],
-    "1920": [
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "15,00 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "$15.00"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
      {
       "sel": "tbody#dealsTable > tr > td",
-      "t": "$1000.00"
+      "t": "$15.00"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "$15.00"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "12500 ฿ × 4",
+   "n": 4,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "12 500 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 4,
+    "1280": 4
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "12 500 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "12 500 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "32300 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "32 300 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "32 300 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "32 300 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "26000 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "26 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "26 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "26 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "45000 ฿ × 3",
+   "n": 3,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "45 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 3,
+    "1280": 3
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "45 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "45 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "43000 ฿ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "43 000 ฿"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "43 000 ฿"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "43 000 ฿"
+     }
+    ]
+   }
+  },
+  {
+   "gate": 5,
+   "rule": "G12-dup",
+   "sev": "WARN",
+   "title": "одна и та же сумма встречается на экране несколько раз (эвристика)",
+   "value": "402,36 $ × 2",
+   "n": 2,
+   "ex": [
+    {
+     "sel": "tbody#dealsTable > tr > td",
+     "t": "$402.36"
+    }
+   ],
+   "gr": 12,
+   "extra": null,
+   "note": null,
+   "by_width": {
+    "375": 2,
+    "1280": 2
+   },
+   "ex_by_width": {
+    "375": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "$402.36"
+     }
+    ],
+    "1280": [
+     {
+      "sel": "tbody#dealsTable > tr > td",
+      "t": "$402.36"
      }
     ]
    }
@@ -5136,9 +4602,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -5147,19 +4611,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".form-control:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".form-control:focus",
       "t": ""
@@ -5185,9 +4637,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -5196,19 +4646,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".custom-select-btn:focus, .custom-select-wrap.open .custom-select-btn",
       "t": ""
@@ -5234,9 +4672,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -5245,19 +4681,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-amount input:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-amount input:focus",
       "t": ""
@@ -5283,9 +4707,7 @@
    "note": null,
    "by_width": {
     "375": 1,
-    "768": 1,
-    "1280": 1,
-    "1920": 1
+    "1280": 1
    },
    "ex_by_width": {
     "375": [
@@ -5294,19 +4716,7 @@
       "t": ""
      }
     ],
-    "768": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
     "1280": [
-     {
-      "sel": ".docs-purpose textarea:focus",
-      "t": ""
-     }
-    ],
-    "1920": [
      {
       "sel": ".docs-purpose textarea:focus",
       "t": ""

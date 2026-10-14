@@ -1965,7 +1965,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 
                 <!-- Binance Sub-tab -->
                 <div id="subtabBinance" class="balance-subtab-content active">
-                    <div
+                    <div class="wallets-summary-toolbar"
                         style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
                         <div id="walletsSummaryGrid" style="display: flex; gap: 1rem; flex-wrap: wrap; flex: 1;">
                             <!-- Загружается динамически -->
@@ -7439,12 +7439,12 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
             const date = (i.operation_date || '').substring(0, 10);
             if (i.kind === 'acquiring') {
                 const mer = i.merchant ? ` · мерчант …${String(i.merchant).slice(-4)}` : '';
-                return `<span style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
+                return `<span class="sber-income-kind pill" style="background:#dbeafe;color:#1d4ed8;border-radius:4px;padding:1px 5px;font-size:11px;">СБП</span> `
                     + `<b>${rub2(i.gross_rub)} ₽</b> `
                     + `<span style="color:#64748b;">(зачислено ${rub2(i.amount_rub)} + комиссия ${rub2(i.fee_rub)})</span>`
                     + `${mer} · ${date}`;
             }
-            return `<span style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
+            return `<span class="sber-income-kind pill" style="background:#dcfce7;color:#15803d;border-radius:4px;padding:1px 5px;font-size:11px;">реквизиты</span> `
                 + `<b>${rub2(i.amount_rub)} ₽</b> · ${escapeHtml(i.payer || '—')} · ${date}`;
         }
 
@@ -7458,7 +7458,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 const chosen = new Set(sberParts.filter(p => p.uuid).map(p => p.uuid));
                 const avail = sberIncomesCache.filter(i => !chosen.has(i.uuid));
                 availEl.innerHTML = avail.length ? avail.map(i => `
-                    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
+                    <div class="sber-income-row" style="display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #e0f2fe;font-size:13px;gap:8px;">
                         <span>${sberIncomeLine(i)}</span>
                         <button type="button" class="btn btn-success btn-sm" onclick="sberAddIncome('${escapeHtml(i.uuid)}')">Забрать</button>
                     </div>`).join('') : '<div style="color:#94a3b8;font-size:13px;padding:4px;">Нет незабранных приходов</div>';
@@ -9939,11 +9939,11 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 if (data.success) {
                     const grid = document.getElementById('walletsSummaryGrid');
                     grid.innerHTML = data.wallets.map(w => `
-                        <div class="stat-card" style="cursor: pointer; position: relative; border: 2px solid ${currentActiveWalletId === w.id ? '#667eea' : '#f1f5f9'};" onclick="showWalletHistory(${w.id}, '${w.address}', '${w.label || 'Без названия'}')">
-                            <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteWalletFromBalance(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 0 5px; font-size: 0.7rem;">×</button>
+                        <div class="stat-card wallet-summary-card" style="cursor: pointer; position: relative; border: 2px solid ${currentActiveWalletId === w.id ? '#667eea' : '#f1f5f9'};" onclick="showWalletHistory(${w.id}, '${w.address}', '${w.label || 'Без названия'}')">
+                            <button class="btn btn-sm btn-outline-danger wallet-summary-remove" onclick="event.stopPropagation(); deleteWalletFromBalance(${w.id})" style="position: absolute; top: 5px; right: 5px; padding: 0 5px; font-size: 0.7rem;">Удалить</button>
                             <div style="font-size: 0.8rem; color: #666; margin-bottom: 0.5rem;">${w.label || 'Кошелек'}</div>
                             <div class="stat-value" style="font-size: 1.5rem; color: #10b981;">$${w.system_balance.toFixed(2)}</div>
-                            <div style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
+                            <div class="wallet-summary-address" style="font-family: monospace; font-size: 0.7rem; color: #999; margin-top: 0.5rem; overflow: hidden; text-overflow: ellipsis;">${w.address}</div>
                             <button class="btn btn-sm" onclick="event.stopPropagation(); reconcileWallet(${w.id})"
                                 style="margin-top:8px; width:100%; font-size:0.75rem; padding:4px; background:#f1f5f9; border:1px solid #e2e8f0; border-radius:6px;">⟳ Сверить с сетью</button>
                             <div id="walletRecon${w.id}" style="display:none; margin-top:8px; font-size:0.75rem; text-align:left; line-height:1.5;"></div>
@@ -12247,7 +12247,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     `).join('')}
                                 </select>
                                 ${outgoingTransactionsCache.length === 0 ? '<small style="color: #666;">Нет исходящих транзакций</small>' : ''}
-                                ${outgoingWalletsFailed ? `<div style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;">⚠️ TronScan не ответил по ${outgoingWalletsFailed} кошельк(у/ам) — список переводов может быть неполным. Обнови через минуту или впиши хэш вручную.</div>` : ''}
+                                ${outgoingWalletsFailed ? `<div class="reimburse-wallet-warning" style="margin-top:6px;padding:6px 8px;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;color:#92400e;font-size:0.85rem;">⚠️ TronScan не ответил по ${outgoingWalletsFailed} кошельк(у/ам) — список переводов может быть неполным. Обнови через минуту или впиши хэш вручную.</div>` : ''}
                                 <div class="reimburse-tx-pool" data-founder="${founder.founder_name}" style="margin-top: 0.5rem;"></div>
                             </div>
 
@@ -13256,7 +13256,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         function formatDate(dateStr) {
             if (!dateStr) return '-';
             const date = new Date(dateStr);
-            return date.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            if (Number.isNaN(date.getTime())) return '-';
+            const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(dateStr)
+                || /[T ]00:00:00(?:\.0+)?(?:Z|[+-]\d{2}:?\d{2})?$/.test(dateStr);
+            const options = { day: '2-digit', month: '2-digit' };
+            if (!dateOnly) Object.assign(options, { hour: '2-digit', minute: '2-digit' });
+            return date.toLocaleDateString('ru-RU', options);
         }
 
         function getStatusLabel(status) {
@@ -14244,18 +14249,18 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                     const fmtThb = n => Math.round(n).toLocaleString('ru-RU').replace(/,/g, ' ');
                     // Батовая заявка закрывается загрузкой чека, USDT — хешем транзакции
                     const paidBlock = isThb
-                        ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                        ? `<div class="payout-request-paid-entry" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
                                 <input type="file" id="payout-receipt-${r.id}" accept="image/*,.pdf"
                                        style="flex:1;min-width:200px;font-size:12px;padding:6px;border:1px dashed #CBD5E1;border-radius:6px;background:#F8FAFC;color:#475569;">
                                 <button class="btn btn-sm btn-success" onclick="payThbReceipt(${r.id})">Выплачено (чек)</button>
                            </div>`
-                        : `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-                                <input type="text" id="payout-tx-${r.id}" placeholder="Хеш транзакции TRC-20 (для «Выплачено»)"
+                        : `<div class="payout-request-paid-entry" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                                <input type="text" id="payout-tx-${r.id}" placeholder="Хеш TRC-20" aria-label="Хеш транзакции TRC-20 для выплаты"
                                        style="flex:1;min-width:200px;padding:7px 10px;border:1px solid #CBD5E1;border-radius:6px;font-size:12px;font-family:monospace;">
                                 <button class="btn btn-sm btn-success" onclick="setPayoutStatus(${r.id}, 'paid')">Выплачено</button>
                            </div>`;
                     const actions = isFinal ? '' : `
-                        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
+                        <div class="payout-request-actions" style="margin-top:10px;display:flex;flex-direction:column;gap:8px;">
                             ${paidBlock}
                             <div style="display:flex;gap:6px;flex-wrap:wrap;">
                                 ${r.status === 'new' ? `<button class="btn btn-sm btn-light" onclick="setPayoutStatus(${r.id}, 'in_progress')">В работу</button>` : ''}
@@ -14263,11 +14268,11 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             </div>
                         </div>`;
                     const amountHtml = isThb
-                        ? `<div style="text-align:right;white-space:nowrap;">
+                        ? `<div class="payout-request-amount" style="text-align:right;white-space:nowrap;">
                                <div style="font-size:18px;font-weight:800;color:#2563EB;">${fmtThb(r.thb_amount || 0)} ฿</div>
                                <div style="font-size:11px;color:#94A3B8;">возместить $${(r.amount_usdt || 0).toFixed(2)}</div>
                            </div>`
-                        : `<div style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>`;
+                        : `<div class="payout-request-amount" style="font-size:18px;font-weight:800;color:#16A34A;white-space:nowrap;">$${(r.amount_usdt || 0).toFixed(2)}</div>`;
                     const details = isThb
                         ? `<div><span style="color:#94A3B8;">Курс клиенту:</span> <strong>${r.client_rate ?? '—'}</strong> · откуп по <strong>${r.bitazza_rate ?? '—'}</strong> <span style="color:#94A3B8;">(Bitazza VWAP)</span></div>
                            <div><span style="color:#94A3B8;">Банк:</span> <strong>${escapeHtml(r.bank_name || '—')}</strong></div>
@@ -14280,20 +14285,20 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                            ${r.notes ? `<div><span style="color:#94A3B8;">Комментарий:</span> ${escapeHtml(r.notes)}</div>` : ''}
                            ${r.tx_hash ? `<div><span style="color:#94A3B8;">TX:</span> <code style="background:#F0FDF4;color:#16A34A;padding:2px 6px;border-radius:4px;font-size:11px;word-break:break-all;">${escapeHtml(r.tx_hash)}</code></div>` : ''}`;
                     return `
-                    <div style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+                    <div class="payout-request-card" style="border:1px solid #E2E8F0;border-radius:12px;padding:14px;margin-bottom:10px;background:white;">
+                        <div class="payout-request-head" style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
                             <div style="flex:1;min-width:0;">
                                 <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
                                     <strong style="font-size:15px;">${escapeHtml(r.referrer_name || '—')}</strong>
                                     <span style="color:#94A3B8;font-size:12px;">${escapeHtml(r.referrer_code || '')}</span>
-                                    <span style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
-                                    ${isThb ? `<span style="background:#EFF6FF;color:#2563EB;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">🏦 Баты</span>` : ''}
+                                    <span class="payout-request-status pill ${r.status === 'paid' ? 'pill-money' : ''}" style="background:${meta.bg};color:${meta.color};padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">${meta.label}</span>
+                                    ${isThb ? `<span class="payout-request-thb pill" style="background:#EFF6FF;color:#2563EB;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Баты</span>` : ''}
                                 </div>
                                 <div style="font-size:12px;color:#64748B;">#${r.id} · ${date}</div>
                             </div>
                             ${amountHtml}
                         </div>
-                        <div style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
+                        <div class="payout-request-details" style="margin-top:10px;display:grid;grid-template-columns:1fr;gap:6px;font-size:13px;">
                             ${details}
                         </div>
                         ${actions}
@@ -14438,10 +14443,10 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                 const wa = linkCell(r.wa_link, 'WhatsApp') ||
                     {value: r.wa_link ? 'WhatsApp ↗' : '', onclick: `navigator.clipboard.writeText('${r.wa_link || ''}');showToast('Ссылка WA скопирована')`};
                 return `
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
-                        <div style="flex:1;min-width:0;">
-                            <div style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
-                            <div style="font-size:12px;color:#64748b;margin-top:2px;">
+                    <div class="referrer-row" style="display:flex;justify-content:space-between;align-items:flex-start;padding:0.75rem 1rem;border:1px solid ${r.active ? '#e5e7eb' : '#fee2e2'};border-radius:8px;margin-bottom:0.5rem;${r.active ? '' : 'opacity:0.5;'}">
+                        <div class="referrer-main" style="flex:1;min-width:0;">
+                            <div class="referrer-name" style="font-weight:600;font-size:14px;">${r.name} <span style="font-size:12px;color:#64748b;font-weight:400;">${r.code}</span> <span title="Язык кабинета" style="font-size:11px;">${r.lang === 'en' ? '🇬🇧 EN' : '🇷🇺 RU'}</span></div>
+                            <div class="referrer-meta" style="font-size:12px;color:#64748b;margin-top:2px;">
                                 ${r.comp_model === 'markup'
                                     ? `<span style="color:#7c3aed;font-weight:600;">Markup +${r.markup_percent || 0}%</span> к курсу`
                                     : `<span style="color:#0ea5e9;font-weight:600;">Revshare ${r.default_percent}%</span> от прибыли`}
@@ -14449,12 +14454,12 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 ${r.telegram ? ' · TG: ' + r.telegram : ''}
                                 ${r.active ? '' : ' · <span style="color:#ef4444;">Неактивен</span>'}
                             </div>
-                            <div style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
+                            <div class="referrer-money" style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
                                 <span style="color:#22c55e;">Заработал: $${(r.total_earned_usdt || 0).toFixed(2)}</span>
                                 <span style="color:#c2410c;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
                                 <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
-                            <div style="display:flex;gap:8px;margin-top:6px;">
+                            <div class="referrer-links" style="display:flex;gap:8px;margin-top:6px;">
                                 <input type="text" readonly value="${site.value}" title="Сайт"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f0fdf4;"
                                     onclick="${site.onclick}">
@@ -14462,7 +14467,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#eff6ff;"
                                     onclick="${bot.onclick}">
                             </div>
-                            <div style="display:flex;gap:8px;margin-top:4px;">
+                            <div class="referrer-links" style="display:flex;gap:8px;margin-top:4px;">
                                 <input type="text" readonly value="${baseUrl}/ref/${r.token}" title="Статистика"
                                     style="flex:1;font-size:11px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc;"
                                     onclick="this.select();navigator.clipboard.writeText(this.value);showToast('Ссылка статистики скопирована')">
@@ -14471,7 +14476,9 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                     onclick="${wa.onclick}">
                             </div>
                         </div>
-                        <div style="display:flex;flex-direction:column;gap:4px;margin-left:12px;flex-shrink:0;">
+                        <details class="referrer-actions">
+                            <summary aria-label="Действия с реферером">⋯</summary>
+                            <div class="referrer-actions-menu">
                             ${STAND_ROLES ? `<button class="btn btn-sm" style="background:#e0f2fe;color:#0369a1;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;" onclick="window.open('/api/stand/ref-preview/${r.id}', '_blank', 'noopener')">Кабинет ↗</button>` : ''}
                             <button class="btn btn-sm" style="background:#eff6ff;color:#3b82f6;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="editReferrer(${r.id})">Изм.</button>
@@ -14483,7 +14490,8 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
                             ${r.pending_usdt > 0 ? `<button class="btn btn-sm" style="background:#f0fdf4;color:#16a34a;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;"
                                 onclick="payReferrer(${r.id},'${r.name.replace(/'/g,"\\'")}',${r.pending_usdt})">Выплатить</button>` : ''}
-                        </div>
+                            </div>
+                        </details>
                     </div>
                 `;
             }).join('');
