@@ -23,8 +23,8 @@
     --navy-200: #E2E8F0;
     --navy-100: #F1F5F9;
     --navy-50: #F8FAFC;
-    --coral: #F97316;
-    --coral-hover: #EA580C;
+    --coral: #C2410C;
+    --coral-hover: #9A3412;
     --coral-light: #FFF7ED;
     --green: #22C55E;
     --green-light: #F0FDF4;
@@ -813,7 +813,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
 .docs-money-cell { font-variant-numeric:tabular-nums; font-weight:600; white-space:nowrap; }
 
 </style>
-    <link rel="stylesheet" href="/static/nav-shell.css?v=5">
+    <link rel="stylesheet" href="/static/nav-shell.css?v=6">
 </head>
 
 <body>
@@ -6261,7 +6261,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                 <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:13px;background:#f8fafc;border-radius:8px;padding:8px 12px;margin-bottom:12px;">
                     <span style="color:#64748b;">Объём: <b style="color:#0f172a;">$${Number(volume).toLocaleString('ru-RU', {maximumFractionDigits: 0})}</b></span>
                     <span style="color:#64748b;">Комиссия всего: <b style="color:#22c55e;">$${totalPayout.toFixed(2)}</b></span>
-                    <span style="color:#64748b;">Должны: <b style="color:#f97316;">$${unpaid.toFixed(2)}</b></span>
+                    <span style="color:#64748b;">Должны: <b style="color:#c2410c;">$${unpaid.toFixed(2)}</b></span>
                 </div>
                 ${body}`;
             if (_refCard.tab === 'deals') renderRefCardRows();
@@ -6299,7 +6299,7 @@ select.form-control:focus { background-image: url("data:image/svg+xml,%3Csvg xml
                     const paidAt = d.paid_at ? d.paid_at.split('T')[0] : '';
                     const badge = d.paid
                         ? `<span style="background:#f0fdf4;color:#16a34a;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Выплачено${paidAt ? ' ' + paidAt : ''}</span>`
-                        : `<span style="background:#fff7ed;color:#ea580c;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Должны</span>`;
+                        : `<span style="background:#fff7ed;color:#9a3412;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;">Должны</span>`;
                     return `
                     <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:6px;">
                         <div style="min-width:0;">
@@ -13994,7 +13994,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
         let _activePayoutCount = 0;
         let _oldestActivePayoutAt = null;
         const PAYOUT_STATUS_LABELS = {
-            new: { label: 'Новая', color: '#F97316', bg: '#FFF7ED' },
+            new: { label: 'Новая', color: '#C2410C', bg: '#FFF7ED' },
             in_progress: { label: 'В работе', color: '#3B82F6', bg: '#EFF6FF' },
             paid: { label: 'Выплачено', color: '#16A34A', bg: '#DCFCE7' },
             cancelled: { label: 'Отменено', color: '#64748B', bg: '#F1F5F9' },
@@ -14274,7 +14274,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                             </div>
                             <div style="display:flex;gap:12px;margin-top:4px;font-size:13px;">
                                 <span style="color:#22c55e;">Заработал: $${(r.total_earned_usdt || 0).toFixed(2)}</span>
-                                <span style="color:#f97316;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
+                                <span style="color:#c2410c;">К выплате: $${(r.pending_usdt || 0).toFixed(2)}</span>
                                 <span style="color:#64748b;">Выплачено: $${(r.total_paid_usdt || 0).toFixed(2)}</span>
                             </div>
                             <div style="display:flex;gap:8px;margin-top:6px;">
@@ -14300,7 +14300,7 @@ ${Math.abs(c.debits_delta_rub) < 0.01
                                 onclick="editReferrer(${r.id})">Изм.</button>
                             <button class="btn btn-sm" style="background:#f5f3ff;color:#7c3aed;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="showReferrerDeals(${r.id},'${r.name.replace(/'/g,"\\'")}')">Сделки</button>
-                            <button class="btn btn-sm" style="background:#fff7ed;color:#ea580c;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
+                            <button class="btn btn-sm" style="background:#fff7ed;color:#9a3412;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="showReferrerPayoutRequests(${r.id},'${r.name.replace(/'/g,"\\'")}')">Заявки</button>
                             <button class="btn btn-sm" style="background:${r.active ? '#fef3c7' : '#f0fdf4'};color:${r.active ? '#d97706' : '#16a34a'};border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;"
                                 onclick="toggleReferrer(${r.id},${!r.active})">${r.active ? 'Откл.' : 'Вкл.'}</button>
