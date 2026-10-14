@@ -831,6 +831,8 @@ async function standSave(){
         }
         const modal=S.modal, delivered=j.notification_delivery||[];
         if(modal&&modal.noteId){
+          const serverNote=(j.data?.notes||[]).find(n=>n.dealId===modal.id&&n.role===modal.to&&String(n.id).startsWith('stand:state:'+j.version+':'));
+          if(serverNote)modal.noteId=serverNote.id;
           const result=delivered.find(x=>String(x.note_id)===String(modal.noteId)&&x.role===modal.to);
           const adminResult=delivered.find(x=>String(x.note_id)===String(modal.noteId)&&x.role==='admin');
           modal.delivery=result?result.status:'unknown';

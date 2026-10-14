@@ -34,3 +34,87 @@ def test_exchange_quote_handoff_requires_only_pair_legs(board, pair, dirs):
             'dealId': 1474, 'dir': direction, 'cpId': direction, 'rate': '80' if direction == 'rub' else '32'})
         assert response.status_code == 200, response.json
         assert response.json['data']['deals'][0]['step'] == ('s6' if i == len(required)-1 else 's5')
+
+import copy
+
+
+def put_board(client, mutate, version=True):
+    current = client.get('/api/stand/state').json
+    proposal = copy.deepcopy(current['data'])
+    mutate(proposal)
+    body = {'data': proposal}
+    if version:
+        body['version'] = current['version']
+    return client.put('/api/stand/state', json=body)
+
+
+@pytest.mark.parametrize('version', [None, True, '1', 1.5, -1])
+def test_version_is_required_integer(board, version):
+    install, clients = board
+    install('s5')
+    client = clients('operator')
+    before = client.get('/api/stand/state').json
+    response = client.put('/api/stand/state', json={'data': before['data'], 'version': version})
+    assert response.status_code == 400
+    assert client.get('/api/stand/state').json == before
+
+
+@pytest.mark.parametrize('edit', ['erase', 'change', 'reorder'])
+def test_past_server_journal_is_immutable(board, edit):
+    install, clients = board
+    log = [{'text': 'server ping', 'role': 'manager', 'at': 1}, {'text': 'legacy', 'role': 'operator'}]
+    install('s5', {'log': log})
+    client = clients('operator')
+    def mutate(state):
+        entries = state['deals'][0]['log']
+        if edit == 'erase': entries.clear()
+        elif edit == 'change': entries[0]['text'] = 'forged'
+        else: entries.reverse()
+    response = put_board(client, mutate)
+    assert response.status_code == 409
+    assert client.get('/api/stand/state').json['data']['deals'][0]['log'] == log
+
+
+def test_append_log_preserves_legacy_and_attributes_author(board):
+    install, clients = board
+    install('s5', {'log': [{'text': 'legacy'}]})
+    def mutate(state):
+        state['deals'][0]['log'][0]['at'] = None
+        state['deals'][0]['log'].append({'text': 'human note', 'role': 'teodor', 'at': 1})
+    response = put_board(clients('operator'), mutate)
+    assert response.status_code == 200, response.json
+    entries = response.json['data']['deals'][0]['log']
+    assert entries[0] == {'text': 'legacy'}
+    assert entries[-1]['role'] == 'operator'
+    assert entries[-1]['kind'] == 'comment'
+    assert entries[-1]['at'] != 1
+
+
+def test_forged_service_note_is_not_stored_or_delivered(board):
+    install, clients = board
+    install('s5')
+    response = put_board(clients('manager'), lambda state: state['notes'].append(
+        {'id': 'forged', 'dealId': 1474, 'role': 'operator', 'text': 'Теодор подписал, можно отправлять'}))
+    assert response.status_code == 200, response.json
+    assert not response.json['data']['notes']
+    assert not response.json['notification_delivery']
+
+
+@pytest.mark.parametrize('start,end,role', [('s5','s14','operator'), ('s5','s6','operator'),
+    ('s6','s8','manager'), ('s8','s11','manager'), ('s11','s12','operator'),
+    ('s12','s14','manager'), ('s18w','s22','operator')])
+def test_missing_step_facts_and_jumps_are_rejected(board, start, end, role):
+    install, clients = board
+    install(start)
+    response = put_board(clients(role), lambda state: state['deals'][0].update(step=end))
+    assert response.status_code == 409, response.json
+    assert clients(role).get('/api/stand/state').json['data']['deals'][0]['step'] == start
+
+
+def test_verified_rate_handoff_generates_service_note(board):
+    install, clients = board
+    install('s5', {'pair': 'RUB → USDT', 'rates': {'rubUsdt': '85'}})
+    response = put_board(clients('operator'), lambda state: state['deals'][0].update(step='s6'))
+    assert response.status_code == 200, response.json
+    assert response.json['data']['notes'][0]['role'] == 'manager'
+    assert response.json['data']['notes'][0]['text'] == 'Задача на вас: шаг s6'

@@ -88,7 +88,7 @@ def test_late_operator_quote_survives_manager_agreement(board_server):
     initial = requests.get(base + '/api/stand/state', headers=manager, timeout=5).json()
     board = {'deals': [{'id': 1484, 'code': 'QA-1484', 'client': 'Иван',
         'type': 'Оплата недвижимости', 'kind': 'Фрихолд', 'payType': 'По реквизитам',
-        'step': 's6', 'rates': {'client': '90'}, 'quotes': [], 'log': [],
+        'step': 's6', 'selfRate': True, 'rates': {'client': '90', 'rubUsdt': '85'}, 'quotes': [], 'log': [],
         'invoiceUsd': 1000}], 'notes': [], 'cps': [{'id': 'tradex',
         'name': 'Tradex', 'dirs': ['rub']}], 'seq': 1484}
     created = requests.put(base + '/api/stand/state', headers=manager, timeout=5,

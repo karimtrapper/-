@@ -47,11 +47,12 @@ const newDeal=()=>({id:1472,code:'СД-1472',client:'Concurrency synthetic',type
   marina.S.deals[0].log.push({text:'Manager note',role:'manager'});await marina.standSave();
   assert.equal(marina.standLastSaveResult.ok,true);
   artem.S.deals[0].quotes.push({dir:'thb',cpId:'coins',name:'Coins',rate:33});
-  artem.S.deals[0].step='s6';artem.S.deals[0].log.push({text:'Курсы отданы менеджеру',role:'operator'});
+  // Saving a quote draft is separate from the server quote handoff.
+  artem.S.deals[0].step='s5';artem.S.deals[0].log.push({text:'Курсы отданы менеджеру',role:'operator'});
   await artem.standSave();await artem.standWaitSaved();
   const response=await fetch(base+'/api/stand/state',{headers:{Cookie:cookies[0]}}),persisted=await response.json();
   trace('after conflict',{deal:persisted.data.deals[0]});
   assert.equal(persisted.data.deals[0].quotes.find(q=>q.dir==='thb')?.rate,33,'независимая правка курса не должна пропадать');
-  assert.equal(persisted.data.deals[0].log[0].text,'Manager note');
+  assert.ok(persisted.data.deals[0].log.some(e=>e.text.endsWith('Manager note')));
  }
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -133,7 +133,8 @@ def test_step_change_uses_authenticated_current_owner(board, step, destination,
 ])
 def test_lawful_owner_can_handoff_to_next_roles_step(board, step, destination, owner):
     install, client_for = board
-    install(step)
+    install(step, {'rates': {'rubUsdt': '80', 'usdtThb': '32', 'client': '2.5'},
+                   'amountRub': 100000, 'amountThb': 40000})
     client = client_for(owner)
     before = client.get('/api/stand/state').json
     response = client.put('/api/stand/state', json={
@@ -158,8 +159,10 @@ def test_personal_wallet_signer_owns_s23(board):
     assert denied.status_code in (403, 409), denied.json
     assert _persisted() == persisted
     signer = client_for('teodor')
+    proposed = copy.deepcopy(before['data'])
+    proposed['deals'][0]['log'].append({'text': 'Preparing transfer'})
     allowed = signer.put('/api/stand/state', json={
-        'version': before['version'], 'data': _only_step(before['data'], 's24')})
+        'version': before['version'], 'data': proposed})
     assert allowed.status_code == 200, allowed.json
 
 

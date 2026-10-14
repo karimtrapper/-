@@ -6160,6 +6160,8 @@ def stand_state_put():
     payload = request.get_json(silent=True) or {}
     if 'data' not in payload:
         return jsonify({'success': False, 'error': 'no_data'}), 400
+    if type(payload.get('version')) is not int or payload['version'] < 0:
+        return jsonify(success=False, error='version_required'), 400
     actor = current_role()
     db = get_session()
     try:
@@ -6168,13 +6170,17 @@ def stand_state_put():
             db.execute(_t('BEGIN IMMEDIATE'))
         row = _stand_row(db, lock=True)
         base = payload.get('version')
-        if base is not None and int(base) != (row.version or 0):
+        if base != (row.version or 0):
             return jsonify({'success': False, 'error': 'conflict',
                             'version': row.version or 0,
                             'data': _stand_strip_files(json.loads(row.data or '{}')),
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
         previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
+        from stand_workflow import journal_problem, accept_journal, accept_notes
+        problem = journal_problem(previous, payload['data'])
+        if problem:
+            return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         try:
             stand_file_storage.normalize_incoming(previous, payload['data'],
                                                   modern=payload.get('fileStorageVersion') == 1)
@@ -6247,7 +6253,15 @@ def stand_state_put():
             return jsonify({'success': False, 'error': problem,
                             'version': row.version or 0, 'data': _stand_strip_files(previous)}), (
                                 403 if problem == 'Действие шага s14 доступно роли operator' else 409)
+        problem = _stand_workflow_problem(previous, payload['data'], actor, db)
+        if problem:
+            return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409
         clean = preserve_server_fields(previous, payload['data'])
+        author = flask_session.get('display_name') or flask_session.get('username') or actor
+        accept_journal(previous, clean, actor, author, int(time.time()*1000))
+        accept_notes(previous, clean, actor)
+        _stand_state_events(previous, clean, actor, (row.version or 0) + 1)
+
         _stand_restore_crm_candidates(db, clean)
         for income in clean.get('incomes') or []:
             # Галочка выбора прихода живёт только в браузере.
@@ -8480,6 +8494,121 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
                 or transfer.get('addr') != old_order.get('address')):
             return 'Перевод должен совпадать с подтверждённым поручением менеджера'
     return None
+
+
+def _stand_workflow_problem(previous, state, actor, db):
+    """Validate graph and evidence after authorization, before accepting a PUT."""
+    from stand_workflow import EDGES, EXCHANGE_PAIRS, positive, quote_dirs
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in state.get('deals', []):
+        before = old.get(deal.get('id'))
+        if not before:
+            if deal.get('step') == 's8' and not (deal.get('kind') == 'Фрихолд' and deal.get('payType') == 'Крипта'):
+                return 'Новая заявка должна пройти расчёт и согласие клиента'
+            if deal.get('step') == 's6' and not (deal.get('selfRate') and actor in ('manager', 'admin')
+                    and all(positive((deal.get('rates') or {}).get('rubUsdt' if d == 'rub' else 'usdtThb')) for d in quote_dirs(deal))):
+                return 'Для своего расчёта нужны курсы выбранной пары'
+            continue
+        for key in ('docPack', 'docVersion', 'docsIssued'):
+            if before.get(key) != deal.get(key):
+                return 'Выпуск документов фиксирует только сервер'
+        start, end = before.get('step'), deal.get('step')
+        if start == end:
+            continue
+        if end not in EDGES.get(start, set()):
+            return f'Недопустимый переход {start} → {end}'
+        rates = deal.get('rates') or {}
+        if (start, end) in (('s4', 's6'), ('s5', 's6')):
+            source = before if start == 's5' else deal
+            if start == 's4' and not deal.get('selfRate'):
+                return 'Курс должен ответить операционист'
+            if not quote_dirs(source) or not all(positive((source.get('rates') or {}).get(
+                    'rubUsdt' if direction == 'rub' else 'usdtThb')) for direction in quote_dirs(source)):
+                return 'Сначала получите курсы выбранной пары'
+        if start == 's6' and end == 's8':
+            if not positive(rates.get('client')):
+                return 'Для согласия клиента нужен итоговый курс'
+            if deal.get('type') == 'Обмен валюты':
+                default = 'USDT → THB' if deal.get('payType') == 'Крипта' else 'RUB → THB'
+                pair = EXCHANGE_PAIRS.get(deal.get('pair') or default)
+                fields = {'rub': 'amountRub', 'thb': 'amountThb', 'usdt': 'amountUsdt'}
+                if not pair or not all(positive(deal.get(fields[c])) for c in pair[:2]):
+                    return 'Для согласия клиента нужны обе суммы выбранной пары'
+            elif not positive(deal.get('invoiceUsd') if deal.get('kind') == 'Фрихолд' else deal.get('amountThb')):
+                return 'Нужна сумма получателю'
+        if start == 's8' and end == 's11':
+            for kind in (('inv',) if deal.get('isOld') else ('pass', 'inv')):
+                valid = False
+                for item in (deal.get('files') or {}).get(kind) or []:
+                    try:
+                        if item.get('storageId'):
+                            stored = stand_file_storage.resolve(db, StandFile, item, deal['id'], kind)
+                            valid = bool(stored and stored.content_valid)
+                        elif item.get('data'):
+                            raw = stand_file_storage.decode(item)
+                            stand_file_storage.validate(raw, item.get('mime'), item.get('file'))
+                            valid = True
+                    except (ValueError, TypeError, KeyError):
+                        pass
+                    if valid:
+                        break
+                if not valid:
+                    return 'Для передачи документов нужен файл: ' + kind
+        if start in ('s11', 's11b') and end in ('s11b', 's12') and not before.get('docPack'):
+            return 'Сначала выпустите пакет документов на сервере'
+        if start == 's12' and end == 's14':
+            if not before.get('docPack') or not deal.get('docsSent'):
+                return 'Нужен выпущенный пакет и отметка отправки клиенту'
+        if start in ('s14', 's14m') and end in ('s15', 's18', 's22'):
+            if not _stand_close_fact_source(state, deal, 'payin')[0]:
+                return 'Сначала подтвердите приход оплаты'
+            crypto = deal.get('payType') == 'Крипта'
+            if end == ('s18' if crypto else 's22'):
+                return 'После прихода используйте маршрут валюты оплаты'
+        if start == 's15' and end == 's26' and not before.get('invoiceDetailsReturn'):
+            return 'Возврат к оплате возможен только после уточнения реквизитов'
+        if start == 's18w' and end == 's22' and not stand_prepay.received(previous, before):
+            return 'Сначала подтвердите приход USDT брокера'
+        if start == 's22' and end == 's26' and deal.get('postConv') not in ('keep', 'ipps'):
+            return 'Маршрут требует исходящего перевода'
+        if start == 's23' and end == 's24':
+            sends = (deal.get('transfer') or {}).get('sends') or []
+            if not sends or sum(_stand_number(s.get('amount')) for s in sends) + .005 < _stand_number((before.get('transfer') or {}).get('amount')):
+                return 'Сначала подготовьте переводы на всю сумму поручения'
+        if start in ('s23', 's24') and end in ('s25', 's26', 's27') and not before.get('serverTransferComplete'):
+            return 'Перевод ещё не подтверждён сервером'
+        if start == 's25' and end == 's26' and deal.get('kind') != 'Фрихолд':
+            if not positive(((deal.get('pay') or {}).get('coinsCredit') or {}).get('thb')):
+                return 'Сначала зарегистрируйте приход от Coins'
+        if start == 's26' and end == 's27' and not (
+                (deal.get('pay') or {}).get('invoicePaid') and _stand_valid_receipt(deal)):
+            return 'Для завершения оплаты нужен платёж и чек'
+    return None
+
+
+def _stand_state_events(previous, state, actor, version):
+    """Notification text comes only from events accepted by the server."""
+    old = {d.get('id'): d for d in previous.get('deals', [])}
+    for deal in state.get('deals', []):
+        before = old.get(deal.get('id')) or {}
+        events = []
+        if before.get('step') != deal.get('step'):
+            role = _stand_current_step_role(state, deal)
+            if role:
+                events.append((role, 'Задача на вас: шаг ' + str(deal.get('step'))))
+            deal.setdefault('log', []).append({'at': int(time.time()*1000), 'role': 'system',
+                'text': f'Переход {before.get("step") or "новая заявка"} → {deal.get("step")} · {actor}'})
+        if before.get('reqTask') != deal.get('reqTask'):
+            if deal.get('reqTask') == 'open':
+                events.append(('manager', 'Задача: заполнить реквизиты для оплаты'))
+            elif deal.get('reqTask') == 'done':
+                events.append(('operator', 'Менеджер заполнил реквизиты для оплаты'))
+        if before.get('payToConfirm') != deal.get('payToConfirm') and _stand_payto_confirmed(deal):
+            events.append(('operator', 'Менеджер подтвердил актуальные реквизиты'))
+        if before.get('rates') != deal.get('rates') and before.get('step') == deal.get('step'):
+            events.append(('manager' if actor == 'operator' else 'operator', 'Курсы сделки обновлены'))
+        for index, (role, text) in enumerate(events):
+            _stand_note(state, f'stand:state:{version}:{deal["id"]}:{index}', role, deal, text)
 
 
 def _stand_guard_transition(previous, new_state, actor=None, actor_id=None, db=None,
