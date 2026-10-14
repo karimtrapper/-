@@ -8531,6 +8531,22 @@ def _stand_freehold_ipps_order_problem(state, before, deal, actor):
     return None
 
 
+def _stand_freehold_explicit_rub_problem(deal):
+    """Validate the derived rate, never reconstruct the explicitly entered RUB principal."""
+    if not (deal.get('kind') == 'Фрихолд' and not _stand_is_crypto(deal)
+            and deal.get('freeholdClientInput') == 'sum'):
+        return None
+    from decimal import Decimal, ROUND_HALF_UP
+    amount = _stand_num(deal.get('amountRub'))
+    invoice = _stand_num(deal.get('invoiceUsd'))
+    rate = _stand_num((deal.get('rates') or {}).get('client'))
+    if any(v is None or not v.is_finite() or v <= 0 for v in (amount, invoice, rate)):
+        return 'freehold_client_amount_required'
+    if rate != (amount / invoice).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP):
+        return 'freehold_client_rate_mismatch'
+    return None
+
+
 def _stand_workflow_problem(previous, state, actor, db):
     """Validate graph and evidence after authorization, before accepting a PUT."""
     from stand_workflow import EDGES, EXCHANGE_PAIRS, positive, quote_dirs
@@ -8561,6 +8577,9 @@ def _stand_workflow_problem(previous, state, actor, db):
                     'rubUsdt' if direction == 'rub' else 'usdtThb')) for direction in quote_dirs(source)):
                 return 'Сначала получите курсы выбранной пары'
         if start == 's6' and end == 's8':
+            problem = _stand_freehold_explicit_rub_problem(deal)
+            if problem:
+                return problem
             if not positive(rates.get('client')):
                 return 'Для согласия клиента нужен итоговый курс'
             if deal.get('type') == 'Обмен валюты':
@@ -11243,6 +11262,14 @@ def _stand_doc_request(state, deal, F):
     if deal_type in ('leasehold', 'freehold') and not fields.get('invoice_no') and not fields.get('contract_ref'):
         missing.append('invNo')
     freehold = deal_type == 'freehold'
+    if freehold and not crypto and deal.get('freeholdClientInput') == 'sum':
+        problem = _stand_freehold_explicit_rub_problem(deal)
+        if problem:
+            return {'error': problem, 'fields': ['amountPay', 'rate'],
+                    'detail': 'Проверьте согласованную сумму клиенту и курс'}
+        # Approved board amounts override stale document form fields.
+        F = dict(F, amountPay=deal['amountRub'], amountThb=deal['invoiceUsd'],
+                 rate=(deal.get('rates') or {})['client'])
     thb, pay, rate = _stand_num(F.get('amountThb')), _stand_num(F.get('amountPay')), _stand_num(F.get('rate'))
     if crypto and freehold:
         # Курса у крипто-фрихолда нет; старое значение из сохранённых полей пакета
@@ -11504,6 +11531,8 @@ def stand_docs_issue():
                         'detail': req['detail']}), 400
 
     deal_type, fields, money = req['deal_type'], req['fields'], req['money']
+    if deal_type == 'freehold' and not _stand_is_crypto(deal) and deal.get('freeholdClientInput') == 'sum':
+        F.update(amountPay=money['total_payin'], amountThb=money['transfer_amount'], rate=money['rate'])
     if money.get('payin_method') == 'usdt':
         network_label = 'ERC-20' if 'ERC-20' in money.get('payin_network', '') else 'TRC-20'
         F['payTo'] = f"USDT {network_label}, {money['payin_wallet']}"

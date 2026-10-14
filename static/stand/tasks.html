@@ -1383,7 +1383,7 @@ function freeholdEstimate(d,amountRub,brokerRate){
 }
 function freeholdSummary6(d){
   const X=d.invoiceUsd||0, k=num(d.rates.client);
-  const rub=(X&&k)?Math.round(X*k*100)/100:null;
+  const rub=d.freeholdClientInput==='sum'?d.amountRub:((X&&k)?Math.round(X*k*100)/100:null);
   const {sent,profit,pct}=freeholdEstimate(d,rub,d.rates.rubUsdt);
   return `<div class="fr">
     <div class="fg"><label class="fl">В IPPS уйдёт<span class="sub2"> USD: инвойс + комиссия тарифа</span></label>
@@ -1393,7 +1393,7 @@ function freeholdSummary6(d){
   </div>
   ${profit!=null&&profit<0?`<div class="alert a-warn"><div><b>Сделка в минус</b> · ${moneyKop(profit,'USDT')}. Проверьте курс клиенту.</div></div>`:''}`;
 }
-/* Клиенту — ₽ за 1 $, 4 знака, курс первичен: рубли = X × курс.
+/* Клиенту — сохранённая явная сумма либо X × курс для прежних расчётов.
    Крипто-фрихолд: курса нет, сумма клиента вводится явно. */
 function freeholdApprox(d){
   const X=d.invoiceUsd||null, t=ippsTariff(d), S=X?freeholdSend(X,t):null;
@@ -1402,7 +1402,7 @@ function freeholdApprox(d){
     return {thb:X,thbSign:'$',pay:pay,cur:'usdt',sign:'USDT',approx:null,sentUsd:S};
   }
   const rate=num(d.rates.client);
-  const rub=(X&&rate)?Math.round(X*rate*100)/100:null;
+  const rub=d.freeholdClientInput==='sum'?d.amountRub:((X&&rate)?Math.round(X*rate*100)/100:null);
   return {thb:X,thbSign:'$',pay:rub,cur:'rub',sign:'₽',approx:rub==null?'pay':null,sentUsd:S};
 }
 function approx(d){
@@ -4021,6 +4021,9 @@ function docFields(d){
   if(isCrypto(d)&&d.kind==='Фрихолд'){
     out.amountPay=d.amountUsdt==null?'':d.amountUsdt;
     out.rate='';
+  }
+  if(!isCrypto(d)&&d.kind==='Фрихолд'&&d.freeholdClientInput==='sum'){
+    out.amountPay=d.amountRub;out.amountThb=d.invoiceUsd;out.rate=d.rates.client;
   }
   return out;
 }
@@ -8069,19 +8072,22 @@ function costRateAll(d){
   return {rate:ru?usdt*ru/thb:null,fee:fee};
 }
 function cleanNum(v){return String(v==null?'':v).replace(/[^\d.,]/g,'');}
-/* Рублёвый фрихолд: курс первичен, рубли клиенту = X × курс (спека 28.09-freehold-no-baht,
-   п.5) — округление до копеек. Отдельная функция, а не ветка в syncClient(): там завязана
-   логика на батах (d.amountThb, anchorPay), фрихолду её подключать не нужно и опасно. */
-function syncFreeholdRate(id){
-  const d=deal(id); if(!d)return;
-  const raw=num(cleanNum(val('r3')));
-  /* Курс клиенту — ровно 4 знака после запятой (спека 28.09-freehold-no-baht, п.5).
-     Округляем, а не отклоняем: лишние знаки — неточность ввода (курс называют
-     голосом или в переписке), не повод не принять число. */
-  const rounded=raw?Math.round(raw*10000)/10000:null;
-  d.rates.client=rounded!=null?rounded.toFixed(4).replace('.',','):null;
+/* Последнее изменённое поле — источник суммы; ввод суммы хранит курс до 6 знаков.
+   Только несогласованный s6: открытие старых сделок ничего не пересчитывает. */
+function syncFreeholdRate(id,from='rate'){
+  const d=deal(id); if(!d||(d.step&&d.step!=='s6'))return;
   const X=d.invoiceUsd||0;
-  d.amountRub=(rounded&&X)?Math.round(X*rounded*100)/100:null;
+  if(from==='sum'){
+    const sum=num(cleanNum(val('r4')));
+    d.amountRub=sum||null;
+    d.rates.client=(sum>0&&X>0)?(Math.round(sum/X*1e6)/1e6).toFixed(6).replace('.',','):null;
+  }else{
+    const raw=num(cleanNum(val('r3')));
+    const rounded=raw?Math.round(raw*10000)/10000:null;
+    d.rates.client=rounded!=null?rounded.toFixed(4).replace('.',','):null;
+    d.amountRub=(rounded&&X)?Math.round(X*rounded*100)/100:null;
+  }
+  d.freeholdClientInput=from;
   save();render();
 }
 /* На этом шаге правятся все цифры: клиент мог согласиться на другую сумму, а
@@ -8912,13 +8918,13 @@ function stepCard(d){
   s6:()=>{
     if(d.kind==='Фрихолд'&&!isCrypto(d)){
       /* Рублёвый фрихолд: «Итог с клиентом» (Карим, 06.10) — менеджер вписывает инвойс
-         (฿ + курс ฿/$ или сразу $), тариф и курс ₽ за 1$ (4 знака, первичен); рубли клиенту
-         = X × курс (спека 28.09-freehold-no-baht, п.5). На «Клиент согласен» всё
+         (฿ + курс ฿/$ или сразу $), тариф и курс ₽ за 1$ либо сумму клиенту.
+         Последнее изменённое поле первично. На «Клиент согласен» всё
          фиксируется в сделке (act s6). Курса покупки ฿/USDT и «получателю ฿» тут нет —
          это не то же самое, что лизхолд. */
       const X=d.invoiceUsd||0;
       const k=num(d.rates.client);
-      const rub=k?Math.round(X*k*100)/100:null;
+      const rub=d.freeholdClientInput==='sum'?d.amountRub:(k?Math.round(X*k*100)/100:null);
       /* Себестоимость ₽/$ = S × курс брокера / X (спека 28.09-freehold-no-baht, §2 «s6») —
          во сколько рублей обходится каждый доллар инвойса реально, для сверки с курсом
          клиенту. Курс брокера здесь — тот же rubUsdt, что и в поле выше (ответ с s5),
@@ -8933,10 +8939,10 @@ function stepCard(d){
         <div class="fg"><label class="fl">Курс брокера · RUB → USDT</label>
           <input class="fc num" readonly value="${d.rates.rubUsdt||''}"></div>
         <div class="fg"><label class="fl">Итоговый курс клиенту<span class="rq">*</span><span class="sub2"> ₽ за 1 $, 4 знака</span></label>
-          <input class="fc num" id="r3" value="${d.rates.client||''}" placeholder="курс клиенту, ₽ за 1 $"
-            onchange="syncFreeholdRate(${d.id})"></div>
-        <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — считается: X × курс, округление до копеек</span></label>
-          <input class="fc num" readonly value="${rub!=null?Number(rub).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}):''}"></div>
+          <input class="fc num" id="r3" value="${k?k.toFixed(4).replace('.',','):''}" placeholder="курс клиенту, ₽ за 1 $"
+            onchange="syncFreeholdRate(${d.id},'rate')"></div>
+        <div class="fg"><label class="fl">Сумма клиенту<span class="sub2"> ₽ — измените сумму или курс, второе пересчитается</span></label>
+          <input class="fc num" id="r4" value="${rub!=null?String(rub).replace('.',','):''}" onchange="syncFreeholdRate(${d.id},'sum')"></div>
       </div>
       <div class="fr">
         <div class="fg"><label class="fl">Себестоимость<span class="sub2"> ₽ за 1 $ — S × курс брокера / X, для сверки с курсом клиенту</span></label>
@@ -8948,7 +8954,7 @@ function stepCard(d){
       <div class="row mainrow"><button class="btn btn-primary" onclick="act(${d.id},'s6')">Клиент согласен</button>
       <button class="btn btn-secondary" onclick="rerate(${d.id})">Запросить курсы заново</button>
       <button class="btn btn-outline" onclick="askClose(${d.id})">Клиент отказался</button></div>
-      <div class="alert a-info" style="margin-top:14px"><div>Курс первичен: рубли клиенту считаются от него и от инвойса, а не наоборот. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.</div></div>
+      <div class="alert a-info" style="margin-top:14px"><div>Измените курс или сумму клиенту — второе поле пересчитается. Введённая сумма сохраняется точно; курс отображается с 4 знаками. Наценка живёт внутри курса — S, себестоимость и прибыль в договор не идут; суммы инвойса и тариф IPPS идут.</div></div>
       <p style="font-size:13px;color:var(--navy-600);line-height:1.65">Проговорите правило: при расхождении больше 0,5% к моменту зачисления условия пересчитываются.</p>
       ${quotesSummary(d)}</div>`;
     }
@@ -9792,7 +9798,7 @@ async function act(id,step){
     toast('Курсы отданы — в сделку ушли лучшие');return;}
   if(step==='s6'){
     if(d.kind==='Фрихолд'&&!isCrypto(d)){
-      /* Рублёвый фрихолд: курс первичен, рубли клиенту уже посчитаны в
+      /* Рублёвый фрихолд: последнее правленное поле первично, значения посчитаны в
          syncFreeholdRate() при вводе курса — здесь только проверяем и идём дальше. */
       if(!d.rates.client||!num(d.rates.client)){toast('Укажите итоговый курс клиенту');return;}
       /* Фиксация «Итога с клиентом» (Карим, 06.10): инвойс, курс ฿/$ и тариф остаются в
@@ -9809,7 +9815,10 @@ async function act(id,step){
       d.invoiceUsdEstimate=false;
       d.ippsTariff=d.ippsTariff||'bank';
       const X6=d.invoiceUsd, t6=ippsTariff(d), k6=num(d.rates.client);
-      d.amountRub=Math.round(X6*k6*100)/100;
+      if(d.freeholdClientInput==='sum'){
+        if(!(d.amountRub>0)){toast('Укажите сумму клиенту');return;}
+        d.rates.client=(Math.round(d.amountRub/X6*1e6)/1e6).toFixed(6).replace('.',',');
+      }else d.amountRub=Math.round(X6*k6*100)/100;
       go(d,'s8','Итог с клиентом: '+(thb?money(d.invoiceThb,'฿')+' по '+(d.fxBank==='custom'?'своему курсу':d.fxBank)+' '+d.fxRate+' = ':'')+
         usd(X6)+' застройщику · '+t6.label+' · в IPPS '+usd(freeholdSend(X6,t6))+' · курс клиенту '+d.rates.client+' ₽/$ · клиенту '+moneyKop(d.amountRub,'₽'));
       toast('Запросите документы');return;
