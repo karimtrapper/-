@@ -170,3 +170,53 @@ def test_operator_can_erase_server_journal_event(board_server):
     }, ensure_ascii=False))
     assert erased.status_code == 409, erased.text
     assert after['data']['deals'][0]['log'] == original_log
+
+
+def test_second_application_with_unchanged_first_s5_is_accepted(board_server):
+    base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
+    manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
+    first = {'id': 98511, 'code': 'СД-98511', 'client': 'Synthetic A',
+             'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
+             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False}
+    initial = requests.get(base, headers=manager, timeout=5).json()
+    created = requests.put(base, headers=manager, timeout=5, json={
+        'version': initial['version'], 'data': {'deals': [first], 'notes': []}})
+    assert created.status_code == 200, created.text
+    second = {'id': 98512, 'code': 'СД-98512', 'client': 'Synthetic B',
+              'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
+              'amountThb': 50000, 'log': [], 'isTask': True}
+    board = copy.deepcopy(created.json()['data'])
+    board['deals'].insert(0, second)
+    added = requests.put(base, headers=manager, timeout=5, json={
+        'version': created.json()['version'], 'data': board})
+    after = requests.get(base, headers=manager, timeout=5).json()
+    print('SECOND_APPLICATION_CLEAN', json.dumps({
+        'status': added.status_code, 'error': added.json().get('error'),
+        'ids': [d['id'] for d in after['data']['deals']],
+    }, ensure_ascii=False))
+    assert added.status_code == 200, added.text
+
+
+def test_second_application_rejected_if_browser_normalizes_first_s5(board_server):
+    base = board_server['BOARD_RACE_URL'] + '/api/stand/state'
+    manager = {'Cookie': json.loads(board_server['BOARD_RACE_COOKIES'])[0]}
+    first = {'id': 98513, 'code': 'СД-98513', 'client': 'Synthetic A',
+             'type': 'Обмен валюты', 'pair': 'RUB → USDT', 'step': 's5',
+             'amountRub': 100000, 'log': [], 'isTask': True, 'partial': False}
+    initial = requests.get(base, headers=manager, timeout=5).json()
+    created = requests.put(base, headers=manager, timeout=5, json={
+        'version': initial['version'], 'data': {'deals': [first], 'notes': []}})
+    assert created.status_code == 200, created.text
+    board = copy.deepcopy(created.json()['data'])
+    # newDeal() does not include compare; migrate() adds it after the GET response.
+    board['deals'][0]['compare'] = False
+    board['deals'].insert(0, {'id': 98514, 'client': 'Synthetic B',
+        'type': 'Обмен валюты', 'pair': 'THB → USDT', 'step': 's5',
+        'amountThb': 50000, 'log': [], 'isTask': True})
+    added = requests.put(base, headers=manager, timeout=5, json={
+        'version': created.json()['version'], 'data': board})
+    print('SECOND_APPLICATION_NORMALIZED', json.dumps({
+        'status': added.status_code, 'error': added.json().get('error'),
+    }, ensure_ascii=False))
+    assert added.status_code == 200
+    assert len(added.json()['data']['deals']) == 2

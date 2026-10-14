@@ -83,3 +83,47 @@ def accept_notes(previous, submitted, actor):
         if (actor in ('admin', note.get('role')) and incoming.get('read') is True):
             note['read'] = True
     submitted['notes'] = notes
+
+
+def strip_browser_defaults(previous, submitted):
+    """Omit only exact, absent defaults introduced by migrate(), never edits.
+
+    The persisted shape stays intact; substantive updates still pass through
+    role checks. In particular false is not interchangeable with 0 in Python.
+    """
+    old = {d['id']: d for d in previous.get('deals', [])}
+    defaults = {
+        'compare': False, 'partial': False, 'selfRate': False, 'self': False,
+        'sentToClient': False, 'refPaid': False, 'ref2Paid': False,
+        'manual': False, 'isTask': False, 'srefOther': False, 'verified': False,
+        'invoiceTotal': None, 'partNo': '', 'amountUsdt': None, 'docFields': None,
+        'clientId': None, 'bank': None, 'dev': None, 'invNo': None,
+        'realtyPurpose': None, 'payTo': None, 'sentAt': None, 'sentThb': None,
+        'refId': None, 'paySrc': None, 'cnvId': None, 'agentsMode': None,
+        'brokerDraft': None, 'payout': None, 'notes': '', 'companyPct': None,
+        'rates': {}, 'pay': {}, 'docs': {}, 'docMeta': {}, 'conv': [], 'log': [],
+        'agents': [], 'stepNotes': {}, 'quotes': [], 'ratePick': {},
+        'mfPayout': [], 'docLinks': {}, 'payinExtra': [], 'payinParts': [],
+        'payinHashes': [], 'issued': {},
+    }
+    for deal in submitted.get('deals', []):
+        before = old.get(deal.get('id'))
+        if before is None:
+            continue
+        expected = dict(defaults)
+        expected.update(refKnown=before.get('refId') is not None,
+            refSrc='вручную' if before.get('refId') else None,
+            clientPinned=before.get('clientId') is not None,
+            selfCame=bool(before.get('refKnown', before.get('refId') is not None) and before.get('refId') is None),
+            spread=.3 if before.get('type') == 'Обмен валюты' else None,
+            readyAt=None, manager='Елизавета', source='none', payType='По реквизитам',
+            curBase='rub' if before.get('amountRub') and not before.get('amountThb') else 'thb',
+            kind='Лизхолд' if before.get('type', 'Оплата недвижимости') == 'Оплата недвижимости' else '',
+            type='Оплата недвижимости',
+            pair=('USDT → THB' if before.get('payType') == 'Крипта' else 'RUB → THB') if before.get('type') == 'Обмен валюты' else None)
+        for key, value in expected.items():
+            if key not in before and key in deal and type(deal[key]) is type(value) and deal[key] == value:
+                deal.pop(key)
+        if (isinstance(before.get('payout'), dict) and 'hashes' not in before['payout']
+                and isinstance(deal.get('payout'), dict) and deal['payout'].get('hashes') == []):
+            deal['payout'].pop('hashes', None)

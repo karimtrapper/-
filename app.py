@@ -6177,7 +6177,8 @@ def stand_state_put():
                             'updated_by': row.updated_by}), 409
         previous = json.loads(row.data or '{}')
         previous_note_ids = {str(n.get('id')) for n in previous.get('notes') or []}
-        from stand_workflow import journal_problem, accept_journal, accept_notes
+        from stand_workflow import journal_problem, accept_journal, accept_notes, strip_browser_defaults
+        strip_browser_defaults(previous, payload['data'])
         problem = journal_problem(previous, payload['data'])
         if problem:
             return jsonify(success=False, error=problem, version=row.version or 0, data=_stand_strip_files(previous)), 409

@@ -118,3 +118,23 @@ def test_verified_rate_handoff_generates_service_note(board):
     assert response.status_code == 200, response.json
     assert response.json['data']['notes'][0]['role'] == 'manager'
     assert response.json['data']['notes'][0]['text'] == 'Задача на вас: шаг s6'
+
+
+def test_browser_defaults_do_not_edit_other_roles_task(board):
+    install, clients = board
+    install('s5', {'amountRub': 100000})
+    def mutate(state):
+        state['deals'][0].update(compare=False, selfCame=False, quotes=[], ratePick={}, payout=None)
+        state['deals'].append({'id': 1475, 'type': 'Обмен валюты', 'step': 's5', 'amountRub': 200000})
+    response = put_board(clients('manager'), mutate)
+    assert response.status_code == 200, response.json
+    assert len(response.json['data']['deals']) == 2
+    assert 'compare' not in response.json['data']['deals'][0]
+
+
+@pytest.mark.parametrize('key,value', [('amountRub', 120000), ('compare', True), ('quotes', [{'rate': 80}])])
+def test_real_change_to_other_roles_task_still_rejected(board, key, value):
+    install, clients = board
+    install('s5', {'amountRub': 100000})
+    response = put_board(clients('manager'), lambda state: state['deals'][0].update({key: value}))
+    assert response.status_code == 409, response.json
